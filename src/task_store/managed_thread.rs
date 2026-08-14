@@ -1,3 +1,4 @@
+use super::{Result, TaskStoreError};
 use chrono::{DateTime, NaiveDateTime, Utc};
 #[cfg(test)]
 use gluesql::core::data::Schema;
@@ -12,11 +13,9 @@ use gluesql::{
     },
     prelude::{Glue, SelectResultExt},
 };
-use std::collections::BTreeMap;
-
-use super::{Result, TaskStoreError};
 
 pub(super) const TABLE_NAME: &str = "managed_threads";
+pub(super) const POSITION_STEP: i64 = 1024;
 
 const COLUMN_DEFINITIONS: &[&str] = &[
     "thread_id TEXT PRIMARY KEY",
@@ -39,7 +38,7 @@ pub(crate) struct ManagedThread {
     pub thread_id: String,
     pub display_name: String,
     pub section_id: Option<String>,
-    pub position_in_section: Option<u64>,
+    pub position_in_section: Option<i64>,
     pub archived_at_ms: Option<u64>,
     pub last_observed_recency_ms: Option<u64>,
     pub claimed_at_ms: u64,
@@ -309,9 +308,7 @@ pub(super) fn list_all_active<S>(glue: &mut Glue<S>) -> Result<Vec<ManagedThread
 where
     S: GStore + GStoreMut + Planner,
 {
-    let threads = list(glue, None, usize::MAX)?.0;
-    validate_dense_positions(&threads)?;
-    Ok(threads)
+    Ok(list(glue, None, usize::MAX)?.0)
 }
 
 pub(super) fn claim_at_top<S>(
@@ -356,23 +353,6 @@ where
         return Ok(None);
     };
     place_at_top_inner(glue, thread, section_id).map(Some)
-}
-
-pub(super) fn archive_and_compact<S>(
-    glue: &mut Glue<S>,
-    thread_id: &str,
-    archived_at_ms: u64,
-) -> Result<Option<ManagedThread>>
-where
-    S: GStore + GStoreMut + Planner,
-{
-    let Some(existing) = get(glue, thread_id)? else {
-        return Ok(None);
-    };
-    if let Some(section_id) = existing.section_id.as_deref() {
-        compact_without(glue, section_id, thread_id)?;
-    }
-    archive(glue, thread_id, archived_at_ms)
 }
 
 pub(super) fn update_display_name<S>(
@@ -571,19 +551,6 @@ where
         )
         .execute(glue)?;
     deleted(payload)
-}
-
-pub(super) fn delete_active_and_compact<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<bool>
-where
-    S: GStore + GStoreMut + Planner,
-{
-    let Some(existing) = get(glue, thread_id)? else {
-        return Ok(false);
-    };
-    if let Some(section_id) = existing.section_id.as_deref() {
-        compact_without(glue, section_id, thread_id)?;
-    }
-    delete(glue, thread_id)
 }
 
 pub(super) fn delete_archived<S>(glue: &mut Glue<S>, thread_id: &str) -> Result<bool>
@@ -812,10 +779,6 @@ where
     if section_id.trim().is_empty() {
         return Err(TaskStoreError::InvalidRow("section_id"));
     }
-    if let Some(previous_section_id) = target.section_id.as_deref() {
-        compact_without(glue, previous_section_id, &target.thread_id)?;
-    }
-
     let mut target_section = list(glue, None, usize::MAX)?
         .0
         .into_iter()
@@ -824,33 +787,129 @@ where
         })
         .collect::<Vec<_>>();
     sort_placed_threads(&mut target_section)?;
-    target.section_id = Some(section_id.to_string());
-    target.position_in_section = Some(0);
-    update_all(glue, &target)?;
-    for (index, mut thread) in target_section.into_iter().enumerate() {
-        thread.position_in_section = Some(index as u64 + 1);
-        update_all(glue, &thread)?;
+    if target.section_id.as_deref() == Some(section_id)
+        && target_section
+            .first()
+            .is_none_or(|thread| target.position_in_section < thread.position_in_section)
+    {
+        return Ok(target);
     }
-    Ok(target)
+    target.section_id = Some(section_id.to_string());
+    target.position_in_section = match target_section.first() {
+        Some(first) => first
+            .position_in_section
+            .and_then(|position| position.checked_sub(POSITION_STEP)),
+        None => Some(0),
+    };
+    if target.position_in_section.is_some() {
+        update_all(glue, &target)?;
+        return Ok(target);
+    }
+
+    let mut final_order = Vec::with_capacity(target_section.len() + 1);
+    final_order.push(target);
+    final_order.extend(target_section);
+    rebalance(glue, &mut final_order)?;
+    Ok(final_order.remove(0))
 }
 
-fn compact_without<S>(glue: &mut Glue<S>, section_id: &str, removed_id: &str) -> Result<()>
+pub(super) fn move_before<S>(
+    glue: &mut Glue<S>,
+    thread_id: &str,
+    before_thread_id: Option<&str>,
+) -> Result<bool>
 where
     S: GStore + GStoreMut + Planner,
 {
-    let mut remaining = list(glue, None, usize::MAX)?
+    let Some(target) = get(glue, thread_id)? else {
+        return Err(TaskStoreError::TaskReorderUnavailable(
+            "moved Task is not managed and active",
+        ));
+    };
+    let Some(section_id) = target.section_id.as_deref() else {
+        return Err(TaskStoreError::TaskReorderUnavailable(
+            "moved Task has no canonical Section placement",
+        ));
+    };
+    if target.position_in_section.is_none() {
+        return Err(TaskStoreError::TaskReorderUnavailable(
+            "moved Task has no canonical Section rank",
+        ));
+    }
+    if before_thread_id == Some(thread_id) {
+        return Err(TaskStoreError::TaskReorderConflict(
+            "a Task cannot be placed before itself",
+        ));
+    }
+    if let Some(before_thread_id) = before_thread_id {
+        let Some(anchor) = get(glue, before_thread_id)? else {
+            return Err(TaskStoreError::TaskReorderConflict(
+                "the requested anchor is missing or inactive",
+            ));
+        };
+        if anchor.section_id.as_deref() != Some(section_id) || anchor.position_in_section.is_none()
+        {
+            return Err(TaskStoreError::TaskReorderConflict(
+                "the requested anchor is not placed in the same Section",
+            ));
+        }
+    }
+
+    let mut original = list(glue, None, usize::MAX)?
         .0
         .into_iter()
-        .filter(|thread| {
-            thread.thread_id != removed_id && thread.section_id.as_deref() == Some(section_id)
-        })
+        .filter(|thread| thread.section_id.as_deref() == Some(section_id))
         .collect::<Vec<_>>();
-    sort_placed_threads(&mut remaining)?;
-    for (position, mut thread) in remaining.into_iter().enumerate() {
-        thread.position_in_section = Some(position as u64);
-        update_all(glue, &thread)?;
+    sort_placed_threads(&mut original)?;
+    let Some(target_index) = original
+        .iter()
+        .position(|thread| thread.thread_id == thread_id)
+    else {
+        return Err(TaskStoreError::TaskReorderUnavailable(
+            "moved Task is absent from its canonical Section",
+        ));
+    };
+    let original_ids = original
+        .iter()
+        .map(|thread| thread.thread_id.as_str())
+        .collect::<Vec<_>>();
+    let mut final_order = original.clone();
+    let target = final_order.remove(target_index);
+    let destination = match before_thread_id {
+        Some(anchor_id) => final_order
+            .iter()
+            .position(|thread| thread.thread_id == anchor_id)
+            .ok_or(TaskStoreError::TaskReorderConflict(
+                "the requested anchor changed before the move committed",
+            ))?,
+        None => final_order.len(),
+    };
+    final_order.insert(destination, target);
+    if final_order
+        .iter()
+        .map(|thread| thread.thread_id.as_str())
+        .eq(original_ids)
+    {
+        return Ok(false);
     }
-    Ok(())
+
+    let moved_index = final_order
+        .iter()
+        .position(|thread| thread.thread_id == thread_id)
+        .ok_or(TaskStoreError::UnexpectedPayload)?;
+    let previous = moved_index
+        .checked_sub(1)
+        .and_then(|index| final_order[index].position_in_section);
+    let next = final_order
+        .get(moved_index + 1)
+        .and_then(|thread| thread.position_in_section);
+    if let Some(position) = sparse_position_between(previous, next) {
+        final_order[moved_index].position_in_section = Some(position);
+        update_all(glue, &final_order[moved_index])?;
+    } else {
+        rebalance(glue, &mut final_order)?;
+    }
+    Ok(true)
 }
 
 fn sort_placed_threads(threads: &mut [ManagedThread]) -> Result<()> {
@@ -865,30 +924,6 @@ fn sort_placed_threads(threads: &mut [ManagedThread]) -> Result<()> {
             .cmp(&right.position_in_section)
             .then_with(|| left.thread_id.cmp(&right.thread_id))
     });
-    Ok(())
-}
-
-fn validate_dense_positions(threads: &[ManagedThread]) -> Result<()> {
-    let mut positions = BTreeMap::<&str, Vec<u64>>::new();
-    for thread in threads {
-        match (thread.section_id.as_deref(), thread.position_in_section) {
-            (Some(section_id), Some(position)) => {
-                positions.entry(section_id).or_default().push(position)
-            }
-            (None, None) => {}
-            _ => return Err(TaskStoreError::InvalidRow("section_placement")),
-        }
-    }
-    for values in positions.values_mut() {
-        values.sort_unstable();
-        if !values
-            .iter()
-            .enumerate()
-            .all(|(expected, actual)| *actual == expected as u64)
-        {
-            return Err(TaskStoreError::InvalidRow("position_in_section"));
-        }
-    }
     Ok(())
 }
 
@@ -929,28 +964,51 @@ fn validate_display_name(display_name: &str) -> Result<&str> {
 
 fn to_db_position(
     section_id: Option<&str>,
-    position: Option<u64>,
+    position: Option<i64>,
     archived: bool,
 ) -> Result<Option<i64>> {
     validate_placement(section_id, position.is_some(), archived)?;
-    position
-        .map(|position| {
-            i64::try_from(position).map_err(|_| TaskStoreError::InvalidRow("position_in_section"))
-        })
-        .transpose()
+    Ok(position)
 }
 
 fn from_db_position(
     section_id: Option<&str>,
     position: Option<i64>,
     archived: bool,
-) -> Result<Option<u64>> {
+) -> Result<Option<i64>> {
     validate_placement(section_id, position.is_some(), archived)?;
-    position
-        .map(|position| {
-            u64::try_from(position).map_err(|_| TaskStoreError::InvalidRow("position_in_section"))
-        })
-        .transpose()
+    Ok(position)
+}
+
+fn sparse_position_between(previous: Option<i64>, next: Option<i64>) -> Option<i64> {
+    match (previous, next) {
+        (None, None) => Some(0),
+        (None, Some(next)) => next.checked_sub(POSITION_STEP),
+        (Some(previous), None) => previous.checked_add(POSITION_STEP),
+        (Some(previous), Some(next)) => {
+            let gap = i128::from(next) - i128::from(previous);
+            (gap > 1)
+                .then(|| i128::from(previous) + gap / 2)
+                .and_then(|position| i64::try_from(position).ok())
+        }
+    }
+}
+
+fn rebalance<S>(glue: &mut Glue<S>, threads: &mut [ManagedThread]) -> Result<()>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    for (index, thread) in threads.iter_mut().enumerate() {
+        let index =
+            i64::try_from(index).map_err(|_| TaskStoreError::InvalidRow("position_in_section"))?;
+        thread.position_in_section = Some(
+            index
+                .checked_mul(POSITION_STEP)
+                .ok_or(TaskStoreError::InvalidRow("position_in_section"))?,
+        );
+        update_all(glue, thread)?;
+    }
+    Ok(())
 }
 
 fn validate_placement(section_id: Option<&str>, has_position: bool, archived: bool) -> Result<()> {
@@ -1030,6 +1088,27 @@ mod tests {
 
     fn thread(id: &str, recency_ms: Option<u64>) -> ManagedThread {
         ManagedThread::new(id, recency_ms, None, None)
+    }
+
+    fn place_with_rank(glue: &mut Glue<MemoryStorage>, id: &str, section_id: &str, position: i64) {
+        let mut managed = claim(glue, thread(id, Some(1)), 1).unwrap();
+        managed.section_id = Some(section_id.to_string());
+        managed.position_in_section = Some(position);
+        update_all(glue, &managed).unwrap();
+    }
+
+    fn section_order(glue: &mut Glue<MemoryStorage>, section_id: &str) -> Vec<(String, i64)> {
+        let mut threads = list(glue, None, usize::MAX)
+            .unwrap()
+            .0
+            .into_iter()
+            .filter(|thread| thread.section_id.as_deref() == Some(section_id))
+            .collect::<Vec<_>>();
+        sort_placed_threads(&mut threads).unwrap();
+        threads
+            .into_iter()
+            .map(|thread| (thread.thread_id, thread.position_in_section.unwrap()))
+            .collect()
     }
 
     #[test]
@@ -1404,67 +1483,193 @@ mod tests {
     }
 
     #[test]
-    fn section_lifecycle_keeps_dense_positions_and_preserves_names() {
+    fn section_lifecycle_uses_sparse_top_ranks_and_preserves_gaps_and_names() {
         let mut glue = memory();
         for (id, name) in [("a", "Task A"), ("b", "Task B"), ("c", "Task C")] {
             claim_at_top(&mut glue, thread(id, Some(1)), name, "one", 1).unwrap();
         }
         assert_eq!(
             get(&mut glue, "c").unwrap().unwrap().position_in_section,
-            Some(0)
+            Some(-2048)
         );
 
-        let archived = archive_and_compact(&mut glue, "b", 2).unwrap().unwrap();
+        let archived = archive(&mut glue, "b", 2).unwrap().unwrap();
         assert_eq!(archived.display_name, "Task B");
         assert_eq!(
             (archived.section_id, archived.position_in_section),
             (None, None)
         );
-        validate_dense_positions(&list(&mut glue, None, usize::MAX).unwrap().0).unwrap();
+        assert_eq!(
+            section_order(&mut glue, "one"),
+            [("c".to_string(), -2048), ("a".to_string(), 0)]
+        );
 
         let restored = restore_at_top(&mut glue, "b", "one").unwrap().unwrap();
         assert_eq!(restored.display_name, "Task B");
-        assert_eq!(restored.position_in_section, Some(0));
-        validate_dense_positions(&list(&mut glue, None, usize::MAX).unwrap().0).unwrap();
+        assert_eq!(restored.position_in_section, Some(-3072));
+        assert_eq!(
+            section_order(&mut glue, "one"),
+            [
+                ("b".to_string(), -3072),
+                ("c".to_string(), -2048),
+                ("a".to_string(), 0),
+            ]
+        );
     }
 
     #[test]
-    fn deleting_an_active_thread_compacts_its_section() {
+    fn deleting_an_active_thread_preserves_section_rank_gaps() {
         let mut glue = memory();
         for id in ["a", "b", "c"] {
             claim_at_top(&mut glue, thread(id, Some(1)), id, "one", 1).unwrap();
         }
 
-        assert!(delete_active_and_compact(&mut glue, "b").unwrap());
+        assert!(delete(&mut glue, "b").unwrap());
         assert!(get(&mut glue, "b").unwrap().is_none());
-        let threads = list(&mut glue, None, usize::MAX).unwrap().0;
-        validate_dense_positions(&threads).unwrap();
         assert_eq!(
-            get(&mut glue, "c").unwrap().unwrap().position_in_section,
-            Some(0)
-        );
-        assert_eq!(
-            get(&mut glue, "a").unwrap().unwrap().position_in_section,
-            Some(1)
+            section_order(&mut glue, "one"),
+            [("c".to_string(), -2048), ("a".to_string(), 0)]
         );
     }
 
     #[test]
-    fn moving_between_sections_compacts_both_sides() {
+    fn moving_between_sections_leaves_the_previous_section_rank_untouched() {
         let mut glue = memory();
         for id in ["a", "b"] {
             claim_at_top(&mut glue, thread(id, Some(1)), id, "one", 1).unwrap();
         }
         place_at_top(&mut glue, "a", "two").unwrap();
-        let threads = list(&mut glue, None, usize::MAX).unwrap().0;
-        validate_dense_positions(&threads).unwrap();
         assert_eq!(
             get(&mut glue, "b").unwrap().unwrap().position_in_section,
-            Some(0)
+            Some(-1024)
         );
         assert_eq!(
             get(&mut glue, "a").unwrap().unwrap().position_in_section,
             Some(0)
         );
+    }
+
+    #[test]
+    fn move_before_places_at_top_middle_and_end_with_successful_noops() {
+        let mut glue = memory();
+        for id in ["c", "b", "a"] {
+            claim_at_top(&mut glue, thread(id, Some(1)), id, "one", 1).unwrap();
+        }
+
+        assert!(move_before(&mut glue, "c", Some("a")).unwrap());
+        assert_eq!(
+            section_order(&mut glue, "one"),
+            [
+                ("c".to_string(), -3072),
+                ("a".to_string(), -2048),
+                ("b".to_string(), -1024),
+            ]
+        );
+
+        assert!(move_before(&mut glue, "c", Some("b")).unwrap());
+        assert_eq!(
+            section_order(&mut glue, "one"),
+            [
+                ("a".to_string(), -2048),
+                ("c".to_string(), -1536),
+                ("b".to_string(), -1024),
+            ]
+        );
+
+        assert!(move_before(&mut glue, "c", None).unwrap());
+        assert_eq!(
+            section_order(&mut glue, "one"),
+            [
+                ("a".to_string(), -2048),
+                ("b".to_string(), -1024),
+                ("c".to_string(), 0),
+            ]
+        );
+        assert!(!move_before(&mut glue, "c", None).unwrap());
+        assert!(!move_before(&mut glue, "b", Some("c")).unwrap());
+    }
+
+    #[test]
+    fn move_before_rebalances_dense_ranks_only_when_the_requested_gap_is_exhausted() {
+        let mut glue = memory();
+        place_with_rank(&mut glue, "a", "one", 0);
+        place_with_rank(&mut glue, "b", "one", 1);
+        place_with_rank(&mut glue, "c", "one", 2);
+
+        assert!(move_before(&mut glue, "c", Some("b")).unwrap());
+        assert_eq!(
+            section_order(&mut glue, "one"),
+            [
+                ("a".to_string(), 0),
+                ("c".to_string(), 1024),
+                ("b".to_string(), 2048),
+            ]
+        );
+    }
+
+    #[test]
+    fn move_before_rebalances_checked_top_and_end_overflow() {
+        let mut glue = memory();
+        place_with_rank(&mut glue, "a", "one", i64::MIN);
+        place_with_rank(&mut glue, "b", "one", 0);
+        assert!(move_before(&mut glue, "b", Some("a")).unwrap());
+        assert_eq!(
+            section_order(&mut glue, "one"),
+            [("b".to_string(), 0), ("a".to_string(), 1024)]
+        );
+
+        let mut glue = memory();
+        place_with_rank(&mut glue, "a", "one", 0);
+        place_with_rank(&mut glue, "b", "one", i64::MAX);
+        assert!(move_before(&mut glue, "a", None).unwrap());
+        assert_eq!(
+            section_order(&mut glue, "one"),
+            [("b".to_string(), 0), ("a".to_string(), 1024)]
+        );
+    }
+
+    #[test]
+    fn placing_at_top_rebalances_checked_rank_underflow() {
+        let mut glue = memory();
+        place_with_rank(&mut glue, "a", "one", i64::MIN);
+        claim(&mut glue, thread("b", Some(1)), 1).unwrap();
+
+        place_at_top(&mut glue, "b", "one").unwrap();
+
+        assert_eq!(
+            section_order(&mut glue, "one"),
+            [("b".to_string(), 0), ("a".to_string(), 1024)]
+        );
+    }
+
+    #[test]
+    fn move_before_rejects_unavailable_tasks_and_stale_or_cross_section_anchors() {
+        let mut glue = memory();
+        place_with_rank(&mut glue, "a", "one", 0);
+        place_with_rank(&mut glue, "b", "two", 0);
+        claim(&mut glue, thread("unplaced", Some(1)), 1).unwrap();
+        place_with_rank(&mut glue, "archived", "one", 1024);
+        archive(&mut glue, "archived", 2).unwrap();
+
+        assert!(matches!(
+            move_before(&mut glue, "missing", None),
+            Err(TaskStoreError::TaskReorderUnavailable(_))
+        ));
+        assert!(matches!(
+            move_before(&mut glue, "archived", None),
+            Err(TaskStoreError::TaskReorderUnavailable(_))
+        ));
+        assert!(matches!(
+            move_before(&mut glue, "unplaced", None),
+            Err(TaskStoreError::TaskReorderUnavailable(_))
+        ));
+        for anchor in [Some("missing"), Some("a"), Some("b")] {
+            let result = move_before(&mut glue, "a", anchor);
+            assert!(matches!(
+                result,
+                Err(TaskStoreError::TaskReorderConflict(_))
+            ));
+        }
+        assert_eq!(section_order(&mut glue, "one"), [("a".to_string(), 0)]);
     }
 }

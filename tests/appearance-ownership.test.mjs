@@ -184,7 +184,7 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
 
   const selectedOwners = [
     "components/file-tree.css",
-    "pages/(task-workspace)/tasks/components/active-task-list.css",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/row.css",
     "pages/(task-workspace)/settings/appearance/page.css",
   ];
   for (const path of selectedOwners) {
@@ -318,10 +318,10 @@ test("structural shadows separate fixed regions from floating elevation", () => 
 
 test("unseen completion attention blinks the marker without hiding it", () => {
   const activeList = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list.css",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/row.css",
   );
   const activeTaskListView = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list.js",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/row.js",
   );
 
   cssBlockMatching(activeList, ".task-unseen-complete::before", [
@@ -644,7 +644,7 @@ test("visible inline icons have explicit block geometry from their UI owner", ()
     ["pages/(task-workspace)/tasks/controls.css", ".task-action-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-primary-action-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/components/active-task-list.css", ".task-repository-icon", "--task-list-icon-size"],
-    ["pages/(task-workspace)/tasks/components/active-task-list.css", ".task-row-worktree-icon", "--task-list-icon-size"],
+    ["pages/(task-workspace)/tasks/components/active-task-list/components/row.css", ".task-row-worktree-icon", "--task-list-icon-size"],
     ["pages/(task-workspace)/tasks/components/archived-task-list.css", ".task-repository-icon", "--task-list-icon-size"],
     ["pages/(task-workspace)/tasks/components/archived-task-list.css", ".task-row-worktree-icon", "--task-list-icon-size"],
     ["pages/(task-workspace)/tasks/components/archived-task-list.css", ".task-archived-action-icon", "--interface-icon-size"],
@@ -1037,18 +1037,21 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
 });
 
 test("task rows use full-width selection and compact repository grouping", () => {
+  const activeRow = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list/components/row.css",
+  );
   const activeList = readFrontend(
     "pages/(task-workspace)/tasks/components/active-task-list.css",
   );
   const archivedList = readFrontend(
     "pages/(task-workspace)/tasks/components/archived-task-list.css",
   );
-  const row = cssBlock(activeList, "& .task-row {");
+  const row = cssBlock(activeRow, "& > .task-row {");
   const archivedRow = cssBlock(archivedList, "& .task-archived-row {");
-  const hover = cssBlock(activeList, "& .task-row:hover,");
+  const hover = cssBlock(activeRow, "& > .task-row:hover,");
   const selected = cssBlock(
-    activeList,
-    '& .task-row[aria-current="true"]',
+    activeRow,
+    '& > .task-row[aria-current="true"]',
   );
 
   assert.doesNotMatch(row, /border-left/);
@@ -1080,14 +1083,17 @@ test("task rows use full-width selection and compact repository grouping", () =>
   assert.match(selected, /background: var\(--selection-bg\)/);
   assert.doesNotMatch(selected, /color-mix/);
 
-  for (const owner of [activeList, archivedList]) {
+  for (const [groupOwner, rowOwner] of [
+    [activeList, activeRow],
+    [archivedList, archivedList],
+  ]) {
     const repositoryGap = cssBlock(
-      owner,
+      groupOwner,
       "& .task-repository-group + .task-repository-group {",
     );
-    const repositoryHeader = cssBlock(owner, "& .task-repository-header {");
-    const title = cssBlock(owner, "& .task-row-title");
-    const indicators = cssBlock(owner, "& .task-row-indicators");
+    const repositoryHeader = cssBlock(groupOwner, "& .task-repository-header {");
+    const title = cssBlock(rowOwner, "& .task-row-title");
+    const indicators = cssBlock(rowOwner, "& .task-row-indicators");
     assert.match(repositoryGap, /margin-top: var\(--interface-space-6\)/);
     assert.match(repositoryHeader, /min-height: var\(--interface-space-14\)/);
     assert.match(title, /font-weight: 500/);

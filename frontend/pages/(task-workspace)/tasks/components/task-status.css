@@ -1,5 +1,5 @@
 caffold-tasks-page,
-caffold-active-task-list,
+caffold-active-task-row,
 caffold-archived-task-list {
   & .task-status-chip {
     display: inline-grid;
@@ -61,7 +61,7 @@ caffold-archived-task-list {
 
 @media (prefers-reduced-motion: reduce) {
   caffold-tasks-page,
-  caffold-active-task-list,
+  caffold-active-task-row,
   caffold-archived-task-list {
     & .task-status-spinner {
       animation: none;
@@ -70,7 +70,7 @@ caffold-archived-task-list {
 }
 
 caffold-tasks-page,
-caffold-active-task-list,
+caffold-active-task-row,
 caffold-archived-task-list {
   & [data-status="failed"],
   & [data-status="interrupted"] {

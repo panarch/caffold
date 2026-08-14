@@ -51,6 +51,10 @@ class CaffoldTaskNavigator extends HTMLElement {
       "caffold:task-navigator-transport-change",
       this.boundTransportChange,
     );
+    this.addEventListener(
+      "caffold:active-task-list-focus-reorder-toggle",
+      this.boundFocusReorderToggle,
+    );
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.render();
     if (this.active) {
@@ -88,6 +92,10 @@ class CaffoldTaskNavigator extends HTMLElement {
       "caffold:task-navigator-transport-change",
       this.boundTransportChange,
     );
+    this.removeEventListener(
+      "caffold:active-task-list-focus-reorder-toggle",
+      this.boundFocusReorderToggle,
+    );
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.closeStream();
   }
@@ -98,6 +106,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     }
     this.stateReady = true;
     this.active = false;
+    this.reorderMode = false;
     this.codexTaskOperations = codexTaskOperationsPresentation(null);
     this.lastPublishedListState = "";
     this.boundClick = (event) => this.handleClick(event);
@@ -108,6 +117,10 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.boundArchiveSync = (event) => this.handleArchiveSync(event);
     this.boundTaskRestored = (event) => this.handleTaskRestored(event);
     this.boundTransportChange = (event) => this.handleTransportChange(event);
+    this.boundFocusReorderToggle = (event) => {
+      event.stopPropagation();
+      this.reorderButton?.focus();
+    };
     warmIcons();
   }
 
@@ -120,6 +133,12 @@ class CaffoldTaskNavigator extends HTMLElement {
   get archivedTaskList() {
     return this.querySelector(
       ":scope > .task-list-scroll > caffold-archived-task-list",
+    );
+  }
+
+  get reorderButton() {
+    return this.querySelector(
+      ":scope > .task-list-primary-header .task-list-reorder",
     );
   }
 
@@ -246,6 +265,27 @@ class CaffoldTaskNavigator extends HTMLElement {
     return this.activeTaskList.recoverForeground();
   }
 
+  setReorderMode(active, { restoreFocus = true } = {}) {
+    this.ensureChildren();
+    const next = Boolean(active);
+    if (this.reorderMode === next) {
+      return;
+    }
+    const handleHadFocus = document.activeElement?.matches?.(
+      "caffold-active-task-row .task-reorder-handle",
+    );
+    this.reorderMode = next;
+    this.activeTaskList.setReorderMode(next);
+    this.syncPrimaryHeader();
+    if (!next && restoreFocus && handleHadFocus) {
+      queueMicrotask(() => this.reorderButton?.focus());
+    }
+  }
+
+  exitReorderMode(options = {}) {
+    this.setReorderMode(false, options);
+  }
+
   setCodexStatusSnapshot(snapshot) {
     this.ensureChildren();
     const presentation = codexTaskOperationsPresentation(snapshot);
@@ -266,10 +306,15 @@ class CaffoldTaskNavigator extends HTMLElement {
       return;
     }
     event.stopPropagation();
+    if (action.dataset.taskAction === "toggle-reorder") {
+      this.setReorderMode(!this.reorderMode);
+      return;
+    }
     if (this.codexTaskOperations.blocked) {
       return;
     }
     if (action.dataset.taskAction === "open-new") {
+      this.exitReorderMode({ restoreFocus: false });
       this.dispatchIntent("new-task");
     }
   }
@@ -396,19 +441,36 @@ class CaffoldTaskNavigator extends HTMLElement {
       </div>
     `;
     this.activeTaskList.setCodexTaskOperations(this.codexTaskOperations);
+    this.activeTaskList.setReorderMode(this.reorderMode);
     this.archivedTaskList.setCodexTaskOperations(this.codexTaskOperations);
   }
 
   syncPrimaryHeader() {
-    const button = this.querySelector(
-      ":scope > .task-list-primary-header > .task-list-new-task",
+    const newTaskButton = this.querySelector(
+      ":scope > .task-list-primary-header .task-list-new-task",
     );
-    if (button) {
-      button.innerHTML = renderInlineIcon("Plus", "New task", "task-action-icon");
-      button.title = this.codexTaskOperations.blocked
+    if (newTaskButton) {
+      syncHeaderActionIcon(
+        newTaskButton,
+        "Plus",
+        "New task",
+      );
+      newTaskButton.title = this.codexTaskOperations.blocked
         ? this.codexTaskOperations.title
         : "New Task";
-      button.disabled = this.codexTaskOperations.blocked;
+      newTaskButton.disabled = this.codexTaskOperations.blocked;
+    }
+    const reorderButton = this.reorderButton;
+    if (reorderButton) {
+      syncHeaderActionIcon(
+        reorderButton,
+        "ArrowDownUp",
+        "Reorder tasks",
+      );
+      reorderButton.setAttribute("aria-pressed", `${this.reorderMode}`);
+      reorderButton.title = this.reorderMode
+        ? "Finish reordering Tasks"
+        : "Reorder Tasks";
     }
   }
 
@@ -418,18 +480,38 @@ class CaffoldTaskNavigator extends HTMLElement {
     return `
       <header class="task-list-section-header task-list-primary-header">
         <caffold-workspace-brand></caffold-workspace-brand>
-        <button
-          type="button"
-          class="task-list-new-task"
-          data-task-action="open-new"
-          aria-label="New Task"
-          title="${title}"
-          ${blocked ? "disabled" : ""}
-        >${renderInlineIcon("Plus", "New task", "task-action-icon")}</button>
+        <span class="task-list-primary-actions">
+          <button
+            type="button"
+            class="task-list-header-action task-list-reorder"
+            data-task-action="toggle-reorder"
+            aria-label="Reorder Tasks"
+            aria-pressed="${this.reorderMode}"
+            title="${this.reorderMode ? "Finish reordering Tasks" : "Reorder Tasks"}"
+          >${renderInlineIcon("ArrowDownUp", "Reorder tasks", "task-action-icon")}</button>
+          <button
+            type="button"
+            class="task-list-header-action task-list-new-task"
+            data-task-action="open-new"
+            aria-label="New Task"
+            title="${title}"
+            ${blocked ? "disabled" : ""}
+          >${renderInlineIcon("Plus", "New task", "task-action-icon")}</button>
+        </span>
       </header>
     `;
   }
 
+}
+
+function syncHeaderActionIcon(button, name, label) {
+  if (button.querySelector(":scope > .task-action-icon")) {
+    return;
+  }
+  const markup = renderInlineIcon(name, label, "task-action-icon");
+  if (button.innerHTML !== markup) {
+    button.innerHTML = markup;
+  }
 }
 
 function taskListState(list) {

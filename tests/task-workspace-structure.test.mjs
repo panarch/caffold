@@ -349,11 +349,17 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
   const active = readFrontend(
     "pages/(task-workspace)/tasks/components/active-task-list.js",
   );
+  const activeStyles = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list.css",
+  );
   const archived = readFrontend(
     "pages/(task-workspace)/tasks/components/archived-task-list.js",
   );
-  const activeStyles = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list.css",
+  const activeRow = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list/components/row.js",
+  );
+  const activeRowStyles = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list/components/row.css",
   );
   const archivedStyles = readFrontend(
     "pages/(task-workspace)/tasks/components/archived-task-list.css",
@@ -365,7 +371,10 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
   assert.match(active, /aria-label", "Caffold Tasks"/);
   assert.doesNotMatch(active, /getArchivedTasks|restoreTask|deleteTask/);
   assert.doesNotMatch(active, /load-more-tasks|taskListNextCursor/);
-  assert.match(activeStyles, /\.task-unseen-complete/);
+  assert.match(activeRow, /customElements\.define\("caffold-active-task-row"/);
+  assert.match(active, /createElement\("caffold-active-task-row"\)/);
+  assert.match(activeRowStyles, /\.task-unseen-complete/);
+  assert.doesNotMatch(activeStyles, /\.task-row(?:\s|\{|:)/);
   assert.doesNotMatch(
     activeStyles,
     /task-archived-|load-more-archived-tasks|load-more-tasks|task-list-pagination/,
@@ -388,6 +397,78 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
     navigator,
     /\bgetTasks\b|\bgetArchivedTasks\b|\brestoreTask\b|\bdeleteTask\b|TaskStreamLifecycle/,
   );
+});
+
+test("active Task reordering keeps navigation, ordering, and row presentation owners bounded", () => {
+  const api = readFrontend("api.js");
+  const tasksPage = readFrontend("pages/(task-workspace)/tasks/page.js");
+  const navigator = readFrontend(
+    "pages/(task-workspace)/tasks/components/navigator.js",
+  );
+  const active = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list.js",
+  );
+  const activeStyles = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list.css",
+  );
+  const row = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list/components/row.js",
+  );
+  const rowStyles = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list/components/row.css",
+  );
+
+  assert.match(api, /export async function reorderTask\(threadId, beforeThreadId\)/);
+  assert.match(api, /body: \{ beforeThreadId: beforeThreadId \?\? null \}/);
+  const reorderControl = navigator.indexOf('data-task-action="toggle-reorder"');
+  const newControl = navigator.indexOf('data-task-action="open-new"');
+  assert.ok(reorderControl >= 0 && reorderControl < newControl);
+  assert.match(navigator, /aria-pressed="\$\{this\.reorderMode\}"/);
+  assert.match(navigator, /renderInlineIcon\(\s*"ArrowDownUp"/);
+  assert.match(navigator, /this\.activeTaskList\.setReorderMode\(next\)/);
+  assert.match(tasksPage, /exitReorderMode\(\{ restoreFocus: false \}\)/);
+
+  assert.match(active, /reorderTask\(threadId, move\.beforeThreadId\)/);
+  assert.match(active, /this\.pendingMove/);
+  assert.match(active, /class="sr-only task-reorder-announcement" aria-live="polite"/);
+  assert.match(active, /createElement\("caffold-active-task-row"\)/);
+  assert.doesNotMatch(active, /function renderTaskRowMeta|function patchTaskListRow/);
+
+  assert.match(row, /renderInlineIcon\("Grip"/);
+  assert.match(row, /event\.key === "ArrowUp"/);
+  assert.match(row, /event\.key === "ArrowDown"/);
+  assert.match(row, /class="task-row task-row-reorder-mode"/);
+  assert.doesNotMatch(row, /<button[^>]*class="task-row task-row-reorder-mode"/);
+  assert.match(
+    rowStyles,
+    /grid-template-columns: minmax\(0, 1fr\) 3rem/,
+  );
+  assert.match(
+    rowStyles,
+    /& \.task-row-reorder-slot \{[\s\S]*?justify-items: stretch/,
+  );
+  assert.match(
+    rowStyles,
+    /& \.task-reorder-handle \{[\s\S]*?width: 100%/,
+  );
+  assert.match(
+    rowStyles,
+    /& \.task-row-indicators:not\(\.task-row-reorder-slot\) \{[\s\S]*?@starting-style/,
+  );
+  assert.match(
+    rowStyles,
+    /& \.task-reorder-handle-icon \{[\s\S]*?translate: 0\.5rem 0/,
+  );
+  assert.match(
+    activeStyles,
+    /&:has\(\.task-row-reorder-mode\) \.task-repository-count \{[\s\S]*?transition-duration: 0ms/,
+  );
+  assert.match(
+    activeStyles,
+    /& \.task-repository-count \{[\s\S]*?@starting-style/,
+  );
+  assert.match(rowStyles, /min-height: var\(--task-list-row-height\)/);
+  assert.match(rowStyles, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
 test("archived task deletion dialog owns its modal state and markup", () => {

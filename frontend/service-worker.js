@@ -134,6 +134,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/components/detail/review/changes-tree.js",
   "/assets/pages/(task-workspace)/tasks/components/active-task-list.css",
   "/assets/pages/(task-workspace)/tasks/components/active-task-list.js",
+  "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/row.css",
+  "/assets/pages/(task-workspace)/tasks/components/active-task-list/components/row.js",
   "/assets/pages/(task-workspace)/tasks/components/archived-task-list.css",
   "/assets/pages/(task-workspace)/tasks/components/archived-task-list.js",
   "/assets/pages/(task-workspace)/tasks/components/recovery.css",

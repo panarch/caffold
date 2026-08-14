@@ -1,33 +1,25 @@
-import { getTasks, taskListStreamUrl } from "../../../../api.js";
+import { getTasks, reorderTask, taskListStreamUrl } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import { PENDING_CODEX_TASK_OPERATIONS } from "../../codex-status.js";
 import {
   TASK_TRANSPORT_STATE,
   isTaskTransportStale,
-  taskStatusView,
   taskThreadStatusType,
 } from "../runtime-state.js";
 import {
   taskThreadId,
-  taskWorktreeLabel,
 } from "../task-list-model.js";
-import { formatRelativeAgePresentation } from "../task-format.js";
 import { TaskStreamLifecycle } from "../stream.js";
 import {
-  patchTaskStatusChip,
-  renderTaskStatusChip,
-} from "./task-status.js";
+  ACTIVE_TASK_ROW_INTENT_EVENT,
+} from "./active-task-list/components/row.js";
 
 export const ACTIVE_TASK_LIST_INITIAL_SETTLED_EVENT =
   "caffold:active-task-list-initial-settled";
 export const ACTIVE_TASK_LIST_ARCHIVE_SYNC_EVENT =
   "caffold:active-task-list-archive-sync";
 export const ACTIVE_TASK_LIST_STATE_EVENT = "caffold:active-task-list-state";
-
-const TASK_RUNNING_SPINNER_DURATION_MS = 800;
-const UNSEEN_ATTENTION_PHASE_COUNT = 8;
-const UNSEEN_ATTENTION_PHASE_INTERVAL_MS = 300;
 
 class CaffoldActiveTaskList extends HTMLElement {
   connectedCallback() {
@@ -37,16 +29,19 @@ class CaffoldActiveTaskList extends HTMLElement {
     this.setAttribute("role", "region");
     this.setAttribute("aria-label", "Caffold Tasks");
     this.addEventListener("click", this.boundClick);
+    this.addEventListener(ACTIVE_TASK_ROW_INTENT_EVENT, this.boundRowIntent);
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.render();
   }
 
   disconnectedCallback() {
     this.removeEventListener("click", this.boundClick);
+    this.removeEventListener(ACTIVE_TASK_ROW_INTENT_EVENT, this.boundRowIntent);
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.taskListRequestId += 1;
     this.taskListLoadPromise = null;
     this.taskListLoading = false;
+    this.cancelDrag();
     this.closeStream();
   }
 
@@ -62,6 +57,7 @@ class CaffoldActiveTaskList extends HTMLElement {
     this.taskListError = null;
     this.taskListRequestId = 0;
     this.taskListLoadPromise = null;
+    this.taskListRefreshPending = false;
     this.pendingTopPlacements = new Map();
     this.pendingRuntimeSnapshot = null;
     this.initialRequestSettled = false;
@@ -69,7 +65,12 @@ class CaffoldActiveTaskList extends HTMLElement {
     this.revisionByThread = new Map();
     this.active = false;
     this.codexTaskOperations = PENDING_CODEX_TASK_OPERATIONS;
+    this.reorderMode = false;
+    this.pendingMove = null;
+    this.reorderError = null;
+    this.dragState = null;
     this.boundClick = (event) => this.handleClick(event);
+    this.boundRowIntent = (event) => this.handleRowIntent(event);
     this.boundIconsReady = () => this.render();
     this.taskListStream = new TaskStreamLifecycle({
       createUrl: () => taskListStreamUrl(),
@@ -121,7 +122,7 @@ class CaffoldActiveTaskList extends HTMLElement {
       return;
     }
     this.selectedThreadId = nextThreadId;
-    this.syncSelection();
+    this.syncRows();
     if (nextThreadId) {
       const task = this.allTasks().find(
         (candidate) => taskThreadId(candidate) === nextThreadId,
@@ -147,22 +148,12 @@ class CaffoldActiveTaskList extends HTMLElement {
     if (!listKey) {
       return;
     }
-    const row = this.querySelector(
-      `li[data-thread-id="${CSS.escape(threadId)}"]`,
-    );
+    const row = this.rowFor(threadId);
     if (!row) {
       this.render();
       return;
     }
-
-    const template = document.createElement("template");
-    template.innerHTML = this.renderTaskRow(nextTask, listKey).trim();
-    const nextRow = template.content.firstElementChild;
-    if (!nextRow || !patchTaskListRow(row, nextRow)) {
-      this.render();
-      return;
-    }
-    this.syncSelection();
+    this.syncRow(row, nextTask, listKey);
     this.publishState();
   }
 
@@ -249,6 +240,12 @@ class CaffoldActiveTaskList extends HTMLElement {
     if (!threadId || !this.taskListLoaded) {
       return;
     }
+    const context = this.sectionContext(threadId);
+    const restoreHandleFocus = this.reorderMode &&
+      this.rowComponentFor(threadId)?.contains(document.activeElement);
+    if (this.dragState?.threadId === threadId) {
+      this.cancelDrag();
+    }
     const previousCount = this.allTasks().length;
     this.sections = this.sections
       .map((section) => ({
@@ -266,6 +263,26 @@ class CaffoldActiveTaskList extends HTMLElement {
     }
     this.revisionByThread.delete(threadId);
     this.render();
+    if (restoreHandleFocus) {
+      const section = this.sections.find(
+        (candidate) => candidate.id === context?.section.id,
+      );
+      const nextTask = section?.tasks[Math.min(
+        context.index,
+        section.tasks.length - 1,
+      )];
+      if (nextTask) {
+        queueMicrotask(() =>
+          this.rowComponentFor(taskThreadId(nextTask))?.focusHandle()
+        );
+      } else {
+        this.dispatchEvent(
+          new CustomEvent("caffold:active-task-list-focus-reorder-toggle", {
+            bubbles: true,
+          }),
+        );
+      }
+    }
   }
 
   handleClick(event) {
@@ -280,18 +297,6 @@ class CaffoldActiveTaskList extends HTMLElement {
       void this.loadTasks({ force: true });
       return;
     }
-    if (this.codexOperationsBlocked) {
-      return;
-    }
-    const threadId = `${action.dataset.threadId ?? ""}`;
-    if (action.dataset.taskAction === "open-task") {
-      this.dispatchIntent("select-task", { threadId });
-    } else if (action.dataset.taskAction === "open-task-recovery") {
-      const recovery = this.recoveryFor(threadId);
-      if (recovery) {
-        this.dispatchIntent("select-task-recovery", { threadId, recovery });
-      }
-    }
   }
 
   dispatchIntent(type, detail = {}) {
@@ -304,7 +309,323 @@ class CaffoldActiveTaskList extends HTMLElement {
     );
   }
 
-  async loadTasks({ force = false, isCurrent = () => true } = {}) {
+  setReorderMode(active) {
+    this.ensureState();
+    const next = Boolean(active);
+    if (this.reorderMode === next) {
+      return;
+    }
+    this.reorderMode = next;
+    if (!next) {
+      this.cancelDrag();
+      this.reorderError = null;
+    }
+    this.renderAlerts();
+    this.syncRows();
+  }
+
+  handleRowIntent(event) {
+    if (!(event.target instanceof Element) || !this.contains(event.target)) {
+      return;
+    }
+    event.stopPropagation();
+    const { type, threadId, direction, clientY } = event.detail ?? {};
+    if (type === "select-task") {
+      if (!this.reorderMode) {
+        this.dispatchIntent("select-task", { threadId });
+      }
+      return;
+    }
+    if (type === "select-task-recovery") {
+      if (!this.reorderMode) {
+        const recovery = this.recoveryFor(threadId);
+        if (recovery) {
+          this.dispatchIntent("select-task-recovery", { threadId, recovery });
+        }
+      }
+      return;
+    }
+    if (!this.reorderMode || this.pendingMove) {
+      return;
+    }
+    if (type === "move") {
+      this.moveByKeyboard(threadId, direction);
+    } else if (type === "drag-start") {
+      this.startDrag(threadId, clientY);
+    } else if (type === "drag-move") {
+      this.moveDrag(threadId, clientY);
+    } else if (type === "drag-end") {
+      this.endDrag(threadId);
+    } else if (type === "drag-cancel") {
+      this.cancelDrag();
+    }
+  }
+
+  moveByKeyboard(threadId, direction) {
+    const context = this.sectionContext(threadId);
+    if (!context || !["up", "down"].includes(direction)) {
+      return;
+    }
+    const { section, index } = context;
+    if (direction === "up" && index === 0) {
+      this.announce(`${context.task.title} is already first in ${sectionLabel(section.name)}.`);
+      return;
+    }
+    if (direction === "down" && index === section.tasks.length - 1) {
+      this.announce(`${context.task.title} is already last in ${sectionLabel(section.name)}.`);
+      return;
+    }
+    const beforeThreadId = direction === "up"
+      ? taskThreadId(section.tasks[index - 1])
+      : taskThreadId(section.tasks[index + 2]) || null;
+    void this.requestMove({ threadId, beforeThreadId });
+  }
+
+  startDrag(threadId) {
+    const context = this.sectionContext(threadId);
+    const row = this.rowFor(threadId);
+    if (!context || !row) {
+      return;
+    }
+    this.dragState = {
+      threadId,
+      sectionId: context.section.id,
+      originalBeforeThreadId:
+        taskThreadId(context.section.tasks[context.index + 1]) || null,
+      beforeThreadId:
+        taskThreadId(context.section.tasks[context.index + 1]) || null,
+    };
+  }
+
+  moveDrag(threadId, clientY) {
+    const drag = this.dragState;
+    if (!drag || drag.threadId !== threadId || !Number.isFinite(clientY)) {
+      return;
+    }
+    const source = this.rowFor(threadId);
+    const list = source?.parentElement;
+    if (!source || !list?.matches(".task-list")) {
+      this.cancelDrag();
+      return;
+    }
+    const candidates = [...list.children].filter((row) => row !== source);
+    const before = candidates.find(
+      (row) => clientY < row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2,
+    ) ?? null;
+    drag.beforeThreadId = before?.dataset.threadId || null;
+    this.clearDragTarget(drag);
+    if (before) {
+      this.rowComponentFor(before.dataset.threadId)?.setAttribute(
+        "data-task-drop-before",
+        "",
+      );
+    } else {
+      const last = candidates.at(-1) ?? source;
+      this.rowComponentFor(last.dataset.threadId)?.setAttribute(
+        "data-task-drop-after",
+        "",
+      );
+    }
+    this.autoScrollDrag(clientY);
+  }
+
+  endDrag(threadId) {
+    const drag = this.dragState;
+    if (!drag || drag.threadId !== threadId) {
+      return;
+    }
+    this.dragState = null;
+    this.clearDragTarget(drag);
+    if (drag.beforeThreadId === drag.originalBeforeThreadId) {
+      return;
+    }
+    void this.requestMove({
+      threadId: drag.threadId,
+      beforeThreadId: drag.beforeThreadId,
+    });
+  }
+
+  cancelDrag() {
+    const drag = this.dragState;
+    this.dragState = null;
+    if (!drag) {
+      return;
+    }
+    this.clearDragTarget(drag);
+  }
+
+  clearDragTarget(drag) {
+    if (!drag) {
+      return;
+    }
+    const group = this.querySelector(
+      `.task-repository-group[data-task-repository-key="${CSS.escape(drag.sectionId)}"]`,
+    );
+    for (const component of group?.querySelectorAll(
+      "caffold-active-task-row[data-task-drop-before], caffold-active-task-row[data-task-drop-after]",
+    ) ?? []) {
+      component.removeAttribute("data-task-drop-before");
+      component.removeAttribute("data-task-drop-after");
+    }
+  }
+
+  autoScrollDrag(clientY) {
+    const scroller = this.closest(".task-list-scroll");
+    if (!scroller) {
+      return;
+    }
+    const bounds = scroller.getBoundingClientRect();
+    const edge = Math.min(48, bounds.height / 4);
+    if (clientY < bounds.top + edge) {
+      scroller.scrollBy({ top: -12 });
+    } else if (clientY > bounds.bottom - edge) {
+      scroller.scrollBy({ top: 12 });
+    }
+  }
+
+  async requestMove({ threadId, beforeThreadId }) {
+    if (!this.reorderMode || this.pendingMove) {
+      return false;
+    }
+    const original = this.sectionContext(threadId);
+    if (!original) {
+      return false;
+    }
+    const originalOrder = original.section.tasks.map(taskThreadId);
+    const changed = this.applyMoveToState(threadId, beforeThreadId);
+    if (!changed) {
+      return false;
+    }
+    const move = {
+      threadId,
+      beforeThreadId: beforeThreadId || null,
+      sectionId: original.section.id,
+      originalOrder,
+      originalBeforeThreadId: originalOrder[original.index + 1] || null,
+      optimistic: true,
+    };
+    this.pendingMove = move;
+    this.reorderError = null;
+    this.renderAlerts();
+    this.syncRows();
+    this.moveTaskRow(move.sectionId, threadId, move.beforeThreadId);
+
+    try {
+      await reorderTask(threadId, move.beforeThreadId);
+      move.optimistic = false;
+      await this.loadTasks({ force: true, requireFresh: true });
+      if (this.reorderMode) {
+        this.announceMoveResult(threadId);
+      }
+      return true;
+    } catch {
+      move.optimistic = false;
+      this.restoreSectionOrder(
+        move.sectionId,
+        originalOrder,
+        move.threadId,
+        move.originalBeforeThreadId,
+      );
+      this.reorderError = this.reorderMode
+        ? {
+            taskTitle: original.task.title,
+          }
+        : null;
+      this.render();
+      await this.loadTasks({ force: true, requireFresh: true });
+      return false;
+    } finally {
+      if (this.pendingMove === move) {
+        this.pendingMove = null;
+      }
+      this.renderAlerts();
+      this.syncRows();
+      if (this.reorderMode) {
+        queueMicrotask(() => this.rowComponentFor(threadId)?.focusHandle());
+      }
+    }
+  }
+
+  applyMoveToState(threadId, beforeThreadId) {
+    const context = this.sectionContext(threadId);
+    if (!context) {
+      return false;
+    }
+    const tasks = [...context.section.tasks];
+    const [task] = tasks.splice(context.index, 1);
+    const destination = beforeThreadId
+      ? tasks.findIndex((candidate) => taskThreadId(candidate) === beforeThreadId)
+      : tasks.length;
+    if (destination < 0) {
+      return false;
+    }
+    tasks.splice(destination, 0, task);
+    if (tasks.map(taskThreadId).join("\u0000") === context.section.tasks.map(taskThreadId).join("\u0000")) {
+      return false;
+    }
+    context.section.tasks = tasks;
+    return true;
+  }
+
+  restoreSectionOrder(
+    sectionId,
+    threadIds,
+    movedThreadId,
+    beforeThreadId,
+  ) {
+    const section = this.sections.find((candidate) => candidate.id === sectionId);
+    if (!section) {
+      return;
+    }
+    const positions = new Map(threadIds.map((threadId, index) => [threadId, index]));
+    section.tasks = [...section.tasks].sort((left, right) => {
+      const leftIndex = positions.get(taskThreadId(left)) ?? Number.MAX_SAFE_INTEGER;
+      const rightIndex = positions.get(taskThreadId(right)) ?? Number.MAX_SAFE_INTEGER;
+      return leftIndex - rightIndex;
+    });
+    this.moveTaskRow(sectionId, movedThreadId, beforeThreadId);
+  }
+
+  sectionContext(threadId) {
+    for (const section of this.sections) {
+      const index = section.tasks.findIndex(
+        (task) => taskThreadId(task) === threadId,
+      );
+      if (index >= 0) {
+        return { section, index, task: section.tasks[index] };
+      }
+    }
+    return null;
+  }
+
+  announceMoveResult(threadId) {
+    const context = this.sectionContext(threadId);
+    if (!context) {
+      return;
+    }
+    this.announce(
+      `${context.task.title} moved to position ${context.index + 1} of ${context.section.tasks.length} in ${sectionLabel(context.section.name)}.`,
+    );
+  }
+
+  announce(message) {
+    const region = this.querySelector(":scope > .task-reorder-announcement");
+    if (!region) {
+      return;
+    }
+    region.textContent = "";
+    queueMicrotask(() => {
+      if (region.isConnected) {
+        region.textContent = message;
+      }
+    });
+  }
+
+  async loadTasks({
+    force = false,
+    requireFresh = false,
+    isCurrent = () => true,
+  } = {}) {
     if (this.taskListLoaded && !force) {
       return {
         sections: this.sections,
@@ -312,6 +633,9 @@ class CaffoldActiveTaskList extends HTMLElement {
       };
     }
     if (this.taskListLoadPromise) {
+      if (force && requireFresh) {
+        this.taskListRefreshPending = true;
+      }
       return await this.taskListLoadPromise;
     }
 
@@ -323,6 +647,10 @@ class CaffoldActiveTaskList extends HTMLElement {
       if (this.taskListLoadPromise === request) {
         this.taskListLoadPromise = null;
       }
+      if (this.taskListRefreshPending && this.isConnected) {
+        this.taskListRefreshPending = false;
+        void this.loadTasks({ force: true });
+      }
     }
   }
 
@@ -330,7 +658,11 @@ class CaffoldActiveTaskList extends HTMLElement {
     const requestId = ++this.taskListRequestId;
     this.taskListLoading = true;
     this.taskListError = null;
-    this.render();
+    if (this.allTasks().length) {
+      this.publishState();
+    } else {
+      this.render();
+    }
 
     try {
       const response = await getTasks();
@@ -351,6 +683,12 @@ class CaffoldActiveTaskList extends HTMLElement {
       this.unsectioned = normalizeTaskList(response.unsectioned).map((task) =>
         mergeTaskRuntime(task, runtimeByThread.get(taskThreadId(task))),
       );
+      if (this.pendingMove?.optimistic) {
+        this.applyMoveToState(
+          this.pendingMove.threadId,
+          this.pendingMove.beforeThreadId,
+        );
+      }
       this.taskListLoading = false;
       this.taskListLoaded = true;
       for (const { task, placement } of this.pendingTopPlacements.values()) {
@@ -636,20 +974,17 @@ class CaffoldActiveTaskList extends HTMLElement {
 
   render() {
     this.ensureState();
+    this.ensureDom();
+    this.renderAlerts();
     const loading = this.taskListLoading || !this.initialRequestSettled;
     const taskCount = this.allTasks().length;
-    let content;
+    const content = this.querySelector(":scope > .task-list-content");
     if (loading && !taskCount) {
-      content = `<p class="task-section-message">Loading...</p>`;
+      this.showLoading(content);
     } else if (this.taskListError && !taskCount) {
-      content = `
-        <div class="task-section-message" role="alert">
-          <p>${escapeHtml(this.taskListError.message)}</p>
-          <button type="button" class="task-secondary-button" data-task-action="retry-task-list">Retry</button>
-        </div>
-      `;
+      this.showLoadError(content, this.taskListError.message);
     } else if (!taskCount) {
-      content = `<p class="task-section-message">No Caffold tasks yet.</p>`;
+      this.showEmpty(content);
     } else {
       const sections = [
         ...this.sections,
@@ -664,19 +999,186 @@ class CaffoldActiveTaskList extends HTMLElement {
             }]
           : []),
       ];
-      content = `
-        <ol class="task-repository-groups" data-task-section="managed">
-          ${sections.map((section) => this.renderSection(section)).join("")}
-        </ol>
-      `;
+      this.reconcileSections(content, sections);
     }
-    this.innerHTML = content;
-    initializeRunningSpinners(this);
-    this.syncSelection();
     this.publishState();
   }
 
-  renderSection(section) {
+  showLoading(content) {
+    if (
+      content.childElementCount === 1 &&
+      content.firstElementChild?.matches(
+        ".task-section-message.task-section-loading",
+      )
+    ) {
+      return;
+    }
+    const message = document.createElement("p");
+    message.className = "task-section-message task-section-loading";
+    message.textContent = "Loading...";
+    content.replaceChildren(message);
+  }
+
+  showLoadError(content, message) {
+    let panel = content.firstElementChild;
+    if (
+      content.childElementCount !== 1 ||
+      !panel?.matches(
+        ".task-section-message.task-section-load-error",
+      )
+    ) {
+      panel = document.createElement("div");
+      panel.className = "task-section-message task-section-load-error";
+      panel.setAttribute("role", "alert");
+      const copy = document.createElement("p");
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "task-secondary-button";
+      retry.dataset.taskAction = "retry-task-list";
+      retry.textContent = "Retry";
+      panel.append(copy, retry);
+      content.replaceChildren(panel);
+    }
+    const copy = panel.querySelector(":scope > p");
+    if (copy.textContent !== message) {
+      copy.textContent = message;
+    }
+  }
+
+  showEmpty(content) {
+    if (
+      content.childElementCount === 1 &&
+      content.firstElementChild?.matches(
+        ".task-section-message.task-section-empty",
+      )
+    ) {
+      return;
+    }
+    const message = document.createElement("p");
+    message.className = "task-section-message task-section-empty";
+    message.textContent = "No Caffold tasks yet.";
+    content.replaceChildren(message);
+  }
+
+  ensureDom() {
+    if (
+      this.querySelector(":scope > .task-list-alerts") &&
+      this.querySelector(":scope > .task-list-content") &&
+      this.querySelector(":scope > .task-reorder-announcement")
+    ) {
+      return;
+    }
+    this.innerHTML = `
+      <div class="task-list-alerts"></div>
+      <div class="task-list-content"></div>
+      <p class="sr-only task-reorder-announcement" aria-live="polite" aria-atomic="true"></p>
+    `;
+  }
+
+  renderAlerts() {
+    const alerts = this.querySelector(":scope > .task-list-alerts");
+    if (!alerts) {
+      return;
+    }
+    alerts.innerHTML = `
+      ${this.reorderMode && this.reorderError ? `
+        <div class="task-reorder-error" role="alert">
+          <span aria-hidden="true">Move wasn't saved. Move it again to retry.</span>
+          <span class="sr-only">Could not move ${escapeHtml(this.reorderError.taskTitle)}. The saved order was restored. Move it again to retry.</span>
+        </div>
+      ` : ""}
+    `;
+  }
+
+  reconcileSections(content, sections) {
+    let groups = content.querySelector(":scope > .task-repository-groups");
+    if (!groups) {
+      content.replaceChildren();
+      groups = document.createElement("ol");
+      groups.className = "task-repository-groups";
+      groups.dataset.taskSection = "managed";
+      content.append(groups);
+    }
+    const existingGroups = new Map(
+      [...groups.querySelectorAll(":scope > .task-repository-group")]
+        .map((group) => [group.dataset.taskRepositoryKey, group]),
+    );
+    const existingRows = new Map(
+      [...groups.querySelectorAll("li[data-thread-id]")]
+        .map((row) => [row.dataset.threadId, row]),
+    );
+    const projectedThreadIds = new Set(
+      sections.flatMap((section) => section.tasks.map(taskThreadId)),
+    );
+    for (const [threadId, row] of existingRows) {
+      if (!projectedThreadIds.has(threadId)) {
+        row.remove();
+        existingRows.delete(threadId);
+      }
+    }
+    const projectedSectionIds = new Set(sections.map((section) => section.id));
+    const nextProjectedGroup = (start) => {
+      let group = start;
+      while (
+        group &&
+        !projectedSectionIds.has(group.dataset.taskRepositoryKey)
+      ) {
+        group = group.nextElementSibling;
+      }
+      return group;
+    };
+    let nextGroup = nextProjectedGroup(groups.firstElementChild);
+    for (const section of sections) {
+      let group = existingGroups.get(section.id);
+      if (!group) {
+        group = document.createElement("li");
+        group.className = "task-repository-group";
+        group.innerHTML = `
+          <div class="task-repository-header"></div>
+          <ol class="task-list"></ol>
+        `;
+      }
+      group.dataset.taskRepositoryKey = section.id;
+      group.toggleAttribute("data-task-recovery", Boolean(section.recovery));
+      this.syncSectionHeader(group, section);
+      const list = group.querySelector(":scope > .task-list");
+      const sectionThreadIds = new Set(section.tasks.map(taskThreadId));
+      const nextSectionRow = (start) => {
+        let row = start;
+        while (row && !sectionThreadIds.has(row.dataset.threadId)) {
+          row = row.nextElementSibling;
+        }
+        return row;
+      };
+      let nextRow = nextSectionRow(list.firstElementChild);
+      for (const task of section.tasks) {
+        const threadId = taskThreadId(task);
+        let row = existingRows.get(threadId);
+        if (!row) {
+          row = document.createElement("li");
+        }
+        row.dataset.threadId = threadId;
+        row.dataset.taskListKey = section.id;
+        this.syncRow(row, task, section.id);
+        if (row === nextRow) {
+          nextRow = nextSectionRow(nextRow.nextElementSibling);
+        } else {
+          this.moveListItemBefore(list, row, nextRow);
+        }
+      }
+      if (group === nextGroup) {
+        nextGroup = nextProjectedGroup(nextGroup.nextElementSibling);
+      } else {
+        this.moveListItemBefore(groups, group, nextGroup);
+      }
+      existingGroups.delete(section.id);
+    }
+    for (const group of existingGroups.values()) {
+      group.remove();
+    }
+  }
+
+  syncSectionHeader(group, section) {
     const icon = section.recovery
       ? "CircleAlert"
       : section.repository
@@ -688,67 +1190,126 @@ class CaffoldActiveTaskList extends HTMLElement {
         ? "Git repository"
         : "Directory";
     const label = section.label ?? sectionLabel(section.name);
-    return `
-      <li class="task-repository-group" data-task-repository-key="${escapeHtml(section.id)}"${section.recovery ? ' data-task-recovery="true"' : ""}>
-        <div class="task-repository-header" title="${escapeHtml(section.name)}">
-          ${renderInlineIcon(icon, iconLabel, "task-repository-icon")}
-          <span class="task-repository-label">${escapeHtml(label)}</span>
-          <span class="task-repository-count">${section.tasks.length}</span>
-        </div>
-        <ol class="task-list">
-          ${section.tasks.map((task) => this.renderTaskRow(task, section.id)).join("")}
-        </ol>
-      </li>
-    `;
-  }
-
-  renderTaskRow(task, sectionId) {
-    const threadId = taskThreadId(task);
-    const selected = threadId === this.selectedThreadId ? ` aria-current="true"` : "";
-    const status =
-      taskStatusView(task)?.status ?? taskThreadStatusType(task);
-    const busy = status === "running" ? ` aria-busy="true"` : "";
-    const unseen = Boolean(
-      threadId && task?.unseen && threadId !== this.selectedThreadId,
+    const header = group.querySelector(":scope > .task-repository-header");
+    if (header.title !== section.name) {
+      header.title = section.name;
+    }
+    let labelElement = header.querySelector(
+      ":scope > .task-repository-label",
     );
-    const recoveryCopy = task?.recovery && task?.conversationAvailable === false
-      ? recoveryReasonCopy(task.recovery.reason)
-      : "";
-    const meta = recoveryCopy
-      ? `<span class="task-row-recovery-status" title="${escapeHtml(recoveryCopy)}">
-          ${renderInlineIcon("TriangleAlert", recoveryCopy, "task-row-recovery-icon")}
-        </span>`
-      : unseen
-      ? renderUnseenTaskRowMeta(task)
-      : renderTaskRowMeta(task);
-    const worktree = task?.worktree?.linked
-      ? `<span class="task-row-worktree" title="${escapeHtml(taskWorktreeLabel(task))}">
-          ${renderInlineIcon("GitBranch", "Linked worktree", "task-row-worktree-icon")}
-        </span>`
-      : "";
-    const action = recoveryCopy ? "open-task-recovery" : "open-task";
-    const title = this.codexOperationsBlocked
-      ? this.codexTaskOperations.title
-      : recoveryCopy ? `${task.title} — ${recoveryCopy}` : task.title;
-    return `
-      <li data-thread-id="${escapeHtml(threadId)}" data-task-list-key="${escapeHtml(sectionId)}">
-        <button type="button" class="task-row" data-task-action="${action}" data-thread-id="${escapeHtml(threadId)}" data-task-status="${escapeHtml(status)}"${task?.recovery ? ` data-task-recovery-reason="${escapeHtml(task.recovery.reason ?? "")}"` : ""} title="${escapeHtml(title)}"${selected}${busy}${this.codexOperationsBlocked ? " disabled" : ""}>
-          <span class="task-row-title">${escapeHtml(task.title)}</span>
-          <span class="task-row-indicators">${worktree}${meta}</span>
-        </button>
-      </li>
-    `;
+    let countElement = header.querySelector(
+      ":scope > .task-repository-count",
+    );
+    if (!labelElement || !countElement) {
+      header.replaceChildren();
+      labelElement = document.createElement("span");
+      labelElement.className = "task-repository-label";
+      countElement = document.createElement("span");
+      countElement.className = "task-repository-count";
+      header.append(labelElement, countElement);
+    }
+    if (labelElement.textContent !== label) {
+      labelElement.textContent = label;
+    }
+    const count = `${section.tasks.length}`;
+    if (countElement.textContent !== count) {
+      countElement.textContent = count;
+    }
+
+    const iconMarkup = renderInlineIcon(
+      icon,
+      iconLabel,
+      "task-repository-icon",
+    );
+    const iconChanged = header.dataset.taskRepositoryIcon !== icon;
+    const iconBecameAvailable =
+      iconMarkup.includes("task-repository-icon") &&
+      !header.querySelector(":scope > .task-repository-icon");
+    if (iconChanged || iconBecameAvailable) {
+      while (header.firstChild && header.firstChild !== labelElement) {
+        header.firstChild.remove();
+      }
+      const template = document.createElement("template");
+      template.innerHTML = iconMarkup;
+      header.insertBefore(template.content, labelElement);
+      header.dataset.taskRepositoryIcon = icon;
+    }
   }
 
-  syncSelection() {
-    for (const row of this.querySelectorAll(".task-row[data-thread-id]")) {
-      if (row.dataset.threadId === this.selectedThreadId) {
-        if (row.getAttribute("aria-current") !== "true") {
-          row.setAttribute("aria-current", "true");
+  syncRow(row, task, sectionId) {
+    let component = row.querySelector(":scope > caffold-active-task-row");
+    if (!component) {
+      component = document.createElement("caffold-active-task-row");
+      row.replaceChildren(component);
+    }
+    component.setSnapshot({
+      task,
+      selectedThreadId: this.selectedThreadId,
+      transportState: this.streamState,
+      codexTaskOperations: this.codexTaskOperations,
+      reorderMode: this.reorderMode,
+      reorderable: sectionId !== "unsectioned" && !task?.recovery,
+      pending: Boolean(this.pendingMove),
+    });
+  }
+
+  syncRows() {
+    for (const section of this.sections) {
+      for (const task of section.tasks) {
+        const row = this.rowFor(taskThreadId(task));
+        if (row) {
+          this.syncRow(row, task, section.id);
         }
-      } else if (row.hasAttribute("aria-current")) {
-        row.removeAttribute("aria-current");
       }
+    }
+    for (const task of this.unsectioned) {
+      const row = this.rowFor(taskThreadId(task));
+      if (row) {
+        this.syncRow(row, task, "unsectioned");
+      }
+    }
+  }
+
+  rowFor(threadId) {
+    if (!threadId) {
+      return null;
+    }
+    return this.querySelector(`li[data-thread-id="${CSS.escape(threadId)}"]`);
+  }
+
+  rowComponentFor(threadId) {
+    return this.rowFor(threadId)?.querySelector(
+      ":scope > caffold-active-task-row",
+    ) ?? null;
+  }
+
+  moveTaskRow(sectionId, threadId, beforeThreadId) {
+    const list = this.querySelector(
+      `.task-repository-group[data-task-repository-key="${CSS.escape(sectionId)}"] > .task-list`,
+    );
+    const row = this.rowFor(threadId);
+    const before = beforeThreadId ? this.rowFor(beforeThreadId) : null;
+    if (
+      !list ||
+      row?.parentElement !== list ||
+      (beforeThreadId && before?.parentElement !== list) ||
+      row.nextElementSibling === before ||
+      (!before && row === list.lastElementChild)
+    ) {
+      return;
+    }
+    this.moveListItemBefore(list, row, before);
+  }
+
+  moveListItemBefore(parent, item, before) {
+    if (
+      typeof parent.moveBefore === "function" &&
+      parent.isConnected &&
+      item.isConnected
+    ) {
+      parent.moveBefore(item, before);
+    } else {
+      parent.insertBefore(item, before);
     }
   }
 
@@ -815,15 +1376,6 @@ function normalizeTaskList(tasks) {
   return Array.isArray(tasks) ? tasks.filter(Boolean) : [];
 }
 
-function recoveryReasonCopy(reason) {
-  return {
-    codexArchived: "Archived in Codex",
-    threadMissing: "Thread unavailable",
-    temporarilyUnavailable: "Temporarily unavailable",
-    sectionPlacementPending: "Section placement pending",
-  }[reason] ?? "Recovery required";
-}
-
 function normalizeActiveTopPlacement(placement) {
   const section = placement?.section;
   const id = `${section?.id ?? ""}`;
@@ -848,177 +1400,6 @@ function sectionLabel(name) {
 
 function taskTransportRenderKey(state) {
   return isTaskTransportStale(state) ? state : "available";
-}
-
-function renderUnseenTaskRowMeta(task) {
-  const attentionDelayMs = unseenAttentionDelayMs(taskThreadId(task));
-  return `
-    <span class="task-row-meta task-unseen-complete" title="Completed - not viewed" aria-label="Completed - not viewed" style="--task-unseen-attention-delay: ${attentionDelayMs}ms"></span>
-  `;
-}
-
-function renderTaskRowMeta(task) {
-  const status = renderTaskStatusChip(task, "task-row-meta", { label: false });
-  if (status) {
-    return status;
-  }
-
-  const ms = task.lastCompletedMs ?? task.recencyMs ?? task.updatedMs;
-  const date = new Date(Number(ms));
-  const dateTime = Number.isNaN(date.getTime()) ? "" : date.toISOString();
-  const age = formatRelativeAgePresentation(ms);
-  return `
-    <time class="task-row-meta task-row-time" datetime="${escapeHtml(dateTime)}" aria-label="${escapeHtml(age.label)}">
-      ${escapeHtml(age.text)}
-    </time>
-  `;
-}
-
-function unseenAttentionDelayMs(threadId) {
-  let checksum = 0;
-  for (const [index, character] of [...threadId].entries()) {
-    checksum += character.codePointAt(0) * (index + 1);
-  }
-  const phase = checksum % UNSEEN_ATTENTION_PHASE_COUNT;
-  return 0 - phase * UNSEEN_ATTENTION_PHASE_INTERVAL_MS;
-}
-
-function patchTaskListRow(row, nextRow) {
-  const currentButton = row.querySelector(":scope > .task-row");
-  const nextButton = nextRow.querySelector(":scope > .task-row");
-  const currentTitle = currentButton?.querySelector(":scope > .task-row-title");
-  const nextTitle = nextButton?.querySelector(":scope > .task-row-title");
-  const currentIndicators = currentButton?.querySelector(
-    ":scope > .task-row-indicators",
-  );
-  const nextIndicators = nextButton?.querySelector(
-    ":scope > .task-row-indicators",
-  );
-  if (
-    !currentButton ||
-    !nextButton ||
-    !currentTitle ||
-    !nextTitle ||
-    !currentIndicators ||
-    !nextIndicators
-  ) {
-    return false;
-  }
-  syncElementAttributes(row, nextRow, [
-    "class",
-    "data-thread-id",
-    "data-task-list-key",
-  ]);
-  syncElementAttributes(currentButton, nextButton, [
-    "type",
-    "class",
-    "data-task-action",
-    "data-thread-id",
-    "data-task-status",
-    "data-task-recovery-reason",
-    "title",
-    "aria-current",
-    "aria-busy",
-  ]);
-  syncElementAttributes(currentTitle, nextTitle, ["class"]);
-  if (currentTitle.textContent !== nextTitle.textContent) {
-    currentTitle.textContent = nextTitle.textContent;
-  }
-  syncElementAttributes(currentIndicators, nextIndicators, ["class"]);
-  patchTaskRowIndicator(currentIndicators, nextIndicators, ".task-row-worktree");
-  patchTaskRowIndicator(currentIndicators, nextIndicators, ".task-row-meta");
-  return true;
-}
-
-function patchTaskRowIndicator(currentIndicators, nextIndicators, selector) {
-  const current = currentIndicators.querySelector(`:scope > ${selector}`);
-  const next = nextIndicators.querySelector(`:scope > ${selector}`);
-  if (current && next && patchMatchingTaskRowIndicator(current, next)) {
-    initializeRunningSpinners(current);
-    return;
-  }
-  if (current && next) {
-    current.replaceWith(next);
-    initializeRunningSpinners(next);
-    return;
-  }
-  if (current) {
-    current.remove();
-    return;
-  }
-  if (!next) {
-    return;
-  }
-  const before = selector === ".task-row-worktree"
-    ? currentIndicators.querySelector(":scope > .task-row-meta")
-    : null;
-  currentIndicators.insertBefore(next, before);
-  initializeRunningSpinners(next);
-}
-
-function patchMatchingTaskRowIndicator(current, next) {
-  if (current.matches(".task-status-chip") && next.matches(".task-status-chip")) {
-    patchTaskStatusChip(current, next);
-    return true;
-  }
-  if (
-    current.matches(".task-row-worktree") &&
-    next.matches(".task-row-worktree")
-  ) {
-    syncElementAttributes(current, next, ["class", "title"]);
-    return true;
-  }
-  if (
-    current.matches(".task-unseen-complete") &&
-    next.matches(".task-unseen-complete")
-  ) {
-    syncElementAttributes(current, next, [
-      "class",
-      "title",
-      "aria-label",
-      "style",
-    ]);
-    return true;
-  }
-  if (current.matches(".task-row-time") && next.matches(".task-row-time")) {
-    syncElementAttributes(current, next, ["class", "datetime", "aria-label"]);
-    if (current.textContent !== next.textContent) {
-      current.textContent = next.textContent;
-    }
-    return true;
-  }
-  return false;
-}
-
-function initializeRunningSpinners(root) {
-  const spinners = root.matches?.(".task-status-spinner")
-    ? [root]
-    : root.querySelectorAll(".task-status-spinner");
-  for (const spinner of spinners) {
-    if (!spinner.closest('.task-row[data-task-status="running"]')) {
-      spinner.style.removeProperty("animation-delay");
-      continue;
-    }
-    if (spinner.style.animationDelay) {
-      continue;
-    }
-    const delayMs =
-      0 - (Math.random() * (TASK_RUNNING_SPINNER_DURATION_MS - 1) + 1);
-    spinner.style.animationDelay = `${delayMs}ms`;
-  }
-}
-
-function syncElementAttributes(element, nextElement, names) {
-  for (const name of names) {
-    if (nextElement.hasAttribute(name)) {
-      const value = nextElement.getAttribute(name);
-      if (element.getAttribute(name) !== value) {
-        element.setAttribute(name, value);
-      }
-    } else if (element.hasAttribute(name)) {
-      element.removeAttribute(name);
-    }
-  }
 }
 
 if (!customElements.get("caffold-active-task-list")) {

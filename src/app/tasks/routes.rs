@@ -158,6 +158,20 @@ struct TaskDeleteResponse {
     thread_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskReorderRequest {
+    before_thread_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskReorderResponse {
+    thread_id: String,
+    before_thread_id: Option<String>,
+    changed: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ActiveTaskPlacementUpdate {
@@ -290,6 +304,7 @@ pub(super) fn router(state: TaskState) -> Router {
         )
         .route("/api/tasks/{thread_id}/archive", post(task_archive))
         .route("/api/tasks/{thread_id}/restore", post(task_restore))
+        .route("/api/tasks/{thread_id}/reorder", post(task_reorder))
         .route(
             "/api/tasks/{thread_id}/recovery/recheck",
             post(task_recovery_recheck),
@@ -616,8 +631,52 @@ fn task_store_api_error(error: TaskStoreError) -> ApiError {
             code: "task_cursor_invalid",
             message: error.to_string(),
         },
+        error @ TaskStoreError::TaskReorderUnavailable(_) => ApiError::Conflict {
+            code: "task_reorder_unavailable",
+            message: error.to_string(),
+        },
+        error @ TaskStoreError::TaskReorderConflict(_) => ApiError::Conflict {
+            code: "task_reorder_conflict",
+            message: error.to_string(),
+        },
         error => ApiError::Internal(error.to_string()),
     }
+}
+
+async fn task_reorder(
+    State(state): State<TaskState>,
+    AxumPath(thread_id): AxumPath<String>,
+    Json(request): Json<TaskReorderRequest>,
+) -> Result<Json<TaskReorderResponse>, ApiError> {
+    let before_thread_id = request
+        .before_thread_id
+        .map(|thread_id| thread_id.trim().to_string());
+    if before_thread_id.as_deref() == Some("") {
+        return Err(ApiError::BadRequest {
+            code: "task_reorder_anchor_invalid",
+            message: "beforeThreadId must be a non-empty Thread ID or null".to_string(),
+        });
+    }
+
+    let store = state.task_store.clone();
+    let moved_thread_id = thread_id.clone();
+    let requested_anchor = before_thread_id.clone();
+    let changed = tokio::task::spawn_blocking(move || {
+        store.transaction(|tables| {
+            tables.move_managed_thread_before(&moved_thread_id, requested_anchor.as_deref())
+        })
+    })
+    .await
+    .map_err(task_store_join_error)?
+    .map_err(task_store_api_error)?;
+    if changed {
+        state.task_list_events.refresh();
+    }
+    Ok(Json(TaskReorderResponse {
+        thread_id,
+        before_thread_id,
+        changed,
+    }))
 }
 
 fn task_store_join_error(error: tokio::task::JoinError) -> ApiError {
