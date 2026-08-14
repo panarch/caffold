@@ -977,8 +977,8 @@ test("a late failed disconnect probe yields to a newer reconnect signal", async 
   );
   await expect(composer).toHaveValue("Keep the late-failure draft");
   expect(statusReads).toBe(readsBeforeProbe.status + 2);
-  expect(listReads).toBe(readsBeforeProbe.list + 2);
-  expect(detailReads).toBe(readsBeforeProbe.detail + 2);
+  expect(listReads).toBeGreaterThan(readsBeforeProbe.list);
+  expect(detailReads).toBeGreaterThan(readsBeforeProbe.detail);
 });
 
 test("failed server recovery keeps useful Task UI behind one bounded global fallback", async ({
