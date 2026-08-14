@@ -8,33 +8,16 @@ mod push;
 mod recovery;
 mod routes;
 mod runtime;
+mod startup;
 mod sync;
 mod worktrees;
 
-use std::{
-    path::PathBuf,
-    sync::{Arc, Mutex as StdMutex},
-};
+use std::{path::PathBuf, sync::Arc};
 
-use axum::{
-    Json, Router,
-    body::Body,
-    http::{Request, StatusCode},
-    response::{IntoResponse, Response},
-    routing::{any, get, post},
-};
-use serde::Serialize;
-use tokio::sync::{Notify, RwLock, broadcast};
-use tower::ServiceExt;
+use axum::Router;
+use tokio::sync::broadcast;
 
-use crate::{
-    codex_app_server::{
-        CodexReadiness, CodexReadinessReason, CodexReadinessState, CodexStatusResponse,
-        CodexThreadClient,
-    },
-    fs::RootedFs,
-    task_store::TaskStore,
-};
+use crate::{fs::RootedFs, task_store::TaskStore};
 
 use detail::{DetailContext, TaskDetailSync};
 use events::TaskEvents;
@@ -43,6 +26,7 @@ pub(super) use projection::TaskRecord;
 use push::{PushRuntime, PushService};
 use routes::TaskListEvents;
 use runtime::CodexRuntime;
+pub(super) use startup::PersistentTasksGateway;
 use sync::TaskSync;
 use worktrees::ManagedWorktrees;
 
@@ -148,291 +132,6 @@ pub(super) struct TasksApp {
     push: PushRuntime,
 }
 
-#[derive(Clone)]
-struct TaskRouterGateway {
-    router: Arc<RwLock<Router>>,
-}
-
-impl TaskRouterGateway {
-    async fn replace(&self, router: Router) {
-        *self.router.write().await = router;
-    }
-
-    async fn dispatch(&self, request: Request<Body>) -> Response {
-        let router = self.router.read().await.clone();
-        match router.oneshot(request).await {
-            Ok(response) => response,
-            Err(error) => match error {},
-        }
-    }
-
-    fn router(&self) -> Router {
-        let gateway = self.clone();
-        Router::new().fallback(any(move |request| {
-            let gateway = gateway.clone();
-            async move { gateway.dispatch(request).await }
-        }))
-    }
-}
-
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "camelCase")]
-enum TaskStoreReadinessState {
-    Migrating,
-    WaitingForCodex,
-    Failed,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct TaskStoreReadiness {
-    state: TaskStoreReadinessState,
-    blocks_task_operations: bool,
-    diagnostic_message: String,
-}
-
-#[derive(Clone)]
-struct StartupTaskState {
-    status: Arc<RwLock<StartupTaskStatus>>,
-    retry: Arc<Notify>,
-}
-
-#[derive(Clone)]
-struct StartupTaskStatus {
-    codex: CodexStatusResponse,
-    task_store: TaskStoreReadiness,
-    error_code: &'static str,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct StartupStatusResponse {
-    #[serde(flatten)]
-    codex: CodexStatusResponse,
-    task_store_readiness: TaskStoreReadiness,
-}
-
-pub(super) struct PersistentTasksGateway {
-    router: Router,
-    app: Arc<StdMutex<Option<TasksApp>>>,
-    gateway: TaskRouterGateway,
-    status: Arc<RwLock<StartupTaskStatus>>,
-    retry: Arc<Notify>,
-    fs: Arc<RootedFs>,
-    default_cwd_path: String,
-    shutdown: broadcast::Sender<()>,
-    database_path: PathBuf,
-    worktree_root: PathBuf,
-}
-
-impl PersistentTasksGateway {
-    pub(super) fn new(
-        fs: Arc<RootedFs>,
-        default_cwd_path: String,
-        shutdown: broadcast::Sender<()>,
-        database_path: PathBuf,
-        worktree_root: PathBuf,
-    ) -> Self {
-        let status = Arc::new(RwLock::new(StartupTaskStatus {
-            codex: pending_codex_status(),
-            task_store: TaskStoreReadiness {
-                state: TaskStoreReadinessState::Migrating,
-                blocks_task_operations: true,
-                diagnostic_message: "Caffold is preparing the Task store.".to_string(),
-            },
-            error_code: "task_store_migration_pending",
-        }));
-        let retry = Arc::new(Notify::new());
-        let startup_state = StartupTaskState {
-            status: status.clone(),
-            retry: retry.clone(),
-        };
-        let startup_router = Router::new()
-            .route("/api/codex/status", get(startup_codex_status))
-            .route(
-                "/api/task-store/migration/retry",
-                post(retry_startup_migration),
-            )
-            .fallback(any(startup_task_blocked))
-            .with_state(startup_state);
-        let gateway = TaskRouterGateway {
-            router: Arc::new(RwLock::new(startup_router)),
-        };
-        let router = gateway.router();
-        let app = Arc::new(StdMutex::new(None));
-        Self {
-            router,
-            app,
-            gateway,
-            status,
-            retry,
-            fs,
-            default_cwd_path,
-            shutdown,
-            database_path,
-            worktree_root,
-        }
-    }
-
-    pub(super) fn router(&self) -> Router {
-        self.router.clone()
-    }
-
-    pub(super) async fn run_startup(&self) {
-        let mut shutdown_receiver = self.shutdown.subscribe();
-        loop {
-            let result =
-                super::startup_migration::migrate_task_store(self.database_path.clone()).await;
-            match result {
-                Ok(()) => match TasksApp::persistent(
-                    self.fs.clone(),
-                    self.default_cwd_path.clone(),
-                    self.shutdown.clone(),
-                    self.database_path.clone(),
-                    self.worktree_root.clone(),
-                ) {
-                    Ok(tasks) => {
-                        self.gateway.replace(tasks.router()).await;
-                        *self
-                            .app
-                            .lock()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(tasks);
-                        return;
-                    }
-                    Err(error) => {
-                        set_storage_failure(self.status.clone(), error.to_string()).await;
-                    }
-                },
-                Err(super::startup_migration::StartupMigrationError::CodexReadiness(codex)) => {
-                    set_codex_wait(self.status.clone(), *codex).await;
-                }
-                Err(super::startup_migration::StartupMigrationError::Codex(error)) => {
-                    set_codex_wait(
-                        self.status.clone(),
-                        CodexThreadClient::unavailable_status(&error),
-                    )
-                    .await;
-                }
-                Err(super::startup_migration::StartupMigrationError::Store(error)) => {
-                    set_storage_failure(self.status.clone(), error.to_string()).await;
-                }
-                Err(super::startup_migration::StartupMigrationError::Worker(error)) => {
-                    set_storage_failure(self.status.clone(), error.to_string()).await;
-                }
-            }
-            tokio::select! {
-                _ = self.retry.notified() => {
-                    let mut status = self.status.write().await;
-                    status.task_store = TaskStoreReadiness {
-                        state: TaskStoreReadinessState::Migrating,
-                        blocks_task_operations: true,
-                        diagnostic_message: "Caffold is retrying the Task-store migration.".to_string(),
-                    };
-                    status.error_code = "task_store_migration_pending";
-                }
-                _ = shutdown_receiver.recv() => return,
-            }
-        }
-    }
-
-    pub(super) async fn shutdown(self) {
-        let app = self
-            .app
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .take();
-        if let Some(app) = app {
-            app.shutdown().await;
-        }
-    }
-}
-
-async fn startup_codex_status(
-    axum::extract::State(state): axum::extract::State<StartupTaskState>,
-) -> Json<StartupStatusResponse> {
-    let status = state.status.read().await.clone();
-    Json(StartupStatusResponse {
-        codex: status.codex,
-        task_store_readiness: status.task_store,
-    })
-}
-
-async fn retry_startup_migration(
-    axum::extract::State(state): axum::extract::State<StartupTaskState>,
-) -> (StatusCode, Json<serde_json::Value>) {
-    {
-        let mut status = state.status.write().await;
-        status.task_store = TaskStoreReadiness {
-            state: TaskStoreReadinessState::Migrating,
-            blocks_task_operations: true,
-            diagnostic_message: "Caffold is retrying the Task-store migration.".to_string(),
-        };
-        status.error_code = "task_store_migration_pending";
-    }
-    state.retry.notify_one();
-    (
-        StatusCode::ACCEPTED,
-        Json(serde_json::json!({ "accepted": true })),
-    )
-}
-
-async fn startup_task_blocked(
-    axum::extract::State(state): axum::extract::State<StartupTaskState>,
-) -> Response {
-    let status = state.status.read().await;
-    (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(serde_json::json!({
-            "error": {
-                "code": status.error_code,
-                "message": status.task_store.diagnostic_message,
-            }
-        })),
-    )
-        .into_response()
-}
-
-async fn set_codex_wait(status: Arc<RwLock<StartupTaskStatus>>, codex: CodexStatusResponse) {
-    let message = codex.readiness.diagnostic_message.clone();
-    *status.write().await = StartupTaskStatus {
-        codex,
-        task_store: TaskStoreReadiness {
-            state: TaskStoreReadinessState::WaitingForCodex,
-            blocks_task_operations: true,
-            diagnostic_message: format!(
-                "Task-store migration is waiting for Codex readiness. {message}"
-            ),
-        },
-        error_code: "codex_readiness_blocked",
-    };
-}
-
-async fn set_storage_failure(status: Arc<RwLock<StartupTaskStatus>>, message: String) {
-    let mut status = status.write().await;
-    status.task_store = TaskStoreReadiness {
-        state: TaskStoreReadinessState::Failed,
-        blocks_task_operations: true,
-        diagnostic_message: format!("Task-store migration failed: {message}"),
-    };
-    status.error_code = "task_store_migration_failed";
-}
-
-fn pending_codex_status() -> CodexStatusResponse {
-    CodexStatusResponse {
-        readiness: CodexReadiness::blocking(
-            CodexReadinessState::Error,
-            CodexReadinessReason::ReadyRuntimeUnavailable,
-            "Codex readiness will be checked if Task-store migration requires it.",
-            None,
-        ),
-        account: None,
-        rate_limits: None,
-        usage: None,
-        app_server: None,
-        daemon: None,
-    }
-}
-
 impl TasksApp {
     fn new(
         fs: Arc<RootedFs>,
@@ -506,4 +205,118 @@ pub(super) use projection::task_activity_ms;
 pub(super) use runtime::{ApprovalResolveError, CodexConnection};
 
 #[cfg(test)]
-mod tests;
+pub(in crate::app::tasks) mod test_support {
+    use std::{path::Path, sync::Arc, time::Duration};
+
+    use serde_json::{Value as JsonValue, json};
+    use tokio::sync::broadcast;
+
+    use super::{TaskState, projection::*, routes::test_claim_task};
+    use crate::{codex_app_server::CodexThreadClient, fs::RootedFs, task_store::TaskStore};
+
+    pub(in crate::app::tasks) async fn task_state_with_codex_client(
+        fs: RootedFs,
+        client: CodexThreadClient,
+    ) -> TaskState {
+        let (shutdown, _) = broadcast::channel(16);
+        let worktree_root = fs.root().join(".caffold-test/worktrees");
+        let state = TaskState::new(
+            Arc::new(fs),
+            String::new(),
+            shutdown,
+            TaskStore::memory().expect("in-memory task store"),
+            worktree_root,
+        )
+        .expect("task state");
+        state.codex_runtime.install_test_client(1, client).await;
+        state
+    }
+
+    pub(in crate::app::tasks) async fn wait_for_mock_method(
+        client: &CodexThreadClient,
+        method: &str,
+    ) {
+        wait_for_mock_method_count(client, method, 1).await;
+    }
+
+    pub(in crate::app::tasks) async fn wait_for_mock_method_count(
+        client: &CodexThreadClient,
+        method: &str,
+        expected: usize,
+    ) {
+        for _ in 0..100 {
+            if client
+                .mock_requests()
+                .await
+                .iter()
+                .filter(|(requested, _)| requested == method)
+                .count()
+                >= expected
+            {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        panic!("mock Codex client did not receive {expected} {method} request(s)");
+    }
+
+    pub(in crate::app::tasks) fn task_thread_list(thread_id: &str, cwd: &Path) -> JsonValue {
+        json!({
+            "data": [{
+                "id": thread_id,
+                "preview": "Cached task detail regression",
+                "status": { "type": "idle" },
+                "cwd": cwd.display().to_string(),
+                "createdAt": 1.0,
+                "updatedAt": 2.0,
+                "turns": []
+            }],
+            "nextCursor": null,
+            "backwardsCursor": null
+        })
+    }
+
+    pub(in crate::app::tasks) async fn manage_test_thread(
+        state: &TaskState,
+        thread_id: &str,
+        cwd: &Path,
+    ) {
+        let thread = task_thread_list(thread_id, cwd)["data"][0].clone();
+        let resolved = resolve_thread_cwd(&state.fs, &thread);
+        let task = task_record_from_thread(&thread, &[], resolved.as_ref())
+            .expect("test thread projection");
+        test_claim_task(state, &task)
+            .await
+            .expect("test thread is managed");
+    }
+
+    pub(in crate::app::tasks) async fn cache_and_manage_test_thread(
+        state: &TaskState,
+        thread_id: &str,
+        cwd: &Path,
+    ) {
+        let thread = serde_json::from_value(task_thread_list(thread_id, cwd)["data"][0].clone())
+            .expect("canonical test thread");
+        state.codex_sessions.observe_thread_metadata(thread).await;
+        manage_test_thread(state, thread_id, cwd).await;
+    }
+
+    pub(in crate::app::tasks) fn resumed_task(thread_id: &str, cwd: &Path) -> JsonValue {
+        json!({
+            "thread": {
+                "id": thread_id,
+                "preview": "Cached task detail regression",
+                "status": { "type": "idle" },
+                "cwd": cwd.display().to_string(),
+                "createdAt": 1.0,
+                "updatedAt": 2.0,
+                "turns": []
+            },
+            "initialTurnsPage": {
+                "data": [],
+                "nextCursor": null,
+                "backwardsCursor": null
+            }
+        })
+    }
+}

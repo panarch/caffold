@@ -387,37 +387,152 @@ fn schedule_retry(
 }
 
 #[cfg(test)]
-pub(super) fn scheduled_deadline_for_test(
-    started_at: tokio::time::Instant,
-    invalidation_offsets: &[Duration],
-) -> tokio::time::Instant {
-    let mut pending = HashMap::new();
-    schedule(&mut pending, "thread-1".to_string(), started_at);
-    for offset in invalidation_offsets {
-        schedule(&mut pending, "thread-1".to_string(), started_at + *offset);
+mod tests {
+    use super::*;
+
+    fn scheduled_deadline_for_test(
+        started_at: tokio::time::Instant,
+        invalidation_offsets: &[Duration],
+    ) -> tokio::time::Instant {
+        let mut pending = HashMap::new();
+        schedule(&mut pending, "thread-1".to_string(), started_at);
+        for offset in invalidation_offsets {
+            schedule(&mut pending, "thread-1".to_string(), started_at + *offset);
+        }
+        pending["thread-1"].deadline()
     }
-    pending["thread-1"].deadline()
+
+    fn retry_schedule_for_test(
+        previous_attempt: u8,
+        started_at: tokio::time::Instant,
+    ) -> Option<(u8, tokio::time::Instant)> {
+        let mut pending = HashMap::new();
+        schedule_retry(
+            &mut pending,
+            "thread-1".to_string(),
+            previous_attempt,
+            started_at,
+        );
+        pending
+            .get("thread-1")
+            .map(|pending| (pending.retry_attempt, pending.deadline()))
+    }
+
+    const SYNC_MAX_LATENCY_FOR_TEST: Duration = TASK_SYNC_MAX_LATENCY;
+    const SYNC_RETRY_BASE_FOR_TEST: Duration = TASK_SYNC_RETRY_BASE;
+
+    #[tokio::test]
+    async fn task_sync_coordinator_only_invalidates_subscribed_threads() {
+        let (shutdown, _) = broadcast::channel(1);
+        let sync = TaskSync::<()>::new(shutdown);
+        let mut jobs = sync.take_jobs().await.unwrap();
+
+        sync.observe_rollout_invalidation("thread-1".to_string());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), jobs.recv())
+                .await
+                .is_err()
+        );
+
+        let first = sync.subscribe("thread-1");
+        let second = sync.subscribe("thread-1");
+        sync.observe_rollout_invalidation("thread-1".to_string());
+        let job = tokio::time::timeout(Duration::from_secs(1), jobs.recv())
+            .await
+            .expect("subscribed invalidation becomes due")
+            .expect("sync job");
+        assert_eq!(job.thread_id, "thread-1");
+        job.complete(TaskSyncOutcome::Synchronized);
+
+        drop(first);
+        sync.observe_rollout_invalidation("thread-1".to_string());
+        let job = tokio::time::timeout(Duration::from_secs(1), jobs.recv())
+            .await
+            .expect("remaining subscriber keeps sync active")
+            .expect("sync job");
+        job.complete(TaskSyncOutcome::Synchronized);
+
+        drop(second);
+        sync.observe_rollout_invalidation("thread-1".to_string());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), jobs.recv())
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn task_sync_coordinator_tracks_invalidations_until_canonical_sync() {
+        let (shutdown, _) = broadcast::channel(1);
+        let sync = TaskSync::<()>::new(shutdown);
+        let mut jobs = sync.take_jobs().await.unwrap();
+        let _subscription = sync.subscribe("thread-1");
+
+        sync.observe_rollout_invalidation("thread-1".to_string());
+
+        let job = tokio::time::timeout(Duration::from_secs(1), jobs.recv())
+            .await
+            .expect("invalidation becomes due")
+            .expect("sync job");
+        assert_eq!(job.invalidation_revision, 1);
+        job.complete(TaskSyncOutcome::Synchronized);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), jobs.recv())
+                .await
+                .is_err(),
+            "a synchronized revision must not schedule itself again"
+        );
+    }
+
+    #[tokio::test]
+    async fn task_sync_coordinator_keeps_changes_observed_during_a_sync() {
+        let (shutdown, _) = broadcast::channel(1);
+        let sync = TaskSync::<()>::new(shutdown);
+        let mut jobs = sync.take_jobs().await.unwrap();
+        let _subscription = sync.subscribe("thread-1");
+
+        sync.observe_rollout_invalidation("thread-1".to_string());
+        let synchronizing = tokio::time::timeout(Duration::from_secs(1), jobs.recv())
+            .await
+            .expect("first invalidation becomes due")
+            .expect("sync job");
+        let synchronizing_revision = synchronizing.invalidation_revision;
+
+        sync.observe_rollout_invalidation("thread-1".to_string());
+        synchronizing.complete(TaskSyncOutcome::Synchronized);
+        let newer = tokio::time::timeout(Duration::from_secs(1), jobs.recv())
+            .await
+            .expect("change observed during sync is scheduled")
+            .expect("newer sync job");
+        assert!(newer.invalidation_revision > synchronizing_revision);
+        newer.complete(TaskSyncOutcome::Synchronized);
+    }
+
+    #[test]
+    fn continuous_task_invalidations_have_a_maximum_latency() {
+        let started_at = tokio::time::Instant::now();
+
+        assert_eq!(
+            scheduled_deadline_for_test(
+                started_at,
+                &[500, 1_000, 1_500, 1_900].map(Duration::from_millis),
+            ),
+            started_at + SYNC_MAX_LATENCY_FOR_TEST
+        );
+    }
+
+    #[test]
+    fn canonical_sync_retries_are_bounded() {
+        let started_at = tokio::time::Instant::now();
+
+        assert_eq!(
+            retry_schedule_for_test(0, started_at),
+            Some((1, started_at + SYNC_RETRY_BASE_FOR_TEST))
+        );
+        assert_eq!(
+            retry_schedule_for_test(1, started_at),
+            Some((2, started_at + SYNC_RETRY_BASE_FOR_TEST.saturating_mul(2)))
+        );
+        assert_eq!(retry_schedule_for_test(3, started_at), None);
+    }
 }
-
-#[cfg(test)]
-pub(super) fn retry_schedule_for_test(
-    previous_attempt: u8,
-    started_at: tokio::time::Instant,
-) -> Option<(u8, tokio::time::Instant)> {
-    let mut pending = HashMap::new();
-    schedule_retry(
-        &mut pending,
-        "thread-1".to_string(),
-        previous_attempt,
-        started_at,
-    );
-    pending
-        .get("thread-1")
-        .map(|pending| (pending.retry_attempt, pending.deadline()))
-}
-
-#[cfg(test)]
-pub(super) const SYNC_MAX_LATENCY_FOR_TEST: Duration = TASK_SYNC_MAX_LATENCY;
-
-#[cfg(test)]
-pub(super) const SYNC_RETRY_BASE_FOR_TEST: Duration = TASK_SYNC_RETRY_BASE;

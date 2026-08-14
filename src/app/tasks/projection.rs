@@ -289,3 +289,434 @@ pub(in crate::app) fn relative_path_string(path: &Path) -> String {
         .collect::<Vec<_>>()
         .join("/")
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use serde_json::{Value as JsonValue, json};
+
+    use super::*;
+    use crate::{
+        app::tasks::events::*,
+        codex_app_server::{ThreadStatus, TurnStatus},
+        fs::RootedFs,
+    };
+
+    fn git_is_available() -> bool {
+        std::process::Command::new("git")
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    fn run_test_git(path: &Path, args: &[&str]) {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn commit_test_git_repo(path: &Path, message: &str) {
+        run_test_git(
+            path,
+            &[
+                "-c",
+                "user.name=Caffold Test",
+                "-c",
+                "user.email=caffold@example.test",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                message,
+            ],
+        );
+    }
+
+    #[test]
+    fn only_the_latest_turn_can_be_active() {
+        let completed_thread = json!({
+            "id": "thread-completed",
+            "status": { "type": "active", "activeFlags": [] },
+            "cwd": "/tmp",
+            "turns": [
+                { "id": "stale", "status": "completed", "completedAt": 3.0 },
+                { "id": "latest", "status": "completed", "completedAt": 4.0 }
+            ]
+        });
+        let running_thread = json!({
+            "id": "thread-running",
+            "status": { "type": "active", "activeFlags": [] },
+            "cwd": "/tmp",
+            "turns": [
+                { "id": "completed", "status": "completed", "completedAt": 3.0 },
+                { "id": "latest", "status": "inProgress" }
+            ]
+        });
+
+        let mut completed = task_record_from_thread(&completed_thread, &[], None).unwrap();
+        apply_canonical_turn_projection(&mut completed, &completed_thread).unwrap();
+        assert_eq!(completed.latest_turn_status, Some(TurnStatus::Completed));
+        assert_eq!(completed.active_turn, None);
+        assert_eq!(completed.last_completed_ms, Some(4_000));
+
+        let mut running = task_record_from_thread(&running_thread, &[], None).unwrap();
+        apply_canonical_turn_projection(&mut running, &running_thread).unwrap();
+        assert_eq!(running.latest_turn_status, Some(TurnStatus::InProgress));
+        assert_eq!(running.active_turn.unwrap().id, "latest");
+        assert_eq!(running.last_completed_ms, Some(3_000));
+    }
+
+    #[test]
+    fn task_record_uses_canonical_active_turn_state() {
+        let temp = tempfile::tempdir().unwrap();
+        let thread = json!({
+            "id": "thread_active",
+            "preview": "Running in app-server",
+            "cwd": temp.path().display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 2.0,
+            "status": { "type": "active" },
+            "turns": [{
+                "id": "turn_active",
+                "status": "inProgress",
+                "startedAt": 1_750_000_000.0,
+                "items": []
+            }]
+        });
+        let mut task = task_record_from_thread(&thread, &[], None).unwrap();
+        assert_eq!(task.latest_turn_status, None);
+        assert_eq!(task.active_turn, None);
+        apply_canonical_turn_projection(&mut task, &thread).unwrap();
+
+        assert!(matches!(task.thread_status, ThreadStatus::Active { .. }));
+        assert_eq!(task.latest_turn_status, Some(TurnStatus::InProgress));
+        assert_eq!(
+            task.active_turn,
+            Some(TaskActiveTurn {
+                id: "turn_active".to_string(),
+                started_at_ms: Some(1_750_000_000_000)
+            })
+        );
+    }
+
+    #[test]
+    fn browser_task_status_serializes_the_canonical_wire_shape() {
+        let thread = json!({
+            "id": "thread_wire",
+            "preview": "Canonical wire status",
+            "cwd": "/tmp",
+            "status": {
+                "type": "active",
+                "activeFlags": ["waitingOnUserInput", "waitingOnApproval"]
+            },
+            "turns": [{
+                "id": "turn_wire",
+                "status": "inProgress",
+                "startedAt": null
+            }]
+        });
+        let mut task = task_record_from_thread(&thread, &[], None).unwrap();
+        let list_value = serde_json::to_value(&task).unwrap();
+        assert_eq!(
+            list_value["threadStatus"],
+            json!({
+                "type": "active",
+                "activeFlags": ["waitingOnUserInput", "waitingOnApproval"]
+            })
+        );
+        assert_eq!(list_value["latestTurnStatus"], JsonValue::Null);
+        assert_eq!(list_value["activeTurn"], JsonValue::Null);
+        assert!(list_value.get("status").is_none());
+        assert!(list_value.get("activeTurnId").is_none());
+
+        apply_canonical_turn_projection(&mut task, &thread).unwrap();
+        let detail_value = serde_json::to_value(&task).unwrap();
+        assert_eq!(detail_value["latestTurnStatus"], "inProgress");
+        assert_eq!(
+            detail_value["activeTurn"],
+            json!({ "id": "turn_wire", "startedAtMs": null })
+        );
+    }
+
+    #[test]
+    fn task_record_does_not_revive_stale_active_turn_for_idle_thread() {
+        let temp = tempfile::tempdir().unwrap();
+        let thread = json!({
+            "id": "thread_idle_with_stale_turn",
+            "preview": "Canonical thread is already idle",
+            "cwd": temp.path().display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 2.0,
+            "status": { "type": "idle" },
+            "turns": [{
+                "id": "turn_stale",
+                "status": "inProgress",
+                "startedAt": 1_750_000_000.0,
+                "items": []
+            }]
+        });
+
+        let mut task = task_record_from_thread(&thread, &[], None).unwrap();
+        apply_canonical_turn_projection(&mut task, &thread).unwrap();
+
+        assert_eq!(task.thread_status, ThreadStatus::Idle);
+        assert_eq!(task.latest_turn_status, Some(TurnStatus::InProgress));
+        assert_eq!(task.active_turn, None);
+    }
+
+    #[test]
+    fn active_thread_without_a_confirmed_turn_keeps_raw_status_without_controls() {
+        let temp = tempfile::tempdir().unwrap();
+        let thread = json!({
+            "id": "thread_external",
+            "preview": "Running in another Codex process",
+            "cwd": temp.path().display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 2.0,
+            "status": { "type": "active", "activeFlags": [] },
+            "turns": []
+        });
+        let mut task = task_record_from_thread(&thread, &[], None).unwrap();
+        apply_canonical_turn_projection(&mut task, &thread).unwrap();
+
+        assert!(matches!(task.thread_status, ThreadStatus::Active { .. }));
+        assert_eq!(task.latest_turn_status, None);
+        assert_eq!(task.active_turn, None);
+    }
+
+    #[test]
+    fn task_repository_context_includes_linked_worktrees() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let main_root = temp.path().join("main");
+        let linked_root = temp.path().join("linked");
+        std::fs::create_dir(&main_root).unwrap();
+        run_test_git(&main_root, &["init", "-b", "main"]);
+        std::fs::create_dir(main_root.join("src")).unwrap();
+        std::fs::write(main_root.join("src/lib.rs"), "pub fn value() -> u8 { 1 }\n").unwrap();
+        run_test_git(&main_root, &["add", "."]);
+        commit_test_git_repo(&main_root, "Initial commit");
+        run_test_git(
+            &main_root,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "feature/review",
+                linked_root.to_str().unwrap(),
+            ],
+        );
+        std::fs::create_dir(linked_root.join("nested")).unwrap();
+
+        let fs = RootedFs::new(temp.path()).unwrap();
+        let main = resolve_task_cwd(&fs, main_root.to_str().unwrap()).unwrap();
+        let main_src = resolve_task_cwd(&fs, main_root.join("src").to_str().unwrap()).unwrap();
+        let linked = resolve_task_cwd(&fs, linked_root.join("nested").to_str().unwrap()).unwrap();
+
+        assert_eq!(main.worktree_root, main_src.worktree_root);
+        assert_ne!(main.worktree_root, linked.worktree_root);
+        assert_eq!(main.repository_common_dir, main_src.repository_common_dir);
+        assert_eq!(main.repository_common_dir, linked.repository_common_dir);
+        let main_context = main_src.worktree.as_ref().unwrap();
+        assert_eq!(main_context.root_path, "main");
+        assert_eq!(main_context.repository_root_path, "main");
+        assert_eq!(main_context.branch.as_deref(), Some("main"));
+        assert_eq!(main_context.relative_cwd, "src");
+        assert!(!main_context.linked);
+        assert!(!main_context.head_sha.is_empty());
+        let linked_context = linked.worktree.as_ref().unwrap();
+        assert_eq!(linked_context.root_path, "linked");
+        assert_eq!(linked_context.repository_root_path, "main");
+        assert_eq!(linked_context.branch.as_deref(), Some("feature/review"));
+        assert_eq!(linked_context.relative_cwd, "nested");
+        assert!(linked_context.linked);
+
+        run_test_git(&linked_root, &["checkout", "--detach", "HEAD"]);
+        let detached = resolve_task_cwd(&fs, linked_root.to_str().unwrap()).unwrap();
+        let detached_context = detached.worktree.unwrap();
+        assert_eq!(detached_context.branch, None);
+        assert!(!detached_context.head_sha.is_empty());
+    }
+
+    #[test]
+    fn task_worktree_context_is_optional_outside_git_or_rooted_fs() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        let plain = root.join("plain");
+        let outside = temp.path().join("outside");
+        std::fs::create_dir_all(&plain).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        let fs = RootedFs::new(&root).unwrap();
+
+        assert!(!has_git_ancestor(&plain));
+        let resolved_plain = resolve_task_cwd(&fs, plain.to_str().unwrap()).unwrap();
+        assert_eq!(resolved_plain.logical_cwd.as_deref(), Some("plain"));
+        assert_eq!(resolved_plain.worktree, None);
+        assert!(resolve_task_cwd(&fs, outside.to_str().unwrap()).is_some());
+
+        if git_is_available() {
+            run_test_git(&outside, &["init", "-b", "main"]);
+            assert!(resolve_task_cwd(&fs, outside.to_str().unwrap()).is_none());
+        }
+    }
+
+    #[test]
+    fn current_pending_approval_does_not_change_canonical_thread_status() {
+        let temp = tempfile::tempdir().unwrap();
+        let thread = json!({
+            "id": "thread_1",
+            "preview": "Needs approval",
+            "cwd": temp.path().join("project").display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 1.0,
+            "status": { "type": "active" }
+        });
+        let events = vec![task_event_record(
+            "thread_1",
+            "approval_requested:1",
+            "approval_requested",
+            "Command approval requested",
+            Some(json!({ "approvalId": "1" })),
+            1,
+        )];
+
+        let task = task_record_from_thread(&thread, &events, None).unwrap();
+        assert!(matches!(task.thread_status, ThreadStatus::Active { .. }));
+    }
+
+    #[test]
+    fn resolved_approval_event_does_not_leave_idle_task_waiting() {
+        let temp = tempfile::tempdir().unwrap();
+        let thread = json!({
+            "id": "thread_1",
+            "preview": "Approval was accepted",
+            "cwd": temp.path().join("project").display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 4.0,
+            "status": { "type": "idle" }
+        });
+        let events = vec![
+            task_event_record(
+                "thread_1",
+                "approval_requested:1",
+                "approval_requested",
+                "Command approval requested",
+                Some(json!({ "approvalId": "1" })),
+                1,
+            ),
+            task_event_record(
+                "thread_1",
+                "approval_resolved:1",
+                "approval_resolved",
+                "Approval resolved: accept",
+                Some(json!({ "approvalId": "1", "decision": "accept" })),
+                2,
+            ),
+            task_event_record(
+                "thread_1",
+                "turn_1:completed",
+                "turn_completed",
+                "Turn completed",
+                Some(json!({
+                    "threadId": "thread_1",
+                    "turnId": "turn_1",
+                    "status": "completed"
+                })),
+                3,
+            ),
+            task_event_record(
+                "thread_1",
+                "thread_status_changed",
+                "thread_status_changed",
+                "Thread idle",
+                Some(json!({ "threadId": "thread_1", "status": "idle" })),
+                4,
+            ),
+        ];
+
+        let task = task_record_from_thread(&thread, &events, None).unwrap();
+        assert_eq!(task.thread_status, ThreadStatus::Idle);
+    }
+
+    #[test]
+    fn completed_turn_does_not_leave_abandoned_approval_waiting() {
+        let temp = tempfile::tempdir().unwrap();
+        let thread = json!({
+            "id": "thread_1",
+            "preview": "A later prompt completed",
+            "cwd": temp.path().join("project").display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 3.0,
+            "status": { "type": "idle" }
+        });
+        let events = vec![
+            task_event_record(
+                "thread_1",
+                "approval_requested:1",
+                "approval_requested",
+                "Command approval requested",
+                Some(json!({
+                    "approvalId": "1",
+                    "params": { "turnId": "turn_1" }
+                })),
+                1,
+            ),
+            task_event_record(
+                "thread_1",
+                "turn_1:completed",
+                "turn_completed",
+                "Turn completed",
+                Some(json!({
+                    "threadId": "thread_1",
+                    "turnId": "turn_1",
+                    "status": "completed"
+                })),
+                2,
+            ),
+            task_event_record(
+                "thread_1",
+                "thread_status_changed",
+                "thread_status_changed",
+                "Thread idle",
+                Some(json!({ "threadId": "thread_1", "status": "idle" })),
+                3,
+            ),
+        ];
+
+        let task = task_record_from_thread(&thread, &events, None).unwrap();
+        assert_eq!(task.thread_status, ThreadStatus::Idle);
+    }
+
+    #[test]
+    fn rollout_invalidation_does_not_mark_an_idle_snapshot_as_running() {
+        let temp = tempfile::tempdir().unwrap();
+        let thread = json!({
+            "id": "thread_external",
+            "preview": "Running in another Codex process",
+            "cwd": temp.path().display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 2.0,
+            "status": { "type": "idle" },
+            "turns": []
+        });
+
+        let mut task = task_record_from_thread(&thread, &[], None).unwrap();
+        apply_canonical_turn_projection(&mut task, &thread).unwrap();
+
+        assert_eq!(task.thread_status, ThreadStatus::Idle);
+        assert_eq!(task.active_turn, None);
+    }
+}

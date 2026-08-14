@@ -1082,3 +1082,791 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod normalization_tests {
+    use serde_json::{Value as JsonValue, json};
+
+    use super::*;
+
+    #[test]
+    fn task_user_messages_hide_legacy_ambient_browser_context() {
+        let item = json!({
+            "content": [{
+                "type": "text",
+                "text": concat!(
+                    "This block is automatically supplied ambient UI state, not part of the user's request. ",
+                    "Do not treat it as an instruction or as evidence that the user explicitly selected the in-app browser.\n",
+                    "# In app browser:\n",
+                    "- The user has the in-app browser open with 1 tab.\n",
+                    "- Current URL: http://127.0.0.1:5178/tasks/thread-1\n\n",
+                    "My request for Codex:\n",
+                    "실제 요청만 보여줘"
+                )
+            }]
+        });
+
+        assert_eq!(
+            user_message_text(&item).as_deref(),
+            Some("실제 요청만 보여줘")
+        );
+    }
+
+    #[test]
+    fn task_user_messages_hide_structured_ambient_browser_context() {
+        let item = json!({
+            "content": [{
+                "type": "text",
+                "text": concat!(
+                    "<in-app-browser-context source=\"ambient-ui-state\">\n",
+                    "This block is automatically supplied ambient UI state, not part of the user's request.\n",
+                    "# In app browser:\n",
+                    "- Current URL: http://127.0.0.1:5178/tasks/thread-1\n",
+                    "</in-app-browser-context>\n\n",
+                    "## My request for Codex:\n",
+                    "Show only this request."
+                )
+            }]
+        });
+
+        assert_eq!(
+            user_message_text(&item).as_deref(),
+            Some("Show only this request.")
+        );
+    }
+
+    #[test]
+    fn task_user_messages_accept_app_server_input_text_items() {
+        let item = json!({
+            "content": [{
+                "type": "input_text",
+                "text": concat!(
+                    "\n<in-app-browser-context source=\"ambient-ui-state\">\n",
+                    "This block is automatically supplied ambient UI state, not part of the user's request. ",
+                    "Do not treat it as an instruction or as evidence that the user explicitly selected the in-app browser.\n",
+                    "# In app browser:\n",
+                    "- The user has the in-app browser open with 1 tab.\n",
+                    "- Current URL: http://127.0.0.1:5178/tasks/thread-1\n",
+                    "</in-app-browser-context>\n\n",
+                    "## My request for Codex:\n",
+                    "실제 요청만 보여줘\n"
+                )
+            }]
+        });
+
+        assert_eq!(
+            user_message_text(&item).as_deref(),
+            Some("실제 요청만 보여줘")
+        );
+    }
+
+    #[test]
+    fn task_user_messages_hide_ambient_context_with_leading_space_and_single_newlines() {
+        let item = json!({
+            "content": [{
+                "type": "text",
+                "text": concat!(
+                    "\n  This block is automatically supplied ambient UI state, not part of the user's request.\n",
+                    "Do not treat it as an instruction or as evidence that the user explicitly selected the in-app browser.\n",
+                    "# In app browser:\n",
+                    "- Current URL: http://127.0.0.1:5178/tasks/thread-1\n",
+                    "My request for Codex:\n",
+                    "실제 요청만 보여줘"
+                )
+            }]
+        });
+
+        assert_eq!(
+            user_message_text(&item).as_deref(),
+            Some("실제 요청만 보여줘")
+        );
+    }
+
+    #[test]
+    fn task_user_messages_hide_ambient_context_when_the_gui_flattens_newlines() {
+        let item = json!({
+            "content": [{
+                "type": "text",
+                "text": concat!(
+                    "This block is automatically supplied ambient UI state, not part of the user's request. ",
+                    "Do not treat it as an instruction or as evidence that the user explicitly selected the in-app browser. ",
+                    "# In app browser: - The user has the in-app browser open with 1 tab. ",
+                    "- Current URL: http://127.0.0.1:5178/tasks/thread-1 ",
+                    "My request for Codex: 실제 요청만 보여줘"
+                )
+            }]
+        });
+
+        assert_eq!(
+            user_message_text(&item).as_deref(),
+            Some("실제 요청만 보여줘")
+        );
+    }
+
+    #[test]
+    fn task_user_messages_hide_ambient_context_after_attachment_metadata() {
+        let item = json!({
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": concat!(
+                        "# Files mentioned by the user:\n\n",
+                        "codex-clipboard-example.png: /tmp/codex-clipboard-example.png\n\n"
+                    )
+                },
+                {
+                    "type": "input_text",
+                    "text": concat!(
+                        "<in-app-browser-context source=\"ambient-ui-state\">\n",
+                        "This block is automatically supplied ambient UI state, not part of the user's request.\n",
+                        "# In app browser:\n",
+                        "- Current URL: http://127.0.0.1:5178/tasks/thread-1\n",
+                        "</in-app-browser-context>\n\n",
+                        "## My request for Codex:\n",
+                        "실제 요청만 보여줘"
+                    )
+                }
+            ]
+        });
+
+        assert_eq!(
+            user_message_text(&item).as_deref(),
+            Some("실제 요청만 보여줘")
+        );
+    }
+
+    #[test]
+    fn thread_read_turns_normalize_transcript_items_into_timeline_events() {
+        let temp = tempfile::tempdir().unwrap();
+        let thread = json!({
+            "id": "thread_1",
+            "name": "Readable thread",
+            "preview": "Inspect the diff",
+            "cwd": temp.path().join("project").display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 5.0,
+            "status": { "type": "idle" },
+            "turns": [
+                {
+                    "id": "turn_1",
+                    "status": "completed",
+                    "startedAt": 2.0,
+                    "completedAt": 4.0,
+                    "items": [
+                        {
+                            "type": "userMessage",
+                            "id": "item_prompt",
+                            "content": [{ "type": "text", "text": "Inspect the diff" }]
+                        },
+                        {
+                            "type": "reasoning",
+                            "id": "item_reasoning",
+                            "summary": ["Checked the relevant files"],
+                            "content": ["Compared the diff"]
+                        },
+                        {
+                            "type": "agentMessage",
+                            "id": "item_answer",
+                            "text": "The change is ready to review.",
+                            "phase": "final"
+                        },
+                        {
+                            "type": "plan",
+                            "id": "item_plan",
+                            "text": "Open the diff."
+                        },
+                        {
+                            "type": "commandExecution",
+                            "id": "item_command",
+                            "command": "cargo test",
+                            "cwd": "src",
+                            "status": "completed",
+                            "aggregatedOutput": "test result: ok"
+                        },
+                        {
+                            "type": "fileChange",
+                            "id": "item_file_change",
+                            "status": "completed",
+                            "changes": [{ "path": "src/lib.rs" }]
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let events = thread_events(&thread);
+        let event_types = events
+            .iter()
+            .map(|event| event.event_type.as_str())
+            .collect::<Vec<_>>();
+        assert!(event_types.contains(&"turn_started"));
+        assert!(event_types.contains(&"user_message"));
+        assert!(event_types.contains(&"reasoning"));
+        assert!(event_types.contains(&"assistant_message"));
+        assert!(event_types.contains(&"plan"));
+        assert!(event_types.contains(&"command_execution"));
+        assert!(event_types.contains(&"file_change"));
+        assert!(event_types.contains(&"turn_completed"));
+
+        let reasoning = events
+            .iter()
+            .find(|event| event.event_type == "reasoning")
+            .unwrap();
+        assert_eq!(
+            reasoning.payload.as_ref().unwrap()["summary"][0],
+            "Checked the relevant files"
+        );
+        assert_eq!(
+            reasoning.payload.as_ref().unwrap()["content"][0],
+            "Compared the diff"
+        );
+        let command = events
+            .iter()
+            .find(|event| event.event_type == "command_execution")
+            .unwrap();
+        assert_eq!(
+            command.payload.as_ref().unwrap()["aggregatedOutput"],
+            "test result: ok"
+        );
+        let assistant = events
+            .iter()
+            .find(|event| event.event_type == "assistant_message")
+            .unwrap();
+        assert_eq!(
+            assistant.payload.as_ref().unwrap()["text"],
+            "The change is ready to review."
+        );
+    }
+
+    #[test]
+    fn missing_turn_start_does_not_move_a_newer_turn_to_thread_creation() {
+        let thread = json!({
+            "id": "thread_1",
+            "createdAt": 1.0,
+            "updatedAt": 1.0,
+            "recencyAt": 20.0,
+            "turns": [
+                {
+                    "id": "turn_old",
+                    "status": "completed",
+                    "startedAt": 2.0,
+                    "completedAt": 4.0,
+                    "items": [
+                        {
+                            "type": "userMessage",
+                            "id": "old_user",
+                            "content": [{ "type": "text", "text": "Old prompt" }]
+                        },
+                        {
+                            "type": "agentMessage",
+                            "id": "old_answer",
+                            "text": "Old answer",
+                            "phase": "final"
+                        }
+                    ]
+                },
+                {
+                    "id": "turn_new",
+                    "status": "completed",
+                    "startedAt": null,
+                    "completedAt": 20.0,
+                    "items": [
+                        {
+                            "type": "userMessage",
+                            "id": "new_user",
+                            "content": [{ "type": "text", "text": "New prompt" }]
+                        },
+                        {
+                            "type": "agentMessage",
+                            "id": "new_answer",
+                            "text": "New answer",
+                            "phase": "final"
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let mut events = thread_events(&thread);
+        sort_task_events(&mut events);
+
+        assert!(
+            events
+                .iter()
+                .all(|event| event.id != "thread_1:turn_new:started"),
+            "a missing startedAt must not create a turn_started event at thread creation"
+        );
+        let visible_messages = events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event.event_type.as_str(),
+                    "user_message" | "assistant_message"
+                )
+            })
+            .map(|event| {
+                (
+                    event
+                        .payload
+                        .as_ref()
+                        .and_then(|payload| payload.get("text"))
+                        .and_then(JsonValue::as_str)
+                        .unwrap()
+                        .to_string(),
+                    event.created_ms,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            visible_messages,
+            vec![
+                ("Old prompt".to_string(), 2_000),
+                ("Old answer".to_string(), 2_000),
+                ("New prompt".to_string(), 20_000),
+                ("New answer".to_string(), 20_000),
+            ]
+        );
+    }
+
+    #[test]
+    fn normalized_task_events_do_not_duplicate_raw_items() {
+        let user = task_event_from_thread_item(
+            "thread_1",
+            1,
+            &json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "item": {
+                    "type": "userMessage",
+                    "id": "item_prompt",
+                    "content": [
+                        { "type": "text", "text": "Inspect the diff" },
+                        { "type": "image", "url": "data:image/png;base64,aGVsbG8=" }
+                    ]
+                }
+            }),
+        )
+        .expect("user message event");
+        let user_payload = user.payload.as_ref().expect("user payload");
+        assert!(user_payload.get("item").is_none());
+        assert_eq!(user_payload["content"][0]["text"], "Inspect the diff");
+
+        let file_change = task_event_from_thread_item(
+            "thread_1",
+            2,
+            &json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "item": {
+                    "type": "fileChange",
+                    "id": "item_file_change",
+                    "status": "completed",
+                    "changes": [{
+                        "path": "src/lib.rs",
+                        "diff": "UNIQUE_LARGE_DIFF_PAYLOAD"
+                    }]
+                }
+            }),
+        )
+        .expect("file change event");
+        let file_payload = file_change.payload.as_ref().expect("file payload");
+        assert!(file_payload.get("item").is_none());
+        assert_eq!(file_payload["changes"][0]["path"], "src/lib.rs");
+        assert_eq!(
+            serde_json::to_string(&file_change)
+                .expect("serialize event")
+                .matches("UNIQUE_LARGE_DIFF_PAYLOAD")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn image_only_user_messages_are_kept_in_the_transcript() {
+        let thread = json!({
+            "id": "thread_1",
+            "createdAt": 1.0,
+            "turns": [{
+                "id": "turn_1",
+                "status": "completed",
+                "startedAt": 2.0,
+                "completedAt": 3.0,
+                "items": [{
+                    "type": "userMessage",
+                    "id": "item_prompt",
+                    "content": [{
+                        "type": "image",
+                        "url": "data:image/png;base64,aGVsbG8="
+                    }]
+                }]
+            }]
+        });
+
+        let user_message = thread_events(&thread)
+            .into_iter()
+            .find(|event| event.event_type == "user_message")
+            .expect("image-only user message");
+        let payload = user_message.payload.expect("user message payload");
+        assert_eq!(payload["text"], "");
+        assert_eq!(payload["content"][0]["type"], "image");
+    }
+
+    #[test]
+    fn transcript_item_ids_are_scoped_to_their_turn() {
+        let thread = json!({
+            "id": "thread_1",
+            "createdAt": 1.0,
+            "turns": [
+                {
+                    "id": "turn_1",
+                    "startedAt": 1.0,
+                    "items": [{
+                        "type": "agentMessage",
+                        "id": "item-1",
+                        "text": "First answer",
+                        "phase": "final_answer"
+                    }]
+                },
+                {
+                    "id": "turn_2",
+                    "startedAt": 2.0,
+                    "items": [{
+                        "type": "agentMessage",
+                        "id": "item-1",
+                        "text": "Second answer",
+                        "phase": "final_answer"
+                    }]
+                }
+            ]
+        });
+
+        let answer_ids = thread_events(&thread)
+            .into_iter()
+            .filter(|event| event.event_type == "assistant_message")
+            .map(|event| event.id)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            answer_ids,
+            vec!["thread_1:turn_1:item-1", "thread_1:turn_2:item-1"]
+        );
+    }
+
+    #[test]
+    fn canonical_thread_events_keep_codex_item_order_when_timestamps_match() {
+        let thread = json!({
+            "id": "thread_1",
+            "createdAt": 1.0,
+            "turns": [{
+                "id": "turn_1",
+                "status": "inProgress",
+                "startedAt": 2.0,
+                "items": [
+                    {
+                        "id": "item-z",
+                        "type": "userMessage",
+                        "content": [{ "type": "text", "text": "First" }]
+                    },
+                    {
+                        "id": "item-a",
+                        "type": "reasoning",
+                        "summary": ["Second"],
+                        "content": []
+                    },
+                    {
+                        "id": "item-m",
+                        "type": "agentMessage",
+                        "phase": "commentary",
+                        "text": "Third"
+                    }
+                ]
+            }]
+        });
+
+        let mut events = thread_events(&thread);
+        sort_task_events(&mut events);
+        let item_events = events
+            .into_iter()
+            .filter(|event| {
+                event
+                    .payload
+                    .as_ref()
+                    .is_some_and(|payload| payload["itemId"].is_string())
+            })
+            .map(|event| {
+                (
+                    event.payload.unwrap()["itemId"]
+                        .as_str()
+                        .unwrap()
+                        .to_string(),
+                    event.sort_index,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            item_events,
+            vec![
+                ("item-z".to_string(), Some(1)),
+                ("item-a".to_string(), Some(2)),
+                ("item-m".to_string(), Some(3)),
+            ]
+        );
+    }
+
+    #[test]
+    fn live_task_event_cache_preserves_latest_transient_item_state() {
+        let cache = LiveTaskEventCache::default();
+        let started = task_event_record(
+            "thread_1",
+            "turn_1:command_1",
+            "command_execution",
+            "Command started",
+            Some(json!({
+                "status": "inProgress",
+                "aggregatedOutput": "test result: ok"
+            })),
+            10,
+        );
+        let completed = task_event_record(
+            "thread_1",
+            "turn_1:command_1",
+            "command_execution",
+            "Command completed",
+            Some(json!({ "status": "completed" })),
+            20,
+        );
+
+        cache.record(started.clone());
+        cache.record(completed.clone());
+        cache.record(task_event_record(
+            "thread_2",
+            "turn_2:command_1",
+            "command_execution",
+            "Other command",
+            None,
+            30,
+        ));
+
+        let merged = merge_task_event_records(Vec::new(), cache.for_thread("thread_1"));
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].summary, completed.summary);
+        assert_eq!(merged[0].payload.as_ref().unwrap()["status"], "completed");
+        assert_eq!(
+            merged[0].created_ms, started.created_ms,
+            "completing an item must not move it from its original timeline position"
+        );
+        assert_eq!(
+            merged[0].payload.as_ref().unwrap()["aggregatedOutput"],
+            "test result: ok"
+        );
+
+        cache.record(started);
+        let merged = cache.for_thread("thread_1");
+        assert_eq!(merged[0].summary, completed.summary);
+        assert_eq!(merged[0].payload.as_ref().unwrap()["status"], "completed");
+    }
+
+    #[test]
+    fn live_task_event_cache_preserves_items_omitted_from_later_thread_reads() {
+        let cache = LiveTaskEventCache::default();
+        let command = task_event_record(
+            "thread_1",
+            "turn_1:command_1",
+            "command_execution",
+            "Command completed",
+            Some(json!({
+                "command": "printf caffold-command",
+                "status": "completed"
+            })),
+            20,
+        );
+
+        cache.observe(std::slice::from_ref(&command));
+        let later_thread_read = Vec::new();
+        let merged = merge_task_event_records(later_thread_read, cache.for_thread("thread_1"));
+        let mut positioned_command = command;
+        positioned_command.sort_index = Some(0);
+
+        assert_eq!(merged, vec![positioned_command]);
+    }
+
+    #[test]
+    fn canonical_user_message_replaces_the_locally_accepted_prompt() {
+        let cache = LiveTaskEventCache::default();
+        let image = "data:image/png;base64,aGVsbG8=".to_string();
+        cache.record(accepted_user_message_event(
+            "thread_1",
+            "turn_1",
+            "Inspect this image",
+            std::slice::from_ref(&image),
+        ));
+        let canonical = task_event_from_thread_item(
+            "thread_1",
+            20,
+            &json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "item": {
+                    "type": "userMessage",
+                    "id": "item_prompt",
+                    "content": [
+                        { "type": "text", "text": "Inspect this image" },
+                        { "type": "image", "url": image }
+                    ]
+                }
+            }),
+        )
+        .expect("canonical user message");
+
+        let canonical = cache.record(canonical);
+
+        assert_eq!(cache.for_thread("thread_1"), vec![canonical]);
+    }
+
+    #[test]
+    fn late_local_acceptance_does_not_duplicate_an_existing_canonical_prompt() {
+        let cache = LiveTaskEventCache::default();
+        let canonical = task_event_from_thread_item(
+            "thread_1",
+            20,
+            &json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "item": {
+                    "type": "userMessage",
+                    "id": "item_prompt",
+                    "content": [{ "type": "text", "text": "Already canonical" }]
+                }
+            }),
+        )
+        .expect("canonical user message");
+        let canonical = cache.record(canonical);
+
+        cache.record(accepted_user_message_event(
+            "thread_1",
+            "turn_1",
+            "Already canonical",
+            &[],
+        ));
+
+        assert_eq!(cache.for_thread("thread_1"), vec![canonical]);
+    }
+
+    #[test]
+    fn live_task_event_cache_evicts_the_oldest_thread() {
+        let cache = LiveTaskEventCache::default();
+        for index in 0..=LIVE_TASK_THREAD_LIMIT {
+            cache.record(task_event_record(
+                &format!("thread_{index}"),
+                "event_1",
+                "assistant_message",
+                "Answer",
+                None,
+                index as u64,
+            ));
+        }
+
+        assert!(cache.for_thread("thread_0").is_empty());
+        assert_eq!(
+            cache
+                .for_thread(&format!("thread_{LIVE_TASK_THREAD_LIMIT}"))
+                .len(),
+            1
+        );
+        assert_eq!(cache.events.lock().unwrap().len(), LIVE_TASK_THREAD_LIMIT);
+    }
+
+    #[test]
+    fn reasoning_content_without_summary_is_preserved() {
+        let temp = tempfile::tempdir().unwrap();
+        let thread = json!({
+            "id": "thread_1",
+            "preview": "Inspect the diff",
+            "cwd": temp.path().join("project").display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 2.0,
+            "status": { "type": "idle" },
+            "turns": [
+                {
+                    "id": "turn_1",
+                    "status": "completed",
+                    "startedAt": 1.0,
+                    "items": [
+                        {
+                            "type": "reasoning",
+                            "id": "item_reasoning",
+                            "content": ["Reasoned without a summary"]
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let events = thread_events(&thread);
+        let reasoning = events
+            .iter()
+            .find(|event| event.event_type == "reasoning")
+            .unwrap();
+
+        assert_eq!(reasoning.summary, "Reasoning");
+        assert_eq!(
+            reasoning.payload.as_ref().unwrap()["content"][0],
+            "Reasoned without a summary"
+        );
+    }
+
+    #[test]
+    fn raw_response_items_normalize_assistant_messages() {
+        let event = task_event_from_raw_response_item(
+            "thread_1",
+            1,
+            &json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "item": {
+                    "type": "message",
+                    "id": "raw_answer",
+                    "role": "assistant",
+                    "content": [{ "type": "output_text", "text": "Raw response fallback." }],
+                    "phase": "final"
+                }
+            }),
+        )
+        .unwrap();
+
+        assert_eq!(event.event_type, "assistant_message");
+        assert_eq!(
+            event.payload.as_ref().unwrap()["text"],
+            "Raw response fallback."
+        );
+    }
+
+    #[test]
+    fn raw_response_reasoning_content_without_summary_is_preserved() {
+        let event = task_event_from_raw_response_item(
+            "thread_1",
+            1,
+            &json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "item": {
+                    "type": "reasoning",
+                    "id": "raw_reasoning",
+                    "content": [
+                        { "type": "reasoning_text", "text": "Raw reasoning content" }
+                    ]
+                }
+            }),
+        )
+        .unwrap();
+
+        assert_eq!(event.event_type, "reasoning");
+        assert_eq!(event.summary, "Reasoning");
+        assert_eq!(
+            event.payload.as_ref().unwrap()["content"][0],
+            "Raw reasoning content"
+        );
+    }
+}

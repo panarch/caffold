@@ -788,7 +788,7 @@ mod tests {
     use crate::{
         app::tasks::{
             events::task_event_record,
-            tests::support::{cache_and_manage_test_thread, task_state_with_codex_client},
+            test_support::{cache_and_manage_test_thread, task_state_with_codex_client},
         },
         codex_app_server::CodexThreadClient,
     };
