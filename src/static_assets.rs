@@ -344,6 +344,21 @@ pub fn get(path: &str) -> Option<StaticAsset> {
                 "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.js"
             )))
         }
+        "pages/(task-workspace)/tasks/components/detail/conversation/components/command.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/components/command.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/conversation/components/command.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/components/command.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/components/detail/conversation/components/command/model.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/components/command/model.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css" => {
             Some(css(include_str!(
                 "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css"
@@ -352,16 +367,6 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.js" => {
             Some(js(include_str!(
                 "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.js"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/conversation/command-summary.css" => {
-            Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/command-summary.css"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/conversation/command-summary.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/command-summary.js"
             )))
         }
         "pages/(task-workspace)/tasks/components/detail/conversation/markdown.js" => {
@@ -1287,8 +1292,8 @@ mod tests {
                 b"caffold-task-command-dialog".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/conversation/command-summary.js",
-                b"caffold-task-command-summary".as_slice(),
+                "pages/(task-workspace)/tasks/components/detail/conversation/components/command.js",
+                b"caffold-task-command".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/detail/conversation/work-details.js",
@@ -1402,8 +1407,8 @@ mod tests {
                 b"caffold-task-command-dialog".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/conversation/command-summary.css",
-                b"caffold-task-command-summary".as_slice(),
+                "pages/(task-workspace)/tasks/components/detail/conversation/components/command.css",
+                b"caffold-task-command".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/detail/conversation/work-details.css",

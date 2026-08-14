@@ -76,15 +76,17 @@ caffold-task-work-details {
     background: var(--surface-subtle);
   }
 
-  & .task-work-details-command details {
-    min-width: 0;
-    max-width: 100%;
+  & .task-work-details-command {
     border: 0;
     background: transparent;
   }
 
-  & .task-work-details-item header,
-  & .task-work-details-command summary {
+  & .task-work-details-command > caffold-task-command {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  & .task-work-details-item > header {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -96,42 +98,12 @@ caffold-task-work-details {
     line-height: var(--interface-line-height);
   }
 
-  & .task-work-details-command summary {
-    cursor: pointer;
-  }
-
-  & .task-work-details-command summary::marker {
-    color: var(--muted);
-  }
-
-  & .task-work-details-command summary strong:first-child {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4375rem;
-    min-width: 0;
-  }
-
-  & .task-work-details-command summary strong:first-child::after {
-    display: inline-block;
-    width: 0.375rem;
-    height: 0.375rem;
-    border-right: 1.5px solid currentColor;
-    border-bottom: 1.5px solid currentColor;
-    content: "";
-    transform: rotate(-45deg);
-  }
-
-  & .task-work-details-command details[open] summary strong:first-child::after {
-    transform: rotate(45deg);
-  }
-
-  & .task-work-details-item header time,
-  & .task-work-details-command summary time {
+  & .task-work-details-item > header > time {
     margin-left: auto;
     font-size: var(--interface-meta-font-size);
   }
 
-  & .task-work-details-item pre {
+  & .task-work-details-item > pre {
     margin: 0;
     overflow-x: auto;
     padding: 0.625rem;
@@ -141,45 +113,9 @@ caffold-task-work-details {
     overflow-wrap: anywhere;
   }
 
-  & .task-work-details-command-body {
-    display: grid;
-    gap: 0.4375rem;
-    padding: 0.625rem;
-  }
-
-  & .task-work-details-command-body > code,
-  & .task-work-details-command-body > span {
-    overflow-wrap: anywhere;
-    font-size: var(--code-font-size);
-    line-height: var(--code-line-height);
-  }
-
-  & .task-work-details-command-body > span {
-    color: var(--muted);
-  }
-
-  & .task-work-details-command-body > pre {
-    max-width: 100%;
-    overflow-x: auto;
-    overscroll-behavior-inline: contain;
-    padding: 0.5625rem 0.625rem;
-    border: 1px solid var(--border-subtle);
-    border-radius: 6px;
-    background: var(--code-bg);
-    white-space: pre;
-    overflow-wrap: normal;
-  }
-
-  & .task-work-details-command[data-command-status="failed"],
   & .task-work-details-item[data-tool-tone="danger"] {
     border-color: var(--danger-faint-border);
     background: var(--danger-faint);
-  }
-
-  & .task-work-details-command[data-command-status="running"],
-  & .task-work-details-command[data-command-status="waiting_for_approval"] {
-    border-color: var(--warning-border);
-    background: var(--warning-subtle);
   }
 
 }

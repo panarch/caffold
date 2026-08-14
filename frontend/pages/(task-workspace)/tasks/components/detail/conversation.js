@@ -8,7 +8,7 @@ import {
 import { isTaskTransportStale } from "../../runtime-state.js";
 import { requestTaskImagePreview } from "../image-preview-dialog.js";
 import "./conversation/components/changed-files.js";
-import "./conversation/command-summary.js";
+import "./conversation/components/command.js";
 import "./conversation/markdown.js";
 import "./conversation/work-details.js";
 import { renderConversation } from "./conversation/render.js";
@@ -28,8 +28,12 @@ class CaffoldTaskConversation extends HTMLElement {
       this.boundWorkDetailsDisclosureIntent,
     );
     this.addEventListener(
-      "caffold:task-command-summary-intent",
-      this.boundCommandSummaryIntent,
+      "caffold:task-command-intent",
+      this.boundCommandIntent,
+    );
+    this.addEventListener(
+      "caffold:task-command-disclosure-intent",
+      this.boundCommandDisclosureIntent,
     );
     this.render();
   }
@@ -50,8 +54,12 @@ class CaffoldTaskConversation extends HTMLElement {
       this.boundWorkDetailsDisclosureIntent,
     );
     this.removeEventListener(
-      "caffold:task-command-summary-intent",
-      this.boundCommandSummaryIntent,
+      "caffold:task-command-intent",
+      this.boundCommandIntent,
+    );
+    this.removeEventListener(
+      "caffold:task-command-disclosure-intent",
+      this.boundCommandDisclosureIntent,
     );
     this.disconnectResizeObserver();
     this.stopActiveTurnClock();
@@ -91,8 +99,9 @@ class CaffoldTaskConversation extends HTMLElement {
       this.handleMarkdownRendered(event);
     this.boundWorkDetailsDisclosureIntent = (event) =>
       this.handleWorkDetailsDisclosureIntent(event);
-    this.boundCommandSummaryIntent = (event) =>
-      this.handleCommandSummaryIntent(event);
+    this.boundCommandIntent = (event) => this.handleCommandIntent(event);
+    this.boundCommandDisclosureIntent = (event) =>
+      this.handleCommandDisclosureIntent(event);
   }
 
   setSnapshot(snapshot = {}) {
@@ -253,6 +262,7 @@ class CaffoldTaskConversation extends HTMLElement {
       view.html,
       view.workDetails,
       view.changedFiles,
+      view.commands,
     );
     const threadId = this.snapshot.threadId;
     const hasPendingMarkdown = this.hasPendingMarkdownRender();
@@ -376,11 +386,11 @@ class CaffoldTaskConversation extends HTMLElement {
     }
   }
 
-  handleCommandSummaryIntent(event) {
+  handleCommandIntent(event) {
     const owner = event.target;
     if (
       !(owner instanceof HTMLElement) ||
-      owner.localName !== "caffold-task-command-summary" ||
+      owner.localName !== "caffold-task-command" ||
       !this.contains(owner)
     ) {
       return;
@@ -398,6 +408,27 @@ class CaffoldTaskConversation extends HTMLElement {
     if (command) {
       this.dispatchIntent("command-output", { command, commandKey });
     }
+  }
+
+  handleCommandDisclosureIntent(event) {
+    const owner = event.target;
+    if (
+      !(owner instanceof HTMLElement) ||
+      owner.localName !== "caffold-task-command" ||
+      !this.contains(owner)
+    ) {
+      return;
+    }
+    event.stopPropagation();
+    const commandKey = `${event.detail?.commandKey ?? ""}`;
+    if (!commandKey) {
+      return;
+    }
+    this.captureCommandAnchor(
+      owner,
+      commandKey,
+      Boolean(event.detail?.open),
+    );
   }
 
   handleWorkDetailsDisclosureIntent(event) {
@@ -424,7 +455,7 @@ class CaffoldTaskConversation extends HTMLElement {
   }
 
   focusCommandOutputAction(commandKey) {
-    const owner = [...this.querySelectorAll("caffold-task-command-summary")].find(
+    const owner = [...this.querySelectorAll("caffold-task-command")].find(
       (entry) => entry.commandKey === commandKey,
     );
     return owner?.focusAction() ?? false;
@@ -619,6 +650,36 @@ class CaffoldTaskConversation extends HTMLElement {
     });
   }
 
+  captureCommandAnchor(owner, commandKey, open) {
+    const scroller = this.scroller();
+    const threadId = this.snapshot.threadId;
+    const anchorTop = owner.disclosureAnchorTop();
+    if (
+      !scroller ||
+      !threadId ||
+      !scroller.contains(owner) ||
+      !Number.isFinite(anchorTop)
+    ) {
+      return;
+    }
+    const offset = anchorTop - scroller.getBoundingClientRect().top;
+    this.pendingDisclosureAnchorByThread.set(threadId, {
+      owner: "command",
+      commandKey,
+      open,
+      offset,
+    });
+    window.requestAnimationFrame(() => {
+      const currentScroller = this.scroller();
+      if (
+        this.snapshot.threadId === threadId &&
+        this.restorePendingDisclosureAnchor(currentScroller, threadId)
+      ) {
+        this.rememberScroll(threadId);
+      }
+    });
+  }
+
   restorePendingDisclosureAnchor(scroller, threadId) {
     const pending = this.pendingDisclosureAnchorByThread.get(threadId);
     if (!scroller || !pending) {
@@ -636,6 +697,16 @@ class CaffoldTaskConversation extends HTMLElement {
       }
       currentOpen = owner.disclosureOpen(pending.key);
       currentTop = owner.disclosureAnchorTop(pending.key);
+    } else if (pending.owner === "command") {
+      const owner = [...scroller.querySelectorAll("caffold-task-command")].find(
+        (entry) => entry.commandKey === pending.commandKey,
+      );
+      if (!owner) {
+        this.pendingDisclosureAnchorByThread.delete(threadId);
+        return false;
+      }
+      currentOpen = owner.disclosureOpen();
+      currentTop = owner.disclosureAnchorTop();
     } else {
       const disclosure = [
         ...scroller.querySelectorAll("details[data-disclosure-key]"),
@@ -809,6 +880,7 @@ function reconcileConversationList(
   html,
   workDetails,
   changedFiles = new Map(),
+  commands = new Map(),
 ) {
   if (!list) {
     return;
@@ -839,6 +911,13 @@ function reconcileConversationList(
       )
       .map((entry) => [entry.dataset.conversationEntryKey, entry]),
   );
+  const existingCommandEntries = new Map(
+    [...list.children]
+      .filter((entry) =>
+        entry.matches(".task-command[data-conversation-entry-key]"),
+      )
+      .map((entry) => [entry.dataset.conversationEntryKey, entry]),
+  );
   const existingActiveTurn = list.querySelector(
     ":scope > .task-turn-active[data-conversation-entry-key]",
   );
@@ -861,6 +940,15 @@ function reconcileConversationList(
       patchActiveTurnEntry(existingActiveTurn, entry)
     ) {
       return existingActiveTurn;
+    }
+    const commandSnapshot = commands.get(key);
+    const existingCommand = existingCommandEntries.get(key);
+    if (
+      commandSnapshot &&
+      existingCommand &&
+      patchCommandEntry(existingCommand, entry)
+    ) {
+      return existingCommand;
     }
     const changedFileSnapshot = changedFiles.get(key);
     const existingFileChange = existingFileChangeEntries.get(key);
@@ -899,7 +987,26 @@ function reconcileConversationList(
     if (changedFileOwner && changedFileSnapshot) {
       changedFileOwner.setSnapshot(changedFileSnapshot);
     }
+    const commandSnapshot = commands.get(key);
+    const commandOwner = entry.querySelector(":scope > caffold-task-command");
+    if (commandOwner && commandSnapshot) {
+      commandOwner.setSnapshot(commandSnapshot);
+    }
   }
+}
+
+function patchCommandEntry(current, desired) {
+  const owner = current.querySelector(":scope > caffold-task-command");
+  if (!owner) {
+    return false;
+  }
+  syncElementAttributes(current, desired, [
+    "class",
+    "data-event-id",
+    "data-conversation-entry-key",
+    "data-event-type",
+  ]);
+  return true;
 }
 
 function patchFileChangeEntry(current, desired) {

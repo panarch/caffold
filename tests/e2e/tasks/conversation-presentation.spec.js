@@ -589,10 +589,10 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     "Run focused tests",
   );
   const completedCommand = tasksPage.locator(
-    '.task-work-details-item[data-event-type="command_execution"][data-command-status="completed"]',
+    '.task-work-details-item[data-event-type="command_execution"]:has(> caffold-task-command[data-command-status="completed"])',
   );
   const completedCommandRow = completedCommand.locator(
-    "caffold-task-command-summary",
+    "caffold-task-command",
   );
   const completedCommandAction = completedCommandRow.getByRole("button", {
     name: "View output",
@@ -720,10 +720,10 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   });
 
   const failedCommand = tasksPage.locator(
-    '.task-work-details-item[data-event-type="command_execution"][data-command-status="failed"]',
+    '.task-work-details-item[data-event-type="command_execution"]:has(> caffold-task-command[data-command-status="failed"])',
   );
   const failedCommandRow = failedCommand.locator(
-    "caffold-task-command-summary",
+    "caffold-task-command",
   );
   const failedCommandAction = failedCommandRow.getByRole("button", {
     name: "View output",
