@@ -22,10 +22,6 @@ explicitly introduces a mutation.
 - Trace every external state writer during backend extraction. Routes, caches,
   databases, file watchers, and optimistic events must not become alternate
   writers for externally owned lifecycle state.
-- Move regression tests and owner-specific fixtures with the production owner.
-  Shared test support is only for fixtures used by more than one real owner;
-  do not widen production visibility solely to let a test reach private
-  implementation.
 - Keep path handling rooted and canonicalized.
 - Do not allow path escape through symlinks or traversal.
 - Return clear JSON errors for unsupported files and operations.
@@ -43,19 +39,22 @@ coverage in one place.
 - Put tests for private functions, schemas, queries, conversions, and error
   paths in an inline `#[cfg(test)] mod tests` in the implementation file that
   owns that behavior.
-- Reserve separate test modules and top-level `tests/` files for real module,
-  HTTP, process, storage-backend, or application boundaries. A large test is
-  not an integration test merely because it was moved out of its owner file.
-- Do not build a parallel `tests.rs` or `tests/` hierarchy that mirrors private
-  implementation modules. When a separate test module contains owner-private
-  coverage, classify each test by the behavior it protects and move those tests
-  with that behavior.
-- Shared test support is for setup or fixtures used by more than one real
-  owner. Assertions and behavior-specific helpers remain with the owner so the
-  contract stays visible.
-- Redistribute tests incrementally with the production area being changed.
-  Keep each step reviewable and behavior-preserving rather than attempting a
-  repository-wide test move.
+- Do not use file-backed unit-test modules: no `#[cfg(test)] mod tests;`
+  declarations, `src/**/tests.rs` files, or `src/**/tests/` hierarchies.
+- If an inline test module makes its production file expose unrelated
+  responsibilities, split the production implementation into coherent owners
+  before colocating their tests. Do not use an external unit-test hierarchy to
+  hide an oversized production owner.
+- Do not widen a production API solely for test access.
+
+If Rust integration tests are introduced, place them under the repository-level
+`tests/` directory only when they exercise a real public crate, HTTP, process,
+storage-backend, restart, or application boundary. Keep each behavior scenario
+and its assertions visible in the owning test crate so the public contract reads
+as executable documentation. Shared support may provide reusable setup,
+fixtures, or transport helpers, but must not own behavior or assertions. Size,
+asynchronous execution, or helper count alone does not make a test an
+integration test.
 
 Coverage is review evidence, not an ownership model or a reason to obscure a
 test.
@@ -120,50 +119,6 @@ preservation, wrong-version rollback, migration-history, and supported
 start-version coverage. Replacement migrations must also prove that
 intermediate and final-validation failures preserve the original database and
 remove staged state.
-
-### Current Adoption
-
-Backend test ownership is only partially aligned with this policy. Only the
-areas listed as completed below should be treated as reference implementations;
-all other backend areas remain partially aligned or unclassified.
-
-Completed reference area:
-
-- `task_store` follows the owner-aligned structure described by this policy.
-- Physical table behavior lives in `managed_section.rs`, `managed_thread.rs`,
-  `managed_worktree.rs`, `push_installation.rs`, `push_vapid_key.rs`, and
-  `schema_migration.rs`; immutable version snapshots live under
-  `task_store/migration/schema`, while migration orchestration and each version
-  transition live with their inline unit tests in their respective files.
-- `task_store.rs` owns backend opening, locking, scoped access, transaction
-  boundaries, and thin table facades instead of owning feature projections,
-  cross-table workflows, or the table and migration test suites centrally.
-
-Known incomplete areas:
-
-- `src/app/tasks/tests.rs`, `src/app/tasks/tests/`, and
-  `src/app/tasks/routes/tests.rs` contain a mixture of owner-private tests,
-  route-boundary tests, and shared setup. Some production owners also have
-  inline tests, but that does not complete the surrounding Tasks migration.
-  Changes in those areas must classify the affected tests; private detail,
-  projection, runtime, sync, and route behavior belongs with the owning
-  implementation file, while genuine multi-module or HTTP contracts may remain
-  separate.
-- The external unit-test modules under `src/app/tests.rs`, `src/app/tests/`,
-  `src/app/shell/tests.rs`, `src/app/workspace/tests.rs`, and
-  `src/codex_thread_sessions/tests.rs` contain owner-private coverage outside
-  the owning implementation files. These areas have not been fully classified
-  or redistributed, and their location is not precedent for new owner-private
-  tests.
-- The repository has no canonical production-only coverage command or global
-  coverage threshold in CI. Establish a repeatable command and exclusions
-  before deciding whether a numerical gate is useful.
-
-For each incremental conversion, leave the touched owner in a complete state:
-production code, inline unit tests, true boundary tests, shared support,
-coverage evidence, and obsolete test wiring should move or be removed in the
-same change. High coverage in the touched files does not establish ownership
-alignment for the surrounding area or move it into the completed list above.
 
 ## Backend Verification
 
