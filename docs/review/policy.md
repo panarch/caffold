@@ -19,6 +19,21 @@ Review changes in this order:
 4. Prefer narrow, observable changes over broad rewrites.
 5. Verify behavior in the browser, not only in code.
 
+## Readable Source Flow
+
+Treat each source file as a document that should explain itself from top to
+bottom. Present the file's intent and primary behavior before the implementation
+details required to carry it out. When a language can resolve a declaration
+regardless of its position, present the main flow first and define its supporting
+details afterward. Do not place lower-level helpers before the flow that calls
+them merely to follow a definition-before-use style.
+
+This is a reading-order rule, not a requirement to group every public
+declaration before every private one or to split code into more modules. Keep
+each related flow coherent, ordered from purpose to orchestration to detail. Do
+not reorder declarations when source order is itself semantic, such as
+initialization, migration steps, or the CSS cascade.
+
 ## Review Workflow
 
 Caffold exists to make review-heavy agent work practical from a browser. A
