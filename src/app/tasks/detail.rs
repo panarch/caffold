@@ -322,11 +322,11 @@ impl DetailContext {
                                         .await
                                         .map(|snapshot| snapshot.revision)
                                         .unwrap_or_default();
-                                    let resolved_file_links = match file_link_task_root.as_deref() {
+                                    let (event, resolved_file_links) = match file_link_task_root.as_deref() {
                                         Some(task_root) => file_link_resolver
-                                            .resolve_event(task_root, &event)
+                                            .project_event(task_root, &event)
                                             .await,
-                                        None => Vec::new(),
+                                        None => (event, Vec::new()),
                                     };
                                     let payload = serde_json::to_string(
                                         &TaskEventEnvelope {
@@ -512,7 +512,8 @@ impl DetailContext {
                     .last_seen_activity_ms
                     .is_none_or(|seen_ms| seen_ms < completed_ms)
             });
-            let file_links = self.file_links.resolve_task(&task, &events).await;
+            let (projected_events, file_links) = self.file_links.project_task(&task, &events).await;
+            events = projected_events;
             let model = session_model.or(current.model);
             let reasoning_effort = session_reasoning_effort.or(current.reasoning_effort);
             return Ok(TaskDetailResponse {

@@ -16,11 +16,45 @@ test("opens resolved Markdown file links through Task Review with native link se
   page,
 }, testInfo) => {
   const absoluteTarget = "/Users/taehoon/Workspace/rust/codger/src/planner.rs:60";
+  const localLinks = [
+    resolvedLink("Planner line", absoluteTarget, "planner.rs", 60),
+    resolvedLink("Planner duplicate", absoluteTarget, "planner.rs", 60),
+    resolvedLink(
+      "Screenshot path",
+      "/Users/taehoon/Library/Application Support/Caffold/data/worktrees/example/docs/review/policy.md:22",
+      "planner.rs",
+      22,
+    ),
+    resolvedLink("Column", "src/planner.rs:60:5", "planner.rs", 60),
+    resolvedLink("Range", "src/planner.rs:60-70", "planner.rs", 60),
+    resolvedLink("Hash range", "src/planner.rs#L60-L70", "planner.rs", 60),
+    resolvedLink(
+      "File URL",
+      "file:///Users/taehoon/Workspace/rust/codger/src/planner.rs#L60",
+      "planner.rs",
+      60,
+    ),
+    resolvedLink("Encoded space", "src/space%20name.rs#L60", "space name.rs", 60),
+    resolvedLink(
+      "Parentheses Unicode",
+      "src/괄호 (초안).rs#L60",
+      "괄호 (초안).rs",
+      60,
+    ),
+    resolvedLink("Literal hash filename", "notes#L12", "notes#L12"),
+    resolvedLink("Outside Task", "../README.md", "../README.md"),
+    resolvedLink("Deleted after render", "delta.rs", "delta.rs"),
+    rejectedLink(
+      "Malformed location",
+      "bad.rs:0",
+      "unsupported_or_malformed_location",
+    ),
+    rejectedLink("Missing file", "missing.rs", "not_found"),
+    rejectedLink("Directory target", "directory", "not_regular_readable_file"),
+    rejectedLink("Outside root", "../../secret.txt", "outside_root"),
+  ];
   const completedAssistantResponse = [
-    `[Planner line](${absoluteTarget})`,
-    "[Outside Task](../README.md)",
-    "[Deleted after render](delta.rs)",
-    "[Missing file](missing.rs)",
+    ...localLinks.map((link) => projectedLinkMarkdown(link)),
     "[External](https://example.com/docs)",
     "[Mail](mailto:reviewer@example.com)",
     "[Section](#review-ready)",
@@ -33,32 +67,12 @@ test("opens resolved Markdown file links through Task Review with native link se
       resolverRequests.push(request.url());
     }
   });
-  const resolvedFileLinks = ["item-10", "event_11_duplicate"].flatMap(
-    (eventId) => [
-      {
-        eventId,
-        target: absoluteTarget,
-        path: "src/planner.rs",
-        taskRelativePath: "planner.rs",
-        line: 60,
-      },
-      {
-        eventId,
-        target: "../README.md",
-        path: "README.md",
-        taskRelativePath: "../README.md",
-      },
-      {
-        eventId,
-        target: "delta.rs",
-        path: "src/delta.rs",
-        taskRelativePath: "delta.rs",
-      },
-    ],
+  const fileLinks = ["item-10", "event_11_duplicate"].flatMap((eventId) =>
+    projectedFileLinks(eventId, localLinks),
   );
   const scenario = await installTaskLoopFixture(page, {
     completedAssistantResponse,
-    fileLinks: resolvedFileLinks,
+    fileLinks,
     threadId: "thread_local_file_links",
   });
   let deleteResolvedFile = false;
@@ -93,11 +107,40 @@ test("opens resolved Markdown file links through Task Review with native link se
     `/tasks/${scenario.threadId}/review?nav=files&view=source&file=planner.rs&line=60`,
   );
   await expect(planner).not.toHaveAttribute("target", /.+/);
+  for (const { label, line } of localLinks.filter(
+    (link) => link.status === "resolved" && link.taskRelativePath === "planner.rs",
+  )) {
+    await expect(markdown.getByRole("link", { name: label, exact: true })).toHaveAttribute(
+      "href",
+      `/tasks/${scenario.threadId}/review?nav=files&view=source&file=planner.rs${line ? `&line=${line}` : ""}`,
+    );
+  }
   await expect(outside).toHaveAttribute(
     "href",
     `/tasks/${scenario.threadId}/review?nav=files&view=source&file=..%2FREADME.md`,
   );
-  await expect(markdown.getByRole("link", { name: "Missing file" })).toHaveCount(0);
+  await expect(
+    markdown.getByRole("link", { name: "Literal hash filename" }),
+  ).toHaveAttribute(
+    "href",
+    `/tasks/${scenario.threadId}/review?nav=files&view=source&file=notes%23L12`,
+  );
+  await expect(markdown.getByRole("link", { name: "Encoded space" })).toHaveAttribute(
+    "href",
+    reviewRoute(scenario.threadId, "space name.rs", 60),
+  );
+  await expect(
+    markdown.getByRole("link", { name: "Parentheses Unicode" }),
+  ).toHaveAttribute(
+    "href",
+    reviewRoute(scenario.threadId, "괄호 (초안).rs", 60),
+  );
+  for (const { label } of localLinks.filter(
+    (link) => link.status === "rejected",
+  )) {
+    await expect(markdown.getByRole("link", { name: label, exact: true })).toHaveCount(0);
+    await expect(markdown).toContainText(label);
+  }
   await expect(markdown.getByRole("link", { name: "External" })).toHaveAttribute(
     "target",
     "_blank",
@@ -129,7 +172,10 @@ test("opens resolved Markdown file links through Task Review with native link se
   await expect(markdown).toHaveAttribute("data-render-state", "markdown");
   await expect(markdown.locator(".markdown-fallback")).toHaveCount(0);
 
-  await page.evaluate((threadId) => {
+  const liveLink = resolvedLink("Live file", "live.rs:9", "live.rs", 9);
+  const liveFileLinks = projectedFileLinks("event_live_file_link", [liveLink]);
+  const liveMarkdownSource = projectedLinkMarkdown(liveLink);
+  await page.evaluate(({ threadId, liveFileLinks, liveMarkdownSource }) => {
     const source = window.__caffoldMockEventSources.find((candidate) =>
       candidate.url.includes(`/api/tasks/${threadId}/stream`),
     );
@@ -143,21 +189,13 @@ test("opens resolved Markdown file links through Task Review with native link se
         summary: "Live assistant response",
         payload: {
           phase: "final",
-          text: "[Live file](live.rs:9)",
+          text: liveMarkdownSource,
         },
         createdMs: Date.now(),
       },
-      fileLinks: [
-        {
-          eventId: "event_live_file_link",
-          target: "live.rs:9",
-          path: "src/live.rs",
-          taskRelativePath: "live.rs",
-          line: 9,
-        },
-      ],
+      fileLinks: liveFileLinks,
     });
-  }, scenario.threadId);
+  }, { threadId: scenario.threadId, liveFileLinks, liveMarkdownSource });
   await expect(markdown).toHaveAttribute("data-reconnect-probe", "preserved");
   const liveMarkdown = page.locator(
     '.task-message[data-message-role="assistant"] caffold-task-markdown',
@@ -224,6 +262,64 @@ test("opens resolved Markdown file links through Task Review with native link se
     "The selected file is no longer available.",
   );
 });
+
+function resolvedLink(label, target, taskRelativePath, line = null) {
+  return {
+    label,
+    authoredTarget: target,
+    target: canonicalTarget(taskRelativePath, line),
+    status: "resolved",
+    path: `src/${taskRelativePath}`,
+    taskRelativePath,
+    ...(line ? { line } : {}),
+  };
+}
+
+function rejectedLink(label, target, reason) {
+  return { label, target, status: "rejected", reason };
+}
+
+function projectedLinkMarkdown(link) {
+  return link.status === "resolved"
+    ? `[${link.label}](${link.target})`
+    : link.label;
+}
+
+function projectedFileLinks(eventId, links) {
+  return links.map((link, linkId) => ({
+      eventId,
+      linkId,
+      target: link.target,
+      status: link.status,
+      ...(link.status === "resolved"
+        ? {
+            path: link.path,
+            taskRelativePath: link.taskRelativePath,
+            ...(link.line ? { line: link.line } : {}),
+          }
+        : { reason: link.reason }),
+    }));
+}
+
+function canonicalTarget(path, line) {
+  const encodedPath = path
+    .split("/")
+    .map((segment) =>
+      encodeURIComponent(segment).replace(/[!'()*]/g, (character) =>
+        `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+      ),
+    )
+    .join("/");
+  return `${encodedPath}${line ? `#L${line}` : ""}`;
+}
+
+function reviewRoute(threadId, path, line = null) {
+  const query = new URLSearchParams({ nav: "files", view: "source", file: path });
+  if (line) {
+    query.set("line", `${line}`);
+  }
+  return `/tasks/${threadId}/review?${query}`;
+}
 
 function sourceLineIsVisible(viewer, line) {
   const scroller = viewer.querySelector(".code-lines");

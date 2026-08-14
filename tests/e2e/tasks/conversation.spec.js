@@ -217,6 +217,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
     { length: 28 },
     (_, index) => `Older prompt line ${index + 1} keeps the prepended page tall.`,
   ).join("\n");
+  const olderFileLinkSource = "[Older source](older.rs#L7)";
   let releaseOlderImage;
   const olderImageGate = new Promise((resolve) => {
     releaseOlderImage = resolve;
@@ -227,7 +228,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
       "user_message",
       "User prompt",
       {
-        text: olderPrompt,
+        text: `${olderFileLinkSource}\n\n${olderPrompt}`,
         content: [{ type: "localImage", path: "/tmp/older-image.png" }],
       },
       1,
@@ -286,6 +287,19 @@ test("keeps the visible conversation anchor while loading older events by cursor
         revision: cursor === "ancient_cursor" ? 4 : cursor === "older_cursor" ? 3 : 1,
         task,
         events,
+        fileLinks: cursor === "older_cursor"
+          ? [
+              {
+                eventId: "event_older",
+                linkId: 0,
+                target: "older.rs#L7",
+                status: "resolved",
+                path: "src/older.rs",
+                taskRelativePath: "older.rs",
+                line: 7,
+              },
+            ]
+          : [],
         eventsPage: { nextCursor },
         pendingApprovals: [],
       }),
@@ -367,6 +381,14 @@ test("keeps the visible conversation anchor while loading older events by cursor
       '.task-event[data-event-id="event_older"] caffold-task-markdown',
     ),
   ).toHaveAttribute("data-render-state", "markdown");
+  await expect(
+    tasksPage
+      .locator('.task-event[data-event-id="event_older"] caffold-task-markdown')
+      .getByRole("link", { name: "Older source" }),
+  ).toHaveAttribute(
+    "href",
+    `/tasks/${threadId}/review?nav=files&view=source&file=older.rs&line=7`,
+  );
   await expect
     .poll(async () => {
       const currentOffset = await tasksPage

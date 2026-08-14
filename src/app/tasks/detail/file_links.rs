@@ -1,16 +1,20 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
-use percent_encoding::percent_decode_str;
-use pulldown_cmark::{Event, Options, Parser, Tag};
 use serde::Serialize;
 
 use super::super::{TaskEventRecord, TaskRecord};
 use crate::fs::RootedFs;
+
+mod location;
+mod occurrences;
+
+use location::{FileLocation, FileLocationFailure, LocationFallback, parse_file_location};
+use occurrences::{LinkOccurrence, collect_link_occurrences};
 
 const MAX_FILE_LINK_TARGET_BYTES: usize = 4096;
 const MAX_FILE_LINKS_PER_RESPONSE: usize = 256;
@@ -26,11 +30,35 @@ pub(super) struct TaskFileLinkResolver {
 #[serde(rename_all = "camelCase")]
 pub(in crate::app) struct TaskFileLink {
     pub(in crate::app) event_id: String,
+    pub(in crate::app) link_id: usize,
     pub(in crate::app) target: String,
-    pub(in crate::app) path: String,
-    pub(in crate::app) task_relative_path: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(in crate::app) line: Option<u32>,
+    #[serde(flatten)]
+    pub(in crate::app) outcome: TaskFileLinkOutcome,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub(in crate::app) enum TaskFileLinkOutcome {
+    Resolved {
+        path: String,
+        #[serde(rename = "taskRelativePath")]
+        task_relative_path: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        line: Option<u32>,
+    },
+    Rejected {
+        reason: TaskFileLinkRejection,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(in crate::app) enum TaskFileLinkRejection {
+    UnsupportedOrMalformedLocation,
+    NotFound,
+    NotRegularReadableFile,
+    OutsideRoot,
+    Truncated,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -49,13 +77,40 @@ struct ResolvedTarget {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct EventLinkTarget {
     event_id: String,
+    link_id: usize,
     target: String,
+    field: Option<MarkdownField>,
+    source_range: std::ops::Range<usize>,
+    label: String,
+    recovered: bool,
+    truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProjectedCandidate {
+    candidate: EventLinkTarget,
+    outcome: TaskFileLinkOutcome,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MarkdownSource {
+    field: MarkdownField,
+    markdown: String,
+    source_offset: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum MarkdownField {
+    Text,
+    Prompt,
+    ContentText { nested: bool, index: usize },
+    ReasoningSummary(usize),
+    ReasoningContent(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ResolveFileLinkFailure {
     InvalidTarget,
-    InvalidLine,
     NotFound,
     Directory,
     NotFile,
@@ -71,56 +126,78 @@ impl TaskFileLinkResolver {
         }
     }
 
-    pub(super) async fn resolve_task(
+    pub(super) async fn project_task(
         &self,
         task: &TaskRecord,
         events: &[TaskEventRecord],
-    ) -> Vec<TaskFileLink> {
-        self.resolve(task_root(task), collect_event_link_targets(events))
-            .await
+    ) -> (Vec<TaskEventRecord>, Vec<TaskFileLink>) {
+        self.project(task_root(task), events).await
     }
 
-    pub(super) async fn resolve_event(
+    pub(super) async fn project_event(
         &self,
         task_root: &str,
         event: &TaskEventRecord,
-    ) -> Vec<TaskFileLink> {
-        self.resolve(
-            task_root.to_string(),
-            collect_event_link_targets(std::slice::from_ref(event)),
-        )
-        .await
+    ) -> (TaskEventRecord, Vec<TaskFileLink>) {
+        let (mut events, links) = self
+            .project(task_root.to_string(), std::slice::from_ref(event))
+            .await;
+        (events.pop().unwrap_or_else(|| event.clone()), links)
     }
 
-    async fn resolve(&self, task_root: String, targets: Vec<EventLinkTarget>) -> Vec<TaskFileLink> {
+    async fn project(
+        &self,
+        task_root: String,
+        events: &[TaskEventRecord],
+    ) -> (Vec<TaskEventRecord>, Vec<TaskFileLink>) {
+        let targets = collect_event_link_targets(events);
         if targets.is_empty() {
-            return Vec::new();
+            return (events.to_vec(), Vec::new());
         }
+        let fallback_targets = targets.clone();
         let resolver = self.clone();
-        tokio::task::spawn_blocking(move || resolver.resolve_blocking(&task_root, targets))
-            .await
-            .unwrap_or_default()
+        let projected =
+            tokio::task::spawn_blocking(move || resolver.resolve_blocking(&task_root, targets))
+                .await
+                .unwrap_or_else(|_| {
+                    fallback_targets
+                        .into_iter()
+                        .map(|candidate| ProjectedCandidate {
+                            candidate,
+                            outcome: TaskFileLinkOutcome::Rejected {
+                                reason: TaskFileLinkRejection::NotRegularReadableFile,
+                            },
+                        })
+                        .collect()
+                });
+        let projected_events = project_events(events, &projected);
+        let links = projected.iter().map(TaskFileLink::from).collect();
+        (projected_events, links)
     }
 
     fn resolve_blocking(
         &self,
         task_root: &str,
         targets: Vec<EventLinkTarget>,
-    ) -> Vec<TaskFileLink> {
-        let Some(root) = PreparedTaskRoot::new(self.fs.as_ref(), task_root) else {
-            return Vec::new();
-        };
+    ) -> Vec<ProjectedCandidate> {
+        let root = PreparedTaskRoot::new(self.fs.as_ref(), task_root);
         targets
             .into_iter()
-            .filter_map(|candidate| {
-                let resolved = self.resolve_cached(&root, &candidate.target).ok()?;
-                Some(TaskFileLink {
-                    event_id: candidate.event_id,
-                    target: candidate.target,
-                    path: resolved.path,
-                    task_relative_path: resolved.task_relative_path,
-                    line: resolved.line,
-                })
+            .map(|candidate| {
+                let outcome = if candidate.truncated {
+                    TaskFileLinkOutcome::Rejected {
+                        reason: TaskFileLinkRejection::Truncated,
+                    }
+                } else {
+                    root.as_ref()
+                        .map_err(|failure| *failure)
+                        .and_then(|root| {
+                            self.resolve_cached(root, &candidate.target, candidate.recovered)
+                        })
+                        .map(TaskFileLinkOutcome::from)
+                        .unwrap_or_else(TaskFileLinkOutcome::from)
+                };
+                ProjectedCandidate { candidate, outcome }
             })
             .collect()
     }
@@ -129,10 +206,11 @@ impl TaskFileLinkResolver {
         &self,
         root: &PreparedTaskRoot,
         target: &str,
+        recovered: bool,
     ) -> Result<ResolvedTarget, ResolveFileLinkFailure> {
         let key = CacheKey {
             task_root: root.logical.clone(),
-            target: target.to_string(),
+            target: format!("{}:{target}", u8::from(recovered)),
         };
         if let Some(resolved) = self
             .cache
@@ -143,7 +221,7 @@ impl TaskFileLinkResolver {
             return Ok(resolved);
         }
 
-        let resolved = resolve_target(self.fs.as_ref(), root, target)?;
+        let resolved = resolve_target_with_recovery(self.fs.as_ref(), root, target, recovered)?;
         if let Ok(mut cache) = self.cache.lock() {
             if cache.len() >= MAX_CACHED_FILE_LINKS {
                 cache.clear();
@@ -160,10 +238,14 @@ struct PreparedTaskRoot {
 }
 
 impl PreparedTaskRoot {
-    fn new(fs: &RootedFs, task_root: &str) -> Option<Self> {
-        let absolute = fs.absolute_directory_path(task_root).ok()?;
-        let logical = fs.logical_path_for_absolute(&absolute).ok()?;
-        Some(Self { logical, absolute })
+    fn new(fs: &RootedFs, task_root: &str) -> Result<Self, ResolveFileLinkFailure> {
+        let absolute = fs
+            .absolute_directory_path(task_root)
+            .map_err(resolve_fs_failure)?;
+        let logical = fs
+            .logical_path_for_absolute(&absolute)
+            .map_err(resolve_fs_failure)?;
+        Ok(Self { logical, absolute })
     }
 }
 
@@ -178,112 +260,339 @@ pub(super) fn task_root(task: &TaskRecord) -> String {
 }
 
 fn collect_event_link_targets(events: &[TaskEventRecord]) -> Vec<EventLinkTarget> {
-    let mut seen = HashSet::new();
     let mut targets = Vec::new();
     for event in events {
-        for markdown in event_markdown(event) {
-            let parser = Parser::new_ext(&markdown, Options::ENABLE_GFM);
-            for parsed in parser {
-                let Event::Start(Tag::Link { dest_url, .. }) = parsed else {
-                    continue;
-                };
-                let target = dest_url.into_string();
-                if target.len() > MAX_FILE_LINK_TARGET_BYTES
-                    || !is_local_file_candidate(&target)
-                    || !seen.insert((event.id.clone(), target.clone()))
-                {
-                    continue;
-                }
-                targets.push(EventLinkTarget {
-                    event_id: event.id.clone(),
-                    target,
-                });
+        let mut link_id = 0;
+        for source in event_markdown_sources(event) {
+            for occurrence in collect_link_occurrences(&source.markdown) {
                 if targets.len() >= MAX_FILE_LINKS_PER_RESPONSE {
+                    targets.push(truncated_target(event, link_id));
                     return targets;
                 }
+                targets.push(event_link_target(event, &source, link_id, occurrence));
+                link_id += 1;
             }
         }
     }
     targets
 }
 
-fn event_markdown(event: &TaskEventRecord) -> Vec<String> {
+fn event_link_target(
+    event: &TaskEventRecord,
+    source: &MarkdownSource,
+    link_id: usize,
+    mut occurrence: LinkOccurrence,
+) -> EventLinkTarget {
+    occurrence.source_range.start += source.source_offset;
+    occurrence.source_range.end += source.source_offset;
+    EventLinkTarget {
+        event_id: event.id.clone(),
+        link_id,
+        target: occurrence.target,
+        field: Some(source.field),
+        source_range: occurrence.source_range,
+        label: occurrence.label,
+        recovered: occurrence.recovered,
+        truncated: false,
+    }
+}
+
+fn truncated_target(event: &TaskEventRecord, link_id: usize) -> EventLinkTarget {
+    EventLinkTarget {
+        event_id: event.id.clone(),
+        link_id,
+        target: String::new(),
+        field: None,
+        source_range: 0..0,
+        label: String::new(),
+        recovered: false,
+        truncated: true,
+    }
+}
+
+fn event_markdown_sources(event: &TaskEventRecord) -> Vec<MarkdownSource> {
     let Some(payload) = event.payload.as_ref() else {
         return Vec::new();
     };
     match event.event_type.as_str() {
-        "assistant_message" => payload
-            .get("text")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_string)
+        "assistant_message" => markdown_string_source(payload, "text", MarkdownField::Text)
             .into_iter()
             .collect(),
         "reasoning" => {
-            let markdown = ["summary", "content"]
-                .into_iter()
-                .map(|key| string_values(payload.get(key)).join("\n\n"))
-                .filter(|value| !value.is_empty())
-                .collect::<Vec<_>>()
-                .join("\n\n");
-            (!markdown.is_empty())
-                .then_some(markdown)
-                .into_iter()
-                .collect()
+            let mut sources = reasoning_sources(payload, "summary", true);
+            sources.extend(reasoning_sources(payload, "content", false));
+            sources
         }
-        "user_message" => {
-            let payload_text = payload
-                .get("text")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default()
-                .trim();
-            let prompt = payload
-                .get("prompt")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default()
-                .trim();
-            let content = payload
-                .get("content")
-                .or_else(|| payload.get("item").and_then(|item| item.get("content")))
-                .and_then(serde_json::Value::as_array);
-            let item_text = content
-                .into_iter()
-                .flatten()
-                .filter_map(
-                    |item| match item.get("type").and_then(serde_json::Value::as_str) {
-                        Some("text" | "input_text") => {
-                            item.get("text").and_then(serde_json::Value::as_str)
-                        }
-                        _ => None,
-                    },
-                )
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .collect::<Vec<_>>()
-                .join("\n\n");
-            let markdown = if !payload_text.is_empty() {
-                payload_text.to_string()
-            } else if !prompt.is_empty() {
-                prompt.to_string()
-            } else {
-                item_text
-            };
-            (!markdown.is_empty())
-                .then_some(markdown)
-                .into_iter()
-                .collect()
-        }
+        "user_message" => user_message_sources(payload),
         _ => Vec::new(),
     }
 }
 
-fn string_values(value: Option<&serde_json::Value>) -> Vec<String> {
-    value
+fn markdown_string_source(
+    payload: &serde_json::Value,
+    key: &str,
+    field: MarkdownField,
+) -> Option<MarkdownSource> {
+    let markdown = payload.get(key)?.as_str()?;
+    (!markdown.trim().is_empty()).then(|| MarkdownSource {
+        field,
+        markdown: markdown.to_string(),
+        source_offset: 0,
+    })
+}
+
+fn reasoning_sources(payload: &serde_json::Value, key: &str, summary: bool) -> Vec<MarkdownSource> {
+    payload
+        .get(key)
         .and_then(serde_json::Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(serde_json::Value::as_str)
-        .map(str::to_string)
+        .enumerate()
+        .filter_map(|(index, value)| {
+            let value = value.as_str()?;
+            let markdown = value.trim();
+            let source_offset = value.find(markdown)?;
+            (!markdown.is_empty()).then(|| MarkdownSource {
+                field: if summary {
+                    MarkdownField::ReasoningSummary(index)
+                } else {
+                    MarkdownField::ReasoningContent(index)
+                },
+                markdown: markdown.to_string(),
+                source_offset,
+            })
+        })
         .collect()
+}
+
+fn user_message_sources(payload: &serde_json::Value) -> Vec<MarkdownSource> {
+    for (key, field) in [
+        ("text", MarkdownField::Text),
+        ("prompt", MarkdownField::Prompt),
+    ] {
+        let Some(value) = payload.get(key).and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        if value.trim().is_empty() {
+            continue;
+        }
+        let range = presented_user_range(payload, value);
+        return vec![MarkdownSource {
+            field,
+            markdown: value[range.clone()].to_string(),
+            source_offset: range.start,
+        }];
+    }
+
+    let (nested, content) =
+        if let Some(content) = payload.get("content").and_then(serde_json::Value::as_array) {
+            (false, content)
+        } else if let Some(content) = payload
+            .get("item")
+            .and_then(|item| item.get("content"))
+            .and_then(serde_json::Value::as_array)
+        {
+            (true, content)
+        } else {
+            return Vec::new();
+        };
+    content
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| {
+            matches!(
+                item.get("type").and_then(serde_json::Value::as_str),
+                Some("text" | "input_text")
+            )
+            .then_some(())?;
+            let value = item.get("text")?.as_str()?;
+            let range = trim_range(value);
+            (!range.is_empty()).then(|| MarkdownSource {
+                field: MarkdownField::ContentText { nested, index },
+                markdown: value[range.clone()].to_string(),
+                source_offset: range.start,
+            })
+        })
+        .collect()
+}
+
+fn presented_user_range(payload: &serde_json::Value, value: &str) -> std::ops::Range<usize> {
+    let mut range = trim_range(value);
+    let mut markdown = &value[range.clone()];
+    if [
+        "automatically supplied ambient UI state",
+        "<in-app-browser-context",
+        "# In app browser:",
+    ]
+    .iter()
+    .any(|marker| markdown.contains(marker))
+    {
+        for marker in ["## My request for Codex:", "My request for Codex:"] {
+            if let Some(marker_index) = markdown.rfind(marker) {
+                let request_start = range.start + marker_index + marker.len();
+                range = trim_range_within(value, request_start..range.end);
+                markdown = &value[range.clone()];
+                break;
+            }
+        }
+    }
+
+    let has_image = payload
+        .get("content")
+        .or_else(|| payload.get("item").and_then(|item| item.get("content")))
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|items| {
+            items.iter().any(|item| {
+                matches!(
+                    item.get("type").and_then(serde_json::Value::as_str),
+                    Some("image" | "localImage")
+                )
+            })
+        });
+    if has_image
+        && markdown.contains("# Files mentioned by the user:")
+        && markdown.contains("## My request for Codex:")
+        && let Some(marker_index) = markdown.find("## My request for Codex:")
+    {
+        let request_start = range.start + marker_index + "## My request for Codex:".len();
+        range = trim_range_within(value, request_start..range.end);
+    }
+    range
+}
+
+fn trim_range(value: &str) -> std::ops::Range<usize> {
+    trim_range_within(value, 0..value.len())
+}
+
+fn trim_range_within(value: &str, range: std::ops::Range<usize>) -> std::ops::Range<usize> {
+    let inner = &value[range.clone()];
+    let trimmed_start = inner.len() - inner.trim_start().len();
+    let trimmed_end = inner.trim_end().len();
+    range.start + trimmed_start..range.start + trimmed_end
+}
+
+fn project_events(
+    events: &[TaskEventRecord],
+    projected: &[ProjectedCandidate],
+) -> Vec<TaskEventRecord> {
+    events
+        .iter()
+        .cloned()
+        .map(|mut event| {
+            let mut patches = projected
+                .iter()
+                .filter(|projection| projection.candidate.event_id == event.id)
+                .filter_map(|projection| {
+                    Some((
+                        projection.candidate.field?,
+                        projection.candidate.source_range.clone(),
+                        projection.replacement_markdown(),
+                    ))
+                })
+                .collect::<Vec<_>>();
+            patches.sort_by(|left, right| {
+                left.0
+                    .cmp(&right.0)
+                    .then_with(|| right.1.start.cmp(&left.1.start))
+            });
+            for (field, range, replacement) in patches {
+                let Some(markdown) = markdown_field_mut(&mut event, field) else {
+                    continue;
+                };
+                if range.end <= markdown.len()
+                    && markdown.is_char_boundary(range.start)
+                    && markdown.is_char_boundary(range.end)
+                {
+                    markdown.replace_range(range, &replacement);
+                }
+            }
+            event
+        })
+        .collect()
+}
+
+fn markdown_field_mut(event: &mut TaskEventRecord, field: MarkdownField) -> Option<&mut String> {
+    let payload = event.payload.as_mut()?;
+    match field {
+        MarkdownField::Text => json_string_mut(payload.get_mut("text")?),
+        MarkdownField::Prompt => json_string_mut(payload.get_mut("prompt")?),
+        MarkdownField::ReasoningSummary(index) => {
+            json_string_mut(payload.get_mut("summary")?.as_array_mut()?.get_mut(index)?)
+        }
+        MarkdownField::ReasoningContent(index) => {
+            json_string_mut(payload.get_mut("content")?.as_array_mut()?.get_mut(index)?)
+        }
+        MarkdownField::ContentText { nested, index } => {
+            let content = if nested {
+                payload
+                    .get_mut("item")?
+                    .get_mut("content")?
+                    .as_array_mut()?
+            } else {
+                payload.get_mut("content")?.as_array_mut()?
+            };
+            json_string_mut(content.get_mut(index)?.get_mut("text")?)
+        }
+    }
+}
+
+fn json_string_mut(value: &mut serde_json::Value) -> Option<&mut String> {
+    match value {
+        serde_json::Value::String(value) => Some(value),
+        _ => None,
+    }
+}
+
+impl ProjectedCandidate {
+    fn projected_target(&self) -> String {
+        match &self.outcome {
+            TaskFileLinkOutcome::Resolved {
+                task_relative_path,
+                line,
+                ..
+            } => canonical_link_target(task_relative_path, *line),
+            TaskFileLinkOutcome::Rejected { .. } => self.candidate.target.clone(),
+        }
+    }
+
+    fn replacement_markdown(&self) -> String {
+        match self.outcome {
+            TaskFileLinkOutcome::Resolved { .. } => {
+                format!("[{}]({})", self.candidate.label, self.projected_target())
+            }
+            TaskFileLinkOutcome::Rejected { .. } => self.candidate.label.clone(),
+        }
+    }
+}
+
+impl From<&ProjectedCandidate> for TaskFileLink {
+    fn from(projected: &ProjectedCandidate) -> Self {
+        Self {
+            event_id: projected.candidate.event_id.clone(),
+            link_id: projected.candidate.link_id,
+            target: projected.projected_target(),
+            outcome: projected.outcome.clone(),
+        }
+    }
+}
+
+fn canonical_link_target(path: &str, line: Option<u32>) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut target = String::with_capacity(path.len() + 16);
+    for byte in path.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'/') {
+            target.push(char::from(byte));
+        } else {
+            target.push('%');
+            target.push(char::from(HEX[usize::from(byte >> 4)]));
+            target.push(char::from(HEX[usize::from(byte & 0x0f)]));
+        }
+    }
+    if let Some(line) = line {
+        target.push_str("#L");
+        target.push_str(&line.to_string());
+    }
+    target
 }
 
 fn is_local_file_candidate(value: &str) -> bool {
@@ -316,33 +625,52 @@ fn is_caffold_application_path(value: &str) -> bool {
         || path == "/service-worker.js"
 }
 
+#[cfg(test)]
 fn resolve_target(
     rooted_fs: &RootedFs,
     task_root: &PreparedTaskRoot,
     target: &str,
 ) -> Result<ResolvedTarget, ResolveFileLinkFailure> {
-    let trimmed = target.trim();
-    if trimmed.is_empty() || trimmed.contains('\0') {
-        return Err(ResolveFileLinkFailure::InvalidTarget);
-    }
-    let decoded = percent_decode_str(trimmed)
-        .decode_utf8()
-        .map_err(|_| ResolveFileLinkFailure::InvalidTarget)?;
-    if decoded.contains('\0') {
-        return Err(ResolveFileLinkFailure::InvalidTarget);
-    }
+    resolve_target_with_recovery(rooted_fs, task_root, target, false)
+}
 
-    match resolve_candidate(rooted_fs, &task_root.absolute, decoded.as_ref()) {
-        Ok(path) => Ok(resolved_target(&task_root.logical, path, None)),
-        Err(ResolveFileLinkFailure::NotFound) => {
-            let Some((path_target, line)) = trailing_line_reference(decoded.as_ref())? else {
-                return Err(ResolveFileLinkFailure::NotFound);
-            };
-            let path = resolve_candidate(rooted_fs, &task_root.absolute, path_target)?;
-            Ok(resolved_target(&task_root.logical, path, Some(line)))
+fn resolve_target_with_recovery(
+    rooted_fs: &RootedFs,
+    task_root: &PreparedTaskRoot,
+    target: &str,
+    recovered: bool,
+) -> Result<ResolvedTarget, ResolveFileLinkFailure> {
+    let plan = parse_file_location(target, recovered).map_err(|failure| match failure {
+        FileLocationFailure::InvalidTarget | FileLocationFailure::UnknownScheme => {
+            ResolveFileLinkFailure::InvalidTarget
         }
+    })?;
+    match resolve_location(rooted_fs, task_root, &plan.exact) {
+        Ok(resolved) => Ok(resolved),
+        Err(ResolveFileLinkFailure::NotFound) => match plan.fallback {
+            LocationFallback::None => Err(ResolveFileLinkFailure::NotFound),
+            LocationFallback::Malformed => Err(ResolveFileLinkFailure::InvalidTarget),
+            LocationFallback::Located(location) => {
+                resolve_location(rooted_fs, task_root, &location)
+            }
+        },
         Err(failure) => Err(failure),
     }
+}
+
+fn resolve_location(
+    rooted_fs: &RootedFs,
+    task_root: &PreparedTaskRoot,
+    location: &FileLocation,
+) -> Result<ResolvedTarget, ResolveFileLinkFailure> {
+    let path = resolve_candidate(rooted_fs, &task_root.absolute, &location.path)?;
+    Ok(resolved_target(
+        &task_root.logical,
+        path,
+        location
+            .coordinates
+            .map(|coordinates| coordinates.start_line),
+    ))
 }
 
 fn resolve_candidate(
@@ -369,24 +697,6 @@ fn resolve_candidate(
     }
     fs::File::open(canonical).map_err(resolve_io_failure)?;
     Ok(logical)
-}
-
-fn trailing_line_reference(target: &str) -> Result<Option<(&str, u32)>, ResolveFileLinkFailure> {
-    let Some((path, suffix)) = target.rsplit_once(':') else {
-        return Ok(None);
-    };
-    if suffix.is_empty() || !suffix.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Ok(None);
-    }
-    if path.is_empty() {
-        return Err(ResolveFileLinkFailure::InvalidTarget);
-    }
-    let line = suffix
-        .parse::<u32>()
-        .ok()
-        .filter(|line| *line > 0)
-        .ok_or(ResolveFileLinkFailure::InvalidLine)?;
-    Ok(Some((path, line)))
 }
 
 fn resolved_target(task_root: &str, path: String, line: Option<u32>) -> ResolvedTarget {
@@ -440,12 +750,39 @@ fn resolve_io_failure(error: std::io::Error) -> ResolveFileLinkFailure {
     }
 }
 
+impl From<ResolvedTarget> for TaskFileLinkOutcome {
+    fn from(resolved: ResolvedTarget) -> Self {
+        Self::Resolved {
+            path: resolved.path,
+            task_relative_path: resolved.task_relative_path,
+            line: resolved.line,
+        }
+    }
+}
+
+impl From<ResolveFileLinkFailure> for TaskFileLinkOutcome {
+    fn from(failure: ResolveFileLinkFailure) -> Self {
+        let reason = match failure {
+            ResolveFileLinkFailure::InvalidTarget => {
+                TaskFileLinkRejection::UnsupportedOrMalformedLocation
+            }
+            ResolveFileLinkFailure::NotFound => TaskFileLinkRejection::NotFound,
+            ResolveFileLinkFailure::Directory
+            | ResolveFileLinkFailure::NotFile
+            | ResolveFileLinkFailure::Unreadable => TaskFileLinkRejection::NotRegularReadableFile,
+            ResolveFileLinkFailure::OutsideRoot => TaskFileLinkRejection::OutsideRoot,
+        };
+        Self::Rejected { reason }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
 
     use serde_json::json;
     use tempfile::tempdir;
+    use url::Url;
 
     use super::*;
     use crate::{
@@ -473,12 +810,225 @@ mod tests {
             1,
         );
 
+        let markdown = event.payload.as_ref().unwrap()["text"].as_str().unwrap();
+        let targets = collect_event_link_targets(std::slice::from_ref(&event));
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].event_id, "thread:assistant");
+        assert_eq!(targets[0].link_id, 0);
+        assert_eq!(targets[0].target, "src/lib.rs:7");
         assert_eq!(
-            collect_event_link_targets(&[event]),
-            vec![EventLinkTarget {
-                event_id: "thread:assistant".to_string(),
-                target: "src/lib.rs:7".to_string(),
-            }]
+            &markdown[targets[0].source_range.clone()],
+            "[relative](src/lib.rs:7)"
+        );
+    }
+
+    #[test]
+    fn uses_the_same_presented_user_markdown_as_the_browser() {
+        let event = task_event_record(
+            "thread",
+            "user",
+            "user_message",
+            "User prompt",
+            Some(json!({
+                "text": concat!(
+                    "# Files mentioned by the user:\n\n",
+                    "## image.png: /tmp/image.png\n\n",
+                    "## My request for Codex:\n\n",
+                    "🙂 [policy](/tmp/My Project/policy.md:22)"
+                ),
+                "content": [{ "type": "localImage", "path": "/tmp/image.png" }]
+            })),
+            1,
+        );
+
+        let markdown = event.payload.as_ref().unwrap()["text"].as_str().unwrap();
+        let targets = collect_event_link_targets(std::slice::from_ref(&event));
+
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].target, "/tmp/My Project/policy.md:22");
+        assert_eq!(
+            &markdown[targets[0].source_range.clone()],
+            "[policy](/tmp/My Project/policy.md:22)"
+        );
+    }
+
+    #[tokio::test]
+    async fn normalizes_raw_space_links_in_the_server_projected_event() {
+        let root = tempdir().unwrap();
+        let task = root.path().join("Application Support/project");
+        let policy = task.join("docs/review/policy.md");
+        fs::create_dir_all(policy.parent().unwrap()).unwrap();
+        fs::write(&policy, "review policy").unwrap();
+        let resolver = TaskFileLinkResolver::new(Arc::new(RootedFs::new(root.path()).unwrap()));
+        let authored = format!("[docs/review/policy.md]({}:22)", policy.display());
+        let event = task_event_record(
+            "thread",
+            "assistant",
+            "assistant_message",
+            "Assistant response",
+            Some(json!({ "text": authored })),
+            1,
+        );
+
+        let (events, links) = resolver
+            .project(
+                "Application Support/project".to_string(),
+                std::slice::from_ref(&event),
+            )
+            .await;
+
+        assert_eq!(
+            events[0].payload.as_ref().unwrap()["text"],
+            "[docs/review/policy.md](docs/review/policy.md#L22)"
+        );
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].target, "docs/review/policy.md#L22");
+        assert_eq!(
+            links[0].outcome,
+            TaskFileLinkOutcome::Resolved {
+                path: "Application Support/project/docs/review/policy.md".to_string(),
+                task_relative_path: "docs/review/policy.md".to_string(),
+                line: Some(22),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn task_and_live_projection_normalize_each_rendered_payload_shape() {
+        let root = tempdir().unwrap();
+        let task = root.path().join("task");
+        fs::create_dir(&task).unwrap();
+        fs::write(task.join("owned.rs"), "source").unwrap();
+        let resolver = TaskFileLinkResolver::new(Arc::new(RootedFs::new(root.path()).unwrap()));
+        let events = vec![
+            task_event_record(
+                "thread",
+                "reasoning",
+                "reasoning",
+                "Thinking",
+                Some(json!({
+                    "summary": [" [summary](owned.rs:2) "],
+                    "content": ["[content](owned.rs#L3)"]
+                })),
+                1,
+            ),
+            task_event_record(
+                "thread",
+                "prompt",
+                "user_message",
+                "Prompt",
+                Some(json!({ "text": "", "prompt": "[prompt](owned.rs:4)" })),
+                2,
+            ),
+            task_event_record(
+                "thread",
+                "content",
+                "user_message",
+                "Content",
+                Some(json!({
+                    "content": [{ "type": "input_text", "text": "[item](owned.rs:5)" }]
+                })),
+                3,
+            ),
+            task_event_record(
+                "thread",
+                "nested",
+                "user_message",
+                "Nested content",
+                Some(json!({
+                    "item": {
+                        "content": [{ "type": "text", "text": "[nested](owned.rs:6)" }]
+                    }
+                })),
+                4,
+            ),
+        ];
+
+        let (projected, links) = resolver.project("task".to_string(), &events).await;
+
+        assert_eq!(links.len(), 5);
+        assert_eq!(
+            projected[0].payload.as_ref().unwrap()["summary"][0],
+            " [summary](owned.rs#L2) "
+        );
+        assert_eq!(
+            projected[0].payload.as_ref().unwrap()["content"][0],
+            "[content](owned.rs#L3)"
+        );
+        assert_eq!(
+            projected[1].payload.as_ref().unwrap()["prompt"],
+            "[prompt](owned.rs#L4)"
+        );
+        assert_eq!(
+            projected[2].payload.as_ref().unwrap()["content"][0]["text"],
+            "[item](owned.rs#L5)"
+        );
+        assert_eq!(
+            projected[3].payload.as_ref().unwrap()["item"]["content"][0]["text"],
+            "[nested](owned.rs#L6)"
+        );
+
+        let live = task_event_record(
+            "thread",
+            "live",
+            "assistant_message",
+            "Live",
+            Some(json!({ "text": "[live](owned.rs:7)" })),
+            5,
+        );
+        let (live, live_links) = resolver.project_event("task", &live).await;
+        assert_eq!(
+            live.payload.as_ref().unwrap()["text"],
+            "[live](owned.rs#L7)"
+        );
+        assert_eq!(live_links[0].target, "owned.rs#L7");
+
+        let untouched = task_event_record(
+            "thread",
+            "status",
+            "thread_status_changed",
+            "Status",
+            None,
+            6,
+        );
+        assert_eq!(
+            resolver.project_event("task", &untouched).await,
+            (untouched, Vec::new())
+        );
+    }
+
+    #[tokio::test]
+    async fn canonical_targets_distinguish_locations_from_location_like_filenames() {
+        let root = tempdir().unwrap();
+        let task = root.path().join("task");
+        fs::create_dir(&task).unwrap();
+        fs::write(task.join("space name (한글).rs"), "source").unwrap();
+        fs::write(task.join("notes#L12"), "literal hash").unwrap();
+        let resolver = TaskFileLinkResolver::new(Arc::new(RootedFs::new(root.path()).unwrap()));
+        let event = task_event_record(
+            "thread",
+            "assistant",
+            "assistant_message",
+            "Assistant response",
+            Some(json!({
+                "text": concat!(
+                    "[column](space%20name%20%28%ED%95%9C%EA%B8%80%29.rs:12:5) ",
+                    "[range](space%20name%20%28%ED%95%9C%EA%B8%80%29.rs#L12-L20) ",
+                    "[literal](notes%23L12)"
+                )
+            })),
+            1,
+        );
+
+        let (events, links) = resolver.project("task".to_string(), &[event]).await;
+
+        let canonical = "space%20name%20%28%ED%95%9C%EA%B8%80%29.rs#L12";
+        assert_eq!(links[0].target, canonical);
+        assert_eq!(links[1].target, canonical);
+        assert_eq!(links[2].target, "notes%23L12");
+        assert_eq!(
+            events[0].payload.as_ref().unwrap()["text"],
+            format!("[column]({canonical}) [range]({canonical}) [literal](notes%23L12)")
         );
     }
 
@@ -497,23 +1047,62 @@ mod tests {
             Some(json!({ "text": "[Owned](owned.rs:7) [Missing](missing.rs)" })),
             1,
         );
-        let targets = collect_event_link_targets(&[event]);
-
-        let first = resolver.resolve("task".to_string(), targets.clone()).await;
+        let (first_events, first) = resolver
+            .project("task".to_string(), std::slice::from_ref(&event))
+            .await;
         fs::remove_file(task.join("owned.rs")).unwrap();
-        let cached = resolver.resolve("task".to_string(), targets).await;
+        let (cached_events, cached) = resolver
+            .project("task".to_string(), std::slice::from_ref(&event))
+            .await;
 
         assert_eq!(first, cached);
+        assert_eq!(first_events, cached_events);
+        assert_eq!(
+            first_events[0].payload.as_ref().unwrap()["text"],
+            "[Owned](owned.rs#L7) Missing"
+        );
         assert_eq!(
             serde_json::to_value(first).unwrap(),
-            json!([{
-                "eventId": "thread:assistant",
-                "target": "owned.rs:7",
-                "path": "task/owned.rs",
-                "taskRelativePath": "owned.rs",
-                "line": 7
-            }])
+            json!([
+                {
+                    "eventId": "thread:assistant",
+                    "linkId": 0,
+                    "target": "owned.rs#L7",
+                    "status": "resolved",
+                    "path": "task/owned.rs",
+                    "taskRelativePath": "owned.rs",
+                    "line": 7
+                },
+                {
+                    "eventId": "thread:assistant",
+                    "linkId": 1,
+                    "target": "missing.rs",
+                    "status": "rejected",
+                    "reason": "not_found"
+                }
+            ])
         );
+    }
+
+    #[test]
+    fn reports_response_truncation_explicitly() {
+        let markdown = (0..=MAX_FILE_LINKS_PER_RESPONSE)
+            .map(|index| format!("[link {index}](file-{index}.rs)"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let event = task_event_record(
+            "thread",
+            "assistant",
+            "assistant_message",
+            "Assistant response",
+            Some(json!({ "text": markdown })),
+            1,
+        );
+
+        let targets = collect_event_link_targets(&[event]);
+
+        assert_eq!(targets.len(), MAX_FILE_LINKS_PER_RESPONSE + 1);
+        assert!(targets.last().is_some_and(|target| target.truncated));
     }
 
     #[tokio::test]
@@ -539,16 +1128,100 @@ mod tests {
 
         let (detail, _) = state.detail.cached("thread-owned-links").await.unwrap();
 
+        assert_eq!(detail.file_links.len(), 1);
         assert_eq!(
-            detail.file_links,
-            vec![TaskFileLink {
-                event_id: "thread-owned-links:assistant".to_string(),
-                target: "owned.rs:7".to_string(),
+            detail.file_links[0].event_id,
+            "thread-owned-links:assistant"
+        );
+        assert_eq!(detail.file_links[0].link_id, 0);
+        assert_eq!(detail.file_links[0].target, "owned.rs#L7");
+        assert_eq!(
+            detail.events[0].payload.as_ref().unwrap()["text"],
+            "[Owned](owned.rs#L7)"
+        );
+        assert_eq!(
+            detail.file_links[0].outcome,
+            TaskFileLinkOutcome::Resolved {
                 path: "task/owned.rs".to_string(),
                 task_relative_path: "owned.rs".to_string(),
                 line: Some(7),
-            }]
+            }
         );
+    }
+
+    #[tokio::test]
+    async fn projects_each_rejection_reason_instead_of_dropping_candidates() {
+        let outer = tempdir().unwrap();
+        let root = outer.path().join("browse");
+        let task = root.join("task");
+        fs::create_dir_all(task.join("directory")).unwrap();
+        fs::write(outer.path().join("secret.txt"), "secret").unwrap();
+        let resolver = TaskFileLinkResolver::new(Arc::new(RootedFs::new(&root).unwrap()));
+        let event = task_event_record(
+            "thread",
+            "assistant",
+            "assistant_message",
+            "Assistant response",
+            Some(json!({
+                "text": concat!(
+                    "[Malformed](missing.rs:0) ",
+                    "[Missing](missing.rs) ",
+                    "[Directory](directory) ",
+                    "[Outside](../../secret.txt) ",
+                    "[Scheme](vscode://file/tmp/a.rs:12)"
+                )
+            })),
+            1,
+        );
+
+        let (events, projected) = resolver.project("task".to_string(), &[event]).await;
+
+        assert_eq!(
+            events[0].payload.as_ref().unwrap()["text"],
+            "Malformed Missing Directory Outside Scheme"
+        );
+
+        assert_eq!(
+            projected
+                .into_iter()
+                .map(|link| match link.outcome {
+                    TaskFileLinkOutcome::Rejected { reason } => reason,
+                    TaskFileLinkOutcome::Resolved { .. } => panic!("unexpected resolution"),
+                })
+                .collect::<Vec<_>>(),
+            vec![
+                TaskFileLinkRejection::UnsupportedOrMalformedLocation,
+                TaskFileLinkRejection::NotFound,
+                TaskFileLinkRejection::NotRegularReadableFile,
+                TaskFileLinkRejection::OutsideRoot,
+                TaskFileLinkRejection::UnsupportedOrMalformedLocation,
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn unavailable_task_root_rejects_each_discovered_occurrence() {
+        let root = tempdir().unwrap();
+        let resolver = TaskFileLinkResolver::new(Arc::new(RootedFs::new(root.path()).unwrap()));
+        let event = task_event_record(
+            "thread",
+            "assistant",
+            "assistant_message",
+            "Assistant response",
+            Some(json!({ "text": "[One](one.rs) [Two](two.rs)" })),
+            1,
+        );
+
+        let (events, projected) = resolver.project("missing-task".to_string(), &[event]).await;
+
+        assert_eq!(projected.len(), 2);
+        assert_eq!(events[0].payload.as_ref().unwrap()["text"], "One Two");
+        assert!(projected.iter().all(|link| {
+            link.outcome
+                == TaskFileLinkOutcome::Rejected {
+                    reason: TaskFileLinkRejection::NotFound,
+                }
+        }));
     }
 
     #[test]
@@ -605,12 +1278,14 @@ mod tests {
     }
 
     #[test]
-    fn prefers_an_exact_colon_filename_before_parsing_a_line() {
+    fn prefers_exact_location_like_filenames_before_parsing_coordinates() {
         let root = tempdir().unwrap();
         let task = root.path().join("task");
         fs::create_dir(&task).unwrap();
         fs::write(task.join("report"), "plain").unwrap();
         fs::write(task.join("report:17"), "colon").unwrap();
+        fs::write(task.join("notes"), "plain").unwrap();
+        fs::write(task.join("notes#L12"), "hash").unwrap();
         fs::create_dir(task.join("blocked:17")).unwrap();
         let rooted_fs = RootedFs::new(root.path()).unwrap();
         let prepared = prepared(&rooted_fs, "task");
@@ -623,12 +1298,54 @@ mod tests {
             resolve_target(&rooted_fs, &prepared, "blocked:17"),
             Err(ResolveFileLinkFailure::Directory)
         );
+        assert_eq!(
+            resolve_target(&rooted_fs, &prepared, "notes#L12"),
+            Ok(resolved_target("task", "task/notes#L12".to_string(), None,))
+        );
 
         fs::remove_file(task.join("report:17")).unwrap();
         assert_eq!(
             resolve_target(&rooted_fs, &prepared, "report:17"),
             Ok(resolved_target("task", "task/report".to_string(), Some(17),))
         );
+        fs::remove_file(task.join("notes#L12")).unwrap();
+        assert_eq!(
+            resolve_target(&rooted_fs, &prepared, "notes#L12"),
+            Ok(resolved_target("task", "task/notes".to_string(), Some(12),))
+        );
+    }
+
+    #[test]
+    fn resolves_supported_coordinates_to_the_starting_line() {
+        let root = tempdir().unwrap();
+        let task = root.path().join("task");
+        fs::create_dir(&task).unwrap();
+        let file = task.join("located.rs");
+        fs::write(&file, "fn located() {}").unwrap();
+        let rooted_fs = RootedFs::new(root.path()).unwrap();
+        let prepared = prepared(&rooted_fs, "task");
+        let mut file_url = Url::from_file_path(&file).unwrap();
+        file_url.set_fragment(Some("L12-L20"));
+        let cases = [
+            "located.rs:12".to_string(),
+            "located.rs:12:5".to_string(),
+            "located.rs:12-20".to_string(),
+            "located.rs#L12".to_string(),
+            "located.rs#L12-L20".to_string(),
+            file_url.to_string(),
+        ];
+
+        for target in cases {
+            assert_eq!(
+                resolve_target(&rooted_fs, &prepared, &target),
+                Ok(resolved_target(
+                    "task",
+                    "task/located.rs".to_string(),
+                    Some(12),
+                )),
+                "{target}",
+            );
+        }
     }
 
     #[test]
@@ -647,8 +1364,11 @@ mod tests {
             ("bad%00path", ResolveFileLinkFailure::InvalidTarget),
             ("missing.rs", ResolveFileLinkFailure::NotFound),
             ("directory", ResolveFileLinkFailure::Directory),
-            ("missing.rs:0", ResolveFileLinkFailure::InvalidLine),
-            ("missing.rs:4294967296", ResolveFileLinkFailure::InvalidLine),
+            ("missing.rs:0", ResolveFileLinkFailure::InvalidTarget),
+            (
+                "missing.rs:4294967296",
+                ResolveFileLinkFailure::InvalidTarget,
+            ),
             ("../../secret.txt", ResolveFileLinkFailure::OutsideRoot),
         ];
         for (target, expected) in cases {
