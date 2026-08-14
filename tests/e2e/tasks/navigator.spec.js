@@ -937,11 +937,18 @@ test("keeps Task row indicator columns aligned across worktree and meta states",
       const indicatorBounds = indicators.getBoundingClientRect();
       const worktreeBounds = worktreeIndicator?.getBoundingClientRect();
       const metaBounds = meta.getBoundingClientRect();
+      const countBounds = row
+        .closest(".task-repository-group")
+        .querySelector(
+          ":scope > .task-repository-header > .task-repository-count",
+        )
+        .getBoundingClientRect();
       return {
+        countCenter: countBounds.left + countBounds.width / 2,
         display: getComputedStyle(indicators).display,
         hasHorizontalOverflow: row.scrollWidth > row.clientWidth,
         indicatorWidth: indicatorBounds.width,
-        metaRight: metaBounds.right,
+        metaCenter: metaBounds.left + metaBounds.width / 2,
         threadId: row.dataset.threadId,
         titleWidth: row.querySelector(".task-row-title").getBoundingClientRect().width,
         worktreeLeft: worktreeBounds?.left ?? null,
@@ -961,7 +968,8 @@ test("keeps Task row indicator columns aligned across worktree and meta states",
   for (const metrics of layout) {
     expect(metrics.display).toBe("grid");
     expect(metrics.indicatorWidth).toBeCloseTo(rootFontSize * 3, 1);
-    expect(metrics.metaRight).toBeCloseTo(baseline.metaRight, 1);
+    expect(metrics.metaCenter).toBeCloseTo(baseline.metaCenter, 1);
+    expect(metrics.countCenter).toBeCloseTo(baseline.metaCenter, 1);
     expect(metrics.hasHorizontalOverflow).toBe(false);
     expect(metrics.worktreeOutsideRow).toBe(false);
     if (metrics.worktreeLeft != null) {
@@ -1103,7 +1111,7 @@ test("keeps Archived Task indicator columns aligned with unavailable warning act
         display: getComputedStyle(indicators).display,
         hasHorizontalOverflow: row.scrollWidth > row.clientWidth,
         indicatorWidth: indicators.getBoundingClientRect().width,
-        metaRight: metaBounds.right,
+        metaCenter: metaBounds.left + metaBounds.width / 2,
         threadId: row.dataset.threadId,
         titleWidth: row
           .querySelector(".task-row-title")
@@ -1122,7 +1130,7 @@ test("keeps Archived Task indicator columns aligned with unavailable warning act
   for (const metrics of layout) {
     expect(metrics.display).toBe("grid");
     expect(metrics.indicatorWidth).toBeCloseTo(rootFontSize * 3, 1);
-    expect(metrics.metaRight).toBeCloseTo(baseline.metaRight, 1);
+    expect(metrics.metaCenter).toBeCloseTo(baseline.metaCenter, 1);
     expect(metrics.hasHorizontalOverflow).toBe(false);
     if (metrics.worktreeLeft != null) {
       expect(metrics.worktreeLeft).toBeCloseTo(baseline.worktreeLeft, 1);

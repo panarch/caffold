@@ -147,7 +147,7 @@ caffold-active-task-row {
   & .task-row-recovery-status {
     display: inline-grid;
     grid-column: 2;
-    justify-self: end;
+    justify-self: center;
     width: var(--interface-icon-slot-size);
     height: var(--interface-icon-slot-size);
     place-items: center;
@@ -163,7 +163,7 @@ caffold-active-task-row {
 
   & .task-row-meta {
     grid-column: 2;
-    justify-self: end;
+    justify-self: center;
   }
 
   & .task-row-meta.task-status-chip {

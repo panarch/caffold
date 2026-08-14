@@ -45,7 +45,10 @@ caffold-active-task-list {
 
   & .task-repository-header {
     display: grid;
-    grid-template-columns: var(--task-list-icon-size) minmax(0, 1fr) auto;
+    grid-template-columns:
+      var(--task-list-icon-size)
+      minmax(0, 1fr)
+      max(var(--interface-icon-slot-size), 3ch);
     align-items: center;
     gap: 0.4375rem;
     min-height: var(--interface-space-14);
@@ -77,7 +80,7 @@ caffold-active-task-list {
     color: var(--muted);
     font-size: inherit;
     font-variant-numeric: tabular-nums;
-    text-align: right;
+    text-align: center;
     transition: opacity 120ms ease-out;
 
     @starting-style {
