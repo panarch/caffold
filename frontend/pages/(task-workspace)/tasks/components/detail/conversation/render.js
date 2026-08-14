@@ -30,14 +30,10 @@ import {
   formatDuration,
   formatStatus,
 } from "../../../task-format.js";
-import {
-  commandSummaryStatus,
-  renderCommandSummary,
-} from "./command-summary.js";
-
 export function renderConversation(events, task, approvals = [], options = {}) {
   const workDetails = new Map();
   const changedFiles = new Map();
+  const commands = new Map();
   const filePathPresentationBase = effectiveTaskFileRoot(task);
   const conversationEvents = sortEventsChronologically(
     dedupeCanonicalEvents(events),
@@ -71,6 +67,7 @@ export function renderConversation(events, task, approvals = [], options = {}) {
           eventOrder,
           workDetails,
           changedFiles,
+          commands,
           filePathPresentationBase,
         });
       }
@@ -98,6 +95,7 @@ export function renderConversation(events, task, approvals = [], options = {}) {
           renderConversationEvent(group.event, task, {
             active: false,
             changedFiles,
+            commands,
             filePathPresentationBase,
           }),
           eventOrder,
@@ -118,7 +116,7 @@ export function renderConversation(events, task, approvals = [], options = {}) {
       task,
     );
   }
-  return { html, workDetails, changedFiles };
+  return { html, workDetails, changedFiles, commands };
 }
 
 function renderedTimelineEntry(events, html, eventOrder) {
@@ -205,6 +203,7 @@ function renderTurnGroupEntries(group, task, options = {}) {
           options.approvalErrors,
           options.filePathPresentationBase,
           options.changedFiles,
+          options.commands,
         ),
         options.eventOrder,
       ),
@@ -317,6 +316,7 @@ function renderActiveTurnTimelineEvent(
   approvalErrors = new Map(),
   filePathPresentationBase = "",
   changedFiles = new Map(),
+  commands = new Map(),
 ) {
   if (
     event.type === "approval_requested" &&
@@ -336,6 +336,7 @@ function renderActiveTurnTimelineEvent(
     return renderConversationEvent(event, task, {
       active: isWorkEvent(event),
       changedFiles,
+      commands,
       filePathPresentationBase,
     });
   }
@@ -501,7 +502,7 @@ export function renderConversationEvent(event, task, eventState) {
     return renderToolEvent(event, "Plan", payload.text);
   }
   if (event.type === "command_execution") {
-    return renderCommandEvent(event);
+    return renderCommandEvent(event, eventState?.commands);
   }
   if (event.type === "file_change") {
     return renderFileChangeEvent(
@@ -875,44 +876,16 @@ function renderToolEvent(event, label, text, tone = "neutral") {
   `;
 }
 
-function renderCommandEvent(event) {
-  const payload = event.payload ?? {};
-  const command = `${payload.command ?? ""}`.trim();
-  const cwd = `${payload.cwd ?? ""}`.trim();
-  const status = `${payload.status ?? ""}`.trim();
-  const output = `${payload.aggregatedOutput ?? ""}`.trim();
-  if (isTerminalCommandStatus(status)) {
-    return `
-      <li class="task-event task-command"${eventIdentityAttribute(event)} data-event-type="${escapeHtml(event.type)}" data-command-status="${escapeHtml(commandSummaryStatus(event))}" data-command-terminal="true">
-        ${renderCommandSummary(event)}
-      </li>
-    `;
+function renderCommandEvent(event, commands = new Map()) {
+  const identity = eventIdentityKey(event) || `${event?.id ?? ""}`;
+  if (identity) {
+    commands.set(identity, event);
   }
-  const details = [
-    command ? `$ ${command}` : "",
-    cwd ? `cwd: ${cwd}` : "",
-    status ? `status: ${status}` : "",
-    output,
-  ]
-    .filter(Boolean)
-    .join("\n");
-  const open = status && status !== "completed" ? " open" : "";
   return `
-    <li class="task-event task-command" data-event-type="${escapeHtml(event.type)}" data-command-status="${escapeHtml(status || "unknown")}">
-      <details${open}${disclosureIdentityAttribute("command", eventIdentityKey(event))}>
-        <summary>
-          <span>Command</span>
-          ${status ? `<span>${escapeHtml(formatStatus(status))}</span>` : ""}
-          <time>${escapeHtml(formatDate(event.createdMs))}</time>
-        </summary>
-        <pre>${escapeHtml(details || "(command unavailable)")}</pre>
-      </details>
+    <li class="task-event task-command"${eventIdentityAttribute(event)} data-conversation-entry-key="${escapeHtml(identity)}" data-event-type="${escapeHtml(event.type)}">
+      <caffold-task-command></caffold-task-command>
     </li>
   `;
-}
-
-function isTerminalCommandStatus(status) {
-  return ["completed", "failed"].includes(`${status ?? ""}`);
 }
 
 function renderFileChangeEvent(

@@ -11,11 +11,8 @@ import {
   formatDate,
   formatStatus,
 } from "../../../task-format.js";
-import {
-  commandSummaryStatus,
-  renderCommandSummary,
-} from "./command-summary.js";
 import "./components/changed-files.js";
+import "./components/command.js";
 
 const disclosureStateByIdentity = new Map();
 
@@ -138,7 +135,7 @@ class CaffoldTaskWorkDetails extends HTMLElement {
       this.snapshot.events,
       this.snapshot.filePathPresentationBase,
     );
-    reconcileWorkItems(body, view.html, view.changedFiles);
+    reconcileWorkItems(body, view.html, view.changedFiles, view.commands);
     this.restoreDisclosureState();
     this.renderedIdentity = this.snapshot.identity;
     this.refreshChevronIcons();
@@ -169,6 +166,7 @@ class CaffoldTaskWorkDetails extends HTMLElement {
     const disclosure = summary?.parentElement;
     if (
       !(disclosure instanceof HTMLDetailsElement) ||
+      !disclosure.hasAttribute("data-work-details-disclosure-key") ||
       !this.contains(disclosure)
     ) {
       return;
@@ -252,6 +250,7 @@ function sameEventList(left, right) {
 function renderWorkItems(events, filePathPresentationBase) {
   const output = [];
   const changedFiles = new Map();
+  const commands = new Map();
   let combinedEvents = [];
   let combinedType = "";
   const flushCombinedEvents = () => {
@@ -281,11 +280,15 @@ function renderWorkItems(events, filePathPresentationBase) {
     }
     flushCombinedEvents();
     output.push(
-      renderWorkItem(event, filePathPresentationBase, changedFiles),
+      renderWorkItem(event, filePathPresentationBase, changedFiles, commands),
     );
   }
   flushCombinedEvents();
-  return { html: output.filter(Boolean).join(""), changedFiles };
+  return {
+    html: output.filter(Boolean).join(""),
+    changedFiles,
+    commands,
+  };
 }
 
 function renderCombinedReasoningWorkItem(events) {
@@ -354,7 +357,12 @@ function latestEvent(events) {
   );
 }
 
-function renderWorkItem(event, filePathPresentationBase, changedFiles) {
+function renderWorkItem(
+  event,
+  filePathPresentationBase,
+  changedFiles,
+  commands,
+) {
   const payload = event.payload ?? {};
   if (event.type === "assistant_message") {
     return renderWorkItemShell(event, "Update", payload.text);
@@ -376,7 +384,7 @@ function renderWorkItem(event, filePathPresentationBase, changedFiles) {
     return renderWorkItemShell(event, "Plan", payload.text);
   }
   if (event.type === "command_execution") {
-    return renderCommandWorkItem(event);
+    return renderCommandWorkItem(event, commands);
   }
   if (event.type === "file_change") {
     const count =
@@ -412,34 +420,14 @@ function renderWorkItem(event, filePathPresentationBase, changedFiles) {
   `;
 }
 
-function renderCommandWorkItem(event) {
-  const payload = event.payload ?? {};
-  const command = `${payload.command ?? ""}`.trim();
-  const cwd = `${payload.cwd ?? ""}`.trim();
-  const status = `${payload.status ?? ""}`.trim();
-  const output = `${payload.aggregatedOutput ?? ""}`.trim();
-  if (isTerminalCommandStatus(status)) {
-    return `
-      <article class="task-work-details-item task-work-details-command" data-event-type="command_execution" data-command-status="${escapeHtml(commandSummaryStatus(event))}" data-command-terminal="true">
-        ${renderCommandSummary(event)}
-      </article>
-    `;
+function renderCommandWorkItem(event, commands) {
+  const identity = eventIdentityKey(event) || `${event?.id ?? ""}`;
+  if (identity) {
+    commands.set(identity, event);
   }
-  const open = status && status !== "completed" ? " open" : "";
   return `
-    <article class="task-work-details-item task-work-details-command" data-event-type="command_execution" data-command-status="${escapeHtml(status || "unknown")}">
-      <details${open}${disclosureIdentityAttribute("command", eventIdentityKey(event))}>
-        <summary>
-          <strong>Command</strong>
-          ${status ? `<span>${escapeHtml(formatStatus(status))}</span>` : ""}
-          <time>${escapeHtml(formatDate(event.createdMs))}</time>
-        </summary>
-        <div class="task-work-details-command-body">
-          ${command ? `<code>$ ${escapeHtml(command)}</code>` : ""}
-          ${cwd ? `<span>cwd: ${escapeHtml(cwd)}</span>` : ""}
-          ${output ? `<pre>${escapeHtml(output)}</pre>` : ""}
-        </div>
-      </details>
+    <article class="task-work-details-item task-work-details-command" data-event-type="command_execution" data-command-work-identity="${escapeHtml(identity)}">
+      <caffold-task-command></caffold-task-command>
     </article>
   `;
 }
@@ -479,7 +467,7 @@ function fileChangeWorkIdentity(events) {
   }`;
 }
 
-function reconcileWorkItems(body, html, changedFiles) {
+function reconcileWorkItems(body, html, changedFiles, commands) {
   const template = document.createElement("template");
   template.innerHTML = html;
   const existingFileChangeItems = new Map(
@@ -487,7 +475,17 @@ function reconcileWorkItems(body, html, changedFiles) {
       .filter((item) => item.hasAttribute("data-file-change-work-identity"))
       .map((item) => [item.dataset.fileChangeWorkIdentity, item]),
   );
+  const existingCommandItems = new Map(
+    [...body.children]
+      .filter((item) => item.hasAttribute("data-command-work-identity"))
+      .map((item) => [item.dataset.commandWorkIdentity, item]),
+  );
   const desiredItems = [...template.content.children].map((item) => {
+    const commandIdentity = `${item.dataset.commandWorkIdentity ?? ""}`;
+    const existingCommand = existingCommandItems.get(commandIdentity);
+    if (commandIdentity && existingCommand) {
+      return existingCommand;
+    }
     const identity = `${item.dataset.fileChangeWorkIdentity ?? ""}`;
     const existing = existingFileChangeItems.get(identity);
     if (identity && existing && patchFileChangeWorkItem(existing, item)) {
@@ -502,6 +500,12 @@ function reconcileWorkItems(body, html, changedFiles) {
     const snapshot = changedFiles.get(identity);
     if (owner && snapshot) {
       owner.setSnapshot(snapshot);
+    }
+    const commandIdentity = `${item.dataset.commandWorkIdentity ?? ""}`;
+    const commandOwner = item.querySelector(":scope > caffold-task-command");
+    const commandSnapshot = commands.get(commandIdentity);
+    if (commandOwner && commandSnapshot) {
+      commandOwner.setSnapshot(commandSnapshot);
     }
   }
 }
@@ -567,17 +571,6 @@ function reconcileWorkItemChildren(body, desiredItems) {
     }
     anchor = item;
   }
-}
-
-function disclosureIdentityAttribute(kind, identity) {
-  const value = `${identity ?? ""}`.trim();
-  return value
-    ? ` data-work-details-disclosure-key="${escapeHtml(`${kind}:${value}`)}"`
-    : "";
-}
-
-function isTerminalCommandStatus(status) {
-  return ["completed", "failed"].includes(`${status ?? ""}`);
 }
 
 if (!customElements.get("caffold-task-work-details")) {

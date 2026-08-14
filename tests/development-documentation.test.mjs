@@ -102,6 +102,32 @@ test("development entrypoints and diagnostic probe remain discoverable", () => {
   assert.match(probe.stdout, /THREAD_ID/);
 });
 
+test("package test commands expose complete execution boundaries", () => {
+  const packageJson = JSON.parse(
+    readFileSync(resolve(repoRoot, "package.json"), "utf8"),
+  );
+  const testCommands = Object.keys(packageJson.scripts).filter((name) =>
+    name.startsWith("test:"),
+  );
+
+  assert.deepEqual(testCommands, [
+    "test:unit",
+    "test:contract",
+    "test:e2e",
+    "test:macos",
+    "test:codex-compat",
+    "test:codex-live",
+  ]);
+
+  const testingGuide = readFileSync(
+    resolve(repoRoot, "docs/development/testing.md"),
+    "utf8",
+  );
+  for (const command of testCommands) {
+    assert.match(testingGuide, new RegExp(`npm run ${command}`));
+  }
+});
+
 test("current worktree documentation names the same-Task isolation tool", () => {
   const workflow = readFileSync(resolve(repoRoot, "docs/product/workflows.md"), "utf8");
   const lifecycle = readFileSync(

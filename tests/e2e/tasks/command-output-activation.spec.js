@@ -135,12 +135,14 @@ test("limits terminal command output activation to View output", async ({
   const surfaces = [
     commandSurface(
       "timeline",
-      tasksPage.locator('.task-command[data-command-terminal="true"]'),
+      tasksPage.locator(
+        ".task-command:has(> caffold-task-command[data-command-terminal])",
+      ),
       {
         action: ".task-command-summary-action",
         label: ".task-command-summary-label",
         meta: ".task-command-summary-meta",
-        row: "caffold-task-command-summary",
+        row: "caffold-task-command",
         status: ".task-command-summary-status",
       },
     ),
@@ -151,7 +153,7 @@ test("limits terminal command output activation to View output", async ({
         action: ".task-command-summary-action",
         label: ".task-command-summary-label",
         meta: ".task-command-summary-meta",
-        row: "caffold-task-command-summary",
+        row: "caffold-task-command",
         status: ".task-command-summary-status",
       },
     ),
@@ -162,12 +164,12 @@ test("limits terminal command output activation to View output", async ({
     for (const entry of [surface.completed, surface.failed]) {
       await expect(entry.row).toBeVisible();
       expect(await entry.row.evaluate((element) => element.localName)).toBe(
-        "caffold-task-command-summary",
+        "caffold-task-command",
       );
       await expect(entry.row.locator("button")).toHaveCount(1);
       await expect(entry.action).toHaveAttribute("aria-haspopup", "dialog");
       await expect(entry.action).toHaveAttribute(
-        "data-command-summary-action",
+        "data-command-action",
         "command-output",
       );
       await expect(entry.action).toHaveAttribute("data-command-key", /.+/);
@@ -178,7 +180,7 @@ test("limits terminal command output activation to View output", async ({
         const root = getComputedStyle(document.documentElement);
         const actionBox = action.getBoundingClientRect();
         const rowBox = action
-          .closest("caffold-task-command-summary")
+          .closest("caffold-task-command")
           .getBoundingClientRect();
         return {
           actionHeight: actionBox.height,
@@ -228,8 +230,11 @@ test("limits terminal command output activation to View output", async ({
 
   if (testInfo.project.name === "desktop") {
     const entry = surfaces[0].completed;
+    const rowBackground = await entry.row.evaluate(
+      (element) => getComputedStyle(element).backgroundColor,
+    );
     await entry.status.hover();
-    await expect(entry.row).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(entry.row).toHaveCSS("background-color", rowBackground);
     const colors = await resolvedThemeColors(page);
     await entry.action.hover();
     await expect(entry.action).toHaveCSS("background-color", colors.hover);

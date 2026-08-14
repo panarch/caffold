@@ -25,8 +25,8 @@ const codeOwners = new Set([
   "components/diff-viewer.css",
   "pages/(task-workspace)/tasks/components/detail/conversation.css",
   "pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.css",
+  "pages/(task-workspace)/tasks/components/detail/conversation/components/command.css",
   "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css",
-  "pages/(task-workspace)/tasks/components/detail/conversation/command-summary.css",
   "pages/(task-workspace)/tasks/components/detail/conversation/markdown.js",
   "pages/(task-workspace)/tasks/components/detail/conversation/work-details.css",
   "pages/(task-workspace)/tasks/components/detail/(github)/components/markdown.js",
@@ -1254,6 +1254,9 @@ function walk(directory) {
     if (entry.isDirectory()) {
       return walk(path);
     }
-    return /\.(?:css|js)$/.test(entry.name) ? [path] : [];
+    return /\.(?:css|js)$/.test(entry.name) &&
+      !entry.name.endsWith(".test.js")
+      ? [path]
+      : [];
   });
 }

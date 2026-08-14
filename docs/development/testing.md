@@ -42,28 +42,32 @@ Caffold does not currently enforce a repository-wide coverage percentage.
 Explain the production paths measured and any integration boundary the coverage
 run did not exercise.
 
-## Node contract tests
+## JavaScript and browser tests
 
-The package scripts are grouped by their production owner:
+Package commands expose execution boundaries rather than individual test files:
 
 | Command | Boundary |
 | --- | --- |
-| `npm run test:appearance` | settings behavior and appearance ownership |
-| `npm run test:css-ownership` | stylesheet/component ownership |
-| `npm run test:routes` | browser route contracts |
-| `npm run test:service-worker` | PWA shell cache, fallback, cache generations, and prepared-build activation control graph |
-| `npm run test:task-state` | task list/detail/state projection |
-| `npm run test:watch` | filesystem watch behavior |
-| `npm run test:voice` | browser voice recorder contract |
-| `npm run test:codex-protocol` | maintained app-server schema boundary |
-| `npm run test:docs` | documentation links and required contributor entrypoints |
-| `npm run test:foreground` | foreground graph, raw browser signals, trigger/intent separation, presentation, and retry lifecycle |
-| `npm run test:release` | macOS packaging and release contracts |
-| `npm run test:local-install` | local app replacement preflight and rollback ordering |
-| `npm run test:playwright-config` | Playwright test-server port allocation and ownership |
+| `npm run test:unit` | all focused frontend Node unit tests |
+| `npm run test:contract` | top-level repository, policy, build, release, protocol, and browser-infrastructure contracts |
+| `npm run test:e2e` | deterministic fixture-backed Playwright coverage |
+| `npm run test:macos` | compiled Swift application behavior on macOS |
+| `npm run test:codex-compat` | installed Codex CLI schema compatibility without authentication or model usage |
+| `npm run test:codex-live` | authenticated Codex browser coverage with model usage |
 
-Run individual commands while iterating. A cross-cutting frontend or release
-change should run every affected row rather than relying on `test:e2e` alone.
+Focused Node unit tests live beside their owning frontend module as
+`name.test.js`. They may import that module directly, but must not require
+test-only exports from a public entry point. Production ownership scans, the
+static import graph, the Rust asset table, and the service-worker shell
+inventory exclude colocated `*.test.js` files.
+
+Keep tests under `tests/` when they compare multiple production owners or
+validate repository policy, inventories, build/release behavior, protocols, or
+browser-test infrastructure. `test:contract` discovers every top-level
+`tests/*.test.mjs` file, while Playwright specs remain under `tests/e2e/`. Run
+an individual top-level test directly with `node --test` while iterating. A
+cross-cutting frontend or release change should run every affected boundary
+rather than relying on `test:e2e` alone.
 
 ## Browser tests
 
@@ -87,34 +91,29 @@ For layout changes, inspect the generated screenshots under `test-results` and
 exercise the relevant desktop, foldable, and phone projects. For fixture or
 shared-state changes, compare normal parallel execution with `--workers=1`.
 
-Foreground recovery has three distinct evidence layers.
-`npm run test:foreground` covers the pure control graph and raw-signal
-normalization.
-The owning Playwright spec uses virtual time, request gates, and controlled
-EventSource failures to verify visibility, connectivity, coalescing, stale
-completion, retry, and preserved-workspace behavior. The installed-Android
-smoke tests in `mobile-pwa-testing.md` prove platform delivery of lifecycle,
-notification, and connectivity signals. Report these layers separately.
+Foreground recovery changes require the adjacent unit tests, the owning
+Playwright lifecycle spec, and, when platform signals are affected, the
+installed-Android checks in `mobile-pwa-testing.md`. These are separate
+unit, browser-integration, and platform evidence.
 
-PWA build-handoff changes must run `tests/e2e/app-shell-update.spec.js`. Its
-deterministic service-worker fixture checks first install, checking, ready, and
-settled presentation plus waiting, activation, temporary slot loss, claim,
-controller change, repeated intent, reconnect, and latest-generation selection.
-`npm run test:service-worker` also covers the complete pure handoff graph,
-rejected transitions, stale generations, and reload-once effect. The loopback
-lifecycle server exercises real Chromium worker installation, consecutive
-replacement builds, explicit reload with and without the custom controlled
-acknowledgement, cache cleanup, and separation from the exceptional
-build-mismatch alert. Report the pure graph, deterministic fixture, and real
-Chromium evidence layers separately.
+PWA build-handoff changes require the adjacent unit tests,
+`tests/service-worker.test.mjs`, and
+`tests/e2e/app-shell-update.spec.js`. The loopback lifecycle server provides
+real Chromium service-worker replacement coverage. Report unit, complete-shell
+inventory, deterministic browser, and real-browser evidence separately.
 
-## Codex live tests
+## Codex compatibility and live tests
 
-The protocol schema check becomes live only when explicitly enabled:
+The installed CLI compatibility check does not authenticate or start a Codex
+session and does not consume model usage:
 
 ```sh
-CAFFOLD_CODEX_PROTOCOL_LIVE=1 npm run test:codex-protocol
+npm run test:codex-compat
 ```
+
+It runs `codex app-server generate-ts --experimental` and verifies the schema
+contract required by Caffold. The command requires a supported Codex CLI on the
+local executable search path.
 
 The browser task loop uses a real authenticated Codex installation and consumes
 model usage:
@@ -155,23 +154,23 @@ app-server connection.
 These checks require macOS and Xcode command-line tools:
 
 ```sh
-npm run test:system-status
-npm run test:updater
-npm run test:macos-runtime
-npm run test:local-install
+npm run test:macos
 ```
 
-`test:macos-runtime` launches owned child processes and verifies both graceful
-termination and the exact-PID forced fallback. `test:local-install` verifies
-that an orphaned bundled server blocks replacement even after its listener is
-gone, and that rollback ordering stops the failed runtime before restoring the
-backup.
+The command compiles and runs the Swift runtime, system-status, and updater test
+programs. The runtime test launches owned child processes and verifies both
+graceful termination and the exact-PID forced fallback.
+
+The Node-hosted macOS packaging, release, and local-install contracts remain
+part of `test:contract`. The local-install contract uses controlled fake system
+tools to verify that an orphaned bundled server blocks replacement and that
+rollback stops a failed runtime before restoring the backup.
 
 When changing the application wrapper, process lifecycle, packaging, updater,
 or installer, also run:
 
 ```sh
-npm run test:release
+npm run test:contract
 desktop/macos/package-app build
 ```
 

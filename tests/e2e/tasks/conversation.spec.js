@@ -890,7 +890,7 @@ test("keeps cross-turn work chronological and the active status at the timeline 
     "event_user_a",
     "reasoning",
     "event_command_b",
-    "file_change",
+    "event_file_a",
     `active:${activeTurnId}`,
   ]);
   await expect(
@@ -909,7 +909,7 @@ test("keeps cross-turn work chronological and the active status at the timeline 
     "event_user_a",
     "reasoning",
     "event_command_b",
-    "file_change",
+    "event_file_a",
     `active:${activeTurnId}`,
   ]);
 
@@ -923,7 +923,7 @@ test("keeps cross-turn work chronological and the active status at the timeline 
     "event_user_a",
     "reasoning",
     "event_command_b",
-    "file_change",
+    "event_file_a",
     "plan",
     `active:${activeTurnId}`,
   ]);
@@ -1344,7 +1344,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
     .toBeCloseTo(disclosureOffsetBeforeLive, 1);
   await expect.poll(() => isScrolledToBottom(conversationScroller)).toBe(false);
   const completedCommandRow = tasksPage.locator(
-    '.task-work-details-item[data-event-type="command_execution"] > caffold-task-command-summary',
+    '.task-work-details-item[data-event-type="command_execution"] > caffold-task-command',
   );
   const completedCommandAction = completedCommandRow.getByRole("button", {
     name: "View output",

@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   diffViewerPresentation,
   sourceViewerPresentation,
-} from "../frontend/components/file-viewer-presentation.js";
+} from "./file-viewer-presentation.js";
 
 test("source presentation keeps a stable basename while metadata becomes available", () => {
   const loading = sourceViewerPresentation({ path: "src/planner/mod.rs" });

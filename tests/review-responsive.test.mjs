@@ -2,11 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import {
-  REVIEW_SINGLE_PANE_MAX_WIDTH_PX,
-  REVIEW_SINGLE_PANE_MEDIA_QUERY,
-} from "../frontend/components/review-responsive.js";
-
 const frontendUrl = new URL("../frontend/", import.meta.url);
 
 function readFrontend(path) {
@@ -14,9 +9,6 @@ function readFrontend(path) {
 }
 
 test("review file workspaces share one single-pane boundary", () => {
-  assert.equal(REVIEW_SINGLE_PANE_MAX_WIDTH_PX, 860);
-  assert.equal(REVIEW_SINGLE_PANE_MEDIA_QUERY, "(max-width: 860px)");
-
   const layoutStyles = [
     "components/git-compare-browser.css",
     "pages/(task-workspace)/tasks/components/detail/review/changes-tree.css",

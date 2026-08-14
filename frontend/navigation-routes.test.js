@@ -9,7 +9,7 @@ import {
   routeSurface,
   routeTarget,
   routeUrl,
-} from "../frontend/navigation-routes.js";
+} from "./navigation-routes.js";
 
 globalThis.window = {
   location: { origin: "http://caffold.test" },
