@@ -1712,6 +1712,10 @@ mod tests {
         let watch_module = get("watch.js").expect("watch js asset");
         assert_eq!(watch_module.content_type, "text/javascript; charset=utf-8");
         assert!(watch_module.body.starts_with(b"import "));
+        assert!(get("file-status.test.js").is_none());
+        assert!(get("watch.test.js").is_none());
+        assert!(get("pages/(task-workspace)/codex-status/model.test.js").is_none());
+        assert!(get("pages/(task-workspace)/tasks/task-format.test.js").is_none());
         let log_layout =
             get("pages/(task-workspace)/tasks/components/detail/(git)/(log)/layout.js")
                 .expect("git log layout js asset");

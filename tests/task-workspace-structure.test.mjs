@@ -16,7 +16,9 @@ function frontendJavascriptFiles(directory = frontendRoot, prefix = "") {
     if (entry.isDirectory()) {
       return frontendJavascriptFiles(absolutePath, relativePath);
     }
-    return entry.isFile() && entry.name.endsWith(".js")
+    return entry.isFile() &&
+      entry.name.endsWith(".js") &&
+      !entry.name.endsWith(".test.js")
       ? [[relativePath, readFileSync(absolutePath, "utf8")]]
       : [];
   });

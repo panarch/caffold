@@ -8,7 +8,7 @@ import {
   mergeEvents,
   optimisticUserMessageEvent,
   reconcileCanonicalEvents,
-} from "../frontend/pages/(task-workspace)/tasks/task-events.js";
+} from "./task-events.js";
 
 function event(id, type, createdMs, payload = {}, overrides = {}) {
   return {

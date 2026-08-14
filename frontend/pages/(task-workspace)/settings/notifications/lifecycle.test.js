@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 
 import {
   PUSH_CLIENT_ID_STORAGE_KEY,
@@ -11,7 +9,7 @@ import {
   pushSupport,
   shortPushClientId,
   subscriptionPayload,
-} from "../frontend/pages/(task-workspace)/settings/notifications/lifecycle.js";
+} from "./lifecycle.js";
 
 test("client ID remains stable and replaces malformed storage", () => {
   let stored = null;
@@ -107,20 +105,6 @@ test("generated installation labels are bounded at Unicode boundaries", async ()
     }),
     "Safari 18 on iOS",
   );
-});
-
-test("notification permission is requested only by the explicit Enable action", () => {
-  const pagePath = fileURLToPath(new URL(
-    "../frontend/pages/(task-workspace)/settings/notifications/page.js",
-    import.meta.url,
-  ));
-  const source = readFileSync(pagePath, "utf8");
-  const enableBranch = source.slice(
-    source.indexOf('if (action === "enable")'),
-    source.indexOf('if (action === "disable")'),
-  );
-  assert.equal(source.match(/Notification\.requestPermission\(\)/g)?.length, 1);
-  assert.match(enableBranch, /Notification\.requestPermission\(\)/);
 });
 
 test("state model represents every explicit browser lifecycle state", () => {

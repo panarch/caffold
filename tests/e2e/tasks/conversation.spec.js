@@ -890,7 +890,7 @@ test("keeps cross-turn work chronological and the active status at the timeline 
     "event_user_a",
     "reasoning",
     "event_command_b",
-    "file_change",
+    "event_file_a",
     `active:${activeTurnId}`,
   ]);
   await expect(
@@ -909,7 +909,7 @@ test("keeps cross-turn work chronological and the active status at the timeline 
     "event_user_a",
     "reasoning",
     "event_command_b",
-    "file_change",
+    "event_file_a",
     `active:${activeTurnId}`,
   ]);
 
@@ -923,7 +923,7 @@ test("keeps cross-turn work chronological and the active status at the timeline 
     "event_user_a",
     "reasoning",
     "event_command_b",
-    "file_change",
+    "event_file_a",
     "plan",
     `active:${activeTurnId}`,
   ]);

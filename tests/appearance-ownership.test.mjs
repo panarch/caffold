@@ -1254,6 +1254,9 @@ function walk(directory) {
     if (entry.isDirectory()) {
       return walk(path);
     }
-    return /\.(?:css|js)$/.test(entry.name) ? [path] : [];
+    return /\.(?:css|js)$/.test(entry.name) &&
+      !entry.name.endsWith(".test.js")
+      ? [path]
+      : [];
   });
 }
