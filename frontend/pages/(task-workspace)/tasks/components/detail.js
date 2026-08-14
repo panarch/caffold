@@ -15,7 +15,6 @@ import "./detail/(git)/layout.js";
 import "./detail/(github)/layout.js";
 import "./detail/review.js";
 import "./detail/summary.js";
-import "./task-transport-overlay.js";
 import { TaskDetailStream } from "./detail/stream.js";
 import {
   PROMPT_SUBMISSION_STATE,
@@ -32,6 +31,7 @@ import {
   mergeEvents,
   mergeTaskEventsPage,
   optimisticUserMessageEvent,
+  reconcileCanonicalEvents,
   upsertEvent,
   userMessageFingerprint,
 } from "../task-events.js";
@@ -585,7 +585,7 @@ class CaffoldTaskDetail extends HTMLElement {
       threadId,
       preferCurrentEvents
         ? mergeEvents(incomingEvents, currentEvents)
-        : mergeEvents(currentEvents, incomingEvents),
+        : reconcileCanonicalEvents(currentEvents, incomingEvents),
     );
     this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
     const canonicalError =
@@ -707,6 +707,13 @@ class CaffoldTaskDetail extends HTMLElement {
     ) {
       this.render();
     }
+    this.dispatchEvent(
+      new CustomEvent("caffold:task-detail-transport-change", {
+        bubbles: true,
+        composed: true,
+        detail: { state },
+      }),
+    );
   }
 
   get streamState() {
@@ -719,6 +726,25 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     this.detailStream.activate(this.selectedThreadId, { force: true });
     this.render();
+  }
+
+  suspendForeground() {
+    this.detailStream.suspend();
+  }
+
+  async recoverForeground() {
+    if (
+      this.view !== "detail" ||
+      !this.selectedThreadId ||
+      taskDetailThreadId(this.taskDetail) !== this.selectedThreadId
+    ) {
+      return { ok: true, skipped: true };
+    }
+    const outcome = await this.detailStream.recover(this.selectedThreadId);
+    if (!outcome.ok && !outcome.stale) {
+      throw outcome.error ?? new Error("Task detail recovery failed.");
+    }
+    return outcome;
   }
 
   async refreshSelectedTask(
@@ -1738,7 +1764,9 @@ class CaffoldTaskDetail extends HTMLElement {
       eventsPage: this.eventsPage,
       loading: Boolean(this.taskDetail?.historyLoading),
       loadingOlder: this.loadingOlderEvents,
-      detailError: this.detailLoadError,
+      detailError: isTaskTransportStale(this.detailStream.state)
+        ? null
+        : this.detailLoadError,
       historyError: this.historyLoadError,
       transportState: this.detailStream.state,
       updateKind: this.conversationUpdateKind,
@@ -1974,7 +2002,6 @@ class CaffoldTaskDetail extends HTMLElement {
         <section class="task-conversation-pane" aria-label="Task conversation">
           <caffold-task-conversation></caffold-task-conversation>
           <caffold-task-command-dialog></caffold-task-command-dialog>
-          ${this.renderStreamState()}
           <div class="task-follow-up-composer-slot"></div>
         </section>
         <div class="task-review-slot"></div>
@@ -1982,30 +2009,6 @@ class CaffoldTaskDetail extends HTMLElement {
         <div class="task-domain-slot task-github-slot" hidden></div>
       </div>
     `;
-  }
-
-  renderStreamState() {
-    if (this.detailStream.state === TASK_TRANSPORT_STATE.RECONNECTING) {
-      return `
-        <caffold-task-transport-overlay
-          class="task-stream-state"
-          state="reconnecting"
-          message="Caffold server connection lost. Reconnecting..."
-          data-stream-state="reconnecting"
-        ></caffold-task-transport-overlay>
-      `;
-    }
-    if (this.detailStream.state === TASK_TRANSPORT_STATE.UNAVAILABLE) {
-      return `
-        <caffold-task-transport-overlay
-          class="task-stream-state"
-          state="unavailable"
-          message="Caffold server unavailable."
-          data-stream-state="unavailable"
-        ></caffold-task-transport-overlay>
-      `;
-    }
-    return "";
   }
 
 }

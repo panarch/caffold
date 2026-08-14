@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
-import { installBrowserDefaults } from "../support/browser-defaults.js";
+import {
+  installBrowserDefaults,
+  mockCodexStatus,
+} from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
   canonicalTaskState,
@@ -94,6 +97,18 @@ async function elementGeometry(locator) {
       width: rect.width,
       height: rect.height,
     };
+  });
+}
+
+async function installConnectionMock(page) {
+  await page.addInitScript(() => {
+    const connection = new EventTarget();
+    connection.type = "wifi";
+    connection.effectiveType = "4g";
+    Object.defineProperty(navigator, "connection", {
+      configurable: true,
+      value: connection,
+    });
   });
 }
 
@@ -199,6 +214,900 @@ test("background Task tabs release list and detail streams", async ({
       ),
     )
     .toBe(2);
+});
+
+test("foreground recovery refreshes status and reconciles the Task ledger and transports", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Browser foreground recovery regression");
+  await page.addInitScript(() => {
+    window.__caffoldVisibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => window.__caffoldVisibilityState,
+    });
+  });
+  await installEventSourceMock(page, {
+    registryKey: "__foregroundRecoverySources",
+    autoOpen: true,
+  });
+  await mockCodexModels(page);
+
+  const threadId = "thread_foreground_recovery";
+  const now = 1_767_190_450_000;
+  const runtimeTask = {
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("active", {
+      turnId: "turn_foreground_recovery",
+      startedAtMs: now,
+      latestTurnStatus: "inProgress",
+    }),
+    title: "Foreground recovery before backgrounding",
+    preview: "Initial runtime projection",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Initial runtime projection",
+    conversationAvailable: true,
+  };
+  let foregroundState = false;
+  let statusReads = 0;
+  let listReads = 0;
+  let detailReads = 0;
+
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
+    statusReads += 1;
+    return route.fulfill({ json: mockCodexStatus() });
+  });
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    listReads += 1;
+    const ledgerTask = foregroundState
+      ? {
+        ...runtimeTask,
+        ...canonicalTaskState("notLoaded"),
+        title: "Foreground recovery renamed in Caffold",
+        preview: "",
+        conversationAvailable: false,
+      }
+      : runtimeTask;
+    return route.fulfill({
+      json: {
+        sections: [{
+          id: foregroundState ? "section-after" : "section-before",
+          name: foregroundState ? "src/Recovered Section" : "src/Original Section",
+          repository: false,
+          tasks: [ledgerTask],
+        }],
+        unsectioned: [],
+      },
+    });
+  });
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) => {
+    detailReads += 1;
+    const task = foregroundState
+      ? { ...runtimeTask, title: "Foreground recovery renamed in Caffold" }
+      : runtimeTask;
+    return route.fulfill({
+      json: {
+        threadId,
+        syncState: "ready",
+        revision: detailReads,
+        task,
+        events: [{
+          id: foregroundState ? "event_recovered" : "event_initial",
+          threadId,
+          type: "assistant_message",
+          summary: "Assistant response",
+          payload: {
+            turnId: "turn_foreground_recovery",
+            text: foregroundState
+              ? "Detail reconciled after foreground recovery."
+              : "Detail loaded before backgrounding.",
+          },
+          createdMs: now + detailReads,
+        }],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      },
+    });
+  });
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const workspace = page.locator("caffold-task-workspace");
+  const row = workspace.locator(`.task-row[data-thread-id="${threadId}"]`);
+  const composer = workspace.locator('.task-follow-up-form textarea[name="prompt"]');
+  await expect(row).toHaveAttribute("data-task-status", "running");
+  await expect(workspace).toContainText("Detail loaded before backgrounding.");
+  await composer.fill("Keep this foreground recovery draft");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__foregroundRecoverySources.filter(
+          (source) => source.readyState !== 2,
+        ).length,
+      ),
+    )
+    .toBe(2);
+
+  const readsBeforeHide = { statusReads, listReads, detailReads };
+  foregroundState = true;
+  await page.evaluate(() => {
+    window.__caffoldVisibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__foregroundRecoverySources.every(
+          (source) => source.readyState === 2,
+        ),
+      ),
+    )
+    .toBe(true);
+  await page.waitForTimeout(300);
+  expect({ statusReads, listReads, detailReads }).toEqual(readsBeforeHide);
+  await expect(row).toHaveAttribute("data-task-status", "running");
+  await expect(composer).toHaveValue("Keep this foreground recovery draft");
+
+  await page.evaluate(() => {
+    window.__caffoldVisibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(() => statusReads).toBeGreaterThan(readsBeforeHide.statusReads);
+  await expect.poll(() => listReads).toBeGreaterThan(readsBeforeHide.listReads);
+  await expect.poll(() => detailReads).toBeGreaterThan(readsBeforeHide.detailReads);
+  await expect(row.locator(".task-row-title")).toHaveText(
+    "Foreground recovery renamed in Caffold",
+  );
+  await expect(
+    workspace.locator('.task-repository-header[title="src/Recovered Section"]'),
+  ).toBeVisible();
+  await expect(row).toHaveAttribute("data-task-status", "running");
+  await expect(workspace).toContainText(
+    "Detail reconciled after foreground recovery.",
+  );
+  await expect(composer).toHaveValue("Keep this foreground recovery draft");
+  await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}(?:\\?|$)`));
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__foregroundRecoverySources.filter(
+          (source) => source.readyState !== 2,
+        ).length,
+      ),
+    )
+    .toBe(2);
+
+  await page.evaluate(({ threadId, runtimeTask }) => {
+    const listSource = [...window.__foregroundRecoverySources]
+      .reverse()
+      .find((source) => source.url.startsWith("/api/tasks/stream"));
+    listSource.emit("task-list-snapshot", {
+      tasks: [{
+        ...runtimeTask,
+        ...{
+          threadStatus: { type: "idle" },
+          latestTurnStatus: "completed",
+          activeTurn: null,
+        },
+        title: "Foreground recovery renamed in Caffold",
+      }],
+    });
+  }, { threadId, runtimeTask });
+  await expect(row).toHaveAttribute("data-task-status", "idle");
+  await expect(row.locator(".task-row-title")).toHaveText(
+    "Foreground recovery renamed in Caffold",
+  );
+});
+
+test("BFCache pageshow and top-level focus use the shared foreground recovery", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Browser foreground signal regression");
+  await installEventSourceMock(page, {
+    registryKey: "__foregroundSignalSources",
+    autoOpen: true,
+  });
+  await mockCodexModels(page);
+  const threadId = "thread_foreground_signals";
+  const task = {
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Foreground signal recovery",
+    preview: "Visible Task projection",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: 1_767_190_460_000,
+    updatedMs: 1_767_190_460_000,
+    recencyMs: 1_767_190_460_000,
+    lastEventSummary: "Visible Task projection",
+  };
+  let statusReads = 0;
+  let listReads = 0;
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
+    statusReads += 1;
+    return route.fulfill({ json: mockCodexStatus() });
+  });
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    listReads += 1;
+    return route.fulfill({ json: activeTaskProjection([task]) });
+  });
+
+  await page.goto("/tasks");
+  await expect(
+    page.locator(`.task-row[data-thread-id="${threadId}"]`),
+  ).toBeVisible();
+  expect(statusReads).toBe(1);
+  expect(listReads).toBe(1);
+  const beforePageShow = { statusReads, listReads };
+  await page.evaluate(() => {
+    window.dispatchEvent(new PageTransitionEvent("pageshow", {
+      persisted: true,
+    }));
+  });
+  await expect.poll(() => statusReads).toBeGreaterThan(beforePageShow.statusReads);
+  await expect.poll(() => listReads).toBeGreaterThan(beforePageShow.listReads);
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
+    "data-foreground-recovery-trigger",
+    "pageshow",
+  );
+
+  const beforeFocus = { statusReads, listReads };
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("blur"));
+    window.dispatchEvent(new Event("focus"));
+  });
+  await expect.poll(() => statusReads).toBeGreaterThan(beforeFocus.statusReads);
+  await expect.poll(() => listReads).toBeGreaterThan(beforeFocus.listReads);
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
+    "data-foreground-recovery-trigger",
+    "focus",
+  );
+});
+
+test("notification activation refreshes stale readiness and opens its pending Task route", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Browser notification recovery regression");
+  await installEventSourceMock(page, {
+    registryKey: "__notificationRecoverySources",
+    autoOpen: true,
+  });
+  await mockCodexModels(page);
+  const threadId = "thread_notification_pending_route";
+  const now = 1_767_190_470_000;
+  const task = {
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("notLoaded"),
+    title: "Notification pending Task",
+    preview: "",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    worktree: null,
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    conversationAvailable: false,
+  };
+  const blockedStatus = mockCodexStatus({
+    readiness: {
+      ...mockCodexStatus().readiness,
+      state: "updateRequired",
+      blocksTaskOperations: true,
+      reasonCode: "versionBelowMinimum",
+      diagnosticMessage: "The visible readiness snapshot is stale.",
+    },
+  });
+  let ready = false;
+  let statusReads = 0;
+  let detailReads = 0;
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
+    statusReads += 1;
+    return route.fulfill({ json: ready ? mockCodexStatus() : blockedStatus });
+  });
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) })
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) => {
+    detailReads += 1;
+    return route.fulfill({
+      json: {
+        threadId,
+        syncState: "ready",
+        revision: detailReads,
+        task: {
+          ...task,
+          ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+          conversationAvailable: true,
+        },
+        events: [{
+          id: "event_notification_recovered",
+          threadId,
+          type: "assistant_message",
+          summary: "Assistant response",
+          payload: {
+            text: "Pending Task opened after notification foreground recovery.",
+          },
+          createdMs: now + 1,
+        }],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      },
+    });
+  });
+
+  await page.goto(`/tasks/${threadId}`);
+  await expect(
+    page.locator('[data-readiness-state="updateRequired"]'),
+  ).toBeVisible();
+  expect(detailReads).toBe(0);
+  const readsBeforeActivation = statusReads;
+
+  ready = true;
+  await page.evaluate((route) => {
+    navigator.serviceWorker.dispatchEvent(new MessageEvent("message", {
+      data: {
+        type: "caffold:notification-activation",
+        route,
+      },
+    }));
+  }, `/tasks/${threadId}`);
+
+  await expect.poll(() => statusReads).toBeGreaterThan(readsBeforeActivation);
+  await expect(page.locator(".codex-readiness-surface")).toBeHidden();
+  await expect.poll(() => detailReads).toBeGreaterThan(0);
+  await expect(page.locator("caffold-task-detail")).toContainText(
+    "Pending Task opened after notification foreground recovery.",
+  );
+  await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}(?:\\?|$)`));
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
+    "data-foreground-recovery-trigger",
+    "notification",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__notificationRecoverySources.filter(
+          (source) => source.readyState !== 2,
+        ).length,
+      ),
+    )
+    .toBe(2);
+});
+
+test("foreground recovery retries a blocking readiness snapshot with bounded backoff", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Browser foreground retry regression");
+  await installEventSourceMock(page, {
+    registryKey: "__foregroundRetrySources",
+    autoOpen: true,
+  });
+  await mockCodexModels(page);
+  const blockedStatus = mockCodexStatus({
+    readiness: {
+      ...mockCodexStatus().readiness,
+      state: "updateRequired",
+      blocksTaskOperations: true,
+      reasonCode: "versionBelowMinimum",
+      diagnosticMessage: "Foreground readiness has not recovered yet.",
+    },
+  });
+  let recoveryBlockedReads = 0;
+  let foregroundRecovery = false;
+  let statusReads = 0;
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
+    statusReads += 1;
+    if (foregroundRecovery && recoveryBlockedReads < 2) {
+      recoveryBlockedReads += 1;
+      return route.fulfill({ json: blockedStatus });
+    }
+    return route.fulfill({ json: mockCodexStatus() });
+  });
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection() })
+  );
+
+  await page.goto("/tasks");
+  await expect(page.locator("caffold-task-new .task-new-form")).toBeVisible();
+  const readsBeforeRecovery = statusReads;
+  foregroundRecovery = true;
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("blur"));
+    window.dispatchEvent(new Event("focus"));
+  });
+
+  await expect(
+    page.locator('[data-readiness-state="updateRequired"]'),
+  ).toBeVisible();
+  await expect.poll(() => recoveryBlockedReads).toBe(2);
+  await expect.poll(() => statusReads).toBe(readsBeforeRecovery + 3);
+  await expect(page.locator(".codex-readiness-surface")).toBeHidden();
+  await expect(page.locator("caffold-task-new textarea")).toBeEnabled();
+  const settledReads = statusReads;
+  await page.waitForTimeout(500);
+  expect(statusReads).toBe(settledReads);
+});
+
+test("foreground offline pauses recovery and preserves useful Task UI until online", async ({
+  page,
+}, testInfo) => {
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  const registryKey = "__foregroundOfflineSources";
+  await installEventSourceMock(page, { registryKey, autoOpen: true });
+  await mockCodexModels(page);
+  const threadId = "thread_foreground_offline";
+  const task = transportOverlayTask(threadId);
+  let recovered = false;
+  let statusReads = 0;
+  let listReads = 0;
+  let detailReads = 0;
+
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
+    statusReads += 1;
+    return route.fulfill({ json: mockCodexStatus() });
+  });
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    listReads += 1;
+    return route.fulfill({ json: activeTaskProjection([task]) });
+  });
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) => {
+    detailReads += 1;
+    return route.fulfill({
+      json: {
+        threadId,
+        syncState: "ready",
+        revision: recovered ? 2 : 1,
+        task,
+        events: [
+          {
+            id: "event_foreground_offline",
+            threadId,
+            type: "assistant_message",
+            summary: "Assistant response",
+            payload: {
+              turnId: "turn_foreground_offline",
+              text: recovered
+                ? "Conversation reconciled after network recovery."
+                : "Conversation stays available while offline.",
+            },
+            createdMs: task.updatedMs,
+          },
+        ],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      },
+    });
+  });
+
+  await page.goto(`/tasks/${threadId}`);
+  const appShell = page.locator("caffold-app-shell");
+  const tasksPage = page.locator("caffold-tasks-page");
+  const composer = tasksPage.locator(
+    'caffold-task-composer[data-composer-mode="follow-up"] textarea',
+  );
+  await expect(tasksPage).toContainText("Conversation stays available while offline.");
+  await composer.fill("Keep this foreground offline draft");
+  await expect
+    .poll(() =>
+      page.evaluate((key) =>
+        window[key].filter((source) => source.readyState !== 2).length,
+      registryKey),
+    )
+    .toBe(2);
+
+  const readsBeforeOffline = {
+    detail: detailReads,
+    list: listReads,
+    status: statusReads,
+  };
+  await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+
+  const notice = appShell.locator(".app-foreground-recovery");
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveAttribute("data-recovery-state", "offline");
+  await expect(notice).toContainText(
+    "No network connection. Waiting to reconnect...",
+  );
+  await expect(notice.getByRole("button", { name: "Retry" })).toBeHidden();
+  await expect(notice.locator(".app-foreground-recovery-spinner")).toBeHidden();
+  await expect(tasksPage).toContainText("Conversation stays available while offline.");
+  await expect(composer).toHaveValue("Keep this foreground offline draft");
+  await expect
+    .poll(() =>
+      page.evaluate((key) =>
+        window[key].every((source) => source.readyState === 2),
+      registryKey),
+    )
+    .toBe(true);
+
+  await page.clock.runFor(30_000);
+  expect({ detail: detailReads, list: listReads, status: statusReads }).toEqual(
+    readsBeforeOffline,
+  );
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "tasks-global-foreground-offline",
+  );
+
+  recovered = true;
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(notice).toBeHidden();
+  await expect(tasksPage).toContainText(
+    "Conversation reconciled after network recovery.",
+  );
+  await expect(composer).toHaveValue("Keep this foreground offline draft");
+  expect(statusReads).toBe(readsBeforeOffline.status + 1);
+  expect(listReads).toBe(readsBeforeOffline.list + 1);
+  expect(detailReads).toBe(readsBeforeOffline.detail + 1);
+});
+
+test("connection snapshots pause on missed offline and coalesce restored hints", async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  await installConnectionMock(page);
+  const registryKey = "__connectionChangeSources";
+  await installEventSourceMock(page, { registryKey, autoOpen: true });
+  await mockCodexModels(page);
+  const threadId = "thread_connection_change";
+  const task = transportOverlayTask(threadId);
+  let disconnected = false;
+  let recovered = false;
+  let statusReads = 0;
+  let listReads = 0;
+  let detailReads = 0;
+
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
+    statusReads += 1;
+    return disconnected
+      ? route.abort("internetdisconnected")
+      : route.fulfill({ json: mockCodexStatus() });
+  });
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    listReads += 1;
+    return disconnected
+      ? route.abort("internetdisconnected")
+      : route.fulfill({ json: activeTaskProjection([task]) });
+  });
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) => {
+    detailReads += 1;
+    return disconnected
+      ? route.abort("internetdisconnected")
+      : route.fulfill({
+          json: {
+            threadId,
+            syncState: "ready",
+            revision: recovered ? 2 : 1,
+            task,
+            events: [
+              {
+                id: "event_connection_change",
+                threadId,
+                type: "assistant_message",
+                summary: "Assistant response",
+                payload: {
+                  turnId: "turn_connection_change",
+                  text: recovered
+                    ? "Conversation reconciled after connection recovery."
+                    : "Conversation remains useful before connection loss.",
+                },
+                createdMs: task.updatedMs,
+              },
+            ],
+            eventsPage: { nextCursor: null },
+            pendingApprovals: [],
+          },
+        });
+  });
+
+  await page.goto(`/tasks/${threadId}`);
+  const appShell = page.locator("caffold-app-shell");
+  const tasksPage = page.locator("caffold-tasks-page");
+  const composer = tasksPage.locator(
+    'caffold-task-composer[data-composer-mode="follow-up"] textarea',
+  );
+  await expect(tasksPage).toContainText(
+    "Conversation remains useful before connection loss.",
+  );
+  await composer.fill("Keep the connection-change draft");
+  const readsBeforeDisconnect = {
+    detail: detailReads,
+    list: listReads,
+    status: statusReads,
+  };
+
+  disconnected = true;
+  await page.evaluate(() => {
+    navigator.connection.type = "none";
+    navigator.connection.dispatchEvent(new Event("change"));
+  });
+
+  const notice = appShell.locator(".app-foreground-recovery");
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveAttribute("data-recovery-state", "offline");
+  await expect(notice).toContainText(
+    "No network connection. Waiting to reconnect...",
+  );
+  await expect(tasksPage).toContainText(
+    "Conversation remains useful before connection loss.",
+  );
+  await expect(composer).toHaveValue("Keep the connection-change draft");
+  expect({ detail: detailReads, list: listReads, status: statusReads }).toEqual(
+    readsBeforeDisconnect,
+  );
+
+  await page.clock.runFor(30_000);
+  expect({ detail: detailReads, list: listReads, status: statusReads }).toEqual(
+    readsBeforeDisconnect,
+  );
+
+  disconnected = false;
+  recovered = true;
+  await page.evaluate(() => {
+    navigator.connection.type = "cellular";
+    navigator.connection.dispatchEvent(new Event("change"));
+    window.dispatchEvent(new Event("online"));
+  });
+
+  await expect(notice).toBeHidden();
+  await expect(tasksPage).toContainText(
+    "Conversation reconciled after connection recovery.",
+  );
+  await expect(composer).toHaveValue("Keep the connection-change draft");
+  expect(statusReads).toBe(readsBeforeDisconnect.status + 1);
+  expect(listReads).toBe(readsBeforeDisconnect.list + 1);
+  expect(detailReads).toBe(readsBeforeDisconnect.detail + 1);
+});
+
+test("a late failed disconnect probe yields to a newer reconnect signal", async ({
+  page,
+}) => {
+  await installConnectionMock(page);
+  const registryKey = "__lateDisconnectProbeSources";
+  await installEventSourceMock(page, { registryKey, autoOpen: true });
+  await mockCodexModels(page);
+  const threadId = "thread_late_disconnect_probe";
+  const task = transportOverlayTask(threadId);
+  let recovered = false;
+  let holdProbe = false;
+  let heldProbe = false;
+  let releaseProbe;
+  let reportProbeStarted;
+  const probeGate = new Promise((resolve) => {
+    releaseProbe = resolve;
+  });
+  const probeStarted = new Promise((resolve) => {
+    reportProbeStarted = resolve;
+  });
+  let statusReads = 0;
+  let listReads = 0;
+  let detailReads = 0;
+
+  await page.route(/\/api\/codex\/status(?:\?|$)/, async (route) => {
+    statusReads += 1;
+    if (holdProbe && !heldProbe) {
+      heldProbe = true;
+      reportProbeStarted();
+      await probeGate;
+      return route.abort("internetdisconnected");
+    }
+    return route.fulfill({ json: mockCodexStatus() });
+  });
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    listReads += 1;
+    return route.fulfill({ json: activeTaskProjection([task]) });
+  });
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) => {
+    detailReads += 1;
+    return route.fulfill({
+      json: {
+        threadId,
+        syncState: "ready",
+        revision: recovered ? 2 : 1,
+        task,
+        events: [
+          {
+            id: "event_late_disconnect_probe",
+            threadId,
+            type: "assistant_message",
+            summary: "Assistant response",
+            payload: {
+              turnId: "turn_late_disconnect_probe",
+              text: recovered
+                ? "Conversation reconciled after the late failure."
+                : "Conversation remains useful before the late failure.",
+            },
+            createdMs: task.updatedMs,
+          },
+        ],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      },
+    });
+  });
+
+  await page.goto(`/tasks/${threadId}`);
+  const appShell = page.locator("caffold-app-shell");
+  const tasksPage = page.locator("caffold-tasks-page");
+  const composer = tasksPage.locator(
+    'caffold-task-composer[data-composer-mode="follow-up"] textarea',
+  );
+  await expect(tasksPage).toContainText(
+    "Conversation remains useful before the late failure.",
+  );
+  await composer.fill("Keep the late-failure draft");
+  const readsBeforeProbe = {
+    detail: detailReads,
+    list: listReads,
+    status: statusReads,
+  };
+
+  holdProbe = true;
+  await page.evaluate(() => {
+    navigator.connection.type = "cellular";
+    navigator.connection.dispatchEvent(new Event("change"));
+  });
+  await probeStarted;
+
+  recovered = true;
+  await page.evaluate(() => {
+    navigator.connection.type = "wifi";
+    navigator.connection.dispatchEvent(new Event("change"));
+    window.dispatchEvent(new Event("online"));
+  });
+  releaseProbe();
+
+  const notice = appShell.locator(".app-foreground-recovery");
+  await expect(notice).toBeHidden();
+  await expect(tasksPage).toContainText(
+    "Conversation reconciled after the late failure.",
+  );
+  await expect(composer).toHaveValue("Keep the late-failure draft");
+  expect(statusReads).toBe(readsBeforeProbe.status + 2);
+  expect(listReads).toBe(readsBeforeProbe.list + 2);
+  expect(detailReads).toBe(readsBeforeProbe.detail + 2);
+});
+
+test("failed server recovery keeps useful Task UI behind one bounded global fallback", async ({
+  page,
+}, testInfo) => {
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  const registryKey = "__offlineForegroundSources";
+  await installEventSourceMock(page, { registryKey, autoOpen: true });
+  await mockCodexModels(page);
+  const threadId = "thread_offline_foreground";
+  const task = transportOverlayTask(threadId);
+  let unavailable = false;
+  let recovered = false;
+  let statusReads = 0;
+
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
+    statusReads += 1;
+    return unavailable
+      ? route.fulfill({
+          status: 502,
+          json: { error: { message: "Caffold server unavailable." } },
+        })
+      : route.fulfill({ json: mockCodexStatus() });
+  });
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    unavailable
+      ? route.fulfill({
+          status: 502,
+          json: { error: { message: "Caffold server unavailable." } },
+        })
+      : route.fulfill({ json: activeTaskProjection([task]) })
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    unavailable
+      ? route.fulfill({
+          status: 502,
+          json: { error: { message: "Caffold server unavailable." } },
+        })
+      : route.fulfill({
+          json: {
+            threadId,
+            syncState: "ready",
+            revision: recovered ? 2 : 1,
+            task,
+            events: [
+              {
+                id: "event_offline_foreground",
+                threadId,
+                type: "assistant_message",
+                summary: "Assistant response",
+                payload: {
+                  turnId: "turn_offline_foreground",
+                  text: recovered
+                    ? "Conversation reconciled after recovery."
+                    : "Conversation stays available during recovery.",
+                },
+                createdMs: task.updatedMs,
+              },
+            ],
+            eventsPage: { nextCursor: null },
+            pendingApprovals: [],
+          },
+        })
+  );
+
+  await page.goto(`/tasks/${threadId}`);
+  const appShell = page.locator("caffold-app-shell");
+  const tasksPage = page.locator("caffold-tasks-page");
+  const composer = tasksPage.locator(
+    'caffold-task-composer[data-composer-mode="follow-up"] textarea',
+  );
+  await expect(tasksPage).toContainText("Conversation stays available during recovery.");
+  await composer.fill("Keep this offline recovery draft");
+  await expect
+    .poll(() =>
+      page.evaluate((key) =>
+        window[key].filter((source) => source.readyState !== 2).length,
+      registryKey),
+    )
+    .toBe(2);
+  await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
+
+  const readsBeforeRecovery = statusReads;
+  unavailable = true;
+  await page.evaluate((key) => {
+    for (const source of window[key].filter((candidate) => candidate.readyState !== 2)) {
+      source.emitError({ closed: true });
+    }
+    window.dispatchEvent(new Event("blur"));
+    window.dispatchEvent(new Event("focus"));
+  }, registryKey);
+
+  const notice = appShell.locator(".app-foreground-recovery");
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveAttribute("data-recovery-state", "reconnecting");
+  await expect(notice.getByRole("button", { name: "Retry" })).toBeHidden();
+  await expect(tasksPage).toContainText("Conversation stays available during recovery.");
+  await expect(composer).toHaveValue("Keep this offline recovery draft");
+  await expect(page.locator(".task-list-stale-warning")).toHaveCount(0);
+  await expect(page.locator(".task-list-availability, .task-stream-state")).toHaveCount(0);
+  await expect.poll(() => statusReads).toBe(readsBeforeRecovery + 1);
+
+  for (const [delay, requestCount, presentation] of [
+    [250, 2, "reconnecting"],
+    [1_000, 3, "reconnecting"],
+    [3_000, 4, "unavailable"],
+  ]) {
+    await page.clock.runFor(delay);
+    await expect.poll(() => statusReads).toBe(readsBeforeRecovery + requestCount);
+    await expect(notice).toHaveAttribute("data-recovery-state", presentation);
+  }
+
+  await expect(notice).toHaveAttribute("data-recovery-state", "unavailable");
+  await expect(notice.getByRole("button", { name: "Retry" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(1);
+  await expect(tasksPage).toContainText("Conversation stays available during recovery.");
+  await expect(composer).toHaveValue("Keep this offline recovery draft");
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "tasks-global-foreground-recovery-unavailable",
+  );
+
+  unavailable = false;
+  recovered = true;
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(notice).toBeHidden();
+  await expect(tasksPage).toContainText("Conversation reconciled after recovery.");
+  await expect(composer).toHaveValue("Keep this offline recovery draft");
 });
 
 test("replaces terminal Task streams and reconciles list and detail", async ({
@@ -366,10 +1275,10 @@ test("replaces terminal Task streams and reconciles list and detail", async ({
     }
   });
 
-  await expect(taskRow).toHaveAttribute("data-task-status", "reconnecting");
+  await expect(taskRow).toHaveAttribute("data-task-status", "running");
   await expect(restoreButton).toBeDisabled();
   await expect(
-    tasksPage.locator('.task-stream-state[data-stream-state="reconnecting"]'),
+    page.locator('.app-foreground-recovery[data-recovery-state="reconnecting"]'),
   ).toBeVisible();
 
   canonicalTask = recoveredTask;
@@ -409,7 +1318,7 @@ test("replaces terminal Task streams and reconciles list and detail", async ({
   await expect(taskRow).toHaveAttribute("data-task-status", "idle");
   await expect(tasksPage).toContainText("Recovered without a page reload.");
   await expect(tasksPage).not.toContainText("Recovered canonical baseline.");
-  await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
+  await expect(page.locator(".app-foreground-recovery")).toBeHidden();
   await expect(restoreButton).toBeEnabled();
   await expect
     .poll(() =>
@@ -472,7 +1381,7 @@ test("replaces terminal Task streams and reconciles list and detail", async ({
   await expect(newTaskForm.getByRole("button", { name: "Start task" })).toBeEnabled();
 });
 
-test("overlays Task transport notices without moving Task surfaces", async ({
+test("shows one viewport recovery notice without moving Task surfaces", async ({
   page,
 }, testInfo) => {
   const threadId = "thread_transport_overlay_geometry";
@@ -489,16 +1398,16 @@ test("overlays Task transport notices without moving Task surfaces", async ({
   const taskRow = navigator.locator(`.task-row[data-thread-id="${threadId}"]`);
   const initialHeader = await elementGeometry(primaryHeader);
   const initialTaskRow = await elementGeometry(taskRow);
+  const notice = page.locator("caffold-app-shell > .app-foreground-recovery");
+  await expect(notice).toHaveCount(1);
 
   for (const state of ["reconnecting", "unavailable"]) {
     await navigator.evaluate((element, nextState) => {
       element.setStreamState(nextState);
     }, state);
-    const notice = navigator.locator(
-      `.task-list-availability[data-task-list-availability="${state}"]`,
-    );
     await expect(notice).toBeVisible();
-    await expect(notice).toHaveCSS("position", "absolute");
+    await expect(notice).toHaveAttribute("data-recovery-state", state);
+    await expect(notice).toHaveCSS("position", "fixed");
     if (state === "unavailable") {
       const retry = notice.getByRole("button", { name: "Retry" });
       await expect(retry).toBeVisible();
@@ -516,7 +1425,7 @@ test("overlays Task transport notices without moving Task surfaces", async ({
       await captureReviewScreenshot(
         page,
         testInfo,
-        "tasks-navigator-transport-unavailable",
+        "tasks-global-list-transport-unavailable",
       );
       await scroller.evaluate((element) => {
         element.scrollTop = 0;
@@ -525,7 +1434,7 @@ test("overlays Task transport notices without moving Task surfaces", async ({
     expect(await elementGeometry(taskRow)).toEqual(initialTaskRow);
   }
   await navigator.evaluate((element) => element.setStreamState("ready"));
-  await expect(navigator.locator(".task-list-availability")).toHaveCount(0);
+  await expect(notice).toBeHidden();
   expect(await elementGeometry(taskRow)).toEqual(initialTaskRow);
 
   await page.goto(`/tasks/${threadId}`);
@@ -541,11 +1450,9 @@ test("overlays Task transport notices without moving Task surfaces", async ({
     await tasksPage.evaluate((element, nextState) => {
       element.taskDetail().detailStream.transport.setState(nextState);
     }, state);
-    const notice = tasksPage.locator(
-      `.task-stream-state[data-stream-state="${state}"]`,
-    );
     await expect(notice).toBeVisible();
-    await expect(notice).toHaveCSS("position", "absolute");
+    await expect(notice).toHaveAttribute("data-recovery-state", state);
+    await expect(notice).toHaveCSS("position", "fixed");
     if (state === "unavailable") {
       const retry = notice.getByRole("button", { name: "Retry" });
       await expect(retry).toBeVisible();
@@ -554,7 +1461,7 @@ test("overlays Task transport notices without moving Task surfaces", async ({
       await captureReviewScreenshot(
         page,
         testInfo,
-        "tasks-detail-transport-unavailable",
+        "tasks-global-detail-transport-unavailable",
       );
     }
     expect(await elementGeometry(conversation)).toEqual(initialConversation);
@@ -563,22 +1470,25 @@ test("overlays Task transport notices without moving Task surfaces", async ({
   await tasksPage.evaluate((element) => {
     element.taskDetail().detailStream.transport.setState("ready");
   });
-  await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
+  await expect(notice).toBeHidden();
   expect(await elementGeometry(conversation)).toEqual(initialConversation);
   expect(await elementGeometry(composer)).toEqual(initialComposer);
 });
 
-test("routes either Task Retry through page-owned stale transport selection", async ({
+test("routes the single viewport Retry through app-shell foreground recovery", async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Concurrent Task transport ownership");
   const threadId = "thread_parent_owned_transport_retry";
   const registryKey = "__taskRetryEventSources";
   await installTransportOverlayFixture(page, threadId, registryKey);
+  let statusReads = 0;
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
+    statusReads += 1;
+    return route.fulfill({ json: mockCodexStatus() });
+  });
   await page.goto(`/tasks/${threadId}`);
 
-  const navigator = page.locator("caffold-task-navigator");
-  const tasksPage = page.locator("caffold-tasks-page");
   await expect
     .poll(() =>
       page.evaluate(
@@ -623,52 +1533,22 @@ test("routes either Task Retry through page-owned stale transport selection", as
       )
       .toEqual({ list: "ready", detail: "ready" });
 
-  let before = await sourceCounts();
-  await setStates("ready", "unavailable");
-  await tasksPage
-    .locator('.task-stream-state[data-stream-state="unavailable"]')
-    .getByRole("button", { name: "Retry" })
-    .click();
-  await expect.poll(sourceCounts).toEqual({
-    list: before.list,
-    detail: before.detail + 1,
-  });
-  await waitForReady();
-
-  before = await sourceCounts();
+  const before = await sourceCounts();
+  const statusBefore = statusReads;
   await setStates("unavailable", "ready");
-  await navigator
-    .locator('.task-list-availability[data-task-list-availability="unavailable"]')
-    .getByRole("button", { name: "Retry" })
-    .click();
-  await expect.poll(sourceCounts).toEqual({
-    list: before.list + 1,
-    detail: before.detail,
-  });
-  await waitForReady();
-
-  before = await sourceCounts();
-  await setStates("unavailable", "reconnecting");
-  await navigator
-    .locator('.task-list-availability[data-task-list-availability="unavailable"]')
-    .getByRole("button", { name: "Retry" })
-    .click();
+  const globalNotice = page.locator(
+    '.app-foreground-recovery[data-recovery-state="unavailable"]',
+  );
+  await expect(globalNotice).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(1);
+  await globalNotice.getByRole("button", { name: "Retry" }).click();
   await expect.poll(sourceCounts).toEqual({
     list: before.list + 1,
     detail: before.detail + 1,
   });
+  await expect.poll(() => statusReads).toBe(statusBefore + 1);
   await waitForReady();
-
-  before = await sourceCounts();
-  await setStates("reconnecting", "unavailable");
-  await tasksPage
-    .locator('.task-stream-state[data-stream-state="unavailable"]')
-    .getByRole("button", { name: "Retry" })
-    .click();
-  await expect.poll(sourceCounts).toEqual({
-    list: before.list + 1,
-    detail: before.detail + 1,
-  });
+  await expect(globalNotice).toBeHidden();
 });
 
 test("reattaches Tasks component lifecycles without rebuilding stable children", async ({

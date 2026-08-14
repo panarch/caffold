@@ -273,6 +273,96 @@ test("a status refresh keeps the last canonical status while checking", async ()
   assert.equal(lifecycle.snapshot().phase, "loaded");
 });
 
+test("overlapping status refreshes share one canonical request", async () => {
+  const initialGate = deferred();
+  let loadRequests = 0;
+  const lifecycle = new CodexStatusLifecycle({
+    loadStatus: async () => {
+      loadRequests += 1;
+      await initialGate.promise;
+      return codexStatus("ready", false);
+    },
+    restartRuntime: async () => {},
+  });
+
+  lifecycle.connect();
+  const first = lifecycle.refresh();
+  const second = lifecycle.refresh();
+
+  assert.equal(loadRequests, 1);
+  initialGate.resolve();
+  assert.deepEqual(await Promise.all([first, second]), [
+    codexStatus("ready", false),
+    codexStatus("ready", false),
+  ]);
+  assert.equal(loadRequests, 1);
+  lifecycle.disconnect();
+});
+
+test("a failed foreground status refresh preserves the last useful readiness", async () => {
+  let loadRequests = 0;
+  const lifecycle = new CodexStatusLifecycle({
+    loadStatus: async () => {
+      loadRequests += 1;
+      if (loadRequests === 1) {
+        return codexStatus("ready", false);
+      }
+      throw new Error("status unavailable");
+    },
+    restartRuntime: async () => {},
+  });
+
+  lifecycle.connect();
+  await settle();
+  await assert.rejects(lifecycle.refresh(), /status unavailable/);
+
+  assert.equal(lifecycle.snapshot().phase, "failed");
+  assert.equal(lifecycle.snapshot().status?.readiness?.state, "ready");
+  assert.equal(codexTaskOperationsPresentation(lifecycle.snapshot()).blocked, false);
+  assert.equal(codexTaskRecoveryVisible(lifecycle.snapshot()), false);
+  lifecycle.disconnect();
+});
+
+test("suspending status recovery invalidates work and pauses migration polling", async () => {
+  const pendingGate = deferred();
+  let loadRequests = 0;
+  const lifecycle = new CodexStatusLifecycle({
+    loadStatus: async () => {
+      loadRequests += 1;
+      if (loadRequests === 1) {
+        const status = codexStatus("ready", false);
+        status.taskStoreReadiness = {
+          state: "migrating",
+          blocksTaskOperations: true,
+          diagnosticMessage: "Migration is running.",
+        };
+        return status;
+      }
+      if (loadRequests === 2) {
+        await pendingGate.promise;
+      }
+      return codexStatus("ready", false);
+    },
+    restartRuntime: async () => {},
+  });
+
+  lifecycle.connect();
+  await settle();
+  lifecycle.suspend();
+  await new Promise((resolve) => setTimeout(resolve, 550));
+  assert.equal(loadRequests, 1);
+
+  lifecycle.resume();
+  const refresh = lifecycle.refresh();
+  assert.equal(loadRequests, 2);
+  lifecycle.suspend();
+  pendingGate.resolve();
+  await refresh;
+
+  assert.equal(lifecycle.snapshot().status?.taskStoreReadiness?.state, "migrating");
+  lifecycle.disconnect();
+});
+
 test("Codex restart reports a post-restart readiness refresh failure", async () => {
   let loadRequests = 0;
   const restartStates = [];

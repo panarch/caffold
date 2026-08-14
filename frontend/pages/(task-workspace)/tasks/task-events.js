@@ -207,6 +207,25 @@ export function mergeEvents(leftEvents, rightEvents) {
   );
 }
 
+export function reconcileCanonicalEvents(currentEvents, canonicalEvents) {
+  const byId = new Map();
+  for (const event of currentEvents) {
+    const key = eventIdentityKey(event);
+    if (key) {
+      byId.set(key, mergeEventRecord(byId.get(key), event));
+    }
+  }
+  for (const event of canonicalEvents) {
+    const key = eventIdentityKey(event);
+    if (key) {
+      byId.set(key, reconcileCanonicalEventRecord(byId.get(key), event));
+    }
+  }
+  return sortEventsChronologically(
+    dedupeCanonicalEvents([...byId.values()]),
+  );
+}
+
 export function mergeTaskEventsPage(currentPage, detail) {
   const incomingPage = detail?.eventsPage;
   if (!incomingPage) {
@@ -254,6 +273,20 @@ function mergeEventRecord(existing, incoming) {
     ...(sortIndex === undefined ? {} : { sortIndex }),
     ...(updatedMs > (createdMs ?? 0) ? { updatedMs } : {}),
   };
+}
+
+function reconcileCanonicalEventRecord(current, canonical) {
+  if (!current) {
+    return canonical;
+  }
+  const currentIsTransient = current.type === "work_status";
+  const canonicalIsTransient = canonical.type === "work_status";
+  if (currentIsTransient !== canonicalIsTransient) {
+    // A lifecycle placeholder may be newer by wall-clock time, but it cannot
+    // replace the useful projection for the same canonical item.
+    return currentIsTransient ? canonical : current;
+  }
+  return mergeEventRecord(current, canonical);
 }
 
 export function optimisticUserMessageEvent(threadId, prompt, images, requestId) {

@@ -17,17 +17,6 @@ caffold-active-task-list {
     margin: 0 0 0.5rem;
   }
 
-  & .task-list-stale-warning {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    margin: 0 0 0.5rem;
-    padding: 0.5rem 0.75rem;
-    color: var(--muted);
-    font-size: 0.75rem;
-  }
-
   & .task-repository-groups {
     --task-repository-indent: calc(9px + var(--task-list-icon-size));
 

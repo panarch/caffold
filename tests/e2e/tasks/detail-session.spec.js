@@ -8,6 +8,7 @@ import {
 import {
   activeTaskProjection,
   canonicalTaskState,
+  installEventSourceMock,
   isScrolledToBottom,
   mockCodexModels,
   pasteImage,
@@ -1682,6 +1683,150 @@ test("accepts canonical task detail after stream revisions restart", async ({ pa
   await expect(tasksPage).not.toContainText("Working for");
   await expect(tasksPage.locator(".task-detail-loading")).toHaveCount(0);
 });
+
+test("reconciles a canonical final answer over a retained transient item after reconnect", async ({
+  page,
+}) => {
+  const registryKey = "__canonicalItemRecoverySources";
+  await installEventSourceMock(page, { registryKey, autoOpen: true });
+  await mockCodexModels(page);
+
+  const threadId = "thread_canonical_item_recovery";
+  const turnId = "turn_canonical_item_recovery";
+  const itemId = "item_canonical_item_recovery";
+  const now = 1_767_190_455_000;
+  const task = {
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("active", {
+      turnId,
+      startedAtMs: now,
+      latestTurnStatus: "inProgress",
+    }),
+    title: "Canonical item recovery",
+    preview: "Preparing response",
+    cwd: "src",
+    cwdPath: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Preparing response",
+  };
+  const eventId = `${threadId}:${turnId}:${itemId}`;
+  const transient = {
+    id: eventId,
+    threadId,
+    type: "work_status",
+    summary: "Preparing response",
+    payload: {
+      threadId,
+      turnId,
+      itemId,
+      itemType: "agentMessage",
+      lifecycle: "started",
+    },
+    createdMs: now + 200,
+  };
+  const canonicalAnswer = {
+    id: eventId,
+    threadId,
+    type: "assistant_message",
+    summary: "Assistant response",
+    payload: {
+      threadId,
+      turnId,
+      itemId,
+      phase: "final",
+      text: "The canonical final answer survived the reconnect.",
+    },
+    createdMs: now + 100,
+    sortIndex: 2,
+  };
+  const canonicalTask = {
+    ...task,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    preview: canonicalAnswer.payload.text,
+    updatedMs: canonicalAnswer.createdMs,
+    recencyMs: canonicalAnswer.createdMs,
+    lastEventSummary: canonicalAnswer.payload.text,
+  };
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({
+      json: {
+        threadId,
+        syncState: "ready",
+        revision: 43,
+        task,
+        events: [transient],
+        eventsPage: { nextCursor: null },
+        pendingApprovals: [],
+      },
+    }),
+  );
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect
+    .poll(() =>
+      tasksPage.evaluate((element) => {
+        const detail = element.querySelector("caffold-task-detail");
+        return detail.events.find((event) =>
+          event.payload?.itemId === "item_canonical_item_recovery"
+        )?.type;
+      }),
+    )
+    .toBe("work_status");
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        ({ registryKey, threadId }) =>
+          window[registryKey].some((source) =>
+            source.url.includes(`/api/tasks/${threadId}/stream`),
+          ),
+        { registryKey, threadId },
+      ),
+    )
+    .toBe(true);
+  await page.evaluate(
+    ({ registryKey, threadId, canonicalTask, answer }) => {
+      const source = window[registryKey].find((candidate) =>
+        candidate.url.includes(`/api/tasks/${threadId}/stream`),
+      );
+      source.emit("task-sync", {
+        threadId,
+        revision: 1,
+        detail: {
+          threadId,
+          syncState: "ready",
+          revision: 1,
+          task: canonicalTask,
+          events: [answer],
+          eventsPage: { nextCursor: null },
+          pendingApprovals: [],
+        },
+        reason: "stream-bootstrap",
+      });
+    },
+    { registryKey, threadId, canonicalTask, answer: canonicalAnswer },
+  );
+
+  const finalAnswer = tasksPage.locator(
+    `.task-message[data-event-id="${eventId}"][data-message-role="assistant"]`,
+  );
+  await expect(finalAnswer).toContainText(
+    "The canonical final answer survived the reconnect.",
+  );
+  await expect(
+    tasksPage.locator(`.task-event-status[data-event-id="${eventId}"]`),
+  ).toHaveCount(0);
+});
+
 test("accepts canonical task sync after stream revisions restart", async ({ page }) => {
   await page.addInitScript(() => {
     window.EventSource = class MockEventSource {
@@ -2128,22 +2273,22 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
     tasksPage.locator(
       '.task-detail-summary .task-status-chip[data-status="reconnecting"]',
     ),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     tasksPage.locator(
       '.task-detail-summary .task-status-chip[data-status="running"]',
     ),
-  ).toHaveCount(0);
+  ).toBeVisible();
   await expect(
     tasksPage.getByRole("button", { name: "Stop current turn", exact: true }),
   ).toBeDisabled();
   await expect(textarea).toBeDisabled();
-  await expect(taskRow).toHaveAttribute("data-task-status", "reconnecting");
+  await expect(taskRow).toHaveAttribute("data-task-status", "running");
   await expect(
-    tasksPage.locator(
-      '.task-stream-state[data-stream-state="reconnecting"]',
+    page.locator(
+      '.app-foreground-recovery[data-recovery-state="reconnecting"]',
     ),
-  ).toContainText("Caffold server connection lost");
+  ).toContainText("Reconnecting to Caffold server");
   await expect(tasksPage.locator(".task-turn-active")).toBeHidden();
 
   await page.evaluate((threadId) => {
@@ -2161,10 +2306,15 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
     tasksPage.locator(
       '.task-detail-summary .task-status-chip[data-status="reconnecting"]',
     ),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     tasksPage.locator(
-      '.task-stream-state[data-stream-state="reconnecting"]',
+      '.task-detail-summary .task-status-chip[data-status="running"]',
+    ),
+  ).toBeVisible();
+  await expect(
+    page.locator(
+      '.app-foreground-recovery[data-recovery-state="reconnecting"]',
     ),
   ).toBeVisible();
   releaseReconnectDetailRead();
@@ -2180,7 +2330,7 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
     "data-delivery-state",
     "outcomeUnknown",
   );
-  await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
+  await expect(page.locator(".app-foreground-recovery")).toBeHidden();
   await expect(
     tasksPage.locator(
       '.task-detail-summary .task-status-chip[data-status="running"]',

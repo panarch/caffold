@@ -82,6 +82,36 @@ Every review that changes state handling must trace:
 A state change is not ready while an unowned writer, stale fallback, or
 cross-layer status overlay remains.
 
+## Explicit Control Models
+
+An enum or asynchronous request does not by itself require a state machine.
+Require an explicit finite control graph when one owner coordinates events from
+two or more independently delivered sources and accepting an event or
+asynchronous completion depends on the current control phase, request
+generation, or prior event order. Those sources may include user intent,
+timers, transports, child owners, process state, or browser lifecycle signals.
+
+Before implementation, make the control model reviewable:
+
+- name the mutually exclusive control nodes;
+- define the accepted events and intents;
+- enumerate the complete set of allowed transition edges;
+- identify the effects started, suspended, or canceled by each transition;
+- identify domain, transport, request, and child state that remains orthogonal
+  to the control graph; and
+- derive externally visible presentation instead of treating every display
+  value as a control node.
+
+Every node change must pass through one transition authority. The allowed-edge
+declaration is complete, not illustrative. Do not multiply independent state
+axes into a Cartesian product merely to represent every observable
+combination. A single request whose next action follows only from its current
+data may remain a simpler local state model.
+
+If a second related failure reveals another unmodeled control path, stop
+incremental patching and restate the graph before changing the implementation
+again.
+
 ## Policy Areas
 
 Apply every area affected by the change. The split is for reviewability, not a

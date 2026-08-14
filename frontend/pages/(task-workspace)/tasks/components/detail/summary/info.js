@@ -209,10 +209,9 @@ class CaffoldTaskDetailInfo extends HTMLElement {
       return;
     }
 
-    const statusLabel = formatTaskStatus(task, this.snapshot.transportState);
+    const statusLabel = formatTaskStatus(task);
     const status = renderTaskStatusChip(task, "task-detail-status", {
       label: false,
-      transportState: this.snapshot.transportState,
     });
     const content =
       status || renderInlineIcon("Info", "Task details", "task-action-icon");

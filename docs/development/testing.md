@@ -57,6 +57,7 @@ The package scripts are grouped by their production owner:
 | `npm run test:voice` | browser voice recorder contract |
 | `npm run test:codex-protocol` | maintained app-server schema boundary |
 | `npm run test:docs` | documentation links and required contributor entrypoints |
+| `npm run test:foreground` | foreground graph, raw browser signals, trigger/intent separation, presentation, and retry lifecycle |
 | `npm run test:release` | macOS packaging and release contracts |
 | `npm run test:local-install` | local app replacement preflight and rollback ordering |
 | `npm run test:playwright-config` | Playwright test-server port allocation and ownership |
@@ -85,6 +86,15 @@ test command; let Playwright shut down its own server, or retry a failed run.
 For layout changes, inspect the generated screenshots under `test-results` and
 exercise the relevant desktop, foldable, and phone projects. For fixture or
 shared-state changes, compare normal parallel execution with `--workers=1`.
+
+Foreground recovery has three distinct evidence layers.
+`npm run test:foreground` covers the pure control graph and raw-signal
+normalization.
+The owning Playwright spec uses virtual time, request gates, and controlled
+EventSource failures to verify visibility, connectivity, coalescing, stale
+completion, retry, and preserved-workspace behavior. The installed-Android
+smoke tests in `mobile-pwa-testing.md` prove platform delivery of lifecycle,
+notification, and connectivity signals. Report these layers separately.
 
 PWA build-handoff changes must run `tests/e2e/app-shell-update.spec.js`. Its
 deterministic service-worker fixture checks first install, checking, ready, and

@@ -68,8 +68,56 @@ application-lifetime coordination:
 - bootstrap health and initial-path loading;
 - parsing and forwarding top-level routes;
 - Navigation API and History fallback integration;
+- foreground/resume recovery coordination;
 - settings application;
 - build-update presentation.
+
+The app shell owns one `ForegroundRecoveryLifecycle` behind the public
+`foreground-recovery.js` entry point. It normalizes browser activation and
+connectivity observations into one idempotent recovery request. Raw listener
+wiring, the finite control model, and effectful lifecycle work remain private
+under that same-stem boundary; consumers receive semantic operations and an
+already derived presentation rather than private nodes, events, or selectors.
+
+The control graph separates attachment and visibility, ordered recovery work,
+bounded retry, known offline state, and exhausted recovery. Every node change
+passes through one complete transition table. Activation intent, diagnostic
+trigger, retry attempt, and in-flight generation remain control data instead of
+duplicating graph nodes. Hidden observations stay pending without starting
+HTTP or SSE work, overlapping visible observations share the current
+generation, and retry stops on success, hide, disconnect, or budget exhaustion.
+
+A visible `offline` signal is a pause, not a recovery attempt. It invalidates
+in-flight foreground work, releases Task transports, stops retry timers, and
+keeps the current workspace useful behind the shared no-network notice. No
+HTTP, SSE, or backoff work restarts on its own. A later visible lifecycle or
+connectivity hint may re-enter the ordinary recovery sequence, so an offline
+display state can never prevent the page from proving that connectivity has
+returned.
+
+Browser-specific connectivity APIs such as `navigator.connection` are optional
+hints rather than a second connectivity owner. Definite offline state takes the
+same pause path, restoration requests the same canonical recovery, and
+unsupported browsers continue through standard lifecycle and transport paths.
+Every completion still has to match the active recovery generation.
+
+Foreground recovery refreshes the workspace's canonical backend status first.
+A blocked-to-ready transition then uses the existing pending-route activation,
+after which the Tasks page asks its navigator and selected detail to reconcile
+their separately owned transports. Parents call public child methods; the app
+shell does not inspect Task transport internals. Async completions must still
+match both the foreground generation and the active route.
+
+The app shell also owns the single viewport-level recovery notice. Task list
+and detail expose whether an active transport needs recovery; they do not render
+independent connection Retry controls. Initial foreground validation remains
+silent and preserves canonical Task status chips. The notice appears only after
+a real transport failure or foreground backoff. Once the retry budget is
+exhausted it exposes one Retry action that re-enters the same status,
+pending-route, list, and detail recovery operation. Known offline state uses
+the same notice without a spinner or Retry action. Initial bootstrap and
+domain-specific requests such as older-history loading retain their separately
+scoped failure UI.
 
 The app shell owns one `PwaUpdateLifecycle` instance. That lifecycle is the
 single owner of service-worker registration and build handoff, and publishes
@@ -86,7 +134,10 @@ The service worker also validates terminal Web Push payloads, presents system
 notifications in foreground and background states, and limits notification
 click navigation to canonical same-origin Task routes. It does not infer Task
 completion or subscription state; those remain backend and Settings lifecycle
-responsibilities.
+responsibilities. When an already displayed matching Task client is focused,
+the worker posts its validated route to that page; the page applies it if needed
+and uses the same foreground recovery entrypoint. Navigated and newly opened
+documents continue through normal bootstrap.
 
 All known routes are forwarded to `caffold-task-workspace`. Task Detail owns
 the selected child and Task context; Git and GitHub own their layout instances,
@@ -121,10 +172,11 @@ workspace navigation. That snapshot keeps frontend request phase (`checking`,
 `loaded`, or `failed`) separate from the canonical backend status payload. A
 refresh may retain the previous status while the request is checking. The
 initial check remains fail-closed for Task operations but preserves the stable
-Task shell; only a failed check or a loaded status with
-`blocksTaskOperations: true` presents the Task-owned recovery surface. Settings
-remains routable. Retry refreshes the canonical diagnosis; frontend code does
-not compare versions or classify stderr.
+Task shell. A later failed refresh retains the last useful canonical status;
+only a failed initial check without a prior status, or a loaded status with
+`blocksTaskOperations: true`, presents the Task-owned recovery surface.
+Settings remains routable. Retry refreshes the canonical diagnosis; frontend
+code does not compare versions or classify stderr.
 
 One workspace-scoped Codex status lifecycle owns that request, the confirmed
 runtime-restart mutation, its request generations, and the post-restart status
@@ -306,6 +358,11 @@ frontend/
 |-- navigation-routes.js
 |-- pages/
 |   |-- layout.js
+|   |-- foreground-recovery.js
+|   |-- foreground-recovery/
+|   |   |-- browser-signals.js
+|   |   |-- lifecycle.js
+|   |   `-- machine.js
 |   `-- (task-workspace)/
 |       |-- layout.js
 |       |-- codex-status.js
@@ -378,6 +435,11 @@ Regression tests move with the active owner:
 - Task-owned Git in `tests/e2e/tasks/git-review.spec.js`;
 - Task-owned GitHub in `tests/e2e/tasks/github-review.spec.js`;
 - application shell boundaries in `tests/e2e/app-shell.spec.js`;
+- foreground control-model and raw-signal contracts in
+  `tests/foreground-recovery.test.mjs` and
+  `tests/foreground-recovery-browser-signals.test.mjs`, with App Shell,
+  status, list, detail, and transport integration in
+  `tests/e2e/tasks/lifecycle.spec.js`;
 - PWA update lifecycle and build-handoff boundaries in
   `tests/e2e/app-shell-update.spec.js`;
 - Settings Codex and Notifications behavior in `tests/e2e/settings.spec.js`;

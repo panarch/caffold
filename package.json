@@ -8,6 +8,7 @@
     "test:css-ownership": "node --test tests/css-ownership.test.mjs",
     "test:codex-protocol": "node --test tests/codex-protocol.test.mjs",
     "test:docs": "node --test tests/development-documentation.test.mjs",
+    "test:foreground": "node --test tests/foreground-recovery.test.mjs tests/foreground-recovery-browser-signals.test.mjs",
     "test:release": "node --test tests/macos-release.test.mjs tests/release-version.test.mjs",
     "test:local-install": "node --test tests/macos-local-install.test.mjs",
     "test:macos-runtime": "desktop/macos/test-runtime",

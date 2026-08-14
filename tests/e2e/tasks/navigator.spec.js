@@ -1681,9 +1681,14 @@ test("keeps cached task rows visible when a list refresh fails", async ({ page }
   });
 
   await expect(navigator).toContainText("Must survive failed reload");
-  await expect(navigator.getByRole("alert")).toContainText(
-    "Canonical task list unavailable",
+  const recoveryNotice = page.locator(".app-foreground-recovery");
+  await expect(recoveryNotice).toHaveAttribute(
+    "data-recovery-state",
+    "unavailable",
   );
+  await expect(recoveryNotice).toContainText("Caffold server unavailable.");
+  await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(1);
+  await expect(navigator.getByRole("button", { name: "Retry" })).toHaveCount(0);
   expect(taskReads).toBe(readsBeforeFailure + 1);
 });
 test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo) => {

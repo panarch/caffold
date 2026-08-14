@@ -182,10 +182,9 @@ test("workspace brand owns the shared Tasks and Settings navigator identity", ()
   assert.doesNotMatch(settingsNavigator, /<strong>Settings<\/strong>/);
 });
 
-test("Task transport overlay owns its shared UI and retry intent", () => {
-  const overlay = readFrontend(
-    "pages/(task-workspace)/tasks/components/task-transport-overlay.js",
-  );
+test("App Shell owns one foreground recovery UI and retry intent", () => {
+  const appShell = readFrontend("pages/layout.js");
+  const foreground = readFrontend("pages/foreground-recovery.js");
   const navigator = readFrontend(
     "pages/(task-workspace)/tasks/components/navigator.js",
   );
@@ -197,23 +196,126 @@ test("Task transport overlay owns its shared UI and retry intent", () => {
   );
   const tasksPage = readFrontend("pages/(task-workspace)/tasks/page.js");
 
-  assert.match(
-    overlay,
-    /customElements\.define\([\s\S]*"caffold-task-transport-overlay"/,
-  );
-  assert.match(overlay, /TASK_TRANSPORT_RETRY_EVENT/);
-  assert.match(overlay, /data-task-transport-retry/);
-  assert.match(overlay, /task-transport-spinner/);
-  assert.match(overlay, /task-transport-icon/);
-  assert.match(navigator, /<caffold-task-transport-overlay/);
-  assert.match(detail, /<caffold-task-transport-overlay/);
+  assert.match(appShell, /class="app-foreground-recovery"/);
+  assert.match(appShell, /data-action="retry-foreground-recovery"/);
+  assert.match(appShell, /requestManualRetry\(\)/);
+  assert.match(foreground, /selectForegroundRecoveryPresentation/);
+  assert.doesNotMatch(navigator, /<caffold-task-transport-overlay/);
+  assert.doesNotMatch(detail, /<caffold-task-transport-overlay/);
   assert.doesNotMatch(navigator, /task-transport-(?:spinner|icon|retry)/);
   assert.doesNotMatch(detail, /task-transport-(?:spinner|icon|retry)/);
   assert.doesNotMatch(navigator, /retry-task-transports|retry-task-stream/);
   assert.doesNotMatch(detail, /retry-task-transports|data-task-action="retry-stream"/);
   assert.doesNotMatch(taskStatus, /task-transport-/);
-  assert.match(tasksPage, /TASK_TRANSPORT_RETRY_EVENT/);
-  assert.match(tasksPage, /retryStaleTaskTransports/);
+  assert.match(tasksPage, /caffold:task-transport-status/);
+  assert.doesNotMatch(tasksPage, /retryStaleTaskTransports/);
+});
+
+test("foreground recovery machine reads from graph to private projection", () => {
+  const foreground = readFrontend("pages/foreground-recovery/machine.js");
+  const declarations = [
+    "export const FOREGROUND_RECOVERY_NODE",
+    "export const FOREGROUND_RECOVERY_TRANSITIONS",
+    "export const FOREGROUND_RECOVERY_EVENT",
+    "export const FOREGROUND_RECOVERY_TRIGGER",
+    "export const FOREGROUND_RECOVERY_INTENT",
+    "export function createForegroundRecoveryState",
+    "export function transitionForegroundRecovery",
+    "export function selectForegroundRecoveryPresentation",
+  ];
+  const positions = declarations.map((declaration) =>
+    foreground.indexOf(declaration)
+  );
+
+  assert.ok(positions.every((position) => position >= 0));
+  assert.deepEqual(positions, [...positions].sort((left, right) => left - right));
+  assert.doesNotMatch(foreground, /RECOVERY_REASONS|lastReason|reason:/);
+});
+
+test("foreground recovery public exports contain only consumer contracts", () => {
+  const foreground = readFrontend("pages/foreground-recovery.js");
+  const exportedNames = [...foreground.matchAll(
+    /^export (?:class|const|function)\s+([A-Za-z0-9_]+)/gm,
+  )].map((match) => match[1]);
+
+  assert.deepEqual(exportedNames, [
+    "FOREGROUND_RECOVERY_PRESENTATION",
+    "ForegroundRecoveryLifecycle",
+  ]);
+  assert.doesNotMatch(foreground, /^export\s*\{/m);
+  assert.doesNotMatch(
+    foreground,
+    /export (?:class|const|function) FOREGROUND_RECOVERY_(?:EVENT|INTENT|NODE|TRANSITIONS|TRIGGER)|export function (?:createForegroundRecoveryState|selectForegroundRecoveryPresentation|transitionForegroundRecovery)/,
+  );
+});
+
+test("App Shell solely coordinates foreground recovery through public owners", () => {
+  const appShell = readFrontend("pages/layout.js");
+  const foreground = readFrontend("pages/foreground-recovery.js");
+  const browserSignals = readFrontend(
+    "pages/foreground-recovery/browser-signals.js",
+  );
+  const foregroundLifecycle = readFrontend(
+    "pages/foreground-recovery/lifecycle.js",
+  );
+  const workspace = readFrontend("pages/(task-workspace)/layout.js");
+  const tasksPage = readFrontend("pages/(task-workspace)/tasks/page.js");
+  const navigator = readFrontend(
+    "pages/(task-workspace)/tasks/components/navigator.js",
+  );
+  const detail = readFrontend(
+    "pages/(task-workspace)/tasks/components/detail.js",
+  );
+  const stream = readFrontend("pages/(task-workspace)/tasks/stream.js");
+  const serviceWorker = readFrontend("service-worker.js");
+
+  assert.match(appShell, /new ForegroundRecoveryLifecycle\(/);
+  assert.match(appShell, /onRecover: \(request\) => this\.recoverForeground\(request\)/);
+  assert.match(appShell, /onSuspend: \(\) => this\.taskWorkspace\.suspendForeground\(\)/);
+  assert.match(appShell, /requestInitialActivation\(\{/);
+  assert.match(appShell, /requestManualRetry\(\)/);
+  assert.doesNotMatch(
+    appShell,
+    /FOREGROUND_RECOVERY_(?:EVENT|INTENT|NODE|TRANSITIONS|TRIGGER)|reportStage|selectForegroundRecoveryPresentation/,
+  );
+  for (const signal of [
+    "visibilitychange",
+    "pageshow",
+    "resume",
+    "focus",
+    "offline",
+    "online",
+  ]) {
+    assert.match(browserSignals, new RegExp(signal));
+  }
+  assert.match(browserSignals, /connectionTarget/);
+  assert.match(foregroundLifecycle, /caffold:notification-activation/);
+  assert.doesNotMatch(foreground, /addEventListener|setTimeout\(/);
+  assert.match(
+    foregroundLifecycle,
+    /const next = transitionForegroundRecovery\(this\.state, event\)/,
+  );
+  assert.match(
+    foregroundLifecycle,
+    /from "\.\/browser-signals\.js"/,
+  );
+  assert.doesNotMatch(
+    appShell,
+    /foreground-recovery\/(?:browser-signals|lifecycle|machine)\.js/,
+  );
+  assert.match(workspace, /async recoverForeground\(/);
+  assert.match(tasksPage, /async recoverForeground\(/);
+  assert.doesNotMatch(
+    `${workspace}\n${tasksPage}`,
+    /FOREGROUND_RECOVERY_(?:EVENT|INTENT|NODE|TRANSITIONS|TRIGGER)|reportStage/,
+  );
+  assert.match(foreground, /progress: foregroundRecoveryProgress\(reportStage\)/);
+  assert.match(foreground, /validatingTransports:/);
+  assert.match(navigator, /recoverForeground\(\)/);
+  assert.match(detail, /async recoverForeground\(\)/);
+  assert.doesNotMatch(stream, /visibilitychange|addEventListener\("focus"/);
+  assert.match(serviceWorker, /matching\.postMessage\(\{/);
+  assert.match(serviceWorker, /caffold:notification-activation/);
 });
 
 test("Task navigator keeps primary chrome outside its role-specific scrolling lists", () => {
@@ -238,7 +340,6 @@ test("Task navigator keeps primary chrome outside its role-specific scrolling li
     /class="task-list-section-header task-list-primary-header"/,
   );
   assert.match(navigator, /<caffold-workspace-brand><\/caffold-workspace-brand>/);
-  assert.match(navigator, /\.task-list-scroll"\)\?\.before/);
 });
 
 test("active and archived Task lists own distinct state and lifecycle boundaries", () => {

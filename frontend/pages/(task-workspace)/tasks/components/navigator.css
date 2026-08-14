@@ -107,15 +107,4 @@ caffold-task-navigator {
     background: var(--surface-muted);
   }
 
-  & > caffold-task-transport-overlay.task-list-availability {
-    top: calc(
-      var(
-          --task-navigator-top-header-size,
-          var(--task-workspace-header-size, var(--interface-compact-hit-size))
-        ) +
-        var(--interface-space-2)
-    );
-    left: 50%;
-    transform: translateX(-50%);
-  }
 }

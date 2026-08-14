@@ -82,10 +82,8 @@ class CaffoldActiveTaskList extends HTMLElement {
         "task-sync",
       ],
       onEvent: (type, event) => this.handleStreamEvent(type, event),
-      // Every Task-list connection starts with one complete runtime snapshot.
-      // Re-fetching the local list here could race that snapshot and replace
-      // freshly hydrated status with the cached not-loaded presentation.
-      onReconcile: () => Promise.resolve(),
+      onReconcile: (_contextKey, isCurrent, metadata) =>
+        this.reconcileTaskList(isCurrent, metadata),
       onStateChange: (state, previousState) =>
         this.handleStreamStateChange(state, previousState),
     });
@@ -350,7 +348,9 @@ class CaffoldActiveTaskList extends HTMLElement {
         response.sections,
         runtimeByThread,
       );
-      this.unsectioned = normalizeTaskList(response.unsectioned);
+      this.unsectioned = normalizeTaskList(response.unsectioned).map((task) =>
+        mergeTaskRuntime(task, runtimeByThread.get(taskThreadId(task))),
+      );
       this.taskListLoading = false;
       this.taskListLoaded = true;
       for (const { task, placement } of this.pendingTopPlacements.values()) {
@@ -406,6 +406,28 @@ class CaffoldActiveTaskList extends HTMLElement {
       return;
     }
     this.taskListStream.activate("task-list");
+  }
+
+  suspendStream() {
+    this.taskListStream.suspend();
+  }
+
+  async recoverForeground() {
+    if (!this.active || !this.isConnected) {
+      return { ok: true, skipped: true };
+    }
+    if (this.codexOperationsBlocked) {
+      const response = await this.loadTasks({ force: true });
+      if (!response) {
+        throw this.taskListError ?? new Error("Caffold Task ledger unavailable.");
+      }
+      return { ok: true, transportSkipped: true };
+    }
+    const outcome = await this.taskListStream.recover("task-list");
+    if (!outcome.ok && !outcome.stale) {
+      throw outcome.error ?? new Error("Task list recovery failed.");
+    }
+    return outcome;
   }
 
   handleStreamEvent(type, event) {
@@ -485,6 +507,20 @@ class CaffoldActiveTaskList extends HTMLElement {
     );
   }
 
+  async reconcileTaskList(isCurrent, { recovery = false } = {}) {
+    if (recovery && isCurrent()) {
+      this.revisionByThread.clear();
+    }
+    const response = await this.loadTasks({ force: true, isCurrent });
+    if (!isCurrent()) {
+      return null;
+    }
+    if (!response) {
+      throw this.taskListError ?? new Error("Caffold Task ledger unavailable.");
+    }
+    return response;
+  }
+
   acceptRevision(threadId, revision) {
     const value = Number(revision);
     if (!threadId || !Number.isFinite(value) || value <= 0) {
@@ -527,7 +563,7 @@ class CaffoldActiveTaskList extends HTMLElement {
   }
 
   retryStream() {
-    this.taskListStream.retry();
+    this.taskListStream.retry({ reconcile: false });
   }
 
   isTransportAvailable() {
@@ -629,12 +665,6 @@ class CaffoldActiveTaskList extends HTMLElement {
           : []),
       ];
       content = `
-        ${this.taskListError ? `
-          <div class="task-list-stale-warning" role="alert">
-            <span>${escapeHtml(this.taskListError.message)}</span>
-            <button type="button" class="task-secondary-button" data-task-action="retry-task-list">Retry</button>
-          </div>
-        ` : ""}
         <ol class="task-repository-groups" data-task-section="managed">
           ${sections.map((section) => this.renderSection(section)).join("")}
         </ol>
@@ -674,10 +704,9 @@ class CaffoldActiveTaskList extends HTMLElement {
 
   renderTaskRow(task, sectionId) {
     const threadId = taskThreadId(task);
-    const transportState = this.streamState;
     const selected = threadId === this.selectedThreadId ? ` aria-current="true"` : "";
     const status =
-      taskStatusView(task, transportState)?.status ?? taskThreadStatusType(task);
+      taskStatusView(task)?.status ?? taskThreadStatusType(task);
     const busy = status === "running" ? ` aria-busy="true"` : "";
     const unseen = Boolean(
       threadId && task?.unseen && threadId !== this.selectedThreadId,
@@ -691,7 +720,7 @@ class CaffoldActiveTaskList extends HTMLElement {
         </span>`
       : unseen
       ? renderUnseenTaskRowMeta(task)
-      : renderTaskRowMeta(task, transportState);
+      : renderTaskRowMeta(task);
     const worktree = task?.worktree?.linked
       ? `<span class="task-row-worktree" title="${escapeHtml(taskWorktreeLabel(task))}">
           ${renderInlineIcon("GitBranch", "Linked worktree", "task-row-worktree-icon")}
@@ -766,7 +795,11 @@ function normalizeActiveSections(sections, runtimeByThread = new Map()) {
 }
 
 function mergeTaskRuntime(cached, runtime) {
-  if (!runtime) {
+  if (
+    !runtime ||
+    cached?.recovery ||
+    taskThreadStatusType(cached) !== "notLoaded"
+  ) {
     return cached;
   }
   const merged = { ...cached };
@@ -824,11 +857,8 @@ function renderUnseenTaskRowMeta(task) {
   `;
 }
 
-function renderTaskRowMeta(task, transportState) {
-  const status = renderTaskStatusChip(task, "task-row-meta", {
-    label: false,
-    transportState,
-  });
+function renderTaskRowMeta(task) {
+  const status = renderTaskStatusChip(task, "task-row-meta", { label: false });
   if (status) {
     return status;
   }

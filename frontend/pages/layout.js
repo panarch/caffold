@@ -1,11 +1,16 @@
 import { getHealth } from "../api.js";
 import { BUILD_INFO } from "../build-info.js";
+import { renderInlineIcon, warmIcons } from "../components/icons.js";
 import {
   parentRoute,
   parseRoute,
   routeEquals,
   routeUrl,
 } from "../navigation-routes.js";
+import {
+  ForegroundRecoveryLifecycle,
+  FOREGROUND_RECOVERY_PRESENTATION,
+} from "./foreground-recovery.js";
 import { CAFFOLD_BUILD_MISMATCH_RELOAD_EVENT } from "./components/build-mismatch-alert.js";
 import { PwaUpdateLifecycle } from "./components/pwa-update-lifecycle.js";
 import {
@@ -17,11 +22,19 @@ import "./(task-workspace)/layout.js";
 class CaffoldAppShell extends HTMLElement {
   connectedCallback() {
     if (this.initialized) {
+      window.addEventListener("caffold:icons-ready", this.boundIconsReady);
       this.pwaUpdateLifecycle?.connect();
+      this.foregroundRecoveryLifecycle?.connect();
+      queueMicrotask(() => {
+        void this.foregroundRecoveryLifecycle?.requestForegroundRecovery();
+      });
       return;
     }
 
     this.initialized = true;
+    this.foregroundRecoverySnapshot = null;
+    this.boundIconsReady = () => this.renderForegroundRecoveryIcon();
+    window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.currentRoute = null;
     this.initialPath = "";
     this.aboutHealthRequest = null;
@@ -39,6 +52,14 @@ class CaffoldAppShell extends HTMLElement {
       onReloadReady: () => window.location.reload(),
       onStatusChange: (status) => this.applyPwaUpdateStatus(status),
     });
+    this.foregroundRecoveryLifecycle = new ForegroundRecoveryLifecycle({
+      onRecover: (request) => this.recoverForeground(request),
+      onStateChange: (snapshot) =>
+        this.applyForegroundRecoverySnapshot(snapshot),
+      onSuspend: () => this.taskWorkspace.suspendForeground(),
+    });
+    this.foregroundRecoverySnapshot =
+      this.foregroundRecoveryLifecycle.snapshot();
     this.installNavigationHandlers();
 
     const initialRoute = parseRoute(window.location.href);
@@ -90,12 +111,19 @@ class CaffoldAppShell extends HTMLElement {
         this.navigateToRoute(parent);
       }
     });
+    this.addEventListener("caffold:task-transport-status", (event) => {
+      event.stopPropagation();
+      this.foregroundRecoveryLifecycle?.setTargets(event.detail?.targets);
+    });
     void this.pwaUpdateLifecycle.start();
+    void warmIcons();
     this.bootstrap();
   }
 
   disconnectedCallback() {
+    window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.pwaUpdateLifecycle?.disconnect();
+    this.foregroundRecoveryLifecycle?.disconnect();
   }
 
   render() {
@@ -108,6 +136,18 @@ class CaffoldAppShell extends HTMLElement {
           <button type="button" data-action="retry-bootstrap">Retry</button>
         </section>
       </main>
+      <section
+        class="app-foreground-recovery"
+        role="status"
+        aria-live="polite"
+        data-recovery-state="none"
+        hidden
+      >
+        <span class="app-foreground-recovery-spinner" aria-hidden="true"></span>
+        <span class="app-foreground-recovery-icon" data-foreground-recovery-icon hidden></span>
+        <span data-foreground-recovery-message></span>
+        <button type="button" data-action="retry-foreground-recovery" hidden>Retry</button>
+      </section>
       <caffold-update-dialog></caffold-update-dialog>
       <caffold-build-mismatch-alert hidden></caffold-build-mismatch-alert>
     `;
@@ -115,6 +155,11 @@ class CaffoldAppShell extends HTMLElement {
       "click",
       () => void this.bootstrap(),
     );
+    this.querySelector('[data-action="retry-foreground-recovery"]')
+      ?.addEventListener("click", () => {
+        void this.foregroundRecoveryLifecycle?.requestManualRetry();
+      });
+    this.renderForegroundRecoveryIcon();
   }
 
   refreshAboutStatus() {
@@ -202,10 +247,48 @@ class CaffoldAppShell extends HTMLElement {
       } else {
         this.navigateToRoute({ kind: "tasks" }, { replace: true });
       }
+      this.foregroundRecoveryLifecycle.connect();
+      return await this.foregroundRecoveryLifecycle.requestInitialActivation({
+        discarded: Boolean(document.wasDiscarded),
+      });
     } catch (error) {
       this.updateBuildStatus(null);
       this.setBootstrapError(error);
     }
+  }
+
+  async recoverForeground({
+    activationRoute,
+    initialActivation,
+    isCurrent,
+    progress,
+  }) {
+    const route = notificationActivationRoute(activationRoute);
+    const currentRoute = parseRoute(window.location.href) ?? this.currentRoute;
+    if (
+      route &&
+      (!currentRoute?.threadId || currentRoute.threadId !== route.threadId)
+    ) {
+      progress.activatingRoute();
+      await this.applyRoute(route);
+    }
+    if (!isCurrent()) {
+      return { stale: true };
+    }
+    const recoveryRoute = parseRoute(window.location.href) ?? this.currentRoute;
+    const recoveryRouteKey = recoveryRoute ? routeUrl(recoveryRoute) : "";
+    return await this.taskWorkspace.recoverForeground({
+      isCurrent: () => {
+        const current = parseRoute(window.location.href) ?? this.currentRoute;
+        return (
+          isCurrent() &&
+          Boolean(current) &&
+          routeUrl(current) === recoveryRouteKey
+        );
+      },
+      initialActivation,
+      progress,
+    });
   }
 
   setBootstrapError(error) {
@@ -217,6 +300,59 @@ class CaffoldAppShell extends HTMLElement {
     panel.hidden = !error;
     this.taskWorkspace.hidden = Boolean(error);
     message.textContent = error?.message ?? "";
+    this.updateForegroundRecoveryNotice();
+  }
+
+  applyForegroundRecoverySnapshot(snapshot) {
+    this.foregroundRecoverySnapshot = snapshot ??
+      this.foregroundRecoveryLifecycle?.snapshot() ?? null;
+    this.dataset.foregroundRecoveryTrigger =
+      this.foregroundRecoverySnapshot?.lastTrigger ?? "";
+    this.updateForegroundRecoveryNotice();
+  }
+
+  updateForegroundRecoveryNotice() {
+    const notice = this.querySelector(".app-foreground-recovery");
+    const message = notice?.querySelector(
+      "[data-foreground-recovery-message]",
+    );
+    const spinner = notice?.querySelector(
+      ".app-foreground-recovery-spinner",
+    );
+    const icon = notice?.querySelector("[data-foreground-recovery-icon]");
+    const retry = notice?.querySelector(
+      '[data-action="retry-foreground-recovery"]',
+    );
+    if (!notice || !message || !spinner || !icon || !retry) {
+      return;
+    }
+    const state = this.foregroundRecoverySnapshot?.presentation ??
+      FOREGROUND_RECOVERY_PRESENTATION.NONE;
+    const bootstrapError = !this.querySelector(".app-bootstrap-error")?.hidden;
+    notice.hidden =
+      state === FOREGROUND_RECOVERY_PRESENTATION.NONE || bootstrapError;
+    notice.dataset.recoveryState = state;
+    const unavailable = state === "unavailable";
+    const offline = state === "offline";
+    spinner.hidden = unavailable || offline;
+    icon.hidden = !unavailable && !offline;
+    retry.hidden = !unavailable;
+    message.textContent = offline
+      ? "No network connection. Waiting to reconnect..."
+      : unavailable
+        ? "Caffold server unavailable."
+        : "Reconnecting to Caffold server...";
+  }
+
+  renderForegroundRecoveryIcon() {
+    const icon = this.querySelector("[data-foreground-recovery-icon]");
+    if (icon) {
+      icon.innerHTML = renderInlineIcon(
+        "TriangleAlert",
+        "Connection issue",
+        "app-foreground-recovery-icon-svg",
+      );
+    }
   }
 
   updateBuildStatus(health) {
@@ -310,3 +446,23 @@ class CaffoldAppShell extends HTMLElement {
 }
 
 customElements.define("caffold-app-shell", CaffoldAppShell);
+
+function notificationActivationRoute(value) {
+  if (typeof value !== "string" || !value) {
+    return null;
+  }
+  let url;
+  try {
+    url = new URL(value, window.location.origin);
+  } catch {
+    return null;
+  }
+  if (url.origin !== window.location.origin) {
+    return null;
+  }
+  const route = parseRoute(url.href);
+  if (!route?.threadId || routeUrl(route) !== url.pathname + url.search) {
+    return null;
+  }
+  return route;
+}

@@ -1523,7 +1523,7 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
       reason: "test",
     });
   }, { threadId, taskDetail });
-  await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
+  await expect(page.locator(".app-foreground-recovery")).toBeHidden();
   await expect.poll(() => taskDetailReadRequests).toBe(1);
 
   await page.evaluate(
@@ -1697,16 +1697,25 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await expect.poll(() => taskDetailReadRequests).toBe(readsBeforeVisibility + 1);
+  await page.evaluate(() => {
+    for (const source of window.__taskEventSources.filter(
+      (candidate) => !candidate.closed && candidate.readyState !== 1,
+    )) {
+      source.emitOpen();
+    }
+  });
+  await expect(page.locator(".app-foreground-recovery")).toBeHidden();
 
   await page.evaluate((threadId) => {
-    const taskSource = window.__taskEventSources.find((source) =>
-      source.url.includes(`/api/tasks/${threadId}/stream`),
+    const taskSource = window.__taskEventSources.findLast(
+      (source) =>
+        source.url.includes(`/api/tasks/${threadId}/stream`) && !source.closed,
     );
     taskSource.emitError();
   }, threadId);
   await expect(
-    tasksPage.locator('.task-stream-state[data-stream-state="reconnecting"]'),
-  ).toContainText("Caffold server connection lost");
+    page.locator('.app-foreground-recovery[data-recovery-state="reconnecting"]'),
+  ).toContainText("Reconnecting to Caffold server");
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-live-reconnecting");
 
@@ -1731,12 +1740,13 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     events: [...taskDetail.events, reconnectEvent],
   };
   await page.evaluate((threadId) => {
-    const taskSource = window.__taskEventSources.find((source) =>
-      source.url.includes(`/api/tasks/${threadId}/stream`),
+    const taskSource = window.__taskEventSources.findLast(
+      (source) =>
+        source.url.includes(`/api/tasks/${threadId}/stream`) && !source.closed,
     );
     taskSource.emitOpen();
   }, threadId);
-  await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
+  await expect(page.locator(".app-foreground-recovery")).toBeHidden();
   await expect(tasksPage).toContainText("Synced after reconnect.");
   await expect.poll(() => taskDetailReadRequests).toBe(readsBeforeReconnect + 1);
 
@@ -1762,8 +1772,8 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
       taskSource.emitError(true);
     }, threadId);
   }
-  const streamError = tasksPage.locator(
-    '.task-stream-state[data-stream-state="unavailable"]',
+  const streamError = page.locator(
+    '.app-foreground-recovery[data-recovery-state="unavailable"]',
   );
   await expect(streamError).toContainText("Caffold server unavailable.");
   const sourcesBeforeRetry = await page.evaluate(
@@ -1772,12 +1782,13 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   await streamError.getByRole("button", { name: "Retry" }).click();
   await expect
     .poll(() => page.evaluate(() => window.__taskEventSources.length))
-    .toBe(sourcesBeforeRetry + 1);
-  await page.evaluate((threadId) => {
-    const sources = window.__taskEventSources.filter((source) =>
-      source.url.includes(`/api/tasks/${threadId}/stream`),
-    );
-    sources.at(-1).emitOpen();
-  }, threadId);
-  await expect(tasksPage.locator(".task-stream-state")).toHaveCount(0);
+    .toBe(sourcesBeforeRetry + 2);
+  await page.evaluate(() => {
+    for (const source of window.__taskEventSources.filter(
+      (candidate) => !candidate.closed && candidate.readyState !== 1,
+    )) {
+      source.emitOpen();
+    }
+  });
+  await expect(page.locator(".app-foreground-recovery")).toBeHidden();
 });

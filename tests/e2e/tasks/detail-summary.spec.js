@@ -530,7 +530,7 @@ test("keeps the task info spinner stable across equivalent detail activity", asy
   });
 });
 
-test("keeps the task info spinner stable across reconnecting status", async ({
+test("keeps canonical task status stable while the detail transport reconnects", async ({
   page,
 }) => {
   const threadId = "thread_summary_spinner_reconnecting";
@@ -566,14 +566,19 @@ test("keeps the task info spinner stable across reconnecting status", async ({
     );
     source.emitError();
   }, threadId);
-  await expect(statusChip).toHaveAttribute("data-status", "reconnecting");
-  await expect(statusChip).toHaveAttribute("aria-label", "reconnecting");
+  await expect(statusChip).toHaveAttribute("data-status", "running");
+  await expect(statusChip).toHaveAttribute("aria-label", "running");
   await expect(infoButton).toHaveAttribute(
     "aria-label",
-    "Task details, reconnecting",
+    "Task details, active",
   );
-  await expect(infoButton).toHaveAttribute("title", "Status: reconnecting");
-  await expect(statusText).toHaveText("reconnecting");
+  await expect(infoButton).toHaveAttribute("title", "Status: active");
+  await expect(statusText).toHaveText("active");
+  await expect(
+    page.locator(
+      '.app-foreground-recovery[data-recovery-state="reconnecting"]',
+    ),
+  ).toContainText("Reconnecting to Caffold server");
   expect(
     await infoButton.evaluate((button) => ({
       chipPreserved:
@@ -591,6 +596,7 @@ test("keeps the task info spinner stable across reconnecting status", async ({
     );
     source.emitOpen();
   }, threadId);
+  await expect(page.locator(".app-foreground-recovery")).toBeHidden();
   await expect(statusChip).toHaveAttribute("data-status", "running");
   await expect(statusChip).toHaveAttribute("aria-label", "running");
   await expect(infoButton).toHaveAttribute(

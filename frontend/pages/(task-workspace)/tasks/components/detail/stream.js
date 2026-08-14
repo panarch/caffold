@@ -43,6 +43,14 @@ export class TaskDetailStream {
     this.transport.deactivate();
   }
 
+  suspend() {
+    this.transport.suspend();
+  }
+
+  recover(threadId = this.threadId) {
+    return this.transport.recover(threadId);
+  }
+
   requestRefresh(threadId = this.threadId, generation = this.generation) {
     return this.transport.requestReconciliation(threadId, generation);
   }

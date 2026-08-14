@@ -45,6 +45,56 @@ Important boundaries:
 - Use isolated development data. Do not point a test server at the installed
   application's Redb directory.
 
+## Android installed-PWA foreground recovery smoke tests
+
+Use an installed Android PWA connected to the isolated HTTPS origin. Keep a
+second browser client available so Task state can change while the installed
+PWA is backgrounded.
+
+### Ordinary foreground return
+
+1. Open a managed Task detail in the installed PWA. Leave a recognizable
+   Composer draft, scroll the conversation away from its initial position, and
+   select a review file when the Task has review content.
+2. Switch to another Android application without closing Caffold. From the
+   second client, rename or reorder the managed Task and advance its active
+   turn so both the Caffold navigator ledger and Codex runtime projection
+   change.
+3. Return through the Android recent-apps screen. Without tapping Retry or any
+   Caffold control, verify that readiness is current, the renamed/reordered list
+   appears, and the Task status, final response, list transport, and detail
+   transport reconcile.
+4. Verify that the selected route, Composer draft, conversation scroll, and
+   selected review state remain useful. A transient reconnecting notice must
+   not clear the loaded list or detail.
+
+### Offline and online
+
+1. Keep the loaded Task visible and enable Android airplane mode.
+2. Verify that one viewport-level **No network connection** notice appears
+   without a spinner or Retry and that the loaded list, detail, and Composer
+   draft remain useful. The browser may report definite offline state
+   immediately or after one canonical request confirms the network failure.
+3. Disable airplane mode. Without tapping Retry or another Caffold control,
+   verify that one automatic recovery reconciles status, list, and detail and
+   then removes the notice.
+
+### Notification focus
+
+1. Background an existing Task client and complete its active turn from the
+   second client.
+2. Tap the system notification for that same Task.
+3. Verify that Android focuses the existing client, keeps or applies the
+   matching Task route, and reconciles status, list, and the final response
+   without another click or duplicate navigation.
+
+### Fresh document reconstruction
+
+When Android discards the PWA process, reopen the previous Task route and
+verify that normal bootstrap reconstructs readiness, list, selected detail, and
+transports. A discarded document has no callback and must not depend on the
+foreground recovery state retained by the previous page.
+
 ## Web Push smoke test
 
 Use the HTTPS PWA origin above because remote browsers require a secure context

@@ -18,7 +18,9 @@ export class CodexStatusLifecycle {
     this.loadStatus = loadStatus;
     this.onSnapshotChange = onSnapshotChange;
     this.active = false;
+    this.suspended = false;
     this.statusRequestId = 0;
+    this.statusRequest = null;
     this.taskStorePollTimer = null;
     this.retryTaskStore = retryTaskStore;
     this.snapshotValue = INITIAL_CODEX_STATUS_SNAPSHOT;
@@ -34,6 +36,7 @@ export class CodexStatusLifecycle {
       return;
     }
     this.active = true;
+    this.suspended = false;
     this.runtimeRestart.connect();
     void this.refresh().catch(() => {});
   }
@@ -43,9 +46,30 @@ export class CodexStatusLifecycle {
       return;
     }
     this.active = false;
+    this.suspended = false;
     this.statusRequestId += 1;
+    this.statusRequest = null;
     this.clearTaskStorePoll();
     this.runtimeRestart.disconnect();
+  }
+
+  suspend() {
+    if (!this.active || this.suspended) {
+      return;
+    }
+    this.suspended = true;
+    this.statusRequestId += 1;
+    this.statusRequest = null;
+    this.clearTaskStorePoll();
+  }
+
+  resume() {
+    if (!this.active) {
+      return false;
+    }
+    const changed = this.suspended;
+    this.suspended = false;
+    return changed;
   }
 
   snapshot() {
@@ -89,9 +113,24 @@ export class CodexStatusLifecycle {
   }
 
   async refresh() {
-    if (!this.active) {
+    if (!this.active || this.suspended) {
       return null;
     }
+    if (this.statusRequest) {
+      return await this.statusRequest;
+    }
+    const request = this.performRefresh();
+    this.statusRequest = request;
+    try {
+      return await request;
+    } finally {
+      if (this.statusRequest === request) {
+        this.statusRequest = null;
+      }
+    }
+  }
+
+  async performRefresh() {
     const requestId = ++this.statusRequestId;
     this.setSnapshot(createCodexStatusSnapshot({
       phase: "checking",
@@ -113,6 +152,7 @@ export class CodexStatusLifecycle {
       }
       this.setSnapshot(createCodexStatusSnapshot({
         phase: "failed",
+        status: this.snapshotValue.status,
         error: error instanceof Error ? error.message : `${error}`,
       }));
       throw error;
@@ -120,7 +160,11 @@ export class CodexStatusLifecycle {
   }
 
   isCurrent(requestId) {
-    return this.active && requestId === this.statusRequestId;
+    return (
+      this.active &&
+      !this.suspended &&
+      requestId === this.statusRequestId
+    );
   }
 
   setSnapshot(snapshot) {
@@ -144,6 +188,7 @@ export class CodexStatusLifecycle {
     this.clearTaskStorePoll();
     if (
       !this.active ||
+      this.suspended ||
       snapshot.phase !== "loaded" ||
       snapshot.status?.taskStoreReadiness?.state !== "migrating"
     ) {

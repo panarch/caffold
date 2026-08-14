@@ -143,8 +143,8 @@ export async function installEventSourceMock(
           this.listeners.get("open")?.({});
         }
 
-        emitError() {
-          this.readyState = 0;
+        emitError({ closed = false } = {}) {
+          this.readyState = closed ? 2 : 0;
           this.listeners.get("error")?.({});
         }
 

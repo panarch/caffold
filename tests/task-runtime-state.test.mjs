@@ -7,7 +7,6 @@ import {
   classifyPromptFailure,
   formatTaskStatus,
   isTaskActivelyWorking,
-  retryStaleTaskTransports,
   taskActiveFlagLabel,
   taskActiveFlags,
   taskStatusView,
@@ -49,45 +48,30 @@ test("projects only canonical thread status into task lifecycle UI", () => {
   assert.equal(formatTaskStatus(task("idle")), "idle");
 });
 
-test("transport unavailability masks canonical status without rewriting it", () => {
+test("transport state never masks canonical Task status", () => {
   const active = task("active");
 
   assert.deepEqual(
     taskStatusView(active, TASK_TRANSPORT_STATE.RECONNECTING),
     {
-      status: "reconnecting",
-      label: "reconnecting",
+      status: "running",
+      label: "running",
       icon: "",
     },
   );
   assert.deepEqual(
     taskStatusView(active, TASK_TRANSPORT_STATE.UNAVAILABLE),
     {
-      status: "unavailable",
-      label: "unavailable",
-      icon: "TriangleAlert",
+      status: "running",
+      label: "running",
+      icon: "",
     },
   );
+  assert.equal(
+    formatTaskStatus(active, TASK_TRANSPORT_STATE.UNAVAILABLE),
+    "active",
+  );
   assert.equal(taskThreadStatusType(active), "active");
-});
-
-test("retries all and only stale Task transports", () => {
-  const retried = [];
-  const transports = [
-    TASK_TRANSPORT_STATE.READY,
-    TASK_TRANSPORT_STATE.RECONNECTING,
-    TASK_TRANSPORT_STATE.CONNECTING,
-    TASK_TRANSPORT_STATE.UNAVAILABLE,
-  ].map((state) => ({
-    state,
-    retry: () => retried.push(state),
-  }));
-
-  assert.equal(retryStaleTaskTransports(transports), 2);
-  assert.deepEqual(retried, [
-    TASK_TRANSPORT_STATE.RECONNECTING,
-    TASK_TRANSPORT_STATE.UNAVAILABLE,
-  ]);
 });
 
 test("classifies only explicit client rejection as safe to roll back", () => {

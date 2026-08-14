@@ -8,6 +8,7 @@ const GET_BUILD_ID_MESSAGE = "caffold:get-build-id";
 const PRUNE_SHELL_CACHES_MESSAGE = "caffold:prune-shell-caches";
 const UPDATE_CONTROLLED_MESSAGE = "caffold:update-controlled";
 const UPDATE_READY_MESSAGE = "caffold:update-ready";
+const NOTIFICATION_ACTIVATION_MESSAGE = "caffold:notification-activation";
 
 const APP_SHELL_ASSETS = [
   "/",
@@ -38,6 +39,10 @@ const APP_SHELL_ASSETS = [
   "/assets/brand/codex-template@2x.png",
   "/assets/pages/layout.css",
   "/assets/pages/layout.js",
+  "/assets/pages/foreground-recovery.js",
+  "/assets/pages/foreground-recovery/browser-signals.js",
+  "/assets/pages/foreground-recovery/lifecycle.js",
+  "/assets/pages/foreground-recovery/machine.js",
   "/assets/pages/components/build-mismatch-alert.css",
   "/assets/pages/components/build-mismatch-alert.js",
   "/assets/pages/components/pwa-update-lifecycle.js",
@@ -141,8 +146,6 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/components/task-new.js",
   "/assets/pages/(task-workspace)/tasks/components/task-status.css",
   "/assets/pages/(task-workspace)/tasks/components/task-status.js",
-  "/assets/pages/(task-workspace)/tasks/components/task-transport-overlay.css",
-  "/assets/pages/(task-workspace)/tasks/components/task-transport-overlay.js",
   "/assets/pages/(task-workspace)/tasks/components/detail/(git)/layout.css",
   "/assets/pages/(task-workspace)/tasks/components/detail/(git)/layout.js",
   "/assets/pages/(task-workspace)/tasks/components/detail/(git)/components/controls.css",
@@ -397,6 +400,10 @@ async function openNotificationRoute(route) {
   if (matching) {
     try {
       await matching.focus();
+      matching.postMessage({
+        type: NOTIFICATION_ACTIVATION_MESSAGE,
+        route: safeRoute,
+      });
       return;
     } catch {
       // The client may have closed between enumeration and focus.

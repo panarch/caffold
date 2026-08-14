@@ -65,6 +65,18 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "pages/layout.css" => Some(css(include_str!("../frontend/pages/layout.css"))),
         "pages/layout.js" => Some(js(include_str!("../frontend/pages/layout.js"))),
+        "pages/foreground-recovery.js" => {
+            Some(js(include_str!("../frontend/pages/foreground-recovery.js")))
+        }
+        "pages/foreground-recovery/browser-signals.js" => Some(js(include_str!(
+            "../frontend/pages/foreground-recovery/browser-signals.js"
+        ))),
+        "pages/foreground-recovery/lifecycle.js" => Some(js(include_str!(
+            "../frontend/pages/foreground-recovery/lifecycle.js"
+        ))),
+        "pages/foreground-recovery/machine.js" => Some(js(include_str!(
+            "../frontend/pages/foreground-recovery/machine.js"
+        ))),
         "pages/components/build-mismatch-alert.css" => Some(css(include_str!(
             "../frontend/pages/components/build-mismatch-alert.css"
         ))),
@@ -420,16 +432,6 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/task-status.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/task-status.js"
         ))),
-        "pages/(task-workspace)/tasks/components/task-transport-overlay.css" => {
-            Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/task-transport-overlay.css"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/task-transport-overlay.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/task-transport-overlay.js"
-            )))
-        }
         "pages/(task-workspace)/tasks/components/detail/(git)/layout.css" => {
             Some(css(include_str!(
                 "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/layout.css"
@@ -1251,10 +1253,6 @@ mod tests {
                 b"caffold-task-new".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/task-transport-overlay.js",
-                b"caffold-task-transport-overlay".as_slice(),
-            ),
-            (
                 "pages/(task-workspace)/tasks/components/detail.js",
                 b"caffold-task-detail".as_slice(),
             ),
@@ -1362,10 +1360,6 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/components/task-new.css",
                 b"caffold-task-new".as_slice(),
-            ),
-            (
-                "pages/(task-workspace)/tasks/components/task-transport-overlay.css",
-                b"caffold-task-transport-overlay".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/components/detail.css",

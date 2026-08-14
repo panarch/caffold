@@ -54,6 +54,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.currentOpenOptions = {};
     this.routeActivationRequested = false;
     this.pendingCodexTaskRoute = null;
+    this.pendingTaskRouteActivation = null;
     this.codexRestartStateValue = { state: "idle", message: "" };
     this.codexStatusLifecycle = createCodexStatusLifecycle({
       onSnapshotChange: (snapshot) => this.setCodexStatusSnapshot(snapshot),
@@ -306,6 +307,56 @@ class CaffoldTaskWorkspace extends HTMLElement {
     return result;
   }
 
+  suspendForeground() {
+    this.codexStatusLifecycle.suspend();
+    this.tasksPage?.suspendForeground();
+  }
+
+  async recoverForeground({
+    initialActivation = false,
+    isCurrent = () => true,
+    progress,
+  } = {}) {
+    this.codexStatusLifecycle.resume();
+    progress?.validatingStatus();
+    let statusError = null;
+    const statusSnapshot = this.codexStatusLifecycle.snapshot();
+    if (initialActivation && statusSnapshot.phase === "failed") {
+      statusError = new Error(statusSnapshot.error || "Caffold status unavailable.");
+    } else if (!(initialActivation && statusSnapshot.phase === "loaded")) {
+      try {
+        await this.codexStatusLifecycle.refresh();
+      } catch (error) {
+        statusError = error;
+      }
+    }
+    if (!isCurrent()) {
+      return { stale: true, retry: false };
+    }
+    if (this.pendingTaskRouteActivation) {
+      progress?.activatingRoute();
+      await this.pendingTaskRouteActivation;
+    }
+    if (!isCurrent()) {
+      return { stale: true, retry: false };
+    }
+    const tasks = this.mode === "tasks"
+      ? await this.tasksPage.recoverForeground({
+          initialActivation,
+          isCurrent,
+          progress,
+        })
+      : { retry: false };
+    return {
+      retry: Boolean(
+        statusError ||
+        (!initialActivation && this.tasksPage.codexOperationsBlocked()) ||
+        tasks?.retry
+      ),
+      error: statusError ?? tasks?.error ?? null,
+    };
+  }
+
   selectedTaskContextPath() {
     this.ensureRendered();
     return this.tasksPage.selectedTaskContextPath();
@@ -347,7 +398,18 @@ class CaffoldTaskWorkspace extends HTMLElement {
     if (becameAvailable && this.pendingCodexTaskRoute) {
       const pending = this.pendingCodexTaskRoute;
       this.pendingCodexTaskRoute = null;
-      void this.tasksPage.openRoute(pending.route, pending.options);
+      const activation = this.tasksPage.openRoute(
+        pending.route,
+        pending.options,
+      );
+      this.pendingTaskRouteActivation = activation;
+      void activation
+        .finally(() => {
+          if (this.pendingTaskRouteActivation === activation) {
+            this.pendingTaskRouteActivation = null;
+          }
+        })
+        .catch(() => {});
     }
     return becameAvailable;
   }
