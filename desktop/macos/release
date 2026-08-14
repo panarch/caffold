@@ -34,14 +34,6 @@ require_clean_worktree() {
   fi
 }
 
-require_main_branch() {
-  local branch
-  branch="$(git -C "${REPO_DIR}" branch --show-current)"
-  if [[ "${branch}" != "main" ]]; then
-    fail "releases must be prepared from main, not ${branch:-detached HEAD}"
-  fi
-}
-
 metadata_value() {
   local key="$1"
   "${PACKAGE_APP}" metadata | sed -n "s/^${key}=//p"
@@ -72,7 +64,6 @@ dry_run() {
   local requested_version="$1"
   local commit version archive checksum
 
-  require_main_branch
   require_clean_worktree
   verify_requested_version "${requested_version}"
 

@@ -222,13 +222,14 @@ test("opens resolved Markdown file links through Task Review with native link se
     `/tasks/${scenario.threadId}/review?nav=files&view=source&file=planner.rs&line=60`,
   );
   const review = page.locator("caffold-task-review");
+  const fileNavigator = review.locator("caffold-file-navigator");
   const viewer = review.locator("caffold-review-file-viewer");
   await expect(viewer).toContainText("pub fn plan");
   await expect
     .poll(() => viewer.evaluate(sourceLineIsVisible, 60))
     .toBe(true);
   await expect(
-    review.locator('button[data-file-tree-path="src/planner.rs"]'),
+    fileNavigator.locator('button[data-file-tree-path="src/planner.rs"]'),
   ).toHaveAttribute("aria-current", "true");
 
   await page.reload();
@@ -245,10 +246,9 @@ test("opens resolved Markdown file links through Task Review with native link se
   await expect(page).toHaveURL(
     `/tasks/${scenario.threadId}/review?nav=files&view=source&file=..%2FREADME.md`,
   );
-  await expect(review.locator('button[data-file-tree-path="README.md"]')).toHaveAttribute(
-    "aria-current",
-    "true",
-  );
+  await expect(
+    fileNavigator.locator('button[data-file-tree-path="README.md"]'),
+  ).toHaveAttribute("aria-current", "true");
   await expect(viewer).toContainText("Fixture Home");
 
   await page.goBack();

@@ -406,7 +406,11 @@ class CaffoldTaskConversation extends HTMLElement {
         eventIdentityKey(entry) === commandKey,
     );
     if (command) {
-      this.dispatchIntent("command-output", { command, commandKey });
+      this.dispatchIntent("command-output", {
+        command,
+        commandKey,
+        returnFocusOwner: owner,
+      });
     }
   }
 
@@ -454,10 +458,17 @@ class CaffoldTaskConversation extends HTMLElement {
     );
   }
 
-  focusCommandOutputAction(commandKey) {
-    const owner = [...this.querySelectorAll("caffold-task-command")].find(
-      (entry) => entry.commandKey === commandKey,
-    );
+  focusCommandOutputAction(commandKey, preferredOwner = null) {
+    const owner =
+      preferredOwner instanceof HTMLElement &&
+      preferredOwner.localName === "caffold-task-command" &&
+      preferredOwner.isConnected &&
+      this.contains(preferredOwner) &&
+      preferredOwner.commandKey === commandKey
+        ? preferredOwner
+        : [...this.querySelectorAll("caffold-task-command")].find(
+            (entry) => entry.commandKey === commandKey,
+          );
     return owner?.focusAction() ?? false;
   }
 
