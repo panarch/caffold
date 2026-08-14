@@ -198,6 +198,9 @@ jobs:
       - name: Test repository contracts
         run: npm run test:contract
 
+      - name: Build browser test server
+        run: cargo build --locked
+
       - name: Test browser behavior
         run: npm run test:e2e
 

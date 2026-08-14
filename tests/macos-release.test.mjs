@@ -192,6 +192,9 @@ test("manual release workflow isolates versioning, verification, and publication
   assert.match(macosJob, /npm ci/);
   assert.match(macosJob, /playwright install chromium/);
   assert.match(macosJob, /release --dry-run/);
+  const browserBuildIndex = macosJob.indexOf("cargo build --locked");
+  const browserTestIndex = macosJob.indexOf("npm run test:e2e");
+  assert.ok(browserBuildIndex >= 0 && browserTestIndex > browserBuildIndex);
   for (const command of ["test:unit", "test:contract", "test:e2e", "test:macos"]) {
     assert.match(macosJob, new RegExp(`npm run ${command}`));
   }
