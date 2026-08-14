@@ -140,18 +140,19 @@ test("current worktree documentation names the same-Task isolation tool", () => 
   }
 });
 
-test("backend review policy keeps incomplete ownership work visible", () => {
+test("backend review policy requires owner-inline Rust unit tests", () => {
   const policy = readFileSync(
     resolve(repoRoot, "docs/review/backend.md"),
     "utf8",
   );
-  assert.match(policy, /test ownership is only partially aligned/);
-  assert.match(policy, /Completed reference area:/);
-  assert.match(policy, /Known incomplete areas:/);
-  assert.match(
-    policy,
-    /all other backend areas remain partially aligned or unclassified/,
-  );
+  assert.match(policy, /inline `#\[cfg\(test\)\] mod tests`/);
+  assert.match(policy, /Do not use file-backed unit-test modules/);
+  assert.match(policy, /`src\/\*\*\/tests\.rs` files/);
+  assert.match(policy, /`src\/\*\*\/tests\/` hierarchies/);
+  assert.match(policy, /If Rust integration tests are introduced/);
+  assert.match(policy, /public contract reads\s+as executable documentation/);
+  assert.doesNotMatch(policy, /Current Adoption/);
+  assert.doesNotMatch(policy, /test ownership is only partially aligned/);
 });
 
 test("frontend review policy follows Task-first test ownership", () => {
