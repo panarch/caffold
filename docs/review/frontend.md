@@ -130,29 +130,95 @@ dismissal, anchoring, or modality cannot express the required behavior. Review
 keyboard access, focus return, Escape/light-dismiss behavior, and compact mobile
 placement at the same boundary as the visual change.
 
-### Component Ownership And Lifecycles
-
-`components/` contains browser-rendered component modules: custom elements or
-leaf UI that owns DOM, focus or interaction state, markup, and any scoped CSS.
-Do not use `components/` as a general bucket for models, request lifecycles, or
-other non-visual feature implementation.
+### Frontend Module Boundaries
 
 When one frontend module grows beyond a single file, use an adjacent same-stem
-directory to make the ownership visible: `name.js` is the public feature entry
-point and `name/` contains its private model, lifecycle, and other
-implementation modules. The implementation directory must not contain
-`page.js` or `layout.js`; those names remain page-ownership markers. Production
-consumers import non-visual behavior through explicit named exports from
-`name.js`, not through private implementation paths or `export *` barrels.
+directory: `name.js` and `name/` form one ownership boundary. `name.js` is the
+primary public entry point for non-visual behavior. `name/` contains the
+module's private implementation. The only conventionally visible paths below
+it are Web Component entry points directly under a `components/` namespace at
+the relevant ownership boundary, as defined below. `index.js` has no special
+role in this convention. The implementation directory must not contain
+`page.js` or `layout.js`; those names remain page-ownership markers.
 
-A Web Component mounted by an outside owner remains an explicit public
-component entry point. The mounting module imports
+Apply import rules at the ownership boundary rather than by counting directory
+levels:
+
+- Production modules outside the boundary import only entry points visible at
+  that boundary. They consume non-visual behavior through explicit named
+  exports from `name.js`. An owner that mounts a component exposed by that
+  boundary may instead import its immediate component entry point through
+  `name/components/component.js`. Consumers must not traverse any other
+  private implementation paths or use `export *` barrels.
+- `name.js` may import modules it directly owns under `name/` and entry points
+  visible at that boundary. Directly owned modules may import each other and
+  visible entry points of nested or separate boundaries. They must not traverse
+  a nested boundary's private implementation, and no module under `name/` may
+  import its own `name.js` entry point. The static production import graph must
+  remain acyclic.
+- Apply the same rule recursively when an internal module expands. For example,
+  `name/child.js` and `name/child/` form a nested ownership boundary whose
+  implementation must not import `name/child.js`.
+
+When expansion makes an implementation module need a declaration currently in
+`name.js`, move that declaration to the implementation module that owns it and
+have `name.js` import and, when required by outside consumers, re-export it.
+Alternatively, pass parent-owned runtime state through a constructor, snapshot,
+or method. Do not retain a parent-child import cycle or create a generically
+named shared module without a concrete ownership role.
+
+Focused tests may import an internal module at its owning boundary, but a test
+does not justify re-exporting that internal API from `name.js`. Global
+stylesheet and static-asset manifests may enumerate internal paths because they
+are build inventories rather than runtime feature consumers.
+
+### Component Ownership And Lifecycles
+
+`components/` is the exclusive structural namespace for Web Component entry
+points at its owning boundary. Any production module that defines or registers
+a custom element must be an entry point directly under the nearest owner's
+`components/` directory, and every such entry point must define or register a
+custom element. Production modules in every other location, including a
+component's same-stem private directory, must not define or register custom
+elements.
+
+A Web Component owns its DOM, focus or interaction state, markup, and any
+scoped CSS. Its path makes the registration-bearing module distinguishable at
+an import site from the feature's non-visual API and private implementation.
+Non-Web-Component leaf UI remains private implementation of its owner. Do not
+use `components/` as a general bucket for models, request lifecycles, DOM
+helpers, or other non-visual feature implementation.
+
+An outside owner that mounts a Web Component imports
 `name/components/component.js` directly so registration and DOM ownership stay
-visible; siblings that only consume feature state or emit intent use
-`name.js`. Global stylesheet and static-asset manifests may enumerate component
-paths directly because they are build inventories rather than runtime feature
-consumers. Focused tests may also import an internal lifecycle at its owning
-boundary.
+visible. Consumers that only use feature state or emit intent use `name.js`.
+This direct component import does not make the rest of `name/` public.
+
+Component visibility is relative to the nearest ownership boundary and follows
+the same same-stem rule recursively. For example:
+
+```text
+name.js
+name/
+  components/
+    parent.js
+    sibling.js
+    parent/
+      model.js
+      components/
+        child.js
+```
+
+`name/components/parent.js` and `name/components/sibling.js` are component
+entry points visible at the `name` ownership boundary.
+`name/components/parent/` is the private same-stem implementation of
+`parent.js`. Its nested `components/child.js` is therefore visible only within
+the `parent.js` and `parent/` ownership boundary. `parent.js` and modules under
+`parent/` may import it; `sibling.js` and modules outside the parent boundary
+must not. If sibling owners need that child, move it to the nearest common
+owner's namespace, such as `name/components/child.js`. An immediate child of a
+`components/` directory declares both Web Component kind and visibility at
+that level; the directory never makes the whole subtree externally importable.
 
 A component extraction is a state-ownership change, not only a markup move.
 Move the component's state, every writer, subscription/timer/watcher cleanup,
