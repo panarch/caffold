@@ -825,6 +825,29 @@ test("icon-only controls use square slots from their semantic control tier", () 
   cssBlockMatching(fileViewer, ".viewer-info-button::after", [
     /inset: var\(--interface-compact-hit-outset\)/,
   ]);
+
+  const settingsLayout = readFrontend("pages/(task-workspace)/settings/layout.css");
+  cssBlockMatching(settingsLayout, ".settings-workspace-detail-header", [
+    /column-gap: var\(--interface-space-3\)/,
+  ]);
+  cssBlockMatching(
+    settingsLayout,
+    ".settings-workspace-detail-header button::before",
+    [
+      /inset: var\(--interface-control-hit-outset\)/,
+      /border: 1px solid var\(--border\)/,
+      /border-radius: 0\.25rem/,
+      /background: var\(--surface\)/,
+    ],
+  );
+  cssBlockMatching(
+    settingsLayout,
+    ".settings-workspace-detail-header button:hover::before",
+    [
+      /border-color: var\(--border-strong\)/,
+      /background: var\(--control-hover-bg\)/,
+    ],
+  );
 });
 
 test("archived actions use a visually secondary compact base", () => {
@@ -872,6 +895,11 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
   }
 
   const controls = [
+    [
+      "pages/(task-workspace)/settings/layout.css",
+      ".settings-workspace-detail-header button::before",
+      "--interface-control-hit-outset",
+    ],
     [
       "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
       ".task-command-dialog-close::before",
