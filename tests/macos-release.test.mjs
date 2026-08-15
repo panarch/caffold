@@ -15,6 +15,10 @@ const releaseWorkflow = resolve(repoRoot, ".github/workflows/release.yml");
 const rootReadme = resolve(repoRoot, "README.md");
 const macosReadme = resolve(repoRoot, "desktop/macos/README.md");
 const macosServerSource = resolve(repoRoot, "desktop/macos/CaffoldServer.swift");
+const macosArm64Only =
+  process.platform === "darwin" && process.arch === "arm64"
+    ? false
+    : "requires a macOS arm64 host";
 
 function run(command, args = []) {
   return execFileSync(command, args, {
@@ -32,19 +36,23 @@ function parseMetadata(output) {
   );
 }
 
-test("macOS package metadata has one versioned arm64 archive identity", () => {
-  const metadata = parseMetadata(run(packageApp, ["metadata"]));
-  const cargoVersion = readFileSync(resolve(repoRoot, "Cargo.toml"), "utf8").match(
-    /^version = "([^"]+)"$/m,
-  )?.[1];
-  const webVersion = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8")).version;
+test(
+  "macOS package metadata has one versioned arm64 archive identity",
+  { skip: macosArm64Only },
+  () => {
+    const metadata = parseMetadata(run(packageApp, ["metadata"]));
+    const cargoVersion = readFileSync(resolve(repoRoot, "Cargo.toml"), "utf8").match(
+      /^version = "([^"]+)"$/m,
+    )?.[1];
+    const webVersion = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8")).version;
 
-  assert.equal(metadata.version, cargoVersion);
-  assert.equal(metadata.version, webVersion);
-  assert.equal(metadata.arch, "arm64");
-  assert.equal(metadata.archive, `Caffold-Server-${metadata.version}-macos-arm64.zip`);
-  assert.equal(metadata.checksum, `${metadata.archive}.sha256`);
-});
+    assert.equal(metadata.version, cargoVersion);
+    assert.equal(metadata.version, webVersion);
+    assert.equal(metadata.arch, "arm64");
+    assert.equal(metadata.archive, `Caffold-Server-${metadata.version}-macos-arm64.zip`);
+    assert.equal(metadata.checksum, `${metadata.archive}.sha256`);
+  },
+);
 
 test("macOS release preparation is syntax-valid and dry-run only", () => {
   run("bash", ["-n", packageApp]);
