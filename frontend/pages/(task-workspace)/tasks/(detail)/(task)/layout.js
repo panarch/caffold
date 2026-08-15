@@ -11,7 +11,7 @@ import { routeDomain } from "../../../../../navigation-routes.js";
 import "../../components/composer.js";
 import "./components/conversation.js";
 import "./components/command-dialog.js";
-import { TaskDetailStream } from "./stream.js";
+import { TaskDetailSession } from "./session.js";
 import {
   PROMPT_SUBMISSION_STATE,
   TASK_TRANSPORT_STATE,
@@ -67,17 +67,14 @@ class CaffoldTaskDetail extends HTMLElement {
     this.loading = false;
     this.loadingOlderEvents = false;
     this.selectedThreadId = "";
-    this.detailStream = new TaskDetailStream({
+    this.detailSession = new TaskDetailSession({
       onTaskSync: (message) => this.applyTaskStreamSync(message),
       onTaskEvent: (message) => this.applyTaskStreamEvent(message),
-      onRefresh: (threadId, isCurrent, { recovery } = {}) =>
-        this.refreshSelectedTask(threadId, isCurrent, {
-          resetRevision: recovery,
-        }),
+      onFallbackDetail: (detail, context) =>
+        this.applyTaskFallbackDetail(detail, context),
       onStateChange: (state, previousState) =>
         this.handleStreamStateChange(state, previousState),
     });
-    this.detailLoadGeneration = 0;
     this.seenRequestKeys = new Set();
     this.historyRequestToken = 0;
     this.interruptActionToken = 0;
@@ -216,7 +213,6 @@ class CaffoldTaskDetail extends HTMLElement {
 
     if (this.selectedThreadId !== targetThreadId) {
       this.deactivateFollowUpComposer();
-      this.detailLoadGeneration += 1;
       this.historyRequestToken += 1;
       this.interruptActionToken += 1;
       this.interruptStateValue = { loading: false, error: null };
@@ -225,7 +221,7 @@ class CaffoldTaskDetail extends HTMLElement {
       this.archiveStateValue = { loading: false, error: null };
       this.loadingOlderEvents = false;
       this.reviewView = "conversation";
-      this.detailStream.deactivate();
+      this.detailSession.deactivate();
     }
     this.view = "detail";
     this.hidden = false;
@@ -257,7 +253,7 @@ class CaffoldTaskDetail extends HTMLElement {
       taskDetailThreadId(this.taskDetail) === targetThreadId
     ) {
       this.loading = false;
-      this.detailStream.activate(targetThreadId);
+      void this.detailSession.attach(targetThreadId);
       return this.taskDetail;
     }
     return await this.openTask(targetThreadId);
@@ -268,7 +264,6 @@ class CaffoldTaskDetail extends HTMLElement {
     if (!threadId || !detail?.task) {
       return false;
     }
-    this.detailLoadGeneration += 1;
     this.interruptActionToken += 1;
     this.interruptStateValue = { loading: false, error: null };
     this.selectedThreadId = threadId;
@@ -283,12 +278,11 @@ class CaffoldTaskDetail extends HTMLElement {
     ) {
       return false;
     }
-    this.detailStream.activate(threadId);
+    void this.detailSession.attach(threadId);
     return true;
   }
 
   deactivate({ retainComposerDom = false } = {}) {
-    this.detailLoadGeneration += 1;
     this.historyRequestToken += 1;
     this.interruptActionToken += 1;
     this.interruptStateValue = { loading: false, error: null };
@@ -297,7 +291,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.archiveStateValue = { loading: false, error: null };
     this.loadingOlderEvents = false;
     this.initialConversationLoad = null;
-    this.detailStream.deactivate();
+    this.detailSession.deactivate();
     if (retainComposerDom) {
       this.endFollowUpComposerEditingLifetime(
         this.activeFollowUpComposerThreadId,
@@ -321,7 +315,7 @@ class CaffoldTaskDetail extends HTMLElement {
         task && taskThreadId(task) === this.selectedThreadId
           ? task
           : null,
-      transportState: this.detailStream.state,
+      transportState: this.detailSession.state,
       contextPath: this.activeCwdPath(),
       archiveState: this.archiveStateValue,
     };
@@ -346,48 +340,32 @@ class CaffoldTaskDetail extends HTMLElement {
       return null;
     }
 
-    const loadGeneration = ++this.detailLoadGeneration;
     this.initialConversationLoad = this.conversationComponent()?.hasScrollSnapshot(threadId)
       ? null
-      : { threadId, loadGeneration };
+      : { threadId };
     this.view = "detail";
     this.selectedThreadId = threadId;
     this.loading = true;
     this.detailLoadError = null;
     this.historyLoadError = null;
     this.render();
-    const detailRequest = getTask(threadId);
-    this.detailStream.activate(threadId);
-
-    try {
-      const detail = await detailRequest;
-      if (loadGeneration !== this.detailLoadGeneration) {
-        return null;
-      }
-      const updateKind = this.isInitialConversationLoadPending(threadId)
-        ? "bottom"
-        : "preserve";
-      if (
-        !this.applyCanonicalTaskDetail(threadId, detail, {
-          updateKind,
-          clearHistoryError: true,
-        })
-      ) {
-        this.finishInitialConversationLoad(threadId, loadGeneration);
-        return null;
-      }
-      this.finishInitialConversationLoad(threadId, loadGeneration);
-      return detail;
-    } catch (error) {
-      if (loadGeneration !== this.detailLoadGeneration) {
-        return null;
-      }
-      this.loading = false;
-      this.detailLoadError = error;
-      this.render();
-      this.finishInitialConversationLoad(threadId, loadGeneration);
+    const outcome = await this.detailSession.open(threadId);
+    if (
+      outcome.stale ||
+      threadId !== this.selectedThreadId
+    ) {
       return null;
     }
+    if (outcome.ok) {
+      this.finishInitialConversationLoad(threadId);
+      return outcome.detail ?? this.taskDetail;
+    }
+    this.loading = false;
+    this.detailLoadError =
+      outcome.error ?? new Error("Task details could not finish loading.");
+    this.render();
+    this.finishInitialConversationLoad(threadId);
+    return null;
   }
 
   rememberActiveThreadEvents() {
@@ -433,12 +411,43 @@ class CaffoldTaskDetail extends HTMLElement {
   applyTaskStreamSync(message) {
     const threadId = `${message?.threadId ?? ""}`;
     const detail = message?.detail;
-    this.applyCanonicalTaskDetail(threadId, detail, {
-      revision: message.revision,
-      resetRevision: message.reason === "stream-bootstrap",
-      detailError: message.error,
-      updateKind: this.liveConversationUpdateKind(threadId),
+    const preserveReadableDetail =
+      message.reason === "stream-bootstrap" &&
+      !detail?.task &&
+      taskDetailThreadId(this.taskDetail) === threadId &&
+      Boolean(this.taskDetail?.task);
+    const applied = preserveReadableDetail
+      ? this.applyTaskStreamBaseline(threadId, message.revision)
+      : this.applyCanonicalTaskDetail(threadId, detail, {
+          revision: message.revision,
+          resetRevision: message.reason === "stream-bootstrap",
+          detailError: message.error,
+          updateKind: this.liveConversationUpdateKind(threadId),
+        });
+    if (!applied) {
+      return false;
+    }
+    return true;
+  }
+
+  applyTaskFallbackDetail(detail, { threadId, recovery } = {}) {
+    return this.applyCanonicalTaskDetail(threadId, detail, {
+      resetRevision: recovery,
+      updateKind: recovery
+        ? "live"
+        : this.isInitialConversationLoadPending(threadId)
+          ? "bottom"
+          : "preserve",
+      clearHistoryError: !recovery,
     });
+  }
+
+  applyTaskStreamBaseline(threadId, revision) {
+    if (threadId !== this.selectedThreadId) {
+      return false;
+    }
+    this.taskDetailRevisionByThread.delete(threadId);
+    return this.acceptTaskDetailRevision(threadId, revision);
   }
 
   applyTaskStreamEvent(message) {
@@ -647,19 +656,23 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   get streamState() {
-    return this.detailStream?.state ?? TASK_TRANSPORT_STATE.IDLE;
+    return this.detailSession?.state ?? TASK_TRANSPORT_STATE.IDLE;
   }
 
   retryStream() {
     if (!this.selectedThreadId) {
       return;
     }
-    this.detailStream.activate(this.selectedThreadId, { force: true });
+    if (this.loading && !this.taskDetail?.task) {
+      void this.openTask(this.selectedThreadId);
+      return;
+    }
+    void this.detailSession.retry();
     this.render();
   }
 
   suspendForeground() {
-    this.detailStream.suspend();
+    this.detailSession.suspend();
   }
 
   reconcileVisibleSurface() {
@@ -671,55 +684,15 @@ class CaffoldTaskDetail extends HTMLElement {
   async recoverForeground() {
     if (
       this.view !== "detail" ||
-      !this.selectedThreadId ||
-      taskDetailThreadId(this.taskDetail) !== this.selectedThreadId
+      !this.selectedThreadId
     ) {
       return { ok: true, skipped: true };
     }
-    const outcome = await this.detailStream.recover(this.selectedThreadId);
+    const outcome = await this.detailSession.recover();
     if (!outcome.ok && !outcome.stale) {
       throw outcome.error ?? new Error("Task detail recovery failed.");
     }
     return outcome;
-  }
-
-  async refreshSelectedTask(
-    threadId,
-    isCurrent = () => true,
-    { resetRevision = false } = {},
-  ) {
-    const loadGeneration = this.detailLoadGeneration;
-    if (resetRevision) {
-      if (
-        !isCurrent() ||
-        loadGeneration !== this.detailLoadGeneration ||
-        threadId !== this.selectedThreadId
-      ) {
-        return;
-      }
-      this.taskDetailRevisionByThread.delete(threadId);
-    }
-    const detail = await getTask(threadId);
-    if (
-      !isCurrent() ||
-      loadGeneration !== this.detailLoadGeneration ||
-      threadId !== this.selectedThreadId
-    ) {
-      return;
-    }
-    if (this.applyCanonicalTaskDetail(threadId, detail, {
-      updateKind: this.liveConversationUpdateKind(threadId),
-    })) {
-      return true;
-    }
-    const revision = Number(detail?.revision);
-    const currentRevision = this.taskDetailRevisionByThread.get(threadId) ?? 0;
-    return (
-      taskDetailThreadId(detail) === threadId &&
-      Number.isFinite(revision) &&
-      revision > 0 &&
-      currentRevision > revision
-    );
   }
 
   handleAction(action, element) {
@@ -765,7 +738,7 @@ class CaffoldTaskDetail extends HTMLElement {
       });
       return;
     }
-    if (isTaskTransportStale(this.detailStream.state)) {
+    if (isTaskTransportStale(this.detailSession.state)) {
       composer.resolveSubmission(submissionId, {
         status: "rejected",
         error: new Error(
@@ -923,7 +896,7 @@ class CaffoldTaskDetail extends HTMLElement {
       this.interruptStateValue.loading ||
       !isTaskActivelyWorking(task) ||
       !task?.activeTurn?.id ||
-      isTaskTransportStale(this.detailStream.state)
+      isTaskTransportStale(this.detailSession.state)
     ) {
       return;
     }
@@ -965,7 +938,7 @@ class CaffoldTaskDetail extends HTMLElement {
     if (
       !this.selectedThreadId ||
       this.archiveStateValue.loading ||
-      isTaskTransportStale(this.detailStream.state)
+      isTaskTransportStale(this.detailSession.state)
     ) {
       return;
     }
@@ -1006,7 +979,7 @@ class CaffoldTaskDetail extends HTMLElement {
       !this.selectedThreadId ||
       !approvalId ||
       !decision ||
-      isTaskTransportStale(this.detailStream.state)
+      isTaskTransportStale(this.detailSession.state)
     ) {
       return;
     }
@@ -1290,7 +1263,7 @@ class CaffoldTaskDetail extends HTMLElement {
       placeholder: "Send another prompt to this task",
       ariaLabel: "Follow-up prompt",
       submitLabel: "Send prompt",
-      disabled: isTaskTransportStale(this.detailStream.state),
+      disabled: isTaskTransportStale(this.detailSession.state),
       settingsLocked: isTaskActivelyWorking(task),
       turnActive: isTaskActivelyWorking(task),
       activeTurnId: `${task?.activeTurn?.id ?? ""}`,
@@ -1316,11 +1289,8 @@ class CaffoldTaskDetail extends HTMLElement {
     return this.isInitialConversationLoadPending(threadId) ? "bottom" : "live";
   }
 
-  finishInitialConversationLoad(threadId, loadGeneration) {
-    if (
-      this.initialConversationLoad?.threadId === threadId &&
-      this.initialConversationLoad.loadGeneration === loadGeneration
-    ) {
+  finishInitialConversationLoad(threadId) {
+    if (this.initialConversationLoad?.threadId === threadId) {
       this.initialConversationLoad = null;
     }
   }
@@ -1343,7 +1313,7 @@ class CaffoldTaskDetail extends HTMLElement {
         loadingOlder: false,
         detailError: null,
         historyError: null,
-        transportState: this.detailStream.state,
+        transportState: this.detailSession.state,
         updateKind: null,
       });
       this.conversationUpdateKind = null;
@@ -1356,11 +1326,11 @@ class CaffoldTaskDetail extends HTMLElement {
       eventsPage: this.eventsPage,
       loading: Boolean(this.taskDetail?.historyLoading),
       loadingOlder: this.loadingOlderEvents,
-      detailError: isTaskTransportStale(this.detailStream.state)
+      detailError: isTaskTransportStale(this.detailSession.state)
         ? null
         : this.detailLoadError,
       historyError: this.historyLoadError,
-      transportState: this.detailStream.state,
+      transportState: this.detailSession.state,
       updateKind: this.conversationUpdateKind,
     });
     this.conversationUpdateKind = null;
@@ -1469,8 +1439,8 @@ class CaffoldTaskDetail extends HTMLElement {
       return `empty:${this.selectedThreadId}`;
     }
     const task = this.taskDetail.task;
-    const streamState = isVisibleStreamState(this.detailStream.state)
-      ? this.detailStream.state
+    const streamState = isVisibleStreamState(this.detailSession.state)
+      ? this.detailSession.state
       : "ready";
     return [
       "detail",

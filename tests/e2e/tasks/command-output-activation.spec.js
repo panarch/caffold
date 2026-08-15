@@ -4,6 +4,7 @@ import {
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
+  emitTaskDetailBootstrap,
   installEventSourceMock,
   mockCodexModels,
 } from "../support/task-fixtures.js";
@@ -123,6 +124,7 @@ test("limits terminal command output activation to View output", async ({
   );
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, detail);
   const tasksPage = page.locator("caffold-tasks-page");
   const workDetails = tasksPage.locator(
     `.task-turn-work[data-turn-id="${completedTurnId}"] caffold-task-work-details > details`,

@@ -6,6 +6,7 @@ import {
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
+  emitTaskDetailBootstrap,
   installEventSourceMock,
   isScrolledToBottom,
   mockCodexModels,
@@ -31,6 +32,7 @@ test("keeps a large task usable while conversation history is loading", async ({
         this.url = url;
         this.listeners = new Map();
         window.__caffoldMockEventSources.push(this);
+        window.__caffoldRegisterTaskSseSource?.(this);
       }
 
       addEventListener(type, listener) {
@@ -96,6 +98,7 @@ test("keeps a large task usable while conversation history is loading", async ({
   });
 
   await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(page, pendingDetail);
   const tasksPage = page.locator("caffold-tasks-page");
   await expect(tasksPage.locator(".task-detail-heading h2")).toContainText(
     "Large task history",
@@ -162,6 +165,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
         this.url = url;
         this.listeners = new Map();
         window.__taskEventSources.push(this);
+        window.__caffoldRegisterTaskSseSource?.(this);
       }
 
       addEventListener(type, listener) {
@@ -314,6 +318,16 @@ test("keeps the visible conversation anchor while loading older events by cursor
   await expect(taskRow.locator(".task-row-time")).toBeVisible();
   await expect(taskRow).not.toContainText("notLoaded");
   await taskRow.click();
+  await emitTaskDetailBootstrap(page, {
+    threadId,
+    syncState: "ready",
+    revision: 1,
+    task,
+    events: latestEvents,
+    eventsPage: { nextCursor: "older_cursor" },
+    pendingApprovals: [],
+    historyLoading: false,
+  });
   await expect(tasksPage.locator(".task-detail-summary")).not.toContainText("notLoaded");
   await expect(tasksPage).toContainText("This is the latest answer block 12.");
   await expect(tasksPage).not.toContainText("This is the older prompt.");
@@ -458,13 +472,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
 test("keeps the latest conversation when older history times out", async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    window.EventSource = class MockEventSource {
-      addEventListener() {}
-
-      close() {}
-    };
-  });
+  await installEventSourceMock(page, { autoOpen: true });
   await mockCodexModels(page);
   const threadId = "thread_history_timeout_fixture";
   const now = 1_767_300_000_000;
@@ -491,6 +499,14 @@ test("keeps the latest conversation when older history times out", async ({
     },
     createdMs: now + index,
   }));
+  const latestDetail = {
+    threadId,
+    revision: 1,
+    task,
+    events: latestEvents,
+    eventsPage: { nextCursor: "older-timeout-cursor" },
+    pendingApprovals: [],
+  };
   let olderRequests = 0;
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
@@ -532,17 +548,12 @@ test("keeps the latest conversation when older history times out", async ({
     }
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({
-        revision: 1,
-        task,
-        events: latestEvents,
-        eventsPage: { nextCursor: "older-timeout-cursor" },
-        pendingApprovals: [],
-      }),
+      body: JSON.stringify(latestDetail),
     });
   });
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, latestDetail);
   const tasksPage = page.locator("caffold-tasks-page");
   const conversation = tasksPage.locator(".task-conversation-scroll");
   const textarea = tasksPage.locator(
@@ -572,12 +583,7 @@ test("renders normalized Codex user messages instead of raw ambient context", as
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Codex message normalization regression");
-  await page.addInitScript(() => {
-    window.EventSource = class MockEventSource {
-      addEventListener() {}
-      close() {}
-    };
-  });
+  await installEventSourceMock(page, { autoOpen: true });
   await mockCodexModels(page);
 
   const threadId = "thread_normalized_user_message";
@@ -644,6 +650,7 @@ test("renders normalized Codex user messages instead of raw ambient context", as
   );
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, detail);
   const tasksPage = page.locator("caffold-tasks-page");
   await expect(tasksPage).toContainText("Only this request should be visible.");
   await expect(tasksPage).not.toContainText("in-app-browser-context");
@@ -739,6 +746,7 @@ test("orders separate turns by message chronology when a newer start marker is s
   );
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, detail);
   const messages = page.locator(".task-conversation .task-message");
   await expect
     .poll(() =>
@@ -851,6 +859,7 @@ test("keeps cross-turn work chronological and the active status at the timeline 
   );
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, activeDetail);
   const tasksPage = page.locator("caffold-tasks-page");
   await expect(tasksPage).toContainText("Keep cross-turn work in order.");
   await expect
@@ -991,6 +1000,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
         this.url = url;
         this.listeners = new Map();
         window.__taskEventSources.push(this);
+        window.__caffoldRegisterTaskSseSource?.(this);
       }
 
       addEventListener(type, listener) {
@@ -1136,21 +1146,24 @@ test("keeps task event chronology stable through approval, completion, and reloa
   let detailEvents = [user, reasoning, commentary];
   let detailTask = task;
   let detailRevision = 1;
+  const currentDetail = () => ({
+    threadId,
+    revision: detailRevision,
+    task: detailTask,
+    events: detailEvents,
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
 
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({
-        revision: detailRevision,
-        task: detailTask,
-        events: detailEvents,
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-      }),
+      body: JSON.stringify(currentDetail()),
     }),
   );
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, currentDetail());
   const tasksPage = page.locator("caffold-tasks-page");
   await expect(tasksPage).toContainText("I found the ordering boundary.");
   await expect
@@ -1384,6 +1397,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
   ).toHaveCount(2);
 
   await page.reload();
+  await emitTaskDetailBootstrap(page, currentDetail());
   await expect(tasksPage).toContainText("The event order is stable.");
   await expect(tasksPage.locator(".task-turn-work")).toHaveCount(1);
   await tasksPage.locator("caffold-task-work-details > details > summary").click();
@@ -1405,6 +1419,7 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
         this.listeners = new Map();
         this.readyState = 0;
         window.__taskEventSources.push(this);
+        window.__caffoldRegisterTaskSseSource?.(this);
       }
 
       addEventListener(type, listener) {
@@ -1524,6 +1539,7 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   });
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, taskDetail);
   const tasksPage = page.locator("caffold-tasks-page");
   const scroller = tasksPage.locator(".task-conversation-scroll");
   await expect(tasksPage).toContainText("Existing answer block 18.");
@@ -1531,20 +1547,8 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     .poll(() => scroller.evaluate((element) => element.scrollHeight > element.clientHeight))
     .toBe(true);
   await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
-  await page.evaluate(({ threadId, taskDetail }) => {
-    const taskSource = window.__taskEventSources.find((source) =>
-      source.url.includes(`/api/tasks/${threadId}/stream`),
-    );
-    taskSource.emitOpen();
-    taskSource.emit("task-sync", {
-      threadId,
-      revision: taskDetail.revision,
-      detail: taskDetail,
-      reason: "test",
-    });
-  }, { threadId, taskDetail });
   await expect(page.locator(".app-foreground-recovery")).toBeHidden();
-  await expect.poll(() => taskDetailReadRequests).toBe(1);
+  expect(taskDetailReadRequests).toBe(0);
 
   await page.evaluate(
     ({ threadId, now }) => {
@@ -1601,16 +1605,6 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   );
   await expect(tasksPage).toContainText("Live answer while reading older content.");
   await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeLessThan(16);
-  await expect
-    .poll(() =>
-      tasksPage.evaluate(
-        (element) =>
-          element.querySelector("caffold-task-detail").detailStream.refresh ===
-          null,
-      ),
-    )
-    .toBe(true);
-
   const readsBeforeBurst = taskDetailReadRequests;
   await page.evaluate(
     ({ threadId, now }) => {
@@ -1716,7 +1710,7 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   await page.evaluate(() => {
     document.dispatchEvent(new Event("visibilitychange"));
   });
-  await expect.poll(() => taskDetailReadRequests).toBe(readsBeforeVisibility + 1);
+  expect(taskDetailReadRequests).toBe(readsBeforeVisibility);
   await page.evaluate(() => {
     for (const source of window.__taskEventSources.filter(
       (candidate) => !candidate.closed && candidate.readyState !== 1,
@@ -1759,16 +1753,22 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     },
     events: [...taskDetail.events, reconnectEvent],
   };
-  await page.evaluate((threadId) => {
+  await page.evaluate(({ threadId, detail }) => {
     const taskSource = window.__taskEventSources.findLast(
       (source) =>
         source.url.includes(`/api/tasks/${threadId}/stream`) && !source.closed,
     );
     taskSource.emitOpen();
-  }, threadId);
+    taskSource.emit("task-sync", {
+      threadId,
+      revision: detail.revision,
+      detail,
+      reason: "stream-bootstrap",
+    });
+  }, { threadId, detail: taskDetailResponse });
   await expect(page.locator(".app-foreground-recovery")).toBeHidden();
   await expect(tasksPage).toContainText("Synced after reconnect.");
-  await expect.poll(() => taskDetailReadRequests).toBe(readsBeforeReconnect + 1);
+  expect(taskDetailReadRequests).toBe(readsBeforeReconnect);
 
   const sourcesBeforeFailure = await page.evaluate(
     () => window.__taskEventSources.length,
@@ -1810,5 +1810,13 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
       source.emitOpen();
     }
   });
+  await page.evaluate(({ threadId, detail }) => {
+    window.__caffoldTaskSse.source(threadId).emit("task-sync", {
+      threadId,
+      revision: detail.revision,
+      detail,
+      reason: "stream-bootstrap",
+    });
+  }, { threadId, detail: taskDetailResponse });
   await expect(page.locator(".app-foreground-recovery")).toBeHidden();
 });

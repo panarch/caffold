@@ -10,6 +10,10 @@ export class TaskStreamLifecycle {
     this.onEvent = options.onEvent ?? (() => {});
     this.onReconcile = options.onReconcile ?? (() => Promise.resolve());
     this.onStateChange = options.onStateChange ?? (() => {});
+    this.waitUntilReady = options.waitUntilReady ?? null;
+    this.onConnectionInvalidated =
+      options.onConnectionInvalidated ?? (() => {});
+    this.connectionTimeoutMs = options.connectionTimeoutMs ?? null;
     this.reconnectTimeoutMs =
       options.reconnectTimeoutMs ?? DEFAULT_RECONNECT_TIMEOUT_MS;
     this.retryDelaysMs = [
@@ -21,6 +25,7 @@ export class TaskStreamLifecycle {
     this.generation = 0;
     this.reconcileGeneration = 0;
     this.reconciliation = null;
+    this.connectionTimer = null;
     this.reconnectTimer = null;
     this.retryTimer = null;
     this.retryAttempt = 0;
@@ -170,20 +175,57 @@ export class TaskStreamLifecycle {
     for (const type of this.eventTypes) {
       source.addEventListener(type, (event) => {
         if (this.isCurrent(source, contextKey, generation)) {
-          this.onEvent(type, event, contextKey);
+          this.onEvent(type, event, contextKey, { source });
         }
       });
     }
+    this.startConnectionTimer(source, contextKey, generation);
   }
 
   async opened(source, contextKey, generation) {
     if (!this.isCurrent(source, contextKey, generation)) {
       return;
     }
+    this.clearConnectionTimer();
     this.clearReconnectTimer();
     this.hasConnected = true;
-    if (!this.needsReconcile) {
+    const recovery = this.needsReconcile;
+    this.setState(
+      this.validating
+        ? TASK_TRANSPORT_STATE.VALIDATING
+        : recovery
+          ? TASK_TRANSPORT_STATE.RECONNECTING
+          : TASK_TRANSPORT_STATE.CONNECTING,
+    );
+
+    if (this.waitUntilReady) {
+      let ready = false;
+      try {
+        ready = await this.waitUntilReady(
+          contextKey,
+          () => this.isCurrent(source, contextKey, generation),
+          { recovery, source },
+        );
+      } catch {
+        if (this.isCurrent(source, contextKey, generation)) {
+          this.replaceAfterFailure(source, contextKey, generation);
+        }
+        return;
+      }
+      if (ready === false) {
+        if (this.isCurrent(source, contextKey, generation)) {
+          this.replaceAfterFailure(source, contextKey, generation);
+        }
+        return;
+      }
+      if (!this.isCurrent(source, contextKey, generation)) {
+        return;
+      }
+    }
+
+    if (!recovery) {
       this.retryAttempt = 0;
+      this.validating = false;
       this.setState(TASK_TRANSPORT_STATE.READY);
       return;
     }
@@ -191,15 +233,11 @@ export class TaskStreamLifecycle {
       this.skipNextReconciliation = false;
       this.needsReconcile = false;
       this.retryAttempt = 0;
+      this.validating = false;
       this.setState(TASK_TRANSPORT_STATE.READY);
       return;
     }
 
-    this.setState(
-      this.validating
-        ? TASK_TRANSPORT_STATE.VALIDATING
-        : TASK_TRANSPORT_STATE.RECONNECTING,
-    );
     const reconcileGeneration = this.reconcileGeneration;
     const outcome = await this.requestReconciliation(
       contextKey,
@@ -229,6 +267,7 @@ export class TaskStreamLifecycle {
     if (!this.isCurrent(source, contextKey, generation)) {
       return;
     }
+    this.clearConnectionTimer();
     this.needsReconcile = true;
     this.validating = false;
     this.invalidateReconciliation();
@@ -334,7 +373,10 @@ export class TaskStreamLifecycle {
             { recovery: reconciliation.recovery },
           );
           if (result === false) {
-            throw new Error("Task stream reconciliation failed.");
+            return {
+              ok: false,
+              error: new Error("Task stream reconciliation failed."),
+            };
           }
         } catch (error) {
           return { ok: false, error };
@@ -358,6 +400,7 @@ export class TaskStreamLifecycle {
   }
 
   resetConnection() {
+    this.clearConnectionTimer();
     this.clearReconnectTimer();
     this.clearRetryTimer();
     this.invalidateSource();
@@ -366,9 +409,14 @@ export class TaskStreamLifecycle {
   }
 
   invalidateSource() {
+    this.clearConnectionTimer();
     this.clearReconnectTimer();
-    this.source?.close();
+    const source = this.source;
+    source?.close();
     this.source = null;
+    if (source) {
+      this.onConnectionInvalidated(source);
+    }
     this.generation += 1;
     this.invalidateReconciliation();
   }
@@ -381,6 +429,25 @@ export class TaskStreamLifecycle {
   clearReconnectTimer() {
     window.clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
+  }
+
+  startConnectionTimer(source, contextKey, generation) {
+    this.clearConnectionTimer();
+    if (!Number.isFinite(this.connectionTimeoutMs)) {
+      return;
+    }
+    this.connectionTimer = window.setTimeout(() => {
+      if (!this.isCurrent(source, contextKey, generation)) {
+        return;
+      }
+      this.connectionTimer = null;
+      this.replaceAfterFailure(source, contextKey, generation);
+    }, Math.max(0, this.connectionTimeoutMs));
+  }
+
+  clearConnectionTimer() {
+    window.clearTimeout(this.connectionTimer);
+    this.connectionTimer = null;
   }
 
   clearRetryTimer() {
@@ -416,5 +483,4 @@ export class TaskStreamLifecycle {
       this.onStateChange(state, previousState);
     }
   }
-
 }

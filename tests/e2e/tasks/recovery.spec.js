@@ -3,6 +3,7 @@ import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
   canonicalTaskState,
+  emitTaskDetailBootstrap,
   installEventSourceMock,
   mockCodexModels,
 } from "../support/task-fixtures.js";
@@ -152,10 +153,11 @@ test("opens archived-in-Codex recovery without opening ordinary Task detail and 
   await restoreButton.click();
   await expect.poll(() => restoreCalls).toBe(1);
   await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}$`));
+  await emitTaskDetailBootstrap(page, taskDetail(restored));
   await expect(
     page.locator(`.task-row[data-thread-id="${threadId}"]`),
   ).toContainText("Restored recovery Task");
-  await expect.poll(() => detailReads).toBe(1);
+  expect(detailReads).toBe(0);
 });
 
 test("moves an already-Codex-archived recovery Task into Caffold Archived", async ({
@@ -291,9 +293,10 @@ test("keeps a readable Section-placement recovery on ordinary Task detail", asyn
   await page.locator(`.task-row[data-thread-id="${threadId}"]`).click();
 
   await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}$`));
+  await emitTaskDetailBootstrap(page, taskDetail(readable));
   await expect(page.locator("caffold-task-recovery")).toBeHidden();
   await expect(
     page.getByRole("heading", { name: "Readable placement recovery" }),
   ).toBeVisible();
-  await expect.poll(() => detailReads).toBe(1);
+  expect(detailReads).toBe(0);
 });

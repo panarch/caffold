@@ -3,6 +3,8 @@ import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
   canonicalTaskState,
+  emitTaskDetailBootstrap,
+  installEventSourceMock,
   mockCodexModels,
   pasteImage,
   scrollTop,
@@ -23,6 +25,7 @@ test("starts a completed task follow-up clock only from canonical turn metadata"
         this.url = url;
         this.listeners = new Map();
         window.__taskEventSources.push(this);
+        window.__caffoldRegisterTaskSseSource?.(this);
       }
 
       addEventListener(type, listener) {
@@ -133,6 +136,7 @@ test("starts a completed task follow-up clock only from canonical turn metadata"
   );
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, detail());
   const tasksPage = page.locator("caffold-tasks-page");
   const form = tasksPage.locator(".task-follow-up-form");
   const prompt = form.locator('textarea[name="prompt"]');
@@ -199,6 +203,7 @@ test("submits completed task follow-ups and reloads canonical messages", async (
         this.url = url;
         this.listeners = new Map();
         window.__taskEventSources.push(this);
+        window.__caffoldRegisterTaskSseSource?.(this);
       }
 
       addEventListener(type, listener) {
@@ -244,12 +249,6 @@ test("submits completed task follow-ups and reloads canonical messages", async (
   const submittedBodies = [];
   let rejectedAttempts = 0;
   let timedOutAttempts = 0;
-  let blockNextDetailRequest = false;
-  let releaseStaleDetailRequest = null;
-  let markStaleDetailRequestStarted = null;
-  const staleDetailRequestStarted = new Promise((resolve) => {
-    markStaleDetailRequestStarted = resolve;
-  });
   const detail = () => ({
     revision,
     task,
@@ -264,17 +263,9 @@ test("submits completed task follow-ups and reloads canonical messages", async (
       body: JSON.stringify(activeTaskProjection([task])),
     }),
   );
-  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), async (route) => {
-    const response = detail();
-    if (blockNextDetailRequest) {
-      blockNextDetailRequest = false;
-      markStaleDetailRequestStarted();
-      await new Promise((resolve) => {
-        releaseStaleDetailRequest = resolve;
-      });
-    }
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify(response) });
-  });
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(detail()) }),
+  );
   await page.route(new RegExp(`/api/tasks/${threadId}/prompts(?:\\?|$)`), async (route) => {
     const body = route.request().postDataJSON();
     submittedPrompts.push(body.prompt);
@@ -309,6 +300,7 @@ test("submits completed task follow-ups and reloads canonical messages", async (
   });
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, detail());
   const tasksPage = page.locator("caffold-tasks-page");
   const form = tasksPage.locator(".task-follow-up-form");
   const prompt = form.locator('textarea[name="prompt"]');
@@ -386,21 +378,12 @@ test("submits completed task follow-ups and reloads canonical messages", async (
   await expect(send).toHaveAttribute("data-primary-action", "stop");
   await expect(send).toBeEnabled();
 
-  blockNextDetailRequest = true;
-  await page.evaluate(() => {
-    document
-      .querySelector("caffold-task-detail")
-      ?.detailStream.requestRefresh();
-  });
-  await staleDetailRequestStarted;
-
   await prompt.fill("Submitted by button");
   await expect(send).toHaveAttribute("data-primary-action", "send");
   await expect(send).toBeEnabled();
   await send.click();
   await expect.poll(() => submittedPrompts).toEqual(["Submitted by button"]);
   await expect(tasksPage).toContainText("Submitted by button");
-  releaseStaleDetailRequest();
   await expect(tasksPage).toContainText("Submitted by button");
   await expect(form).toHaveAttribute("aria-busy", "false");
   await expect(prompt).not.toBeFocused();
@@ -473,6 +456,7 @@ test("submits completed task follow-ups and reloads canonical messages", async (
   ];
   revision += 1;
   await page.reload();
+  await emitTaskDetailBootstrap(page, detail());
   await expect(tasksPage).toContainText("Submitted by Enter");
   await expect(tasksPage).toContainText("Latest canonical response");
 
@@ -533,6 +517,7 @@ test("unlocks a completed task when canonical item content arrives before the pr
         this.url = url;
         this.listeners = new Map();
         window.__taskEventSources.push(this);
+        window.__caffoldRegisterTaskSseSource?.(this);
       }
 
       addEventListener(type, listener) {
@@ -614,6 +599,7 @@ test("unlocks a completed task when canonical item content arrives before the pr
   });
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, detail());
   const tasksPage = page.locator("caffold-tasks-page");
   const form = tasksPage.locator(".task-follow-up-form");
   const prompt = form.locator('textarea[name="prompt"]');
@@ -685,12 +671,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Wide task-switch regression");
-  await page.addInitScript(() => {
-    window.EventSource = class MockEventSource {
-      addEventListener() {}
-      close() {}
-    };
-  });
+  await installEventSourceMock(page, { autoOpen: true });
   await mockCodexModels(page);
 
   const now = 1_767_190_300_000;
@@ -815,6 +796,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
   });
 
   await page.goto(`/tasks/${taskA.threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, detailFor(taskA.threadId));
   const tasksPage = page.locator("caffold-tasks-page");
   const taskNavigator = page.locator("caffold-task-navigator");
   let form = tasksPage.locator(".task-follow-up-form");
@@ -856,6 +838,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
   revisions.set(taskA.threadId, 2);
 
   await taskNavigator.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
+  await emitTaskDetailBootstrap(page, detailFor(taskB.threadId));
   await expect(tasksPage).toContainText("External running update 24");
   await expect(
     tasksPage.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
@@ -876,6 +859,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
   expect(savedScrollTop).toBeGreaterThan(0);
 
   await taskNavigator.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
+  await emitTaskDetailBootstrap(page, detailFor(taskA.threadId));
   await expect(tasksPage).toContainText("Canonical A response");
   form = tasksPage.locator(".task-follow-up-form");
   prompt = form.locator('textarea[name="prompt"]');
@@ -902,6 +886,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
   ]);
 
   await taskNavigator.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
+  await emitTaskDetailBootstrap(page, detailFor(taskB.threadId));
   await expect(
     tasksPage.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
   ).toBeVisible();

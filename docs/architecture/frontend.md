@@ -229,9 +229,24 @@ home.
 - a bounded Integrated Review cache keyed by subject identity.
 
 `caffold-task-detail` is the canonical owner of the selected Task
-snapshot, Codex event stream, Conversation, Command dialog, follow-up Composer,
-and Task mutations. It publishes a subject snapshot upward; it does not mount
-Integrated Review, Git, GitHub, or their Summary controls.
+snapshot and live event application, Conversation, Command dialog, follow-up
+Composer, and Task mutations. It publishes a subject snapshot upward; it does
+not mount Integrated Review, Git, GitHub, or their Summary controls.
+
+The adjacent task-scoped Detail session owns snapshot acquisition while Detail
+keeps canonical Task, event, revision, and rendering state. Normal entry and
+reconnect use the detail SSE without a parallel full REST read. Transport open
+is not completion: a readable `stream-bootstrap` completes acquisition, while
+a loading bootstrap establishes the revision baseline and waits for a later
+readable `task-sync`.
+
+The session phases are inactive, waiting for bootstrap, waiting for readable
+sync, streaming, REST fallback, and unavailable. It alone transitions the
+active attempt, while shared `tasks/stream.js` owns `EventSource` connection
+generations, timers, and transport state. If SSE is unsupported or its retries
+are exhausted, the attempt may use one REST fallback. Cursor REST pagination
+stays outside the session, and a Task switch replaces the attempt before a late
+response can update Detail.
 
 `caffold-section-detail` owns fixed-context Task creation for one Section. Its
 cwd is the Section's managed logical path, it does not expose directory
@@ -409,6 +424,7 @@ frontend/
 |       |-- settings/...
 |       `-- tasks/
 |           |-- layout.js
+|           |-- stream.js
 |           |-- new/
 |           |   |-- page.js
 |           |   `-- components/directory-picker.js
@@ -426,7 +442,7 @@ frontend/
 |               |   `-- github-menu.js
 |               |-- (task)/
 |               |   |-- layout.js
-|               |   |-- stream.js
+|               |   |-- session.js
 |               |   `-- components/
 |               |       |-- summary.js
 |               |       |-- conversation.js

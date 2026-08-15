@@ -49,10 +49,32 @@ function taskRecord(threadId = THREAD_ID) {
 }
 
 async function installTaskGitFixture(page, tasks = [taskRecord()]) {
-  await installEventSourceMock(page, { registryKey: "__taskGitWatchSources" });
+  await installEventSourceMock(page, {
+    registryKey: "__taskGitWatchSources",
+    bootstrapFunctionKey: "__taskGitDetailBootstrap",
+  });
   await mockCodexModels(page);
   const repository = { rootPath: ROOT_PATH, branch: "feature/review", dirty: false };
   const counts = { refs: 0, compare: 0, compareDiff: 0, log: 0, commit: 0 };
+
+  await page.exposeFunction("__taskGitDetailBootstrap", (threadId) => {
+    const task = tasks.find((candidate) => candidate.threadId === threadId);
+    return task
+      ? {
+          threadId,
+          syncState: "ready",
+          revision: 1,
+          task,
+          events: [],
+          eventsPage: { nextCursor: null },
+          pendingApprovals: [],
+          historyLoading: false,
+          permissionMode: null,
+          model: null,
+          reasoningEffort: null,
+        }
+      : null;
+  });
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({ json: activeTaskProjection(tasks) }),

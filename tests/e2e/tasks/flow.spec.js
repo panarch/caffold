@@ -5,6 +5,7 @@ import {
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
+  emitTaskDetailBootstrap,
   installEventSourceMock,
   mockCodexModels,
   pasteImage,
@@ -431,6 +432,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     },
   });
   await page.reload();
+  await emitTaskDetailBootstrap(page, detail);
   await expect(
     tasksPage.locator('[data-task-info-field="worktree-ref"]'),
   ).toHaveText("main");

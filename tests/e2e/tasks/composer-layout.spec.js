@@ -3,13 +3,17 @@ import {
   installTaskApiFixture,
   taskDetailFixture,
 } from "../support/task-api-fixture.js";
-import { captureReviewScreenshot } from "../support/task-fixtures.js";
+import {
+  captureReviewScreenshot,
+  emitTaskDetailBootstrap,
+} from "../support/task-fixtures.js";
 
 test("keeps conversation position stable while the follow-up composer grows", async ({
   page,
 }, testInfo) => {
-  await installScrollableTask(page);
+  const detail = await installScrollableTask(page);
   await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
 
   const form = page.locator(
     'caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden]) .task-follow-up-form[data-task-form="follow-up"]',
@@ -108,6 +112,7 @@ async function installScrollableTask(page) {
   await page.route("**/api/tasks/thread-1/stream*", (route) =>
     route.fulfill({ contentType: "text/event-stream", body: ": ready\n\n" }),
   );
+  return detail;
 }
 
 function composerReady(form) {

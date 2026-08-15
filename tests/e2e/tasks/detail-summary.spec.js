@@ -4,6 +4,7 @@ import {
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
+  emitTaskDetailBootstrap,
   installEventSourceMock,
   mockCodexModels,
 } from "../support/task-fixtures.js";
@@ -125,6 +126,7 @@ test("keeps long Task titles clipped in the header and readable in Info", async 
   await installSummaryFixture(page, [task]);
 
   await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task));
   const summary = page.locator("caffold-task-detail-summary");
   const heading = summary.locator(".task-detail-heading > h2");
   await expect(summary).toBeVisible();
@@ -194,6 +196,7 @@ test("keeps the task info leaf and popover stable across canonical sync", async 
   await installSummaryFixture(page, [task]);
 
   await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task));
   const summary = page.locator("caffold-task-detail-summary");
   const detailHeader = page.locator(".detail-layout-summary");
   await expect(summary).toBeVisible();
@@ -292,6 +295,7 @@ test("uses light-dismiss review popovers and preserves them across same-Task syn
   await installSummaryFixture(page, [task]);
 
   await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task));
   const summary = page.locator("caffold-task-detail-summary");
   const detailHeader = page.locator(".detail-layout-summary");
   const gitTrigger = detailHeader.getByRole("button", {
@@ -438,6 +442,7 @@ test("keeps the task info spinner stable across equivalent detail activity", asy
   await installSummaryFixture(page, [task]);
 
   await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task));
   const infoButton = page.locator(
     "caffold-task-detail-summary .task-detail-info-button",
   );
@@ -547,6 +552,7 @@ test("keeps canonical task status stable while the detail transport reconnects",
   await installSummaryFixture(page, [task]);
 
   await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task));
   const infoButton = page.locator(
     "caffold-task-detail-summary .task-detail-info-button",
   );
@@ -592,12 +598,7 @@ test("keeps canonical task status stable while the detail transport reconnects",
     })),
   ).toEqual({ chipPreserved: true, spinnerPreserved: true });
 
-  await page.evaluate((threadId) => {
-    const source = window.__taskSummaryEventSources.find((candidate) =>
-      candidate.url.includes(`/api/tasks/${threadId}/stream`),
-    );
-    source.emitOpen();
-  }, threadId);
+  await emitTaskDetailBootstrap(page, summaryDetail(task));
   await expect(page.locator(".app-foreground-recovery")).toBeHidden();
   await expect(statusChip).toHaveAttribute("data-status", "running");
   await expect(statusChip).toHaveAttribute("aria-label", "running");

@@ -4,6 +4,7 @@ import {
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
+  emitTaskDetailBootstrap,
   installEventSourceMock,
   mockCodexModels,
 } from "../support/task-fixtures.js";
@@ -107,6 +108,7 @@ test("renders managed Task file changes relative in live cards and Work details"
   );
 
   await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(page, detail);
   const tasksPage = page.locator("caffold-tasks-page");
   const standalone = tasksPage.locator(".task-file-change");
   await expect(standalone).toHaveCount(1);

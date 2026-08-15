@@ -327,8 +327,8 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/(detail)/(task)/layout.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout.js"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/(task)/stream.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/stream.js"
+        "pages/(task-workspace)/tasks/(detail)/(task)/session.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/session.js"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css" => {
             Some(css(include_str!(
@@ -1267,17 +1267,17 @@ mod tests {
             assert_eq!(task_list_css.content_type, "text/css; charset=utf-8");
             assert!(task_list_css.body.starts_with(prefix));
         }
-        let task_detail_stream = get("pages/(task-workspace)/tasks/(detail)/(task)/stream.js")
-            .expect("task detail stream js");
+        let task_detail_session = get("pages/(task-workspace)/tasks/(detail)/(task)/session.js")
+            .expect("task detail session js");
         assert_eq!(
-            task_detail_stream.content_type,
+            task_detail_session.content_type,
             "text/javascript; charset=utf-8"
         );
         assert!(
-            task_detail_stream
+            task_detail_session
                 .body
-                .windows(b"TaskDetailStream".len())
-                .any(|window| window == b"TaskDetailStream")
+                .windows(b"TaskDetailSession".len())
+                .any(|window| window == b"TaskDetailSession")
         );
         let task_stream =
             get("pages/(task-workspace)/tasks/stream.js").expect("shared task stream js");
