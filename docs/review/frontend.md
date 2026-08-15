@@ -434,6 +434,19 @@ assertions, and visual assertions should remain visible in the owning spec.
 Do not replace a large test with a page-object language that hides the
 interaction and expected behavior reviewers need to inspect.
 
+Browser tests must be deterministic in every supported project and under
+normal parallel execution. Review must reject a test whose result depends on
+retries, repeated execution, or favorable scheduler timing; those are test
+defects, not evidence that the behavior is covered.
+
+When an expected result depends on the order of independently delivered events
+or asynchronous completions, the test must gate the exact boundary the
+assertion needs. A test that releases one request and expects a newer request
+must await the newer request starting; an unrelated DOM update is not proof
+that it has started. Prefer a test-local deferred promise or an assertion that
+polls the owned signal. A fixed delay or an immediate request-counter read is
+not an acceptable substitute for that ordering contract.
+
 Browser fixtures must be isolated by test:
 
 - Use test-local mutable state and unique filesystem paths.
