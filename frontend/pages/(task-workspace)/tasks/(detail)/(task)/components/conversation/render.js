@@ -936,37 +936,227 @@ function renderApprovalCard(event, options = {}) {
   const params = payload.params ?? {};
   const approvalId = payload.approvalId ?? "";
   const requestError = options.approvalErrors?.get(approvalId) ?? null;
-  const isCommand = payload.kind === "command";
-  const decisions = params.availableDecisions ?? ["accept", "acceptForSession", "decline", "cancel"];
+  const kind = payload.kind ?? "file_change";
 
   return `
-    <article class="task-approval-card">
+    <article class="task-approval-card" data-approval-kind="${escapeHtml(kind)}">
       <header>
-        <h3>${isCommand ? "Command Approval" : "File Change Approval"}</h3>
-        <span>${escapeHtml(params.reason ?? "Approval requested")}</span>
+        <h3>${escapeHtml(approvalTitle(kind, params))}</h3>
+        <p class="task-approval-reason">${escapeHtml(params.reason ?? "Approval requested")}</p>
       </header>
-      ${
-        isCommand
-          ? `<pre>${escapeHtml(formatCommand(params.command))}</pre>
-             <p>${escapeHtml(params.cwd ?? "")}</p>`
-          : `<p>${escapeHtml(params.grantRoot ? `Grant root: ${params.grantRoot}` : "File change permission requested")}</p>`
-      }
+      ${renderApprovalDetails(kind, params)}
       ${
         requestError
           ? `<p class="task-approval-error" role="alert">${escapeHtml(requestError.message ?? requestError)}</p>`
           : ""
       }
       <div class="task-approval-actions">
-        ${decisions
-          .filter((decision) => ["accept", "acceptForSession", "decline", "cancel"].includes(decision))
-          .map(
-            (decision) =>
-              `<button type="button" class="task-secondary-button" data-task-action="approval" data-approval-id="${escapeHtml(approvalId)}" data-decision="${escapeHtml(decision)}" ${options.disabled ? "disabled" : ""}>${escapeHtml(formatDecision(decision))}</button>`,
-          )
-          .join("")}
+        ${renderApprovalActions(kind, params, approvalId, options.disabled)}
       </div>
     </article>
   `;
+}
+
+function approvalTitle(kind, params) {
+  if (kind === "permission") {
+    return "Permission Request";
+  }
+  if (kind === "command") {
+    return params.networkApprovalContext && !hasCommand(params.command)
+      ? "Network Access Approval"
+      : "Command Approval";
+  }
+  return "File Change Approval";
+}
+
+function renderApprovalDetails(kind, params) {
+  if (kind === "permission") {
+    return [
+      renderPermissionProfile(params.permissions),
+      renderApprovalMetadata(params),
+    ].join("");
+  }
+  if (kind === "command") {
+    const command = hasCommand(params.command)
+      ? `<pre>${escapeHtml(formatCommand(params.command))}</pre>`
+      : "";
+    return [
+      command,
+      renderNetworkApprovalContext(params.networkApprovalContext),
+      params.additionalPermissions
+        ? renderPermissionProfile(params.additionalPermissions)
+        : "",
+      renderApprovalMetadata(params),
+    ].join("");
+  }
+  const grantRoot = `${params.grantRoot ?? ""}`.trim();
+  return [
+    grantRoot
+      ? `<p class="task-approval-description">Grant root: <code>${renderBreakableCode(grantRoot)}</code></p>`
+      : '<p class="task-approval-description">File change permission requested</p>',
+    renderApprovalMetadata(params),
+  ].join("");
+}
+
+function renderApprovalActions(kind, params, approvalId, disabled) {
+  const actions =
+    kind === "permission"
+      ? [
+          { decision: "allow", scope: "turn", label: "Allow this turn" },
+          { decision: "allow", scope: "session", label: "Allow for session" },
+          { decision: "deny", scope: "", label: "Deny" },
+        ]
+      : (params.availableDecisions ?? [
+          "accept",
+          "acceptForSession",
+          "decline",
+          "cancel",
+        ])
+          .filter(
+            (decision) =>
+              typeof decision === "string" &&
+              ["accept", "acceptForSession", "decline", "cancel"].includes(decision),
+          )
+          .map((decision) => ({
+            decision,
+            scope: "",
+            label: formatDecision(decision),
+          }));
+  return actions
+    .map(
+      ({ decision, scope, label }) =>
+        `<button type="button" class="task-secondary-button" data-task-action="approval" data-approval-id="${escapeHtml(approvalId)}" data-decision="${escapeHtml(decision)}"${scope ? ` data-scope="${escapeHtml(scope)}"` : ""} ${disabled ? "disabled" : ""}>${escapeHtml(label)}</button>`,
+    )
+    .join("");
+}
+
+function renderPermissionProfile(profile) {
+  const rows = permissionRows(profile);
+  if (!rows.length) {
+    return '<p class="task-approval-description">Additional permissions requested</p>';
+  }
+  return renderApprovalDefinitionList(rows, "Requested permissions");
+}
+
+function permissionRows(profile) {
+  if (!profile || typeof profile !== "object") {
+    return [];
+  }
+  const rows = [];
+  if (profile.network && typeof profile.network === "object") {
+    rows.push({
+      label: "Network",
+      value: profile.network.enabled === false ? "Disabled" : "Outbound access",
+    });
+  }
+  const fileSystem = profile.fileSystem;
+  if (fileSystem && typeof fileSystem === "object") {
+    for (const entry of fileSystem.entries ?? []) {
+      rows.push({
+        label: `File system · ${formatPermissionAccess(entry?.access)}`,
+        value: formatPermissionPath(entry?.path),
+        code: true,
+      });
+    }
+    for (const [access, paths] of [
+      ["Read", fileSystem.read],
+      ["Write", fileSystem.write],
+    ]) {
+      for (const path of paths ?? []) {
+        rows.push({
+          label: `File system · ${access}`,
+          value: `${path ?? ""}`,
+          code: true,
+        });
+      }
+    }
+    if (Number.isFinite(fileSystem.globScanMaxDepth)) {
+      rows.push({
+        label: "Glob scan depth",
+        value: `${fileSystem.globScanMaxDepth}`,
+      });
+    }
+  }
+  return rows;
+}
+
+function renderNetworkApprovalContext(context) {
+  if (!context || typeof context !== "object") {
+    return "";
+  }
+  const protocol = `${context.protocol ?? ""}`.trim();
+  const host = `${context.host ?? ""}`.trim();
+  if (!protocol && !host) {
+    return "";
+  }
+  const destination = protocol && host ? `${protocol}://${host}` : protocol || host;
+  return renderApprovalDefinitionList(
+    [{ label: "Network destination", value: destination, code: true }],
+    "Network request",
+  );
+}
+
+function renderApprovalMetadata(params) {
+  const rows = [];
+  if (`${params.cwd ?? ""}`.trim()) {
+    rows.push({ label: "Working directory", value: `${params.cwd}`, code: true });
+  }
+  if (`${params.environmentId ?? ""}`.trim()) {
+    rows.push({ label: "Environment", value: `${params.environmentId}`, code: true });
+  }
+  return rows.length ? renderApprovalDefinitionList(rows, "Request context") : "";
+}
+
+function renderApprovalDefinitionList(rows, label) {
+  return `
+    <dl class="task-approval-details" aria-label="${escapeHtml(label)}">
+      ${rows
+        .map(
+          (row) => `<div>
+            <dt>${escapeHtml(row.label)}</dt>
+            <dd>${row.code ? `<code>${renderBreakableCode(row.value)}</code>` : escapeHtml(row.value)}</dd>
+          </div>`,
+        )
+        .join("")}
+    </dl>
+  `;
+}
+
+function renderBreakableCode(value) {
+  return escapeHtml(value)
+    .replaceAll("/", "/<wbr>")
+    .replaceAll("\\", "\\<wbr>");
+}
+
+function hasCommand(command) {
+  return Array.isArray(command)
+    ? command.length > 0
+    : typeof command === "string"
+      ? Boolean(command.trim())
+      : Boolean(command && typeof command === "object");
+}
+
+function formatPermissionAccess(access) {
+  return { read: "Read", write: "Write", deny: "Deny" }[access] ?? "Access";
+}
+
+function formatPermissionPath(path) {
+  if (!path || typeof path !== "object") {
+    return "(path unavailable)";
+  }
+  if (path.type === "path") {
+    return `${path.path ?? ""}`;
+  }
+  if (path.type === "glob_pattern") {
+    return `${path.pattern ?? ""}`;
+  }
+  if (path.type === "special") {
+    const value = path.value ?? {};
+    const kind = `${value.kind ?? "special"}`;
+    const detail = `${value.subpath ?? value.path ?? ""}`.trim();
+    return detail ? `${kind}: ${detail}` : kind;
+  }
+  return JSON.stringify(path);
 }
 
 function statusTone(type) {

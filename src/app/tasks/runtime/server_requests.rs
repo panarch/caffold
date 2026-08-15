@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use serde_json::{Value as JsonValue, json};
 
-use super::{ApprovalResolveError, CodexConnection, CodexRuntime};
+use super::{ApprovalResolution, ApprovalResolveError, CodexConnection, CodexRuntime};
 use crate::app::tasks::{
     events::{TaskEventRecord, now_ms, task_event_record},
     worktrees::IsolateOutcome,
@@ -48,6 +48,7 @@ struct DynamicToolInvocation {
 enum ApprovalKind {
     Command,
     FileChange,
+    Permission,
 }
 
 impl ApprovalKind {
@@ -55,6 +56,15 @@ impl ApprovalKind {
         match self {
             Self::Command => "command",
             Self::FileChange => "file_change",
+            Self::Permission => "permission",
+        }
+    }
+
+    fn summary(self) -> &'static str {
+        match self {
+            Self::Command => "Command approval requested",
+            Self::FileChange => "File change approval requested",
+            Self::Permission => "Permission approval requested",
         }
     }
 }
@@ -67,19 +77,14 @@ impl CodexRuntime {
             .iter()
             .filter(|(_, pending)| pending.thread_id == thread_id)
             .map(|(approval_id, pending)| {
-                let kind = pending.kind.as_str();
                 let mut event = task_event_record(
                     &pending.thread_id,
                     &format!("approval_requested:{approval_id}"),
                     "approval_requested",
-                    if kind == "command" {
-                        "Command approval requested"
-                    } else {
-                        "File change approval requested"
-                    },
+                    pending.kind.summary(),
                     Some(json!({
                         "approvalId": approval_id,
-                        "kind": kind,
+                        "kind": pending.kind.as_str(),
                         "turnId": pending.params.get("turnId"),
                         "params": pending.params
                     })),
@@ -96,7 +101,7 @@ impl CodexRuntime {
         connection: &CodexConnection,
         thread_id: &str,
         approval_id: &str,
-        decision: &str,
+        resolution: ApprovalResolution,
     ) -> Result<(), ApprovalResolveError> {
         let pending = self
             .approvals
@@ -109,11 +114,25 @@ impl CodexRuntime {
             return Err(ApprovalResolveError::ThreadMismatch);
         }
 
+        let (response, decision, scope) = approval_response(&pending, resolution)?;
         connection
             .client
-            .respond_to_server_request(pending.request_id.clone(), json!({ "decision": decision }))
+            .respond_to_server_request(pending.request_id.clone(), response)
             .await?;
-        self.approvals.lock().await.remove(approval_id);
+        let removed = {
+            let mut approvals = self.approvals.lock().await;
+            if approvals
+                .get(approval_id)
+                .is_some_and(|current| current.request_id == pending.request_id)
+            {
+                approvals.remove(approval_id)
+            } else {
+                None
+            }
+        };
+        let Some(pending) = removed else {
+            return Ok(());
+        };
 
         self.events.publish(task_event_record(
             &pending.thread_id,
@@ -124,7 +143,8 @@ impl CodexRuntime {
                 "approvalId": approval_id,
                 "kind": pending.kind.as_str(),
                 "turnId": pending.params.get("turnId"),
-                "decision": decision
+                "decision": decision,
+                "scope": scope
             })),
             now_ms(),
         ));
@@ -170,20 +190,24 @@ impl CodexRuntime {
                 thread_id,
                 params,
             } => (id, thread_id, params, ApprovalKind::FileChange),
+            CodexServerRequest::PermissionsApproval {
+                id,
+                thread_id,
+                params,
+            } => (id, thread_id, params, ApprovalKind::Permission),
             CodexServerRequest::Unknown { .. } => return,
         };
         let approval_id = approval_id_from_request(&request_id, &params);
-        let created_ms = now_ms();
-        let summary = if kind == ApprovalKind::Command {
-            "Command approval requested"
-        } else {
-            "File change approval requested"
-        };
+        let created_ms = params
+            .get("startedAtMs")
+            .and_then(JsonValue::as_u64)
+            .filter(|started_at_ms| *started_at_ms > 0)
+            .unwrap_or_else(now_ms);
         let event = self.events.record(task_event_record(
             &thread_id,
             &format!("approval_requested:{approval_id}"),
             "approval_requested",
-            summary,
+            kind.summary(),
             Some(json!({
                 "approvalId": approval_id,
                 "kind": kind.as_str(),
@@ -426,7 +450,7 @@ impl CodexRuntime {
             .map_err(|error| format!("Caffold could not verify the current task: {error}"))
     }
 
-    pub(super) async fn expire_stale_approvals_for_notification(
+    pub(super) async fn reconcile_pending_approvals_for_notification(
         &self,
         notification: &CodexNotification,
     ) {
@@ -435,32 +459,32 @@ impl CodexRuntime {
             let expired_ids = approvals
                 .iter()
                 .filter_map(|(approval_id, pending)| {
-                    stale_approval_reason(pending, notification)
-                        .map(|reason| (approval_id.clone(), reason))
+                    pending_approval_resolution(pending, notification)
+                        .map(|resolution| (approval_id.clone(), resolution))
                 })
                 .collect::<Vec<_>>();
             expired_ids
                 .into_iter()
-                .filter_map(|(approval_id, reason)| {
+                .filter_map(|(approval_id, resolution)| {
                     approvals
                         .remove(&approval_id)
-                        .map(|pending| (approval_id, pending, reason))
+                        .map(|pending| (approval_id, pending, resolution))
                 })
                 .collect::<Vec<_>>()
         };
 
-        for (approval_id, pending, reason) in expired {
+        for (approval_id, pending, resolution) in expired {
             self.events.publish(task_event_record(
                 &pending.thread_id,
                 &format!("approval_resolved:{approval_id}"),
                 "approval_resolved",
-                "Approval expired",
+                resolution.summary,
                 Some(json!({
                     "approvalId": approval_id,
                     "kind": pending.kind.as_str(),
                     "turnId": pending.params.get("turnId"),
-                    "decision": "expired",
-                    "reason": reason
+                    "decision": resolution.decision,
+                    "reason": resolution.reason
                 })),
                 now_ms(),
             ));
@@ -468,11 +492,66 @@ impl CodexRuntime {
     }
 }
 
-fn stale_approval_reason(
+fn approval_response(
+    pending: &PendingApproval,
+    resolution: ApprovalResolution,
+) -> Result<(JsonValue, String, Option<&'static str>), ApprovalResolveError> {
+    match (pending.kind, resolution) {
+        (ApprovalKind::Permission, ApprovalResolution::Permissions { granted, scope }) => {
+            if granted {
+                let permissions = pending
+                    .params
+                    .get("permissions")
+                    .filter(|permissions| permissions.is_object())
+                    .cloned()
+                    .ok_or(ApprovalResolveError::ResolutionMismatch)?;
+                Ok((
+                    json!({
+                        "permissions": permissions,
+                        "scope": scope.as_str()
+                    }),
+                    "allow".to_string(),
+                    Some(scope.as_str()),
+                ))
+            } else {
+                Ok((json!({ "permissions": {} }), "deny".to_string(), None))
+            }
+        }
+        (
+            ApprovalKind::Command | ApprovalKind::FileChange,
+            ApprovalResolution::Standard(decision),
+        ) => Ok((json!({ "decision": &decision }), decision, None)),
+        _ => Err(ApprovalResolveError::ResolutionMismatch),
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PendingApprovalResolution {
+    summary: &'static str,
+    decision: &'static str,
+    reason: &'static str,
+}
+
+fn pending_approval_resolution(
     pending: &PendingApproval,
     notification: &CodexNotification,
-) -> Option<&'static str> {
+) -> Option<PendingApprovalResolution> {
+    let expired = |reason| PendingApprovalResolution {
+        summary: "Approval expired",
+        decision: "expired",
+        reason,
+    };
     match notification {
+        CodexNotification::ServerRequestResolved {
+            thread_id,
+            request_id,
+        } if pending.thread_id == *thread_id && pending.request_id == *request_id => {
+            Some(PendingApprovalResolution {
+                summary: "Approval resolved",
+                decision: "external",
+                reason: "request resolved by Codex",
+            })
+        }
         CodexNotification::TurnStarted { thread_id, turn }
             if pending.thread_id == *thread_id
                 && pending
@@ -481,7 +560,7 @@ fn stale_approval_reason(
                     .and_then(JsonValue::as_str)
                     .is_some_and(|turn_id| turn_id != turn.id) =>
         {
-            Some("another turn started")
+            Some(expired("another turn started"))
         }
         CodexNotification::TurnCompleted { thread_id, turn }
             if pending.thread_id == *thread_id
@@ -492,13 +571,13 @@ fn stale_approval_reason(
                     .and_then(JsonValue::as_str)
                     .is_none_or(|turn_id| turn_id == turn.id) =>
         {
-            Some("turn completed")
+            Some(expired("turn completed"))
         }
         CodexNotification::ThreadStatusChanged { thread_id, status }
             if pending.thread_id == *thread_id
                 && matches!(status, ThreadStatus::Idle | ThreadStatus::SystemError) =>
         {
-            Some("thread became inactive")
+            Some(expired("thread became inactive"))
         }
         _ => None,
     }
@@ -581,6 +660,47 @@ mod tests {
         .unwrap()
     }
 
+    fn permission_approval_request(request_id: i64) -> CodexServerRequest {
+        codex_app_server::decode_server_request(
+            json!(request_id),
+            "item/permissions/requestApproval",
+            json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "itemId": "item_1",
+                "cwd": "/workspace/project",
+                "permissions": {
+                    "network": { "enabled": true },
+                    "fileSystem": {
+                        "entries": [{
+                            "access": "write",
+                            "path": { "type": "path", "path": "/workspace/shared" }
+                        }]
+                    }
+                },
+                "reason": "Download a fixture and update the shared cache",
+                "startedAtMs": 1_750_000_000_000_i64
+            }),
+        )
+        .unwrap()
+    }
+
+    fn command_approval_request(request_id: i64) -> CodexServerRequest {
+        codex_app_server::decode_server_request(
+            json!(request_id),
+            "item/commandExecution/requestApproval",
+            json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "command": "cargo test",
+                "cwd": "/workspace/project",
+                "reason": "Run the test suite",
+                "availableDecisions": ["accept", "acceptForSession", "decline"]
+            }),
+        )
+        .unwrap()
+    }
+
     fn runtime_with_events(events: TaskEvents) -> CodexRuntime {
         test_runtime_with_store(events, TaskStore::memory().unwrap())
     }
@@ -645,6 +765,213 @@ mod tests {
             "cargo test"
         );
         assert_eq!(events.for_thread("thread_1"), vec![event]);
+    }
+
+    #[tokio::test]
+    async fn standard_approval_resolutions_preserve_the_selected_codex_decision() {
+        let runtime = runtime_with_events(TaskEvents::default());
+        let client = CodexThreadClient::mock(Vec::new());
+        runtime
+            .handle_server_request(&client, 1, command_approval_request(41))
+            .await;
+
+        runtime
+            .resolve_approval(
+                &CodexConnection {
+                    client: client.clone(),
+                    generation: 1,
+                },
+                "thread_1",
+                "41",
+                ApprovalResolution::Standard("acceptForSession".to_string()),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            client.mock_server_responses().await,
+            [(json!(41), json!({ "decision": "acceptForSession" }))]
+        );
+        assert!(runtime.approval_events("thread_1").await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn permission_approvals_return_the_original_complete_profile_for_the_selected_scope() {
+        let events = TaskEvents::default();
+        let runtime = runtime_with_events(events.clone());
+        let client = CodexThreadClient::mock(Vec::new());
+        runtime
+            .handle_server_request(&client, 1, permission_approval_request(42))
+            .await;
+
+        let requested = runtime.approval_events("thread_1").await;
+        assert_eq!(requested.len(), 1);
+        assert_eq!(requested[0].summary, "Permission approval requested");
+        assert_eq!(requested[0].created_ms, 1_750_000_000_000);
+        assert_eq!(requested[0].payload.as_ref().unwrap()["kind"], "permission");
+
+        runtime
+            .resolve_approval(
+                &CodexConnection {
+                    client: client.clone(),
+                    generation: 1,
+                },
+                "thread_1",
+                "42",
+                ApprovalResolution::Permissions {
+                    granted: true,
+                    scope: super::super::PermissionGrantScope::Session,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            client.mock_server_responses().await,
+            [(
+                json!(42),
+                json!({
+                    "permissions": {
+                        "network": { "enabled": true },
+                        "fileSystem": {
+                            "entries": [{
+                                "access": "write",
+                                "path": { "type": "path", "path": "/workspace/shared" }
+                            }]
+                        }
+                    },
+                    "scope": "session"
+                })
+            )]
+        );
+        assert!(runtime.approval_events("thread_1").await.is_empty());
+        let event = events.for_thread("thread_1").pop().unwrap();
+        assert_eq!(event.event_type, "approval_resolved");
+        assert_eq!(event.payload.as_ref().unwrap()["decision"], "allow");
+        assert_eq!(event.payload.as_ref().unwrap()["scope"], "session");
+    }
+
+    #[tokio::test]
+    async fn permission_approvals_support_a_turn_limited_grant() {
+        let runtime = runtime_with_events(TaskEvents::default());
+        let client = CodexThreadClient::mock(Vec::new());
+        runtime
+            .handle_server_request(&client, 1, permission_approval_request(46))
+            .await;
+
+        runtime
+            .resolve_approval(
+                &CodexConnection {
+                    client: client.clone(),
+                    generation: 1,
+                },
+                "thread_1",
+                "46",
+                ApprovalResolution::Permissions {
+                    granted: true,
+                    scope: super::super::PermissionGrantScope::Turn,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(client.mock_server_responses().await[0].1["scope"], "turn");
+    }
+
+    #[tokio::test]
+    async fn denying_permission_approvals_returns_an_empty_profile() {
+        let runtime = runtime_with_events(TaskEvents::default());
+        let client = CodexThreadClient::mock(Vec::new());
+        runtime
+            .handle_server_request(&client, 1, permission_approval_request(43))
+            .await;
+
+        runtime
+            .resolve_approval(
+                &CodexConnection {
+                    client: client.clone(),
+                    generation: 1,
+                },
+                "thread_1",
+                "43",
+                ApprovalResolution::Permissions {
+                    granted: false,
+                    scope: super::super::PermissionGrantScope::Turn,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            client.mock_server_responses().await,
+            [(json!(43), json!({ "permissions": {} }))]
+        );
+    }
+
+    #[tokio::test]
+    async fn approval_resolution_kind_must_match_the_pending_server_request() {
+        let runtime = runtime_with_events(TaskEvents::default());
+        let client = CodexThreadClient::mock(Vec::new());
+        runtime
+            .handle_server_request(&client, 1, permission_approval_request(44))
+            .await;
+
+        let result = runtime
+            .resolve_approval(
+                &CodexConnection {
+                    client: client.clone(),
+                    generation: 1,
+                },
+                "thread_1",
+                "44",
+                ApprovalResolution::Standard("accept".to_string()),
+            )
+            .await;
+
+        assert!(matches!(
+            result,
+            Err(ApprovalResolveError::ResolutionMismatch)
+        ));
+        assert!(client.mock_server_responses().await.is_empty());
+        assert_eq!(runtime.approval_events("thread_1").await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn server_resolution_notification_clears_the_matching_pending_request_once() {
+        let events = TaskEvents::default();
+        let runtime = runtime_with_events(events.clone());
+        runtime
+            .handle_server_request(
+                &CodexThreadClient::mock(Vec::new()),
+                1,
+                permission_approval_request(45),
+            )
+            .await;
+        let resolved = codex_app_server::decode_notification(
+            "serverRequest/resolved",
+            json!({ "threadId": "thread_1", "requestId": 45 }),
+        )
+        .unwrap();
+
+        runtime
+            .reconcile_pending_approvals_for_notification(&resolved)
+            .await;
+        runtime
+            .reconcile_pending_approvals_for_notification(&resolved)
+            .await;
+
+        assert!(runtime.approval_events("thread_1").await.is_empty());
+        let task_events = events.for_thread("thread_1");
+        assert_eq!(task_events.len(), 2);
+        assert_eq!(task_events[1].event_type, "approval_resolved");
+        assert_eq!(
+            task_events[1].payload.as_ref().unwrap()["decision"],
+            "external"
+        );
+        assert_eq!(
+            task_events[1].payload.as_ref().unwrap()["reason"],
+            "request resolved by Codex"
+        );
     }
 
     #[tokio::test]
@@ -918,7 +1245,7 @@ mod tests {
         )
         .unwrap();
         runtime
-            .expire_stale_approvals_for_notification(&completed)
+            .reconcile_pending_approvals_for_notification(&completed)
             .await;
 
         assert!(runtime.approval_events("thread_1").await.is_empty());

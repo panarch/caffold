@@ -547,7 +547,7 @@ test("creates a task with responsive composer controls and canonical approval st
             ),
           };
         });
-      expect(approvalLayout).toEqual({ columns: 2, contained: true });
+      expect(approvalLayout).toEqual({ columns: 1, contained: true });
     }
   });
   await stabilizeDynamicText(page);

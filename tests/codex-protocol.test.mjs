@@ -388,6 +388,31 @@ test(
         serverRequests.includes('"method": "item/tool/call"'),
         "missing dynamic tool server request",
       );
+      assert.ok(
+        serverRequests.includes('"method": "item/permissions/requestApproval"'),
+        "missing permission approval server request",
+      );
+      const permissionApprovalParams = readFileSync(
+        join(outputDirectory, "v2", "PermissionsRequestApprovalParams.ts"),
+        "utf8",
+      );
+      assert.match(permissionApprovalParams, /threadId: string/);
+      assert.match(permissionApprovalParams, /turnId: string/);
+      assert.match(permissionApprovalParams, /itemId: string/);
+      assert.match(permissionApprovalParams, /startedAtMs: number/);
+      assert.match(permissionApprovalParams, /cwd: AbsolutePathBuf/);
+      assert.match(permissionApprovalParams, /permissions: RequestPermissionProfile/);
+      const permissionApprovalResponse = readFileSync(
+        join(outputDirectory, "v2", "PermissionsRequestApprovalResponse.ts"),
+        "utf8",
+      );
+      assert.match(permissionApprovalResponse, /permissions: GrantedPermissionProfile/);
+      assert.match(permissionApprovalResponse, /scope: PermissionGrantScope/);
+      const permissionGrantScope = readFileSync(
+        join(outputDirectory, "v2", "PermissionGrantScope.ts"),
+        "utf8",
+      );
+      assert.match(permissionGrantScope, /"turn" \| "session"/);
       const dynamicToolParams = readFileSync(
         join(outputDirectory, "v2", "DynamicToolCallParams.ts"),
         "utf8",
@@ -408,6 +433,21 @@ test(
       );
       assert.match(threadNameUpdated, /threadId: string/);
       assert.match(threadNameUpdated, /threadName/);
+
+      const serverNotifications = readFileSync(
+        join(outputDirectory, "ServerNotification.ts"),
+        "utf8",
+      );
+      assert.ok(
+        serverNotifications.includes('"method": "serverRequest/resolved"'),
+        "missing server-request resolution notification",
+      );
+      const serverRequestResolved = readFileSync(
+        join(outputDirectory, "v2", "ServerRequestResolvedNotification.ts"),
+        "utf8",
+      );
+      assert.match(serverRequestResolved, /threadId: string/);
+      assert.match(serverRequestResolved, /requestId: RequestId/);
 
       const turnStartParams = readFileSync(
         join(outputDirectory, "v2", "TurnStartParams.ts"),

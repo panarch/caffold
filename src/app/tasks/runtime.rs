@@ -20,6 +20,30 @@ mod server_requests;
 use process::CodexProcess;
 use server_requests::PendingApproval;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::app) enum ApprovalResolution {
+    Standard(String),
+    Permissions {
+        granted: bool,
+        scope: PermissionGrantScope,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::app) enum PermissionGrantScope {
+    Turn,
+    Session,
+}
+
+impl PermissionGrantScope {
+    pub(in crate::app) fn as_str(self) -> &'static str {
+        match self {
+            Self::Turn => "turn",
+            Self::Session => "session",
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(in crate::app) struct CodexRuntime {
     process: Arc<CodexProcess>,
@@ -69,6 +93,7 @@ pub(in crate::app) enum CodexRuntimeSignal {
 pub(in crate::app) enum ApprovalResolveError {
     NotFound,
     ThreadMismatch,
+    ResolutionMismatch,
     Codex(CodexThreadError),
 }
 

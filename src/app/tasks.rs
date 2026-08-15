@@ -202,7 +202,9 @@ impl TasksApp {
 pub(super) use detail::{DetailFrameStream, TaskDetailResponse};
 pub(super) use events::{TaskEventRecord, accepted_user_message_event, now_ms};
 pub(super) use projection::task_activity_ms;
-pub(super) use runtime::{ApprovalResolveError, CodexConnection};
+pub(super) use runtime::{
+    ApprovalResolution, ApprovalResolveError, CodexConnection, PermissionGrantScope,
+};
 
 #[cfg(test)]
 pub(in crate::app::tasks) mod test_support {

@@ -124,6 +124,7 @@ class CaffoldTaskDetail extends HTMLElement {
         void this.resolveApproval(
           event.detail.approvalId,
           event.detail.decision,
+          event.detail.scope,
         );
       } else if (event.detail?.type === "command-output") {
         this.commandDialog()?.openCommand(
@@ -707,7 +708,11 @@ class CaffoldTaskDetail extends HTMLElement {
       return;
     }
     if (action === "approval") {
-      this.resolveApproval(element.dataset.approvalId, element.dataset.decision);
+      this.resolveApproval(
+        element.dataset.approvalId,
+        element.dataset.decision,
+        element.dataset.scope,
+      );
     }
   }
 
@@ -974,7 +979,7 @@ class CaffoldTaskDetail extends HTMLElement {
     }
   }
 
-  async resolveApproval(approvalId, decision) {
+  async resolveApproval(approvalId, decision, scope = null) {
     if (
       !this.selectedThreadId ||
       !approvalId ||
@@ -992,6 +997,7 @@ class CaffoldTaskDetail extends HTMLElement {
         threadId,
         approvalId,
         decision,
+        scope,
       );
       if (
         actionToken !== this.approvalActionToken ||

@@ -64,7 +64,7 @@ impl CodexRuntime {
                                     terminal_turn_is_first_current,
                                 );
                                 runtime
-                                    .expire_stale_approvals_for_notification(&notification)
+                                    .reconcile_pending_approvals_for_notification(&notification)
                                     .await;
                                 runtime.handle_notification(notification);
                                 if revision.is_some()
@@ -345,7 +345,9 @@ impl CodexRuntime {
                     now_ms(),
                 ));
             }
-            CodexNotification::ThreadStarted { .. } | CodexNotification::Unknown { .. } => {}
+            CodexNotification::ThreadStarted { .. }
+            | CodexNotification::ServerRequestResolved { .. }
+            | CodexNotification::Unknown { .. } => {}
         }
     }
 
@@ -418,7 +420,8 @@ fn notification_thread_id(notification: &CodexNotification) -> Option<&str> {
         | CodexNotification::ItemCompleted { thread_id, .. }
         | CodexNotification::RawResponseItemCompleted { thread_id, .. }
         | CodexNotification::TurnDiffUpdated { thread_id, .. }
-        | CodexNotification::ThreadTokenUsageUpdated { thread_id, .. } => Some(thread_id),
+        | CodexNotification::ThreadTokenUsageUpdated { thread_id, .. }
+        | CodexNotification::ServerRequestResolved { thread_id, .. } => Some(thread_id),
         CodexNotification::Unknown { .. } => None,
     }
 }
