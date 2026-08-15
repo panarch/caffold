@@ -624,6 +624,81 @@ test("keeps equivalent Branch header refreshes mutation-free", async ({ page }) 
   ).toEqual({ sameSelect: true, mutations: 0 });
 });
 
+test("refreshes Branch after returning from the background", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "Browser visibility lifecycle regression",
+  );
+  await page.addInitScript(() => {
+    window.__caffoldVisibilityState = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => window.__caffoldVisibilityState,
+    });
+  });
+
+  const { reviewScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+  await selectTaskReviewScope(tasksPage, "branch");
+
+  const compareTree = taskReview.locator("caffold-git-compare-tree");
+  await expect(
+    compareTree.locator(".compare-line-stats .is-addition"),
+  ).toHaveText("+3");
+  await expect(
+    compareTree.locator(".compare-line-stats .is-deletion"),
+  ).toHaveText("-1");
+  await page.evaluate(() => {
+    const source = window.__caffoldMockEventSources.find(
+      (candidate) =>
+        candidate.url.startsWith("/api/watch?") && candidate.readyState !== 2,
+    );
+    if (!source) {
+      throw new Error("Missing Task Review watch source");
+    }
+    source.emit("ready", {
+      revision: 1,
+      scopePath: "src",
+      repositoryRootPath: "src",
+    });
+  });
+
+  await page.evaluate(() => {
+    window.__caffoldVisibilityState = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__caffoldMockEventSources
+          .filter((source) => source.url.startsWith("/api/watch?"))
+          .every((source) => source.readyState === 2),
+      ),
+    )
+    .toBe(true);
+
+  const compareBeforeRecovery = reviewScenario.gitCompareRequests;
+  reviewScenario.cleanBranch = true;
+  expect(reviewScenario.gitCompareRequests).toBe(compareBeforeRecovery);
+
+  await page.evaluate(() => {
+    window.__caffoldVisibilityState = "visible";
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect
+    .poll(() => reviewScenario.gitCompareRequests)
+    .toBeGreaterThan(compareBeforeRecovery);
+  await expect(compareTree.getByText("No changes compared with origin/main.")).toBeVisible();
+  await expect(
+    compareTree.locator(".compare-line-stats .is-addition"),
+  ).toHaveText("+0");
+  await expect(
+    compareTree.locator(".compare-line-stats .is-deletion"),
+  ).toHaveText("-0");
+});
+
 test("falls back when the selected Branch base disappears", async ({ page }) => {
   const { reviewScenario, taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
