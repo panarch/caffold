@@ -329,10 +329,10 @@ pub(super) async fn task_approval(
         return Err(task_not_managed_error());
     }
     let connection = require_codex_thread_connection(&state).await?;
-    let decision = normalize_approval_decision(&request.decision)?;
+    let resolution = normalize_approval_resolution(request.decision, request.scope)?;
     match state
         .codex_runtime
-        .resolve_approval(&connection, &thread_id, &approval_id, decision)
+        .resolve_approval(&connection, &thread_id, &approval_id, resolution)
         .await
     {
         Ok(()) => {}
@@ -346,6 +346,12 @@ pub(super) async fn task_approval(
             return Err(ApiError::BadRequest {
                 code: "approval_task_mismatch",
                 message: "approval request belongs to another thread".to_string(),
+            });
+        }
+        Err(ApprovalResolveError::ResolutionMismatch) => {
+            return Err(ApiError::BadRequest {
+                code: "approval_resolution_mismatch",
+                message: "approval decision does not match the pending request".to_string(),
             });
         }
         Err(ApprovalResolveError::Codex(error)) => return Err(error.into()),
@@ -496,6 +502,122 @@ mod tests {
     use super::super::test_support::*;
     use super::*;
     use crate::{app::tasks::test_support::*, fs::RootedFs, task_store::ManagedThread};
+
+    async fn publish_permission_approval(
+        state: &TaskState,
+        client: &CodexThreadClient,
+        thread_id: &str,
+        request_id: i64,
+    ) {
+        let mut task_events = state.task_events.subscribe();
+        state.codex_runtime.spawn_test_bridge(client.clone(), 1);
+        let request = crate::codex_app_server::decode_server_request(
+            json!(request_id),
+            "item/permissions/requestApproval",
+            json!({
+                "threadId": thread_id,
+                "turnId": "turn-permission",
+                "itemId": "item-permission",
+                "cwd": "/workspace/project",
+                "permissions": { "network": { "enabled": true } },
+                "reason": "Fetch the remote release metadata",
+                "startedAtMs": 1_750_000_000_000_i64
+            }),
+        )
+        .unwrap();
+        client.mock_publish_event(crate::codex_app_server::CodexRuntimeEvent::ServerRequest(
+            request,
+        ));
+
+        let event = tokio::time::timeout(std::time::Duration::from_secs(1), task_events.recv())
+            .await
+            .expect("permission approval did not reach the Task runtime")
+            .expect("Task event stream closed before permission approval");
+        assert_eq!(event.thread_id, thread_id);
+        assert_eq!(event.event_type, "approval_requested");
+        assert_eq!(
+            event.payload.as_ref().unwrap()["approvalId"],
+            request_id.to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn permission_approval_http_route_grants_only_the_server_requested_profile() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-permission-approval";
+        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+            "thread/resume",
+            resumed_task(thread_id, root.path()),
+        )]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        publish_permission_approval(&state, &client, thread_id, 71).await;
+
+        let response = router(state)
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/tasks/{thread_id}/approvals/71"))
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"decision":"allow","scope":"session"}"#))
+                    .unwrap(),
+            )
+            .await
+            .expect("permission approval response");
+
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert_eq!(
+            client.mock_server_responses().await,
+            [(
+                json!(71),
+                json!({
+                    "permissions": { "network": { "enabled": true } },
+                    "scope": "session"
+                })
+            )]
+        );
+        let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("permission approval body");
+        let body: JsonValue = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["pendingApprovals"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn permission_approval_http_route_rejects_command_decisions_without_responding() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-permission-mismatch";
+        let client = CodexThreadClient::mock(Vec::new());
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        publish_permission_approval(&state, &client, thread_id, 72).await;
+
+        let response = router(state.clone())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/tasks/{thread_id}/approvals/72"))
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"decision":"accept"}"#))
+                    .unwrap(),
+            )
+            .await
+            .expect("mismatched approval response");
+
+        assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let body: JsonValue = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["error"]["code"], "approval_resolution_mismatch");
+        assert!(client.mock_server_responses().await.is_empty());
+        assert_eq!(
+            state.codex_runtime.approval_events(thread_id).await.len(),
+            1
+        );
+    }
 
     #[tokio::test]
     async fn canonical_readiness_blocks_task_creation_at_the_http_boundary() {

@@ -372,6 +372,7 @@ class CaffoldTaskConversation extends HTMLElement {
       this.dispatchIntent("approval", {
         approvalId: action.dataset.approvalId,
         decision: action.dataset.decision,
+        scope: action.dataset.scope,
       });
     } else if (action.dataset.conversationAction === "retry-history") {
       this.dispatchIntent("older-history", { retry: true });

@@ -28,7 +28,9 @@ caffold-task-conversation {
     flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
-    gap: 0.5rem;
+    min-width: 0;
+    max-width: 100%;
+    gap: var(--interface-space-4);
   }
 
   & .task-approval-actions .task-secondary-button {
@@ -76,6 +78,9 @@ caffold-task-conversation {
   & .task-approval-flow {
     justify-self: start;
     width: min(100%, 850px);
+    min-width: 0;
+    max-width: 100%;
+    container: task-approval-flow / inline-size;
   }
 
   & .task-approval-flow .task-approvals {
@@ -131,39 +136,103 @@ caffold-task-conversation {
   }
 
   & .task-approval-card {
-    margin-bottom: 0.625rem;
-    padding: 0.625rem;
+    display: grid;
+    gap: var(--interface-space-5);
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    margin-bottom: var(--interface-space-5);
+    padding: var(--interface-space-5);
     border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--surface-subtle);
   }
 
   & .task-approval-card h3,
-  & .task-approval-card p {
+  & .task-approval-card p,
+  & .task-approval-card dl,
+  & .task-approval-card dd {
     margin: 0;
   }
 
-  & .task-approval-card p {
+  & .task-approval-card h3 {
+    min-width: 0;
+    font-size: var(--interface-heading-font-size);
+    line-height: var(--interface-line-height);
+    overflow-wrap: anywhere;
+  }
+
+  & .task-approval-card .task-approval-reason {
     font-size: var(--conversation-font-size);
     line-height: var(--conversation-line-height);
+    overflow-wrap: anywhere;
+  }
+
+  & .task-approval-card .task-approval-description {
+    min-width: 0;
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    overflow-wrap: anywhere;
   }
 
   & .task-approval-card header {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 0.25rem;
-    margin-bottom: 0.5rem;
+    gap: var(--interface-space-2);
+    min-width: 0;
   }
 
   & .task-approval-card pre {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     overflow-x: auto;
-    margin: 0.5rem 0;
-    padding: 0.625rem;
+    margin: 0;
+    padding: var(--interface-space-5);
     border: 1px solid var(--border);
     border-radius: 5px;
     background: var(--code-bg);
     font-size: var(--code-font-size);
     line-height: var(--code-line-height);
+  }
+
+  & .task-approval-details {
+    display: grid;
+    gap: var(--interface-space-3);
+    min-width: 0;
+  }
+
+  & .task-approval-details > div {
+    display: grid;
+    grid-template-columns: minmax(7.5rem, max-content) minmax(0, 1fr);
+    gap: var(--interface-space-2) var(--interface-space-5);
+    min-width: 0;
+  }
+
+  & .task-approval-details dt,
+  & .task-approval-details dd {
+    min-width: 0;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-approval-details dt {
+    color: var(--muted);
+  }
+
+  & .task-approval-details dd {
+    overflow-wrap: anywhere;
+  }
+
+  & .task-approval-details code,
+  & .task-approval-description code {
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+    white-space: normal;
+    overflow-wrap: break-word;
   }
 
   & .task-approval-card .task-approval-error {
@@ -468,7 +537,7 @@ caffold-task-conversation {
   }
 }
 
-@media (max-width: 520px) {
+@container task-approval-flow (max-width: 34rem) {
   caffold-task-conversation {
     & .task-approval-actions {
       display: grid;
@@ -478,6 +547,22 @@ caffold-task-conversation {
     & .task-approval-actions button {
       width: 100%;
       min-width: 0;
+    }
+  }
+}
+
+@container task-approval-flow (max-width: 28rem) {
+  caffold-task-conversation {
+    & .task-approval-details > div {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}
+
+@container task-approval-flow (max-width: 22rem) {
+  caffold-task-conversation {
+    & .task-approval-actions {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 }

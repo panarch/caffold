@@ -82,7 +82,8 @@ fn notification_thread_id(notification: &CodexNotification) -> Option<&str> {
         | CodexNotification::ItemStarted { thread_id, .. }
         | CodexNotification::ItemCompleted { thread_id, .. }
         | CodexNotification::RawResponseItemCompleted { thread_id, .. }
-        | CodexNotification::TurnDiffUpdated { thread_id, .. } => Some(thread_id),
+        | CodexNotification::TurnDiffUpdated { thread_id, .. }
+        | CodexNotification::ServerRequestResolved { thread_id, .. } => Some(thread_id),
         CodexNotification::Unknown { .. } => None,
     }
 }
@@ -192,7 +193,8 @@ fn apply_notification_state(
         | CodexNotification::ItemCompleted { .. }
         | CodexNotification::RawResponseItemCompleted { .. }
         | CodexNotification::TurnDiffUpdated { .. } => true,
-        CodexNotification::ThreadTokenUsageUpdated { .. } => false,
+        CodexNotification::ThreadTokenUsageUpdated { .. }
+        | CodexNotification::ServerRequestResolved { .. } => false,
         CodexNotification::Unknown { .. } => false,
     }
 }

@@ -161,6 +161,22 @@ a runtime lease. Caffold never replays `turn/start`, `turn/steer`, or another
 user request automatically; app-server replays pending server requests on
 `thread/resume` with their original IDs.
 
+## Approval Requests
+
+Caffold handles `item/commandExecution/requestApproval`,
+`item/fileChange/requestApproval`, and `item/permissions/requestApproval` as
+app-server-owned requests. The runtime keeps only the pending JSON-RPC request
+ID, method, and parameters required to present and answer each request; this
+state is ephemeral and never becomes a thread-status or persistence writer.
+
+Command and file-change requests return one of the standard decisions offered
+by app-server. A permission grant returns the complete permission profile from
+the original request with either `turn` or `session` scope. A denial returns an
+empty granted profile. The browser cannot construct a broader permission
+profile than app-server requested. A matching `serverRequest/resolved`
+notification removes the pending card without rewriting canonical thread or
+turn state.
+
 ## Incremental History
 
 The resume response supplies the latest eight summary turns. Caffold keeps that

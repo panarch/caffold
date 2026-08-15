@@ -643,6 +643,10 @@ pub enum CodexNotification {
         thread_id: String,
         params: Value,
     },
+    ServerRequestResolved {
+        thread_id: String,
+        request_id: Value,
+    },
     Unknown {
         method: String,
         params: Value,
@@ -676,6 +680,11 @@ pub enum CodexServerRequest {
         params: Value,
     },
     FileChangeApproval {
+        id: Value,
+        thread_id: String,
+        params: Value,
+    },
+    PermissionsApproval {
         id: Value,
         thread_id: String,
         params: Value,
@@ -862,6 +871,29 @@ pub(crate) fn decode_notification(
                 .to_string();
             Ok(CodexNotification::TurnDiffUpdated { thread_id, params })
         }
+        "serverRequest/resolved" => {
+            let params = params
+                .as_object()
+                .ok_or_else(|| "serverRequest/resolved params must be a JSON object".to_string())?;
+            let thread_id = params
+                .get("threadId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    "serverRequest/resolved params did not include threadId".to_string()
+                })?
+                .to_string();
+            let request_id = params
+                .get("requestId")
+                .filter(|request_id| request_id.is_string() || request_id.is_number())
+                .cloned()
+                .ok_or_else(|| {
+                    "serverRequest/resolved params did not include a valid requestId".to_string()
+                })?;
+            Ok(CodexNotification::ServerRequestResolved {
+                thread_id,
+                request_id,
+            })
+        }
         _ => Ok(CodexNotification::Unknown {
             method: method.to_string(),
             params,
@@ -923,9 +955,38 @@ pub(crate) fn decode_server_request(
                 params,
             })
         }
-        ("item/commandExecution/requestApproval" | "item/fileChange/requestApproval", None) => {
-            Err(format!("{method} params did not include threadId"))
+        ("item/permissions/requestApproval", Some(thread_id)) => {
+            for key in ["turnId", "itemId", "cwd"] {
+                if !params.get(key).is_some_and(Value::is_string) {
+                    return Err(format!(
+                        "item/permissions/requestApproval params did not include {key}"
+                    ));
+                }
+            }
+            if !params.get("permissions").is_some_and(Value::is_object) {
+                return Err(
+                    "item/permissions/requestApproval params did not include permissions"
+                        .to_string(),
+                );
+            }
+            if !params.get("startedAtMs").is_some_and(Value::is_number) {
+                return Err(
+                    "item/permissions/requestApproval params did not include startedAtMs"
+                        .to_string(),
+                );
+            }
+            Ok(CodexServerRequest::PermissionsApproval {
+                id,
+                thread_id,
+                params,
+            })
         }
+        (
+            "item/commandExecution/requestApproval"
+            | "item/fileChange/requestApproval"
+            | "item/permissions/requestApproval",
+            None,
+        ) => Err(format!("{method} params did not include threadId")),
         _ => Ok(CodexServerRequest::Unknown {
             id,
             method: method.to_string(),
@@ -1291,6 +1352,38 @@ mod tests {
     }
 
     #[test]
+    fn decodes_server_request_resolution_notifications() {
+        let notification = decode_notification(
+            "serverRequest/resolved",
+            json!({ "threadId": "thread_1", "requestId": 42 }),
+        )
+        .expect("request resolution notification");
+
+        assert_eq!(
+            notification,
+            CodexNotification::ServerRequestResolved {
+                thread_id: "thread_1".to_string(),
+                request_id: json!(42),
+            }
+        );
+
+        let error = decode_notification(
+            "serverRequest/resolved",
+            json!({ "threadId": "thread_1", "requestId": null }),
+        )
+        .expect_err("request id must use the JSON-RPC string or integer shape");
+        assert!(error.contains("valid requestId"));
+
+        let error = decode_notification("serverRequest/resolved", json!([]))
+            .expect_err("resolution params must be an object");
+        assert!(error.contains("JSON object"));
+
+        let error = decode_notification("serverRequest/resolved", json!({ "requestId": 42 }))
+            .expect_err("threadId is required");
+        assert!(error.contains("threadId"));
+    }
+
+    #[test]
     fn rejects_malformed_required_notification() {
         let error = decode_notification("turn/started", json!({ "threadId": "thread_1" }))
             .expect_err("turn is required");
@@ -1324,6 +1417,76 @@ mod tests {
                 arguments: json!({ "name": "Readable name" }),
             }
         );
+    }
+
+    #[test]
+    fn decodes_permission_approval_requests_with_their_requested_profile() {
+        let params = json!({
+            "threadId": "thread_1",
+            "turnId": "turn_1",
+            "itemId": "item_1",
+            "cwd": "/workspace/project",
+            "permissions": {
+                "network": { "enabled": true },
+                "fileSystem": {
+                    "entries": [{
+                        "access": "write",
+                        "path": { "type": "path", "path": "/workspace/shared" }
+                    }]
+                }
+            },
+            "reason": "Download a fixture and update the shared cache",
+            "startedAtMs": 1_750_000_000_000_i64
+        });
+        let request = decode_server_request(
+            json!(42),
+            "item/permissions/requestApproval",
+            params.clone(),
+        )
+        .expect("permission approval request");
+
+        assert_eq!(
+            request,
+            CodexServerRequest::PermissionsApproval {
+                id: json!(42),
+                thread_id: "thread_1".to_string(),
+                params,
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_incomplete_permission_approval_requests() {
+        let valid = json!({
+            "threadId": "thread_1",
+            "turnId": "turn_1",
+            "itemId": "item_1",
+            "cwd": "/workspace/project",
+            "permissions": { "network": { "enabled": true } },
+            "startedAtMs": 1
+        });
+        for key in ["turnId", "itemId", "cwd", "permissions", "startedAtMs"] {
+            let mut params = valid.clone();
+            params[key] = Value::Null;
+            let error =
+                decode_server_request(json!(42), "item/permissions/requestApproval", params)
+                    .expect_err("each current permission approval field is required");
+            assert!(error.contains(key), "error should identify {key}: {error}");
+        }
+
+        let error = decode_server_request(
+            json!(42),
+            "item/permissions/requestApproval",
+            json!({
+                "turnId": "turn_1",
+                "itemId": "item_1",
+                "cwd": "/workspace/project",
+                "permissions": {},
+                "startedAtMs": 1
+            }),
+        )
+        .expect_err("threadId is required");
+        assert!(error.contains("threadId"));
     }
 
     #[test]

@@ -24,23 +24,29 @@ Caffold should still assume that remote command execution is sensitive.
 
 ## Approval Principles
 
-- Show cwd before command approval.
-- Show the exact command before approval.
+- Show the cwd and exact command when a command approval supplies them.
+- Show the complete requested capability profile before permission approval.
 - Distinguish one-time approval from accept-for-session.
 - Keep every approval decision visible in the canonical conversation.
 - Make decline and cancel first-class outcomes.
 - Avoid silent destructive operations.
 
-## Codex Command Execution
+## Codex Execution Approvals
 
-Codex app-server owns command execution. Caffold presents each request, command
-event, output, and result without introducing a separate command runner or
-alternate process state.
+Codex app-server owns command execution and permission requests. Caffold
+presents each request and result without introducing a separate command runner,
+permission ledger, or alternate process state.
 
 Current rules:
 
 - command cwd follows the Codex thread workspace;
-- approval cards show the requested command and cwd;
+- command approval cards show the requested command and cwd when supplied;
+- network-aware command approvals show their destination and requested
+  additional permissions even when no command text is present;
+- permission approval cards show the reason, cwd, and complete requested
+  network and filesystem profile;
+- a one-turn or session grant returns the original server-requested permission
+  profile, while denial returns an empty profile;
 - command output and exit status remain attached to the canonical turn;
 - long-running commands expose visible running state;
 - approval outcomes are sent back through the original app-server request.

@@ -28,8 +28,9 @@ use serde_json::Value as JsonValue;
 use tokio::sync::broadcast;
 
 use super::{
-    ApprovalResolveError, CodexConnection, DetailFrameStream, TaskDetailResponse, TaskDetailSync,
-    TaskRecord, TaskState, accepted_user_message_event, now_ms, task_activity_ms,
+    ApprovalResolution, ApprovalResolveError, CodexConnection, DetailFrameStream,
+    PermissionGrantScope, TaskDetailResponse, TaskDetailSync, TaskRecord, TaskState,
+    accepted_user_message_event, now_ms, task_activity_ms,
 };
 use super::{
     lifecycle::{ActiveTaskTopPlacement, StartTask},
@@ -150,8 +151,11 @@ struct TaskPromptOutcome {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct TaskApprovalRequest {
     decision: String,
+    #[serde(default)]
+    scope: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

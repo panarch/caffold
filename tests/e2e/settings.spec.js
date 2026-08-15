@@ -1070,7 +1070,7 @@ test("keeps mixed surfaces reflowed across appearance extremes", async ({
     host.append(conversation);
     conversation.innerHTML = `
       <article class="task-approval-card">
-        <header><h3>Approval</h3><p>Review the requested command before continuing.</p></header>
+        <header><h3>Approval</h3><p class="task-approval-reason">Review the requested command before continuing.</p></header>
         <pre>cargo test --all-targets</pre>
         <div class="task-approval-actions">
           <button class="task-secondary-button">Decline</button>

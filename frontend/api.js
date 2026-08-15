@@ -174,13 +174,13 @@ export async function interruptTask(threadId) {
   );
 }
 
-export async function resolveTaskApproval(threadId, approvalId, decision) {
+export async function resolveTaskApproval(threadId, approvalId, decision, scope = null) {
   return requestJson(
     `/api/tasks/${encodeURIComponent(threadId)}/approvals/${encodeURIComponent(approvalId)}`,
     {},
     {
       method: "POST",
-      body: { decision },
+      body: scope ? { decision, scope } : { decision },
     },
   );
 }

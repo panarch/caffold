@@ -11,6 +11,258 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
+test("renders permission and network approvals without clipping at appearance extremes", async ({
+  page,
+}, testInfo) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "caffold:settings",
+      JSON.stringify({
+        themeMode: "system",
+        typefacePreset: "d2-coding",
+        interfaceScalePercent: 120,
+        conversationTextPx: 20,
+        codeTextPx: 20,
+        fileSortMode: "folders-first",
+      }),
+    );
+  });
+  const scenario = await installTaskLoopFixture(page, {
+    threadId: "thread_permission_card",
+  });
+  await page.goto("/tasks");
+  await page.evaluate(async (contextPath) => {
+    const response = await fetch("/api/tasks", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        cwd: contextPath,
+        prompt: "Inspect the planner changes",
+        model: "gpt-5.6-sol",
+        effort: "xhigh",
+        permissionMode: "approveForMe",
+        images: [
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        ],
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`task seed failed: ${response.status}`);
+    }
+  }, scenario.contextPath);
+
+  const longRoot =
+    "/Users/taehoon/Library/Application Support/Caffold/data/worktrees/permission-review/fixtures/generated/release-metadata";
+  scenario.events = scenario.events
+    .filter((event) => event.type !== "approval_requested")
+    .concat([
+      scenario.eventRecord(
+        "event_permission",
+        "approval_requested",
+        "Permission approval requested",
+        {
+          approvalId: "permission_1",
+          kind: "permission",
+          method: "item/permissions/requestApproval",
+          params: {
+            turnId: "turn_1",
+            itemId: "permission_item_1",
+            cwd: longRoot,
+            reason:
+              "Download release metadata, inspect the generated cache, and update the shared fixture used by the complete review workflow.",
+            permissions: {
+              network: { enabled: true },
+              fileSystem: {
+                entries: [
+                  {
+                    access: "write",
+                    path: {
+                      type: "path",
+                      path: `${longRoot}/nested/path/with-a-deliberately-long-directory-name/cache.json`,
+                    },
+                  },
+                  {
+                    access: "read",
+                    path: {
+                      type: "glob_pattern",
+                      pattern: `${longRoot}/**/release-*.json`,
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+        5,
+      ),
+      scenario.eventRecord(
+        "event_network_approval",
+        "approval_requested",
+        "Network approval requested",
+        {
+          approvalId: "network_1",
+          kind: "command",
+          method: "item/commandExecution/requestApproval",
+          params: {
+            command: null,
+            cwd: longRoot,
+            reason: "Connect to the release API to verify the current artifact metadata.",
+            networkApprovalContext: {
+              protocol: "https",
+              host: "api.github.com",
+            },
+            additionalPermissions: { network: { enabled: true } },
+            availableDecisions: ["accept", "acceptForSession", "decline"],
+          },
+        },
+        6,
+      ),
+      scenario.eventRecord(
+        "event_long_command_approval",
+        "approval_requested",
+        "Command approval requested",
+        {
+          approvalId: "command_1",
+          kind: "command",
+          method: "item/commandExecution/requestApproval",
+          params: {
+            command: `cargo test --manifest-path ${longRoot}/workspace/Cargo.toml --package permission-contract-with-an-intentionally-long-unbroken-package-name`,
+            cwd: longRoot,
+            reason: "Run the complete permission regression suite.",
+            availableDecisions: ["accept", "decline"],
+          },
+        },
+        7,
+      ),
+    ]);
+  scenario.updateTask({ lastEventSummary: "Permission approval requested" });
+  let permissionBody = null;
+  await page.route(
+    `**/api/tasks/${scenario.threadId}/approvals/permission_1`,
+    async (route) => {
+      permissionBody = route.request().postDataJSON();
+      scenario.events = [
+        ...scenario.events.filter(
+          (event) => event.payload?.approvalId !== "permission_1",
+        ),
+        scenario.eventRecord(
+          "event_permission_resolved",
+          "approval_resolved",
+          "Approval resolved: allow",
+          {
+            approvalId: "permission_1",
+            decision: "allow",
+            scope: "session",
+            turnId: "turn_1",
+          },
+          8,
+        ),
+      ];
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(scenario.detailResponse()),
+      });
+    },
+  );
+
+  await page.goto(`/tasks/${scenario.threadId}`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const permissionCard = tasksPage.locator(
+    '.task-approval-card[data-approval-kind="permission"]',
+  );
+  const networkCard = tasksPage.locator(
+    '.task-approval-card:has-text("Network Access Approval")',
+  );
+  const commandCard = tasksPage.locator(
+    '.task-approval-card[data-approval-kind="command"]:has(pre)',
+  );
+  await expect(permissionCard).toBeVisible();
+  await expect(networkCard).toContainText("https://api.github.com");
+  await expect(networkCard).not.toContainText("command unavailable");
+  await expect(permissionCard.getByRole("button")).toHaveText([
+    "Allow this turn",
+    "Allow for session",
+    "Deny",
+  ]);
+  const interfaceFontSize = await page.evaluate(
+    () => getComputedStyle(document.documentElement).fontSize,
+  );
+  await expect(permissionCard.locator("h3")).toHaveCSS(
+    "font-size",
+    interfaceFontSize,
+  );
+  await expect(permissionCard.locator(".task-approval-reason")).toHaveCSS(
+    "font-size",
+    "20px",
+  );
+  await expect(permissionCard.locator("code").first()).toHaveCSS(
+    "font-size",
+    "20px",
+  );
+
+  const layout = await tasksPage.evaluate((tasks) => {
+    const flow = tasks.querySelector(".task-approval-flow");
+    const permission = tasks.querySelector(
+      '.task-approval-card[data-approval-kind="permission"]',
+    );
+    const actions = permission.querySelector(".task-approval-actions");
+    const scroller = tasks.querySelector(".task-conversation-scroll");
+    const command = tasks.querySelector(
+      '.task-approval-card[data-approval-kind="command"] pre',
+    );
+    const contained = (child, parent) => {
+      const childBox = child.getBoundingClientRect();
+      const parentBox = parent.getBoundingClientRect();
+      return (
+        childBox.left >= parentBox.left - 0.5 &&
+        childBox.right <= parentBox.right + 0.5
+      );
+    };
+    const style = getComputedStyle(actions);
+    return {
+      actionColumns:
+        style.display === "grid"
+          ? style.gridTemplateColumns.split(" ").filter(Boolean).length
+          : 0,
+      cardsContained: [...tasks.querySelectorAll(".task-approval-card")].every(
+        (card) => contained(card, scroller),
+      ),
+      commandContained: contained(command, command.closest(".task-approval-card")),
+      commandScrolls: command.scrollWidth > command.clientWidth,
+      documentOverflow:
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth,
+      flowWidth: flow.getBoundingClientRect().width,
+      rootFontSize: Number.parseFloat(
+        getComputedStyle(document.documentElement).fontSize,
+      ),
+    };
+  });
+  expect(layout.cardsContained).toBe(true);
+  expect(layout.commandContained).toBe(true);
+  expect(layout.commandScrolls).toBe(true);
+  expect(layout.documentOverflow).toBe(false);
+  if (layout.flowWidth <= 22 * layout.rootFontSize) {
+    expect(layout.actionColumns).toBe(1);
+  } else if (layout.flowWidth <= 34 * layout.rootFontSize) {
+    expect(layout.actionColumns).toBe(2);
+  } else {
+    expect(layout.actionColumns).toBe(0);
+  }
+
+  await permissionCard.evaluate((card) => card.scrollIntoView({ block: "start" }));
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "tasks-permission-approval-responsive",
+  );
+  await permissionCard.getByRole("button", { name: "Allow for session" }).click();
+  await expect(permissionCard).toHaveCount(0);
+  expect(permissionBody).toEqual({ decision: "allow", scope: "session" });
+  expect(scenario.pageErrors).toEqual([]);
+});
+
 test("opens resolved Markdown file links through Task Review with native link semantics", async ({
   context,
   page,

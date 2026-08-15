@@ -9,8 +9,8 @@ boundaries.
 - browser/PWA access on the trusted host and tailnet-only Tailscale Serve;
 - managed, thread-backed Tasks with canonical app-server lifecycle;
 - persistent app-server daemon plus replaceable proxy connection;
-- prompts, steering, interruption, command approvals, images, and local voice
-  input in the Conversation surface;
+- prompts, steering, interruption, command and permission approvals, images,
+  and local voice input in the Conversation surface;
 - selectable managed Sections with fixed-directory Task creation;
 - shared integrated Working Tree/Branch, file/source, Git Compare/Log, and
   GitHub review surfaces for repository-backed Tasks and Sections;
@@ -55,7 +55,8 @@ The current product supports these flows:
    app-server-owned thread state.
 3. Select a repository Section or Task and review files, diffs, Git state, and
    GitHub context on desktop, foldable, and phone layouts.
-4. Approve or deny a command request and see the canonical outcome.
+4. Approve or deny a command or permission request and see the canonical
+   outcome.
 5. Start a Task from GitHub Issue or Pull Request detail and review its prepared
    managed worktree.
 6. Explicitly prepare the same Task in an isolated worktree without moving dirty

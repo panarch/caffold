@@ -201,13 +201,43 @@ pub(super) fn normalize_codex_effort(effort: Option<String>) -> Result<Option<St
     Ok(Some(effort.to_string()))
 }
 
-pub(super) fn normalize_approval_decision(decision: &str) -> Result<&str, ApiError> {
-    match decision {
-        "accept" | "acceptForSession" | "decline" | "cancel" => Ok(decision),
+pub(super) fn normalize_approval_resolution(
+    decision: String,
+    scope: Option<String>,
+) -> Result<ApprovalResolution, ApiError> {
+    match decision.as_str() {
+        "accept" | "acceptForSession" | "decline" | "cancel" if scope.is_none() => {
+            Ok(ApprovalResolution::Standard(decision))
+        }
+        "allow" => {
+            let scope = match scope.as_deref() {
+                Some("turn") => PermissionGrantScope::Turn,
+                Some("session") => PermissionGrantScope::Session,
+                _ => return Err(invalid_approval_scope_error()),
+            };
+            Ok(ApprovalResolution::Permissions {
+                granted: true,
+                scope,
+            })
+        }
+        "deny" if scope.is_none() => Ok(ApprovalResolution::Permissions {
+            granted: false,
+            scope: PermissionGrantScope::Turn,
+        }),
+        "accept" | "acceptForSession" | "decline" | "cancel" | "deny" => {
+            Err(invalid_approval_scope_error())
+        }
         _ => Err(ApiError::BadRequest {
             code: "invalid_approval_decision",
             message: "approval decision is not supported".to_string(),
         }),
+    }
+}
+
+fn invalid_approval_scope_error() -> ApiError {
+    ApiError::BadRequest {
+        code: "invalid_approval_scope",
+        message: "approval scope is not supported for this decision".to_string(),
     }
 }
 
@@ -218,6 +248,50 @@ mod tests {
     use super::super::test_support::*;
     use super::*;
     use crate::{app::tasks::test_support::*, fs::RootedFs};
+
+    #[test]
+    fn approval_resolution_requires_the_scope_owned_by_each_decision_kind() {
+        assert_eq!(
+            normalize_approval_resolution("accept".to_string(), None).unwrap(),
+            ApprovalResolution::Standard("accept".to_string())
+        );
+        assert_eq!(
+            normalize_approval_resolution("allow".to_string(), Some("session".to_string()))
+                .unwrap(),
+            ApprovalResolution::Permissions {
+                granted: true,
+                scope: PermissionGrantScope::Session,
+            }
+        );
+        assert_eq!(
+            normalize_approval_resolution("deny".to_string(), None).unwrap(),
+            ApprovalResolution::Permissions {
+                granted: false,
+                scope: PermissionGrantScope::Turn,
+            }
+        );
+        assert!(matches!(
+            normalize_approval_resolution("allow".to_string(), None),
+            Err(ApiError::BadRequest {
+                code: "invalid_approval_scope",
+                ..
+            })
+        ));
+        assert!(matches!(
+            normalize_approval_resolution("deny".to_string(), Some("turn".to_string())),
+            Err(ApiError::BadRequest {
+                code: "invalid_approval_scope",
+                ..
+            })
+        ));
+        assert!(matches!(
+            normalize_approval_resolution("future-decision".to_string(), None),
+            Err(ApiError::BadRequest {
+                code: "invalid_approval_decision",
+                ..
+            })
+        ));
+    }
 
     #[tokio::test]
     async fn codex_models_preserves_app_server_reasoning_efforts() {
