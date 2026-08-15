@@ -6,10 +6,8 @@ the stable context for local work.
 
 ## Task workspace
 
-`caffold-task-workspace` is the only routed application workspace. It contains
-the Task navigator, Global New, Task/Section Detail, and Settings. The application shell
-owns bootstrap, route forwarding, settings application, and build-update
-presentation.
+The Task workspace is the only routed application workspace. It contains the
+Task navigator, Global New, Task/Section Detail, and Settings.
 
 Desktop reading surfaces may keep the Task navigator visible. Code surfaces
 use the available detail width. Foldable and phone layouts use the same
@@ -57,27 +55,24 @@ Task creation starts a Codex thread in the selected cwd. Managed-worktree
 preparation happens explicitly from the resulting Task; it is not an implicit
 side effect of task creation.
 
-Global New and Section New mount the same Task Create component for Composer,
-request, and error behavior. Section New fixes cwd to the Section's managed
-logical path, omits directory browsing and setup guide chrome, and preserves
-its draft across same-Section surface switches.
+Global New and Section New provide the same Composer, turn options, and error
+behavior. Section New fixes cwd to the Section's managed logical path, omits
+directory browsing and setup guidance, and preserves its draft across
+same-Section surface switches.
 
 ## Detail
 
-The common Detail layout owns Summary actions, the subject-aware view switch,
-Integrated Review, Git, and GitHub. A Task subject contributes Conversation; a
-Section subject contributes fixed-context New Task. Switching subject identity
-hard-rebinds repository data, while safe local state may survive surface
-switches within one subject. The selected Section follows local projection
-changes; losing repository capability clears retained repository state and
-returns that Section to New Task.
+Detail provides Summary actions, the subject-aware view switch, Integrated
+Review, Git, and GitHub. A Task adds Conversation; a Section adds fixed-context
+New Task. Switching Task or Section context reloads repository data, while safe
+local state may survive surface switches within one context. If a Section loses
+repository capability, it returns to New Task.
 
 ## Task Detail
 
-Task Detail owns the selected thread, canonical Task snapshot, Codex event
-stream, Conversation, Command dialog, follow-up Composer, and Task mutations.
-It publishes context to the common Detail owner instead of mounting shared
-review surfaces itself.
+Task Detail presents the selected thread, Conversation, command requests,
+follow-up Composer, and Task actions. Integrated Review, Git, and GitHub remain
+shared repository surfaces.
 
 ### Conversation
 
@@ -95,15 +90,13 @@ child switching does not interrupt the selected Task's Codex stream.
 
 ### Integrated Review
 
-Integrated Review is the only owner of Working Tree and current Task Branch
-review. It combines:
+Integrated Review is the product surface for Working Tree and current Task
+Branch review. It combines:
 
 - Working Tree or Branch scope;
 - Changes or Files navigator;
 - Diff or Source viewer;
-- one selected task-root-relative path;
-- one root filesystem watch while active;
-- current-branch base normalization.
+- one selected task-root-relative path.
 
 This is also the product path for general file/source inspection through the
 reusable file navigator, source viewer, text viewer, and supported image viewer.
@@ -118,9 +111,8 @@ Review:
 - bounded Log, commit detail, changed files, diff, and source inspection.
 
 Git is read-only. It does not expose stage, commit, checkout, reset, merge,
-rebase, stash, or publication controls. Its active repository watch reacts to
-ref-derived invalidation only; it does not own Working Tree status or the
-Integrated Review selected path.
+rebase, stash, or publication controls, and it does not duplicate Working Tree
+status or current-Branch review from Integrated Review.
 
 ### GitHub
 
@@ -130,39 +122,24 @@ context and the authenticated GitHub CLI. It provides:
 - Issue list and detail;
 - Pull Request list and detail;
 - Pull Request changed files, unified diff, and source inspection;
-- the same explicit Start Task action on Issue and Pull Request detail;
 - scoped availability, loading, error, and Retry states.
 
-Activation or meaningful re-entry performs a fresh canonical query while
-retained DOM-local state may remain visible. GitHub does not poll, create a
-filesystem watcher, or refresh while hidden. It does not publish comments,
-reviews, Pull Requests, or other GitHub mutations.
+GitHub refreshes remote state when the user enters or retries a surface. It does
+not publish comments, reviews, Pull Requests, or other GitHub mutations.
 
-The GitHub root mounts one shared Task Start dialog rather than separate
-Issue and Pull Request workflows. Each detail owns its visible action and
-canonical source payload; the root owns dialog lifetime, while the dialog owns
-Task turn options, Task creation, focus return, and source-specific setup.
+Issue and Pull Request detail expose the same Start Task action. For an Issue,
+the user chooses a base ref. For a Pull Request, the canonical base/head is
+read-only and an arbitrary base cannot be selected. Both create a setup-only
+Task. The complete sequence and safety boundary are defined in
+[Product Workflows](workflows.md).
 
-For Issues, the user chooses the base ref and the setup turn creates a new
-Issue branch from it. For Pull Requests, the dialog shows the canonical
-base/head relationship as read-only context and verifies the exact canonical
-head commit. Same-repository and fork PRs are supported; a stale or unavailable
-head remains an explicit recoverable error instead of selecting another ref.
-Both prompts treat source metadata as untrusted, leave source-checkout changes
-in place, stop after worktree preparation, and wait for the user's next request
-instead of beginning review or implementation.
+### Surface state
 
-### Child lifetime
-
-Git and GitHub DOM remains mounted in the connected common Detail while hidden
-so selection, disclosure, scroll, and pane widths can survive. Inactive
-children release watchers, pending requests, and other active work, and
-activation performs a fresh canonical sync. Changing subject or repository
-context is a hard data-rebind boundary.
-
-Integrated Review uses a bounded per-subject cache, with active work tied to
-connection and activation. Canonical repository-context changes invalidate
-repository-bound data even when subject identity is unchanged.
+Switching among Integrated Review, Git, and GitHub may preserve selection,
+disclosure, scroll, and pane widths within the same Task or Section. Returning
+to a surface reconciles current source state. Changing Task, Section, or
+repository context discards retained external context. The implementation
+contract is defined in [Frontend Architecture](../architecture/frontend.md).
 
 ## Settings
 
@@ -191,18 +168,10 @@ is requested only by the explicit **Enable** action. Removing another browser
 revokes that installation; opening Notifications there applies the revocation
 locally instead of silently subscribing again.
 
-Task Workspace owns the shared Codex readiness request and forwards the same
-backend snapshot to Tasks, workspace navigation, and Codex Settings. Codex
-Settings owns only repair presentation and explicit restart intent. Task setup
-and Settings use one workspace-owned restart request lifecycle and confirmation
-dialog; only the refreshed backend readiness state can restore Task actions.
-
-The browser is the primary complete settings surface, but it is not the only
-permitted client of server-backed settings. Moving a host or runtime capability
-into browser Settings means giving it a shared backend contract and a browser
-presentation; it does not by itself require removing a useful compact control
-from the macOS menu. When both surfaces expose a capability, they consume the
-same server state and actions instead of maintaining parallel implementations.
+Tasks and Codex Settings present the same backend readiness and restart outcome.
+Only refreshed readiness restores Task actions. The browser is the complete
+settings surface, while the macOS menu may expose a compact control when both
+surfaces use the same server state and action.
 
 ## Product boundaries
 
@@ -217,6 +186,5 @@ The browser UI does not provide:
 - split diff, hunk comments, or durable review annotations;
 - a Caffold-owned duplicate of the Codex transcript.
 
-Planned additions belong in the [Roadmap](roadmap.md) and
-[Product Workflows](workflows.md), not in this description of implemented
-surfaces.
+Planned additions belong in the [Roadmap](roadmap.md), not in this description
+of implemented surfaces.

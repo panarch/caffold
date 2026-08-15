@@ -47,6 +47,7 @@ rules.
 - [Review Policy](review/policy.md)
 - [Frontend Review](review/frontend.md)
 - [Backend and API Review](review/backend.md)
+- [Documentation Review](review/documentation.md)
 
 ## Operations
 

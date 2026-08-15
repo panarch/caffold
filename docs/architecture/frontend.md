@@ -234,25 +234,20 @@ Composer, and Task mutations. It publishes a subject snapshot upward; it does
 not mount Integrated Review, Git, GitHub, or their Summary controls.
 
 The adjacent task-scoped Detail session owns snapshot acquisition while Detail
-keeps canonical Task, event, revision, and rendering state. Normal entry and
-reconnect use the detail SSE without a parallel full REST read. Transport open
-is not completion: a readable `stream-bootstrap` completes acquisition, while
-a loading bootstrap establishes the revision baseline and waits for a later
-readable `task-sync`.
+keeps canonical Task, event, revision, and rendering state.
 
 The session phases are inactive, waiting for bootstrap, waiting for readable
 sync, streaming, REST fallback, and unavailable. It alone transitions the
 active attempt, while shared `tasks/stream.js` owns `EventSource` connection
-generations, timers, and transport state. If SSE is unsupported or its retries
-are exhausted, the attempt may use one REST fallback. Cursor REST pagination
-stays outside the session, and a Task switch replaces the attempt before a late
-response can update Detail.
+generations, timers, and transport state. Cursor pagination stays outside the
+session, and a Task switch replaces the attempt before a late response can
+update Detail. The wire-level bootstrap, revision, and fallback contract is
+defined in [Codex App Server](codex-app-server.md#frontend-ownership).
 
-`caffold-section-detail` owns fixed-context Task creation for one Section. Its
-cwd is the Section's managed logical path, it does not expose directory
-browsing, and switching Section context replaces its Task Create instance.
-Global New and Section New compose the same Tasks-owned `caffold-task-create`
-behavior with distinct cwd and chrome contracts.
+`caffold-section-detail` owns fixed-context Task creation for one Section.
+Switching Section context replaces its Task Create instance. The shared Task
+Create and cwd contracts are defined in
+[New Task and directories](#new-task-and-directories).
 
 A Task deep route is prepared before canonical Task loading. Shared repository
 surfaces activate only after the Task snapshot is available. Section repository

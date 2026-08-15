@@ -31,7 +31,7 @@ tombstone as Disable.
 
 ## Persisted state
 
-The existing `caffold.redb` database owns the Web Push state. Schema v4 adds:
+The `caffold.redb` database owns Web Push state in two application tables:
 
 - `push_installations`, containing the client ID, generated installation label,
   endpoint, `p256dh`, `auth`, optional expiration, timestamps, and either active

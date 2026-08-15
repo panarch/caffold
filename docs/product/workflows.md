@@ -4,7 +4,7 @@ This document describes Caffold's implemented product workflow and the object
 boundaries that keep it consistent. Planned orchestration belongs in the
 [Roadmap](roadmap.md).
 
-Caffold currently supports four entry paths into the same repeated
+Caffold currently supports three entry paths into the same repeated
 development loop:
 
 ```text
@@ -16,14 +16,9 @@ Managed Section
         -> inspect Working Tree/Branch, Git, or GitHub at its repository root
         -> start a Task in the fixed directory or from Issue/PR detail
 
-GitHub Issue detail
-        -> explicitly start a setup-only Task
-        -> prepare an isolated worktree from its selected base ref
-        -> wait for the user's next request
-
-GitHub Pull Request detail
-        -> explicitly start a setup-only Task
-        -> prepare an isolated worktree from the exact PR head
+GitHub Issue or Pull Request detail
+        -> explicitly start a source-derived Task
+        -> prepare its isolated worktree
         -> wait for the user's next request
 
 Any entry
@@ -51,23 +46,21 @@ lifecycle.
 
 ### Open an existing Task
 
-1. Selecting a Task uses its detail SSE as the normal snapshot path and keeps
-   the loading shell until readable Task and conversation data arrives.
-2. Reconnects normally recover through the same stream without clearing a
-   readable Detail or adding a parallel full REST read.
-3. If the stream is unsupported or exhausts its retries, one REST fallback may
-   keep the Task readable while unavailable live updates are reported.
-4. Loading older conversation history uses a cursor REST request and merges the
-   page into the current Task. Switching Tasks prevents pending work for the
-   previous selection from changing the new Detail.
+1. Selecting a Task keeps the loading shell until readable Task and conversation
+   data arrives.
+2. Reconnecting preserves an already readable Detail while Caffold recovers
+   current data. If live updates remain unavailable, the Detail reports that
+   state without discarding readable content.
+3. Loading older history prepends it to the current conversation.
+4. Switching Tasks prevents pending work for the previous selection from
+   changing the new Detail.
 
 ### Start from a GitHub Issue or Pull Request
 
-The common GitHub root owns one shared Task Start dialog rather than separate
-Issue and Pull Request workflows. A repository-backed Task or Section supplies
-the source repository context. Both detail pages provide only the visible action
-and canonical source payload; the dialog keeps one Task-creation and modal
-lifecycle while applying the appropriate source-specific setup.
+Issue and Pull Request detail expose the same `Start Task` action from a
+repository-backed Task or Section. Each creates a separate setup-only Task and
+stops after worktree preparation. The source-specific inputs and preparation
+differ.
 
 For an Issue:
 
@@ -76,12 +69,11 @@ For an Issue:
 2. Select a base ref and the new Task's model, reasoning, speed, and approval
    choices.
 3. Caffold creates a separate Task at the resolved repository root. Its first
-   prompt carries the Issue metadata as untrusted context and is setup-only.
+   prompt carries the Issue metadata as untrusted context.
 4. That turn renames the Task and calls `isolate_current_task` with the selected
    base ref and `includeChanges: false`.
-5. Once the managed worktree is ready, the turn stops. The user reviews the
-   prepared Task and sends a new request before analysis or implementation
-   begins.
+5. Once the managed worktree is ready, the prepared Task waits for the user's
+   next request.
 
 For a Pull Request:
 
@@ -92,14 +84,12 @@ For a Pull Request:
 3. Caffold resolves and verifies the exact canonical PR head commit.
    Same-repository and fork PRs are supported; a moved or unavailable head
    stops with a recoverable error instead of selecting another ref.
-4. Caffold creates a separate Task whose setup-only prompt carries the PR body,
-   URL, base/head identity, conversation, and review context as untrusted data.
+4. Caffold creates a separate Task whose prompt carries the PR body, URL,
+   base/head identity, conversation, and review context as untrusted data.
 5. That turn renames the Task, creates a concise local branch from the verified
-   head with `includeChanges: false`, and stops as soon as the managed worktree
-   is ready.
+   head with `includeChanges: false`.
 
-Neither source automatically continues review or implementation after
-preparation. The user decides the prepared Task's next bounded action.
+The user decides the prepared Task's next bounded action.
 
 ### Review loop
 
@@ -160,15 +150,8 @@ synthetic persisted status that overwrites the independent owners.
 
 ## Runtime boundary
 
-Caffold intentionally uses one runtime owner in this product phase:
-
-```text
-one Caffold backend
-  -> one disposable proxy connection
-       -> one persistent Codex app-server daemon
-            -> multiple threads in multiple repositories/worktrees
-```
-
-A worktree does not receive its own app-server. Thread cwd connects the thread
-to the appropriate checkout. Managed and external app-server modes remain
-exclusive process-startup choices, not Issue, PR, or worktree UX.
+All Tasks on one host share the Caffold and Codex runtime. Preparing a worktree
+changes the Task's cwd; it does not create a per-worktree Codex service. See
+[Architecture Overview](../architecture/overview.md) and
+[Codex App Server](../architecture/codex-app-server.md) for process and transport
+ownership.

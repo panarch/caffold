@@ -266,9 +266,10 @@ lifecycle string:
   canonical ID.
 - Before canonical metadata arrives, detail returns `syncState: "loading"` and
   `task: null`; it does not manufacture a loading Task record from Redb.
-- If subscription, canonical read, or app-server transport fails, REST rejects
-  the stale session snapshot and SSE replaces the visible task with an explicit
-  unavailable error and Retry action.
+- If subscription or canonical read fails, REST rejects the stale session
+  snapshot and SSE carries an explicit unavailable detail. If the browser stream
+  transport fails, Detail may use one REST fallback to provide readable content
+  while reporting that live updates are unavailable.
 
 List and header badges use only `threadStatus`. Within active flags,
 `waitingOnApproval` takes display precedence over `waitingOnUserInput`, while
@@ -286,17 +287,15 @@ state:
 - `caffold-task-navigator` owns managed/Archived reads, list mutations, list SSE, and the
   per-thread list revision baseline.
 - `caffold-task-detail` owns the selected task's canonical application, event
-  cache, and per-thread detail revision baseline. Its adjacent `session.js`
-  coordinates each acquisition attempt across the detail SSE and at most one
-  REST fallback after bounded stream failure. The shared `tasks/stream.js`
-  lifecycle owns `EventSource` connection generations, timers, and transport
-  state. Each connection starts with a cached `stream-bootstrap`; a loading
-  bootstrap establishes the new revision baseline but acquisition waits for a
-  later readable `task-sync`. Healthy entry and reconnect add no parallel REST
-  read. Cursor pagination stays outside the session, and only the current
-  Task's active attempt may apply a response.
-- A `stream-bootstrap` establishes a new detail process baseline even when its
-  revision is lower. Lower revisions from the same baseline remain stale.
+  cache, and per-thread detail revision baseline. Normal acquisition uses the
+  detail SSE, with at most one REST fallback after bounded browser-stream
+  failure and no parallel REST read on healthy entry or reconnect. Each
+  connection starts with a cached `stream-bootstrap`; a loading bootstrap
+  establishes the new process baseline and waits for a later readable
+  `task-sync`. A bootstrap revision may be lower than the prior process
+  baseline; lower revisions within the new baseline remain stale. Frontend
+  module and attempt ownership is defined in
+  [Frontend Architecture](frontend.md#tasks-layout-and-detail-layout).
 - A detail snapshot may be forwarded to Navigator through
   `upsertCanonicalTask`, but a list revision never advances or rejects a detail
   revision, and a detail revision never advances or rejects a list revision.
@@ -417,9 +416,8 @@ observed read payload.
 Thread state comes only from app-server `Thread.status` snapshots and
 `thread/status/changed`. `Turn.status` remains turn-local conversation state;
 turn notifications, approval requests, browser events, and active-turn pointers
-do not rewrite the thread badge. Browser reconnect and visibility resume recover
-through the detail stream's bootstrap and, when the cached bootstrap is still
-loading, its first later readable sync. If the rollout path is absent or the
+do not rewrite the thread badge. Browser reconnect and visibility resume follow
+the detail acquisition contract above. If the rollout path is absent or the
 native watcher is unavailable, app-server notifications and explicit
 synchronization continue to work; Caffold does not add a polling fallback.
 

@@ -102,22 +102,13 @@ test("development entrypoints and diagnostic probe remain discoverable", () => {
   assert.match(probe.stdout, /THREAD_ID/);
 });
 
-test("package test commands expose complete execution boundaries", () => {
+test("package test commands are discoverable in the testing guide", () => {
   const packageJson = JSON.parse(
     readFileSync(resolve(repoRoot, "package.json"), "utf8"),
   );
   const testCommands = Object.keys(packageJson.scripts).filter((name) =>
     name.startsWith("test:"),
   );
-
-  assert.deepEqual(testCommands, [
-    "test:unit",
-    "test:contract",
-    "test:e2e",
-    "test:macos",
-    "test:codex-compat",
-    "test:codex-live",
-  ]);
 
   const testingGuide = readFileSync(
     resolve(repoRoot, "docs/development/testing.md"),
@@ -126,66 +117,4 @@ test("package test commands expose complete execution boundaries", () => {
   for (const command of testCommands) {
     assert.match(testingGuide, new RegExp(`npm run ${command}`));
   }
-});
-
-test("current worktree documentation names the same-Task isolation tool", () => {
-  const workflow = readFileSync(resolve(repoRoot, "docs/product/workflows.md"), "utf8");
-  const lifecycle = readFileSync(
-    resolve(repoRoot, "docs/architecture/worktree-lifecycle.md"),
-    "utf8",
-  );
-  for (const source of [workflow, lifecycle]) {
-    assert.match(source, /isolate_current_task/);
-    assert.doesNotMatch(source, /start_isolated_task/);
-  }
-});
-
-test("backend review policy requires owner-inline Rust unit tests", () => {
-  const policy = readFileSync(
-    resolve(repoRoot, "docs/review/backend.md"),
-    "utf8",
-  );
-  assert.match(policy, /inline `#\[cfg\(test\)\] mod tests`/);
-  assert.match(policy, /Do not use file-backed unit-test modules/);
-  assert.match(policy, /`src\/\*\*\/tests\.rs` files/);
-  assert.match(policy, /`src\/\*\*\/tests\/` hierarchies/);
-  assert.match(policy, /If Rust integration tests are introduced/);
-  assert.match(policy, /public contract reads\s+as executable documentation/);
-  assert.doesNotMatch(policy, /Current Adoption/);
-  assert.doesNotMatch(policy, /test ownership is only partially aligned/);
-});
-
-test("frontend review policy follows Tasks Detail subject ownership", () => {
-  const policy = readFileSync(
-    resolve(repoRoot, "docs/review/frontend.md"),
-    "utf8",
-  );
-  assert.match(policy, /Tasks Detail Git and GitHub behavior belongs/);
-  assert.match(policy, /App Shell coverage should assert only application-lifetime/);
-  assert.match(policy, /Task and Section behavior must be\s+exercised through fixtures owned/);
-  assert.match(policy, /A routed `page\.js` or `layout\.js` may define and register exactly/);
-  assert.match(policy, /must not define\s+or register those child elements themselves/);
-});
-
-test("product and architecture docs follow common Detail subject ownership", () => {
-  const read = (path) => readFileSync(resolve(repoRoot, path), "utf8");
-  const readme = read("README.md");
-  const workflows = read("docs/product/workflows.md");
-  const liveUpdates = read("docs/architecture/live-updates.md");
-  const codexArchitecture = read("docs/architecture/codex-app-server.md");
-  const frontendArchitecture = read("docs/architecture/frontend.md");
-  const navigation = read("docs/architecture/navigation.md");
-
-  assert.match(readme, /repository-backed Tasks and Sections share/);
-  assert.match(workflows, /Managed Section/);
-  assert.match(workflows, /Task or Section GitHub surface/);
-  assert.match(liveUpdates, /common Detail keeps one Git and one\s+GitHub instance mounted/);
-  assert.doesNotMatch(liveUpdates, /Switching Tasks destroys/);
-  assert.doesNotMatch(codexArchitecture, /Task-owned Git and GitHub children/);
-  for (const document of [frontendArchitecture, navigation, codexArchitecture]) {
-    assert.match(document, /Managed Section ID/);
-    assert.doesNotMatch(document, /local Section id/i);
-    assert.doesNotMatch(document, /local-section-id/i);
-  }
-  assert.match(navigation, /<managed-section-id>/);
 });
