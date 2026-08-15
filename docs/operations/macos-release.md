@@ -24,7 +24,7 @@ The app bundle uses:
 Run from a clean `main` worktree:
 
 ```sh
-desktop/macos/release --dry-run --version 0.1.0
+desktop/macos/release --dry-run
 ```
 
 The command performs no publication or repository mutation. Cargo may download locked dependencies when they are not already cached. The command:

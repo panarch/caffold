@@ -14,8 +14,7 @@ boundaries.
 - selectable managed Sections with fixed-directory Task creation;
 - shared integrated Working Tree/Branch, file/source, Git Compare/Log, and
   GitHub review surfaces for repository-backed Tasks and Sections;
-- explicit setup-only Task creation from GitHub Issue detail with a selected
-  base ref and from Pull Request detail with an exact verified head commit;
+- explicit Task creation from GitHub Issue and Pull Request detail;
 - same-Task preparation of a Caffold-managed worktree through
   `isolate_current_task`;
 - opt-in transfer of staged, unstaged, and untracked changes with bounded
@@ -57,9 +56,8 @@ The current product supports these flows:
 3. Select a repository Section or Task and review files, diffs, Git state, and
    GitHub context on desktop, foldable, and phone layouts.
 4. Approve or deny a command request and see the canonical outcome.
-5. Start a setup-only Task from GitHub Issue or Pull Request detail and stop
-   after preparing a worktree from the selected Issue base ref or exact PR head
-   commit.
+5. Start a Task from GitHub Issue or Pull Request detail and review its prepared
+   managed worktree.
 6. Explicitly prepare the same Task in an isolated worktree without moving dirty
    source changes by default.
 7. Archive a clean managed worktree, restore it, and preserve the same Task,

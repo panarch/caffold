@@ -124,6 +124,9 @@ permission to ignore a boundary that crosses files or processes.
 - [Backend and API Review](backend.md) covers backend ownership,
   route and capability boundaries, external state writers, path safety, and
   mutation policy, including Rust tests, coverage, and backend verification.
+- [Documentation Review](documentation.md) covers current-state writing,
+  document and fact ownership, directly affected stale references, and
+  documentation evidence.
 
 ## Verification Across Boundaries
 

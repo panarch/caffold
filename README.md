@@ -88,8 +88,7 @@ curl -fsSL https://chatgpt.com/codex/install.sh | sh
 ```
 
 Run `codex` once and complete sign-in. Until this installation is ready, the
-Tasks surface shows persistent setup guidance while Settings, Files, Git, and
-GitHub remain available.
+Tasks surface shows persistent setup guidance while Settings remains available.
 
 Caffold starts the user's persistent app-server daemon when needed and connects
 through a disposable proxy. Replacing or quitting Caffold closes only that proxy;
@@ -175,5 +174,5 @@ This repository has one Codex-first Task workspace. A selected Task owns its
 Conversation and execution lifecycle. A selected managed Section can start a
 Task in its fixed directory, and repository-backed Tasks and Sections share
 integrated Working Tree/Branch review, read-only Git Compare/Log, and read-only
-GitHub Issue/Pull Request surfaces. The broader review and control workflow
-remains under active design and implementation.
+GitHub Issue/Pull Request surfaces. Planned product expansions are tracked in
+the [Roadmap](docs/product/roadmap.md).
