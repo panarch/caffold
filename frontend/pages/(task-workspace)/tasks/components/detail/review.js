@@ -808,6 +808,12 @@ class CaffoldTaskReview extends HTMLElement {
           void this.refreshAll();
         }
       },
+      onRecover: () => {
+        if (path !== this.watchPath) {
+          return;
+        }
+        void this.refreshAll();
+      },
       onChange: (change) => {
         if (path !== this.watchPath) {
           return;
