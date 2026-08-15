@@ -509,6 +509,7 @@ mod tests {
         thread_id: &str,
         request_id: i64,
     ) {
+        let mut task_events = state.task_events.subscribe();
         state.codex_runtime.spawn_test_bridge(client.clone(), 1);
         let request = crate::codex_app_server::decode_server_request(
             json!(request_id),
@@ -524,21 +525,20 @@ mod tests {
             }),
         )
         .unwrap();
-        for _ in 0..100 {
-            if !state
-                .codex_runtime
-                .approval_events(thread_id)
-                .await
-                .is_empty()
-            {
-                return;
-            }
-            client.mock_publish_event(crate::codex_app_server::CodexRuntimeEvent::ServerRequest(
-                request.clone(),
-            ));
-            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-        }
-        panic!("permission approval did not reach the Task runtime");
+        client.mock_publish_event(crate::codex_app_server::CodexRuntimeEvent::ServerRequest(
+            request,
+        ));
+
+        let event = tokio::time::timeout(std::time::Duration::from_secs(1), task_events.recv())
+            .await
+            .expect("permission approval did not reach the Task runtime")
+            .expect("Task event stream closed before permission approval");
+        assert_eq!(event.thread_id, thread_id);
+        assert_eq!(event.event_type, "approval_requested");
+        assert_eq!(
+            event.payload.as_ref().unwrap()["approvalId"],
+            request_id.to_string()
+        );
     }
 
     #[tokio::test]

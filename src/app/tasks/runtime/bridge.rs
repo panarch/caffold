@@ -19,8 +19,8 @@ impl CodexRuntime {
         mut shutdown: broadcast::Receiver<()>,
     ) {
         let runtime = self.clone();
+        let mut receiver = client.subscribe();
         tokio::spawn(async move {
-            let mut receiver = client.subscribe();
             let connection_error = loop {
                 tokio::select! {
                     _ = shutdown.recv() => return,
