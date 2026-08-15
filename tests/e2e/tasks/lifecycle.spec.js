@@ -937,15 +937,20 @@ test("a late failed disconnect probe yields to a newer reconnect signal", async 
   let heldProbe = false;
   let releaseProbe;
   let reportProbeStarted;
+  let reportNewerProbeStarted;
   const probeGate = new Promise((resolve) => {
     releaseProbe = resolve;
   });
   const probeStarted = new Promise((resolve) => {
     reportProbeStarted = resolve;
   });
+  const newerProbeStarted = new Promise((resolve) => {
+    reportNewerProbeStarted = resolve;
+  });
   let statusReads = 0;
   let listReads = 0;
   let detailReads = 0;
+  let readsBeforeProbe = null;
   const detail = () => ({
     threadId,
     syncState: "ready",
@@ -975,6 +980,9 @@ test("a late failed disconnect probe yields to a newer reconnect signal", async 
 
   await page.route(/\/api\/codex\/status(?:\?|$)/, async (route) => {
     statusReads += 1;
+    if (readsBeforeProbe && statusReads === readsBeforeProbe.status + 2) {
+      reportNewerProbeStarted();
+    }
     if (holdProbe && !heldProbe) {
       heldProbe = true;
       reportProbeStarted();
@@ -1002,7 +1010,7 @@ test("a late failed disconnect probe yields to a newer reconnect signal", async 
     "Conversation remains useful before the late failure.",
   );
   await composer.fill("Keep the late-failure draft");
-  const readsBeforeProbe = {
+  readsBeforeProbe = {
     detail: detailReads,
     list: listReads,
     status: statusReads,
@@ -1022,6 +1030,7 @@ test("a late failed disconnect probe yields to a newer reconnect signal", async 
     window.dispatchEvent(new Event("online"));
   });
   releaseProbe();
+  await newerProbeStarted;
 
   const notice = appShell.locator(".app-foreground-recovery");
   await expect(notice).toBeHidden();
