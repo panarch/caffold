@@ -61,7 +61,12 @@ caffold-settings-workspace {
 
 @media (max-width: 899px) {
   caffold-settings-workspace {
+    & .settings-workspace-detail-header {
+      column-gap: var(--interface-space-3);
+    }
+
     & .settings-workspace-detail-header button {
+      position: relative;
       display: grid;
       place-items: center;
       width: var(--interface-control-hit-size);
@@ -73,10 +78,32 @@ caffold-settings-workspace {
       cursor: pointer;
     }
 
+    & .settings-workspace-detail-header button::before {
+      position: absolute;
+      inset: var(--interface-control-hit-outset);
+      border: 1px solid var(--border);
+      border-radius: 0.25rem;
+      background: var(--surface);
+      content: "";
+    }
+
+    & .settings-workspace-detail-header button:hover,
+    & .settings-workspace-detail-header button:focus-visible {
+      outline: none;
+    }
+
+    & .settings-workspace-detail-header button:hover::before,
+    & .settings-workspace-detail-header button:focus-visible::before {
+      border-color: var(--border-strong);
+      background: var(--control-hover-bg);
+    }
+
     & .settings-workspace-back-icon {
+      position: relative;
       display: block;
       width: var(--interface-icon-size);
       height: var(--interface-icon-size);
+      stroke-width: 2;
     }
   }
 }

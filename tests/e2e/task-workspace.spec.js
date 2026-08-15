@@ -152,9 +152,30 @@ test("navigates Settings as responsive master-detail pages with browser history"
   if (testInfo.project.name === "phone") {
     await expect(listPane).toBeHidden();
     await expect(navigation).toBeHidden();
-    await expect(
-      workspace.getByRole("button", { name: "Back to settings" }),
-    ).toBeVisible();
+    const backToSettings = workspace.getByRole("button", {
+      name: "Back to settings",
+    });
+    await expect(backToSettings).toBeVisible();
+    const backChrome = await backToSettings.evaluate((button) => {
+      const chrome = getComputedStyle(button, "::before");
+      return {
+        borderRadius: Number.parseFloat(chrome.borderRadius),
+        borderStyle: chrome.borderStyle,
+        borderWidth: chrome.borderWidth,
+        columnGap: Number.parseFloat(
+          getComputedStyle(button.parentElement).columnGap,
+        ),
+        rootFontSize: Number.parseFloat(
+          getComputedStyle(document.documentElement).fontSize,
+        ),
+      };
+    });
+    expect(backChrome).toMatchObject({
+      borderStyle: "solid",
+      borderWidth: "1px",
+    });
+    expect(backChrome.borderRadius).toBeCloseTo(backChrome.rootFontSize / 4);
+    expect(backChrome.columnGap).toBeCloseTo(backChrome.rootFontSize * 0.375);
   } else {
     await expect(listPane).toBeVisible();
     await expect(navigation).toBeVisible();
