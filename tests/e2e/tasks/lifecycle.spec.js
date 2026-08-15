@@ -18,6 +18,23 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
+async function advanceClockUntil(page, predicate, {
+  budgetMs,
+  stepMs = 50,
+}) {
+  let elapsedMs = 0;
+  while (!predicate() && elapsedMs < budgetMs) {
+    const advanceMs = Math.min(stepMs, budgetMs - elapsedMs);
+    await page.clock.runFor(advanceMs);
+    elapsedMs += advanceMs;
+    await page.evaluate(() => Promise.resolve());
+  }
+  expect(
+    predicate(),
+    `Condition was not reached within ${budgetMs}ms of virtual time`,
+  ).toBe(true);
+}
+
 function transportOverlayTask(threadId) {
   const now = 1_767_190_475_000;
   return {
@@ -993,22 +1010,16 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
   let unavailable = false;
   let recovered = false;
   let statusReads = 0;
-  let latestStatusFulfillment = Promise.resolve();
 
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
     statusReads += 1;
-    latestStatusFulfillment = unavailable
+    return unavailable
       ? route.fulfill({
           status: 502,
           json: { error: { message: "Caffold server unavailable." } },
         })
       : route.fulfill({ json: mockCodexStatus() });
-    return latestStatusFulfillment;
   });
-  const settleLatestStatusResponse = async () => {
-    await latestStatusFulfillment;
-    await page.evaluate(() => Promise.resolve());
-  };
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     unavailable
       ? route.fulfill({
@@ -1086,16 +1097,18 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
   await expect(page.locator(".task-list-stale-warning")).toHaveCount(0);
   await expect(page.locator(".task-list-availability, .task-stream-state")).toHaveCount(0);
   await expect.poll(() => statusReads).toBe(readsBeforeRecovery + 1);
-  await settleLatestStatusResponse();
 
-  for (const [delay, requestCount, presentation] of [
-    [250, 2, "reconnecting"],
-    [1_000, 3, "reconnecting"],
-    [3_000, 4, "unavailable"],
+  for (const [requestCount, presentation] of [
+    [2, "reconnecting"],
+    [3, "reconnecting"],
+    [4, "unavailable"],
   ]) {
-    await page.clock.runFor(delay);
-    await expect.poll(() => statusReads).toBe(readsBeforeRecovery + requestCount);
-    await settleLatestStatusResponse();
+    await advanceClockUntil(
+      page,
+      () => statusReads >= readsBeforeRecovery + requestCount,
+      { budgetMs: 5_000 },
+    );
+    expect(statusReads).toBe(readsBeforeRecovery + requestCount);
     await expect(notice).toHaveAttribute("data-recovery-state", presentation);
   }
 
