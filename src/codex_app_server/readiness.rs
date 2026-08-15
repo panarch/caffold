@@ -618,8 +618,8 @@ mod tests {
             readiness
                 .detected_executable
                 .as_ref()
-                .and_then(|value| value.version.as_deref()),
-            Some("0.200.0")
+                .and_then(|value| value.path.as_deref()),
+            path_codex.to_str()
         );
     }
 

@@ -739,16 +739,14 @@ test("orders separate turns by message chronology when a newer start marker is s
   );
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
-  const messageIds = await page
-    .locator(".task-conversation .task-message")
-    .evaluateAll((messages) => messages.map((message) => message.dataset.eventId));
-
-  expect(messageIds).toEqual([
-    "old-user",
-    "old-answer",
-    "new-user",
-    "new-answer",
-  ]);
+  const messages = page.locator(".task-conversation .task-message");
+  await expect
+    .poll(() =>
+      messages.evaluateAll((entries) =>
+        entries.map((entry) => entry.dataset.eventId),
+      ),
+    )
+    .toEqual(["old-user", "old-answer", "new-user", "new-answer"]);
 });
 test("keeps cross-turn work chronological and the active status at the timeline tail", async ({
   page,

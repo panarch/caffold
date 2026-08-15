@@ -16,6 +16,7 @@ class CaffoldTaskCommandDialog extends HTMLElement {
     this.initialized = true;
     this.threadId = "";
     this.returnFocusKey = "";
+    this.returnFocusOwner = null;
     this.addEventListener("click", (event) => this.handleClick(event));
     this.render();
     this.dialog().addEventListener("close", () => this.handleClose());
@@ -51,9 +52,10 @@ class CaffoldTaskCommandDialog extends HTMLElement {
     this.threadId = nextThreadId;
   }
 
-  openCommand(event, returnFocusKey) {
+  openCommand(event, returnFocusKey, returnFocusOwner = null) {
     const payload = event?.payload ?? {};
     this.returnFocusKey = `${returnFocusKey ?? ""}`;
+    this.returnFocusOwner = returnFocusOwner;
     this.renderCommand({
       command: `${payload.command ?? ""}`.trim(),
       cwd: `${payload.cwd ?? ""}`.trim(),
@@ -74,6 +76,7 @@ class CaffoldTaskCommandDialog extends HTMLElement {
   dismiss(options = {}) {
     if (options.restoreFocus === false) {
       this.returnFocusKey = "";
+      this.returnFocusOwner = null;
     }
     const dialog = this.dialog();
     if (dialog?.open) {
@@ -97,13 +100,15 @@ class CaffoldTaskCommandDialog extends HTMLElement {
 
   handleClose() {
     const returnFocusKey = this.returnFocusKey;
+    const returnFocusOwner = this.returnFocusOwner;
     this.returnFocusKey = "";
+    this.returnFocusOwner = null;
     this.resetScroll();
     this.dispatchEvent(
       new CustomEvent("caffold:task-command-dialog-closed", {
         bubbles: true,
         composed: true,
-        detail: { returnFocusKey },
+        detail: { returnFocusKey, returnFocusOwner },
       }),
     );
   }

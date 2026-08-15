@@ -144,6 +144,7 @@ class CaffoldTaskDetail extends HTMLElement {
         this.commandDialog()?.openCommand(
           event.detail.command,
           event.detail.commandKey,
+          event.detail.returnFocusOwner,
         );
       }
     });
@@ -151,7 +152,10 @@ class CaffoldTaskDetail extends HTMLElement {
       event.stopPropagation();
       const returnFocusKey = `${event.detail?.returnFocusKey ?? ""}`;
       if (returnFocusKey) {
-        this.conversationComponent()?.focusCommandOutputAction(returnFocusKey);
+        this.conversationComponent()?.focusCommandOutputAction(
+          returnFocusKey,
+          event.detail?.returnFocusOwner,
+        );
       }
     });
     this.addEventListener("caffold:task-composer-submit", (event) => {
