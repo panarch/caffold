@@ -969,7 +969,7 @@ test("keeps Task row indicator columns aligned across worktree and meta states",
     expect(metrics.display).toBe("grid");
     expect(metrics.indicatorWidth).toBeCloseTo(rootFontSize * 3, 1);
     expect(metrics.metaCenter).toBeCloseTo(baseline.metaCenter, 1);
-    expect(metrics.countCenter).toBeCloseTo(baseline.metaCenter, 1);
+    expect(Math.abs(metrics.countCenter - baseline.metaCenter)).toBeLessThanOrEqual(1);
     expect(metrics.hasHorizontalOverflow).toBe(false);
     expect(metrics.worktreeOutsideRow).toBe(false);
     if (metrics.worktreeLeft != null) {

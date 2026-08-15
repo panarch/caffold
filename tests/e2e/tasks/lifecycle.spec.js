@@ -993,16 +993,22 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
   let unavailable = false;
   let recovered = false;
   let statusReads = 0;
+  let latestStatusFulfillment = Promise.resolve();
 
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
     statusReads += 1;
-    return unavailable
+    latestStatusFulfillment = unavailable
       ? route.fulfill({
           status: 502,
           json: { error: { message: "Caffold server unavailable." } },
         })
       : route.fulfill({ json: mockCodexStatus() });
+    return latestStatusFulfillment;
   });
+  const settleLatestStatusResponse = async () => {
+    await latestStatusFulfillment;
+    await page.evaluate(() => Promise.resolve());
+  };
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     unavailable
       ? route.fulfill({
@@ -1080,6 +1086,7 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
   await expect(page.locator(".task-list-stale-warning")).toHaveCount(0);
   await expect(page.locator(".task-list-availability, .task-stream-state")).toHaveCount(0);
   await expect.poll(() => statusReads).toBe(readsBeforeRecovery + 1);
+  await settleLatestStatusResponse();
 
   for (const [delay, requestCount, presentation] of [
     [250, 2, "reconnecting"],
@@ -1088,6 +1095,7 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
   ]) {
     await page.clock.runFor(delay);
     await expect.poll(() => statusReads).toBe(readsBeforeRecovery + requestCount);
+    await settleLatestStatusResponse();
     await expect(notice).toHaveAttribute("data-recovery-state", presentation);
   }
 
