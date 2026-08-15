@@ -46,7 +46,7 @@ jobs:
           fi
 
       - name: Check out the complete release history
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: true
@@ -62,7 +62,7 @@ jobs:
           fi
 
       - name: Install Node.js 22
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           package-manager-cache: false
@@ -114,10 +114,122 @@ jobs:
     name: Verify macOS arm64 release
     needs: bump_release
     if: always() && (needs.bump_release.result == 'success' || needs.bump_release.result == 'skipped')
-    uses: ./.github/workflows/macos-release-verification.yml
-    with:
-      release_sha: ${{ needs.bump_release.outputs.release_sha || github.sha }}
-      require_main_head: true
+    runs-on: macos-14
+    timeout-minutes: 45
+    outputs:
+      release_sha: ${{ steps.release_source.outputs.release_sha }}
+      version: ${{ steps.release_metadata.outputs.version }}
+      archive: ${{ steps.release_metadata.outputs.archive }}
+      checksum: ${{ steps.release_metadata.outputs.checksum }}
+      artifact_name: caffold-macos-arm64-v${{ steps.release_metadata.outputs.version }}
+
+    steps:
+      - name: Require main
+        env:
+          SELECTED_REF: ${{ github.ref }}
+        run: |
+          if [[ "${SELECTED_REF}" != "refs/heads/main" ]]; then
+            echo "Release runs must be dispatched from main, not ${SELECTED_REF}." >&2
+            exit 1
+          fi
+
+      - name: Resolve the release source
+        id: release_source
+        env:
+          BUMP_RELEASE_SHA: ${{ needs.bump_release.outputs.release_sha }}
+          REQUESTED_SHA: ${{ github.sha }}
+        run: |
+          release_sha="${BUMP_RELEASE_SHA:-${REQUESTED_SHA}}"
+          echo "release_sha=${release_sha}" >>"${GITHUB_OUTPUT}"
+
+      - name: Check out the complete release history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: main
+
+      - name: Verify the requested commit
+        env:
+          RELEASE_SHA: ${{ steps.release_source.outputs.release_sha }}
+        run: |
+          git fetch origin main
+          if [[ "$(git rev-parse HEAD)" != "${RELEASE_SHA}" ]]; then
+            echo "Checked out source does not match ${RELEASE_SHA}." >&2
+            exit 1
+          fi
+          if [[ "$(git rev-parse origin/main)" != "${RELEASE_SHA}" ]]; then
+            echo "main changed after this workflow was dispatched; run it again." >&2
+            exit 1
+          fi
+
+      - name: Install Rust 1.96
+        run: |
+          rustup toolchain install 1.96.0 \
+            --profile minimal \
+            --component clippy \
+            --component rustfmt
+          rustup default 1.96.0
+
+      - name: Install Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install chromium
+
+      - name: Verify native build tools
+        run: |
+          cmake --version
+          xcrun --find clang
+
+      - name: Read release metadata
+        id: release_metadata
+        run: desktop/macos/package-app metadata >>"${GITHUB_OUTPUT}"
+
+      - name: Test frontend units
+        run: npm run test:unit
+
+      - name: Test repository contracts
+        run: npm run test:contract
+
+      - name: Build browser test server
+        run: cargo build --locked
+
+      - name: Test browser behavior
+        run: npm run test:e2e
+
+      - name: Test macOS application behavior
+        run: npm run test:macos
+
+      - name: Check Rust formatting
+        run: cargo fmt --check
+
+      - name: Test Rust
+        run: cargo test
+
+      - name: Lint Rust
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build and verify the macOS artifact
+        env:
+          RELEASE_VERSION: ${{ steps.release_metadata.outputs.version }}
+        run: desktop/macos/release --dry-run --version "${RELEASE_VERSION}"
+
+      - name: Upload the verified macOS artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: caffold-macos-arm64-v${{ steps.release_metadata.outputs.version }}
+          path: |
+            target/caffold-server/${{ steps.release_metadata.outputs.archive }}
+            target/caffold-server/${{ steps.release_metadata.outputs.checksum }}
+          if-no-files-found: error
+          retention-days: 7
 
   publish_release:
     name: Publish GitHub Release
@@ -135,14 +247,14 @@ jobs:
 
     steps:
       - name: Check out the release source
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ needs.macos.outputs.release_sha }}
 
       - name: Download the verified artifact
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.macos.outputs.artifact_name }}
           path: target/caffold-server
@@ -205,7 +317,7 @@ jobs:
           fi
 
       - name: Preserve the published artifact for Homebrew
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7
         with:
           name: published-caffold-macos-arm64-v${{ needs.macos.outputs.version }}
           path: |
@@ -232,13 +344,13 @@ jobs:
 
     steps:
       - name: Check out the release source
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
           ref: ${{ needs.macos.outputs.release_sha }}
 
       - name: Download the verified artifact
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8
         with:
           name: published-caffold-macos-arm64-v${{ needs.macos.outputs.version }}
           path: target/caffold-server
@@ -251,7 +363,7 @@ jobs:
           shasum -a 256 -c "${RELEASE_CHECKSUM}"
 
       - name: Check out the Homebrew tap
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@v7
         with:
           repository: panarch/homebrew-tap
           ref: main

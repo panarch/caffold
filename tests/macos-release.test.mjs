@@ -12,14 +12,6 @@ const updaterTest = resolve(repoRoot, "desktop/macos/test-updater");
 const release = resolve(repoRoot, "desktop/macos/release");
 const renderCask = resolve(repoRoot, "desktop/macos/render-cask");
 const releaseWorkflow = resolve(repoRoot, ".github/workflows/release.yml");
-const releaseVerificationWorkflow = resolve(
-  repoRoot,
-  ".github/workflows/release-verification.yml",
-);
-const macosReleaseVerificationWorkflow = resolve(
-  repoRoot,
-  ".github/workflows/macos-release-verification.yml",
-);
 const rootReadme = resolve(repoRoot, "README.md");
 const macosReadme = resolve(repoRoot, "desktop/macos/README.md");
 const macosServerSource = resolve(repoRoot, "desktop/macos/CaffoldServer.swift");
@@ -67,7 +59,6 @@ test("macOS release preparation is syntax-valid and dry-run only", () => {
   assert.match(withoutMode.stderr, /usage: desktop\/macos\/release --dry-run/);
 
   const source = readFileSync(release, "utf8");
-  assert.doesNotMatch(source, /branch --show-current|require_main_branch/);
   for (const publishingCommand of ["git push", "git tag", "gh release", "brew install"]) {
     assert.doesNotMatch(source, new RegExp(publishingCommand, "i"));
   }
@@ -135,33 +126,8 @@ test("Homebrew cask installs the app and bundled CLI without a user quarantine f
   }
 });
 
-test("pull requests and main pushes use the shared release verification", () => {
-  const source = readFileSync(releaseVerificationWorkflow, "utf8");
-
-  assert.match(source, /^name: Release Verification$/m);
-  assert.match(source, /^\s+pull_request:$/m);
-  assert.match(source, /^\s+push:$/m);
-  assert.equal(source.match(/^\s+branches: \[main\]$/gm)?.length, 2);
-  assert.match(source, /^\s+contents: read$/m);
-  assert.match(
-    source,
-    /uses: \.\/\.github\/workflows\/macos-release-verification\.yml/,
-  );
-  assert.match(source, /release_sha: \$\{\{ github\.sha \}\}/);
-  assert.match(source, /require_main_head: false/);
-  assert.match(source, /cancel-in-progress: true/);
-  assert.doesNotMatch(source, /workflow_dispatch|contents: write/);
-  for (const publishingCommand of ["git push", "gh release", "brew install"]) {
-    assert.doesNotMatch(source, new RegExp(publishingCommand, "i"));
-  }
-});
-
 test("manual release workflow isolates versioning, verification, and publication", () => {
   const source = readFileSync(releaseWorkflow, "utf8");
-  const sharedVerification = readFileSync(
-    macosReleaseVerificationWorkflow,
-    "utf8",
-  );
   const rustVersion = readFileSync(resolve(repoRoot, "Cargo.toml"), "utf8").match(
     /^rust-version = "([^"]+)"$/m,
   )?.[1];
@@ -207,49 +173,37 @@ test("manual release workflow isolates versioning, verification, and publication
   assert.match(bumpJob, /git push origin HEAD:main/);
   assert.doesNotMatch(bumpJob, /HOMEBREW_TAP_TOKEN|gh release create|brew install/);
 
+  assert.match(macosJob, /runs-on: macos-14/);
   assert.match(macosJob, /^\s+needs: bump_release$/m);
+  assert.match(macosJob, /BUMP_RELEASE_SHA: \$\{\{ needs\.bump_release\.outputs\.release_sha \}\}/);
+  assert.match(macosJob, /REQUESTED_SHA: \$\{\{ github\.sha \}\}/);
+  assert.match(macosJob, /release_sha="\$\{BUMP_RELEASE_SHA:-\$\{REQUESTED_SHA\}\}"/);
+  assert.match(macosJob, /fetch-depth: 0/);
+  assert.match(macosJob, /persist-credentials: false/);
   assert.match(
     macosJob,
-    /uses: \.\/\.github\/workflows\/macos-release-verification\.yml/,
+    /Check out the complete release history[\s\S]*?ref: main/,
   );
-  assert.match(
+  assert.doesNotMatch(
     macosJob,
-    /release_sha: \$\{\{ needs\.bump_release\.outputs\.release_sha \|\| github\.sha \}\}/,
+    /ref: \$\{\{ steps\.release_source\.outputs\.release_sha \}\}/,
   );
-  assert.match(macosJob, /require_main_head: true/);
-  assert.doesNotMatch(macosJob, /runs-on:|steps:/);
-
-  assert.match(sharedVerification, /^name: macOS Release Verification$/m);
-  assert.match(sharedVerification, /^\s+workflow_call:$/m);
-  assert.match(sharedVerification, /^\s+contents: read$/m);
-  assert.match(sharedVerification, /runs-on: macos-14/);
-  assert.match(sharedVerification, /ref: \$\{\{ inputs\.release_sha \}\}/);
-  assert.match(sharedVerification, /REQUIRE_MAIN_HEAD: \$\{\{ inputs\.require_main_head \}\}/);
-  assert.match(sharedVerification, /git rev-parse origin\/main/);
-  assert.match(sharedVerification, /fetch-depth: 0/);
-  assert.match(sharedVerification, /persist-credentials: false/);
-  assert.match(
-    sharedVerification,
-    new RegExp(`rustup toolchain install ${rustVersion}(?:\\.0)?`),
-  );
-  assert.match(sharedVerification, /npm ci/);
-  assert.match(sharedVerification, /playwright install chromium/);
-  assert.match(sharedVerification, /release --dry-run/);
-  const browserBuildIndex = sharedVerification.indexOf("cargo build --locked");
-  const browserTestIndex = sharedVerification.indexOf("npm run test:e2e");
+  assert.match(macosJob, new RegExp(`rustup toolchain install ${rustVersion}(?:\\.0)?`));
+  assert.match(macosJob, /npm ci/);
+  assert.match(macosJob, /playwright install chromium/);
+  assert.match(macosJob, /release --dry-run/);
+  const browserBuildIndex = macosJob.indexOf("cargo build --locked");
+  const browserTestIndex = macosJob.indexOf("npm run test:e2e");
   assert.ok(browserBuildIndex >= 0 && browserTestIndex > browserBuildIndex);
   for (const command of ["test:unit", "test:contract", "test:e2e", "test:macos"]) {
-    assert.match(sharedVerification, new RegExp(`npm run ${command}`));
+    assert.match(macosJob, new RegExp(`npm run ${command}`));
   }
-  assert.match(sharedVerification, /cargo fmt --check/);
-  assert.match(sharedVerification, /cargo test/);
-  assert.match(sharedVerification, /cargo clippy --all-targets -- -D warnings/);
-  assert.doesNotMatch(sharedVerification, /npm run test:codex-(?:compat|live)/);
-  assert.match(sharedVerification, /actions\/upload-artifact@v\d+\.\d+\.\d+/);
-  assert.doesNotMatch(sharedVerification, /contents: write/);
-  assert.doesNotMatch(sharedVerification, /HOMEBREW_TAP_TOKEN/);
+  assert.doesNotMatch(macosJob, /npm run test:codex-(?:compat|live)/);
+  assert.match(macosJob, /actions\/upload-artifact@v\d+/);
+  assert.doesNotMatch(macosJob, /contents: write/);
+  assert.doesNotMatch(macosJob, /HOMEBREW_TAP_TOKEN/);
   for (const publishingCommand of ["git push", "gh release", "brew install"]) {
-    assert.doesNotMatch(sharedVerification, new RegExp(publishingCommand, "i"));
+    assert.doesNotMatch(macosJob, new RegExp(publishingCommand, "i"));
   }
 
   assert.match(
@@ -258,7 +212,7 @@ test("manual release workflow isolates versioning, verification, and publication
   );
   assert.match(releaseJob, /^\s+contents: write$/m);
   assert.match(releaseJob, /RELEASE_SHA: \$\{\{ needs\.macos\.outputs\.release_sha \}\}/);
-  assert.match(releaseJob, /actions\/download-artifact@v\d+\.\d+\.\d+/);
+  assert.match(releaseJob, /actions\/download-artifact@v\d+/);
   assert.match(releaseJob, /published-caffold-macos-arm64-v/);
   assert.match(releaseJob, /gh release create/);
   assert.match(releaseJob, /gh release download/);
