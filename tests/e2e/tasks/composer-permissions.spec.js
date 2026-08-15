@@ -203,24 +203,22 @@ test("new tasks start in Normal mode and submit an explicit Fast choice", async 
   });
   await expect(modelMenu.getByText("Speed", { exact: true })).toBeVisible();
   const normalOption = modelMenu.locator('[data-fast-mode="false"]');
-  await expect(normalOption.locator("strong")).toHaveCSS(
-    "font-weight",
-    "600",
-  );
-  await expect
-    .poll(() =>
-      normalOption.evaluate((option) => {
-        const rootStyle = getComputedStyle(document.documentElement);
-        const expectedHeight = Math.max(
-          Number.parseFloat(rootStyle.fontSize) * 2.125,
-          Number.parseFloat(
-            rootStyle.getPropertyValue("--interface-target-floor"),
-          ) - 2,
-        );
-        return option.getBoundingClientRect().height - expectedHeight;
-      }),
-    )
-    .toBeCloseTo(0, 1);
+  await expect(normalOption.locator(".task-model-check")).toBeVisible();
+  const normalOptionMetrics = await normalOption.evaluate((option) => {
+    const rootStyle = getComputedStyle(document.documentElement);
+    const expectedHeight = Math.max(
+      Number.parseFloat(rootStyle.fontSize) * 2.125,
+      Number.parseFloat(
+        rootStyle.getPropertyValue("--interface-target-floor"),
+      ) - 2,
+    );
+    return {
+      fontWeight: getComputedStyle(option.querySelector("strong")).fontWeight,
+      heightDelta: option.getBoundingClientRect().height - expectedHeight,
+    };
+  });
+  expect(normalOptionMetrics.fontWeight).toBe("600");
+  expect(normalOptionMetrics.heightDelta).toBeCloseTo(0, 1);
   await modelMenu.locator('[data-fast-mode="true"]').click();
   await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
   await expect(form.locator(".task-model-fast")).toHaveAttribute(

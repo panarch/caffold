@@ -118,6 +118,10 @@ export async function installBrowserDefaults(page) {
     }),
   );
 
+  await installExternalModuleDefaults(page);
+}
+
+export async function installExternalModuleDefaults(page) {
   await page.route("https://esm.sh/**", (route) => {
     if (route.request().url() === "https://esm.sh/marked@15.0.12") {
       return route.fulfill({

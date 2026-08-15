@@ -1,4 +1,7 @@
-import { mockCodexStatus } from "./browser-defaults.js";
+import {
+  installExternalModuleDefaults,
+  mockCodexStatus,
+} from "./browser-defaults.js";
 import { activeTaskProjection } from "./task-fixtures.js";
 
 export const TASK_PERMISSION_FIXTURE = {
@@ -29,6 +32,7 @@ export const TASK_PERMISSION_FIXTURE = {
 };
 
 export async function installTaskApiFixture(page) {
+  await installExternalModuleDefaults(page);
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
