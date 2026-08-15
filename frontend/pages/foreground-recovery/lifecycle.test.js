@@ -461,8 +461,13 @@ test("a thrown server failure uses the same bounded retry path", async () => {
   lifecycle.disconnect();
 });
 
-test("bounds server retries and exposes reconnecting only after attempt zero", async () => {
+test("uses default delays, bounds server retries, and exposes reconnecting", async () => {
   const browser = harness();
+  const retryTimers = [];
+  browser.windowTarget.setTimeout = (callback, delayMs) => {
+    retryTimers.push({ callback, delayMs });
+    return retryTimers.length;
+  };
   const snapshots = [];
   let attempts = 0;
   const lifecycle = new ForegroundRecoveryRuntime({
@@ -472,20 +477,27 @@ test("bounds server retries and exposes reconnecting only after attempt zero", a
       return { retry: true, error: new Error("HTTP 502") };
     },
     onStateChange: (snapshot) => snapshots.push(snapshot),
-    retryDelaysMs: [0, 0],
   });
   lifecycle.connect();
 
   await lifecycle.requestForegroundRecovery({
     trigger: FOREGROUND_RECOVERY_TRIGGER.WINDOW_FOCUSED,
   });
-  for (let spin = 0; spin < 20 && attempts < 3; spin += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 2));
+  const expectedRetryDelays = [250, 1_000, 3_000];
+  for (const [index, expectedDelay] of expectedRetryDelays.entries()) {
+    assert.equal(retryTimers.length, index + 1);
+    assert.equal(retryTimers[index].delayMs, expectedDelay);
+    retryTimers[index].callback();
+    await settle();
   }
 
-  assert.equal(attempts, 3);
+  assert.deepEqual(
+    retryTimers.map(({ delayMs }) => delayMs),
+    expectedRetryDelays,
+  );
+  assert.equal(attempts, 4);
   assert.equal(lifecycle.snapshot().node.type, FOREGROUND_RECOVERY_NODE.EXHAUSTED);
-  assert.equal(lifecycle.snapshot().node.attempt, 2);
+  assert.equal(lifecycle.snapshot().node.attempt, 3);
   const firstValidation = snapshots.find(
     (snapshot) => snapshot.node.type === FOREGROUND_RECOVERY_NODE.VALIDATING_STATUS,
   );
