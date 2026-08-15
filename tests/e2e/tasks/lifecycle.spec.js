@@ -8,6 +8,7 @@ import {
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
+  emitTaskDetailBootstrap,
   installEventSourceMock,
   mockCodexModels,
   pasteImage,
@@ -68,7 +69,36 @@ async function installTransportOverlayFixture(page, threadId, registryKey) {
       recencyMs: task.recencyMs - index - 1,
     })),
   ];
-  await installEventSourceMock(page, { registryKey, autoOpen: true });
+  const detail = {
+    threadId,
+    syncState: "ready",
+    revision: 1,
+    task,
+    events: [
+      {
+        id: "event_transport_overlay",
+        threadId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: {
+          turnId: "turn_transport_overlay",
+          text: "Conversation stays fixed while transport notices change.",
+        },
+        createdMs: task.updatedMs,
+      },
+    ],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  };
+  const bootstrapFunctionKey = `${registryKey}Bootstrap`;
+  await installEventSourceMock(page, {
+    registryKey,
+    autoOpen: true,
+    bootstrapFunctionKey,
+  });
+  await page.exposeFunction(bootstrapFunctionKey, (requestedThreadId) =>
+    requestedThreadId === threadId ? detail : null,
+  );
   await mockCodexModels(page);
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
@@ -79,27 +109,7 @@ async function installTransportOverlayFixture(page, threadId, registryKey) {
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({
-        threadId,
-        syncState: "ready",
-        revision: 1,
-        task,
-        events: [
-          {
-            id: "event_transport_overlay",
-            threadId,
-            type: "assistant_message",
-            summary: "Assistant response",
-            payload: {
-              turnId: "turn_transport_overlay",
-              text: "Conversation stays fixed while transport notices change.",
-            },
-            createdMs: task.updatedMs,
-          },
-        ],
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-      }),
+      body: JSON.stringify(detail),
     }),
   );
 }
@@ -162,6 +172,15 @@ test("background Task tabs release list and detail streams", async ({
     recencyMs: now,
     lastEventSummary: "Canonical detail loaded",
   };
+  const detail = {
+    threadId,
+    syncState: "ready",
+    revision: 1,
+    task,
+    events: [],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  };
   let detailReads = 0;
   let listReads = 0;
 
@@ -176,19 +195,12 @@ test("background Task tabs release list and detail streams", async ({
     detailReads += 1;
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({
-        threadId,
-        syncState: "ready",
-        revision: detailReads,
-        task,
-        events: [],
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-      }),
+      body: JSON.stringify(detail),
     });
   });
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, detail);
   await expect(page.locator("caffold-detail-layout")).toContainText(
     "Background stream lifecycle",
   );
@@ -221,7 +233,6 @@ test("background Task tabs release list and detail streams", async ({
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await expect.poll(() => listReads).toBeGreaterThan(1);
-  await expect.poll(() => detailReads).toBeGreaterThan(1);
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -231,6 +242,8 @@ test("background Task tabs release list and detail streams", async ({
       ),
     )
     .toBe(2);
+  await emitTaskDetailBootstrap(page, detail);
+  expect(detailReads).toBe(0);
 });
 
 test("foreground recovery refreshes status and reconciles the Task ledger and transports", async ({
@@ -247,6 +260,7 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
   await installEventSourceMock(page, {
     registryKey: "__foregroundRecoverySources",
     autoOpen: true,
+    bootstrapFunctionKey: "__foregroundRecoveryBootstrap",
   });
   await mockCodexModels(page);
 
@@ -276,6 +290,32 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
   let statusReads = 0;
   let listReads = 0;
   let detailReads = 0;
+  const detail = () => ({
+    threadId,
+    syncState: "ready",
+    revision: foregroundState ? 2 : 1,
+    task: foregroundState
+      ? { ...runtimeTask, title: "Foreground recovery renamed in Caffold" }
+      : runtimeTask,
+    events: [{
+      id: foregroundState ? "event_recovered" : "event_initial",
+      threadId,
+      type: "assistant_message",
+      summary: "Assistant response",
+      payload: {
+        turnId: "turn_foreground_recovery",
+        text: foregroundState
+          ? "Detail reconciled after foreground recovery."
+          : "Detail loaded before backgrounding.",
+      },
+      createdMs: now + (foregroundState ? 2 : 1),
+    }],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
+  await page.exposeFunction("__foregroundRecoveryBootstrap", (requestedThreadId) =>
+    requestedThreadId === threadId ? detail() : null,
+  );
 
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
     statusReads += 1;
@@ -306,32 +346,7 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
   });
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) => {
     detailReads += 1;
-    const task = foregroundState
-      ? { ...runtimeTask, title: "Foreground recovery renamed in Caffold" }
-      : runtimeTask;
-    return route.fulfill({
-      json: {
-        threadId,
-        syncState: "ready",
-        revision: detailReads,
-        task,
-        events: [{
-          id: foregroundState ? "event_recovered" : "event_initial",
-          threadId,
-          type: "assistant_message",
-          summary: "Assistant response",
-          payload: {
-            turnId: "turn_foreground_recovery",
-            text: foregroundState
-              ? "Detail reconciled after foreground recovery."
-              : "Detail loaded before backgrounding.",
-          },
-          createdMs: now + detailReads,
-        }],
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-      },
-    });
+    return route.fulfill({ json: detail() });
   });
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
@@ -377,7 +392,7 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
   });
   await expect.poll(() => statusReads).toBeGreaterThan(readsBeforeHide.statusReads);
   await expect.poll(() => listReads).toBeGreaterThan(readsBeforeHide.listReads);
-  await expect.poll(() => detailReads).toBeGreaterThan(readsBeforeHide.detailReads);
+  expect(detailReads).toBe(readsBeforeHide.detailReads);
   await expect(row.locator(".task-row-title")).toHaveText(
     "Foreground recovery renamed in Caffold",
   );
@@ -497,6 +512,7 @@ test("notification activation refreshes stale readiness and opens its pending Ta
   await installEventSourceMock(page, {
     registryKey: "__notificationRecoverySources",
     autoOpen: true,
+    bootstrapFunctionKey: "__notificationRecoveryBootstrap",
   });
   await mockCodexModels(page);
   const threadId = "thread_notification_pending_route";
@@ -528,6 +544,31 @@ test("notification activation refreshes stale readiness and opens its pending Ta
   let ready = false;
   let statusReads = 0;
   let detailReads = 0;
+  const detail = {
+    threadId,
+    syncState: "ready",
+    revision: 1,
+    task: {
+      ...task,
+      ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+      conversationAvailable: true,
+    },
+    events: [{
+      id: "event_notification_recovered",
+      threadId,
+      type: "assistant_message",
+      summary: "Assistant response",
+      payload: {
+        text: "Pending Task opened after notification foreground recovery.",
+      },
+      createdMs: now + 1,
+    }],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  };
+  await page.exposeFunction("__notificationRecoveryBootstrap", (requestedThreadId) =>
+    ready && requestedThreadId === threadId ? detail : null,
+  );
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
     statusReads += 1;
     return route.fulfill({ json: ready ? mockCodexStatus() : blockedStatus });
@@ -537,30 +578,7 @@ test("notification activation refreshes stale readiness and opens its pending Ta
   );
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) => {
     detailReads += 1;
-    return route.fulfill({
-      json: {
-        threadId,
-        syncState: "ready",
-        revision: detailReads,
-        task: {
-          ...task,
-          ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
-          conversationAvailable: true,
-        },
-        events: [{
-          id: "event_notification_recovered",
-          threadId,
-          type: "assistant_message",
-          summary: "Assistant response",
-          payload: {
-            text: "Pending Task opened after notification foreground recovery.",
-          },
-          createdMs: now + 1,
-        }],
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-      },
-    });
+    return route.fulfill({ json: detail });
   });
 
   await page.goto(`/tasks/${threadId}`);
@@ -582,7 +600,7 @@ test("notification activation refreshes stale readiness and opens its pending Ta
 
   await expect.poll(() => statusReads).toBeGreaterThan(readsBeforeActivation);
   await expect(page.locator(".codex-readiness-surface")).toBeHidden();
-  await expect.poll(() => detailReads).toBeGreaterThan(0);
+  expect(detailReads).toBe(0);
   await expect(page.locator("caffold-task-detail")).toContainText(
     "Pending Task opened after notification foreground recovery.",
   );
@@ -661,7 +679,11 @@ test("foreground offline pauses recovery and preserves useful Task UI until onli
 }, testInfo) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
   const registryKey = "__foregroundOfflineSources";
-  await installEventSourceMock(page, { registryKey, autoOpen: true });
+  await installEventSourceMock(page, {
+    registryKey,
+    autoOpen: true,
+    bootstrapFunctionKey: "__foregroundOfflineBootstrap",
+  });
   await mockCodexModels(page);
   const threadId = "thread_foreground_offline";
   const task = transportOverlayTask(threadId);
@@ -669,6 +691,32 @@ test("foreground offline pauses recovery and preserves useful Task UI until onli
   let statusReads = 0;
   let listReads = 0;
   let detailReads = 0;
+  const detail = () => ({
+    threadId,
+    syncState: "ready",
+    revision: recovered ? 2 : 1,
+    task,
+    events: [
+      {
+        id: "event_foreground_offline",
+        threadId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: {
+          turnId: "turn_foreground_offline",
+          text: recovered
+            ? "Conversation reconciled after network recovery."
+            : "Conversation stays available while offline.",
+        },
+        createdMs: task.updatedMs,
+      },
+    ],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
+  await page.exposeFunction("__foregroundOfflineBootstrap", (requestedThreadId) =>
+    requestedThreadId === threadId ? detail() : null,
+  );
 
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
     statusReads += 1;
@@ -680,31 +728,7 @@ test("foreground offline pauses recovery and preserves useful Task UI until onli
   });
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) => {
     detailReads += 1;
-    return route.fulfill({
-      json: {
-        threadId,
-        syncState: "ready",
-        revision: recovered ? 2 : 1,
-        task,
-        events: [
-          {
-            id: "event_foreground_offline",
-            threadId,
-            type: "assistant_message",
-            summary: "Assistant response",
-            payload: {
-              turnId: "turn_foreground_offline",
-              text: recovered
-                ? "Conversation reconciled after network recovery."
-                : "Conversation stays available while offline.",
-            },
-            createdMs: task.updatedMs,
-          },
-        ],
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-      },
-    });
+    return route.fulfill({ json: detail() });
   });
 
   await page.goto(`/tasks/${threadId}`);
@@ -768,7 +792,7 @@ test("foreground offline pauses recovery and preserves useful Task UI until onli
   await expect(composer).toHaveValue("Keep this foreground offline draft");
   expect(statusReads).toBe(readsBeforeOffline.status + 1);
   expect(listReads).toBe(readsBeforeOffline.list + 1);
-  expect(detailReads).toBe(readsBeforeOffline.detail + 1);
+  expect(detailReads).toBe(readsBeforeOffline.detail);
 });
 
 test("connection snapshots pause on missed offline and coalesce restored hints", async ({
@@ -777,7 +801,11 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
   await installConnectionMock(page);
   const registryKey = "__connectionChangeSources";
-  await installEventSourceMock(page, { registryKey, autoOpen: true });
+  await installEventSourceMock(page, {
+    registryKey,
+    autoOpen: true,
+    bootstrapFunctionKey: "__connectionChangeBootstrap",
+  });
   await mockCodexModels(page);
   const threadId = "thread_connection_change";
   const task = transportOverlayTask(threadId);
@@ -786,6 +814,32 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
   let statusReads = 0;
   let listReads = 0;
   let detailReads = 0;
+  const detail = () => ({
+    threadId,
+    syncState: "ready",
+    revision: recovered ? 2 : 1,
+    task,
+    events: [
+      {
+        id: "event_connection_change",
+        threadId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: {
+          turnId: "turn_connection_change",
+          text: recovered
+            ? "Conversation reconciled after connection recovery."
+            : "Conversation remains useful before connection loss.",
+        },
+        createdMs: task.updatedMs,
+      },
+    ],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
+  await page.exposeFunction("__connectionChangeBootstrap", (requestedThreadId) =>
+    !disconnected && requestedThreadId === threadId ? detail() : null,
+  );
 
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
     statusReads += 1;
@@ -803,31 +857,7 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
     detailReads += 1;
     return disconnected
       ? route.abort("internetdisconnected")
-      : route.fulfill({
-          json: {
-            threadId,
-            syncState: "ready",
-            revision: recovered ? 2 : 1,
-            task,
-            events: [
-              {
-                id: "event_connection_change",
-                threadId,
-                type: "assistant_message",
-                summary: "Assistant response",
-                payload: {
-                  turnId: "turn_connection_change",
-                  text: recovered
-                    ? "Conversation reconciled after connection recovery."
-                    : "Conversation remains useful before connection loss.",
-                },
-                createdMs: task.updatedMs,
-              },
-            ],
-            eventsPage: { nextCursor: null },
-            pendingApprovals: [],
-          },
-        });
+      : route.fulfill({ json: detail() });
   });
 
   await page.goto(`/tasks/${threadId}`);
@@ -886,7 +916,7 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
   await expect(composer).toHaveValue("Keep the connection-change draft");
   expect(statusReads).toBe(readsBeforeDisconnect.status + 1);
   expect(listReads).toBe(readsBeforeDisconnect.list + 1);
-  expect(detailReads).toBe(readsBeforeDisconnect.detail + 1);
+  expect(detailReads).toBe(readsBeforeDisconnect.detail);
 });
 
 test("a late failed disconnect probe yields to a newer reconnect signal", async ({
@@ -894,7 +924,11 @@ test("a late failed disconnect probe yields to a newer reconnect signal", async 
 }) => {
   await installConnectionMock(page);
   const registryKey = "__lateDisconnectProbeSources";
-  await installEventSourceMock(page, { registryKey, autoOpen: true });
+  await installEventSourceMock(page, {
+    registryKey,
+    autoOpen: true,
+    bootstrapFunctionKey: "__lateDisconnectProbeBootstrap",
+  });
   await mockCodexModels(page);
   const threadId = "thread_late_disconnect_probe";
   const task = transportOverlayTask(threadId);
@@ -912,6 +946,32 @@ test("a late failed disconnect probe yields to a newer reconnect signal", async 
   let statusReads = 0;
   let listReads = 0;
   let detailReads = 0;
+  const detail = () => ({
+    threadId,
+    syncState: "ready",
+    revision: recovered ? 2 : 1,
+    task,
+    events: [
+      {
+        id: "event_late_disconnect_probe",
+        threadId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: {
+          turnId: "turn_late_disconnect_probe",
+          text: recovered
+            ? "Conversation reconciled after the late failure."
+            : "Conversation remains useful before the late failure.",
+        },
+        createdMs: task.updatedMs,
+      },
+    ],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
+  await page.exposeFunction("__lateDisconnectProbeBootstrap", (requestedThreadId) =>
+    requestedThreadId === threadId ? detail() : null,
+  );
 
   await page.route(/\/api\/codex\/status(?:\?|$)/, async (route) => {
     statusReads += 1;
@@ -929,31 +989,7 @@ test("a late failed disconnect probe yields to a newer reconnect signal", async 
   });
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) => {
     detailReads += 1;
-    return route.fulfill({
-      json: {
-        threadId,
-        syncState: "ready",
-        revision: recovered ? 2 : 1,
-        task,
-        events: [
-          {
-            id: "event_late_disconnect_probe",
-            threadId,
-            type: "assistant_message",
-            summary: "Assistant response",
-            payload: {
-              turnId: "turn_late_disconnect_probe",
-              text: recovered
-                ? "Conversation reconciled after the late failure."
-                : "Conversation remains useful before the late failure.",
-            },
-            createdMs: task.updatedMs,
-          },
-        ],
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-      },
-    });
+    return route.fulfill({ json: detail() });
   });
 
   await page.goto(`/tasks/${threadId}`);
@@ -995,7 +1031,7 @@ test("a late failed disconnect probe yields to a newer reconnect signal", async 
   await expect(composer).toHaveValue("Keep the late-failure draft");
   expect(statusReads).toBe(readsBeforeProbe.status + 2);
   expect(listReads).toBeGreaterThan(readsBeforeProbe.list);
-  expect(detailReads).toBeGreaterThan(readsBeforeProbe.detail);
+  expect(detailReads).toBe(readsBeforeProbe.detail);
 });
 
 test("failed server recovery keeps useful Task UI behind one bounded global fallback", async ({
@@ -1003,13 +1039,43 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
 }, testInfo) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
   const registryKey = "__offlineForegroundSources";
-  await installEventSourceMock(page, { registryKey, autoOpen: true });
+  await installEventSourceMock(page, {
+    registryKey,
+    autoOpen: true,
+    bootstrapFunctionKey: "__offlineForegroundBootstrap",
+  });
   await mockCodexModels(page);
   const threadId = "thread_offline_foreground";
   const task = transportOverlayTask(threadId);
   let unavailable = false;
   let recovered = false;
   let statusReads = 0;
+  const detail = () => ({
+    threadId,
+    syncState: "ready",
+    revision: recovered ? 2 : 1,
+    task,
+    events: [
+      {
+        id: "event_offline_foreground",
+        threadId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: {
+          turnId: "turn_offline_foreground",
+          text: recovered
+            ? "Conversation reconciled after recovery."
+            : "Conversation stays available during recovery.",
+        },
+        createdMs: task.updatedMs,
+      },
+    ],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
+  await page.exposeFunction("__offlineForegroundBootstrap", (requestedThreadId) =>
+    requestedThreadId === threadId ? detail() : null,
+  );
 
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
     statusReads += 1;
@@ -1034,31 +1100,7 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
           status: 502,
           json: { error: { message: "Caffold server unavailable." } },
         })
-      : route.fulfill({
-          json: {
-            threadId,
-            syncState: "ready",
-            revision: recovered ? 2 : 1,
-            task,
-            events: [
-              {
-                id: "event_offline_foreground",
-                threadId,
-                type: "assistant_message",
-                summary: "Assistant response",
-                payload: {
-                  turnId: "turn_offline_foreground",
-                  text: recovered
-                    ? "Conversation reconciled after recovery."
-                    : "Conversation stays available during recovery.",
-                },
-                createdMs: task.updatedMs,
-              },
-            ],
-            eventsPage: { nextCursor: null },
-            pendingApprovals: [],
-          },
-        })
+      : route.fulfill({ json: detail() })
   );
 
   await page.goto(`/tasks/${threadId}`);
@@ -1145,6 +1187,7 @@ test("replaces terminal Task streams and reconciles list and detail", async ({
         this.readyState = 0;
         this.closed = false;
         window.__taskRecoveryEventSources.push(this);
+        window.__caffoldRegisterTaskSseSource?.(this);
         queueMicrotask(() => {
           if (window.__taskRecoveryServerAvailable && !this.closed) {
             this.emitOpen();
@@ -1245,11 +1288,6 @@ test("replaces terminal Task streams and reconciles list and detail", async ({
   let canonicalDetail = detail(initialTask, "Running before terminal disconnect.", 8);
   let listReads = 0;
   let detailReads = 0;
-  let holdRecoveredDetail = false;
-  let releaseRecoveredDetail;
-  const recoveredDetailGate = new Promise((resolve) => {
-    releaseRecoveredDetail = resolve;
-  });
 
   await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
     route.fulfill({
@@ -1266,9 +1304,6 @@ test("replaces terminal Task streams and reconciles list and detail", async ({
   });
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), async (route) => {
     detailReads += 1;
-    if (holdRecoveredDetail) {
-      await recoveredDetailGate;
-    }
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify(canonicalDetail),
@@ -1276,6 +1311,7 @@ test("replaces terminal Task streams and reconciles list and detail", async ({
   });
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, canonicalDetail);
   const navigator = page.locator("caffold-task-navigator");
   const tasksPage = page.locator("caffold-tasks-page");
   const taskRow = navigator.locator(`.task-row[data-thread-id="${threadId}"]`);
@@ -1304,7 +1340,6 @@ test("replaces terminal Task streams and reconciles list and detail", async ({
 
   canonicalTask = recoveredTask;
   canonicalDetail = detail(recoveredTask, "Recovered canonical baseline.", 1);
-  holdRecoveredDetail = true;
   await page.evaluate(() => {
     window.__taskRecoveryServerAvailable = true;
     for (const source of window.__taskRecoveryEventSources) {
@@ -1315,7 +1350,7 @@ test("replaces terminal Task streams and reconciles list and detail", async ({
   });
 
   await expect.poll(() => listReads).toBeGreaterThan(1);
-  await expect.poll(() => detailReads).toBeGreaterThan(1);
+  expect(detailReads).toBe(0);
   const replacementDetail = detail(
     recoveredTask,
     "Recovered without a page reload.",
@@ -1330,12 +1365,10 @@ test("replaces terminal Task streams and reconciles list and detail", async ({
     source.emit("task-sync", {
       threadId,
       revision: detail.revision,
-      reason: "replacement-stream-update",
+      reason: "stream-bootstrap",
       detail,
     });
   }, { threadId, detail: replacementDetail });
-  releaseRecoveredDetail();
-  holdRecoveredDetail = false;
   await expect(taskRow).toHaveAttribute("data-task-status", "idle");
   await expect(tasksPage).toContainText("Recovered without a page reload.");
   await expect(tasksPage).not.toContainText("Recovered canonical baseline.");
@@ -1469,7 +1502,7 @@ test("shows one viewport recovery notice without moving Task surfaces", async ({
 
   for (const state of ["reconnecting", "unavailable"]) {
     await tasksPage.evaluate((element, nextState) => {
-      element.taskDetail().taskDetail().detailStream.transport.setState(nextState);
+      element.taskDetail().taskDetail().detailSession.transport.setState(nextState);
     }, state);
     await expect(notice).toBeVisible();
     await expect(notice).toHaveAttribute("data-recovery-state", state);
@@ -1489,7 +1522,7 @@ test("shows one viewport recovery notice without moving Task surfaces", async ({
     expect(await elementGeometry(composer)).toEqual(initialComposer);
   }
   await tasksPage.evaluate((element) => {
-    element.taskDetail().taskDetail().detailStream.transport.setState("ready");
+    element.taskDetail().taskDetail().detailSession.transport.setState("ready");
   });
   await expect(notice).toBeHidden();
   expect(await elementGeometry(conversation)).toEqual(initialConversation);
@@ -1537,7 +1570,7 @@ test("routes the single viewport Retry through app-shell foreground recovery", a
       ({ listState, detailState }) => {
         const workspace = document.querySelector("caffold-task-workspace");
         workspace.taskNavigator.taskListStream.setState(listState);
-        workspace.tasksPage.taskDetail().taskDetail().detailStream.transport.setState(detailState);
+        workspace.tasksPage.taskDetail().taskDetail().detailSession.transport.setState(detailState);
       },
       { listState: list, detailState: detail },
     );
@@ -1645,6 +1678,7 @@ test("keeps task list and detail revisions independent", async ({ page }, testIn
         this.url = url;
         this.listeners = new Map();
         window.__taskEventSources.push(this);
+        window.__caffoldRegisterTaskSseSource?.(this);
       }
 
       addEventListener(type, listener) {
@@ -1725,6 +1759,7 @@ test("keeps task list and detail revisions independent", async ({ page }, testIn
   });
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, detail(1));
   const tasksPage = page.locator("caffold-tasks-page");
   await expect(tasksPage).toContainText("Only this request should be visible.");
 
@@ -1852,16 +1887,9 @@ test("isolates task detail responses and conversation scroll by thread", async (
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Wide master-detail regression");
-  await page.addInitScript(() => {
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-      }
-
-      addEventListener() {}
-
-      close() {}
-    };
+  await installEventSourceMock(page, {
+    registryKey: "__isolatedTaskDetailSources",
+    autoOpen: true,
   });
   await mockCodexModels(page);
 
@@ -1913,9 +1941,6 @@ test("isolates task detail responses and conversation scroll by thread", async (
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
   });
-  let delayThreadA = false;
-  let releaseThreadA;
-  let threadAResponseGate = Promise.resolve();
   let releaseThreadAGitStatus;
   const threadAGitStatusGate = new Promise((resolve) => {
     releaseThreadAGitStatus = resolve;
@@ -1929,9 +1954,6 @@ test("isolates task detail responses and conversation scroll by thread", async (
   );
   await page.route(/\/api\/tasks\/thread_scroll_[ab](?:\?|$)/, async (route) => {
     const threadId = new URL(route.request().url()).pathname.split("/").at(-1);
-    if (threadId === taskA.threadId && delayThreadA) {
-      await threadAResponseGate;
-    }
     const task = threadId === taskA.threadId ? taskA : taskB;
     return route.fulfill({
       contentType: "application/json",
@@ -1971,6 +1993,7 @@ test("isolates task detail responses and conversation scroll by thread", async (
   });
 
   await page.goto(`/tasks/${taskB.threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, detailFor(taskB));
   const tasksPage = page.locator("caffold-tasks-page");
   const taskNavigator = page.locator("caffold-task-navigator");
   const scroller = tasksPage.locator(".task-conversation-scroll");
@@ -1994,13 +2017,28 @@ test("isolates task detail responses and conversation scroll by thread", async (
     element.dispatchEvent(new Event("scroll"));
   });
 
-  delayThreadA = true;
-  threadAResponseGate = new Promise((resolve) => {
-    releaseThreadA = resolve;
-  });
   await taskNavigator.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
+  await expect
+    .poll(() =>
+      page.evaluate((threadId) =>
+        window.__isolatedTaskDetailSources.some((source) =>
+          source.url.includes(`/api/tasks/${threadId}/stream`),
+        ), taskA.threadId),
+    )
+    .toBe(true);
   await taskNavigator.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
-  releaseThreadA();
+  await emitTaskDetailBootstrap(page, detailFor(taskB));
+  await page.evaluate(({ threadId, detail }) => {
+    const source = window.__isolatedTaskDetailSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    source.emit("task-sync", {
+      threadId,
+      revision: detail.revision,
+      detail,
+      reason: "stream-bootstrap",
+    });
+  }, { threadId: taskA.threadId, detail: detailFor(taskA) });
   await expect(page).toHaveURL(`/tasks/${taskB.threadId}`);
   await expect(tasksPage).toContainText("Thread B response 20.");
   await expect(tasksPage).not.toContainText("Thread A response 20.");
@@ -2008,8 +2046,8 @@ test("isolates task detail responses and conversation scroll by thread", async (
     .poll(() => scroller.evaluate((element) => Math.round(element.scrollTop)))
     .toBe(140);
 
-  delayThreadA = false;
   await taskNavigator.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
+  await emitTaskDetailBootstrap(page, detailFor(taskA));
   await expect(tasksPage).toContainText("Thread A response 20.");
   await expect(
     tasksPage.locator('caffold-task-markdown[data-render-state="markdown"]'),
@@ -2041,6 +2079,7 @@ test("isolates task detail responses and conversation scroll by thread", async (
   });
   expect(taskAAnchor.eventId).not.toBe("");
   await taskNavigator.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
+  await emitTaskDetailBootstrap(page, detailFor(taskB));
   await expect(tasksPage).toContainText("Thread B response 20.");
   await expect(followUpPrompt).toHaveValue("Draft for thread B");
   await expect(followUp.locator(".task-composer-attachment")).toHaveCount(0);
@@ -2054,6 +2093,7 @@ test("isolates task detail responses and conversation scroll by thread", async (
     .poll(() => scroller.evaluate((element) => Math.round(element.scrollTop)))
     .toBe(140);
   await taskNavigator.locator(`.task-row[data-thread-id="${taskA.threadId}"]`).click();
+  await emitTaskDetailBootstrap(page, detailFor(taskA));
   await expect(tasksPage).toContainText("Thread A response 20.");
   await expect(followUpPrompt).toHaveValue("Draft for thread A");
   await expect(followUp.locator(".task-composer-attachment")).toHaveCount(1);
@@ -2093,6 +2133,7 @@ test("isolates task detail responses and conversation scroll by thread", async (
   );
   await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
   await taskNavigator.locator(`.task-row[data-thread-id="${taskB.threadId}"]`).click();
+  await emitTaskDetailBootstrap(page, detailFor(taskB));
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   const reviewTree = tasksPage.locator(
     "caffold-task-review caffold-git-diff-changes-tree",

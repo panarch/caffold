@@ -49,6 +49,18 @@ lifecycle.
 6. Approvals, completion, interruption, and failures remain visible in the
    thread-backed conversation.
 
+### Open an existing Task
+
+1. Selecting a Task uses its detail SSE as the normal snapshot path and keeps
+   the loading shell until readable Task and conversation data arrives.
+2. Reconnects normally recover through the same stream without clearing a
+   readable Detail or adding a parallel full REST read.
+3. If the stream is unsupported or exhausts its retries, one REST fallback may
+   keep the Task readable while unavailable live updates are reported.
+4. Loading older conversation history uses a cursor REST request and merges the
+   page into the current Task. Switching Tasks prevents pending work for the
+   previous selection from changing the new Detail.
+
 ### Start from a GitHub Issue or Pull Request
 
 The common GitHub root owns one shared Task Start dialog rather than separate

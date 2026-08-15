@@ -4,6 +4,7 @@ import {
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
+  emitTaskDetailBootstrap,
   installEventSourceMock,
   mockCodexModels,
 } from "../support/task-fixtures.js";
@@ -44,6 +45,10 @@ test("owns active disclosure state and terminal presentation across canonical up
   );
 
   await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(
+    page,
+    taskDetail(task, [started, commandStarted], 1),
+  );
   const command = page.locator(".task-command > caffold-task-command");
   const disclosure = command.locator(":scope > details.task-command-active");
   const summary = disclosure.locator(":scope > summary");

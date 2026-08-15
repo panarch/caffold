@@ -4,6 +4,7 @@ import {
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
+  emitTaskDetailBootstrap,
   installEventSourceMock,
   mockCodexModels,
   scrollTop,
@@ -1200,6 +1201,15 @@ test("starts active Task navigator spinners at independent phases", async ({
   );
 
   await page.goto("/tasks/thread_spinner_alpha");
+  await emitTaskDetailBootstrap(page, {
+    revision: 1,
+    threadId: tasks[0].threadId,
+    syncState: "ready",
+    task: tasks[0],
+    events: [],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
   const navigatorSpinners = page.locator(
     'caffold-task-navigator .task-row[data-task-status="running"] .task-status-spinner',
   );
@@ -1364,6 +1374,15 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   const restoreGate = new Promise((resolve) => {
     releaseRestore = resolve;
   });
+  const activeDetail = {
+    threadId: activeTask.threadId,
+    syncState: "ready",
+    revision: 1,
+    task: activeTask,
+    events: [],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  };
 
   await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
     route.fulfill({
@@ -1380,13 +1399,7 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   await page.route(/\/api\/tasks\/thread_archive(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({
-        threadId: activeTask.threadId,
-        task: activeTask,
-        events: [],
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-      }),
+      body: JSON.stringify(activeDetail),
     }),
   );
   await page.route(/\/api\/tasks\/thread_archive\/archive$/, (route) => {
@@ -1419,6 +1432,7 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   });
 
   await page.goto("/tasks/thread_archive");
+  await emitTaskDetailBootstrap(page, activeDetail);
   const navigator = page.locator("caffold-task-navigator");
   await expect(navigator.locator(".task-list-section")).toHaveCount(2);
   await expect(navigator.locator(".task-list-section-header h2")).toHaveText([
@@ -1590,6 +1604,15 @@ test("keeps an idle task active when the archive request fails", async ({ page }
     lastEventSummary: "Archive failure fixture",
     unseen: false,
   };
+  const detail = {
+    threadId: task.threadId,
+    syncState: "ready",
+    revision: 1,
+    task,
+    events: [],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  };
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
@@ -1606,13 +1629,7 @@ test("keeps an idle task active when the archive request fails", async ({ page }
   await page.route(/\/api\/tasks\/thread_archive_failure(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({
-        threadId: task.threadId,
-        task,
-        events: [],
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-      }),
+      body: JSON.stringify(detail),
     }),
   );
   await page.route(/\/api\/tasks\/thread_archive_failure\/archive$/, (route) =>
@@ -1626,6 +1643,7 @@ test("keeps an idle task active when the archive request fails", async ({ page }
   );
 
   await page.goto("/tasks/thread_archive_failure");
+  await emitTaskDetailBootstrap(page, detail);
   await page.getByRole("button", { name: /Task details/ }).click();
   await page.getByRole("button", { name: "Archive task" }).click();
 
@@ -1732,6 +1750,15 @@ test("does not offer archive while the canonical task is active", async ({ page 
     lastEventSummary: "Active archive guard",
     unseen: false,
   };
+  const detail = {
+    threadId: task.threadId,
+    syncState: "ready",
+    revision: 1,
+    task,
+    events: [],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  };
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
@@ -1742,17 +1769,12 @@ test("does not offer archive while the canonical task is active", async ({ page 
   await page.route(/\/api\/tasks\/thread_active_archive(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({
-        threadId: task.threadId,
-        task,
-        events: [],
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-      }),
+      body: JSON.stringify(detail),
     }),
   );
 
   await page.goto("/tasks/thread_active_archive");
+  await emitTaskDetailBootstrap(page, detail);
   await page.getByRole("button", { name: /Task details/ }).click();
 
   await expect(page.getByRole("button", { name: "Archive task" })).toBeDisabled();
@@ -1818,16 +1840,8 @@ test("keeps cached task rows visible when a list refresh fails", async ({ page }
   expect(taskReads).toBe(readsBeforeFailure + 1);
 });
 test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo) => {
-  await page.addInitScript(() => {
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-      }
-
-      addEventListener() {}
-
-      close() {}
-    };
+  await installEventSourceMock(page, {
+    bootstrapFunctionKey: "__groupedNavigatorDetailBootstrap",
   });
   await mockCodexModels(page);
   const now = 1_767_300_000_000;
@@ -1899,6 +1913,31 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
       updatedMs: now + 100,
     }),
   ];
+  const detailFor = (task) => ({
+    threadId: task.threadId,
+    syncState: "ready",
+    revision: 1,
+    task,
+    events: [
+      {
+        id: `event_${task.threadId}`,
+        threadId: task.threadId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: { text: `${task.title} detail response` },
+        createdMs: task.updatedMs,
+      },
+    ],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
+  await page.exposeFunction(
+    "__groupedNavigatorDetailBootstrap",
+    (threadId) => {
+      const task = tasks.find((candidate) => candidate.threadId === threadId);
+      return task ? detailFor(task) : null;
+    },
+  );
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());
@@ -1916,21 +1955,7 @@ test("uses a global grouped Tasks master-detail list", async ({ page }, testInfo
     expect(url.searchParams.get("cwd")).toBeNull();
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({
-        task,
-        events: [
-          {
-            id: `event_${threadId}`,
-            threadId,
-            type: "assistant_message",
-            summary: "Assistant response",
-            payload: { text: `${task.title} detail response` },
-            createdMs: task.updatedMs,
-          },
-        ],
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-      }),
+      body: JSON.stringify(detailFor(task)),
     });
   });
 
@@ -2462,6 +2487,7 @@ test("keeps the Tasks list DOM stable while opening a managed task", async ({ pa
       constructor(url) {
         this.url = url;
         this.listeners = new Map();
+        window.__caffoldRegisterTaskSseSource?.(this);
         if (url.includes("/api/tasks/stream")) {
           window.__taskListEventSource = this;
         }
@@ -2516,6 +2542,25 @@ test("keeps the Tasks list DOM stable while opening a managed task", async ({ pa
     },
   ];
   let seenRequests = 0;
+  const selectedTask = { ...tasks[0], unseen: false };
+  const selectedDetail = {
+    threadId: selectedTask.threadId,
+    syncState: "ready",
+    revision: 1,
+    task: tasks[0],
+    events: [
+      {
+        id: "event_dom_stability",
+        threadId: selectedTask.threadId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: { text: "DOM stability detail response" },
+        createdMs: selectedTask.updatedMs,
+      },
+    ],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  };
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
@@ -2531,28 +2576,12 @@ test("keeps the Tasks list DOM stable while opening a managed task", async ({ pa
     });
   });
   await page.route(/\/api\/tasks\/thread_dom_stability(?:\?|$)/, async (route) => {
-    const task = { ...tasks[0] };
     await page.evaluate((updatedTask) => {
       window.__taskListEventSource.emit("task-updated", updatedTask);
-    }, task);
+    }, selectedTask);
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({
-        revision: 1,
-        task,
-        events: [
-          {
-            id: "event_dom_stability",
-            threadId: task.threadId,
-            type: "assistant_message",
-            summary: "Assistant response",
-            payload: { text: "DOM stability detail response" },
-            createdMs: task.updatedMs,
-          },
-        ],
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-      }),
+      body: JSON.stringify(selectedDetail),
     });
   });
 
@@ -2577,6 +2606,10 @@ test("keeps the Tasks list DOM stable while opening a managed task", async ({ pa
   });
 
   await target.click();
+  await page.evaluate((updatedTask) => {
+    window.__taskListEventSource.emit("task-updated", updatedTask);
+  }, selectedTask);
+  await emitTaskDetailBootstrap(page, selectedDetail);
   await expect(page).toHaveURL("/tasks/thread_dom_stability");
   await expect(tasksPage.locator(".tasks-detail-pane")).toContainText(
     "DOM stability detail response",
@@ -2689,6 +2722,15 @@ test("patches Task rows in place without reordering and preserves a running spin
   );
 
   await page.goto("/tasks/thread_spinner_stability");
+  await emitTaskDetailBootstrap(page, {
+    revision: 1,
+    threadId: runningTask.threadId,
+    syncState: "ready",
+    task: runningTask,
+    events: [],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
   const tasksPage = page.locator("caffold-task-workspace");
   const target = tasksPage.locator(
     '.task-row[data-thread-id="thread_spinner_stability"]',
@@ -2857,6 +2899,7 @@ test("groups Tasks by repository without worktree accordions", async ({ page }, 
       constructor(url) {
         this.url = url;
         this.listeners = new Map();
+        window.__caffoldRegisterTaskSseSource?.(this);
         if (url.includes("/api/tasks/stream")) {
           window.__taskListEventSource = this;
         }
@@ -3071,6 +3114,15 @@ test("groups Tasks by repository without worktree accordions", async ({ page }, 
   await expect(featureTask.locator(".task-row-time")).toHaveCount(0);
   await captureReviewScreenshot(page, testInfo, "tasks-completed-unseen");
   await featureTask.click();
+  await emitTaskDetailBootstrap(page, {
+    threadId: "thread_gluesql_feature",
+    syncState: "ready",
+    revision: 1,
+    task: tasks[0],
+    events: detailEvents,
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
   await expect(page).toHaveURL(/\/tasks\/thread_gluesql_feature$/);
   const externalActiveTurn = tasksPage.locator(
     '.task-turn-active[data-turn-id="implicit-0"]',

@@ -1,3 +1,5 @@
+import { installTaskSseControllerInBrowser } from "./task-sse-fixture.js";
+
 export function mockCodexStatus(overrides = {}) {
   return {
     readiness: {
@@ -72,6 +74,7 @@ export function mockCodexStatus(overrides = {}) {
 }
 
 export async function installBrowserDefaults(page) {
+  await page.addInitScript(installTaskSseControllerInBrowser);
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",

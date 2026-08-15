@@ -7,6 +7,7 @@ import {
 import {
   activeTaskProjection,
   captureReviewScreenshot,
+  emitTaskDetailBootstrap,
   pasteImage,
 } from "../support/task-fixtures.js";
 
@@ -401,6 +402,7 @@ test("reconciles an option-only follow-up to canonical Normal after Task switchi
   );
 
   await page.goto("/tasks/thread_option_a?cwd=src");
+  await emitTaskDetailBootstrap(page, detailA);
   const tasksPage = page.locator("caffold-tasks-page");
   const form = tasksPage.locator(
     '.task-follow-up-form[data-task-form="follow-up"]',
@@ -414,6 +416,7 @@ test("reconciles an option-only follow-up to canonical Normal after Task switchi
   await navigator
     .locator('.task-row[data-thread-id="thread_option_b"]')
     .click();
+  await emitTaskDetailBootstrap(page, detailB);
   await expect(page).toHaveURL("/tasks/thread_option_b");
   expect(
     await tasksPage.evaluate((element) => {
@@ -445,6 +448,7 @@ test("reconciles an option-only follow-up to canonical Normal after Task switchi
   await navigator
     .locator('.task-row[data-thread-id="thread_option_a"]')
     .click();
+  await emitTaskDetailBootstrap(page, detailA);
   await expect(page).toHaveURL("/tasks/thread_option_a");
   await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
   await expect(form.locator(".task-model-fast")).toHaveCount(0);
@@ -580,13 +584,12 @@ test("new task submission stays single-flight and restores local input after rej
 
 test("explicit approval mode is sent with a follow-up prompt", async ({ page }) => {
   await installTaskApiFixture(page);
+  const detail = {
+    ...taskDetailFixture(),
+    permissionMode: "askForApproval",
+  };
   await page.route("**/api/tasks/thread-1", (route) =>
-    route.fulfill({
-      json: {
-        ...taskDetailFixture(),
-        permissionMode: "askForApproval",
-      },
-    }),
+    route.fulfill({ json: detail }),
   );
   await page.route("**/api/tasks/thread-1/stream*", (route) =>
     route.fulfill({
@@ -607,6 +610,7 @@ test("explicit approval mode is sent with a follow-up prompt", async ({ page }) 
   });
 
   await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
   const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
   const picker = form.getByRole("button", { name: "Choose approval mode" });
   await expect(picker).toContainText("Ask approval");
@@ -626,8 +630,9 @@ test("send button does not return focus to the prompt after submission", async (
   page,
 }) => {
   await installTaskApiFixture(page);
+  const detail = taskDetailFixture();
   await page.route("**/api/tasks/thread-1", (route) =>
-    route.fulfill({ json: taskDetailFixture() }),
+    route.fulfill({ json: detail }),
   );
   await page.route("**/api/tasks/thread-1/stream*", (route) =>
     route.fulfill({
@@ -655,6 +660,7 @@ test("send button does not return focus to the prompt after submission", async (
   });
 
   await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
   const form = page.locator(
     'caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden]) .task-follow-up-form[data-task-form="follow-up"]',
   );
@@ -673,8 +679,9 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
   page,
 }, testInfo) => {
   await installTaskApiFixture(page);
+  const detail = taskDetailFixture();
   await page.route("**/api/tasks/thread-1", (route) =>
-    route.fulfill({ json: taskDetailFixture() }),
+    route.fulfill({ json: detail }),
   );
   await page.route("**/api/tasks/thread-1/stream*", (route) =>
     route.fulfill({
@@ -684,6 +691,7 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
   );
 
   await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
   const form = page.locator(
     'caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden]) .task-follow-up-form[data-task-form="follow-up"]',
   );
@@ -800,14 +808,13 @@ test("managed tasks restore their last applied model, reasoning, and speed", asy
   page,
 }) => {
   await installTaskApiFixture(page);
+  const detail = taskDetailFixture({
+    model: "gpt-test",
+    reasoningEffort: "xhigh",
+    fastMode: true,
+  });
   await page.route("**/api/tasks/thread-1", (route) =>
-    route.fulfill({
-      json: taskDetailFixture({
-        model: "gpt-test",
-        reasoningEffort: "xhigh",
-        fastMode: true,
-      }),
-    }),
+    route.fulfill({ json: detail }),
   );
   await page.route("**/api/tasks/thread-1/stream*", (route) =>
     route.fulfill({
@@ -828,6 +835,7 @@ test("managed tasks restore their last applied model, reasoning, and speed", asy
   });
 
   await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
   const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
   const picker = form.getByRole("button", {
     name: /Choose model/,
@@ -839,6 +847,7 @@ test("managed tasks restore their last applied model, reasoning, and speed", asy
     "Fast mode",
   );
   await page.reload();
+  await emitTaskDetailBootstrap(page, detail);
   await expect(picker.locator(".task-model-name")).toHaveText("Test");
   await expect(picker.locator(".task-model-effort")).toContainText("xhigh");
   await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
@@ -896,6 +905,7 @@ test("canonical task sync preserves an open follow-up model picker", async ({
   );
 
   await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, initialDetail);
   const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
   await form
     .getByRole("button", { name: /Choose model/ })
@@ -958,12 +968,13 @@ test("keeps a tall follow-up model menu inside the conversation pane", async ({
       },
     }),
   );
+  const detail = taskDetailFixture({
+    model: "gpt-test-0",
+    reasoningEffort: "medium",
+  });
   await page.route("**/api/tasks/thread-1", (route) =>
     route.fulfill({
-      json: taskDetailFixture({
-        model: "gpt-test-0",
-        reasoningEffort: "medium",
-      }),
+      json: detail,
     }),
   );
   await page.route("**/api/tasks/thread-1/stream*", (route) =>
@@ -974,6 +985,7 @@ test("keeps a tall follow-up model menu inside the conversation pane", async ({
   );
 
   await page.goto("/tasks/thread-1");
+  await emitTaskDetailBootstrap(page, detail);
   const conversationPane = page.locator(".task-conversation-pane");
   const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
   const modelButton = form.getByRole("button", {
@@ -1001,8 +1013,9 @@ test("keeps a tall follow-up model menu inside the conversation pane", async ({
 
 test("active turns lock the approval mode until the next turn", async ({ page }) => {
   await installTaskApiFixture(page);
+  const detail = taskDetailFixture({ running: true });
   await page.route("**/api/tasks/thread-1", (route) =>
-    route.fulfill({ json: taskDetailFixture({ running: true }) }),
+    route.fulfill({ json: detail }),
   );
   await page.route("**/api/tasks/thread-1/stream*", (route) =>
     route.fulfill({
@@ -1023,6 +1036,7 @@ test("active turns lock the approval mode until the next turn", async ({ page })
   });
 
   await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
 
   const summary = page.locator("caffold-task-detail-summary");
   const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
@@ -1120,6 +1134,7 @@ test("steering an active turn preserves its existing work clock", async ({ page 
   });
 
   await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
   const activeTurn = page.locator('.task-turn-active[data-turn-id="turn-1"]');
   await expect(activeTurn).toHaveAttribute(
     "data-active-turn-started-ms",

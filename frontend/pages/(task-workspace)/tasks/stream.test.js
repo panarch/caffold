@@ -164,6 +164,43 @@ test("bounds replacement attempts and lets an explicit retry start a new cycle",
   lifecycle.deactivate();
 });
 
+test("bounds a source that never opens or errors", async () => {
+  const browser = installBrowserHarness();
+  const lifecycle = new TaskStreamLifecycle({
+    createUrl: () => "/api/tasks/stream",
+    connectionTimeoutMs: 1,
+    retryDelaysMs: [0, 0],
+  });
+
+  lifecycle.activate("task-list");
+  await nextTask();
+  await nextTask();
+
+  assert.equal(browser.sources.length, 3);
+  assert.equal(lifecycle.source, null);
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.UNAVAILABLE);
+  lifecycle.deactivate();
+});
+
+test("keeps transport connecting until its owner reports readiness", async () => {
+  const browser = installBrowserHarness();
+  const readiness = deferred();
+  const lifecycle = new TaskStreamLifecycle({
+    createUrl: () => "/api/tasks/stream",
+    waitUntilReady: () => readiness.promise,
+  });
+
+  lifecycle.activate("task-list");
+  browser.sources[0].emitOpen();
+  await Promise.resolve();
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.CONNECTING);
+
+  readiness.resolve(true);
+  await nextTask();
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
+  lifecycle.deactivate();
+});
+
 test("lets a stream-bootstrap owner retry without a duplicate reconciliation", async () => {
   const browser = installBrowserHarness();
   let reconciliations = 0;

@@ -30,6 +30,24 @@ export async function installTaskLoopFixture(
         this.listeners = new Map();
         this.readyState = 0;
         window.__caffoldMockEventSources.push(this);
+        const detailMatch = url.match(/\/api\/tasks\/([^/?]+)\/stream/);
+        if (detailMatch) {
+          queueMicrotask(async () => {
+            const detail = await window.__caffoldTaskDetailBootstrap?.(
+              decodeURIComponent(detailMatch[1]),
+            );
+            if (!detail || this.readyState === 2) {
+              return;
+            }
+            this.emitOpen();
+            this.emit("task-sync", {
+              threadId: detail.threadId,
+              revision: detail.revision,
+              detail,
+              reason: "stream-bootstrap",
+            });
+          });
+        }
       }
 
       addEventListener(type, listener) {
@@ -137,6 +155,16 @@ export async function installTaskLoopFixture(
         : {}),
     };
   };
+  await page.exposeFunction("__caffoldTaskDetailBootstrap", (requestedThreadId) => {
+    if (!task || requestedThreadId !== threadId) {
+      return null;
+    }
+    return detailResponse({
+      events: omitCompletedCommandFromDetail
+        ? events.filter((event) => event.type !== "command_execution")
+        : events,
+    });
+  });
   const updateTask = (updates) => {
     task = {
       ...task,

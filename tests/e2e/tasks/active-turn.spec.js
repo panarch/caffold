@@ -3,6 +3,7 @@ import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
   canonicalTaskState,
+  emitTaskDetailBootstrap,
   installEventSourceMock,
   mockCodexModels,
 } from "../support/task-fixtures.js";
@@ -46,6 +47,10 @@ test("preserves active-turn and spinner identity until the turn changes", async 
   );
 
   await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(page, {
+    ...initialDetail,
+    threadId,
+  });
   const activeTurn = page.locator(
     `.task-turn-active[data-turn-id="${firstTurnId}"]`,
   );
@@ -74,7 +79,13 @@ test("preserves active-turn and spinner identity until the turn changes", async 
           throw new Error(`Missing detail stream for ${threadId}`);
         }
         source.emit("task-sync", { threadId, revision: 2, detail });
-        const mutationCount = observer.takeRecords().length;
+        const mutationCount = observer.takeRecords().filter((mutation) => {
+          const target =
+            mutation.target.nodeType === Node.ELEMENT_NODE
+              ? mutation.target
+              : mutation.target.parentElement;
+          return !target?.closest(".task-turn-active-duration");
+        }).length;
         observer.disconnect();
         return mutationCount;
       },
@@ -302,6 +313,10 @@ test("does not reuse active-turn state between tasks with the same turn id", asy
   );
 
   await page.goto(`/tasks/${firstTask.threadId}`);
+  await emitTaskDetailBootstrap(page, {
+    ...details.get(firstTask.threadId),
+    threadId: firstTask.threadId,
+  });
   const firstActiveTurn = page.locator(".task-turn-active");
   await expect(firstActiveTurn).toHaveAttribute(
     "data-conversation-entry-key",
@@ -316,6 +331,10 @@ test("does not reuse active-turn state between tasks with the same turn id", asy
     await page.getByRole("button", { name: "Back to tasks" }).click();
   }
   await secondTaskRow.click();
+  await emitTaskDetailBootstrap(page, {
+    ...details.get(secondTask.threadId),
+    threadId: secondTask.threadId,
+  });
   await expect(page).toHaveURL(`/tasks/${secondTask.threadId}`);
   const secondActiveTurn = page.locator(".task-turn-active");
   await expect(secondActiveTurn).toHaveAttribute(

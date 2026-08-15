@@ -5,7 +5,10 @@ import {
   taskDetailFixture,
 } from "../support/task-api-fixture.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
-import { captureReviewScreenshot } from "../support/task-fixtures.js";
+import {
+  captureReviewScreenshot,
+  emitTaskDetailBootstrap,
+} from "../support/task-fixtures.js";
 
 const MODEL_ID = "large-v3-turbo";
 const MODEL_BYTES = 1_624_555_275;
@@ -547,8 +550,9 @@ test("keeps recording Stop separate while voice steers an active turn", async ({
   );
   await installTaskApiFixture(page);
   await mockVoiceStatus(page, true);
+  const detail = taskDetailFixture({ running: true });
   await page.route("**/api/tasks/thread-1", (route) =>
-    route.fulfill({ json: taskDetailFixture({ running: true }) }),
+    route.fulfill({ json: detail }),
   );
   let submittedBody = null;
   await page.route("**/api/tasks/thread-1/prompts", (route) => {
@@ -569,6 +573,7 @@ test("keeps recording Stop separate while voice steers an active turn", async ({
   );
 
   await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
   const composer = page.locator(
     'caffold-task-detail:not([hidden]) form[data-task-form="follow-up"]',
   );

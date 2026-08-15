@@ -4,7 +4,10 @@ import {
   installTaskApiFixture,
   taskDetailFixture,
 } from "../support/task-api-fixture.js";
-import { activeTaskProjection } from "../support/task-fixtures.js";
+import {
+  activeTaskProjection,
+  emitTaskDetailBootstrap,
+} from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
@@ -13,7 +16,7 @@ test.beforeEach(async ({ page }) => {
 test("scales visible Task controls without shrinking their touch targets", async ({
   page,
 }, testInfo) => {
-  await installScalingTask(page);
+  const detail = await installScalingTask(page);
   await page.addInitScript(() => {
     localStorage.setItem(
       "caffold:settings",
@@ -27,6 +30,7 @@ test("scales visible Task controls without shrinking their touch targets", async
   });
 
   await page.goto("/tasks/thread-1");
+  await emitTaskDetailBootstrap(page, detail);
   await expect(
     page.locator(
       "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
@@ -204,6 +208,7 @@ async function installScalingTask(page) {
       },
     }),
   );
+  return detail;
 }
 
 function attachmentRemoveMetrics(page) {

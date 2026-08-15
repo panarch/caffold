@@ -285,14 +285,16 @@ state:
 
 - `caffold-task-navigator` owns managed/Archived reads, list mutations, list SSE, and the
   per-thread list revision baseline.
-- `caffold-task-detail` owns the selected task's canonical read and application,
-  event cache, and per-thread detail revision baseline. Its private
-  `detail/stream.js` module owns only the detail `EventSource`, connection
-  generation, reconnect timer, transport state, and visibility/reconnect
-  refresh coalescing. It forwards raw `task-sync` and `task-event` messages to
-  Detail and cannot write canonical task, event, or revision state. A refresh
-  response is applied only while both Detail's route generation and the
-  stream-provided current-generation guard still match.
+- `caffold-task-detail` owns the selected task's canonical application, event
+  cache, and per-thread detail revision baseline. Its adjacent `session.js`
+  coordinates each acquisition attempt across the detail SSE and at most one
+  REST fallback after bounded stream failure. The shared `tasks/stream.js`
+  lifecycle owns `EventSource` connection generations, timers, and transport
+  state. Each connection starts with a cached `stream-bootstrap`; a loading
+  bootstrap establishes the new revision baseline but acquisition waits for a
+  later readable `task-sync`. Healthy entry and reconnect add no parallel REST
+  read. Cursor pagination stays outside the session, and only the current
+  Task's active attempt may apply a response.
 - A `stream-bootstrap` establishes a new detail process baseline even when its
   revision is lower. Lower revisions from the same baseline remain stale.
 - A detail snapshot may be forwarded to Navigator through
@@ -415,11 +417,11 @@ observed read payload.
 Thread state comes only from app-server `Thread.status` snapshots and
 `thread/status/changed`. `Turn.status` remains turn-local conversation state;
 turn notifications, approval requests, browser events, and active-turn pointers
-do not rewrite the thread badge. Browser reconnect and visibility resume each
-request one canonical detail sync to recover events that may have been missed
-while the client was disconnected. If the rollout path is absent or the native
-watcher is unavailable, app-server notifications and explicit synchronization
-continue to work; Caffold does not add a polling fallback.
+do not rewrite the thread badge. Browser reconnect and visibility resume recover
+through the detail stream's bootstrap and, when the cached bootstrap is still
+loading, its first later readable sync. If the rollout path is absent or the
+native watcher is unavailable, app-server notifications and explicit
+synchronization continue to work; Caffold does not add a polling fallback.
 
 The local tables own managed membership and the stable navigator projection,
 not canonical Codex Thread existence. Runtime events and explicit

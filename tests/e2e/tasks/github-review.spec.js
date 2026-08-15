@@ -68,6 +68,7 @@ function linkedWorktreeTask() {
 async function installLinkedWorktreeGithubFixture(page, options = {}) {
   await installEventSourceMock(page, {
     registryKey: "__taskGithubEventSources",
+    bootstrapFunctionKey: "__taskGithubDetailBootstrap",
   });
   await mockCodexModels(page);
 
@@ -185,6 +186,25 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
     model: null,
     reasoningEffort: null,
   };
+  const taskDetail = {
+    threadId: THREAD_ID,
+    syncState: "ready",
+    revision: 1,
+    task,
+    events: [],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+    historyLoading: false,
+    permissionMode: null,
+    model: null,
+    reasoningEffort: null,
+  };
+  await page.exposeFunction("__taskGithubDetailBootstrap", (threadId) => {
+    if (threadId === THREAD_ID) {
+      return taskDetail;
+    }
+    return threadId === CREATED_THREAD_ID ? createdDetail : null;
+  });
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     if (route.request().method() === "POST") {
@@ -195,21 +215,7 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
     return route.fulfill({ json: activeTaskProjection([task]) });
   });
   await page.route(new RegExp(`/api/tasks/${THREAD_ID}(?:\\?|$)`), (route) =>
-    route.fulfill({
-      json: {
-        threadId: THREAD_ID,
-        syncState: "ready",
-        revision: 1,
-        task,
-        events: [],
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-        historyLoading: false,
-        permissionMode: null,
-        model: null,
-        reasoningEffort: null,
-      },
-    }),
+    route.fulfill({ json: taskDetail }),
   );
   await page.route(new RegExp(`/api/tasks/${CREATED_THREAD_ID}(?:\\?|$)`), (route) =>
     route.fulfill({ json: createdDetail }),

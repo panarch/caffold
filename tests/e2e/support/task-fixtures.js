@@ -1,5 +1,13 @@
 import { expect } from "@playwright/test";
 
+export {
+  emitTaskDetailBootstrap,
+  installEventSourceMock,
+  installEventSourceMockInBrowser,
+  installTaskSseControllerInBrowser,
+  openTaskWithBootstrap,
+} from "./task-sse-fixture.js";
+
 export const PASTED_IMAGE_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
@@ -102,58 +110,6 @@ export async function pasteImage(locator, name = "clipboard-image.png") {
       );
     },
     { base64: PASTED_IMAGE_BASE64, fileName: name },
-  );
-}
-
-export async function installEventSourceMock(
-  page,
-  { registryKey = null, sourceKey = null, autoOpen = false } = {},
-) {
-  await page.addInitScript(
-    ({ autoOpen, registryKey, sourceKey }) => {
-      if (registryKey) {
-        window[registryKey] = [];
-      }
-      window.EventSource = class MockEventSource {
-        constructor(url) {
-          this.url = url;
-          this.listeners = new Map();
-          this.readyState = 0;
-          if (registryKey) {
-            window[registryKey].push(this);
-          }
-          if (sourceKey) {
-            window[sourceKey] = this;
-          }
-          if (autoOpen) {
-            queueMicrotask(() => this.emitOpen());
-          }
-        }
-
-        addEventListener(type, listener) {
-          this.listeners.set(type, listener);
-        }
-
-        emit(type, payload) {
-          this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-        }
-
-        emitOpen() {
-          this.readyState = 1;
-          this.listeners.get("open")?.({});
-        }
-
-        emitError({ closed = false } = {}) {
-          this.readyState = closed ? 2 : 0;
-          this.listeners.get("error")?.({});
-        }
-
-        close() {
-          this.readyState = 2;
-        }
-      };
-    },
-    { autoOpen, registryKey, sourceKey },
   );
 }
 

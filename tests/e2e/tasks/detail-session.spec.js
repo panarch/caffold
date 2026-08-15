@@ -8,9 +8,11 @@ import {
 import {
   activeTaskProjection,
   canonicalTaskState,
+  emitTaskDetailBootstrap,
   installEventSourceMock,
   isScrolledToBottom,
   mockCodexModels,
+  openTaskWithBootstrap,
   pasteImage,
   scrollTop,
 } from "../support/task-fixtures.js";
@@ -31,6 +33,7 @@ test("raw active flags prioritize approval over user input", async ({ page }) =>
   );
 
   await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
 
   await expect(
     page.locator(
@@ -54,6 +57,7 @@ test("active task without a canonical turn keeps a disabled composer Stop action
   );
 
   await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
 
   await expect(
     page.locator('.task-detail-summary .task-status-chip[data-status="running"]'),
@@ -102,6 +106,7 @@ test("keeps the composer Stop action stable while an interrupt request is pendin
   });
 
   await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, runningDetail);
   const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
   const prompt = form.getByRole("textbox", { name: "Follow-up prompt" });
   const primaryAction = form.locator(".task-primary-action-button");
@@ -149,6 +154,7 @@ test("updates stable detail regions and preserves an active IME composition", as
   );
 
   await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
   const tasksPage = page.locator("caffold-tasks-page");
   const form = tasksPage.locator(".task-follow-up-form");
   const prompt = form.locator('textarea[name="prompt"]');
@@ -340,25 +346,25 @@ test("loading detail accepts a canonical task sync without a synthetic task", as
   page,
 }) => {
   await installTaskApiFixture(page);
+  const loadingDetail = {
+    threadId: "thread-1",
+    syncState: "loading",
+    revision: 0,
+    task: null,
+    events: [],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+    historyLoading: true,
+  };
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({ json: activeTaskProjection([taskDetailFixture().task]) }),
   );
   await page.route("**/api/tasks/thread-1", (route) =>
-    route.fulfill({
-      json: {
-        threadId: "thread-1",
-        syncState: "loading",
-        revision: 0,
-        task: null,
-        events: [],
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-        historyLoading: true,
-      },
-    }),
+    route.fulfill({ json: loadingDetail }),
   );
 
   await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, loadingDetail);
   const loadingMessage = page.getByText("Loading task...");
   await expect(loadingMessage).toBeVisible();
   const loadingClearance = await loadingMessage.evaluate((message) => {
@@ -451,9 +457,20 @@ test("recovers task detail and prompt submission across bootstrap races", async 
     window.__caffoldMockEventSources = [];
     window.EventSource = class MockEventSource {
       constructor(url) {
+        const unavailableDetailThread = sessionStorage.getItem(
+          "unavailableDetailThread",
+        );
+        if (
+          unavailableDetailThread &&
+          url.includes(`/api/tasks/${unavailableDetailThread}/stream`)
+        ) {
+          throw new Error("Task detail stream is unavailable in this fixture");
+        }
         this.url = url;
         this.listeners = new Map();
+        this.readyState = 0;
         window.__caffoldMockEventSources.push(this);
+        window.__caffoldRegisterTaskSseSource?.(this);
       }
 
       addEventListener(type, listener) {
@@ -464,7 +481,9 @@ test("recovers task detail and prompt submission across bootstrap races", async 
         this.listeners.get(type)?.({ data: JSON.stringify(payload) });
       }
 
-      close() {}
+      close() {
+        this.readyState = 2;
+      }
     };
   });
   await mockCodexModels(page);
@@ -518,13 +537,15 @@ test("recovers task detail and prompt submission across bootstrap races", async 
   const detailAfterFailure = detailFor(
     taskAfterFailure,
     2,
-    "The stream recovered the failed request.",
+    "The REST fallback kept the Task readable.",
+  );
+  const recoveredDetail = detailFor(
+    taskAfterFailure,
+    1,
+    "The stream recovered after the REST fallback.",
   );
 
-  let releaseFirstDetail;
-  const firstDetailStarted = new Promise((resolve) => {
-    releaseFirstDetail = { started: resolve, route: null };
-  });
+  const detailRequests = new Map();
   const submittedPrompts = [];
 
   await page.route("**/api/tasks**", async (route) => {
@@ -542,38 +563,17 @@ test("recovers task detail and prompt submission across bootstrap races", async 
     if (
       request.method() === "GET" &&
       segments.length === 3 &&
-      segments[2] === taskBeforeFailure.threadId
+      [taskBeforeFailure.threadId, taskAfterFailure.threadId].includes(segments[2])
     ) {
-      releaseFirstDetail.route = route;
-      releaseFirstDetail.started();
-      await new Promise((resolve) => {
-        releaseFirstDetail.fulfill = resolve;
-      });
+      const threadId = segments[2];
+      detailRequests.set(threadId, (detailRequests.get(threadId) ?? 0) + 1);
       return route.fulfill({
-        status: 503,
         contentType: "application/json",
-        body: JSON.stringify({
-          error: {
-            code: "codex_process_unavailable",
-            message: "Codex app-server is unavailable.",
-          },
-        }),
-      });
-    }
-    if (
-      request.method() === "GET" &&
-      segments.length === 3 &&
-      segments[2] === taskAfterFailure.threadId
-    ) {
-      return route.fulfill({
-        status: 503,
-        contentType: "application/json",
-        body: JSON.stringify({
-          error: {
-            code: "codex_process_unavailable",
-            message: "Codex app-server is unavailable.",
-          },
-        }),
+        body: JSON.stringify(
+          threadId === taskAfterFailure.threadId
+            ? detailAfterFailure
+            : detailBeforeFailure,
+        ),
       });
     }
     if (
@@ -608,27 +608,28 @@ test("recovers task detail and prompt submission across bootstrap races", async 
       )
       .toBe(true);
     await page.evaluate(({ threadId, detail }) => {
-      const source = window.__caffoldMockEventSources.find((candidate) =>
-        candidate.url.includes(`/api/tasks/${threadId}/stream`),
-      );
+      const source = [...window.__caffoldMockEventSources]
+        .reverse()
+        .find((candidate) =>
+          candidate.url.includes(`/api/tasks/${threadId}/stream`),
+        );
+      window.__caffoldTaskSse.open(source);
       source.emit("task-sync", {
         threadId,
         revision: detail.revision,
         detail,
-        reason: "canonical-bootstrap",
+        reason: "stream-bootstrap",
       });
     }, { threadId, detail });
   };
 
   await page.goto(`/tasks/${taskBeforeFailure.threadId}?cwd=src`);
-  await firstDetailStarted;
   const tasksPage = page.locator("caffold-tasks-page");
   await emitTaskSync(taskBeforeFailure.threadId, detailBeforeFailure);
   await expect(tasksPage).toContainText(
     "The stream arrived before the failed request.",
   );
-  releaseFirstDetail.fulfill();
-  await expect(tasksPage).not.toContainText("Codex app-server is unavailable.");
+  expect(detailRequests.get(taskBeforeFailure.threadId) ?? 0).toBe(0);
 
   let form = tasksPage.locator(".task-follow-up-form");
   let prompt = form.locator('textarea[name="prompt"]');
@@ -641,16 +642,32 @@ test("recovers task detail and prompt submission across bootstrap races", async 
     },
   ]);
 
+  await page.evaluate((threadId) => {
+    sessionStorage.setItem("unavailableDetailThread", threadId);
+  }, taskAfterFailure.threadId);
   await page.goto(`/tasks/${taskAfterFailure.threadId}?cwd=src`);
-  await expect(tasksPage).toContainText("Codex app-server is unavailable.");
-  await emitTaskSync(taskAfterFailure.threadId, detailAfterFailure);
   await expect(tasksPage).toContainText(
-    "The stream recovered the failed request.",
+    "The REST fallback kept the Task readable.",
+  );
+  expect(detailRequests.get(taskAfterFailure.threadId)).toBe(1);
+  const unavailable = page.locator(
+    '.app-foreground-recovery[data-recovery-state="unavailable"]',
+  );
+  await expect(unavailable).toBeVisible();
+
+  await page.evaluate(() => {
+    sessionStorage.removeItem("unavailableDetailThread");
+  });
+  await unavailable.getByRole("button", { name: "Retry" }).click();
+  await emitTaskSync(taskAfterFailure.threadId, recoveredDetail);
+  await expect(tasksPage).toContainText(
+    "The stream recovered after the REST fallback.",
   );
   await expect(tasksPage).not.toContainText(
     "The stream arrived before the failed request.",
   );
-  await expect(tasksPage).not.toContainText("Codex app-server is unavailable.");
+  await expect(unavailable).toBeHidden();
+  expect(detailRequests.get(taskAfterFailure.threadId)).toBe(1);
 
   form = tasksPage.locator(".task-follow-up-form");
   prompt = form.locator('textarea[name="prompt"]');
@@ -672,9 +689,9 @@ test("keeps task context and retries after an initial detail timeout", async ({
 }) => {
   await page.addInitScript(() => {
     window.EventSource = class MockEventSource {
-      addEventListener() {}
-
-      close() {}
+      constructor() {
+        throw new Error("EventSource is unavailable in this fixture");
+      }
     };
   });
   await mockCodexModels(page);
@@ -822,6 +839,7 @@ test("preserves stable detail children through another task load failure", async
   await page.goto("/tasks/thread-stable-a?cwd=src");
   const tasksPage = page.locator("caffold-tasks-page");
   const taskNavigator = page.locator("caffold-task-navigator");
+  await emitTaskDetailBootstrap(page, detailA);
   await expect(tasksPage).toContainText("Stable task A canonical response.");
   const prompt = tasksPage.getByRole("textbox", { name: "Follow-up prompt" });
   await prompt.fill("Draft retained for task A");
@@ -855,6 +873,18 @@ test("preserves stable detail children through another task load failure", async
       ),
     )
     .toBe(true);
+
+  await page.evaluate(() => {
+    const WorkingEventSource = window.EventSource;
+    window.EventSource = class ConditionalEventSource {
+      constructor(url) {
+        if (url.includes("/api/tasks/thread-stable-b/stream")) {
+          throw new Error("Task B stream is unavailable in this fixture");
+        }
+        return new WorkingEventSource(url);
+      }
+    };
+  });
 
   await taskNavigator
     .locator('.task-row[data-thread-id="thread-stable-b"]')
@@ -903,6 +933,7 @@ test("preserves stable detail children through another task load failure", async
   await taskNavigator
     .locator('.task-row[data-thread-id="thread-stable-a"]')
     .click();
+  await emitTaskDetailBootstrap(page, detailA);
   await expect(tasksPage).toContainText("Stable task A canonical response.");
   await expect(prompt).toHaveValue("Draft retained for task A");
   await expect(
@@ -974,6 +1005,7 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
 
   await page.goto(`/tasks/${threadIds[0]}?cwd=src`);
   const tasksPage = page.locator("caffold-tasks-page");
+  await emitTaskDetailBootstrap(page, details.get(threadIds[0]));
   const prompt = tasksPage.getByRole("textbox", { name: "Follow-up prompt" });
   await prompt.fill("Keep this thread-specific draft");
   await pasteImage(prompt, "thread-a-draft.png");
@@ -1039,16 +1071,14 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
   await expect(prompt).toHaveValue("Keep this thread-specific draft");
   await expect(attachment).toHaveCount(1);
 
-  await tasksPage.evaluate(async (element, threadId) => {
-    await element.querySelector("caffold-task-detail").open(threadId);
+  await openTaskWithBootstrap(tasksPage, details.get(threadIds[1]));
+  await tasksPage.evaluate((element, threadId) => {
     const detail = element.querySelector("caffold-task-detail");
     window.__oldestCleanTaskComposer =
       detail.followUpComposers.get(threadId);
   }, threadIds[1]);
   for (const threadId of threadIds.slice(2)) {
-    await tasksPage.evaluate(async (element, targetThreadId) => {
-      await element.querySelector("caffold-task-detail").open(targetThreadId);
-    }, threadId);
+    await openTaskWithBootstrap(tasksPage, details.get(threadId));
   }
 
   const cache = await tasksPage.evaluate((element, ids) => {
@@ -1117,18 +1147,16 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
   expect(promptRequests).toBe(0);
   await prompt.fill("Keep this isolated Task B draft");
 
-  await tasksPage.evaluate(async (element, threadId) => {
+  await openTaskWithBootstrap(tasksPage, details.get(threadIds[2]));
+  await tasksPage.evaluate((element, threadId) => {
     const detail = element.querySelector("caffold-task-detail");
-    await detail.open(threadId);
     if (
       detail.followUpComposer() !== detail.followUpComposers.get(threadId)
     ) {
       throw new Error("The activated clean cached Composer was evicted.");
     }
   }, threadIds[2]);
-  await tasksPage.evaluate(async (element, threadId) => {
-    await element.querySelector("caffold-task-detail").open(threadId);
-  }, threadIds[0]);
+  await openTaskWithBootstrap(tasksPage, details.get(threadIds[0]));
   await expect(
     tasksPage.locator(
       'caffold-task-composer[data-cache-identity="stateful"]',
@@ -1169,9 +1197,7 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
   await removeImage.click();
   await expect(attachment).toHaveCount(0);
 
-  await tasksPage.evaluate(async (element, threadId) => {
-    await element.querySelector("caffold-task-detail").open(threadId);
-  }, threadIds.at(-1));
+  await openTaskWithBootstrap(tasksPage, details.get(threadIds.at(-1)));
   await expect(prompt).toHaveValue("Keep this isolated Task B draft");
   await expect(attachment).toHaveCount(0);
 });
@@ -1245,6 +1271,7 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
   );
 
   await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
   const tasksPage = page.locator("caffold-tasks-page");
   const interruptError = tasksPage.locator(".task-composer-interrupt-error");
   const approvalCard = tasksPage.locator(
@@ -1303,7 +1330,7 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
   });
 });
 
-test("canonical refresh clears errors and reconciles prompts without trusting older history", async ({
+test("canonical stream sync clears errors and reconciles prompts without trusting older history", async ({
   page,
 }, testInfo) => {
   test.skip(
@@ -1317,7 +1344,6 @@ test("canonical refresh clears errors and reconciles prompts without trusting ol
     reasoningEffort: "medium",
   });
   initialDetail.eventsPage = { nextCursor: "older-matching-prompt" };
-  let detailResponse = initialDetail;
   let releasePrompt;
   const promptGate = new Promise((resolve) => {
     releasePrompt = resolve;
@@ -1347,7 +1373,7 @@ test("canonical refresh clears errors and reconciles prompts without trusting ol
         },
       });
     }
-    return route.fulfill({ json: detailResponse });
+    return route.fulfill({ json: initialDetail });
   });
   await page.route("**/api/tasks/thread-1/prompts", async (route) => {
     await promptGate;
@@ -1361,6 +1387,7 @@ test("canonical refresh clears errors and reconciles prompts without trusting ol
   });
 
   await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, initialDetail);
   const tasksPage = page.locator("caffold-tasks-page");
   const composer = tasksPage.locator(".task-follow-up-form");
   await composer
@@ -1413,7 +1440,7 @@ test("canonical refresh clears errors and reconciles prompts without trusting ol
     tasksPage.locator(".task-detail-load-error-inline"),
   ).toContainText("Canonical refresh temporarily failed.");
 
-  detailResponse = {
+  const reconciledDetail = {
     ...initialDetail,
     revision: 4,
     events: [
@@ -1430,11 +1457,14 @@ test("canonical refresh clears errors and reconciles prompts without trusting ol
       },
     ],
   };
-  await tasksPage.evaluate(async (element) => {
-    await element
-      .querySelector("caffold-task-detail")
-      .refreshSelectedTask("thread-1");
-  });
+  await page.evaluate((detail) => {
+    window.__taskDetailSource.emit("task-sync", {
+      threadId: detail.threadId,
+      revision: detail.revision,
+      detail,
+      reason: "prompt-reconciliation",
+    });
+  }, reconciledDetail);
 
   await expect(
     tasksPage.locator(".task-detail-load-error-inline"),
@@ -1507,6 +1537,7 @@ test("canonical action responses reject foreign tasks and preserve history curso
   });
 
   await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, initialDetail);
   const tasksPage = page.locator("caffold-tasks-page");
   await tasksPage
     .getByRole("button", { name: "Stop current turn", exact: true })
@@ -1547,7 +1578,10 @@ test("accepts canonical task detail after stream revisions restart", async ({ pa
       constructor(url) {
         this.url = url;
         this.listeners = new Map();
+        this.readyState = 0;
         window.__taskEventSources.push(this);
+        window.__caffoldRegisterTaskSseSource?.(this);
+        queueMicrotask(() => this.emitOpen());
       }
 
       addEventListener(type, listener) {
@@ -1558,7 +1592,19 @@ test("accepts canonical task detail after stream revisions restart", async ({ pa
         this.listeners.get(type)?.({ data: JSON.stringify(payload) });
       }
 
-      close() {}
+      emitOpen() {
+        this.readyState = 1;
+        this.listeners.get("open")?.({});
+      }
+
+      emitError() {
+        this.readyState = 0;
+        this.listeners.get("error")?.({});
+      }
+
+      close() {
+        this.readyState = 2;
+      }
     };
   });
   await mockCodexModels(page);
@@ -1649,6 +1695,10 @@ test("accepts canonical task detail after stream revisions restart", async ({ pa
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
   const tasksPage = page.locator("caffold-tasks-page");
+  await emitTaskDetailBootstrap(page, {
+    ...staleDetail,
+    threadId,
+  });
   await expect(tasksPage).toContainText("Show only the canonical request.");
   await expect(tasksPage).not.toContainText("automatically supplied ambient UI state");
 
@@ -1663,6 +1713,13 @@ test("accepts canonical task detail after stream revisions restart", async ({ pa
       ),
     )
     .toBe(true);
+  await page.evaluate((id) => {
+    const source = window.__taskEventSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${id}/stream`),
+    );
+    source.emitError();
+    source.emitOpen();
+  }, threadId);
   await page.evaluate(({ threadId, detail }) => {
     const source = window.__taskEventSources.find((candidate) =>
       candidate.url.includes(`/api/tasks/${threadId}/stream`),
@@ -1752,25 +1809,27 @@ test("reconciles a canonical final answer over a retained transient item after r
     recencyMs: canonicalAnswer.createdMs,
     lastEventSummary: canonicalAnswer.payload.text,
   };
+  const initialDetail = {
+    threadId,
+    syncState: "ready",
+    revision: 43,
+    task,
+    events: [transient],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  };
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({ json: activeTaskProjection([task]) }),
   );
   await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
     route.fulfill({
-      json: {
-        threadId,
-        syncState: "ready",
-        revision: 43,
-        task,
-        events: [transient],
-        eventsPage: { nextCursor: null },
-        pendingApprovals: [],
-      },
+      json: initialDetail,
     }),
   );
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, initialDetail);
   const tasksPage = page.locator("caffold-tasks-page");
   await expect
     .poll(() =>
@@ -1794,6 +1853,13 @@ test("reconciles a canonical final answer over a retained transient item after r
       ),
     )
     .toBe(true);
+  await page.evaluate(({ registryKey, threadId }) => {
+    const source = window[registryKey].find((candidate) =>
+      candidate.url.includes(`/api/tasks/${threadId}/stream`),
+    );
+    source.emitError();
+    source.emitOpen();
+  }, { registryKey, threadId });
   await page.evaluate(
     ({ registryKey, threadId, canonicalTask, answer }) => {
       const source = window[registryKey].find((candidate) =>
@@ -1946,7 +2012,7 @@ test("accepts canonical task sync after stream revisions restart", async ({ page
   });
   await expect(row).toHaveAttribute("data-task-status", "idle");
 });
-test("opens a running conversation at the latest message when stream sync wins the reload race", async ({
+test("opens a running conversation at the latest message from the stream bootstrap", async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Conversation reload scroll regression");
@@ -1956,7 +2022,10 @@ test("opens a running conversation at the latest message when stream sync wins t
       constructor(url) {
         this.url = url;
         this.listeners = new Map();
+        this.readyState = 0;
         window.__taskEventSources.push(this);
+        window.__caffoldRegisterTaskSseSource?.(this);
+        queueMicrotask(() => this.emitOpen());
       }
 
       addEventListener(type, listener) {
@@ -1971,7 +2040,16 @@ test("opens a running conversation at the latest message when stream sync wins t
         }
       }
 
-      close() {}
+      emitOpen() {
+        this.readyState = 1;
+        for (const listener of this.listeners.get("open") ?? []) {
+          listener({});
+        }
+      }
+
+      close() {
+        this.readyState = 2;
+      }
     };
   });
   await page.route("https://esm.sh/**", (route) => route.abort());
@@ -2015,13 +2093,10 @@ test("opens a running conversation at the latest message when stream sync wins t
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
   });
-  let releaseDetailResponse;
-  const detailResponseGate = new Promise((resolve) => {
-    releaseDetailResponse = resolve;
-  });
+  let detailReads = 0;
 
-  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), async (route) => {
-    await detailResponseGate;
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) => {
+    detailReads += 1;
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify(detail(2)),
@@ -2031,48 +2106,16 @@ test("opens a running conversation at the latest message when stream sync wins t
   await page.goto(`/tasks/${threadId}?cwd=src`);
   const tasksPage = page.locator("caffold-tasks-page");
   const scroller = tasksPage.locator(".task-conversation-scroll");
-  await expect
-    .poll(() => page.evaluate(() => window.__taskEventSources.length))
-    .toBeGreaterThan(0);
-
-  await page.evaluate(({ threadId, detail }) => {
-    const source = window.__taskEventSources.find((candidate) =>
-      candidate.url.includes(`/api/tasks/${threadId}/stream`),
-    );
-    source.emit("task-sync", {
-      threadId,
-      revision: 1,
-      detail,
-      reason: "stream-bootstrap",
-    });
-  }, { threadId, detail: detail(1) });
+  await emitTaskDetailBootstrap(page, {
+    ...detail(1),
+    threadId,
+  });
   await expect(tasksPage).toContainText("Reload race response 20.");
   await expect
     .poll(() => scroller.evaluate((element) => element.scrollHeight > element.clientHeight))
     .toBe(true);
 
-  await page.evaluate(({ threadId, detail }) => {
-    const scroller = document.querySelector(
-      "caffold-tasks-page .task-conversation-scroll",
-    );
-    // A browser reload can restore a nested scroller before the async detail
-    // request settles. That transient position must not become task history.
-    scroller.scrollTop = 0;
-    scroller.dispatchEvent(new Event("scroll"));
-    const source = window.__taskEventSources.find((candidate) =>
-      candidate.url.includes(`/api/tasks/${threadId}/stream`),
-    );
-    source.emit("task-sync", {
-      threadId,
-      revision: 2,
-      detail,
-      reason: "running-progress",
-    });
-  }, { threadId, detail: detail(2) });
-  const reachedLatestBeforeDetail = await isScrolledToBottom(scroller);
-  releaseDetailResponse();
-
-  expect(reachedLatestBeforeDetail).toBe(true);
+  expect(detailReads).toBe(0);
   await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
 });
 test("makes disconnected task state unavailable and reconciles an uncertain prompt", async ({
@@ -2086,6 +2129,7 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
         this.listeners = new Map();
         this.readyState = 0;
         window.__taskEventSources.push(this);
+        window.__caffoldRegisterTaskSseSource?.(this);
       }
 
       addEventListener(type, listener) {
@@ -2144,8 +2188,7 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
     lastEventSummary: "Work is active",
   };
   let revision = 1;
-  let reconnectDetailRead = null;
-  let releaseReconnectDetailRead = null;
+  let detailReads = 0;
   let events = [
     {
       id: "event_before_restart",
@@ -2177,9 +2220,9 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
       body: JSON.stringify(activeTaskProjection([task])),
     }),
   );
-  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), async (route) => {
-    await reconnectDetailRead;
-    await route.fulfill({
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) => {
+    detailReads += 1;
+    return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify(detail()),
     });
@@ -2226,6 +2269,7 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
   const tasksPage = page.locator("caffold-tasks-page");
+  await emitTaskDetailBootstrap(page, detail());
   const form = tasksPage.locator(".task-follow-up-form");
   const textarea = form.locator('textarea[name="prompt"]');
   const taskRow = page.locator(
@@ -2233,9 +2277,6 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
   );
   await expect(tasksPage).toContainText("Work is active before the restart.");
 
-  reconnectDetailRead = new Promise((resolve) => {
-    releaseReconnectDetailRead = resolve;
-  });
   await page.evaluate((threadId) => {
     for (const source of window.__taskEventSources) {
       if (
@@ -2318,8 +2359,7 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
       '.app-foreground-recovery[data-recovery-state="reconnecting"]',
     ),
   ).toBeVisible();
-  releaseReconnectDetailRead();
-  reconnectDetailRead = null;
+  await emitTaskDetailBootstrap(page, detail());
   await expect(tasksPage).toContainText(
     "The host stopped after accepting the prompt.",
   );
@@ -2339,6 +2379,7 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
   ).toHaveCount(0);
   await expect(taskRow).toHaveAttribute("data-task-status", "idle");
   await expect(textarea).toBeEnabled();
+  expect(detailReads).toBe(0);
 
   await page.evaluate(() => {
     const listSource = window.__taskEventSources.find(

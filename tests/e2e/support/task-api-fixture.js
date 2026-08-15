@@ -3,6 +3,7 @@ import {
   mockCodexStatus,
 } from "./browser-defaults.js";
 import { activeTaskProjection } from "./task-fixtures.js";
+import { installTaskSseControllerInBrowser } from "./task-sse-fixture.js";
 
 export const TASK_PERMISSION_FIXTURE = {
   defaultMode: "approveForMe",
@@ -39,6 +40,7 @@ export async function installTaskApiFixture(page) {
       body: JSON.stringify(mockCodexStatus()),
     }),
   );
+  await page.addInitScript(installTaskSseControllerInBrowser);
   await page.addInitScript(() => {
     window.__taskPermissionEventSources = [];
     window.EventSource = class MockEventSource {
@@ -47,6 +49,7 @@ export async function installTaskApiFixture(page) {
         this.listeners = new Map();
         this.readyState = 0;
         window.__taskPermissionEventSources.push(this);
+        window.__caffoldRegisterTaskSseSource(this);
         if (url.includes("/api/tasks/thread-1/stream")) {
           window.__taskDetailSource = this;
         } else if (url.startsWith("/api/tasks/stream")) {

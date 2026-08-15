@@ -119,7 +119,7 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/components/voice-worklet.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/layout.css",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
-  "/assets/pages/(task-workspace)/tasks/(detail)/(task)/stream.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/(task)/session.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/components/git-menu.css",
