@@ -4,13 +4,17 @@ This document describes Caffold's implemented product workflow and the object
 boundaries that keep it consistent. Planned orchestration belongs in the
 [Roadmap](roadmap.md).
 
-Caffold currently supports three entry paths into the same repeated
+Caffold currently supports four entry paths into the same repeated
 development loop:
 
 ```text
-Ad-hoc request
+Global New
         -> start a Task and Codex thread in a selected cwd
         -> optionally prepare the same Task in an isolated worktree
+
+Managed Section
+        -> inspect Working Tree/Branch, Git, or GitHub at its repository root
+        -> start a Task in the fixed directory or from Issue/PR detail
 
 GitHub Issue detail
         -> explicitly start a setup-only Task
@@ -27,7 +31,8 @@ Any entry
         -> archive or restore the Task and its owned resources
 ```
 
-Conversation and the Task-owned review children form the inner loop. Explicit
+Conversation owns Task execution and follow-up work. The common Detail review
+surfaces inspect either a repository-backed Task or managed Section. Explicit
 worktree preparation plus archive and restore provide the implemented outer
 lifecycle.
 
@@ -35,8 +40,9 @@ lifecycle.
 
 ### Task creation and turns
 
-1. Open Tasks and start a New Task.
-2. Confirm or choose the cwd, model, and reasoning effort, then send a prompt.
+1. Open Global New or select a managed Section and start a New Task.
+2. For Global New, confirm or choose the cwd. Section New uses its managed
+   logical path. Choose the model and reasoning effort, then send a prompt.
 3. Caffold starts a Codex thread in that cwd and records managed membership.
 4. Repository and worktree context are derived live from the thread cwd.
 5. Follow-up prompts start or steer a turn from canonical app-server state.
@@ -45,14 +51,16 @@ lifecycle.
 
 ### Start from a GitHub Issue or Pull Request
 
-The Task's GitHub root owns one shared Task Start dialog rather than separate
-Issue and Pull Request workflows. Both detail pages provide only the visible
-action and canonical source payload; the dialog keeps one Task-creation and
-modal lifecycle while applying the appropriate source-specific setup.
+The common GitHub root owns one shared Task Start dialog rather than separate
+Issue and Pull Request workflows. A repository-backed Task or Section supplies
+the source repository context. Both detail pages provide only the visible action
+and canonical source payload; the dialog keeps one Task-creation and modal
+lifecycle while applying the appropriate source-specific setup.
 
 For an Issue:
 
-1. Open Issue detail in a Task's GitHub child and choose `Start Task`.
+1. Open Issue detail from a Task or Section GitHub surface and choose
+   `Start Task`.
 2. Select a base ref and the new Task's model, reasoning, speed, and approval
    choices.
 3. Caffold creates a separate Task at the resolved repository root. Its first
@@ -83,13 +91,14 @@ preparation. The user decides the prepared Task's next bounded action.
 
 ### Review loop
 
-1. Open the Task's Integrated Review child.
+1. Select a repository-backed Task or Section and open Integrated Review.
 2. Select Working Tree or Branch scope.
 3. Inspect changed files, unified diffs, and source files without changing
    Codex lifecycle state.
-4. Open the same Task's Git child for arbitrary Compare or bounded Log, or its
-   GitHub child for Issues and Pull Requests.
-5. Return to Conversation and send a follow-up prompt.
+4. Open the same subject's Git child for arbitrary Compare or bounded Log, or
+   its GitHub child for Issues and Pull Requests.
+5. When the subject is a Task, return to Conversation and send a follow-up
+   prompt. From a Section, start a fixed-directory or GitHub-derived Task.
 6. Run and inspect tests through Codex or a manual development tool.
 
 ### Same-Task isolation preparation
@@ -126,7 +135,7 @@ independent objects:
 
 | Object | Role and owner |
 | --- | --- |
-| Origin | Ad-hoc request or explicit GitHub Issue/PR Start Task. |
+| Origin | Global New, managed Section, or explicit GitHub Issue/PR Start Task. |
 | Repository | Git repository in which the job is evaluated. |
 | Worktree | Git-owned execution and inspection environment. |
 | Codex thread | App-server-owned conversation and execution history. |

@@ -45,33 +45,34 @@ according to their own activation lifetime.
 
 ### Integrated Review
 
-The active `caffold-task-review` owns one Task-root subscription. It uses:
+The active `caffold-task-review` owns one subject-root subscription. It uses:
 
 - filesystem invalidation for its Files/Source presentation;
 - `gitStatusChanged` for Working Tree;
-- `gitRefsChanged` for current Task Branch/base comparison.
+- `gitRefsChanged` for current-branch/base comparison.
 
 It refreshes only loaded directories and the relevant selected viewer where
 possible. Overflow requests a bounded full reconciliation of the active
 surface. Selection, disclosure, scroll, and pane width remain component-local.
 
-### Task Git
+### Shared Git
 
 The active `caffold-task-git-layout` owns one repository-root subscription for
 arbitrary Compare and Log. It ignores ordinary file and status-only
 invalidations and reconciles ref-derived data on `gitRefsChanged`, recovery, or
 explicit Refresh. It does not load Working Tree status or patches.
 
-### Task GitHub and inactive children
+### Shared GitHub and inactive children
 
 GitHub creates no filesystem watcher and performs no polling. It refreshes on
 activation, meaningful route re-entry, Retry, or explicit actions.
 
 Switching Integrated Review -> Git -> GitHub releases the previous child's
 subscription and invalidates pending refresh generations before activating the
-next child. Same-Task DOM may remain mounted while hidden, but hidden children
-perform no active watch or refresh work. Switching Tasks destroys the previous
-Git/GitHub children.
+next child. Same-subject DOM may remain mounted while hidden, but hidden children
+perform no active watch or refresh work. The common Detail keeps one Git and one
+GitHub instance mounted; switching Task or Section subject deactivates them and
+clears external repository context before either can reactivate.
 
 Successful live invalidation is intentionally quiet. Watch failures preserve
 current DOM and indicate that manual refresh is available; they never silently

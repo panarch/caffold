@@ -166,6 +166,7 @@ test("updates stable detail regions and preserves an active IME composition", as
     if (!detailElement) {
       throw new Error("Follow-up prompt is outside the task detail owner");
     }
+    const detailLayout = detailElement.closest("caffold-detail-layout");
     textarea.dispatchEvent(
       new CompositionEvent("compositionstart", {
         bubbles: true,
@@ -176,7 +177,7 @@ test("updates stable detail regions and preserves an active IME composition", as
     textarea.setSelectionRange(1, 1);
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
     window.__detailRegionNodes = {
-      summaryHeading: detailElement.querySelector(
+      summaryHeading: detailLayout.querySelector(
         "caffold-task-detail-summary h2",
       ),
       conversationScroller: detailElement.querySelector(
@@ -224,7 +225,7 @@ test("updates stable detail regions and preserves an active IME composition", as
   await tasksPage.evaluate((element) => {
     const detailElement = element.querySelector("caffold-task-detail");
     window.__detailRegionNodes = {
-      summaryHeading: detailElement.querySelector(
+      summaryHeading: element.querySelector(
         "caffold-task-detail-summary h2",
       ),
       conversationScroller: detailElement.querySelector(
@@ -877,9 +878,9 @@ test("preserves stable detail children through another task load failure", async
   await expect
     .poll(() =>
       tasksPage.evaluate((element) => {
-        const detail = element.querySelector("caffold-task-detail");
+        const detail = element.querySelector("caffold-detail-layout");
         return (
-          detail.reviewComponents?.get("thread-stable-a") ===
+          detail.reviewComponents?.get("task:thread-stable-a") ===
             window.__stableTaskReview &&
           !window.__stableTaskReview.isConnected
         );
@@ -1277,7 +1278,7 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
 
   const ownedErrors = await tasksPage.evaluate((element) => {
     const detail = element.querySelector("caffold-task-detail");
-    const summary = detail.querySelector("caffold-task-detail-summary");
+    const summary = element.querySelector("caffold-task-detail-summary");
     const conversation = detail.querySelector("caffold-task-conversation");
     const composer = detail.followUpComposer();
     return {

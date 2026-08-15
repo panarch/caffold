@@ -1,0 +1,18 @@
+caffold-section-detail {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  padding-top: clamp(1.125rem, 6vh, 4.5rem);
+
+  &[hidden] {
+    display: none;
+  }
+
+  & > caffold-task-create {
+    width: min(calc(100% - 1.75rem), 952px);
+    margin: 0 auto;
+  }
+}

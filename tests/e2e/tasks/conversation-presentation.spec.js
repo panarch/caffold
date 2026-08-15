@@ -856,7 +856,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   );
   const detailActionGeometry = await tasksPage
     .locator(
-      ".task-detail-actions > caffold-task-detail-git > .task-git-button, .task-detail-actions > caffold-task-detail-github > .task-github-button, .task-detail-info-button",
+      ".detail-layout-actions > caffold-task-detail-git > .task-git-button, .detail-layout-actions > caffold-task-detail-github > .task-github-button, .task-detail-info-button",
     )
     .evaluateAll((controls) =>
       controls.map((control) => {
@@ -909,11 +909,11 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   }
   expect(new Set(detailActionGeometry.map(({ iconWidth }) => iconWidth)).size).toBe(1);
   const contextualControlGeometry = await tasksPage.evaluate((element) => {
-    const modeSwitch = element.querySelector(".task-mode-switch");
+    const modeSwitch = element.querySelector("caffold-detail-view-switch");
     const controls = [
       modeSwitch,
       ...element.querySelectorAll(
-        ".task-detail-actions > button, .task-detail-actions > details > summary, .task-detail-info-button",
+        ".detail-layout-actions > button, .detail-layout-actions > details > summary, .task-detail-info-button",
       ),
     ];
     const modeButtons = [...modeSwitch.querySelectorAll("button")];
@@ -992,7 +992,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       .querySelector(".task-detail-heading")
       .getBoundingClientRect();
     const actionBounds = summary
-      .querySelector(".task-detail-actions")
+      .querySelector(".detail-layout-actions")
       .getBoundingClientRect();
     const closeBounds = close.getBoundingClientRect();
     const titleBounds = summary.querySelector("h2").getBoundingClientRect();
@@ -1009,7 +1009,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
       overflow: element.scrollWidth > element.clientWidth,
       actionHeight: actionBounds.height,
       actionChildren: [...summary.querySelectorAll(
-        ".task-detail-actions > *, .task-detail-info-button",
+        ".detail-layout-actions > *, .task-detail-info-button",
       )].map((control) => ({
         className: control.className,
         height: control.getBoundingClientRect().height,
@@ -1079,7 +1079,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         .querySelector(".task-detail-heading")
         .getBoundingClientRect();
       const actions = summary
-        .querySelector(".task-detail-actions")
+        .querySelector(".detail-layout-actions")
         .getBoundingClientRect();
       return {
         closeVisible:

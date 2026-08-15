@@ -173,8 +173,14 @@ class CaffoldTaskNavigator extends HTMLElement {
   }
 
   setSelectedThreadId(threadId) {
+    this.setSelectedSubject(
+      threadId ? { kind: "task", id: `${threadId}` } : null,
+    );
+  }
+
+  setSelectedSubject(subject) {
     this.ensureChildren();
-    this.activeTaskList.setSelectedThreadId(threadId);
+    this.activeTaskList.setSelectedSubject(subject);
   }
 
   upsertCanonicalTask(task) {
@@ -225,6 +231,11 @@ class CaffoldTaskNavigator extends HTMLElement {
   taskFor(threadId) {
     this.ensureChildren();
     return this.activeTaskList.taskFor(threadId);
+  }
+
+  sectionFor(sectionId) {
+    this.ensureChildren();
+    return this.activeTaskList.sectionFor(sectionId);
   }
 
   recoveryFor(threadId) {
@@ -396,6 +407,7 @@ class CaffoldTaskNavigator extends HTMLElement {
       loaded: active.loaded && archived.loaded,
       loading: active.loading || archived.loading,
       error: active.error || archived.error,
+      selectedSection: active.selectedSection ?? null,
     };
   }
 

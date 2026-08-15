@@ -254,15 +254,16 @@ function taskInterfaceMetrics(page) {
     const activeDetail = document.querySelector(
       "caffold-task-detail:not([hidden])",
     );
+    const detailLayout = activeDetail.closest("caffold-detail-layout");
     const controls = {
       close: document.querySelector(".task-workspace-back"),
-      info: activeDetail.querySelector(".task-detail-info-button"),
+      info: detailLayout.querySelector(".task-detail-info-button"),
       newTask: document.querySelector(
         "caffold-task-navigator .task-list-new-task",
       ),
-      git: activeDetail.querySelector(".task-git-button"),
-      github: activeDetail.querySelector(".task-github-button"),
-      archive: activeDetail.querySelector(
+      git: detailLayout.querySelector(".task-git-button"),
+      github: detailLayout.querySelector(".task-github-button"),
+      archive: detailLayout.querySelector(
         ".task-detail-popover:popover-open .task-detail-archive-action .task-secondary-button",
       ),
       model: activeComposer.querySelector(".task-model-button"),
@@ -359,8 +360,6 @@ function taskInterfaceMetrics(page) {
       }
       return rightBounds.left - leftBounds.right;
     };
-    const taskDetailActions = activeDetail.querySelector(".task-detail-actions");
-    const taskDetailRight = activeDetail.querySelector(".task-detail-right");
     const taskRow = document.querySelector("caffold-task-navigator .task-row");
     const taskTitle = taskRow.querySelector(".task-row-title");
     const compactInset = number(
@@ -381,7 +380,7 @@ function taskInterfaceMetrics(page) {
     const worktreeGuideBodyFontSize = fontSize(worktreeGuide);
     const archiveHitTarget = verticalHitTarget(controls.archive);
     const archiveHitDebug = hitDebug(controls.archive);
-    activeDetail
+    detailLayout
       .querySelector(".task-detail-popover:popover-open")
       ?.hidePopover();
 

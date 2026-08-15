@@ -451,13 +451,14 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
 
 async function chooseLinkedWorktreeGithubList(page, kind) {
   const summary = page.locator("caffold-task-detail-summary");
+  const detailHeader = page.locator(".detail-layout-summary");
   await expect(summary).toContainText("query-plan-limit-offset");
-  const popover = summary.locator(
+  const popover = detailHeader.locator(
     "caffold-task-detail-github > .task-github-popover",
   );
-  await summary.getByRole("button", { name: "Open GitHub workspace" }).click();
+  await detailHeader.getByRole("button", { name: "Open GitHub workspace" }).click();
   await expect(popover).toBeVisible();
-  await summary
+  await detailHeader
     .locator(
       `caffold-task-detail-github button[data-github-button-action][data-review-kind="${kind}"]`,
     )
@@ -920,6 +921,35 @@ test("preserves Issue Start Task setup, focus return, and created Task selection
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
 });
 
+test("starts a Task from a Section-scoped GitHub Issue", async ({ page }) => {
+  const fixture = await installLinkedWorktreeGithubFixture(page);
+  await page.goto(
+    "/?section=fixture-section-1&surface=github&tool=issues&number=1984",
+  );
+
+  await expect(
+    page.locator("caffold-section-detail-summary h2"),
+  ).toHaveText(WORKTREE_ROOT);
+  const issueDetail = page.locator("caffold-github-issue-detail-page");
+  await expect(issueDetail).toContainText("Fresh Task-owned Issue detail");
+  const opener = issueDetail.getByRole("button", {
+    name: "Start Task for issue #1984",
+  });
+  await opener.click();
+
+  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.locator("select[name='baseRef']").selectOption("main");
+  await dialog.getByRole("button", { name: "Start Task" }).click();
+
+  await expect.poll(() => fixture.counts.taskCreates).toBe(1);
+  expect(fixture.requests.taskCreates[0].cwd).toBe(WORKTREE_ROOT);
+  expect(fixture.requests.taskCreates[0].prompt).toContain(
+    "--- BEGIN UNTRUSTED ISSUE DATA ---",
+  );
+  await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
+});
+
 test("starts a same-repository PR Task from the exact prepared head", async ({ page }, testInfo) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   const pullDetail = await openLinkedWorktreePull(page);
@@ -1134,7 +1164,7 @@ test("reloads a Task-scoped GitHub route from canonical Task context", async ({ 
   );
   const domainHeaderGeometry = await domainHeader.evaluate((header) => {
     const headerStyle = getComputedStyle(header);
-    const taskHeader = document.querySelector("caffold-task-detail-summary");
+    const taskHeader = document.querySelector(".detail-layout-summary");
     const taskHeaderStyle = getComputedStyle(taskHeader);
     const domainTitleStyle = getComputedStyle(
       header.querySelector(".task-domain-title h2"),

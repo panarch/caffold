@@ -13,7 +13,7 @@ import {
   TASK_ARCHIVED_DELETE_CONFIRMED_EVENT,
 } from "./tasks/components/archived-delete-dialog.js";
 import "./tasks/components/navigator.js";
-import "./tasks/page.js";
+import "./tasks/layout.js";
 import "./settings/navigator.js";
 import "./settings/layout.js";
 

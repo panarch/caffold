@@ -29,12 +29,12 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   const workspaceNavigation = readFrontend(
     "pages/(task-workspace)/components/navigation.js",
   );
-  const tasksPage = readFrontend("pages/(task-workspace)/tasks/page.js");
+  const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.js");
   const taskSummary = readFrontend(
-    "pages/(task-workspace)/tasks/components/detail/summary.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js",
   );
   const taskReview = readFrontend(
-    "pages/(task-workspace)/tasks/components/detail/review.js",
+    "pages/(task-workspace)/tasks/(detail)/(review)/layout.js",
   );
   const settingsWorkspace = readFrontend(
     "pages/(task-workspace)/settings/layout.js",
@@ -78,32 +78,34 @@ test("task workspace declares one shared master pane and one detail pane", () =>
 });
 
 test("Git and GitHub detail components independently own their native auto popovers", () => {
+  const detailLayout = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/layout.js",
+  );
   const taskSummary = readFrontend(
-    "pages/(task-workspace)/tasks/components/detail/summary.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js",
   );
   const git = readFrontend(
-    "pages/(task-workspace)/tasks/components/detail/summary/git.js",
+    "pages/(task-workspace)/tasks/(detail)/components/git-menu.js",
   );
   const github = readFrontend(
-    "pages/(task-workspace)/tasks/components/detail/summary/github.js",
+    "pages/(task-workspace)/tasks/(detail)/components/github-menu.js",
   );
 
-  assert.match(taskSummary, /import "\.\/summary\/git\.js"/);
-  assert.match(taskSummary, /import "\.\/summary\/github\.js"/);
+  assert.match(detailLayout, /import "\.\/components\/git-menu\.js"/);
+  assert.match(detailLayout, /import "\.\/components\/github-menu\.js"/);
   assert.match(
-    taskSummary,
+    detailLayout,
     /<caffold-task-detail-git><\/caffold-task-detail-git>/,
   );
   assert.match(
-    taskSummary,
+    detailLayout,
     /<caffold-task-detail-github><\/caffold-task-detail-github>/,
   );
-  assert.match(taskSummary, /syncGit\(\)/);
-  assert.match(taskSummary, /syncGithub\(\)/);
-  assert.match(taskSummary, /caffold:task-detail-git-intent/);
-  assert.match(taskSummary, /caffold:task-detail-github-intent/);
+  assert.match(detailLayout, /caffold:task-detail-git-intent/);
+  assert.match(detailLayout, /caffold:task-detail-github-intent/);
+  assert.doesNotMatch(taskSummary, /git-menu|github-menu|caffold-task-detail-git/);
   assert.doesNotMatch(
-    taskSummary,
+    detailLayout,
     /review-button|popoverId|popover="auto"|renderGitControl|renderGithubControl|patchReviewControls/,
   );
 
@@ -144,6 +146,80 @@ test("Git and GitHub detail components independently own their native auto popov
       /CaffoldTaskReviewButton|REVIEW_BUTTON_CONFIG|<details|<summary|role="menu(?:item)?"/,
     );
   }
+});
+
+test("common Detail owns shared surfaces while Task and Section keep subject work", () => {
+  const detailLayout = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/layout.js",
+  );
+  const taskLayout = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
+  );
+  const sectionLayout = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/(section)/layout.js",
+  );
+  const taskCreate = readFrontend(
+    "pages/(task-workspace)/tasks/components/task-create.js",
+  );
+  const globalNew = readFrontend(
+    "pages/(task-workspace)/tasks/new/page.js",
+  );
+  const tasksLayout = readFrontend(
+    "pages/(task-workspace)/tasks/layout.js",
+  );
+  const activeTaskList = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list.js",
+  );
+
+  for (const child of ["(review)", "(git)", "(github)"]) {
+    assert.ok(detailLayout.includes(`import "./${child}/layout.js"`));
+  }
+  assert.match(detailLayout, /<caffold-task-detail hidden>/);
+  assert.match(detailLayout, /<caffold-section-detail hidden>/);
+  assert.match(detailLayout, /class="detail-review-slot"/);
+  assert.match(detailLayout, /class="detail-git-slot"/);
+  assert.match(detailLayout, /class="detail-github-slot"/);
+  assert.match(detailLayout, /detailIdentityKey/);
+  assert.match(detailLayout, /CLEAN_REVIEW_CACHE_LIMIT/);
+  assert.match(detailLayout, /sectionContextKey/);
+  assert.match(detailLayout, /rebindSharedDomainContext/);
+  assert.match(tasksLayout, /reconcileSelectedSection/);
+  assert.match(activeTaskList, /selectedSection: this\.sectionFor/);
+
+  assert.match(taskLayout, /import "\.\/components\/conversation\.js"/);
+  assert.match(taskLayout, /import "\.\/components\/command-dialog\.js"/);
+  assert.match(taskLayout, /<caffold-task-conversation>/);
+  assert.match(taskLayout, /<caffold-task-command-dialog>/);
+  assert.doesNotMatch(taskLayout, /\(review\)|\(git\)|\(github\)/);
+  assert.doesNotMatch(
+    taskLayout,
+    /<caffold-task-review|<caffold-task-git-layout|<caffold-task-github-layout|<caffold-task-detail-summary/,
+  );
+
+  assert.match(sectionLayout, /import "\.\.\/\.\.\/components\/task-create\.js"/);
+  assert.match(sectionLayout, /<caffold-task-create>/);
+  assert.match(sectionLayout, /browseCwd: false/);
+  assert.match(globalNew, /import "\.\.\/components\/task-create\.js"/);
+  assert.match(globalNew, /browseCwd: true/);
+  assert.match(taskCreate, /class CaffoldTaskCreate/);
+  assert.match(taskCreate, /caffold:task-created/);
+});
+
+test("Tasks custom elements use routed owners or the nearest components namespace", () => {
+  const taskRoot = "pages/(task-workspace)/tasks/";
+  const invalidOwners = frontendJavascriptFiles()
+    .filter(([path, source]) =>
+      path.startsWith(taskRoot) && source.includes("customElements.define")
+    )
+    .filter(([path]) => {
+      const segments = path.split("/");
+      const fileName = segments.at(-1);
+      return !["page.js", "layout.js"].includes(fileName) &&
+        segments.at(-2) !== "components";
+    })
+    .map(([path]) => path);
+
+  assert.deepEqual(invalidOwners, []);
 });
 
 test("workspace brand owns the shared Tasks and Settings navigator identity", () => {
@@ -191,12 +267,12 @@ test("App Shell owns one foreground recovery UI and retry intent", () => {
     "pages/(task-workspace)/tasks/components/navigator.js",
   );
   const detail = readFrontend(
-    "pages/(task-workspace)/tasks/components/detail.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
   );
   const taskStatus = readFrontend(
     "pages/(task-workspace)/tasks/components/task-status.css",
   );
-  const tasksPage = readFrontend("pages/(task-workspace)/tasks/page.js");
+  const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.js");
 
   assert.match(appShell, /class="app-foreground-recovery"/);
   assert.match(appShell, /data-action="retry-foreground-recovery"/);
@@ -300,12 +376,12 @@ test("App Shell solely coordinates foreground recovery through public owners", (
     "pages/foreground-recovery/lifecycle.js",
   );
   const workspace = readFrontend("pages/(task-workspace)/layout.js");
-  const tasksPage = readFrontend("pages/(task-workspace)/tasks/page.js");
+  const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.js");
   const navigator = readFrontend(
     "pages/(task-workspace)/tasks/components/navigator.js",
   );
   const detail = readFrontend(
-    "pages/(task-workspace)/tasks/components/detail.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
   );
   const stream = readFrontend("pages/(task-workspace)/tasks/stream.js");
   const serviceWorker = readFrontend("service-worker.js");
@@ -442,7 +518,7 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
 
 test("active Task reordering keeps navigation, ordering, and row presentation owners bounded", () => {
   const api = readFrontend("api.js");
-  const tasksPage = readFrontend("pages/(task-workspace)/tasks/page.js");
+  const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.js");
   const navigator = readFrontend(
     "pages/(task-workspace)/tasks/components/navigator.js",
   );
@@ -542,7 +618,7 @@ test("Codex status and Task recovery keep explicit lifecycle and UI owners", () 
   const restartDialog = readFrontend(
     "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
   );
-  const tasks = readFrontend("pages/(task-workspace)/tasks/page.js");
+  const tasks = readFrontend("pages/(task-workspace)/tasks/layout.js");
   const taskRecovery = readFrontend(
     "pages/(task-workspace)/tasks/components/codex-readiness-recovery.js",
   );

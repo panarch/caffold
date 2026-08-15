@@ -62,6 +62,7 @@ class CaffoldActiveTaskList extends HTMLElement {
     this.pendingRuntimeSnapshot = null;
     this.initialRequestSettled = false;
     this.selectedThreadId = "";
+    this.selectedSectionId = "";
     this.revisionByThread = new Map();
     this.active = false;
     this.codexTaskOperations = PENDING_CODEX_TASK_OPERATIONS;
@@ -116,13 +117,25 @@ class CaffoldActiveTaskList extends HTMLElement {
   }
 
   setSelectedThreadId(threadId) {
+    this.setSelectedSubject(
+      threadId ? { kind: "task", id: `${threadId}` } : null,
+    );
+  }
+
+  setSelectedSubject(subject) {
     this.ensureState();
-    const nextThreadId = `${threadId ?? ""}`;
-    if (this.selectedThreadId === nextThreadId) {
+    const nextThreadId = subject?.kind === "task" ? `${subject.id ?? ""}` : "";
+    const nextSectionId = subject?.kind === "section" ? `${subject.id ?? ""}` : "";
+    if (
+      this.selectedThreadId === nextThreadId &&
+      this.selectedSectionId === nextSectionId
+    ) {
       return;
     }
     this.selectedThreadId = nextThreadId;
+    this.selectedSectionId = nextSectionId;
     this.syncRows();
+    this.syncSectionSelection();
     if (nextThreadId) {
       const task = this.allTasks().find(
         (candidate) => taskThreadId(candidate) === nextThreadId,
@@ -293,6 +306,14 @@ class CaffoldActiveTaskList extends HTMLElement {
       return;
     }
     event.stopPropagation();
+    if (action.dataset.taskAction === "select-section") {
+      if (!this.reorderMode) {
+        this.dispatchIntent("select-section", {
+          sectionId: action.dataset.sectionId,
+        });
+      }
+      return;
+    }
     if (action.dataset.taskAction === "retry-task-list") {
       void this.loadTasks({ force: true });
       return;
@@ -921,6 +942,19 @@ class CaffoldActiveTaskList extends HTMLElement {
     ) ?? null;
   }
 
+  sectionFor(sectionId) {
+    const section = this.sections.find(
+      (candidate) => candidate.id === `${sectionId ?? ""}`,
+    );
+    return section
+      ? {
+          id: section.id,
+          name: section.name,
+          repository: section.repository,
+        }
+      : null;
+  }
+
   recoveryFor(threadId) {
     return this.unsectioned.find(
       (task) => taskThreadId(task) === threadId && task?.recovery,
@@ -960,6 +994,7 @@ class CaffoldActiveTaskList extends HTMLElement {
       loaded: this.taskListLoaded,
       loading: this.taskListLoading || !this.initialRequestSettled,
       error: this.taskListError?.message ?? "",
+      selectedSection: this.sectionFor(this.selectedSectionId),
     };
   }
 
@@ -1133,10 +1168,7 @@ class CaffoldActiveTaskList extends HTMLElement {
       if (!group) {
         group = document.createElement("li");
         group.className = "task-repository-group";
-        group.innerHTML = `
-          <div class="task-repository-header"></div>
-          <ol class="task-list"></ol>
-        `;
+        group.innerHTML = `<ol class="task-list"></ol>`;
       }
       group.dataset.taskRepositoryKey = section.id;
       group.toggleAttribute("data-task-recovery", Boolean(section.recovery));
@@ -1190,7 +1222,26 @@ class CaffoldActiveTaskList extends HTMLElement {
         ? "Git repository"
         : "Directory";
     const label = section.label ?? sectionLabel(section.name);
-    const header = group.querySelector(":scope > .task-repository-header");
+    const expectedTag = section.recovery ? "DIV" : "BUTTON";
+    let header = group.querySelector(":scope > .task-repository-header");
+    if (header?.tagName !== expectedTag) {
+      const next = document.createElement(expectedTag.toLowerCase());
+      next.className = "task-repository-header";
+      if (next instanceof HTMLButtonElement) {
+        next.type = "button";
+        next.dataset.taskAction = "select-section";
+      }
+      group.insertBefore(next, group.querySelector(":scope > .task-list"));
+      header?.remove();
+      header = next;
+    }
+    if (!section.recovery) {
+      header.dataset.sectionId = section.id;
+      header.setAttribute(
+        "aria-current",
+        this.selectedSectionId === section.id ? "page" : "false",
+      );
+    }
     if (header.title !== section.name) {
       header.title = section.name;
     }
@@ -1267,6 +1318,17 @@ class CaffoldActiveTaskList extends HTMLElement {
       if (row) {
         this.syncRow(row, task, "unsectioned");
       }
+    }
+  }
+
+  syncSectionSelection() {
+    for (const header of this.querySelectorAll(
+      ":scope > .task-list-content .task-repository-header[data-section-id]",
+    )) {
+      header.setAttribute(
+        "aria-current",
+        header.dataset.sectionId === this.selectedSectionId ? "page" : "false",
+      );
     }
   }
 

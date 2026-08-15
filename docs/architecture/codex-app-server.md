@@ -201,18 +201,21 @@ truth for:
 Caffold derives repository and Git worktree context from `thread.cwd` on every
 live response. For Active Tasks, Caffold owns local group identity,
 Thread-to-Section membership, and dense within-Section order. A Section stores
-only its local ID and RootedFs-logical repository/cwd path. Each Task still
-retains its own canonical worktree root for Integrated Review and its Task-owned
-Git/GitHub children. Outside Git, cwd remains useful as the thread's creation
-and file-review context, but it does not filter Tasks.
+only its Managed Section ID and RootedFs-logical repository/cwd path. Each Task
+has its own canonical worktree root for shared Integrated Review, Git, and
+GitHub when that Task is the active Detail subject. Outside Git, cwd remains
+useful as the thread's creation and file-review context, but it does not filter
+Tasks.
 
 The derived worktree context contains only RootedFs-relative paths plus live
 branch, HEAD, linked-worktree, and relative-cwd information. Caffold does not
-persist that derived projection in Codex metadata. Task Detail uses it to open
-Integrated Review at the derived worktree root, review Working Tree/current
-Branch files and diffs, and bind Git/GitHub children to the same canonical Task
-context. The selected `threadId` and its canonical Task response define that
-binding across every Task Detail child.
+persist that derived projection in Codex metadata. Task Detail owns the
+canonical Task response and publishes it to the common Detail owner. The common
+Detail uses that snapshot to open Integrated Review at the derived worktree root,
+review Working Tree/current Branch files and diffs, and bind Git/GitHub to the
+same canonical Task context. A selected Section instead supplies its locally
+owned logical path and repository capability without synthesizing Codex Task
+state.
 
 Separately, `managed_worktrees` records ownership and interrupted-operation
 recovery for worktrees Caffold explicitly creates. `isolate_current_task` moves
@@ -221,7 +224,7 @@ recreate only that verified owned path. This record never turns an external
 cwd-derived worktree into a Caffold-owned resource. See
 [Managed Worktree Lifecycle](worktree-lifecycle.md).
 Caffold persists managed-thread membership and display names, nullable Section
-placement, managed Section IDs and logical paths, observed recency,
+placement, Managed Section IDs and logical paths, observed recency,
 Caffold-only open/seen timestamps, and optional composer settings in GlueSQL
 Redb. It does not persist thread status, active turn, preview, cwd, Codex
 timestamps, event summaries, turns, transcript items, approvals, or derived
@@ -297,19 +300,21 @@ state:
   revision, and a detail revision never advances or rejects a list revision.
 
 The remaining components project or collect UI state without acquiring Codex
-status ownership. `caffold-task-detail-summary` renders the Task header,
-composes its controls, and raises review/interrupt intents without executing
-Codex or GitHub requests. The `caffold-task-detail-git` and
+status ownership. `caffold-detail-layout` binds a Task or Section subject to the
+shared review surfaces. `caffold-task-detail-summary` renders the Task header
+and raises Task intents without executing Codex or GitHub requests. The
+`caffold-task-detail-git` and
 `caffold-task-detail-github` leaf components each own their native popover
 invoker, action surface, disclosure state, and action intent.
 `caffold-task-conversation` renders the canonical task and events and may
 request older history or approval actions through intents.
 `caffold-task-composer` owns draft, image, picker, and focus state, but emits a
-submission intent for Detail or New Task to execute. `caffold-task-review`
-receives read-only Task/event context and exclusively owns Working Tree/current
-Branch navigation, selected path, file/diff/source state, and its root watcher.
-Task-owned Git and GitHub children own only their domain API state and receive
-repository context as a snapshot from Detail. None of these components may
+submission intent for its Task or Task Create owner to execute.
+`caffold-task-review` receives read-only subject context and exclusively owns
+Working Tree/current Branch navigation, selected path, file/diff/source state,
+and its root watcher. Shared Git and GitHub children own only their domain API
+state and receive repository context as a snapshot from the common Detail.
+None of these components may
 synthesize, overwrite, or restore
 `ThreadStatus`, active flags, turn status, or active-turn control pointers.
 
@@ -424,9 +429,11 @@ Archived canonical-read failures retain their existing explicit error behavior.
 
 The Tasks surface is a global list rather than a cwd filter. New Task inherits
 the selected Task's canonical repository root when available, then the
-bootstrap initial path. Task-scoped Git and GitHub routes carry `threadId` and
-derive repository/worktree context from canonical Task state rather than a
-routed cwd or local project registry.
+bootstrap initial path. Section New uses its locally managed logical path.
+Task-scoped Git and GitHub routes carry `threadId` and derive
+repository/worktree context from canonical Task state; Section routes carry a
+Managed Section ID and resolve the same shared surfaces from the navigator
+projection.
 
 ## Process Ownership
 

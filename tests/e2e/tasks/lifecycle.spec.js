@@ -189,7 +189,7 @@ test("background Task tabs release list and detail streams", async ({
   });
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
-  await expect(page.locator("caffold-task-detail")).toContainText(
+  await expect(page.locator("caffold-detail-layout")).toContainText(
     "Background stream lifecycle",
   );
   await expect
@@ -1469,7 +1469,7 @@ test("shows one viewport recovery notice without moving Task surfaces", async ({
 
   for (const state of ["reconnecting", "unavailable"]) {
     await tasksPage.evaluate((element, nextState) => {
-      element.taskDetail().detailStream.transport.setState(nextState);
+      element.taskDetail().taskDetail().detailStream.transport.setState(nextState);
     }, state);
     await expect(notice).toBeVisible();
     await expect(notice).toHaveAttribute("data-recovery-state", state);
@@ -1489,7 +1489,7 @@ test("shows one viewport recovery notice without moving Task surfaces", async ({
     expect(await elementGeometry(composer)).toEqual(initialComposer);
   }
   await tasksPage.evaluate((element) => {
-    element.taskDetail().detailStream.transport.setState("ready");
+    element.taskDetail().taskDetail().detailStream.transport.setState("ready");
   });
   await expect(notice).toBeHidden();
   expect(await elementGeometry(conversation)).toEqual(initialConversation);
@@ -1537,7 +1537,7 @@ test("routes the single viewport Retry through app-shell foreground recovery", a
       ({ listState, detailState }) => {
         const workspace = document.querySelector("caffold-task-workspace");
         workspace.taskNavigator.taskListStream.setState(listState);
-        workspace.tasksPage.taskDetail().detailStream.transport.setState(detailState);
+        workspace.tasksPage.taskDetail().taskDetail().detailStream.transport.setState(detailState);
       },
       { listState: list, detailState: detail },
     );

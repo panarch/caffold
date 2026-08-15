@@ -1,9 +1,10 @@
 # Frontend Architecture
 
-The frontend is a small Light-DOM Web Component application. Its primary
-ownership rule is Task-first: application navigation enters one Task workspace,
-and a selected Task owns its Conversation, Integrated Review, Git, and GitHub
-children.
+The frontend is a small Light-DOM Web Component application. Application
+navigation enters one Task workspace. Its Tasks Detail layout binds a Task or
+Section subject and owns the shared Integrated Review, Git, and GitHub
+surfaces; subject-specific work stays below the matching Task or Section
+layout.
 
 ## Source organization
 
@@ -40,25 +41,29 @@ directories, an expanded module directory contains no `page.js` or `layout.js`.
 caffold-app-shell
 |-- caffold-task-workspace
     |-- Task navigator
-    |-- New Task
-    |   `-- Directory Picker
-    |-- Task Detail
-    |   |-- Conversation
-    |   |-- Integrated Review
-    |   |-- Git
-    |   |   |-- Compare
-    |   |   `-- Log
-    |   `-- GitHub
-    |       |-- Issues
-    |       `-- Pull Requests
+    |-- Tasks
+    |   |-- Global New Task
+    |   |   `-- Directory Picker
+    |   `-- Detail Layout
+    |       |-- Task subject
+    |       |   `-- Conversation
+    |       |-- Section subject
+    |       |   `-- Fixed-context New Task
+    |       |-- Integrated Review
+    |       |-- Git
+    |       |   |-- Compare
+    |       |   `-- Log
+    |       `-- GitHub
+    |           |-- Issues
+    |           `-- Pull Requests
     `-- Settings
 |-- caffold-build-mismatch-alert
 `-- caffold-update-dialog
 ```
 
-Task Workspace stays mounted while Task Detail switches among Conversation,
-Integrated Review, Git, and GitHub. The selected `threadId` remains the
-canonical Task identity throughout those child transitions.
+Task Workspace stays mounted while Tasks switches among home, Global New, Task
+Detail, and Section Detail. A Task `threadId` or Managed Section ID is the
+subject identity throughout shared child transitions.
 
 ## App Shell
 
@@ -154,9 +159,10 @@ the worker posts its validated route to that page; the page applies it if needed
 and uses the same foreground recovery entrypoint. Navigated and newly opened
 documents continue through normal bootstrap.
 
-All known routes are forwarded to `caffold-task-workspace`. Task Detail owns
-the selected child and Task context; Git and GitHub own their layout instances,
-repository reconciliation, and domain-specific Back and Refresh behavior.
+All known routes are forwarded to `caffold-task-workspace`. Tasks resolves the
+active Task or Section subject; its common Detail owns shared child instances
+and context binding. Git and GitHub own repository reconciliation and
+domain-specific Back and Refresh behavior after activation.
 
 The Rust shell fallback serves only the known Tasks and Settings frontend
 routes. Every other frontend path receives the general unknown-route response.
@@ -206,42 +212,59 @@ The macOS wrapper may consume the same backend status and capability APIs for a
 native compact surface. The backend remains the shared owner of meaning and
 mutation semantics; neither client recreates those rules locally.
 
-## Tasks Page and Task Detail
+## Tasks Layout and Detail Layout
 
-`caffold-tasks-page` owns the home/new/detail choice and connects the Task
-navigator. It identifies any route with `threadId` as Task Detail, including
-Git and GitHub domain routes.
+`caffold-tasks-page` owns the home, Global New, Task Detail, and Section Detail
+choice and connects the Task navigator. Task routes use their path schema. A
+Section route is a root query route whose Managed Section ID is resolved from
+the navigator projection; a missing Section replaces the destination with Tasks
+home.
 
-`caffold-task-detail` owns:
+`caffold-detail-layout` owns:
 
-- the selected `threadId` and canonical Task snapshot;
-- the selected outer surface;
-- Task-scoped route intents;
-- the selected Task's Codex event stream;
-- Task-level Summary and Conversation state;
-- child creation, activation, deactivation, and disposal.
+- the active Task or Section subject identity;
+- shared Summary actions and the subject-aware view switch;
+- shared Integrated Review, Git, and GitHub child activation;
+- translation between shared child intents and Task or Section routes;
+- a bounded Integrated Review cache keyed by subject identity.
 
-A deep route is prepared synchronously before canonical Task loading. Task
-Detail loads the Task independently of navigator pagination, derives the
-worktree/repository snapshot, and activates the requested domain only after
-that snapshot is available. Errors remain in the requested shell.
+`caffold-task-detail` is the canonical owner of the selected Task
+snapshot, Codex event stream, Conversation, Command dialog, follow-up Composer,
+and Task mutations. It publishes a subject snapshot upward; it does not mount
+Integrated Review, Git, GitHub, or their Summary controls.
 
-The browser reads only `readiness.state`, `blocksTaskOperations`, and diagnostic
-facts supplied by the backend. The compact workspace Settings action reflects
-that state and enters Codex Settings directly while setup is required.
+`caffold-section-detail` owns fixed-context Task creation for one Section. Its
+cwd is the Section's managed logical path, it does not expose directory
+browsing, and switching Section context replaces its Task Create instance.
+Global New and Section New compose the same Tasks-owned `caffold-task-create`
+behavior with distinct cwd and chrome contracts.
+
+A Task deep route is prepared before canonical Task loading. Shared repository
+surfaces activate only after the Task snapshot is available. Section repository
+capability comes from the local Section projection and needs no backend Section
+detail endpoint. The selected Section follows projection changes to its logical
+path and repository capability. Same-subject surface switches retain safe local
+DOM state; subject or repository-context changes hard-rebind external context.
+If a Section loses repository capability, an active repository surface returns
+to its fixed-context New Task route.
+
+The browser reads only `readiness.state`, `blocksTaskOperations`, and
+diagnostic facts supplied by the backend. The compact workspace Settings action
+reflects that state and enters Codex Settings directly while setup is required.
 
 Same-Task switches do not interrupt or recreate the Task stream. A Task switch
-invalidates Task and child generations before the new Task can render. Task
-Summary sends intents upward and does not own GitHub availability requests.
+invalidates Task generations before the new Task can render. Task and Section
+Summary components send intents upward and do not own repository requests.
 
-## Task Detail children
+## Detail children
 
 ### Conversation
 
 Conversation owns transcript rendering, disclosure and scroll state, and the
-follow-up Composer. Stateful children are preserved by identity through Task
-Detail's incremental shell updates. Moving from Tasks to Settings ends active
-editing and transport work without destroying a retained Composer draft.
+follow-up Composer. It exists only under the Task subject. Stateful children
+are preserved by Task identity through incremental shell updates. Moving from
+Tasks to Settings ends active editing and transport work without destroying a
+retained Composer draft.
 
 ### Integrated Review
 
@@ -254,15 +277,15 @@ review. It owns:
 - Changes/Files and Diff/Source reconciliation;
 - pane width, disclosure, selection, and scroll.
 
-Integrated Review uses a bounded per-thread component cache. Disconnecting an
-inactive entry invalidates its requests and releases its root watch. Its
-selected path and current-branch root watch remain unique to that cached review
-instance.
+Integrated Review uses a bounded cache keyed by explicit Task or Section
+identity. Disconnecting an inactive entry invalidates its requests and releases
+its root watch. Selected path and current-branch root watch remain unique to
+that cached review instance.
 
 ### Git
 
-`caffold-task-git-layout` is a direct Task Detail child under the pathless
-`detail/(git)` directory. It owns arbitrary Compare and bounded Log modes,
+`caffold-task-git-layout` is a direct shared Detail child under the pathless
+`tasks/(detail)/(git)` directory. It owns arbitrary Compare and bounded Log modes,
 repository ref status, canonical reconciliation, domain-local routes, request
 generations, and a refs-only watch while active.
 
@@ -272,8 +295,8 @@ source state.
 
 ### GitHub
 
-`caffold-task-github-layout` is a direct Task Detail child under
-`detail/(github)`. It owns GitHub availability, Issues/Pulls mode, route-local
+`caffold-task-github-layout` is a direct shared Detail child under
+`tasks/(detail)/(github)`. It owns GitHub availability, Issues/Pulls mode, route-local
 list/detail/files selection, canonical reconciliation, nested request
 generations, domain-local Back intents, and the shared GitHub Task Start dialog.
 Issue and Pull Request detail emit the same source-neutral intent with canonical
@@ -289,19 +312,18 @@ as proof that remote data is current.
 
 ### Activation contract
 
-Connection and activation are separate concepts for Task domain children.
+Connection and activation are separate concepts for shared Detail domain children.
 
 - `prepareRoute(route)` selects DOM and chrome without APIs.
-- `activate(route, snapshot)` binds canonical Task repository context and
+- `activate(route, snapshot)` binds canonical Task or Section repository context and
   performs a fresh reconciliation.
 - `deactivate()` invalidates requests and releases watches/timers while keeping
   safe DOM-local state.
 - disconnection/destroy performs deactivation plus instance cleanup.
 
-Within one Task, Git and GitHub instances stay mounted in hidden sibling slots.
-Switching Tasks destroys both instances, so their DOM lifetime is bounded to
-the selected Task. A repository/worktree context change within the same Task is
-a hard data-rebind boundary even though the outer surface stays selected.
+Git and GitHub instances stay mounted in hidden shared sibling slots while the
+Detail layout is connected. A subject or repository-context change is a hard
+data-rebind boundary even though the outer surface may stay selected.
 
 Every async writer checks an owner generation, route identity, context identity,
 or nested request token. A late response cannot reactivate an inactive child,
@@ -313,12 +335,12 @@ Parent-to-child data crosses as snapshots or public methods. Child actions
 cross upward as intents.
 
 ```text
-canonical Task response
-        |
-        v
-Task Detail --context snapshot--> active child
-        ^                              |
-        `-------- route intent --------'
+Task snapshot or local Section projection
+                  |
+                  v
+          Detail Layout --context snapshot--> active child
+                  ^                              |
+                  `-------- route intent --------'
 ```
 
 No global store coordinates this hierarchy. Canonical Task, Git, GitHub, and
@@ -328,18 +350,21 @@ revision lifetimes are independent.
 ## Route ownership
 
 `frontend/navigation-routes.js` owns the pure schema and metadata. App Shell
-forwards; Task Workspace selects Tasks/Settings; Task Detail selects the outer
-Task child; Git and GitHub select their domain-local modes and leaves.
+forwards; Task Workspace selects Tasks/Settings; Tasks selects its subject; the
+common Detail layout selects the subject or shared child; Git and GitHub select
+their domain-local modes and leaves.
 
 Task-scoped Git/GitHub routes always carry `threadId` and never route `cwd`.
-Task Detail derives repository context from canonical Task state. See
+Section routes carry a Managed Section ID in the root query and resolve
+repository context from the navigator projection. See
 [Navigation Routing](navigation.md) for exact route and Back contracts.
 
 ## New Task and directories
 
-New Task owns its cwd, draft, and choices. The Directory Picker is a transient
-child that returns a selected folder directly to New Task. The selected
-directory is represented by New Task state and its route.
+Global New owns its editable cwd and Directory Picker. Section New owns a fixed
+cwd and exposes no picker. Both mount the same Tasks-owned Task Create behavior,
+which owns the Composer, request, and error lifecycle. Only Global New represents
+its selected directory in `/tasks/new?cwd=...`.
 
 Reusable RootedFs capabilities remain shared:
 
@@ -374,59 +399,66 @@ frontend/
 |-- pages/
 |   |-- layout.js
 |   |-- foreground-recovery.js
-|   |-- foreground-recovery/
-|   |   |-- browser-signals.js
-|   |   |-- lifecycle.js
-|   |   `-- machine.js
+|   |-- foreground-recovery/...
 |   |-- pwa-update-lifecycle.js
-|   |-- pwa-update-lifecycle/
-|   |   |-- machine.js
-|   |   `-- runtime.js
+|   |-- pwa-update-lifecycle/...
 |   `-- (task-workspace)/
 |       |-- layout.js
 |       |-- codex-status.js
-|       |-- codex-status/
-|       |   |-- lifecycle.js
-|       |   |-- model.js
-|       |   |-- runtime-restart-lifecycle.js
-|       |   `-- components/
-|       |       `-- runtime-restart-dialog.js
-|       |-- settings/
-|       |   `-- codex/
-|       |       `-- page.js
+|       |-- codex-status/...
+|       |-- settings/...
 |       `-- tasks/
-|           |-- page.js
-|           `-- components/
-|               |-- codex-readiness-recovery.js
-|               |-- detail.js
-|               `-- detail/
-|                   |-- review.js
-|                   |-- review/changes-tree.js
-|                   |-- (git)/
-|                   |   |-- layout.js
-|                   |   |-- compare/page.js
-|                   |   `-- (log)/...
-|                   `-- (github)/
-|                       |-- layout.js
-|                       |-- components/task-start-dialog.js
-|                       |-- components/task-start-dialog/
-|                       |   |-- github-issue.js
-|                       |   `-- github-pull.js
-|                       |-- (issues)/...
-|                       `-- (pulls)/...
+|           |-- layout.js
+|           |-- new/
+|           |   |-- page.js
+|           |   `-- components/directory-picker.js
+|           |-- recovery/page.js
+|           |-- components/
+|           |   |-- navigator.js
+|           |   |-- active-task-list.js
+|           |   |-- task-create.js
+|           |   `-- composer.js
+|           `-- (detail)/
+|               |-- layout.js
+|               |-- components/
+|               |   |-- detail-view-switch.js
+|               |   |-- git-menu.js
+|               |   `-- github-menu.js
+|               |-- (task)/
+|               |   |-- layout.js
+|               |   |-- stream.js
+|               |   `-- components/
+|               |       |-- summary.js
+|               |       |-- conversation.js
+|               |       |-- command-dialog.js
+|               |       `-- conversation/...
+|               |-- (section)/
+|               |   |-- layout.js
+|               |   `-- components/summary.js
+|               |-- (review)/layout.js
+|               |-- (git)/
+|               |   |-- layout.js
+|               |   |-- compare/page.js
+|               |   `-- (log)/...
+|               `-- (github)/
+|                   |-- layout.js
+|                   |-- components/task-start-dialog.js
+|                   |-- (issues)/...
+|                   `-- (pulls)/...
 `-- components/
     |-- file-navigator.js
-    |-- file-navigator/list.js
     |-- file-viewer.js
     |-- git-compare-browser.js
     `-- review-panel-resizer.js
 ```
 
-A directory with its own `page.js`, such as `compare`, remains a leaf surface.
-The adjacent `codex-status.js` and `codex-status/` pair instead declares one
-expanded non-page module. Names describe the current owner and role: nested Git
-Log and GitHub Issues/Pulls layouts own domain state, while reusable components
-stay outside `pages`.
+Parenthesized directories are pathless ownership nodes. A directory with its
+own `page.js`, such as Global New or Git Compare, remains a leaf surface.
+Routed `page.js` and `layout.js` files register the page or layout owner they
+represent; child Web Components use the nearest `components/` namespace. Names
+describe the current owner and role: Task-only Conversation and Command stay
+below `(task)`; shared review and repository domains are siblings below
+`(detail)`; reusable leaves stay outside `pages`.
 
 ## Styling and assets
 
