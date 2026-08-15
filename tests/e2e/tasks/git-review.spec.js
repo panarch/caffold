@@ -189,13 +189,13 @@ async function installTaskGitFixture(page, tasks = [taskRecord()]) {
 }
 
 async function chooseGitTool(page, kind) {
-  const summary = page.locator("caffold-task-detail-summary");
-  const popover = summary.locator(
+  const detailHeader = page.locator(".detail-layout-summary");
+  const popover = detailHeader.locator(
     "caffold-task-detail-git > .task-git-popover",
   );
-  await summary.getByRole("button", { name: "Open Git workspace" }).click();
+  await detailHeader.getByRole("button", { name: "Open Git workspace" }).click();
   await expect(popover).toBeVisible();
-  await summary
+  await detailHeader
     .locator(
       `caffold-task-detail-git button[data-git-button-action][data-review-kind="${kind}"]`,
     )
@@ -277,7 +277,7 @@ test("reloads Task-scoped Compare and releases its refs watch while inactive", a
       const headerStyle = getComputedStyle(header);
       const paddingLeft = Number.parseFloat(headerStyle.paddingLeft);
       const paddingRight = Number.parseFloat(headerStyle.paddingRight);
-      const taskHeader = document.querySelector("caffold-task-detail-summary");
+      const taskHeader = document.querySelector(".detail-layout-summary");
       const taskHeaderStyle = getComputedStyle(taskHeader);
       const domainTitleStyle = getComputedStyle(
         header.querySelector(".task-domain-title h2"),
@@ -378,6 +378,29 @@ test("reloads Task-scoped Compare and releases its refs watch while inactive", a
   await page.reload();
   await expect(page.locator("caffold-git-compare-page")).toContainText("example.rs");
   await expect.poll(() => counts.compare).toBe(3);
+});
+
+test("reloads Section-scoped Log from the Section repository context", async ({
+  page,
+}) => {
+  const counts = await installTaskGitFixture(page);
+  await page.goto("/?section=fixture-section-1&surface=git&tool=log");
+
+  await expect(page).toHaveURL(
+    "/?section=fixture-section-1&surface=git&tool=log",
+  );
+  await expect(
+    page.locator("caffold-section-detail-summary h2"),
+  ).toHaveText(ROOT_PATH);
+  const layout = page.locator("caffold-task-git-layout");
+  await expect(layout).toBeVisible();
+  await expect(page.locator("caffold-git-log-list-page")).toContainText(
+    COMMIT.subject,
+  );
+  await expect.poll(() => counts.log).toBe(1);
+  await expect.poll(() =>
+    layout.evaluate((element) => element.repository?.rootPath ?? null)
+  ).toBe(ROOT_PATH);
 });
 
 test("keeps the loaded Git route stable across unrelated Task stream updates", async ({
@@ -481,7 +504,7 @@ test("navigates Compare files and Log commits with deterministic domain Back", a
   await expect(page.locator("caffold-git-log-list-page")).toBeVisible();
 });
 
-test("destroys the Git child when the selected Task changes", async ({ page }) => {
+test("deactivates and rebinds the shared Git child when the selected Task changes", async ({ page }) => {
   const other = taskRecord("thread_task_git_other");
   await installTaskGitFixture(page, [taskRecord(), other]);
   await page.goto(`/tasks/${THREAD_ID}/git/log`);
@@ -498,7 +521,8 @@ test("destroys the Git child when the selected Task changes", async ({ page }) =
   }
   await otherTask.click();
   await expect(page).toHaveURL(`/tasks/${other.threadId}`);
-  await expect(page.locator('caffold-task-git-layout[data-test-identity="first-task"]')).toHaveCount(0);
+  await expect(layout).toBeHidden();
+  await expect(layout).not.toHaveAttribute("data-active", "true");
 });
 
 test("stops an older Compare activation before it opens a file after a Log route wins", async ({

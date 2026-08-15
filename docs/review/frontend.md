@@ -94,16 +94,19 @@ Test deep paths, unchanged and deleted files, clean scopes, long refs, large
 change sets, appearance extremes, and browser zoom rather than validating only
 the default happy path.
 
-Task Detail is the outer activation owner. Conversation, Integrated Review,
-Git, and GitHub are sibling surfaces. Integrated Review alone owns Working
+The Tasks Detail layout is the outer activation owner. It binds either a Task
+or Section subject and owns the shared Integrated Review, Git, and GitHub
+sibling surfaces. Conversation belongs to the Task subject; fixed-context New
+Task belongs to the Section subject. Integrated Review alone owns Working
 Tree/current-Branch selection and its root watch. Git is limited to arbitrary
 Compare and bounded Log, while GitHub owns its remote availability and data.
 
-Within one Task, a domain child may remain mounted while hidden, but mounting
-does not grant an active lifetime. Deactivation must invalidate requests and
-release watchers or timers. Reactivation must reconcile canonical data before
-calling retained DOM current. Switching Tasks destroys Git/GitHub instances,
-bounding each domain DOM lifetime to the selected Task.
+Review state is cached by explicit subject identity, not by whichever subject
+is currently visible. Same-subject surface switches may retain safe DOM-local
+state, while an identity change must hard-rebind external data. A hidden child
+has no active lifetime: deactivation invalidates requests and releases watchers
+or timers, and reactivation reconciles canonical data before treating retained
+DOM as current. Keep inactive caches bounded.
 
 ## Web Components And CSS
 
@@ -135,11 +138,12 @@ placement at the same boundary as the visual change.
 When one frontend module grows beyond a single file, use an adjacent same-stem
 directory: `name.js` and `name/` form one ownership boundary. `name.js` is the
 primary public entry point for non-visual behavior. `name/` contains the
-module's private implementation. The only conventionally visible paths below
-it are Web Component entry points directly under a `components/` namespace at
-the relevant ownership boundary, as defined below. `index.js` has no special
-role in this convention. The implementation directory must not contain
-`page.js` or `layout.js`; those names remain page-ownership markers.
+module's private implementation. Routed `page.js` and `layout.js` files are
+ownership entry points rather than private implementation. The only other
+conventionally visible paths below a boundary are Web Component entry points
+directly under its `components/` namespace, as defined below. `index.js` has no
+special role in this convention. A same-stem private implementation directory
+must not contain `page.js` or `layout.js`.
 
 Apply import rules at the ownership boundary rather than by counting directory
 levels:
@@ -178,13 +182,14 @@ build inventories rather than runtime feature consumers.
 
 ### Component Ownership And Lifecycles
 
-`components/` is the exclusive structural namespace for Web Component entry
-points at its owning boundary. Any production module that defines or registers
-a custom element must be an entry point directly under the nearest owner's
-`components/` directory, and every such entry point must define or register a
-custom element. Production modules in every other location, including a
-component's same-stem private directory, must not define or register custom
-elements.
+A routed `page.js` or `layout.js` may define and register exactly the custom
+element that represents that page or layout owner. Every other Web Component
+entry point must live directly under the nearest owner's `components/`
+directory, and every such entry point must define or register a custom element.
+Page and layout owners import child component entry points; they must not define
+or register those child elements themselves. Production modules in every other
+location, including a component's same-stem private directory, must not define
+or register custom elements.
 
 A Web Component owns its DOM, focus or interaction state, markup, and any
 scoped CSS. Its path makes the registration-bearing module distinguishable at
@@ -444,10 +449,10 @@ the same change. Prefer ownership and failure boundaries over arbitrary
 line-count limits: a long fixture containing one coherent wire contract can be
 valid, while a short test that combines unrelated owners is not.
 
-Task-owned Git and GitHub behavior belongs in focused specs below
+Tasks Detail Git and GitHub behavior belongs in focused specs below
 `tests/e2e/tasks/`. App Shell coverage should assert only application-lifetime
-coordination and route/asset boundaries. Active Task behavior must be exercised
-through fixtures owned by its Task surface.
+coordination and route/asset boundaries. Task and Section behavior must be
+exercised through fixtures owned by their Tasks surface.
 
 ## Frontend Verification
 

@@ -68,10 +68,10 @@ test("normalizes a non-Git task to Files and Source without hiding why", async (
   );
   await expect(taskReview).toContainText("Git review is unavailable for this task.");
   await expect(
-    tasksPage.locator('caffold-task-detail-summary button[data-review-scope="working"]'),
+    tasksPage.locator('caffold-detail-view-switch button[data-detail-view="working"]'),
   ).toHaveCount(0);
   await expect(
-    tasksPage.locator('caffold-task-detail-summary button[data-review-scope="branch"]'),
+    tasksPage.locator('caffold-detail-view-switch button[data-detail-view="branch"]'),
   ).toHaveCount(0);
   await expect(taskReview.locator('[data-review-value="changes"]')).toBeHidden();
   await expect(taskReview.locator('[data-review-value="diff"]')).toBeHidden();

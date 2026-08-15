@@ -155,12 +155,37 @@ test("backend review policy requires owner-inline Rust unit tests", () => {
   assert.doesNotMatch(policy, /test ownership is only partially aligned/);
 });
 
-test("frontend review policy follows Task-first test ownership", () => {
+test("frontend review policy follows Tasks Detail subject ownership", () => {
   const policy = readFileSync(
     resolve(repoRoot, "docs/review/frontend.md"),
     "utf8",
   );
-  assert.match(policy, /Task-owned Git and GitHub behavior belongs/);
+  assert.match(policy, /Tasks Detail Git and GitHub behavior belongs/);
   assert.match(policy, /App Shell coverage should assert only application-lifetime/);
-  assert.match(policy, /Active Task behavior must be exercised\s+through fixtures owned/);
+  assert.match(policy, /Task and Section behavior must be\s+exercised through fixtures owned/);
+  assert.match(policy, /A routed `page\.js` or `layout\.js` may define and register exactly/);
+  assert.match(policy, /must not define\s+or register those child elements themselves/);
+});
+
+test("product and architecture docs follow common Detail subject ownership", () => {
+  const read = (path) => readFileSync(resolve(repoRoot, path), "utf8");
+  const readme = read("README.md");
+  const workflows = read("docs/product/workflows.md");
+  const liveUpdates = read("docs/architecture/live-updates.md");
+  const codexArchitecture = read("docs/architecture/codex-app-server.md");
+  const frontendArchitecture = read("docs/architecture/frontend.md");
+  const navigation = read("docs/architecture/navigation.md");
+
+  assert.match(readme, /repository-backed Tasks and Sections share/);
+  assert.match(workflows, /Managed Section/);
+  assert.match(workflows, /Task or Section GitHub surface/);
+  assert.match(liveUpdates, /common Detail keeps one Git and one\s+GitHub instance mounted/);
+  assert.doesNotMatch(liveUpdates, /Switching Tasks destroys/);
+  assert.doesNotMatch(codexArchitecture, /Task-owned Git and GitHub children/);
+  for (const document of [frontendArchitecture, navigation, codexArchitecture]) {
+    assert.match(document, /Managed Section ID/);
+    assert.doesNotMatch(document, /local Section id/i);
+    assert.doesNotMatch(document, /local-section-id/i);
+  }
+  assert.match(navigation, /<managed-section-id>/);
 });

@@ -103,7 +103,7 @@ test("reopens the selected Review scope at its last semantic route", async ({
   await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}`);
 
-  await tasksPage.locator('button[data-review-scope="branch"]').click();
+  await tasksPage.locator('button[data-detail-view="branch"]').click();
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?scope=branch&nav=files&view=source&file=planner.rs&base=origin%2Fmain`,
   );
@@ -146,7 +146,7 @@ test("keeps Task view and pane controls mounted and focused through live updates
     .click();
 
   await tasksPage.evaluate((tasks) => {
-    tasks.querySelector('button[data-review-scope="working"]').stableControlProbe = true;
+    tasks.querySelector('button[data-detail-view="working"]').stableControlProbe = true;
     const review = tasks.querySelector("caffold-task-review");
     review.querySelector('[data-review-value="files"]').stableControlProbe = true;
     const viewerControl = review.querySelector('[data-review-value="diff"]');
@@ -167,7 +167,7 @@ test("keeps Task view and pane controls mounted and focused through live updates
 
   expect(
     await tasksPage.evaluate((tasks) => {
-      const scope = tasks.querySelector('button[data-review-scope="working"]');
+      const scope = tasks.querySelector('button[data-detail-view="working"]');
       const review = tasks.querySelector("caffold-task-review");
       const navigator = review.querySelector('[data-review-value="files"]');
       const viewer = review.querySelector('[data-review-value="diff"]');
@@ -405,8 +405,8 @@ test("rejects a late file navigator response while Review is inactive", async ({
   await expect
     .poll(() =>
       tasksPage.evaluate((element, threadId) => {
-        const detail = element.querySelector("caffold-task-detail");
-        const review = detail.reviewComponents.get(threadId);
+        const detail = element.querySelector("caffold-detail-layout");
+        const review = detail.reviewComponents.get(`task:${threadId}`);
         return review.fileNavigator().loadedDirectoryPath;
       }, taskScenario.threadId),
     )

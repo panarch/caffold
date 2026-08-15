@@ -422,7 +422,7 @@ test("reconciles an option-only follow-up to canonical Normal after Task switchi
   await expect(page).toHaveURL("/tasks/thread_option_b");
   expect(
     await tasksPage.evaluate((element) => {
-      const detail = element.taskDetail();
+      const detail = element.taskDetail().taskDetail();
       const composer = detail.followUpComposers.get("thread_option_a");
       return {
         restorable: composer.hasRestorableState(),

@@ -52,11 +52,33 @@ caffold-active-task-list {
     align-items: center;
     gap: 0.4375rem;
     min-height: var(--interface-space-14);
-    padding: 0.1875rem 0.5625rem;
-    border-left: 3px solid transparent;
+    padding: 0.1875rem 0.5625rem 0.1875rem var(--interface-space-6);
+    width: 100%;
+    border: 0;
     background: transparent;
     color: var(--muted);
+    font-family: inherit;
     font-size: var(--task-group-font-size);
+    text-align: start;
+  }
+
+  & button.task-repository-header {
+    cursor: pointer;
+  }
+
+  & button.task-repository-header:hover {
+    background: var(--surface-muted);
+    color: var(--text);
+  }
+
+  & button.task-repository-header:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+
+  & button.task-repository-header[aria-current="page"] {
+    background: var(--selection-bg);
+    color: var(--text);
   }
 
   & .task-repository-icon {

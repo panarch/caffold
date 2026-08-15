@@ -11,9 +11,9 @@ function readFrontend(path) {
 test("review file workspaces share one single-pane boundary", () => {
   const layoutStyles = [
     "components/git-compare-browser.css",
-    "pages/(task-workspace)/tasks/components/detail/review/changes-tree.css",
-    "pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/page.css",
-    "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/page.css",
+    "pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.css",
+    "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.css",
+    "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.css",
   ];
   for (const path of layoutStyles) {
     const source = readFrontend(path);
@@ -31,7 +31,7 @@ test("review file workspaces share one single-pane boundary", () => {
 
   const behaviorSources = [
     "components/git-compare-browser.js",
-    "pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/page.js",
+    "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js",
   ];
   for (const path of behaviorSources) {
     const source = readFrontend(path);

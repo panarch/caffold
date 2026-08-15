@@ -16,10 +16,8 @@ export async function openCompletedTaskForReview(page, options = {}) {
 }
 
 export async function selectTaskReviewScope(tasksPage, scope) {
-  const summary = tasksPage.locator("caffold-task-detail-summary");
-  const option =
-    scope === "branch"
-      ? summary.locator('button[data-review-scope="branch"]')
-      : summary.getByRole("button", { name: "Working Tree", exact: true });
+  const option = tasksPage.locator(
+    `caffold-detail-view-switch button[data-detail-view="${scope}"]`,
+  );
   await option.click();
 }

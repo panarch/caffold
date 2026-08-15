@@ -100,6 +100,7 @@ class CaffoldTaskComposer extends HTMLElement {
     this.context = {
       mode: "create",
       cwd: ".",
+      browseCwd: true,
       placeholder: "",
       ariaLabel: "Task prompt",
       submitLabel: "Send prompt",
@@ -196,6 +197,9 @@ class CaffoldTaskComposer extends HTMLElement {
       mode: nextMode,
       threadId: nextThreadId,
       cwd: cleanLogicalPath(context.cwd ?? this.context.cwd ?? "."),
+      browseCwd: Object.hasOwn(context, "browseCwd")
+        ? Boolean(context.browseCwd)
+        : this.context.browseCwd,
       disabled: Boolean(context.disabled),
       settingsLocked: Boolean(context.settingsLocked),
       turnActive: Boolean(context.turnActive),
@@ -930,7 +934,9 @@ class CaffoldTaskComposer extends HTMLElement {
         ? `<div class="task-composer-context">
             ${renderInlineIcon("Folder", "Working directory", "task-composer-context-icon")}
             <span title="${escapeHtml(this.context.cwd)}">${escapeHtml(this.context.cwd)}</span>
-            <button type="button" data-composer-action="browse-cwd">Browse Files</button>
+            ${this.context.browseCwd
+              ? '<button type="button" data-composer-action="browse-cwd">Browse Files</button>'
+              : ""}
           </div>`
         : "",
     );

@@ -323,7 +323,7 @@ test("keeps selectedPath while scope, navigator, and viewer switch independently
   const refsBefore = reviewScenario.gitRefsRequests;
   const compareBefore = reviewScenario.gitCompareRequests;
   const branchMode = tasksPage.locator(
-    'caffold-task-detail-summary button[data-review-scope="branch"]',
+    'caffold-detail-view-switch button[data-detail-view="branch"]',
   );
   await expect(branchMode).toHaveText("Branch");
   await branchMode.evaluate((button) => {
@@ -443,7 +443,7 @@ test("supports every scope navigator and viewer combination", async ({ page }) =
 
       if (scope === "branch") {
         await expect(
-          tasksPage.locator('button[data-review-scope="branch"]'),
+          tasksPage.locator('button[data-detail-view="branch"]'),
         ).toHaveAttribute("aria-pressed", "true");
       }
       await expect.poll(() => {
@@ -731,10 +731,10 @@ test("keeps compact review controls and available panes inside the workspace", a
 }, testInfo) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
   const branchMode = tasksPage.locator(
-    'caffold-task-detail-summary button[data-review-scope="branch"]',
+    'caffold-detail-view-switch button[data-detail-view="branch"]',
   );
   const workingMode = tasksPage.locator(
-    'caffold-task-detail-summary button[data-review-scope="working"]',
+    'caffold-detail-view-switch button[data-detail-view="working"]',
   );
   const inactiveDivider = await branchMode.evaluate((button) => {
     const style = getComputedStyle(button, "::before");
@@ -918,7 +918,7 @@ test("keeps compact review controls and available panes inside the workspace", a
     .locator('button[data-review-axis="navigator"][data-review-value="changes"]')
     .click();
   await expect(
-    tasksPage.locator("caffold-task-detail-summary .task-mode-switch button"),
+    tasksPage.locator("caffold-detail-view-switch button"),
   ).toHaveCount(3);
   await expect(taskReview.locator(".task-review-toolbar")).toHaveCount(0);
 

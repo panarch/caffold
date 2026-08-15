@@ -24,6 +24,22 @@ const GIT_LOG_QUERY = [
   { name: "file", key: "path", defaultValue: "" },
 ];
 const PULL_FILES_QUERY = [...PAGE_QUERY, ...FILE_QUERY];
+const SECTION_DETAIL_QUERY = [
+  { name: "section", key: "sectionId", defaultValue: "" },
+  { name: "surface", key: "sectionSurface", defaultValue: "new" },
+  { name: "tool", key: "sectionTool", defaultValue: "" },
+  { name: "scope", key: "reviewScope", defaultValue: "working" },
+  { name: "nav", key: "reviewNavigator", defaultValue: "changes" },
+  { name: "view", key: "reviewViewer", defaultValue: "diff" },
+  { name: "file", key: "path", defaultValue: "" },
+  { name: "line", key: "line", type: "positiveLine", defaultValue: null },
+  { name: "base", key: "baseRef", defaultValue: "" },
+  { name: "head", key: "headRef", defaultValue: "" },
+  { name: "page", key: "page", type: "positiveInteger", defaultValue: 1 },
+  { name: "sha", key: "sha", defaultValue: "" },
+  { name: "number", key: "number", type: "positiveInteger", defaultValue: null },
+  { name: "files", key: "files", type: "boolean", defaultValue: false },
+];
 
 const ROUTE_DEFINITIONS = [
   routeDefinition({
@@ -90,6 +106,20 @@ const ROUTE_DEFINITIONS = [
     matchesRoute: (route) =>
       route?.kind === "settings" && route.section === "about",
     parent: () => settingsRoute(),
+  }),
+  routeDefinition({
+    id: "section-detail",
+    kind: "tasks",
+    pattern: "/",
+    query: SECTION_DETAIL_QUERY,
+    surface: "task-workspace",
+    domain: (route) => sectionRouteDomain(route),
+    mode: (route) => sectionRouteMode(route),
+    target: (route) => sectionRouteTarget(route),
+    toRoute: (_, query) => sectionDetailRoute(query),
+    matchesRoute: (route) =>
+      route?.kind === "tasks" && Boolean(route.sectionId),
+    parent: (route) => sectionParentRoute(route),
   }),
   routeDefinition({
     id: "global-tasks-home",
@@ -296,7 +326,10 @@ export function parseRoute(url = window.location.href) {
       continue;
     }
 
-    return definition.toRoute(fields, parseQuery(definition, parsed));
+    const route = definition.toRoute(fields, parseQuery(definition, parsed));
+    if (route) {
+      return route;
+    }
   }
 
   return null;
@@ -332,11 +365,14 @@ export function routeSurface(route) {
 }
 
 export function routeDomain(route) {
-  return routeDefinitionFor(route)?.domain ?? null;
+  const domain = routeDefinitionFor(route)?.domain;
+  return typeof domain === "function" ? domain(route) : (domain ?? null);
 }
 
 export function routeMode(route) {
-  return routeDefinitionFor(route)?.kind ?? null;
+  const definition = routeDefinitionFor(route);
+  const mode = definition?.mode ?? definition?.kind;
+  return typeof mode === "function" ? mode(route) : (mode ?? null);
 }
 
 export function routeTarget(route) {
@@ -501,6 +537,8 @@ function parseQuery(definition, url) {
       values[query.key] = positiveInteger(rawValue) ?? query.defaultValue;
     } else if (query.type === "positiveLine") {
       values[query.key] = positiveLine(rawValue) ?? query.defaultValue;
+    } else if (query.type === "boolean") {
+      values[query.key] = rawValue === "true";
     } else {
       values[query.key] = rawValue ?? query.defaultValue;
     }
@@ -540,6 +578,135 @@ function tasksRoute(options = {}) {
         }
       : {}),
   };
+}
+
+export function sectionDetailRoute(options = {}) {
+  const sectionId = `${options.sectionId ?? ""}`.trim();
+  if (!sectionId) {
+    return null;
+  }
+  const sectionSurface = enumValue(
+    options.sectionSurface,
+    ["new", "review", "git", "github"],
+    "new",
+  );
+  const sectionTool = sectionSurface === "git"
+    ? enumValue(options.sectionTool, ["compare", "log"], "compare")
+    : sectionSurface === "github"
+      ? enumValue(options.sectionTool, ["issues", "pulls"], "issues")
+      : "";
+  const path = sectionSurface === "review"
+    ? reviewFilePath(options.path)
+    : ["git", "github"].includes(sectionSurface)
+      ? safeRelativePath(options.path)
+      : "";
+  const number = sectionSurface === "github"
+    ? positiveInteger(options.number)
+    : null;
+  const files = sectionSurface === "github" &&
+    sectionTool === "pulls" &&
+    Boolean(options.files && number);
+  return {
+    kind: "tasks",
+    new: false,
+    threadId: "",
+    cwd: "",
+    sectionId,
+    sectionSurface,
+    sectionTool,
+    reviewScope: enumValue(options.reviewScope, ["working", "branch"], "working"),
+    reviewNavigator: enumValue(options.reviewNavigator, ["changes", "files"], "changes"),
+    reviewViewer: enumValue(options.reviewViewer, ["diff", "source"], "diff"),
+    path,
+    line: path ? positiveLine(options.line) : null,
+    baseRef: `${options.baseRef ?? ""}`,
+    headRef: sectionSurface === "git" && sectionTool === "compare"
+      ? `${options.headRef ?? ""}`
+      : "",
+    page: ["log", "issues", "pulls"].includes(sectionTool)
+      ? positiveInteger(options.page) ?? 1
+      : 1,
+    sha: sectionSurface === "git" && sectionTool === "log"
+      ? `${options.sha ?? ""}`
+      : "",
+    number,
+    files,
+  };
+}
+
+function sectionRouteDomain(route) {
+  return ["git", "github"].includes(route?.sectionSurface)
+    ? route.sectionSurface
+    : null;
+}
+
+function sectionRouteMode(route) {
+  return sectionRouteDomain(route) ? route.sectionTool : "tasks";
+}
+
+function sectionRouteTarget(route) {
+  if (route?.sectionSurface === "new") {
+    return "section";
+  }
+  if (route?.sectionSurface === "review") {
+    return route.path ? "review-file" : "review";
+  }
+  if (route?.sectionSurface === "git") {
+    return route.sectionTool === "log"
+      ? route.path
+        ? "file"
+        : route.sha
+          ? "commit"
+          : "list"
+      : route.path
+        ? "file"
+        : "list";
+  }
+  if (route?.sectionSurface === "github") {
+    if (route.sectionTool === "pulls" && route.files) {
+      return route.path ? "file" : "files";
+    }
+    return route.number ? "detail" : "list";
+  }
+  return "section";
+}
+
+function sectionParentRoute(route) {
+  const base = { sectionId: route.sectionId };
+  if (route.sectionSurface === "review") {
+    return route.path
+      ? sectionDetailRoute({
+          ...base,
+          sectionSurface: "review",
+          reviewScope: route.reviewScope,
+          reviewNavigator: route.reviewNavigator,
+          reviewViewer: route.reviewViewer,
+          baseRef: route.baseRef,
+        })
+      : sectionDetailRoute(base);
+  }
+  if (route.sectionSurface === "git") {
+    if (route.path) {
+      return sectionDetailRoute({ ...route, path: "" });
+    }
+    if (route.sectionTool === "log" && route.sha) {
+      return sectionDetailRoute({ ...route, sha: "" });
+    }
+    return sectionDetailRoute(base);
+  }
+  if (route.sectionSurface === "github") {
+    if (route.path) {
+      return sectionDetailRoute({ ...route, path: "" });
+    }
+    if (route.files) {
+      return sectionDetailRoute({ ...route, files: false });
+    }
+    if (route.number) {
+      return sectionDetailRoute({ ...route, number: null });
+    }
+    return sectionDetailRoute(base);
+  }
+  return tasksRoute();
 }
 
 function settingsRoute(section = "") {

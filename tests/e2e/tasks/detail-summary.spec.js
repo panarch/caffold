@@ -195,9 +195,10 @@ test("keeps the task info leaf and popover stable across canonical sync", async 
 
   await page.goto(`/tasks/${threadId}`);
   const summary = page.locator("caffold-task-detail-summary");
+  const detailHeader = page.locator(".detail-layout-summary");
   await expect(summary).toBeVisible();
   await expect(
-    summary.locator("caffold-task-detail-git, caffold-task-detail-github"),
+    detailHeader.locator("caffold-task-detail-git, caffold-task-detail-github"),
   ).toHaveCount(2);
   const taskDetailsButton = summary.getByRole("button", {
     name: /Task details/,
@@ -292,17 +293,18 @@ test("uses light-dismiss review popovers and preserves them across same-Task syn
 
   await page.goto(`/tasks/${threadId}`);
   const summary = page.locator("caffold-task-detail-summary");
-  const gitTrigger = summary.getByRole("button", {
+  const detailHeader = page.locator(".detail-layout-summary");
+  const gitTrigger = detailHeader.getByRole("button", {
     name: "Open Git workspace",
   });
-  const githubTrigger = summary.getByRole("button", {
+  const githubTrigger = detailHeader.getByRole("button", {
     name: "Open GitHub workspace",
   });
   const infoTrigger = summary.getByRole("button", { name: /Task details/ });
-  const gitPopover = summary.locator(
+  const gitPopover = detailHeader.locator(
     "caffold-task-detail-git > .task-git-popover",
   );
-  const githubPopover = summary.locator(
+  const githubPopover = detailHeader.locator(
     "caffold-task-detail-github > .task-github-popover",
   );
   const infoPopover = summary.locator(".task-detail-popover");
@@ -319,13 +321,13 @@ test("uses light-dismiss review popovers and preserves them across same-Task syn
   await expect(githubPopover).toHaveAttribute("popover", "auto");
   await expect(gitPopover).toHaveAttribute("role", "group");
   await expect(githubPopover).toHaveAttribute("role", "group");
-  await expect(summary.getByRole("menuitem", { includeHidden: true })).toHaveCount(
+  await expect(detailHeader.getByRole("menuitem", { includeHidden: true })).toHaveCount(
     0,
   );
   await expect(gitPopover.locator(":scope > button")).toHaveCount(2);
   await expect(githubPopover.locator(":scope > button")).toHaveCount(2);
 
-  await summary.evaluate((element) => {
+  await detailHeader.evaluate((element) => {
     const git = element.querySelector("caffold-task-detail-git");
     const github = element.querySelector("caffold-task-detail-github");
     window.__taskReviewPopoverNodes = {
@@ -371,7 +373,7 @@ test("uses light-dismiss review popovers and preserves them across same-Task syn
   );
   await expect(gitPopover).toBeVisible();
   expect(
-    await summary.evaluate((element) => {
+    await detailHeader.evaluate((element) => {
       const nodes = window.__taskReviewPopoverNodes;
       const git = element.querySelector("caffold-task-detail-git");
       const github = element.querySelector("caffold-task-detail-github");

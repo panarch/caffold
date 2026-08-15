@@ -1,13 +1,13 @@
 # UI Surfaces
 
 This document maps the implemented browser surfaces and their product
-boundaries. Caffold is Task-first: the selected Task is the stable context for
-conversation, local review, Git inspection, and GitHub inspection.
+boundaries. The Tasks workspace selects either a Task or a managed Section as
+the stable context for local work.
 
 ## Task workspace
 
 `caffold-task-workspace` is the only routed application workspace. It contains
-the Task navigator, New Task, Task Detail, and Settings. The application shell
+the Task navigator, Global New, Task/Section Detail, and Settings. The application shell
 owns bootstrap, route forwarding, settings application, and build-update
 presentation.
 
@@ -25,12 +25,17 @@ The Task navigator provides:
 - task title, recency, availability, and unseen-completion state;
 - New Task, Archive, Restore, and eligible delete actions.
 
+Managed Section headers are selectable and open Section Detail. Recovery group
+headings remain labels only. The selected Section is represented by local id;
+its managed logical path supplies the fixed cwd and its repository capability
+controls which shared review surfaces are available.
+
 Selecting a Task opens its Conversation. Direct Task URLs load by `threadId`
 without requiring the Task to appear in the currently loaded navigator page.
 
 ## New Task
 
-New Task owns:
+Global New owns:
 
 - its selected cwd and route representation;
 - model, reasoning, speed, and approval choices;
@@ -52,11 +57,27 @@ Task creation starts a Codex thread in the selected cwd. Managed-worktree
 preparation happens explicitly from the resulting Task; it is not an implicit
 side effect of task creation.
 
+Global New and Section New mount the same Task Create component for Composer,
+request, and error behavior. Section New fixes cwd to the Section's managed
+logical path, omits directory browsing and setup guide chrome, and preserves
+its draft across same-Section surface switches.
+
+## Detail
+
+The common Detail layout owns Summary actions, the subject-aware view switch,
+Integrated Review, Git, and GitHub. A Task subject contributes Conversation; a
+Section subject contributes fixed-context New Task. Switching subject identity
+hard-rebinds repository data, while safe local state may survive surface
+switches within one subject. The selected Section follows local projection
+changes; losing repository capability clears retained repository state and
+returns that Section to New Task.
+
 ## Task Detail
 
 Task Detail owns the selected thread, canonical Task snapshot, Codex event
-stream, selected outer child, Task-scoped route intents, and child
-activation/deactivation. It hosts four stable sibling surfaces.
+stream, Conversation, Command dialog, follow-up Composer, and Task mutations.
+It publishes context to the common Detail owner instead of mounting shared
+review surfaces itself.
 
 ### Conversation
 
@@ -89,7 +110,7 @@ reusable file navigator, source viewer, text viewer, and supported image viewer.
 
 ### Git
 
-The Task-owned Git child contains only behavior not duplicated by Integrated
+The shared Git child contains only behavior not duplicated by Integrated
 Review:
 
 - arbitrary-ref Compare, where both base and head may differ from the Task's
@@ -103,8 +124,8 @@ Integrated Review selected path.
 
 ### GitHub
 
-The Task-owned GitHub child derives its repository from canonical Task context
-and the authenticated GitHub CLI. It provides:
+The shared GitHub child derives its repository from the active Task or Section
+context and the authenticated GitHub CLI. It provides:
 
 - Issue list and detail;
 - Pull Request list and detail;
@@ -117,7 +138,7 @@ retained DOM-local state may remain visible. GitHub does not poll, create a
 filesystem watcher, or refresh while hidden. It does not publish comments,
 reviews, Pull Requests, or other GitHub mutations.
 
-The Task's GitHub root mounts one shared Task Start dialog rather than separate
+The GitHub root mounts one shared Task Start dialog rather than separate
 Issue and Pull Request workflows. Each detail owns its visible action and
 canonical source payload; the root owns dialog lifetime, while the dialog owns
 Task turn options, Task creation, focus return, and source-specific setup.
@@ -133,16 +154,15 @@ instead of beginning review or implementation.
 
 ### Child lifetime
 
-Within one selected Task, Git and GitHub DOM remains mounted while hidden so
-selection, disclosure, scroll, and pane widths can survive. Inactive children
-release watchers, pending requests, and other active work, and activation
-performs a fresh canonical sync. Switching to a different Task destroys the
-Git/GitHub children, so each domain DOM lifetime is bounded to the selected
-Task.
+Git and GitHub DOM remains mounted in the connected common Detail while hidden
+so selection, disclosure, scroll, and pane widths can survive. Inactive
+children release watchers, pending requests, and other active work, and
+activation performs a fresh canonical sync. Changing subject or repository
+context is a hard data-rebind boundary.
 
-Integrated Review uses a bounded per-thread cache, with active work tied to
+Integrated Review uses a bounded per-subject cache, with active work tied to
 connection and activation. Canonical repository-context changes invalidate
-repository-bound data even when `threadId` is unchanged.
+repository-bound data even when subject identity is unchanged.
 
 ## Settings
 

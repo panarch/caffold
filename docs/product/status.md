@@ -11,9 +11,9 @@ boundaries.
 - persistent app-server daemon plus replaceable proxy connection;
 - prompts, steering, interruption, command approvals, images, and local voice
   input in the Conversation surface;
-- cwd-derived repository/worktree grouping and Task-owned integrated
-  Working Tree/Branch, file/source, Git Compare/Log, and GitHub review
-  surfaces;
+- selectable managed Sections with fixed-directory Task creation;
+- shared integrated Working Tree/Branch, file/source, Git Compare/Log, and
+  GitHub review surfaces for repository-backed Tasks and Sections;
 - explicit setup-only Task creation from GitHub Issue detail with a selected
   base ref and from Pull Request detail with an exact verified head commit;
 - same-Task preparation of a Caffold-managed worktree through
@@ -50,11 +50,12 @@ boundaries.
 
 The current product supports these flows:
 
-1. Start a Task in a selected cwd and see live repository/worktree context.
+1. Start a Task from Global New or a managed Section's fixed directory and see
+   live repository/worktree context.
 2. Continue and steer real Codex work through reconnects without replacing
    app-server-owned thread state.
-3. Review files, diffs, Git state, and GitHub context on desktop, foldable, and
-   phone layouts.
+3. Select a repository Section or Task and review files, diffs, Git state, and
+   GitHub context on desktop, foldable, and phone layouts.
 4. Approve or deny a command request and see the canonical outcome.
 5. Start a setup-only Task from GitHub Issue or Pull Request detail and stop
    after preparing a worktree from the selected Issue base ref or exact PR head

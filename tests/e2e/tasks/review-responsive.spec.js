@@ -11,7 +11,7 @@ test("keeps Task tool menus above active Review controls", async ({ page }) => {
   const { tasksPage } = await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
 
-  const summary = tasksPage.locator("caffold-task-detail-summary");
+  const summary = tasksPage.locator(".detail-layout-summary");
   for (const [workspace, action] of [
     ["Git", "Compare"],
     ["GitHub", "Pull Requests"],
@@ -47,10 +47,10 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
 
   const before = await taskReview.evaluate((review) => {
     const modeSwitch = document.querySelector(
-      "caffold-task-detail-summary .task-mode-switch",
+      "caffold-detail-view-switch",
     );
-    const summary = document.querySelector("caffold-task-detail-summary");
-    const summaryActions = summary.querySelector(".task-detail-actions");
+    const summary = document.querySelector(".detail-layout-summary");
+    const summaryActions = summary.querySelector(".detail-layout-actions");
     const summaryInfo = summary.querySelector(".task-detail-info-button");
     const summaryTitle = summary.querySelector(".task-detail-heading h2");
     const summaryRect = summary.getBoundingClientRect();
@@ -140,7 +140,7 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
     const viewerAxis = review.querySelector(
       ".task-review-viewer-axis .task-review-axis-options",
     );
-    const summary = document.querySelector("caffold-task-detail-summary");
+    const summary = document.querySelector(".detail-layout-summary");
     const github = summary.querySelector(".task-github-button");
     const summaryInfo = summary.querySelector(".task-detail-info-button");
     const visualBounds = (element, pseudo) => {
@@ -342,7 +342,7 @@ test("keeps Review reflowed at the appearance extremes", async ({ page }, testIn
     }, settings);
     const layout = await taskReview.evaluate((review) => {
       const modeSwitch = document.querySelector(
-        "caffold-task-detail-summary .task-mode-switch",
+        "caffold-detail-view-switch",
       );
       const viewer = review.querySelector(".task-review-viewer-pane");
       const code = review.querySelector(".diff-code");
@@ -418,7 +418,7 @@ test("keeps compact Task segments pixel-aligned on Retina displays", async ({
       const { devicePixelRatio, segments } = await page.evaluate(() => ({
         devicePixelRatio: window.devicePixelRatio,
         segments: [
-          ...document.querySelectorAll(".task-mode-switch, .task-review-axis-options"),
+          ...document.querySelectorAll("caffold-detail-view-switch, .task-review-axis-options"),
         ]
           .filter((group) => group.getClientRects().length > 0)
           .map((group) => {
@@ -488,7 +488,7 @@ test("reflows Review at a desktop 200 percent effective viewport", async ({
     overflow: review.scrollWidth > review.clientWidth,
     modeSwitchOverflow: (() => {
       const modeSwitch = document.querySelector(
-        "caffold-task-detail-summary .task-mode-switch",
+        "caffold-detail-view-switch",
       );
       return modeSwitch.scrollWidth > modeSwitch.clientWidth;
     })(),

@@ -211,15 +211,47 @@ pub fn get(path: &str) -> Option<StaticAsset> {
                 "../frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js"
             )))
         }
-        "pages/(task-workspace)/tasks/page.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/page.css"
+        "pages/(task-workspace)/tasks/layout.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/layout.css"
         ))),
         "pages/(task-workspace)/tasks/controls.css" => Some(css(include_str!(
             "../frontend/pages/(task-workspace)/tasks/controls.css"
         ))),
-        "pages/(task-workspace)/tasks/page.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/page.js"
+        "pages/(task-workspace)/tasks/layout.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/layout.js"
         ))),
+        "pages/(task-workspace)/tasks/(detail)/layout.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/layout.css"
+        ))),
+        "pages/(task-workspace)/tasks/(detail)/layout.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/layout.js"
+        ))),
+        "pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(section)/layout.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/(section)/layout.css"
+        ))),
+        "pages/(task-workspace)/tasks/(detail)/(section)/layout.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/(section)/layout.js"
+        ))),
+        "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/summary.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/runtime-state.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/runtime-state.js"
         ))),
@@ -247,12 +279,16 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/task-turn-options.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/task-turn-options.js"
         ))),
-        "pages/(task-workspace)/tasks/components/directory-picker.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/directory-picker.css"
-        ))),
-        "pages/(task-workspace)/tasks/components/directory-picker.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/directory-picker.js"
-        ))),
+        "pages/(task-workspace)/tasks/new/components/directory-picker.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/new/components/directory-picker.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/new/components/directory-picker.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/new/components/directory-picker.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/components/archived-delete-dialog.css" => {
             Some(css(include_str!(
                 "../frontend/pages/(task-workspace)/tasks/components/archived-delete-dialog.css"
@@ -285,124 +321,130 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/voice-worklet.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/voice-worklet.js"
         ))),
-        "pages/(task-workspace)/tasks/components/detail.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/detail.css"
+        "pages/(task-workspace)/tasks/(detail)/(task)/layout.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout.css"
         ))),
-        "pages/(task-workspace)/tasks/components/detail.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/detail.js"
+        "pages/(task-workspace)/tasks/(detail)/(task)/layout.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout.js"
         ))),
-        "pages/(task-workspace)/tasks/components/detail/stream.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/detail/stream.js"
+        "pages/(task-workspace)/tasks/(detail)/(task)/stream.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/stream.js"
         ))),
-        "pages/(task-workspace)/tasks/components/detail/summary.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/detail/summary.css"
-        ))),
-        "pages/(task-workspace)/tasks/components/detail/summary.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/detail/summary.js"
-        ))),
-        "pages/(task-workspace)/tasks/components/detail/summary/git.css" => {
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/summary/git.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/summary/git.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/detail/summary/git.js"
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/components/git-menu.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/components/git-menu.css"
         ))),
-        "pages/(task-workspace)/tasks/components/detail/summary/github.css" => {
-            Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/summary/github.css"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/summary/github.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/summary/github.js"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/summary/info.css" => {
-            Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/summary/info.css"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/summary/info.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/detail/summary/info.js"
+        "pages/(task-workspace)/tasks/(detail)/components/git-menu.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/components/git-menu.js"
         ))),
-        "pages/(task-workspace)/tasks/components/detail/conversation.css" => {
+        "pages/(task-workspace)/tasks/(detail)/components/github-menu.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/components/github-menu.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/conversation.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/detail/conversation.js"
+        "pages/(task-workspace)/tasks/(detail)/components/github-menu.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/components/github-menu.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command/model.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command/model.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/render.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/render.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(review)/layout.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout.css"
         ))),
-        "pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.css" => {
-            Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.css"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.js"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/conversation/components/command.css" => {
-            Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/components/command.css"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/conversation/components/command.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/components/command.js"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/conversation/components/command/model.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/components/command/model.js"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css" => {
-            Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.js"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/conversation/markdown.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/markdown.js"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/conversation/render.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/render.js"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/conversation/work-details.css" => {
-            Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/work-details.css"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/conversation/work-details.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/conversation/work-details.js"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/review.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/detail/review.css"
+        "pages/(task-workspace)/tasks/(detail)/(review)/layout.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout.js"
         ))),
-        "pages/(task-workspace)/tasks/components/detail/review.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/detail/review.js"
-        ))),
-        "pages/(task-workspace)/tasks/components/detail/review/changes-tree.css" => {
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/review/changes-tree.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/review/changes-tree.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/review/changes-tree.js"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.js"
             )))
         }
         "pages/(task-workspace)/tasks/components/active-task-list.css" => Some(css(include_str!(
@@ -429,11 +471,11 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/archived-task-list.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/archived-task-list.js"
         ))),
-        "pages/(task-workspace)/tasks/components/recovery.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/recovery.css"
+        "pages/(task-workspace)/tasks/recovery/page.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/recovery/page.css"
         ))),
-        "pages/(task-workspace)/tasks/components/recovery.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/recovery.js"
+        "pages/(task-workspace)/tasks/recovery/page.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/recovery/page.js"
         ))),
         "pages/(task-workspace)/tasks/components/codex-readiness-recovery.css" => {
             Some(css(include_str!(
@@ -451,11 +493,17 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/navigator.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/navigator.js"
         ))),
-        "pages/(task-workspace)/tasks/components/task-new.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/task-new.css"
+        "pages/(task-workspace)/tasks/components/task-create.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/task-create.css"
         ))),
-        "pages/(task-workspace)/tasks/components/task-new.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/task-new.js"
+        "pages/(task-workspace)/tasks/components/task-create.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/components/task-create.js"
+        ))),
+        "pages/(task-workspace)/tasks/new/page.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/new/page.css"
+        ))),
+        "pages/(task-workspace)/tasks/new/page.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/new/page.js"
         ))),
         "pages/(task-workspace)/tasks/components/task-status.css" => Some(css(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/task-status.css"
@@ -463,34 +511,28 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/task-status.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/components/task-status.js"
         ))),
-        "pages/(task-workspace)/tasks/components/detail/(git)/layout.css" => {
-            Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/layout.css"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/(git)/layout.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/layout.js"
+        "pages/(task-workspace)/tasks/(detail)/(git)/layout.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/layout.css"
         ))),
-        "pages/(task-workspace)/tasks/components/detail/(git)/components/controls.css" => {
+        "pages/(task-workspace)/tasks/(detail)/(git)/layout.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/layout.js"
+        ))),
+        "pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/components/controls.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(git)/components/controls.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(git)/components/controls.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/components/controls.js"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/components/controls.js"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(git)/compare/page.css" => {
-            Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/compare/page.css"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/(git)/compare/page.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/compare/page.js"
-            )))
-        }
+        "pages/(task-workspace)/tasks/(detail)/(git)/compare/page.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/compare/page.css"
+        ))),
+        "pages/(task-workspace)/tasks/(detail)/(git)/compare/page.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/compare/page.js"
+        ))),
         "components/git-compare-browser.css" => Some(css(include_str!(
             "../frontend/components/git-compare-browser.css"
         ))),
@@ -503,169 +545,159 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/git-compare-browser/compare-tree.js" => Some(js(include_str!(
             "../frontend/components/git-compare-browser/compare-tree.js"
         ))),
-        "pages/(task-workspace)/tasks/components/detail/(git)/(log)/layout.css" => {
+        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.css"
+        ))),
+        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.js"
+        ))),
+        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/(log)/layout.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(git)/(log)/layout.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/(log)/layout.js"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/(git)/(log)/list/page.css" => {
+        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.js"
+        ))),
+        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/(log)/list/page.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(git)/(log)/list/page.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/(log)/list/page.js"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/page.css" => {
+        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/page.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/page.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/page.js"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.js"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/components/changes-tree.css" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/layout.css" => Some(css(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/layout.css"
+        ))),
+        "pages/(task-workspace)/tasks/(detail)/(github)/layout.js" => Some(js(include_str!(
+            "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/layout.js"
+        ))),
+        "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/components/changes-tree.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/components/changes-tree.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/components/changes-tree.js"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.js"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/layout.css" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/layout.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/layout.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/layout.js"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.js"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/components/markdown.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/components/markdown.js"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog.css" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog.js"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.js"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-issue.css" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-issue.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-issue.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-issue.js"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.js"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-pull.css" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-pull.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-pull.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-pull.js"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.js"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/layout.css" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/layout.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/layout.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/layout.js"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.js"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/list/page.css" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/list/page.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/list/page.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/list/page.js"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.js"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/detail/page.css" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/detail/page.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/detail/page.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(issues)/detail/page.js"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.js"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/layout.css" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/layout.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/layout.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/layout.js"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.js"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/list/page.css" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/list/page.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/list/page.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/list/page.js"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.js"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.css" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.css"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.css"
             )))
         }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.js" => {
+        "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.js"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/page.css" => {
-            Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/page.css"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/page.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/page.js"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/components/tree.css" => {
-            Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/components/tree.css"
-            )))
-        }
-        "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/components/tree.js" => {
-            Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/components/tree.js"
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.js"
             )))
         }
         "components/code-viewer.css" => {
@@ -823,8 +855,8 @@ mod tests {
         );
 
         for path in [
-            "pages/(task-workspace)/tasks/components/detail/summary/git.js",
-            "pages/(task-workspace)/tasks/components/detail/summary/github.js",
+            "pages/(task-workspace)/tasks/(detail)/components/git-menu.js",
+            "pages/(task-workspace)/tasks/(detail)/components/github-menu.js",
         ] {
             let task_button_js = get(path).expect("Task button js asset");
             assert_eq!(
@@ -836,11 +868,11 @@ mod tests {
 
         for (path, owner) in [
             (
-                "pages/(task-workspace)/tasks/components/detail/summary/git.css",
+                "pages/(task-workspace)/tasks/(detail)/components/git-menu.css",
                 b"caffold-task-detail-git".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/summary/github.css",
+                "pages/(task-workspace)/tasks/(detail)/components/github-menu.css",
                 b"caffold-task-detail-github".as_slice(),
             ),
         ] {
@@ -958,9 +990,8 @@ mod tests {
 
         assert!(get("pages/(review-workspace)/layout.css").is_none());
 
-        let git_review_layout =
-            get("pages/(task-workspace)/tasks/components/detail/(git)/layout.js")
-                .expect("git review layout js");
+        let git_review_layout = get("pages/(task-workspace)/tasks/(detail)/(git)/layout.js")
+            .expect("git review layout js");
         assert_eq!(
             git_review_layout.content_type,
             "text/javascript; charset=utf-8"
@@ -973,7 +1004,7 @@ mod tests {
                 .any(|window| window == b"caffold-task-git-layout")
         );
         let git_review_controls =
-            get("pages/(task-workspace)/tasks/components/detail/(git)/components/controls.js")
+            get("pages/(task-workspace)/tasks/(detail)/(git)/components/controls.js")
                 .expect("git review controls js");
         assert_eq!(
             git_review_controls.content_type,
@@ -986,7 +1017,7 @@ mod tests {
                 .any(|window| window == b"caffold-git-review-controls")
         );
         let git_review_controls_css =
-            get("pages/(task-workspace)/tasks/components/detail/(git)/components/controls.css")
+            get("pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css")
                 .expect("git review controls css");
         assert_eq!(
             git_review_controls_css.content_type,
@@ -1021,9 +1052,8 @@ mod tests {
                 .starts_with(b"caffold-review-panel-resizer")
         );
 
-        let compare_page =
-            get("pages/(task-workspace)/tasks/components/detail/(git)/compare/page.js")
-                .expect("compare page js");
+        let compare_page = get("pages/(task-workspace)/tasks/(detail)/(git)/compare/page.js")
+            .expect("compare page js");
         assert_eq!(compare_page.content_type, "text/javascript; charset=utf-8");
         assert!(compare_page.body.starts_with(b"import "));
         assert!(
@@ -1052,7 +1082,10 @@ mod tests {
                 .windows(b"caffold-git-compare-tree".len())
                 .any(|window| window == b"caffold-git-compare-tree")
         );
-        assert!(get("pages/(task-workspace)/tasks/components/detail/(git)/compare/components/compare-tree.js").is_none());
+        assert!(
+            get("pages/(task-workspace)/tasks/(detail)/(git)/compare/components/compare-tree.js")
+                .is_none()
+        );
 
         let task_workspace_layout =
             get("pages/(task-workspace)/layout.js").expect("task workspace layout js");
@@ -1122,7 +1155,7 @@ mod tests {
                 .starts_with(b"caffold-workspace-brand")
         );
 
-        let tasks_page = get("pages/(task-workspace)/tasks/page.js").expect("tasks page js");
+        let tasks_page = get("pages/(task-workspace)/tasks/layout.js").expect("tasks layout js");
         assert_eq!(tasks_page.content_type, "text/javascript; charset=utf-8");
         assert!(tasks_page.body.starts_with(b"import "));
         assert!(
@@ -1143,13 +1176,14 @@ mod tests {
             "pages/(task-workspace)/tasks/task-format.js",
             "pages/(task-workspace)/tasks/task-list-model.js",
             "pages/(task-workspace)/tasks/components/task-status.js",
-            "pages/(task-workspace)/tasks/components/detail/conversation/render.js",
+            "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/render.js",
         ] {
             let asset = get(path).expect("tasks state module");
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
             assert!(asset.body.starts_with(b"export ") || asset.body.starts_with(b"import "));
         }
-        let tasks_page_css = get("pages/(task-workspace)/tasks/page.css").expect("tasks page css");
+        let tasks_page_css =
+            get("pages/(task-workspace)/tasks/layout.css").expect("tasks layout css");
         assert_eq!(tasks_page_css.content_type, "text/css; charset=utf-8");
         assert!(tasks_page_css.body.starts_with(b"caffold-tasks-page"));
         let tasks_controls_css =
@@ -1157,7 +1191,7 @@ mod tests {
         assert_eq!(tasks_controls_css.content_type, "text/css; charset=utf-8");
         assert!(tasks_controls_css.body.starts_with(b"caffold-tasks-page"));
         let tasks_markdown =
-            get("pages/(task-workspace)/tasks/components/detail/conversation/markdown.js")
+            get("pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js")
                 .expect("tasks markdown component js");
         assert_eq!(
             tasks_markdown.content_type,
@@ -1233,7 +1267,7 @@ mod tests {
             assert_eq!(task_list_css.content_type, "text/css; charset=utf-8");
             assert!(task_list_css.body.starts_with(prefix));
         }
-        let task_detail_stream = get("pages/(task-workspace)/tasks/components/detail/stream.js")
+        let task_detail_stream = get("pages/(task-workspace)/tasks/(detail)/(task)/stream.js")
             .expect("task detail stream js");
         assert_eq!(
             task_detail_stream.content_type,
@@ -1264,7 +1298,7 @@ mod tests {
                 b"caffold-task-turn-options".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/directory-picker.js",
+                "pages/(task-workspace)/tasks/new/components/directory-picker.js",
                 b"caffold-task-directory-picker".as_slice(),
             ),
             (
@@ -1280,43 +1314,63 @@ mod tests {
                 b"caffold-codex-readiness-recovery".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/conversation.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js",
                 b"caffold-task-conversation".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.js",
                 b"caffold-task-changed-files".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js",
                 b"caffold-task-command-dialog".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/conversation/components/command.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.js",
                 b"caffold-task-command".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/conversation/work-details.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.js",
                 b"caffold-task-work-details".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/task-new.js",
+                "pages/(task-workspace)/tasks/(detail)/layout.js",
+                b"caffold-detail-layout".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.js",
+                b"caffold-detail-view-switch".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(section)/layout.js",
+                b"caffold-section-detail".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.js",
+                b"caffold-section-detail-summary".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/components/task-create.js",
+                b"caffold-task-create".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/new/page.js",
                 b"caffold-task-new".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
                 b"caffold-task-detail".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/summary.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js",
                 b"caffold-task-detail-summary".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/summary/info.js",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.js",
                 b"caffold-task-detail-info".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/review.js",
+                "pages/(task-workspace)/tasks/(detail)/(review)/layout.js",
                 b"caffold-task-review".as_slice(),
             ),
         ] {
@@ -1375,7 +1429,7 @@ mod tests {
                 b"caffold-task-composer".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/directory-picker.css",
+                "pages/(task-workspace)/tasks/new/components/directory-picker.css",
                 b"caffold-task-directory-picker".as_slice(),
             ),
             (
@@ -1395,43 +1449,63 @@ mod tests {
                 b"caffold-voice-level-meter".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/conversation.css",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
                 b"caffold-task-conversation".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.css",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css",
                 b"caffold-task-changed-files".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
                 b"caffold-task-command-dialog".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/conversation/components/command.css",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css",
                 b"caffold-task-command".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/conversation/work-details.css",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css",
                 b"caffold-task-work-details".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/task-new.css",
+                "pages/(task-workspace)/tasks/components/task-create.css",
+                b"caffold-task-create".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/new/page.css",
                 b"caffold-task-new".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail.css",
+                "pages/(task-workspace)/tasks/(detail)/layout.css",
+                b"caffold-detail-layout".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.css",
+                b"caffold-detail-view-switch".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(section)/layout.css",
+                b"caffold-section-detail".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css",
+                b"caffold-section-detail-summary".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(task)/layout.css",
                 b"caffold-task-detail".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/summary.css",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css",
                 b"caffold-task-detail-summary".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/summary/info.css",
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css",
                 b"caffold-task-detail-info".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/components/detail/review.css",
+                "pages/(task-workspace)/tasks/(detail)/(review)/layout.css",
                 b"caffold-task-review".as_slice(),
             ),
             (
@@ -1447,7 +1521,7 @@ mod tests {
         assert!(get("pages/tasks/page.css").is_none());
 
         let diff_changes_tree =
-            get("pages/(task-workspace)/tasks/components/detail/review/changes-tree.js")
+            get("pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.js")
                 .expect("integrated review changes tree js");
         assert_eq!(
             diff_changes_tree.content_type,
@@ -1460,11 +1534,10 @@ mod tests {
                 .any(|window| window == b"caffold-git-diff-changes-tree")
         );
         assert!(get("components/git-diff-browser.js").is_none());
-        assert!(get("pages/(task-workspace)/tasks/components/detail/(git)/diff/page.js").is_none());
+        assert!(get("pages/(task-workspace)/tasks/(detail)/(git)/diff/page.js").is_none());
 
-        let github_review_layout =
-            get("pages/(task-workspace)/tasks/components/detail/(github)/layout.js")
-                .expect("github review layout js");
+        let github_review_layout = get("pages/(task-workspace)/tasks/(detail)/(github)/layout.js")
+            .expect("github review layout js");
         assert_eq!(
             github_review_layout.content_type,
             "text/javascript; charset=utf-8"
@@ -1477,7 +1550,7 @@ mod tests {
                 .any(|window| window == b"caffold-task-github-layout")
         );
         let github_markdown =
-            get("pages/(task-workspace)/tasks/components/detail/(github)/components/markdown.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js")
                 .expect("github markdown component js");
         assert_eq!(
             github_markdown.content_type,
@@ -1496,7 +1569,7 @@ mod tests {
         );
 
         let issues_layout =
-            get("pages/(task-workspace)/tasks/components/detail/(github)/(issues)/layout.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.js")
                 .expect("issues layout js");
         assert_eq!(issues_layout.content_type, "text/javascript; charset=utf-8");
         assert!(issues_layout.body.starts_with(b"import "));
@@ -1508,7 +1581,7 @@ mod tests {
         );
 
         let issues_list_page =
-            get("pages/(task-workspace)/tasks/components/detail/(github)/(issues)/list/page.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.js")
                 .expect("issues list page js");
         assert_eq!(
             issues_list_page.content_type,
@@ -1523,7 +1596,7 @@ mod tests {
         );
 
         let issue_detail_page =
-            get("pages/(task-workspace)/tasks/components/detail/(github)/(issues)/detail/page.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.js")
                 .expect("issue detail page js");
         assert_eq!(
             issue_detail_page.content_type,
@@ -1537,7 +1610,7 @@ mod tests {
                 .any(|window| window == b"caffold-github-issue-detail-page")
         );
         let github_task_start_dialog =
-            get("pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.js")
                 .expect("github task start dialog js");
         assert_eq!(
             github_task_start_dialog.content_type,
@@ -1550,7 +1623,7 @@ mod tests {
                 .any(|window| window == b"caffold-github-task-start-dialog")
         );
         let github_issue_task_source = get(
-            "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-issue.js",
+            "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.js",
         )
         .expect("github issue task source js");
         assert!(
@@ -1560,7 +1633,7 @@ mod tests {
                 .any(|window| window == b"caffold-github-issue-task-source")
         );
         let github_pull_task_source = get(
-            "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-pull.js",
+            "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.js",
         )
         .expect("github pull task source js");
         assert!(
@@ -1573,9 +1646,8 @@ mod tests {
         assert!(get("components/github-issue-viewer.js").is_none());
         assert!(get("components/github-markdown.js").is_none());
 
-        let pulls_layout =
-            get("pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/layout.js")
-                .expect("pulls layout js");
+        let pulls_layout = get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.js")
+            .expect("pulls layout js");
         assert_eq!(pulls_layout.content_type, "text/javascript; charset=utf-8");
         assert!(pulls_layout.body.starts_with(b"import "));
         assert!(
@@ -1586,7 +1658,7 @@ mod tests {
         );
 
         let pulls_list_page =
-            get("pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/list/page.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.js")
                 .expect("pulls list page js");
         assert_eq!(
             pulls_list_page.content_type,
@@ -1601,7 +1673,7 @@ mod tests {
         );
 
         let pull_detail_page =
-            get("pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.js")
                 .expect("pull detail page js");
         assert_eq!(
             pull_detail_page.content_type,
@@ -1616,7 +1688,7 @@ mod tests {
         );
 
         let pull_files_page =
-            get("pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/page.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.js")
                 .expect("pull files page js");
         assert_eq!(
             pull_files_page.content_type,
@@ -1630,7 +1702,7 @@ mod tests {
                 .any(|window| window == b"caffold-github-pull-files-page")
         );
         let pull_files_tree =
-            get("pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/components/tree.js")
+            get("pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.js")
                 .expect("pull files tree js");
         assert_eq!(
             pull_files_tree.content_type,
@@ -1721,9 +1793,8 @@ mod tests {
         assert!(get("watch.test.js").is_none());
         assert!(get("pages/(task-workspace)/codex-status/model.test.js").is_none());
         assert!(get("pages/(task-workspace)/tasks/task-format.test.js").is_none());
-        let log_layout =
-            get("pages/(task-workspace)/tasks/components/detail/(git)/(log)/layout.js")
-                .expect("git log layout js asset");
+        let log_layout = get("pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.js")
+            .expect("git log layout js asset");
         assert_eq!(log_layout.content_type, "text/javascript; charset=utf-8");
         assert!(log_layout.body.starts_with(b"import "));
         assert!(
@@ -1732,9 +1803,8 @@ mod tests {
                 .windows(b"caffold-git-log-layout".len())
                 .any(|window| window == b"caffold-git-log-layout")
         );
-        let log_list_page =
-            get("pages/(task-workspace)/tasks/components/detail/(git)/(log)/list/page.js")
-                .expect("log list page js asset");
+        let log_list_page = get("pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.js")
+            .expect("log list page js asset");
         assert_eq!(log_list_page.content_type, "text/javascript; charset=utf-8");
         assert!(log_list_page.body.starts_with(b"import "));
         assert!(
@@ -1744,7 +1814,7 @@ mod tests {
                 .any(|window| window == b"caffold-git-log-list-page")
         );
         let log_commit_page =
-            get("pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/page.js")
+            get("pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js")
                 .expect("log commit page js asset");
         assert_eq!(
             log_commit_page.content_type,
@@ -1757,9 +1827,10 @@ mod tests {
                 .windows(b"caffold-git-log-commit-page".len())
                 .any(|window| window == b"caffold-git-log-commit-page")
         );
-        let commit_tree_component =
-            get("pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/components/changes-tree.js")
-                .expect("commit changes tree component js asset");
+        let commit_tree_component = get(
+            "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.js",
+        )
+        .expect("commit changes tree component js asset");
         assert_eq!(
             commit_tree_component.content_type,
             "text/javascript; charset=utf-8"
@@ -1775,10 +1846,12 @@ mod tests {
         assert!(get("components/log-list.js").is_none());
         assert!(get("components/commit-changes-tree.js").is_none());
         assert!(
-            get("pages/(task-workspace)/tasks/components/detail/(git)/(log)/components/list.js")
+            get("pages/(task-workspace)/tasks/(detail)/(git)/(log)/components/list.js").is_none()
+        );
+        assert!(
+            get("pages/(task-workspace)/tasks/(detail)/(git)/(log)/components/commit-tree.js")
                 .is_none()
         );
-        assert!(get("pages/(task-workspace)/tasks/components/detail/(git)/(log)/components/commit-tree.js").is_none());
 
         let png = get("icons/icon-192.png").expect("png icon asset");
         assert_eq!(png.content_type, "image/png");

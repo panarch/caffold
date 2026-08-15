@@ -9,12 +9,12 @@ const e2eSupportRoot = fileURLToPath(new URL("./e2e/support/", import.meta.url))
 
 const conversationOwners = new Set([
   "pages/(task-workspace)/tasks/components/composer.css",
-  "pages/(task-workspace)/tasks/components/detail/conversation.css",
-  "pages/(task-workspace)/tasks/components/detail/conversation/work-details.css",
-  "pages/(task-workspace)/tasks/components/detail/conversation/markdown.js",
-  "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/detail/page.css",
-  "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.css",
-  "pages/(task-workspace)/tasks/components/detail/(github)/components/markdown.js",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js",
+  "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css",
+  "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css",
+  "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js",
   "pages/(task-workspace)/settings/appearance/page.css",
   "settings.js",
   "styles.css",
@@ -23,14 +23,14 @@ const conversationOwners = new Set([
 const codeOwners = new Set([
   "components/code-viewer.css",
   "components/diff-viewer.css",
-  "pages/(task-workspace)/tasks/components/detail/conversation.css",
-  "pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.css",
-  "pages/(task-workspace)/tasks/components/detail/conversation/components/command.css",
-  "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css",
-  "pages/(task-workspace)/tasks/components/detail/conversation/markdown.js",
-  "pages/(task-workspace)/tasks/components/detail/conversation/work-details.css",
-  "pages/(task-workspace)/tasks/components/detail/(github)/components/markdown.js",
-  "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-pull.css",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css",
+  "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js",
+  "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css",
   "pages/(task-workspace)/settings/appearance/page.css",
   "settings.js",
   "styles.css",
@@ -40,8 +40,8 @@ const typefaceOwners = new Set([
   "components/code-viewer.css",
   "components/diff-viewer.css",
   "fonts.js",
-  "pages/(task-workspace)/tasks/components/detail/conversation/markdown.js",
-  "pages/(task-workspace)/tasks/components/detail/(github)/components/markdown.js",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js",
+  "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js",
   "pages/(task-workspace)/settings/appearance/page.css",
   "styles.css",
 ]);
@@ -161,7 +161,7 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
   );
   for (const path of [
     "pages/(task-workspace)/tasks/components/task-status.css",
-    "pages/(task-workspace)/tasks/components/detail/conversation.css",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
   ]) {
     assert.match(
       readFrontend(path),
@@ -197,8 +197,8 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
   }
 
   for (const path of [
-    "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/list/page.css",
-    "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/list/page.css",
+    "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.css",
+    "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.css",
   ]) {
     assert.match(
       readFrontend(path),
@@ -210,7 +210,7 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
   for (const path of [
     "components/git-compare-browser.css",
     "components/review-panel-resizer.css",
-    "pages/(task-workspace)/tasks/components/detail/review.css",
+    "pages/(task-workspace)/tasks/(detail)/(review)/layout.css",
   ]) {
     assert.match(
       readFrontend(path),
@@ -257,9 +257,9 @@ test("structural shadows separate fixed regions from floating elevation", () => 
     [
       "pages/(task-workspace)/settings/layout.css",
       "pages/(task-workspace)/settings/navigator.css",
-      "pages/(task-workspace)/tasks/components/detail/summary.css",
+      "pages/(task-workspace)/tasks/(detail)/layout.css",
       "pages/(task-workspace)/tasks/components/navigator.css",
-      "pages/(task-workspace)/tasks/components/recovery.css",
+      "pages/(task-workspace)/tasks/recovery/page.css",
     ],
   );
   assert.deepEqual(
@@ -358,7 +358,7 @@ test("workspace header identity and titles share semantic ownership", () => {
     "pages/(task-workspace)/tasks/components/navigator.js",
   );
   const detail = readFrontend(
-    "pages/(task-workspace)/tasks/components/detail.css",
+    "pages/(task-workspace)/tasks/(detail)/(task)/layout.css",
   );
   const settingsNavigator = readFrontend(
     "pages/(task-workspace)/settings/navigator.css",
@@ -422,7 +422,7 @@ test("App Shell foreground recovery notice owns viewport-wide connection chrome"
     "pages/(task-workspace)/tasks/components/navigator.css",
   );
   const detail = readFrontend(
-    "pages/(task-workspace)/tasks/components/detail.css",
+    "pages/(task-workspace)/tasks/(detail)/(task)/layout.css",
   );
 
   cssBlockMatching(appShell, ".app-foreground-recovery", [
@@ -520,7 +520,7 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
 
   const appLayout = readFrontend("pages/layout.js");
   const taskWorkspace = readFrontend("pages/(task-workspace)/layout.js");
-  const tasksPage = readFrontend("pages/(task-workspace)/tasks/page.js");
+  const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.js");
   const settingsWorkspace = readFrontend(
     "pages/(task-workspace)/settings/layout.js",
   );
@@ -610,16 +610,16 @@ test("common chrome shares one icon slot and control geometry", () => {
   const owners = [
     ["pages/(task-workspace)/tasks/controls.css", ".task-action-icon"],
     [
-      "pages/(task-workspace)/tasks/components/detail/summary/git.css",
+      "pages/(task-workspace)/tasks/(detail)/components/git-menu.css",
       ".task-git-icon",
     ],
     [
-      "pages/(task-workspace)/tasks/components/detail/summary/github.css",
+      "pages/(task-workspace)/tasks/(detail)/components/github-menu.css",
       ".task-github-icon",
     ],
     ["components/file-viewer.css", ".viewer-info-icon"],
-    ["pages/(task-workspace)/tasks/components/detail/(git)/layout.css", ".task-domain-back-icon"],
-    ["pages/(task-workspace)/tasks/components/detail/(github)/layout.css", ".task-domain-back-icon"],
+    ["pages/(task-workspace)/tasks/(detail)/(git)/layout.css", ".task-domain-back-icon"],
+    ["pages/(task-workspace)/tasks/(detail)/(github)/layout.css", ".task-domain-back-icon"],
   ];
   for (const [path, selector] of owners) {
     const source = readFrontend(path);
@@ -631,12 +631,12 @@ test("common chrome shares one icon slot and control geometry", () => {
 
 test("visible inline icons have explicit block geometry from their UI owner", () => {
   const owners = [
-    ["pages/(task-workspace)/tasks/components/detail/(git)/layout.css", ".task-domain-back-icon", "--interface-icon-size"],
-    ["pages/(task-workspace)/tasks/components/detail/(github)/layout.css", ".task-domain-back-icon", "--interface-icon-size"],
-    ["pages/(task-workspace)/tasks/components/detail/(git)/components/controls.css", ".git-review-refresh-icon", "--interface-icon-size"],
-    ["pages/(task-workspace)/tasks/components/detail/(git)/(log)/list/page.css", ".log-review-icon", "--interface-icon-small-size"],
-    ["pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.css", ".github-pull-files-icon", "--interface-icon-small-size"],
-    ["pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/list/page.css", ".github-pull-icon", "--interface-icon-small-size"],
+    ["pages/(task-workspace)/tasks/(detail)/(git)/layout.css", ".task-domain-back-icon", "--interface-icon-size"],
+    ["pages/(task-workspace)/tasks/(detail)/(github)/layout.css", ".task-domain-back-icon", "--interface-icon-size"],
+    ["pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css", ".git-review-refresh-icon", "--interface-icon-size"],
+    ["pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.css", ".log-review-icon", "--interface-icon-small-size"],
+    ["pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css", ".github-pull-files-icon", "--interface-icon-small-size"],
+    ["pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.css", ".github-pull-icon", "--interface-icon-small-size"],
     ["pages/(task-workspace)/settings/layout.css", ".settings-workspace-back-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/settings/appearance/page.css", ".settings-reset-all-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/settings/appearance/page.css", ".settings-reset-icon", "--interface-icon-size"],
@@ -730,7 +730,7 @@ test("icon-only controls use square slots from their semantic control tier", () 
       "--interface-control-hit-size",
     ],
     [
-      "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css",
+      "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
       ".task-command-dialog-close",
       "--interface-control-hit-size",
     ],
@@ -747,12 +747,12 @@ test("icon-only controls use square slots from their semantic control tier", () 
   ];
   const contextualControls = [
     [
-      "pages/(task-workspace)/tasks/components/detail/(git)/layout.css",
+      "pages/(task-workspace)/tasks/(detail)/(git)/layout.css",
       ".task-domain-back",
       "--interface-compact-hit-size",
     ],
     [
-      "pages/(task-workspace)/tasks/components/detail/(github)/layout.css",
+      "pages/(task-workspace)/tasks/(detail)/(github)/layout.css",
       ".task-domain-back",
       "--interface-compact-hit-size",
     ],
@@ -762,17 +762,17 @@ test("icon-only controls use square slots from their semantic control tier", () 
       "--interface-compact-hit-size",
     ],
     [
-      "pages/(task-workspace)/tasks/components/detail/summary/git.css",
+      "pages/(task-workspace)/tasks/(detail)/components/git-menu.css",
       ".task-git-button",
       "--interface-compact-hit-size",
     ],
     [
-      "pages/(task-workspace)/tasks/components/detail/summary/github.css",
+      "pages/(task-workspace)/tasks/(detail)/components/github-menu.css",
       ".task-github-button",
       "--interface-compact-hit-size",
     ],
     [
-      "pages/(task-workspace)/tasks/components/detail/summary/info.css",
+      "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css",
       ".task-detail-info-button",
       "--interface-compact-hit-size",
     ],
@@ -802,7 +802,7 @@ test("icon-only controls use square slots from their semantic control tier", () 
       "--interface-compact-hit-size",
     ],
     [
-      "pages/(task-workspace)/tasks/components/detail/(git)/components/controls.css",
+      "pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css",
       ".git-review-refresh",
       "--interface-compact-hit-size",
     ],
@@ -873,7 +873,7 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
 
   const controls = [
     [
-      "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css",
+      "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
       ".task-command-dialog-close::before",
       "--interface-control-hit-outset",
     ],
@@ -883,8 +883,8 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
       "--interface-control-hit-outset",
     ],
     ["pages/(task-workspace)/layout.css", ".task-workspace-route-control::before", "--interface-compact-hit-outset"],
-    ["pages/(task-workspace)/tasks/components/detail/(git)/layout.css", ".task-domain-back::before", "--interface-compact-hit-outset"],
-    ["pages/(task-workspace)/tasks/components/detail/(github)/layout.css", ".task-domain-back::before", "--interface-compact-hit-outset"],
+    ["pages/(task-workspace)/tasks/(detail)/(git)/layout.css", ".task-domain-back::before", "--interface-compact-hit-outset"],
+    ["pages/(task-workspace)/tasks/(detail)/(github)/layout.css", ".task-domain-back::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-primary-action-button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-composer-attachment-remove::before", "--interface-compact-hit-outset"],
     ["pages/(task-workspace)/tasks/components/task-turn-options.css", ".task-model-button::before", "--interface-compact-hit-outset"],
@@ -894,7 +894,7 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
     ["pages/(task-workspace)/settings/codex/page.css", ".settings-content-section > header button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/settings/codex/page.css", ".settings-runtime-control button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/settings/about/page.css", ".settings-about-actions button::before", "--interface-control-hit-outset"],
-    ["pages/(task-workspace)/tasks/components/detail/summary/info.css", ".task-detail-archive-action .task-secondary-button::before", "--interface-compact-hit-outset"],
+    ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css", ".task-detail-archive-action .task-secondary-button::before", "--interface-compact-hit-outset"],
   ];
 
   for (const [path, selector, token] of controls) {
@@ -915,12 +915,12 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
 test("contextual and inline actions stay compact while page and primary actions stay regular", () => {
   const compactControls = [
     [
-      "pages/(task-workspace)/tasks/components/detail/summary.css",
-      ".task-detail-actions .task-secondary-button",
+      "pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.css",
+      "caffold-detail-view-switch",
       "--interface-compact-visual-size",
     ],
     [
-      "pages/(task-workspace)/tasks/components/detail/conversation.css",
+      "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
       ".task-approval-actions .task-secondary-button",
       "--interface-compact-visual-size",
     ],
@@ -935,7 +935,7 @@ test("contextual and inline actions stay compact while page and primary actions 
       "--settings-context-action-size",
     ],
     [
-      "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.css",
+      "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css",
       ".github-pull-files-button",
       "--interface-compact-visual-size",
     ],
@@ -1001,14 +1001,16 @@ test("contextual and inline actions stay compact while page and primary actions 
 
 test("dense contextual toolbars separate visual size from coarse-pointer hit area", () => {
   const tokens = readFrontend("styles.css");
-  const summary = readFrontend("pages/(task-workspace)/tasks/components/detail/summary.css");
+  const detailViewSwitch = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.css",
+  );
   const gitButton = readFrontend(
-    "pages/(task-workspace)/tasks/components/detail/summary/git.css",
+    "pages/(task-workspace)/tasks/(detail)/components/git-menu.css",
   );
   const githubButton = readFrontend(
-    "pages/(task-workspace)/tasks/components/detail/summary/github.css",
+    "pages/(task-workspace)/tasks/(detail)/components/github-menu.css",
   );
-  const review = readFrontend("pages/(task-workspace)/tasks/components/detail/review.css");
+  const review = readFrontend("pages/(task-workspace)/tasks/(detail)/(review)/layout.css");
 
   assert.match(tokens, /--interface-compact-visual-size: 1\.875rem;/);
   assert.match(
@@ -1020,8 +1022,8 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
     /--interface-compact-hit-outset:[\s\S]*--interface-target-floor[\s\S]*--interface-compact-visual-size/,
   );
   assert.match(
-    summary,
-    /\.task-mode-switch button \{[\s\S]*height: var\(--interface-compact-hit-size\)[\s\S]*margin-block: calc\(0rem - var\(--interface-compact-hit-outset\)\)/,
+    detailViewSwitch,
+    /& button \{[\s\S]*height: var\(--interface-compact-hit-size\)[\s\S]*margin-block: calc\(0rem - var\(--interface-compact-hit-outset\)\)/,
   );
   assert.match(
     gitButton,
@@ -1054,10 +1056,21 @@ test("task rows use full-width selection and compact repository grouping", () =>
     activeRow,
     '& > .task-row[aria-current="true"]',
   );
+  const sectionHeader = cssBlock(
+    activeList,
+    "& .task-repository-header {",
+  );
+  const selectedSection = cssBlock(
+    activeList,
+    '& button.task-repository-header[aria-current="page"]',
+  );
 
   assert.doesNotMatch(row, /border-left/);
   assert.doesNotMatch(hover, /border-left/);
   assert.doesNotMatch(selected, /border-left/);
+  assert.doesNotMatch(sectionHeader, /border-left/);
+  assert.doesNotMatch(selectedSection, /border-left/);
+  assert.match(selectedSection, /background: var\(--selection-bg\)/);
   assert.match(row, /width: calc\(100% \+ var\(--task-repository-indent\)\)/);
   assert.match(
     row,
@@ -1107,15 +1120,15 @@ test("text actions use the shared Interface metadata scale instead of root body 
   const owners = [
     ["pages/(task-workspace)/tasks/controls.css", ".task-primary-button"],
     [
-      "pages/(task-workspace)/tasks/components/detail/summary/git.css",
+      "pages/(task-workspace)/tasks/(detail)/components/git-menu.css",
       ".task-git-popover button",
     ],
     [
-      "pages/(task-workspace)/tasks/components/detail/summary/github.css",
+      "pages/(task-workspace)/tasks/(detail)/components/github-menu.css",
       ".task-github-popover button",
     ],
-    ["pages/(task-workspace)/tasks/components/detail/summary/info.css", ".task-detail-popover dd"],
-    ["pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.css", ".github-pull-commit a"],
+    ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css", ".task-detail-popover dd"],
+    ["pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css", ".github-pull-commit a"],
   ];
 
   for (const [path, selector] of owners) {
@@ -1174,7 +1187,7 @@ test("mixed surfaces keep content and controls on separate axes", () => {
   );
 
   const conversation = readFrontend(
-    "pages/(task-workspace)/tasks/components/detail/conversation.css",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
   );
   assert.match(
     conversation,

@@ -24,7 +24,7 @@ const ownership = new Map([
     ["caffold-git-compare-tree"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/review/changes-tree.css",
+    "pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.css",
     ["caffold-git-diff-changes-tree"],
   ],
   ["components/pagination.css", ["caffold-pagination"]],
@@ -54,27 +54,27 @@ const ownership = new Map([
     ["caffold-voice-level-meter"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/conversation.css",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
     ["caffold-task-conversation"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/conversation/components/changed-files.css",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css",
     ["caffold-task-changed-files"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/conversation/components/command.css",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css",
     ["caffold-task-command"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/conversation/command-dialog.css",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
     ["caffold-task-command-dialog"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/conversation/work-details.css",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css",
     ["caffold-task-work-details"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/directory-picker.css",
+    "pages/(task-workspace)/tasks/new/components/directory-picker.css",
     ["caffold-task-directory-picker"],
   ],
   [
@@ -85,22 +85,38 @@ const ownership = new Map([
     "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
     ["caffold-task-image-preview-dialog"],
   ],
-  ["pages/(task-workspace)/tasks/components/detail.css", ["caffold-task-detail"]],
+  ["pages/(task-workspace)/tasks/(detail)/(task)/layout.css", ["caffold-task-detail"]],
   [
-    "pages/(task-workspace)/tasks/components/detail/summary.css",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css",
     ["caffold-task-detail-summary"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/summary/git.css",
+    "pages/(task-workspace)/tasks/(detail)/components/git-menu.css",
     ["caffold-task-detail-git"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/summary/github.css",
+    "pages/(task-workspace)/tasks/(detail)/components/github-menu.css",
     ["caffold-task-detail-github"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/summary/info.css",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css",
     ["caffold-task-detail-info"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/(detail)/layout.css",
+    ["caffold-detail-layout"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.css",
+    ["caffold-detail-view-switch"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/(detail)/(section)/layout.css",
+    ["caffold-section-detail"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css",
+    ["caffold-section-detail-summary"],
   ],
   [
     "pages/(task-workspace)/tasks/components/navigator.css",
@@ -123,14 +139,18 @@ const ownership = new Map([
     ["caffold-codex-readiness-recovery"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/recovery.css",
+    "pages/(task-workspace)/tasks/recovery/page.css",
     ["caffold-task-recovery"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/review.css",
+    "pages/(task-workspace)/tasks/(detail)/(review)/layout.css",
     ["caffold-task-review"],
   ],
-  ["pages/(task-workspace)/tasks/components/task-new.css", ["caffold-task-new"]],
+  [
+    "pages/(task-workspace)/tasks/components/task-create.css",
+    ["caffold-task-create"],
+  ],
+  ["pages/(task-workspace)/tasks/new/page.css", ["caffold-task-new"]],
   [
     "pages/(task-workspace)/tasks/components/task-status.css",
     [
@@ -140,81 +160,81 @@ const ownership = new Map([
     ],
   ],
   ["pages/(task-workspace)/tasks/controls.css", ["caffold-tasks-page"]],
-  ["pages/(task-workspace)/tasks/page.css", ["caffold-tasks-page"]],
+  ["pages/(task-workspace)/tasks/layout.css", ["caffold-tasks-page"]],
   [
-    "pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/components/changes-tree.css",
+    "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.css",
     ["caffold-commit-changes-tree"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(git)/(log)/commit/page.css",
+    "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.css",
     ["caffold-git-log-commit-page"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(git)/(log)/layout.css",
+    "pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.css",
     ["caffold-git-log-layout"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(git)/(log)/list/page.css",
+    "pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.css",
     ["caffold-git-log-list-page"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(git)/compare/page.css",
+    "pages/(task-workspace)/tasks/(detail)/(git)/compare/page.css",
     ["caffold-git-compare-page"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(git)/components/controls.css",
+    "pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css",
     ["caffold-git-review-controls"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(git)/layout.css",
+    "pages/(task-workspace)/tasks/(detail)/(git)/layout.css",
     ["caffold-task-git-layout"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/detail/page.css",
+    "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css",
     ["caffold-github-issue-detail-page"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog.css",
+    "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.css",
     ["caffold-github-task-start-dialog"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-issue.css",
+    "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.css",
     ["caffold-github-issue-task-source"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(github)/components/task-start-dialog/github-pull.css",
+    "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css",
     ["caffold-github-pull-task-source"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/layout.css",
+    "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.css",
     ["caffold-github-issues-layout"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(github)/(issues)/list/page.css",
+    "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.css",
     ["caffold-github-issues-list-page"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/detail/page.css",
+    "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css",
     ["caffold-github-pull-detail-page"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/components/tree.css",
+    "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.css",
     ["caffold-github-pull-files-tree"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/files/page.css",
+    "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.css",
     ["caffold-github-pull-files-page"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/layout.css",
+    "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.css",
     ["caffold-github-pulls-layout"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(github)/(pulls)/list/page.css",
+    "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.css",
     ["caffold-github-pulls-list-page"],
   ],
   [
-    "pages/(task-workspace)/tasks/components/detail/(github)/layout.css",
+    "pages/(task-workspace)/tasks/(detail)/(github)/layout.css",
     ["caffold-task-github-layout"],
   ],
   [
@@ -294,15 +314,31 @@ const componentChildren = new Map([
     [
       "caffold-codex-readiness-recovery",
       "caffold-task-new",
-      "caffold-task-detail",
+      "caffold-detail-layout",
       "caffold-task-recovery",
       "caffold-task-image-preview-dialog",
     ],
   ],
   [
-    "caffold-task-new",
-    ["caffold-task-composer", "caffold-task-directory-picker"],
+    "caffold-detail-layout",
+    [
+      "caffold-task-detail",
+      "caffold-section-detail-summary",
+      "caffold-detail-view-switch",
+      "caffold-task-detail-git",
+      "caffold-task-detail-github",
+      "caffold-section-detail",
+      "caffold-task-review",
+      "caffold-task-git-layout",
+      "caffold-task-github-layout",
+    ],
   ],
+  ["caffold-section-detail", ["caffold-task-create"]],
+  [
+    "caffold-task-new",
+    ["caffold-task-create", "caffold-task-directory-picker"],
+  ],
+  ["caffold-task-create", ["caffold-task-composer"]],
   [
     "caffold-task-navigator",
     [

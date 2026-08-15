@@ -18,11 +18,17 @@ retry guidance; it does not cause a transient or automatic route switch.
 Settings remains reachable.
 
 `/` is the canonical Tasks home. `/tasks` canonicalizes to `/` with history
-replacement. All other active application routes are either Settings or
-Task-scoped routes:
+replacement. A selected Section also remains on the root path and uses a
+canonical query route; Task URLs use path routes:
 
 ```text
 /
+/?section=<managed-section-id>
+/?section=<managed-section-id>&surface=review&scope=...&nav=...&view=...&file=...&base=...
+/?section=<managed-section-id>&surface=git&tool=compare&base=...&head=...&file=...
+/?section=<managed-section-id>&surface=git&tool=log&page=...&sha=...&file=...
+/?section=<managed-section-id>&surface=github&tool=issues&page=...&number=...
+/?section=<managed-section-id>&surface=github&tool=pulls&page=...&number=...&files=true&file=...
 /tasks/new?cwd=...
 /tasks/:threadId
 /tasks/:threadId/review?scope=...&nav=...&view=...&file=...&base=...
@@ -41,8 +47,10 @@ Task-scoped routes:
 /settings/about
 ```
 
-The route list above is the complete frontend schema. Any other frontend path
-uses the server's general unknown-route response.
+Section routes are frontend-only projections over the locally managed Section
+list; they do not imply a backend Section detail endpoint. The route list above
+is the complete frontend schema. Any other frontend path uses the server's
+general unknown-route response.
 
 ## Tasks home presentation
 
@@ -56,6 +64,11 @@ instead of requiring a separate empty-state action.
 Codex availability does not select the top-level surface. Connection failures
 remain visible inside Tasks and must not cause a transient or automatic switch
 to another workspace.
+
+Selecting a managed Section opens its fixed-context New Task surface. Recovery
+group headings are not selectable. A Managed Section ID that is absent after
+the active list loads is not a recoverable remote resource and replaces the
+route with Tasks home.
 
 ## Canonical Task context
 
@@ -75,6 +88,28 @@ Task owns that selected directory. Its precedence is:
 
 The Directory Picker owns only its transient traversal while open. Cancel does
 not change New Task; `Use This Folder` updates New Task and its route.
+
+Section New never routes `cwd` and exposes no Directory Picker. Its fixed cwd is
+the managed Section logical path. The Section's local repository capability
+determines whether Working Tree, Branch, Git, and GitHub controls are available.
+
+## Section Detail routes
+
+`/?section=<id>` selects fixed-context New Task. Repository Sections also expose
+the same shared Integrated Review, Git, and GitHub implementations used by Task
+Detail. `surface` selects `review`, `git`, or `github`; `tool` selects the Git or
+GitHub domain mode. Review and domain query fields retain the same meaning and
+normalization as their Task counterparts.
+
+After the local projection resolves, a repository surface for a Section without
+repository capability replaces the route with that Section's fixed-context New
+Task surface. A capability change for the selected Section follows the same
+rule and clears retained repository context before navigation settles.
+
+The root query carries durable semantic state because Managed Section IDs and
+ordering are locally owned. It never carries a synthetic `threadId`, and shared
+child route intents are translated back to the Section query schema by the
+common Detail layout.
 
 ## Task Detail routes
 
@@ -127,20 +162,27 @@ Git and GitHub route objects preserve their domain-local `kind` (`compare`,
 flattened into synthetic `kind: "tasks"` objects. Every canonical definition
 reports `task-workspace` as its surface.
 
+Section Detail remains `kind: "tasks"` and carries `sectionId` plus its
+subject-local surface fields. `routeDomain`, `routeMode`, and `routeTarget`
+derive shared-child metadata from those fields.
+
 ## Preparation and activation
 
 Route handling is deliberately split:
 
 1. parse the URL;
-2. synchronously prepare the requested Task/domain/list/detail/file shell;
-3. load the canonical Task by `threadId`;
-4. derive its repository/worktree snapshot;
-5. activate the requested child and reconcile canonical domain data.
+2. synchronously prepare the requested subject/domain/list/detail/file shell;
+3. resolve a Section from the loaded local projection, or load a canonical Task
+   by `threadId`;
+4. derive repository context from that subject;
+5. activate the requested shared child and reconcile canonical domain data.
 
 `prepareRoute(route)` is API-free. A deep reload therefore presents the final
 destination shell without flashing Tasks home, Conversation, or a domain list.
-Missing Task, repository, or GitHub context remains in the requested shell with
-Retry instead of redirecting elsewhere.
+Missing Task repository or GitHub context remains in the requested Task shell
+with Retry instead of redirecting elsewhere. Section repository capability is
+resolved from the local projection and follows the Section normalization rule
+above.
 
 Task switches, route changes, repository-context changes, and child
 deactivation invalidate the relevant request generations. A late response may
@@ -156,6 +198,7 @@ not patch or reactivate a stale destination.
 - Issue detail -> Issues list;
 - PR file -> PR Files; PR Files -> PR detail; PR detail -> PR list;
 - Task child root or Conversation -> Tasks home;
+- Section child root or fixed-context New Task -> Tasks home;
 - New Task -> Tasks home;
 - Settings section -> Settings list.
 
@@ -165,9 +208,9 @@ exactly one contextual Back is shown, with deepest-visible priority: file,
 domain detail, then Task. Desktop does not add a file Back when the
 corresponding navigator is simultaneously visible.
 
-Conversation, Integrated Review, Git, and GitHub share the same parent. A root
-child Back therefore targets Tasks home; switching siblings uses the Task
-Summary controls.
+Conversation, fixed-context New Task, Integrated Review, Git, and GitHub share
+the same parent for their active subject. A root child Back therefore targets
+Tasks home; switching siblings uses the common Detail controls.
 
 ## History policy
 
