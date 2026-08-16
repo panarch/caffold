@@ -173,6 +173,6 @@ Operations:
 This repository has one Codex-first Task workspace. A selected Task owns its
 Conversation and execution lifecycle. A selected managed Section can start a
 Task in its fixed directory, and repository-backed Tasks and Sections share
-integrated Working Tree/Branch review, read-only Git Compare/Log, and read-only
-GitHub Issue/Pull Request surfaces. Planned product expansions are tracked in
-the [Roadmap](docs/product/roadmap.md).
+integrated Working Tree/Branch review, non-authoring Git Compare/Log, and
+read-only GitHub Issue/Pull Request surfaces. Planned product expansions are
+tracked in the [Roadmap](docs/product/roadmap.md).

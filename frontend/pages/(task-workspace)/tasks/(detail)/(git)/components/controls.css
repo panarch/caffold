@@ -51,7 +51,8 @@ caffold-git-review-controls {
     background: var(--control-hover-bg);
   }
 
-  & .git-review-refresh.is-unavailable {
+  & .git-review-refresh.is-unavailable,
+  & .git-review-refresh.is-error {
     color: var(--warning);
   }
 
@@ -64,6 +65,10 @@ caffold-git-review-controls {
     display: block;
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);
+  }
+
+  & .git-review-refresh:disabled {
+    cursor: wait;
   }
 
   & .review-compare-ref-controls {

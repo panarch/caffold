@@ -87,6 +87,20 @@
   }
 }
 
+@keyframes caffold-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .file-refresh-button.is-refreshing .file-refresh-icon,
+  .viewer-refresh-button.is-refreshing .viewer-refresh-icon,
+  .git-review-refresh.is-refreshing .git-review-refresh-icon {
+    animation: none;
+  }
+}
+
 @font-face {
   font-family: "Caffold D2 Coding";
   src: url("./fonts/D2Coding-Regular.woff2") format("woff2");

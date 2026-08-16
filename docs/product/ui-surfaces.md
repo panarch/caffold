@@ -110,9 +110,12 @@ Review:
   current branch;
 - bounded Log, commit detail, changed files, diff, and source inspection.
 
-Git is read-only. It does not expose stage, commit, checkout, reset, merge,
-rebase, stash, or publication controls, and it does not duplicate Working Tree
-status or current-Branch review from Integrated Review.
+Git is non-authoring. Log exposes an explicit Fetch action that updates the
+selected repository's remote-tracking default branch and reports its
+relationship to the current checkout; it never fetches automatically. Git does
+not expose stage, commit, checkout, reset, merge, rebase, stash, or publication
+controls. Its active repository watch reacts to ref-derived invalidation only;
+it does not own Working Tree status or the Integrated Review selected path.
 
 ### GitHub
 

@@ -1,8 +1,12 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { relative, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
 import {
   activeTaskProjection,
+  captureReviewScreenshot,
   canonicalTaskState,
   installEventSourceMock,
   mockCodexModels,
@@ -14,6 +18,7 @@ test.beforeEach(async ({ page }) => {
 
 const THREAD_ID = "thread_task_git_review";
 const ROOT_PATH = "src";
+const FIXTURE_HOME = resolve("tests/fixtures/home");
 const COMMIT = {
   sha: "abcdef1234567890abcdef1234567890abcdef12",
   shortSha: "abcdef1",
@@ -23,20 +28,55 @@ const COMMIT = {
   authorEmail: "caffold@example.test",
   authorTimeMs: 1_785_700_000_000,
 };
+const FETCH_FAILURES = [
+  {
+    name: "remote-not-found",
+    status: 400,
+    code: "git_remote_not_found",
+    message: "no Git fetch remote is configured for: src",
+  },
+  {
+    name: "remote-ambiguous",
+    status: 409,
+    code: "git_remote_ambiguous",
+    message: "multiple Git fetch remotes are configured for: src",
+  },
+  {
+    name: "remote-head-unavailable",
+    status: 502,
+    code: "git_remote_head_unavailable",
+    message: "the default branch is unavailable for Git remote: origin",
+  },
+  {
+    name: "fetch-failed",
+    status: 502,
+    code: "git_fetch_failed",
+    message: "Git fetch failed for origin/main",
+  },
+  {
+    name: "relationship-unavailable",
+    status: 400,
+    code: "git_command_failed",
+    message: "git command failed while trying to compare the fetched branch: src",
+  },
+];
 
-function taskRecord(threadId = THREAD_ID) {
+function taskRecord(
+  threadId = THREAD_ID,
+  { rootPath = ROOT_PATH, branch = "feature/review" } = {},
+) {
   return {
     id: threadId,
     threadId,
     ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title: `Task Git ${threadId}`,
     preview: "Task-owned Git review",
-    cwd: ROOT_PATH,
-    cwdPath: ROOT_PATH,
+    cwd: rootPath,
+    cwdPath: rootPath,
     relativeCwd: "",
     worktree: {
-      rootPath: ROOT_PATH,
-      branch: "feature/review",
+      rootPath,
+      branch,
       headSha: COMMIT.sha,
       relativeCwd: "",
       linked: true,
@@ -48,14 +88,30 @@ function taskRecord(threadId = THREAD_ID) {
   };
 }
 
-async function installTaskGitFixture(page, tasks = [taskRecord()]) {
+async function installTaskGitFixture(
+  page,
+  tasks = [taskRecord()],
+  { rootPath = ROOT_PATH, branch = "feature/review", mockFetch = true } = {},
+) {
   await installEventSourceMock(page, {
     registryKey: "__taskGitWatchSources",
     bootstrapFunctionKey: "__taskGitDetailBootstrap",
   });
   await mockCodexModels(page);
-  const repository = { rootPath: ROOT_PATH, branch: "feature/review", dirty: false };
-  const counts = { refs: 0, compare: 0, compareDiff: 0, log: 0, commit: 0 };
+  const repository = { rootPath, branch, dirty: false };
+  const counts = {
+    repository,
+    refs: 0,
+    compare: 0,
+    compareDiff: 0,
+    fetch: 0,
+    fetchBranch: "main",
+    fetchCompleted: 0,
+    fetchError: null,
+    fetchWait: null,
+    log: 0,
+    commit: 0,
+  };
 
   await page.exposeFunction("__taskGitDetailBootstrap", (threadId) => {
     const task = tasks.find((candidate) => candidate.threadId === threadId);
@@ -139,7 +195,7 @@ async function installTaskGitFixture(page, tasks = [taskRecord()]) {
   await page.route(/\/api\/git\/compare-diff(?:\?|$)/, (route) => {
     counts.compareDiff += 1;
     const url = new URL(route.request().url());
-    expect(url.searchParams.get("path")).toBe(ROOT_PATH);
+    expect(url.searchParams.get("path")).toBe(rootPath);
     expect(url.searchParams.get("file")).toBe("src/example.rs");
     return route.fulfill({
       json: {
@@ -168,6 +224,38 @@ async function installTaskGitFixture(page, tasks = [taskRecord()]) {
       },
     });
   });
+  if (mockFetch) {
+    await page.route(/\/api\/git\/fetch(?:\?|$)/, async (route) => {
+      counts.fetch += 1;
+      expect(route.request().method()).toBe("POST");
+      expect(route.request().postDataJSON()).toEqual({ path: rootPath });
+      if (counts.fetchWait) {
+        await counts.fetchWait;
+      }
+      if (counts.fetchError) {
+        const error = typeof counts.fetchError === "string"
+          ? { status: 502, code: "git_fetch_failed", message: counts.fetchError }
+          : counts.fetchError;
+        await route.fulfill({
+          status: error.status,
+          json: { error: { code: error.code, message: error.message } },
+        });
+        counts.fetchCompleted += 1;
+        return;
+      }
+      await route.fulfill({
+        json: {
+          repository,
+          remote: "origin",
+          branch: counts.fetchBranch,
+          reference: `origin/${counts.fetchBranch}`,
+          ahead: 3,
+          behind: 2,
+        },
+      });
+      counts.fetchCompleted += 1;
+    });
+  }
   await page.route(/\/api\/git\/commit(?:\?|$)/, (route) => {
     counts.commit += 1;
     return route.fulfill({
@@ -190,7 +278,7 @@ async function installTaskGitFixture(page, tasks = [taskRecord()]) {
   });
   await page.route(/\/api\/git\/commit-diff(?:\?|$)/, (route) => {
     const url = new URL(route.request().url());
-    expect(url.searchParams.get("path")).toBe(ROOT_PATH);
+    expect(url.searchParams.get("path")).toBe(rootPath);
     expect(url.searchParams.get("file")).toBe("src/example.rs");
     return route.fulfill({
       json: {
@@ -423,6 +511,17 @@ test("reloads Section-scoped Log from the Section repository context", async ({
   await expect.poll(() =>
     layout.evaluate((element) => element.repository?.rootPath ?? null)
   ).toBe(ROOT_PATH);
+  expect(counts.fetch).toBe(0);
+  await layout.getByRole("button", { name: "Fetch remote default branch" }).click();
+  await expect(layout.locator(".task-domain-count")).toHaveText("1 commit");
+  await expect(layout.locator(".task-domain-primary-meta")).toHaveText(
+    "feature/review",
+  );
+  await expect(layout.locator(".task-domain-secondary-meta")).toHaveText(
+    "3 ahead, 2 behind main",
+  );
+  expect(counts.fetch).toBe(1);
+  expect(counts.log).toBe(1);
 });
 
 test("keeps the loaded Git route stable across unrelated Task stream updates", async ({
@@ -464,12 +563,25 @@ test("navigates Compare files and Log commits with deterministic domain Back", a
   await expect(logPage).toContainText(COMMIT.subject);
   await expect(logPage.locator(".log-list-panel > header")).toHaveCount(0);
   await expect(logHeader.locator("h2")).toHaveText("Log");
-  const logSubtitle = logHeader.locator(".task-domain-subtitle");
-  await expect(logSubtitle).toHaveText("feature/review · 1 commits");
-  await expect(logSubtitle).toHaveAttribute("title", "feature/review · 1 commits");
+  const logCount = logHeader.locator(".task-domain-count");
+  const logBranch = logHeader.locator(".task-domain-primary-meta");
+  const logRelationship = logHeader.locator(".task-domain-secondary-meta");
+  await expect(logCount).toHaveText("1 commit");
+  await expect(logBranch).toHaveText("feature/review");
+  await expect(logBranch).toHaveAttribute("title", "feature/review");
+  await expect(logRelationship).toBeHidden();
+  await expect(
+    logHeader.getByRole("button", { name: "Fetch remote default branch" }),
+  ).toHaveClass(/git-review-refresh/);
   const logHeaderGeometry = await logHeader.evaluate((header) => {
-    const subtitle = header.querySelector(".task-domain-subtitle");
-    const subtitleBounds = subtitle.getBoundingClientRect();
+    const titleRow = header.querySelector(".task-domain-title-row");
+    const metaRow = header.querySelector(".task-domain-meta-row");
+    const count = header.querySelector(".task-domain-count");
+    const branch = header.querySelector(".task-domain-primary-meta");
+    const titleRowBounds = titleRow.getBoundingClientRect();
+    const metaRowBounds = metaRow.getBoundingClientRect();
+    const countBounds = count.getBoundingClientRect();
+    const branchBounds = branch.getBoundingClientRect();
     const refreshBounds = header
       .querySelector(".git-review-refresh")
       .getBoundingClientRect();
@@ -478,17 +590,29 @@ test("navigates Compare files and Log commits with deterministic domain Back", a
     return {
       height: bounds.height,
       minimumHeight: Number.parseFloat(getComputedStyle(header).minHeight),
-      subtitleClipped: subtitle.scrollWidth > subtitle.clientWidth,
-      refreshAfterSubtitle: refreshBounds.left >= subtitleBounds.right,
+      branchClipped: branch.scrollWidth > branch.clientWidth,
+      rowsSeparated: metaRowBounds.top >= titleRowBounds.bottom - 1,
+      countOnTitleRow:
+        countBounds.top >= titleRowBounds.top - 1 &&
+        countBounds.bottom <= titleRowBounds.bottom + 1,
+      branchOnMetaRow:
+        branchBounds.top >= metaRowBounds.top - 1 &&
+        branchBounds.bottom <= metaRowBounds.bottom + 1,
+      refreshAfterTitle: refreshBounds.left >= titleRowBounds.right,
       refreshAtTrailingEdge:
         Math.abs(bounds.right - paddingRight - refreshBounds.right) <= 1,
+      noHorizontalOverflow: header.scrollWidth <= header.clientWidth,
     };
   });
   expect(logHeaderGeometry.height).toBeCloseTo(logHeaderGeometry.minimumHeight, 0);
   expect(logHeaderGeometry).toMatchObject({
-    subtitleClipped: false,
-    refreshAfterSubtitle: true,
+    branchClipped: false,
+    rowsSeparated: true,
+    countOnTitleRow: true,
+    branchOnMetaRow: true,
+    refreshAfterTitle: true,
     refreshAtTrailingEdge: true,
+    noHorizontalOverflow: true,
   });
   await page
     .locator(`.log-entry[data-commit-sha="${COMMIT.sha}"]`)
@@ -524,6 +648,227 @@ test("navigates Compare files and Log commits with deterministic domain Back", a
   await back.click();
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/log`);
   await expect(page.locator("caffold-git-log-list-page")).toBeVisible();
+});
+
+test("keeps long Log metadata inside the two-row header", async ({ page }) => {
+  const longBranch =
+    "feature/git-log-remote-status-with-an-inconveniently-long-local-branch-name";
+  const longRemoteBranch =
+    "release/remote-default-with-an-inconveniently-long-branch-name";
+  const counts = await installTaskGitFixture(page);
+  counts.repository.branch = longBranch;
+  counts.fetchBranch = longRemoteBranch;
+  await page.goto(`/tasks/${THREAD_ID}/git/log`);
+
+  const header = page.locator(
+    "caffold-task-git-layout > .task-git-surface > .task-domain-header",
+  );
+  const branch = header.locator(".task-domain-primary-meta");
+  const relationship = header.locator(".task-domain-secondary-meta");
+  await expect(branch).toHaveText(longBranch);
+  await expect(branch).toHaveAttribute("title", longBranch);
+  await header.getByRole("button", { name: "Fetch remote default branch" }).click();
+  await expect(relationship).toHaveText(
+    `3 ahead, 2 behind ${longRemoteBranch}`,
+  );
+
+  const geometry = await header.evaluate((element) => {
+    const title = element.querySelector(".task-domain-title").getBoundingClientRect();
+    const titleRow = element.querySelector(".task-domain-title-row").getBoundingClientRect();
+    const metaRow = element.querySelector(".task-domain-meta-row").getBoundingClientRect();
+    const branch = element.querySelector(".task-domain-primary-meta").getBoundingClientRect();
+    const relationship = element
+      .querySelector(".task-domain-secondary-meta")
+      .getBoundingClientRect();
+    return {
+      noHorizontalOverflow: element.scrollWidth <= element.clientWidth,
+      rowsSeparated: metaRow.top >= titleRow.bottom - 1,
+      metadataWithinHeader:
+        branch.left >= title.left &&
+        relationship.right <= title.right &&
+        branch.right <= relationship.left + 1,
+    };
+  });
+  expect(geometry).toEqual({
+    noHorizontalOverflow: true,
+    rowsSeparated: true,
+    metadataWithinHeader: true,
+  });
+});
+
+test("fetches remote Log status only on explicit request and retains settled status on re-entry", async ({
+  page,
+}, testInfo) => {
+  const counts = await installTaskGitFixture(page);
+  await page.goto(`/tasks/${THREAD_ID}/git/log`);
+
+  const layout = page.locator("caffold-task-git-layout");
+  const count = layout.locator(".task-domain-count");
+  const branch = layout.locator(".task-domain-primary-meta");
+  const relationship = layout.locator(".task-domain-secondary-meta");
+  const fetch = layout.locator(".git-review-refresh");
+  await expect(count).toHaveText("1 commit");
+  await expect(branch).toHaveText("feature/review");
+  await expect(relationship).toBeHidden();
+  await expect(fetch).toHaveAccessibleName("Fetch remote default branch");
+  expect(counts.fetch).toBe(0);
+
+  await fetch.click();
+  await expect(count).toHaveText("1 commit");
+  await expect(branch).toHaveText("feature/review");
+  await expect(relationship).toHaveText("3 ahead, 2 behind main");
+  if (testInfo.project.name === "foldable") {
+    await captureReviewScreenshot(page, testInfo, "tasks-git-log-remote-status");
+  }
+  await expect(
+    layout.getByRole("button", { name: "Fetch origin/main again" }),
+  ).toBeEnabled();
+  expect(counts.fetch).toBe(1);
+  expect(counts.log).toBe(1);
+
+  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  await chooseGitTool(page, "log");
+  await expect(count).toHaveText("1 commit");
+  await expect(branch).toHaveText("feature/review");
+  await expect(relationship).toHaveText("3 ahead, 2 behind main");
+  await expect(
+    layout.getByRole("button", { name: "Fetch origin/main again" }),
+  ).toBeEnabled();
+  expect(counts.fetch).toBe(1);
+});
+
+test("keeps an in-flight Fetch isolated across Git route re-entry", async ({ page }) => {
+  const counts = await installTaskGitFixture(page);
+  await page.goto(`/tasks/${THREAD_ID}/git/log`);
+
+  const layout = page.locator("caffold-task-git-layout");
+  const fetch = layout.locator(".git-review-refresh");
+  const relationship = layout.locator(".task-domain-secondary-meta");
+  await fetch.click();
+  await expect(relationship).toHaveText("3 ahead, 2 behind main");
+
+  let releaseFetch;
+  counts.fetchWait = new Promise((resolve) => {
+    releaseFetch = resolve;
+  });
+  await layout.evaluate((element) => {
+    window.__gitFetchSettlementComplete = false;
+    void element.fetchRemote().finally(() => {
+      window.__gitFetchSettlementComplete = true;
+    });
+  });
+  await expect(
+    layout.getByRole("button", { name: "Fetching remote default branch" }),
+  ).toBeDisabled();
+  await expect.poll(() =>
+    page.evaluate(() =>
+      window.__taskGitWatchSources.filter(
+        (source) => source.url.includes("/api/watch") && source.readyState !== 2,
+      ).length
+    )
+  ).toBe(1);
+  await expect(fetch).toHaveClass(/is-refreshing/);
+  const refreshIcon = fetch.locator(".git-review-refresh-icon");
+  await expect(refreshIcon).toBeVisible();
+  const animation = await refreshIcon.evaluate(async (icon) => {
+    const style = getComputedStyle(icon);
+    const animationName = style.animationName;
+    const before = style.transform;
+    await new Promise((resolve) => window.setTimeout(resolve, 120));
+    const after = getComputedStyle(icon).transform;
+    return { animationName, before, after };
+  });
+  expect(animation.animationName).toBe("caffold-refresh-spin");
+  expect(animation.after).not.toBe(animation.before);
+
+  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  await chooseGitTool(page, "log");
+  await expect(relationship).toHaveText("3 ahead, 2 behind main");
+  releaseFetch();
+  await expect.poll(() => counts.fetchCompleted).toBe(2);
+  await expect.poll(() =>
+    page.evaluate(() => window.__gitFetchSettlementComplete)
+  ).toBe(true);
+  await expect.poll(() =>
+    page.evaluate(() =>
+      window.__taskGitWatchSources.filter(
+        (source) => source.url.includes("/api/watch") && source.readyState !== 2,
+      ).length
+    )
+  ).toBe(1);
+  await expect(relationship).toHaveText("3 ahead, 2 behind main");
+  await expect(
+    layout.getByRole("button", { name: "Fetch origin/main again" }),
+  ).toBeEnabled();
+});
+
+test("clears fetched relationship when the local branch changes", async ({ page }) => {
+  const counts = await installTaskGitFixture(page);
+  await page.goto(`/tasks/${THREAD_ID}/git/log`);
+
+  const layout = page.locator("caffold-task-git-layout");
+  const fetch = layout.locator(".git-review-refresh");
+  const branch = layout.locator(".task-domain-primary-meta");
+  const relationship = layout.locator(".task-domain-secondary-meta");
+  await fetch.click();
+  await expect(relationship).toHaveText("3 ahead, 2 behind main");
+
+  counts.repository.branch = "feature/next";
+  await layout.evaluate((element) => element.logLayout.refresh());
+  await expect(branch).toHaveText("feature/next");
+  await expect(relationship).toBeHidden();
+  await expect(fetch).toHaveAccessibleName("Fetch remote default branch");
+});
+
+test("connects the Fetch control to the actual backend Git boundary", async ({
+  page,
+}, testInfo) => {
+  const scenario = createFetchScenario(testInfo.project.name);
+  const task = taskRecord(THREAD_ID, {
+    rootPath: scenario.rootPath,
+    branch: "feature/review",
+  });
+  try {
+    await installTaskGitFixture(page, [task], {
+      rootPath: scenario.rootPath,
+      branch: "feature/review",
+      mockFetch: false,
+    });
+    await page.goto(`/tasks/${THREAD_ID}/git/log`);
+
+    const layout = page.locator("caffold-task-git-layout");
+    await layout.getByRole("button", { name: "Fetch remote default branch" }).click();
+    await expect(layout.locator(".task-domain-secondary-meta")).toHaveText(
+      "1 ahead, 1 behind main",
+    );
+    await expect(
+      layout.getByRole("button", { name: "Fetch origin/main again" }),
+    ).toBeEnabled();
+    expect(gitOutput(scenario.local, ["rev-parse", "origin/main"])).toBe(
+      gitOutput(scenario.seed, ["rev-parse", "main"]),
+    );
+  } finally {
+    await page.goto("about:blank");
+    rmSync(scenario.root, { recursive: true, force: true });
+  }
+});
+
+test("exposes every Git fetch failure through the native Fetch tooltip", async ({ page }) => {
+  const counts = await installTaskGitFixture(page);
+  await page.goto(`/tasks/${THREAD_ID}/git/log`);
+
+  const layout = page.locator("caffold-task-git-layout");
+  const fetch = layout.locator(".git-review-refresh");
+  const relationship = layout.locator(".task-domain-secondary-meta");
+  for (const failure of FETCH_FAILURES) {
+    counts.fetchError = failure;
+    await fetch.click();
+    const tooltip = `Fetch failed. ${failure.message}`;
+    await expect(relationship).toHaveText("Remote unavailable");
+    await expect(fetch).toHaveClass(/is-error/);
+    await expect(fetch).toHaveAttribute("title", tooltip);
+    await expect(fetch).toHaveAccessibleName(tooltip);
+  }
 });
 
 test("deactivates and rebinds the shared Git child when the selected Task changes", async ({ page }) => {
@@ -603,4 +948,59 @@ async function emitGitTaskEvent(page, revision) {
       },
     });
   }, { threadId: THREAD_ID, revision });
+}
+
+function createFetchScenario(projectName) {
+  const root = mkdtempSync(resolve(FIXTURE_HOME, `.git-fetch-${projectName}-`));
+  const seed = resolve(root, "seed");
+  const remote = resolve(root, "remote.git");
+  const local = resolve(root, "local");
+  mkdirSync(seed);
+  mkdirSync(remote);
+  git(seed, ["init"]);
+  writeFileSync(resolve(seed, "base.txt"), "base\n");
+  git(seed, ["add", "base.txt"]);
+  gitCommit(seed, "Add base");
+  git(seed, ["branch", "-M", "main"]);
+  git(remote, ["init", "--bare"]);
+  git(remote, ["symbolic-ref", "HEAD", "refs/heads/main"]);
+  git(seed, ["remote", "add", "origin", remote]);
+  git(seed, ["push", "origin", "main"]);
+  git(root, ["clone", remote, local]);
+  git(local, ["checkout", "-b", "feature/review"]);
+  writeFileSync(resolve(local, "feature.txt"), "feature\n");
+  git(local, ["add", "feature.txt"]);
+  gitCommit(local, "Add feature");
+  writeFileSync(resolve(seed, "remote.txt"), "remote\n");
+  git(seed, ["add", "remote.txt"]);
+  gitCommit(seed, "Advance main");
+  git(seed, ["push", "origin", "main"]);
+  return {
+    root,
+    seed,
+    local,
+    rootPath: relative(FIXTURE_HOME, local).split("\\").join("/"),
+  };
+}
+
+function git(path, args) {
+  execFileSync("git", ["-C", path, ...args], { stdio: "pipe" });
+}
+
+function gitCommit(path, message) {
+  git(path, [
+    "-c",
+    "user.name=Caffold Test",
+    "-c",
+    "user.email=caffold@example.test",
+    "-c",
+    "commit.gpgsign=false",
+    "commit",
+    "-m",
+    message,
+  ]);
+}
+
+function gitOutput(path, args) {
+  return execFileSync("git", ["-C", path, ...args], { encoding: "utf8" }).trim();
 }

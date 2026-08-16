@@ -60,7 +60,9 @@ surface. Selection, disclosure, scroll, and pane width remain component-local.
 The active `caffold-task-git-layout` owns one repository-root subscription for
 arbitrary Compare and Log. It ignores ordinary file and status-only
 invalidations and reconciles ref-derived data on `gitRefsChanged`, recovery, or
-explicit Refresh. It does not load Working Tree status or patches.
+explicit Compare Refresh. Log Fetch is a separate user action; watch and
+recovery reconciliation never start it. The Git child does not load Working
+Tree status or patches.
 
 ### Shared GitHub and inactive children
 

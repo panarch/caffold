@@ -16,6 +16,7 @@ caffold-task-git-layout {
   }
 
   & .task-domain-header {
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     gap: var(--interface-space-3);
@@ -73,27 +74,72 @@ caffold-task-git-layout {
   }
 
   & .task-domain-title {
-    display: flex;
+    display: grid;
     min-width: 0;
     flex: 1 1 0;
-    align-items: baseline;
-    gap: var(--interface-space-3);
+    gap: var(--interface-space-1);
+    align-content: center;
+  }
+
+  & .task-domain-title-row,
+  & .task-domain-meta-row {
+    display: grid;
+    gap: var(--interface-space-4);
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+  }
+
+  & .task-domain-title-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  & .task-domain-meta-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   & .task-domain-title h2 {
     margin: 0;
-    font-size: var(--task-detail-header-title-size);
-    line-height: var(--interface-line-height);
-  }
-
-  & .task-domain-subtitle {
     min-width: 0;
-    flex: 1 1 auto;
     overflow: hidden;
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
+    font-size: var(--task-detail-header-title-size);
+    line-height: 1.05;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  & .task-domain-count,
+  & .task-domain-primary-meta,
+  & .task-domain-secondary-meta {
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: 1.1;
+  }
+
+  & .task-domain-count {
+    justify-self: end;
+    white-space: nowrap;
+  }
+
+  & .task-domain-secondary-meta {
+    width: 100%;
+    text-align: right;
+  }
+
+  & .task-domain-primary-meta,
+  & .task-domain-secondary-meta {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .task-domain-title-row[hidden],
+  & .task-domain-meta-row[hidden],
+  & .task-domain-count[hidden],
+  & .task-domain-primary-meta[hidden],
+  & .task-domain-secondary-meta[hidden] {
+    display: none;
   }
 
   & .task-domain-body {
