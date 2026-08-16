@@ -30,6 +30,11 @@ test("browser CI parallelizes projects without parallelizing their shared server
   assert.match(playwrightConfig, /workers: process\.env\.CI \? 1 : undefined/);
 });
 
+test("browser CI does not retain a trace for every test", () => {
+  assert.match(playwrightConfig, /trace: "on-first-retry"/);
+  assert.doesNotMatch(playwrightConfig, /trace: "retain-on-failure"/);
+});
+
 test("browser CI preserves one stable aggregate check", () => {
   const gate = workflow.slice(workflow.indexOf("  browser_gate:"));
   assert.match(gate, /^  browser_gate:\n    name: Browser Tests$/m);
