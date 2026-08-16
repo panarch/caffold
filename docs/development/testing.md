@@ -105,6 +105,23 @@ For layout changes, inspect the generated screenshots under `test-results` and
 exercise the relevant desktop, foldable, and phone projects. For fixture or
 shared-state changes, compare normal parallel execution with `--workers=1`.
 
+`tests/e2e/showcase.spec.js` owns a small documentation-oriented desktop
+scenario. Its dedicated fixture presents a completed review-first Task and a
+representative Working Tree diff without an authenticated Codex session. Run it
+with:
+
+```sh
+npm run test:e2e -- tests/e2e/showcase.spec.js --project=desktop
+```
+
+The test writes candidate screenshots under `test-results`. They are review
+artifacts rather than committed visual baselines or live app-server evidence.
+After visual review, the README copies live under `docs/assets`; refresh those
+files only from a passing showcase run so the documented UI remains
+reproducible.
+Keep the showcase copy concise and representative; edge cases and layout stress
+data belong in the owning behavioral fixtures.
+
 Foreground recovery changes require the adjacent unit tests, the owning
 Playwright lifecycle spec, and, when platform signals are affected, the
 installed-Android checks in `mobile-pwa-testing.md`. These are separate

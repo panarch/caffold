@@ -1,91 +1,74 @@
 # Vision
 
-Caffold is scaffolding for agent-assisted development: a browser-based review
-and control surface optimized for a review-first development loop.
+Caffold started with a fairly personal observation: I had stopped typing much
+code. Codex was doing more of that work, but I was reading more code than
+before, checking diffs and test results, deciding whether the result made
+sense, and explaining what should happen next.
 
-It is not an orchestration layer for handing work to an agent and waiting for a
-finished result. The agent works, the developer inspects the actual changes and
-evidence, and the next instruction follows from that review.
+That was a good change—I could get more work done—but the part that still
+needed me was tied to the same terminal and desk. When foldable phones became
+wide enough to read a meaningful diff, it seemed reasonable to ask whether the
+rest of the loop could travel with me too.
 
-Codex is the current execution engine. Git worktrees remain the source of truth
-for code changes. Caffold keeps the work visible, makes it easier to guide, and
-leaves the decision about what is safe to keep with the developer.
+The first useful piece was a code and diff viewer. It was meant for a phone,
+but it was also more comfortable than expected on a desktop. From there the
+scope became clearer: a viewer alone was not enough. To do real work, the same
+place also needed the Codex conversation, approvals, command results, Task
+state, and a way to give the next instruction.
 
-## Product Bet
+I initially expected this could be a lightweight companion to an existing
+Codex client. In practice, a Codex session is not something independent clients
+can casually share at the same time. Caffold therefore keeps its own Task
+surface connected to Codex app-server on one trusted host. It does not pretend
+that the work itself has moved onto the phone.
 
-Agent-assisted development shifts more of the coding loop toward reviewing,
-questioning, approving, and redirecting work. The developer still makes the
-judgment calls, but no longer needs to perform every underlying operation by
-hand.
+## The basic idea
 
-That loop should remain practical away from a desk. Foldable phones and wider
-mobile displays are large enough to inspect meaningful code changes, while a
-browser or PWA can connect the reviewer to work running on a
-developer-controlled host.
-
-Caffold's product bet is that a focused review surface can make this loop
-comfortable across desktop, mobile, and foldable devices without reproducing a
-full IDE on every screen.
-
-## Review-First Loop
-
-The core loop is deliberately simple:
+The Mac runs Caffold, Codex, and Git. A browser or installed PWA on any device
+shows the same Caffold Tasks and lets the developer continue the loop:
 
 ```text
-request work
-    -> inspect the Task, files, diff, commands, and test evidence
-    -> approve, interrupt, or provide the next instruction
-    -> inspect the resulting work again
+ask for work
+    -> see what Codex is doing
+    -> inspect the code, diff, commands, and tests
+    -> approve, interrupt, or give the next instruction
+    -> inspect again
 ```
 
-Caffold should make it comfortable to:
+Git remains the source of truth for code. Codex app-server remains the source
+of truth for its threads and turns. Caffold's job is to keep those pieces
+connected and readable, not to create a second version of either one.
 
-- send a prompt or follow-up instruction;
-- see which Task, Codex thread, repository, and worktree are connected;
-- inspect changed files, diffs, and surrounding source;
-- review command and test results;
-- approve or decline sensitive actions;
-- interrupt work that is heading in the wrong direction;
-- return later without losing orientation.
+## What Caffold should make easier
 
-An existing checkout is enough to begin. Isolated worktrees are an optional
-tool for separating longer or concurrent tasks, not a requirement for using
-Caffold.
+- Begin in an ordinary checkout without setup ceremony.
+- Leave a longer Task running and return without reconstructing its context.
+- Read the actual changes instead of relying only on an assistant's summary.
+- Use the same workflow on a large monitor, laptop, foldable, or phone.
+- Give direction by text, images, or host-local voice input.
+- Create an isolated worktree when separation is useful, without making it a
+  prerequisite for every Task.
 
-## Interaction Principle
+The browser is a practical choice here. It gives Caffold one responsive
+interface across devices and lets each device install that interface as a PWA.
+It is not an attempt to make the product cloud-hosted: the trusted Mac still
+owns execution, repositories, credentials, and data.
 
-Caffold favors natural-language direction over reproducing terminal, Git, and
-GitHub interfaces. Natural language reduces the control surface; it does not
-reduce developer oversight or hide the underlying work.
+## What it is not trying to become
 
-Direct product controls belong where they improve visibility, safety, or a
-repeated review workflow. Caffold can add narrow lifecycle operations such as
-approval, interruption, worktree preparation, and archive without becoming a
-general terminal, editor, or mutation-heavy Git client.
+Caffold is not an autonomous agent orchestrator. The developer is expected to
+read, judge, and redirect the work.
 
-## Positioning
+It is also not trying to reproduce an IDE, terminal, or full Git and GitHub
+client on every screen. Direct controls belong in Caffold when they make a
+repeated review step clearer or safer. Everything else can stay with Codex and
+the existing developer tools.
 
-Caffold is for developers who:
+Public hosting and multi-user collaboration require a different security
+model. Caffold currently assumes one trusted user, one trusted host, and local
+or tailnet-only access. That limit is part of the current product, not a claim
+that a browser interface is secure wherever it is exposed.
 
-- rely on coding agents for substantial development work;
-- want to inspect actual changes rather than trust a final summary;
-- manage longer tasks across repositories, checkouts, and optional isolated
-  worktrees;
-- want the same review loop to remain practical across devices;
-- prefer a focused review and control surface over a full IDE.
-
-## Non-Goals
-
-Caffold is not:
-
-- an autonomous coding agent or hands-off agent orchestrator;
-- an IDE or source-code editor;
-- a full terminal workspace;
-- a full Git or GitHub mutation interface;
-- a native Android or iOS application;
-- a replacement for the richer desktop agent experience;
-- a second source of truth for agent, Git, or GitHub state.
-
-Caffold complements richer agent interfaces with a focused surface for
-inspecting, guiding, and validating development work wherever the developer is
-reviewing it.
+The goal is modest: let the machine keep doing the mechanical part while the
+developer can read, decide, and continue the work from whichever screen is at
+hand.

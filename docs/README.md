@@ -9,6 +9,7 @@ not who is allowed to read them.
 These documents describe the product, its current behavior, and its direction.
 Only the roadmap should present unfinished product behavior as planned work.
 
+- [Installation and Operation](product/installation.md)
 - [Vision](product/vision.md)
 - [Current Product Status](product/status.md)
 - [Product Workflows](product/workflows.md)

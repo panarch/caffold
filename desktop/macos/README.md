@@ -4,13 +4,19 @@
 
 ## Install
 
-The macOS application requires an Apple silicon Mac running macOS 14 or later. Install it with:
+The supported user installation, first-run, integration, update, and removal
+workflow is owned by [Installation and operation](../../docs/product/installation.md).
+The macOS application requires an Apple silicon Mac running macOS 14 or later
+and is installed with Homebrew:
 
 ```sh
 brew install --cask panarch/tap/caffold
 ```
 
-The Cask installs `Caffold Server.app` in `/Applications` and links the bundled CLI as `caffold`. The application is ad-hoc signed and not Apple-notarized; installation clears its quarantine attribute.
+The Cask installs `Caffold Server.app` in `/Applications` and links the bundled
+CLI as `caffold`. This document owns bundle construction and native-wrapper
+behavior rather than the end-user setup flow. The application is ad-hoc signed
+and not Apple-notarized; installation clears its quarantine attribute.
 
 ## Build
 

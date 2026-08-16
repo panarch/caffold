@@ -1,178 +1,134 @@
 # Caffold
 
-Caffold is scaffolding for agent-assisted development: a browser-based review and control surface that helps developers inspect, guide, and validate Codex-backed code work across git worktrees.
+Caffold is a browser interface for doing development work with Codex on a Mac
+you control.
 
-It runs Codex-powered development tasks on a trusted host and gives the developer a browser-based surface for reviewing task state, diffs, files, test results, approvals, and follow-up prompts.
+It started from a simple change in the way coding felt. Once Codex was doing
+more of the typing and command execution, the part that still needed a
+developer was mostly reading code, checking diffs, making decisions, and giving
+the next instruction. That part turned out to work well in a browser, whether
+the browser was on a desktop, a foldable, a tablet, or a phone.
 
-Caffold is not an autonomous coding product, an IDE, or a replacement for the Codex GUI.
+Caffold keeps that whole loop together. It is not a remote terminal, and it
+does not hide the underlying work: the conversation, commands, tests, files,
+and Git diff stay available for inspection.
 
-Its narrower goal is to make agent-generated code review practical away from the desktop app, including on mobile and foldable devices.
+## What it looks like
 
-## Why
+![A completed Caffold Task with its conversation, test result, and changed files](docs/assets/showcase-conversation.png)
 
-Foldable phones and wider mobile displays make it increasingly plausible to review real code changes away from a desk.
+_Follow the Task as it runs, then read the result and decide what comes next._
 
-Agent-assisted development makes that more useful. The developer still makes the judgment calls, but more of the day-to-day work becomes reading diffs, checking tests, inspecting files, approving commands, and sending follow-up prompts instead of typing every edit by hand.
+![The same Caffold Task reviewing a README diff in Working Tree](docs/assets/showcase-working-tree.png)
 
-That shift makes a browser-based review console practical. The important surface is not a full editor. It is a fast, reliable way to inspect agent output and decide what should happen next.
+_Open Working Tree to review the actual files and diff without leaving the
+Task._
 
-For long-running code work, the hard part is often not the agent itself. It is the surface around the agent: finding the right session again, understanding which worktree changed, reading the diff without opening a full editor, approving commands remotely, and continuing the review loop from another device.
+Both images come from the repository's reproducible Playwright showcase rather
+than a hand-built mockup.
 
-Codex remains the work execution engine. The git worktree remains the construction site. Caffold is the structure a developer uses to get close to the work, inspect it, guide it, and decide what is safe to keep.
+## How it works
 
-## Shape
+Only one machine does the actual work. Install `Caffold Server.app` on the Mac
+that has Codex, Git, and your checkouts. The app stays in the menu bar, keeps
+the Caffold backend available, and connects the browser interface to Codex and
+the files on that Mac.
 
-Caffold consists of:
-
-- a Rust backend running on each trusted host
-- a browser/PWA frontend served by that backend
-- a persistent Codex app-server daemon reached through a disposable proxy child
-- JSON-RPC integration between the backend and Codex app-server
-- Codex threads as the source of truth for task history
-- git worktrees as the source of truth for code changes
-- Tailscale or another trusted private network for remote access
-
-## Core Principle
-
-Caffold should make agent output easier to inspect, question, accept, reject, and continue.
-
-It should not try to become VS Code, a full git GUI, or a native mobile app.
-
-## Run
-
-Building Caffold from source requires Rust, CMake, and the Xcode Command Line
-Tools. On macOS, install the native build prerequisites with:
-
-```sh
-brew install cmake
-xcode-select --install
+```text
+browser or installed PWA
+(desktop, foldable, tablet, phone)
+             |
+    local URL or private
+    Tailscale HTTPS URL
+             |
+    Caffold Server on Mac
+          /       \
+ Codex app-server  Git checkouts and worktrees
 ```
 
-Start Caffold:
+On the host Mac, `Open Caffold` opens the local address. On another device,
+Tailscale Serve provides a private HTTPS address. Open that address in the
+device's browser and, if useful, install it with the browser's **Install App**
+or **Add to Home Screen** action.
+
+Each PWA is a window onto the same Mac, not another copy of the server. Tasks,
+Codex execution, repositories, and local data remain on the host. Closing a
+browser or PWA does not end an active Codex turn, but the Mac must stay awake,
+running Caffold, and reachable for another device to use it.
+
+## A typical Task
+
+1. Start a Task in the directory where the work belongs.
+2. Follow the conversation and respond to approval requests while Codex works.
+3. Read the result, command and test output, changed files, and actual diff.
+4. Type or dictate the next instruction, or return later and continue the same
+   Task.
+
+Caffold also keeps the Task connected to its repository, optional managed
+worktree, Git history, and read-only GitHub Issue or Pull Request context.
+
+## Install on macOS
+
+Caffold supports Apple silicon Macs running macOS 14 or later. It requires the
+authenticated official standalone Codex CLI `0.147.0` or newer.
+
+Install Codex, then run `codex` once and complete sign-in:
 
 ```sh
-cargo run -- serve
+curl -fsSL https://chatgpt.com/codex/install.sh | sh
+codex
 ```
 
-Then open the printed local URL. `/` opens Tasks. New Task initially uses the
-server's initial path (by default `$HOME`, displayed as `~`) as its cwd, and its
-Directory Picker provides read-only traversal within the configured RootedFs
-boundary.
-
-For deterministic local testing, a bounded root can be supplied:
-
-```sh
-cargo run -- serve --root tests/fixtures/home
-```
-
-## Caffold Server for macOS
-
-`Caffold Server` packages the Rust backend as a portable macOS menu bar app while the browser/PWA remains the primary interface.
-
-Install Caffold on an Apple silicon Mac running macOS 14 or later:
+Install Caffold with Homebrew:
 
 ```sh
 brew install --cask panarch/tap/caffold
 ```
 
-The Cask installs `Caffold Server.app` in `/Applications` and links the bundled `caffold` CLI.
-Homebrew-managed installations can check for updates from the menu bar app. Caffold uses the
-latest GitHub Release only for version discovery; an approved update is installed by Homebrew and
-the app restarts after verifying the replacement bundle.
+Launch `Caffold Server` from Applications, then choose `Open Caffold` from its
+menu-bar menu.
 
-Caffold's restart-safe Codex transport requires the official standalone Codex
-CLI `0.147.0` or newer:
+The [Installation and operation guide](docs/product/installation.md) explains
+the host/client arrangement, PWA installation, optional GitHub and Tailscale
+integration, updates, local data, voice input, and removal.
 
-```sh
-curl -fsSL https://chatgpt.com/codex/install.sh | sh
-```
+## Work without a keyboard
 
-Run `codex` once and complete sign-in. Until this installation is ready, the
-Tasks surface shows persistent setup guidance while Settings remains available.
+The Task composer supports host-local multilingual voice input. On first use,
+Caffold asks before downloading the pinned Whisper `large-v3-turbo` model
+(about 1.5 GiB). Audio is sent only to the same Caffold host, processed in
+memory, and never stored or sent to an external speech service.
 
-Caffold starts the user's persistent app-server daemon when needed and connects
-through a disposable proxy. Replacing or quitting Caffold closes only that proxy;
-it does not stop an active Codex turn in the daemon.
+Voice is useful here for the same reason the browser interface is useful: much
+of the work is giving direction, reading what happened, and following up. A
+keyboard is welcome, but it should not be required for every step.
 
-The task composer also supports keyboard-independent voice input. On first use,
-Caffold asks before downloading the pinned multilingual Whisper `large-v3-turbo` model
-(1,624,555,275 bytes, about 1.5 GiB) to the host data directory and verifies its
-SHA-256 checksum. Microphone audio is sent only to the same Caffold host, decoded
-in memory, and never saved. The model loads on the first transcription and stays
-loaded until the Caffold backend exits. Localhost works directly; Tailscale only
-provides the existing private HTTPS path when the browser is on another device.
+## Current limits
 
-Build the application bundle with:
+Caffold currently assumes one trusted user, one trusted Mac, and a private
+network. It does not provide authentication for a public deployment or
+multi-user authorization.
 
-```sh
-desktop/macos/package-app build
-```
+Its Git and GitHub views are deliberately review-oriented. Caffold does not
+provide a full editor or terminal, and it does not expose stage, commit,
+checkout, merge, rebase, reset, stash, publication, or review mutation controls.
+Those operations can still be requested through Codex or performed with the
+developer tools you already use.
 
-The app is written to `target/caffold-server/Caffold Server.app`. Its menu reports Codex, Git, GitHub CLI, Whisper, and Tailscale status and controls the server name, bind mode, port, restart behavior, and tailnet-only Tailscale Serve access. Missing integrations disable only their related features.
+Managed-worktree preparation is explicit, and Caffold only cleans up worktrees
+that it created and recorded. The complete implemented scope and limitations
+are tracked in [Current Product Status](docs/product/status.md).
 
-See [Caffold Server for macOS](desktop/macos/README.md) for installation, runtime dependencies, storage paths, and packaging details.
+## Documentation and development
 
-## Test
-
-Install the committed Node dependencies, then run Rust checks:
-
-```sh
-npm ci
-cargo test
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-```
-
-Run browser tests:
-
-```sh
-npm run test:e2e
-```
-
-Playwright tests verify behavior and write review screenshots under
-`test-results`. The repository does not store Playwright snapshot baselines, so
-visual comparisons should use screenshots generated from `main` and the pull
-request head in the same runner.
-
-See [Contributing](CONTRIBUTING.md) and the [testing guide](docs/development/testing.md)
-for the complete Node, macOS, protocol, live Codex, and coverage matrix. Local
-development and automated tests use isolated ports and data directories rather
-than the installed application's database.
-
-## Documentation
-
-The complete [documentation index](docs/README.md) is organized by purpose.
-
-Product:
-
-- [Vision](docs/product/vision.md)
-- [Current Product Status](docs/product/status.md)
-- [Product Workflows](docs/product/workflows.md)
-- [UI Surfaces](docs/product/ui-surfaces.md)
+- [Installation and operation](docs/product/installation.md)
+- [Product vision](docs/product/vision.md)
+- [Current product status](docs/product/status.md)
+- [Product workflows](docs/product/workflows.md)
 - [Roadmap](docs/product/roadmap.md)
-
-Architecture and engineering policy:
-
-- [Architecture Overview](docs/architecture/overview.md)
-- [Web Push Notifications](docs/architecture/web-push-notifications.md)
-- [Review Policy](docs/review/policy.md)
-
-Development:
-
 - [Contributing](CONTRIBUTING.md)
 - [Testing](docs/development/testing.md)
-- [macOS Local Application Development](docs/development/macos-local-app.md)
-- [Mobile and PWA Testing](docs/development/mobile-pwa-testing.md)
 
-Operations:
-
-- [macOS Release Process](docs/operations/macos-release.md)
-
-## Status
-
-This repository has one Codex-first Task workspace. A selected Task owns its
-Conversation and execution lifecycle. A selected managed Section can start a
-Task in its fixed directory, and repository-backed Tasks and Sections share
-integrated Working Tree/Branch review, non-authoring Git Compare/Log, and
-read-only GitHub Issue/Pull Request surfaces. Planned product expansions are
-tracked in the [Roadmap](docs/product/roadmap.md).
+The complete [documentation index](docs/README.md) groups product,
+architecture, development, review, and maintainer material by purpose. Caffold
+is available under the [Apache License 2.0](LICENSE).
