@@ -333,8 +333,13 @@ async fn run_reconnect_spike(socket_path: &Path, ids: &mut SpikeIds) -> Result<(
     let started = first
         .request(
             THREAD_START,
-            serde_json::to_value(thread_start_params(cwd, None, Some(NORMAL_SERVICE_TIER_ID)))
-                .context("serialize thread/start params")?,
+            serde_json::to_value(thread_start_params(
+                cwd,
+                None,
+                Some(NORMAL_SERVICE_TIER_ID),
+                None,
+            ))
+            .context("serialize thread/start params")?,
         )
         .await?;
     let thread_id = started
@@ -501,6 +506,7 @@ async fn run_approval_reconnect_spike(socket_path: &Path, ids: &mut SpikeIds) ->
                 cwd,
                 Some(CodexPermissionMode::AskForApproval),
                 Some(NORMAL_SERVICE_TIER_ID),
+                None,
             ))
             .context("serialize approval thread/start params")?,
         )

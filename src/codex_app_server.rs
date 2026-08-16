@@ -18,14 +18,15 @@ mod status;
 mod transport;
 
 use protocol::{
-    ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse, CONFIG_READ,
-    ConfigReadResponse, EmptyResponse, INITIALIZE, INITIALIZED, JsonRpcError, MODEL_LIST,
-    PERMISSION_PROFILE_LIST, PermissionProfileListResponse, THREAD_ARCHIVE, THREAD_DELETE,
-    THREAD_LIST, THREAD_NAME_SET, THREAD_READ, THREAD_RESUME, THREAD_SECTION_CREATE,
-    THREAD_SECTION_LIST, THREAD_SECTION_MOVE, THREAD_START, THREAD_TURNS_LIST, THREAD_UNARCHIVE,
-    THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadReadResponse,
-    ThreadSectionCreateResponse, ThreadSectionMoveResponse, ThreadStartResponse, TurnStartResponse,
-    TurnSteerResponse, account_read_params, config_read_params, decode_response, model_list_params,
+    ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse,
+    CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS, CONFIG_READ, ConfigReadResponse, EmptyResponse,
+    INITIALIZE, INITIALIZED, JsonRpcError, MODEL_LIST, PERMISSION_PROFILE_LIST,
+    PermissionProfileListResponse, THREAD_ARCHIVE, THREAD_DELETE, THREAD_LIST, THREAD_NAME_SET,
+    THREAD_READ, THREAD_RESUME, THREAD_SECTION_CREATE, THREAD_SECTION_LIST, THREAD_SECTION_MOVE,
+    THREAD_START, THREAD_TURNS_LIST, THREAD_UNARCHIVE, THREAD_UNSUBSCRIBE, TURN_INTERRUPT,
+    TURN_START, TURN_STEER, ThreadReadResponse, ThreadSectionCreateResponse,
+    ThreadSectionMoveResponse, ThreadStartResponse, TurnStartResponse, TurnSteerResponse,
+    account_read_params, config_read_params, decode_response, model_list_params,
     permission_profile_list_params, section_thread_list_params, thread_archive_params,
     thread_delete_params, thread_list_params, thread_read_params, thread_resume_params,
     thread_section_create_params, thread_section_list_params, thread_section_move_params,
@@ -589,10 +590,17 @@ impl CodexThreadClient {
         permission_mode: Option<CodexPermissionMode>,
         service_tier: &str,
     ) -> Result<CodexThreadStart, CodexThreadError> {
+        let config = self.read_config(cwd).await?;
+        let developer_instructions = first_turn_developer_instructions(&config.config);
         let typed: ThreadStartResponse = self
             .request_typed(
                 THREAD_START,
-                thread_start_params(cwd, permission_mode, Some(service_tier)),
+                thread_start_params(
+                    cwd,
+                    permission_mode,
+                    Some(service_tier),
+                    Some(&developer_instructions),
+                ),
             )
             .await?;
         let thread_id = typed.thread.id.clone();
@@ -755,10 +763,13 @@ impl CodexThreadClient {
         &self,
         cwd: &str,
     ) -> Result<CodexPermissionMode, CodexThreadError> {
-        let response: ConfigReadResponse = self
-            .request_typed(CONFIG_READ, config_read_params(cwd))
-            .await?;
+        let response = self.read_config(cwd).await?;
         Ok(CodexPermissionMode::from_config(&response.config))
+    }
+
+    async fn read_config(&self, cwd: &str) -> Result<ConfigReadResponse, CodexThreadError> {
+        self.request_typed(CONFIG_READ, config_read_params(cwd))
+            .await
     }
 
     pub(crate) async fn status(&self, installation: &CodexInstallation) -> CodexStatusResponse {
@@ -923,6 +934,19 @@ impl CodexThreadClient {
     }
 }
 
+fn first_turn_developer_instructions(config: &Value) -> String {
+    match config
+        .get("developer_instructions")
+        .and_then(Value::as_str)
+        .filter(|instructions| !instructions.trim().is_empty())
+    {
+        Some(instructions) => {
+            format!("{instructions}\n\n{CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS}")
+        }
+        None => CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS.to_string(),
+    }
+}
+
 async fn read_thread_server_loop(
     mut reader: SplitStream<WebSocketStream<ProxyStream>>,
     inner: Arc<CodexThreadClientInner>,
@@ -1076,6 +1100,35 @@ fn server_response_message(request_id: Value, result: Value) -> Value {
 mod tests {
     use super::*;
     use tokio::io::AsyncWriteExt;
+
+    #[test]
+    fn first_turn_naming_preserves_existing_developer_instructions() {
+        let existing = "Keep the user's existing guidance.";
+        let composed = first_turn_developer_instructions(&json!({
+            "developer_instructions": existing,
+        }));
+
+        assert_eq!(
+            composed,
+            format!("{existing}\n\n{CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS}")
+        );
+    }
+
+    #[test]
+    fn first_turn_naming_uses_only_caffold_guidance_when_no_custom_value_exists() {
+        assert_eq!(
+            first_turn_developer_instructions(&json!({ "developer_instructions": null })),
+            CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS
+        );
+    }
+
+    #[test]
+    fn first_turn_naming_ignores_blank_custom_developer_instructions() {
+        assert_eq!(
+            first_turn_developer_instructions(&json!({ "developer_instructions": "  \n" })),
+            CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS
+        );
+    }
 
     #[test]
     fn normalizes_current_service_tiers_to_normal_or_fast() {

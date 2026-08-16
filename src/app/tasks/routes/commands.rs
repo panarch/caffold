@@ -665,9 +665,14 @@ mod tests {
     async fn create_task_keeps_explicit_permission_mode_for_the_first_turn() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-explicit-permission";
-        let mut responses = vec![crate::codex_app_server::MockCodexResponse::ok(
-            "thread/start",
-            json!({
+        let mut responses = vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "config/read",
+                json!({ "config": { "developer_instructions": "Keep custom guidance." } }),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/start",
+                json!({
                 "thread": {
                     "id": thread_id,
                     "preview": "Explicit permission regression",
@@ -682,8 +687,9 @@ mod tests {
                 "activePermissionProfile": {
                     "id": ":workspace"
                 }
-            }),
-        )];
+                }),
+            ),
+        ];
         responses.push(crate::codex_app_server::MockCodexResponse::ok_for(
             "thread/name/set",
             json!({
@@ -726,31 +732,37 @@ mod tests {
             Some(CodexPermissionMode::ApproveForMe)
         );
         let requests = client.mock_requests().await;
-        assert_eq!(requests[0].0, "thread/start");
-        assert_eq!(requests[0].1["serviceTier"], "default");
-        assert_eq!(requests[0].1["approvalsReviewer"], "auto_review");
+        assert_eq!(requests[0].0, "config/read");
+        assert_eq!(requests[1].0, "thread/start");
+        assert_eq!(requests[1].1["serviceTier"], "default");
+        assert_eq!(requests[1].1["approvalsReviewer"], "auto_review");
+        let developer_instructions = requests[1].1["developerInstructions"]
+            .as_str()
+            .expect("composed developer instructions");
+        assert!(developer_instructions.starts_with("Keep custom guidance.\n\n"));
+        assert!(developer_instructions.contains("newly created Caffold task"));
         assert_eq!(
-            requests[0].1["dynamicTools"][0]["name"],
+            requests[1].1["dynamicTools"][0]["name"],
             "rename_current_thread"
         );
         assert_eq!(
-            requests[0].1["dynamicTools"][0]["inputSchema"]["required"],
+            requests[1].1["dynamicTools"][0]["inputSchema"]["required"],
             json!(["name"])
         );
         assert_eq!(
-            requests[0].1["dynamicTools"][1]["name"],
+            requests[1].1["dynamicTools"][1]["name"],
             "isolate_current_task"
         );
         assert_eq!(
-            requests[0].1["dynamicTools"][1]["inputSchema"]["properties"]
+            requests[1].1["dynamicTools"][1]["inputSchema"]["properties"]
                 .as_object()
                 .unwrap()
                 .keys()
                 .collect::<Vec<_>>(),
             ["baseRef", "branchName", "includeChanges"]
         );
-        assert_eq!(requests[2].0, "turn/start");
-        assert_eq!(requests[2].1["approvalsReviewer"], "auto_review");
+        assert_eq!(requests[3].0, "turn/start");
+        assert_eq!(requests[3].1["approvalsReviewer"], "auto_review");
     }
 
     #[tokio::test]
@@ -761,6 +773,10 @@ mod tests {
             crate::codex_app_server::MockCodexResponse::ok(
                 "model/list",
                 current_model_list_response(),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "config/read",
+                json!({ "config": { "developer_instructions": null } }),
             ),
             crate::codex_app_server::MockCodexResponse::ok(
                 "thread/start",
@@ -840,12 +856,12 @@ mod tests {
         assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
         assert!(stored.fast_mode);
         let requests = client.mock_requests().await;
-        assert_eq!(requests[1].0, "thread/start");
-        assert_eq!(requests[1].1["serviceTier"], "priority");
-        assert_eq!(requests[3].0, "turn/start");
-        assert_eq!(requests[3].1["model"], "gpt-5.6-sol");
-        assert_eq!(requests[3].1["serviceTier"], "priority");
-        assert_eq!(requests[3].1["effort"], "xhigh");
+        assert_eq!(requests[2].0, "thread/start");
+        assert_eq!(requests[2].1["serviceTier"], "priority");
+        assert_eq!(requests[4].0, "turn/start");
+        assert_eq!(requests[4].1["model"], "gpt-5.6-sol");
+        assert_eq!(requests[4].1["serviceTier"], "priority");
+        assert_eq!(requests[4].1["effort"], "xhigh");
     }
 
     #[tokio::test]
@@ -853,6 +869,10 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-section-setup-failure";
         let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "config/read",
+                json!({ "config": { "developer_instructions": null } }),
+            ),
             crate::codex_app_server::MockCodexResponse::ok(
                 "thread/start",
                 json!({
@@ -914,7 +934,12 @@ mod tests {
                 .into_iter()
                 .map(|(method, _)| method)
                 .collect::<Vec<_>>(),
-            ["thread/start", "thread/name/set", "thread/archive"]
+            [
+                "config/read",
+                "thread/start",
+                "thread/name/set",
+                "thread/archive"
+            ]
         );
     }
 

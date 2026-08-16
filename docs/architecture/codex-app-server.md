@@ -140,7 +140,17 @@ it does not persist a second task ledger.
   current thread against managed membership, calls `thread/name/set`, and
   returns the tool result. The resulting `thread/name/updated` notification
   updates the canonical session and browser title; the successful command also
-  updates the stable Redb display name.
+  updates the stable Redb display name. Codex config remains the source of truth
+  for existing project `developer_instructions`. Immediately before
+  `thread/start`, Caffold reads that effective value, appends its thread-naming
+  instruction, and sends the composition as `developerInstructions`; Caffold
+  does not store a copy. The thread override must contain both parts because it
+  replaces rather than extends the config value. The instruction asks the model
+  to call the dynamic tool exactly once after understanding the first request
+  and before its final response, or immediately before first-turn isolation.
+  Later turns rename only on an explicit user request. This remains
+  model-followed policy; Caffold does not reject a completed first turn that
+  omitted the call.
 - A completed thread starts a follow-up with `turn/start`. An active thread is
   steered only when canonical thread status and an active turn ID agree.
 - If app-server rejects that pointer because the turn ended before
