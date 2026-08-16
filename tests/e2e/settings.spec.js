@@ -17,7 +17,7 @@ test.beforeEach(async ({ page }) => {
   await mockCodexModels(page);
 });
 
-test("shows Codex versions and explicitly restarts an outdated runtime", async ({
+test("shows Codex versions and explicitly restarts an outdated runtime", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   let restarted = false;
@@ -137,7 +137,7 @@ test("shows Codex versions and explicitly restarts an outdated runtime", async (
   expect(statusRequests).toBe(2);
 });
 
-test("keeps Codex Settings actionable when runtime restart fails", async ({
+test("keeps Codex Settings actionable when runtime restart fails", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
@@ -179,7 +179,7 @@ test("keeps Codex Settings actionable when runtime restart fails", async ({
   await expect(settings.getByRole("button", { name: "Restart runtime" })).toBeEnabled();
 });
 
-test("enables, lists, removes, and explicitly revokes notification installations", async ({
+test("enables, lists, removes, and explicitly revokes notification installations", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await installPushBrowserMock(page);
@@ -299,7 +299,7 @@ test("enables, lists, removes, and explicitly revokes notification installations
   expect(upserts).toBe(1);
 });
 
-test("honors a remote revocation tombstone without silently re-registering", async ({
+test("honors a remote revocation tombstone without silently re-registering", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installPushBrowserMock(page, {
@@ -328,7 +328,7 @@ test("honors a remote revocation tombstone without silently re-registering", asy
   expect(await page.evaluate(() => window.__pushMock.subscribeCalls)).toBe(0);
 });
 
-test("explains missing app-server capabilities in Codex Settings", async ({ page }) => {
+test("explains missing app-server capabilities in Codex Settings", { tag: "@all-viewports" }, async ({ page }) => {
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -356,7 +356,7 @@ test("explains missing app-server capabilities in Codex Settings", async ({ page
   await expect(settings.getByRole("button", { name: "Refresh" })).toBeEnabled();
 });
 
-test("returns from Settings to the canonical Tasks home", async ({
+test("returns from Settings to the canonical Tasks home", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page);
@@ -386,7 +386,7 @@ test("returns from Settings to the canonical Tasks home", async ({
   await expect(tasksPage.locator(".task-new-form")).toBeVisible();
 });
 
-test("gives every Settings route one page title and landmark hierarchy", async ({
+test("gives every Settings route one page title and landmark hierarchy", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const routes = [
@@ -414,7 +414,7 @@ test("gives every Settings route one page title and landmark hierarchy", async (
   }
 });
 
-test("reflows Settings from the detail pane width at maximum Interface scale", async ({
+test("reflows Settings from the detail pane width at maximum Interface scale", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const shouldStack = testInfo.project.name !== "desktop";
@@ -553,7 +553,7 @@ test("reflows Settings from the detail pane width at maximum Interface scale", a
   );
 });
 
-test("persists file ordering and keeps it across appearance reset", async ({
+test("persists file ordering and keeps it across appearance reset", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await page.addInitScript(
@@ -622,7 +622,7 @@ test("persists file ordering and keeps it across appearance reset", async ({
   await captureReviewScreenshot(page, testInfo, "settings-files-name");
 });
 
-test("selects, persists, and resolves System, Light, and Dark themes", async ({
+test("selects, persists, and resolves System, Light, and Dark themes", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await page.emulateMedia({ colorScheme: "dark" });
@@ -672,7 +672,7 @@ test("selects, persists, and resolves System, Light, and Dark themes", async ({
   await expectThemeState(page, { mode: "system", resolvedTheme: "dark" });
 });
 
-test("updates independent ranges live without replacing their DOM", async ({
+test("updates independent ranges live without replacing their DOM", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await page.goto("/settings/appearance");
@@ -881,7 +881,7 @@ test("updates independent ranges live without replacing their DOM", async ({
   }
 });
 
-test("switches and persists the local typeface presets", async ({ page }) => {
+test("switches and persists the local typeface presets", { tag: "@all-viewports" }, async ({ page }) => {
   await page.goto("/settings/appearance");
 
   const settingsPage = page.locator("caffold-settings-appearance-page");
@@ -955,7 +955,7 @@ test("switches and persists the local typeface presets", async ({ page }) => {
     });
 });
 
-test("applies extreme values to the retained Review code viewer", async ({
+test("applies extreme values to the retained Review code viewer", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await page.goto("/settings/appearance");
@@ -1023,7 +1023,7 @@ test("applies extreme values to the retained Review code viewer", async ({
   await viewer.dispose();
 });
 
-test("keeps mixed surfaces reflowed across appearance extremes", async ({
+test("keeps mixed surfaces reflowed across appearance extremes", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await page.goto("/settings/appearance");
@@ -1145,7 +1145,7 @@ test("keeps mixed surfaces reflowed across appearance extremes", async ({
   }
 });
 
-test("keeps model picker chrome compact and scales it only with Interface", async ({
+test("keeps model picker chrome compact and scales it only with Interface", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await page.goto("/settings/appearance");

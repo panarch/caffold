@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
   await mockCodexModels(page);
 });
 
-test("owns active disclosure state and terminal presentation across canonical updates", async ({
+test("owns active disclosure state and terminal presentation across canonical updates", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const threadId = "thread_command_component";

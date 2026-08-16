@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("browses source through the shared Files navigator and one root watch", async ({
+test("browses source through the shared Files navigator and one root watch", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   let listRequests = 0;
@@ -121,7 +121,7 @@ test("browses source through the shared Files navigator and one root watch", asy
     .toBe(0);
 });
 
-test("previews images selected from the shared Files navigator", async ({
+test("previews images selected from the shared Files navigator", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const { taskScenario, tasksPage, taskReview } =
@@ -148,7 +148,7 @@ test("previews images selected from the shared Files navigator", async ({
   );
 });
 
-test("keeps the shared Review panes inside the task workspace", async ({ page }) => {
+test("keeps the shared Review panes inside the task workspace", { tag: "@all-viewports" }, async ({ page }) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
 
@@ -183,13 +183,9 @@ test("keeps the shared Review panes inside the task workspace", async ({ page })
   }
 });
 
-test("keeps browser Back aligned with the semantic Review parent", async ({
+test("keeps browser Back aligned with the semantic Review parent", { tag: ["@desktop", "@foldable"] }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name === "phone",
-    "Phone explicit Back covers the same file-to-navigator parent transition.",
-  );
   const { taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();

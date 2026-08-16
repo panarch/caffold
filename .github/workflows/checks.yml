@@ -41,9 +41,13 @@ jobs:
         run: npm run test:contract
 
   browser:
-    name: Browser Tests
+    name: Browser Tests / ${{ matrix.project }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [desktop, foldable, phone]
 
     steps:
       - name: Check out the source
@@ -75,16 +79,33 @@ jobs:
         run: cargo build --locked
 
       - name: Test browser behavior
-        run: npm run test:e2e
+        run: npm run test:e2e -- --project=${{ matrix.project }}
 
       - name: Upload browser failure artifacts
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-results
+          name: playwright-results-${{ matrix.project }}
           path: test-results
           if-no-files-found: ignore
           retention-days: 7
+
+  browser_gate:
+    name: Browser Tests
+    if: ${{ always() }}
+    needs: browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Require every viewport project
+        env:
+          BROWSER_RESULT: ${{ needs.browser.result }}
+        run: |
+          if [[ "${BROWSER_RESULT}" != "success" ]]; then
+            echo "One or more viewport projects did not pass." >&2
+            exit 1
+          fi
 
   rust:
     name: Rust Checks

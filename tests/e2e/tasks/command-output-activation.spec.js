@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("limits terminal command output activation to View output", async ({
+test("limits terminal command output activation to View output", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, {

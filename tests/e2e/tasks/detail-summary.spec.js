@@ -113,7 +113,7 @@ async function installSummaryFixture(page, tasks) {
   }
 }
 
-test("keeps long Task titles clipped in the header and readable in Info", async ({
+test("keeps long Task titles clipped in the header and readable in Info", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const threadId = "thread_summary_long_title";
@@ -188,7 +188,7 @@ test("keeps long Task titles clipped in the header and readable in Info", async 
   await captureReviewScreenshot(page, testInfo, "tasks-summary-long-title-info");
 });
 
-test("keeps the task info leaf and popover stable across canonical sync", async ({
+test("keeps the task info leaf and popover stable across canonical sync", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const threadId = "thread_summary_stable";
@@ -282,7 +282,7 @@ test("keeps the task info leaf and popover stable across canonical sync", async 
   await captureReviewScreenshot(page, testInfo, "tasks-summary-live-popover");
 });
 
-test("uses light-dismiss review popovers and preserves them across same-Task sync", async ({
+test("uses light-dismiss review popovers and preserves them across same-Task sync", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const threadId = "thread_summary_review_popovers";
@@ -427,7 +427,7 @@ test("uses light-dismiss review popovers and preserves them across same-Task syn
   await expect(gitTrigger).toBeFocused();
 });
 
-test("keeps the task info spinner stable across equivalent detail activity", async ({
+test("keeps the task info spinner stable across equivalent detail activity", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const threadId = "thread_summary_spinner_equivalent";
@@ -537,7 +537,7 @@ test("keeps the task info spinner stable across equivalent detail activity", asy
   });
 });
 
-test("keeps canonical task status stable while the detail transport reconnects", async ({
+test("keeps canonical task status stable while the detail transport reconnects", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const threadId = "thread_summary_spinner_reconnecting";

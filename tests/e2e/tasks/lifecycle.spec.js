@@ -139,10 +139,9 @@ async function installConnectionMock(page) {
   });
 }
 
-test("background Task tabs release list and detail streams", async ({
+test("background Task tabs release list and detail streams", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Browser connection lifecycle regression");
   await page.addInitScript(() => {
     window.__caffoldVisibilityState = "visible";
     Object.defineProperty(document, "visibilityState", {
@@ -246,10 +245,9 @@ test("background Task tabs release list and detail streams", async ({
   expect(detailReads).toBe(0);
 });
 
-test("foreground recovery refreshes status and reconciles the Task ledger and transports", async ({
+test("foreground recovery refreshes status and reconciles the Task ledger and transports", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Browser foreground recovery regression");
   await page.addInitScript(() => {
     window.__caffoldVisibilityState = "visible";
     Object.defineProperty(document, "visibilityState", {
@@ -437,10 +435,9 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
   );
 });
 
-test("BFCache pageshow and top-level focus use the shared foreground recovery", async ({
+test("BFCache pageshow and top-level focus use the shared foreground recovery", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Browser foreground signal regression");
   await installEventSourceMock(page, {
     registryKey: "__foregroundSignalSources",
     autoOpen: true,
@@ -505,10 +502,9 @@ test("BFCache pageshow and top-level focus use the shared foreground recovery", 
   );
 });
 
-test("notification activation refreshes stale readiness and opens its pending Task route", async ({
+test("notification activation refreshes stale readiness and opens its pending Task route", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Browser notification recovery regression");
   await installEventSourceMock(page, {
     registryKey: "__notificationRecoverySources",
     autoOpen: true,
@@ -620,10 +616,9 @@ test("notification activation refreshes stale readiness and opens its pending Ta
     .toBe(2);
 });
 
-test("foreground recovery retries a blocking readiness snapshot with bounded backoff", async ({
+test("foreground recovery retries a blocking readiness snapshot with bounded backoff", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Browser foreground retry regression");
   await installEventSourceMock(page, {
     registryKey: "__foregroundRetrySources",
     autoOpen: true,
@@ -674,7 +669,7 @@ test("foreground recovery retries a blocking readiness snapshot with bounded bac
   expect(statusReads).toBe(settledReads);
 });
 
-test("foreground offline pauses recovery and preserves useful Task UI until online", async ({
+test("foreground offline pauses recovery and preserves useful Task UI until online", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
@@ -795,7 +790,7 @@ test("foreground offline pauses recovery and preserves useful Task UI until onli
   expect(detailReads).toBe(readsBeforeOffline.detail);
 });
 
-test("connection snapshots pause on missed offline and coalesce restored hints", async ({
+test("connection snapshots pause on missed offline and coalesce restored hints", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
@@ -919,7 +914,7 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
   expect(detailReads).toBe(readsBeforeDisconnect.detail);
 });
 
-test("a late failed disconnect probe yields to a newer reconnect signal", async ({
+test("a late failed disconnect probe yields to a newer reconnect signal", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installConnectionMock(page);
@@ -1043,7 +1038,7 @@ test("a late failed disconnect probe yields to a newer reconnect signal", async 
   expect(detailReads).toBe(readsBeforeProbe.detail);
 });
 
-test("failed server recovery keeps useful Task UI behind one bounded global fallback", async ({
+test("failed server recovery keeps useful Task UI behind one bounded global fallback", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
@@ -1182,10 +1177,9 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
   await expect(composer).toHaveValue("Keep this offline recovery draft");
 });
 
-test("replaces terminal Task streams and reconciles list and detail", async ({
+test("replaces terminal Task streams and reconciles list and detail", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Browser connection lifecycle regression");
   await page.addInitScript(() => {
     window.__taskRecoveryServerAvailable = true;
     window.__taskRecoveryEventSources = [];
@@ -1444,7 +1438,7 @@ test("replaces terminal Task streams and reconciles list and detail", async ({
   await expect(newTaskForm.getByRole("button", { name: "Start task" })).toBeEnabled();
 });
 
-test("shows one viewport recovery notice without moving Task surfaces", async ({
+test("shows one viewport recovery notice without moving Task surfaces", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const threadId = "thread_transport_overlay_geometry";
@@ -1538,10 +1532,9 @@ test("shows one viewport recovery notice without moving Task surfaces", async ({
   expect(await elementGeometry(composer)).toEqual(initialComposer);
 });
 
-test("routes the single viewport Retry through app-shell foreground recovery", async ({
+test("routes the single viewport Retry through app-shell foreground recovery", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Concurrent Task transport ownership");
   const threadId = "thread_parent_owned_transport_retry";
   const registryKey = "__taskRetryEventSources";
   await installTransportOverlayFixture(page, threadId, registryKey);
@@ -1614,10 +1607,9 @@ test("routes the single viewport Retry through app-shell foreground recovery", a
   await expect(globalNotice).toBeHidden();
 });
 
-test("reattaches Tasks component lifecycles without rebuilding stable children", async ({
+test("reattaches Tasks component lifecycles without rebuilding stable children", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Tasks lifecycle ownership regression");
   await installEventSourceMock(page, { autoOpen: true });
   await mockCodexModels(page);
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
@@ -1678,8 +1670,7 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     turnOptionRequestsReleased: true,
   });
 });
-test("keeps task list and detail revisions independent", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Wide task stream regression");
+test("keeps task list and detail revisions independent", { tag: "@desktop" }, async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     window.__taskEventSources = [];
     window.EventSource = class MockEventSource {
@@ -1892,10 +1883,9 @@ test("keeps task list and detail revisions independent", async ({ page }, testIn
   await form.getByRole("button", { name: "Send prompt" }).click();
   await expect.poll(() => submittedPrompts).toEqual(["Follow-up after list update"]);
 });
-test("isolates task detail responses and conversation scroll by thread", async ({
+test("isolates task detail responses and conversation scroll by thread", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Wide master-detail regression");
   await installEventSourceMock(page, {
     registryKey: "__isolatedTaskDetailSources",
     autoOpen: true,

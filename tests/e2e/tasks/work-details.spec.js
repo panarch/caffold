@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("owns disclosure presentation and preserves its identity across canonical updates", async ({
+test("owns disclosure presentation and preserves its identity across canonical updates", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const scenario = await installTaskLoopFixture(page, {

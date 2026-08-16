@@ -578,13 +578,9 @@ async function taskGithubPaneGeometry(page, options = {}) {
   }, options);
 }
 
-test("contains Issue list and detail content within the foldable Task pane", async ({
+test("contains Issue list and detail content within the foldable Task pane", { tag: "@foldable" }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "foldable",
-    "The foldable project owns the constrained master-detail regression.",
-  );
   await page.setViewportSize({ width: 933, height: 704 });
   await installLinkedWorktreeGithubFixture(page, {
     githubNameWithOwner: LONG_GITHUB_NAME_WITH_OWNER,
@@ -685,13 +681,9 @@ test("contains Issue list and detail content within the foldable Task pane", asy
   });
 });
 
-test("keeps Pull Request headers, actions, and Markdown inside the foldable Task pane", async ({
+test("keeps Pull Request headers, actions, and Markdown inside the foldable Task pane", { tag: "@foldable" }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "foldable",
-    "The foldable project owns the constrained master-detail regression.",
-  );
   await page.setViewportSize({ width: 933, height: 704 });
   await installLinkedWorktreeGithubFixture(page, {
     githubNameWithOwner: LONG_GITHUB_NAME_WITH_OWNER,
@@ -762,7 +754,7 @@ test("keeps Pull Request headers, actions, and Markdown inside the foldable Task
   await captureReviewScreenshot(page, testInfo, "github-pull-detail-foldable-contained");
 });
 
-test("retains the same Task GitHub DOM and refreshes lists when reactivated", async ({ page }) => {
+test("retains the same Task GitHub DOM and refreshes lists when reactivated", { tag: "@all-viewports" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
 
   await openLinkedWorktreePullRequests(page);
@@ -808,7 +800,7 @@ test("retains the same Task GitHub DOM and refreshes lists when reactivated", as
   await expect.poll(() => fixture.counts.issues).toBe(2);
 });
 
-test("keeps loaded GitHub routes stable across unrelated Task stream updates", async ({
+test("keeps loaded GitHub routes stable across unrelated Task stream updates", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
@@ -871,7 +863,7 @@ test("keeps loaded GitHub routes stable across unrelated Task stream updates", a
   expect(fixture.counts.pullFile).toBe(1);
 });
 
-test("applies the global ordering to GitHub PR Files without refetching", async ({
+test("applies the global ordering to GitHub PR Files without refetching", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
@@ -896,7 +888,7 @@ test("applies the global ordering to GitHub PR Files without refetching", async 
   expect(fixture.counts.pullFiles).toBe(1);
 });
 
-test("preserves Issue Start Task setup, focus return, and created Task selection", async ({ page }) => {
+test("preserves Issue Start Task setup, focus return, and created Task selection", { tag: "@all-viewports" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   const issueDetail = await openLinkedWorktreeIssue(page);
   const opener = issueDetail.getByRole("button", {
@@ -927,7 +919,7 @@ test("preserves Issue Start Task setup, focus return, and created Task selection
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
 });
 
-test("starts a Task from a Section-scoped GitHub Issue", async ({ page }) => {
+test("starts a Task from a Section-scoped GitHub Issue", { tag: "@all-viewports" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   await page.goto(
     "/?section=fixture-section-1&surface=github&tool=issues&number=1984",
@@ -956,7 +948,7 @@ test("starts a Task from a Section-scoped GitHub Issue", async ({ page }) => {
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
 });
 
-test("starts a same-repository PR Task from the exact prepared head", async ({ page }, testInfo) => {
+test("starts a same-repository PR Task from the exact prepared head", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   const pullDetail = await openLinkedWorktreePull(page);
   const dialog = page.locator("caffold-github-task-start-dialog dialog");
@@ -994,7 +986,7 @@ test("starts a same-repository PR Task from the exact prepared head", async ({ p
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
 });
 
-test("keeps long PR refs in one shared horizontal scroll with sticky labels", async ({ page }) => {
+test("keeps long PR refs in one shared horizontal scroll with sticky labels", { tag: "@all-viewports" }, async ({ page }) => {
   await installLinkedWorktreeGithubFixture(page, {
     headRefName:
       "perf/memory-storage-lazy-scan-with-an-intentionally-long-review-branch-name",
@@ -1047,7 +1039,7 @@ test("keeps long PR refs in one shared horizontal scroll with sticky labels", as
   expect(before.headValueLeft - after.headValueLeft).toBeCloseTo(after.scrollLeft, 0);
 });
 
-test("starts a fork PR Task through the base repository pull ref", async ({ page }) => {
+test("starts a fork PR Task through the base repository pull ref", { tag: "@all-viewports" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page, {
     headRepository: {
       nameWithOwner: "contributor/gluesql",
@@ -1080,7 +1072,7 @@ test("starts a fork PR Task through the base repository pull ref", async ({ page
   );
 });
 
-test("keeps PR Task setup recoverable when the canonical head is unavailable", async ({ page }) => {
+test("keeps PR Task setup recoverable when the canonical head is unavailable", { tag: "@all-viewports" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   fixture.controls.pullHeadFailure = {
     status: 502,
@@ -1103,7 +1095,7 @@ test("keeps PR Task setup recoverable when the canonical head is unavailable", a
   await expect.poll(() => fixture.counts.taskCreates).toBe(1);
 });
 
-test("requires an explicit PR refresh after the head moves", async ({ page }) => {
+test("requires an explicit PR refresh after the head moves", { tag: "@all-viewports" }, async ({ page }) => {
   const movedOid = "3333333333333333333333333333333333333333";
   const fixture = await installLinkedWorktreeGithubFixture(page);
   fixture.controls.pullHeadFailure = {
@@ -1132,7 +1124,7 @@ test("requires an explicit PR refresh after the head moves", async ({ page }) =>
   expect(fixture.requests.pullHeads.at(-1).headOid).toBe(movedOid);
 });
 
-test("invalidates a pending GitHub Task start when the GitHub surface deactivates", async ({
+test("invalidates a pending GitHub Task start when the GitHub surface deactivates", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
@@ -1157,7 +1149,7 @@ test("invalidates a pending GitHub Task start when the GitHub surface deactivate
   expect(fixture.counts.taskCreates).toBe(0);
 });
 
-test("reloads a Task-scoped GitHub route from canonical Task context", async ({ page }) => {
+test("reloads a Task-scoped GitHub route from canonical Task context", { tag: "@all-viewports" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   await page.goto(`/tasks/${THREAD_ID}/github/pulls`);
   const pullsPage = page.locator("caffold-github-pulls-list-page");
@@ -1218,7 +1210,7 @@ test("reloads a Task-scoped GitHub route from canonical Task context", async ({ 
   await expect.poll(() => fixture.counts.pulls).toBe(2);
 });
 
-test("navigates and reloads Task-scoped Issue, PR, and PR file routes", async ({
+test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
@@ -1284,7 +1276,7 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", async ({
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls`);
 });
 
-test("rejects an inactive GitHub list response before the cached child is reactivated", async ({ page }) => {
+test("rejects an inactive GitHub list response before the cached child is reactivated", { tag: "@all-viewports" }, async ({ page }) => {
   await installLinkedWorktreeGithubFixture(page);
   await page.unroute(/\/api\/github\/pulls(?:\?|$)/);
   const pendingRoutes = [];
@@ -1308,7 +1300,7 @@ test("rejects an inactive GitHub list response before the cached child is reacti
   await expect(pullsPage).not.toContainText("Stale pull request");
 });
 
-test("stops an older GitHub activation before it loads content for a replaced route", async ({
+test("stops an older GitHub activation before it loads content for a replaced route", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);

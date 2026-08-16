@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("reorders existing rows while preserving structural and reconciled state", async ({
+test("reorders existing rows while preserving structural and reconciled state", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await page.goto("/settings/files");

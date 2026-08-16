@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("preserves conversation and thread-local Review state while lifecycles deactivate", async ({
+test("preserves conversation and thread-local Review state while lifecycles deactivate", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const { taskScenario, tasksPage } = await openCompletedTaskForReview(page);
@@ -79,7 +79,7 @@ test("preserves conversation and thread-local Review state while lifecycles deac
     .toBe(360);
 });
 
-test("reopens the selected Review scope at its last semantic route", async ({
+test("reopens the selected Review scope at its last semantic route", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const { taskScenario, tasksPage, taskReview } =
@@ -112,7 +112,7 @@ test("reopens the selected Review scope at its last semantic route", async ({
   ).toHaveAttribute("aria-current", "true");
 });
 
-test("keeps the selected Review viewer mounted during canonical task sync", async ({
+test("keeps the selected Review viewer mounted during canonical task sync", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const { taskScenario, tasksPage, taskReview } =
@@ -135,7 +135,7 @@ test("keeps the selected Review viewer mounted during canonical task sync", asyn
   await expect(taskReview.locator(".surface-message")).toHaveCount(0);
 });
 
-test("keeps Task view and pane controls mounted and focused through live updates", async ({
+test("keeps Task view and pane controls mounted and focused through live updates", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const { reviewScenario, tasksPage, taskReview } =
@@ -186,13 +186,9 @@ test("keeps Task view and pane controls mounted and focused through live updates
   });
 });
 
-test("does not reveal the selected Files entry again during canonical task sync", async ({
+test("does not reveal the selected Files entry again during canonical task sync", { tag: ["@desktop", "@foldable"] }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name === "phone",
-    "Phone hides the navigator while a file is selected.",
-  );
   const { taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
   await page.addStyleTag({
@@ -224,7 +220,7 @@ test("does not reveal the selected Files entry again during canonical task sync"
   await expectScrollUnchanged(fileList, fileScroll);
 });
 
-test("keeps both Review navigator scroll positions during unrelated live updates", async ({
+test("keeps both Review navigator scroll positions during unrelated live updates", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const { reviewScenario, taskScenario, tasksPage, taskReview } =
@@ -372,7 +368,7 @@ test("keeps both Review navigator scroll positions during unrelated live updates
   await expectScrollUnchanged(fileList, fileScrollAfterChange);
 });
 
-test("rejects a late file navigator response while Review is inactive", async ({
+test("rejects a late file navigator response while Review is inactive", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const { taskScenario, tasksPage } = await openCompletedTaskForReview(page);

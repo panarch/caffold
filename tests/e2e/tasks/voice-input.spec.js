@@ -27,7 +27,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("records without focusing the prompt and inserts a host transcript at the saved selection", async ({
+test("records without focusing the prompt and inserts a host transcript at the saved selection", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const scenario = await installTaskLoopFixture(page);
@@ -282,13 +282,9 @@ test("records without focusing the prompt and inserts a host transcript at the s
   expect(scenario.createTaskRequests).toBe(0);
 });
 
-test("keeps live input feedback visible without transitions in reduced motion", async ({
+test("keeps live input feedback visible without transitions in reduced motion", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "Reduced-motion presentation is viewport-independent",
-  );
   await page.emulateMedia({ reducedMotion: "reduce" });
   await installTaskLoopFixture(page);
   await mockVoiceStatus(page, true);
@@ -325,13 +321,9 @@ test("keeps live input feedback visible without transitions in reduced motion", 
   await expect(meter).toHaveCount(0);
 });
 
-test("mounts the level meter only after microphone permission resolves", async ({
+test("mounts the level meter only after microphone permission resolves", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "Permission lifecycle is viewport-independent",
-  );
   await page.addInitScript(() => {
     const originalGetUserMedia =
       navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
@@ -366,13 +358,9 @@ test("mounts the level meter only after microphone permission resolves", async (
   await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
 });
 
-test("does not render a stale meter when microphone capture is unavailable", async ({
+test("does not render a stale meter when microphone capture is unavailable", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "Unavailable capture behavior is viewport-independent",
-  );
   await page.addInitScript(() => {
     Object.defineProperty(window, "AudioWorkletNode", {
       configurable: true,
@@ -389,13 +377,9 @@ test("does not render a stale meter when microphone capture is unavailable", asy
   await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
 });
 
-test("shows the elapsed duration and automatically transcribes at the recording limit", async ({
+test("shows the elapsed duration and automatically transcribes at the recording limit", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "Timer limit behavior is viewport-independent",
-  );
   await installTaskLoopFixture(page);
   await mockVoiceStatus(page, true, 1);
   let transcriptionRequests = 0;
@@ -438,10 +422,9 @@ test("shows the elapsed duration and automatically transcribes at the recording 
   expect(transcriptionRequests).toBe(1);
 });
 
-test("requires explicit confirmation before the one-time model install", async ({
+test("requires explicit confirmation before the one-time model install", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Model setup behavior is viewport-independent");
   await installTaskLoopFixture(page);
   await mockVoiceStatus(page, false);
   let installRequests = 0;
@@ -471,7 +454,7 @@ test("requires explicit confirmation before the one-time model install", async (
   expect(installRequests).toBe(1);
 });
 
-test("finishes transcription before sending when Send is tapped during recording", async ({
+test("finishes transcription before sending when Send is tapped during recording", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const scenario = await installTaskLoopFixture(page);
@@ -541,13 +524,9 @@ test("finishes transcription before sending when Send is tapped during recording
   expect(scenario.createTaskRequests).toBe(0);
 });
 
-test("keeps recording Stop separate while voice steers an active turn", async ({
+test("keeps recording Stop separate while voice steers an active turn", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "Active-turn voice state is viewport-independent",
-  );
   await installTaskApiFixture(page);
   await mockVoiceStatus(page, true);
   const detail = taskDetailFixture({ running: true });
@@ -608,10 +587,9 @@ test("keeps recording Stop separate while voice steers an active turn", async ({
   await expect(primaryAction).toHaveAccessibleName("Stop current turn");
 });
 
-test("keeps the draft unsent when send-triggered transcription fails", async ({
+test("keeps the draft unsent when send-triggered transcription fails", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Failure behavior is viewport-independent");
   const scenario = await installTaskLoopFixture(page);
   await mockVoiceStatus(page, true);
   await page.route("**/api/voice/transcribe", (route) =>
@@ -666,10 +644,9 @@ test("keeps the draft unsent when send-triggered transcription fails", async ({
   expect(scenario.createTaskRequests).toBe(0);
 });
 
-test("keeps a follow-up draft and releases microphone tracks when recording is cancelled", async ({
+test("keeps a follow-up draft and releases microphone tracks when recording is cancelled", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Cancellation behavior is viewport-independent");
   await page.addInitScript(() => {
     window.__caffoldStoppedVoiceTracks = 0;
     if (window.MediaStreamTrack) {
@@ -712,10 +689,9 @@ test("keeps a follow-up draft and releases microphone tracks when recording is c
   expect(scenario.followUpRequests).toBe(0);
 });
 
-test("reports microphone permission denial without changing the draft", async ({
+test("reports microphone permission denial without changing the draft", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Permission behavior is viewport-independent");
   await page.addInitScript(() => {
     Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
       configurable: true,

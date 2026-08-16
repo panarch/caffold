@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("keeps a clean working tree explicit and offers branch review", async ({
+test("keeps a clean working tree explicit and offers branch review", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
@@ -35,7 +35,7 @@ test("keeps a clean working tree explicit and offers branch review", async ({
   );
 });
 
-test("names the selected base when a branch comparison is clean", async ({
+test("names the selected base when a branch comparison is clean", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
@@ -56,7 +56,7 @@ test("names the selected base when a branch comparison is clean", async ({
   await captureReviewScreenshot(page, testInfo, "tasks-review-clean-branch");
 });
 
-test("normalizes a non-Git task to Files and Source without hiding why", async ({
+test("normalizes a non-Git task to Files and Source without hiding why", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page);
@@ -93,7 +93,7 @@ test("normalizes a non-Git task to Files and Source without hiding why", async (
   await captureReviewScreenshot(page, testInfo, "tasks-review-no-git");
 });
 
-test("keeps unchanged and deleted file representations explicit", async ({
+test("keeps unchanged and deleted file representations explicit", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const { taskScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
@@ -137,7 +137,7 @@ test("keeps unchanged and deleted file representations explicit", async ({
   await captureReviewScreenshot(page, testInfo, "tasks-review-deleted-source");
 });
 
-test("keeps the last canonical working tree visible when a live update fails", async ({
+test("keeps the last canonical working tree visible when a live update fails", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const { reviewScenario, tasksPage, taskReview } =
