@@ -409,12 +409,13 @@ impl CodexRuntime {
             .await
             .map_err(|error| format!("Caffold could not isolate the current task: {error}"))?;
         match isolated {
-            IsolateOutcome::AlreadyReady(worktree) => Ok(format!(
+            IsolateOutcome::AlreadyReady { worktree, checkout } => Ok(format!(
                 "The current Caffold task is already isolated on branch `{}` at `{}`. End this turn; the user's next request will continue there.",
-                worktree.branch_name, worktree.worktree_path
+                checkout.branch_name, worktree.worktree_path
             )),
             IsolateOutcome::Isolated {
                 worktree,
+                checkout,
                 source_warning,
             } => {
                 let warning = source_warning
@@ -423,12 +424,12 @@ impl CodexRuntime {
                 let result = if include_changes {
                     format!(
                         "Moved the current Caffold task to branch `{}` at `{}` and preserved its tracked and untracked changes.",
-                        worktree.branch_name, worktree.worktree_path
+                        checkout.branch_name, worktree.worktree_path
                     )
                 } else {
                     format!(
                         "Prepared the current Caffold task on branch `{}` at `{}`. Source checkout changes were left in place.",
-                        worktree.branch_name, worktree.worktree_path
+                        checkout.branch_name, worktree.worktree_path
                     )
                 };
                 Ok(format!(
@@ -1301,21 +1302,22 @@ mod tests {
         let (shutdown, _) = broadcast::channel(1);
         let runtime =
             CodexRuntime::new(sessions, events, store.clone(), shutdown).with_lifecycle(lifecycle);
-        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
-            "thread/read",
-            json!({
-                "thread": {
-                    "id": "thread_source",
-                    "name": "Review issue 42",
-                    "preview": "Source task",
-                    "status": { "type": "idle" },
-                    "cwd": source.display().to_string(),
-                    "createdAt": 1.0,
-                    "updatedAt": 1.0,
-                    "turns": []
-                }
-            }),
-        )]);
+        let thread_read = json!({
+            "thread": {
+                "id": "thread_source",
+                "name": "Review issue 42",
+                "preview": "Source task",
+                "status": { "type": "idle" },
+                "cwd": source.display().to_string(),
+                "createdAt": 1.0,
+                "updatedAt": 1.0,
+                "turns": []
+            }
+        });
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok("thread/read", thread_read.clone()),
+            MockCodexResponse::ok("thread/read", thread_read),
+        ]);
 
         runtime
             .handle_server_request(
@@ -1328,11 +1330,10 @@ mod tests {
         let records = store.managed_worktrees().unwrap();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].thread_id.as_deref(), Some("thread_source"));
-        assert!(
-            records[0]
-                .branch_name
-                .starts_with("caffold/review-issue-42-")
-        );
+        let live_branch = crate::app::tasks::worktrees::inspect_ready_worktree(&records[0])
+            .unwrap()
+            .branch_name;
+        assert!(live_branch.starts_with("caffold/review-issue-42-"));
         assert!(Path::new(&records[0].worktree_path).is_dir());
         let requests = client.mock_requests().await;
         assert_eq!(
@@ -1348,8 +1349,42 @@ mod tests {
             response["contentItems"][0]["text"],
             format!(
                 "Prepared the current Caffold task on branch `{}` at `{}`. Source checkout changes were left in place. End this turn; the user's next request will continue there.",
-                records[0].branch_name, records[0].worktree_path
+                live_branch, records[0].worktree_path
             )
+        );
+
+        let stored_before_switch = records[0].clone();
+        let switched = Command::new("git")
+            .arg("-C")
+            .arg(&records[0].worktree_path)
+            .args(["switch", "-c", "review/next"])
+            .output()
+            .unwrap();
+        assert!(
+            switched.status.success(),
+            "{}",
+            String::from_utf8_lossy(&switched.stderr)
+        );
+        runtime
+            .handle_server_request(
+                &client,
+                2,
+                dynamic_tool_request("thread_source", ISOLATE_CURRENT_TASK_TOOL_NAME, json!({})),
+            )
+            .await;
+
+        let responses = client.mock_server_responses().await;
+        assert_eq!(responses[1].1["success"], true);
+        assert_eq!(
+            responses[1].1["contentItems"][0]["text"],
+            format!(
+                "The current Caffold task is already isolated on branch `review/next` at `{}`. End this turn; the user's next request will continue there.",
+                records[0].worktree_path
+            )
+        );
+        assert_eq!(
+            store.worktree(&records[0].worktree_id).unwrap().unwrap(),
+            stored_before_switch
         );
     }
 

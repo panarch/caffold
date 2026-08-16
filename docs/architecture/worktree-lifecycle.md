@@ -6,10 +6,13 @@ worktrees are never adopted or removed.
 
 ## Ownership Boundary
 
-- A managed worktree has one stable UUID, one local branch, and at most one
-  Codex thread.
+- A managed worktree has one stable UUID, one repository common Git directory,
+  one UUID-derived owned path, and one bound Codex thread.
 - Its filesystem path is `<managed-root>/<worktree-id>` and does not change when
   a Task or branch is renamed.
+- While the record is `ready`, the user may switch the owned worktree between
+  named local branches. The live checkout is presentation state, not persisted
+  ownership identity.
 - The default managed root is `<data-dir>/worktrees`. `caffold serve
   --worktree-root PATH` can select another directory, but that directory is
   treated as exclusively owned by Caffold and must be inside the configured
@@ -68,6 +71,10 @@ owned record reaches `ready`.
 The existing `managed_worktrees` record is the recovery anchor; no separate
 operation ledger is used. Its persisted state distinguishes clean branch
 creation, clean branch handoff, and dirty-state transfer before Git mutation.
+`anchor_branch` and `anchor_head_sha` are a paired checkout anchor: both are
+present in every non-ready operation or recovery state, including legacy
+`creating` recovery, and both are null in `ready`. Partial pairs and states with
+the wrong anchor presence are invalid.
 Interrupted operations are recovered at startup using the matching mode; clean
 recovery never creates or applies a stash snapshot. Dirty transfers additionally
 use the unique stash marker and protected ref.
@@ -86,13 +93,16 @@ Archive coordinates the Codex thread, Task membership, and managed worktree:
 - an active Codex turn still blocks archive;
 - a dirty managed worktree blocks archive with
   `managed_worktree_dirty`;
+- archive inspects the actual named branch and HEAD, then atomically records
+  them as the checkout anchor while transitioning from `ready` to `removing`;
 - a clean managed worktree is removed from disk without `--force`;
 - its local branch and ownership record are retained;
 - the record transitions from `ready` through `removing` to `archived`.
 
-Restore recreates the same UUID path from the retained local branch before the
-Codex thread and Task return to the active list. The record transitions through
-`restoring` back to `ready`.
+Restore recreates the same UUID path from the branch recorded when archive
+began before the Codex thread and Task return to the active list. The record
+transitions through `restoring` back to `ready`, where the checkout anchor is
+cleared again.
 
 Permanent deletion is available only after archive. The archived managed
 worktree path is already absent, so deletion removes only Caffold's ownership
@@ -123,15 +133,19 @@ are scenario orchestration outside this lifecycle.
 - No operation removes a path outside the canonical managed root.
 - The record ID must be a UUID and its recorded path must exactly equal the
   UUID-derived owned path.
-- Repository common Git directory and branch identity are verified before
-  removal.
+- Repository common Git directory is always verified. Operation and recovery
+  states also retain and verify their persisted branch identity before Git
+  mutation; transfer recovery additionally uses the anchored HEAD.
 - Dirty ready worktrees are never removed by archive. Recovery never resets an
   existing dirty target automatically; the exact dirty snapshot remains
   protected by its transfer ref for manual recovery. Clean isolation recovery
   likewise never resets a dirty target.
-- A `ready` record is verified against the live Git common directory and branch
-  before its path is projected into Task detail or used for a new prompt.
-- Normal archive preserves the branch; branch deletion is restricted to a
-  failed, unbound creation whose HEAD is unchanged.
+- A `ready` record accepts its live named branch after verifying the owned path,
+  symlink boundary, repository common directory, and attached HEAD. Task detail,
+  prompt, restart reconciliation, and serialization reads do not persist the
+  observed branch or HEAD.
+- A detached `ready` worktree, repository mismatch, unowned path, or symlinked
+  owned slot fails closed.
+- Normal archive preserves the branch that was live when archive began.
 - Caffold never manages or deletes an external worktree merely because a Task
   uses it as cwd.

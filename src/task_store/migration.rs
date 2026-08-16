@@ -4,6 +4,7 @@ mod v1_to_v2;
 mod v2_to_v3;
 mod v3_to_v4;
 mod v4_to_v5;
+mod v5_to_v6;
 
 use chrono::{NaiveDateTime, Utc};
 use gluesql::{
@@ -24,7 +25,7 @@ use super::{
     push_vapid_key, schema_migration,
 };
 
-const LATEST_SCHEMA_VERSION: i64 = 5;
+const LATEST_SCHEMA_VERSION: i64 = 6;
 const APPLICATION_TABLE_COUNT: usize = 5;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,11 +82,12 @@ impl PendingTaskStoreMigration {
     }
 
     pub(crate) fn apply(self, snapshot: &NavigatorMigrationSnapshot) -> Result<()> {
-        let latest = v4_to_v5::migrate(self.staged.path(), snapshot)?;
-        if detect_redb_schema(self.staged.path())? != DetectedSchemaVersion::V5 {
+        let v5 = v4_to_v5::migrate(self.staged.path(), snapshot)?;
+        let v6 = v5_to_v6::migrate(self.staged.path())?;
+        if detect_redb_schema(self.staged.path())? != DetectedSchemaVersion::V6 {
             return Err(TaskStoreError::IncompleteSchema);
         }
-        let report = combine_reports([self.prior_report, latest]);
+        let report = combine_reports([self.prior_report, v5, v6]);
         self.staged.publish(&self.target)?;
         let _report = report;
         Ok(())
@@ -108,6 +110,7 @@ enum DetectedSchemaVersion {
     V3,
     V4,
     V5,
+    V6,
     UnsupportedNewer(i64),
 }
 
@@ -153,8 +156,9 @@ impl Drop for StagedDatabase {
 /// Prepares an existing database for a linear startup migration.
 ///
 /// Legacy schemas are normalized to v4 in a disposable staged database. The
-/// caller supplies the read-only Codex snapshot before the staged v5 database
-/// can replace the source.
+/// caller supplies the read-only Codex snapshot before the staged latest
+/// database can replace the source. A v5 database needs no external snapshot
+/// and is upgraded through the same staged replacement boundary immediately.
 pub(crate) fn prepare_to_latest(path: &Path) -> Result<PreparedTaskStoreMigration> {
     if !path.exists() {
         return Err(TaskStoreError::MigrationPathMissing(
@@ -169,9 +173,10 @@ pub(crate) fn prepare_to_latest(path: &Path) -> Result<PreparedTaskStoreMigratio
 
     let detected = detect_redb_schema(path)?;
     match detected {
-        DetectedSchemaVersion::Fresh | DetectedSchemaVersion::V5 => {
+        DetectedSchemaVersion::Fresh | DetectedSchemaVersion::V6 => {
             Ok(PreparedTaskStoreMigration::Ready)
         }
+        DetectedSchemaVersion::V5 => prepare_v5(path),
         DetectedSchemaVersion::V0
         | DetectedSchemaVersion::V1
         | DetectedSchemaVersion::V2
@@ -184,6 +189,30 @@ pub(crate) fn prepare_to_latest(path: &Path) -> Result<PreparedTaskStoreMigratio
             })
         }
     }
+}
+
+fn prepare_v5(path: &Path) -> Result<PreparedTaskStoreMigration> {
+    prepare_v5_with_validation(path, |staged_path| {
+        if detect_redb_schema(staged_path)? != DetectedSchemaVersion::V6 {
+            return Err(TaskStoreError::IncompleteSchema);
+        }
+        Ok(())
+    })
+}
+
+fn prepare_v5_with_validation<F>(
+    path: &Path,
+    validate_staged: F,
+) -> Result<PreparedTaskStoreMigration>
+where
+    F: FnOnce(&Path) -> Result<()>,
+{
+    let staged = StagedDatabase::new(path);
+    std::fs::copy(path, staged.path())?;
+    v5_to_v6::migrate(staged.path())?;
+    validate_staged(staged.path())?;
+    staged.publish(path)?;
+    Ok(PreparedTaskStoreMigration::Ready)
 }
 
 fn prepare_legacy(
@@ -238,6 +267,7 @@ fn migrate_supported_to_v4(
         DetectedSchemaVersion::Fresh
         | DetectedSchemaVersion::V0
         | DetectedSchemaVersion::V5
+        | DetectedSchemaVersion::V6
         | DetectedSchemaVersion::UnsupportedNewer(_) => Err(TaskStoreError::IncompleteSchema),
     }
 }
@@ -293,7 +323,8 @@ pub(super) fn initialize_redb(glue: &mut Glue<RedbStorage>) -> Result<()> {
     begin().execute(glue)?;
     let result = match detect_schema(glue) {
         Ok(DetectedSchemaVersion::Fresh) => create_latest_schema(glue, Utc::now().naive_utc()),
-        Ok(DetectedSchemaVersion::V5) => Ok(()),
+        Ok(DetectedSchemaVersion::V6) => Ok(()),
+        Ok(DetectedSchemaVersion::V5) => Err(TaskStoreError::MigrationRequired(5)),
         Ok(DetectedSchemaVersion::V4) => Err(TaskStoreError::MigrationRequired(4)),
         Ok(DetectedSchemaVersion::V3) => Err(TaskStoreError::MigrationRequired(3)),
         Ok(DetectedSchemaVersion::V2) => Err(TaskStoreError::MigrationRequired(2)),
@@ -364,7 +395,7 @@ where
         schema::v4::MANAGED_WORKTREES_TABLE.to_string(),
         schema::v4::PUSH_INSTALLATIONS_TABLE.to_string(),
         schema::v4::PUSH_VAPID_KEYS_TABLE.to_string(),
-        schema::v5::MANAGED_SECTIONS_TABLE.to_string(),
+        schema::v6::MANAGED_SECTIONS_TABLE.to_string(),
         v0_to_v1::LEGACY_ARCHIVED_THREADS_TABLE.to_string(),
         schema_migration::TABLE_NAME.to_string(),
     ]);
@@ -376,7 +407,7 @@ where
     let has_worktrees = table_names.contains(schema::v4::MANAGED_WORKTREES_TABLE);
     let has_push_installations = table_names.contains(schema::v4::PUSH_INSTALLATIONS_TABLE);
     let has_push_vapid_keys = table_names.contains(schema::v4::PUSH_VAPID_KEYS_TABLE);
-    let has_managed_sections = table_names.contains(schema::v5::MANAGED_SECTIONS_TABLE);
+    let has_managed_sections = table_names.contains(schema::v6::MANAGED_SECTIONS_TABLE);
     let has_legacy_archived = table_names.contains(v0_to_v1::LEGACY_ARCHIVED_THREADS_TABLE);
     let has_migrations = table_names.contains(schema_migration::TABLE_NAME);
 
@@ -417,9 +448,13 @@ where
             schema::v4::validate(glue)?;
             Ok(DetectedSchemaVersion::V4)
         }
-        LATEST_SCHEMA_VERSION => {
+        5 => {
             schema::v5::validate(glue)?;
             Ok(DetectedSchemaVersion::V5)
+        }
+        LATEST_SCHEMA_VERSION => {
+            schema::v6::validate(glue)?;
+            Ok(DetectedSchemaVersion::V6)
         }
         version => Ok(DetectedSchemaVersion::UnsupportedNewer(version)),
     }
@@ -508,19 +543,32 @@ mod tests {
         v3_to_v4::migrate(path).unwrap();
     }
 
-    fn finish_empty_migration(path: &Path) {
-        let PreparedTaskStoreMigration::NeedsSnapshot(pending) = prepare_to_latest(path).unwrap()
-        else {
-            panic!("legacy schema should require a snapshot");
-        };
-        assert!(pending.inventory().is_empty());
-        pending
-            .apply(&NavigatorMigrationSnapshot {
+    fn write_v5(path: &Path) {
+        write_v4(path);
+        v4_to_v5::migrate(
+            path,
+            &NavigatorMigrationSnapshot {
                 sections: Vec::new(),
                 threads: Vec::new(),
-            })
-            .unwrap();
-        assert_eq!(detect_redb_schema(path).unwrap(), DetectedSchemaVersion::V5);
+            },
+        )
+        .unwrap();
+    }
+
+    fn finish_empty_migration(path: &Path) {
+        match prepare_to_latest(path).unwrap() {
+            PreparedTaskStoreMigration::Ready => {}
+            PreparedTaskStoreMigration::NeedsSnapshot(pending) => {
+                assert!(pending.inventory().is_empty());
+                pending
+                    .apply(&NavigatorMigrationSnapshot {
+                        sections: Vec::new(),
+                        threads: Vec::new(),
+                    })
+                    .unwrap();
+            }
+        }
+        assert_eq!(detect_redb_schema(path).unwrap(), DetectedSchemaVersion::V6);
     }
 
     fn legacy_row(thread_id: &str, offset: i64) -> v0_to_v1::LegacyManagedThreadRow {
@@ -536,12 +584,12 @@ mod tests {
     }
 
     #[test]
-    fn fresh_stores_initialize_directly_as_v5() {
+    fn fresh_stores_initialize_directly_as_v6() {
         let mut memory = Glue::new(MemoryStorage::default());
         initialize_memory(&mut memory).unwrap();
         assert_eq!(
             detect_schema(&mut memory).unwrap(),
-            DetectedSchemaVersion::V5
+            DetectedSchemaVersion::V6
         );
 
         let temp = tempfile::tempdir().unwrap();
@@ -554,21 +602,22 @@ mod tests {
         drop(TaskStore::redb(&path).unwrap());
         assert_eq!(
             detect_redb_schema(&path).unwrap(),
-            DetectedSchemaVersion::V5
+            DetectedSchemaVersion::V6
         );
     }
 
     #[test]
-    fn every_supported_schema_path_converges_on_v5() {
+    fn every_supported_schema_path_converges_on_v6() {
         type SchemaWriter = (&'static str, fn(&Path));
 
         let temp = tempfile::tempdir().unwrap();
-        let writers: [SchemaWriter; 5] = [
+        let writers: [SchemaWriter; 6] = [
             ("v0", write_v0),
             ("v1", write_v1),
             ("v2", write_v2),
             ("v3", write_v3),
             ("v4", write_v4),
+            ("v5", write_v5),
         ];
         for (name, write) in writers {
             let path = temp.path().join(format!("{name}.redb"));
@@ -838,6 +887,36 @@ mod tests {
     }
 
     #[test]
+    fn v5_final_validation_failure_preserves_source_and_removes_staged_database() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("v5.redb");
+        write_v5(&path);
+        let before = std::fs::read(&path).unwrap();
+
+        assert!(matches!(
+            prepare_v5_with_validation(&path, |staged_path| {
+                assert_eq!(
+                    detect_redb_schema(staged_path).unwrap(),
+                    DetectedSchemaVersion::V6
+                );
+                Err(TaskStoreError::IncompleteSchema)
+            }),
+            Err(TaskStoreError::IncompleteSchema)
+        ));
+
+        assert_eq!(
+            detect_redb_schema(&path).unwrap(),
+            DetectedSchemaVersion::V5
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        let filenames = std::fs::read_dir(temp.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<Vec<_>>();
+        assert_eq!(filenames, vec![path.file_name().unwrap()]);
+    }
+
+    #[test]
     fn v4_detection_uses_the_frozen_v4_validator() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("v4.redb");
@@ -861,13 +940,13 @@ mod tests {
         {
             let mut glue = Glue::new(RedbStorage::new(&newer).unwrap());
             create_latest_schema(&mut glue, timestamp(1)).unwrap();
-            schema_migration::record(&mut glue, 6, timestamp(2)).unwrap();
+            schema_migration::record(&mut glue, 7, timestamp(2)).unwrap();
         }
         assert!(matches!(
             prepare_to_latest(&newer),
             Err(TaskStoreError::UnsupportedNewerSchemaVersion {
-                found: 6,
-                supported: 5,
+                found: 7,
+                supported: 6,
             })
         ));
 

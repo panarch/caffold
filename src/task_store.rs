@@ -19,7 +19,7 @@ mod schema_migration;
 
 pub(crate) use managed_section::ManagedSection;
 pub(crate) use managed_thread::ManagedThread;
-pub(crate) use managed_worktree::{ManagedWorktree, ManagedWorktreeState};
+pub(crate) use managed_worktree::{CheckoutAnchor, ManagedWorktree, ManagedWorktreeState};
 pub(crate) use migration::{
     ManagedThreadMigrationInventory, NavigatorMigrationSection, NavigatorMigrationSnapshot,
     NavigatorMigrationThread, NavigatorMigrationThreadClassification, PendingTaskStoreMigration,
@@ -47,16 +47,12 @@ pub(crate) enum TaskStoreError {
     TaskReorderConflict(&'static str),
     #[error("managed worktree already exists for thread: {0}")]
     DuplicateManagedWorktreeThread(String),
-    #[cfg(test)]
-    #[error("managed worktree {worktree_id} is already bound to thread: {thread_id}")]
-    ManagedWorktreeAlreadyBound {
-        worktree_id: String,
-        thread_id: String,
-    },
     #[error("managed worktree path is already owned: {0}")]
     DuplicateManagedWorktreePath(String),
     #[error("invalid managed worktree state: {0}")]
     InvalidManagedWorktreeState(String),
+    #[error("managed worktree state has an invalid checkout anchor: {0}")]
+    InvalidManagedWorktreeCheckoutAnchor(String),
     #[error("managed worktree {worktree_id} cannot transition from {actual} to {expected}")]
     ManagedWorktreeStateConflict {
         worktree_id: String,
@@ -207,6 +203,34 @@ impl TaskStoreTables<'_> {
         match self {
             Self::Memory(glue) => managed_worktree::delete(glue, worktree_id),
             Self::Redb(glue) => managed_worktree::delete(glue, worktree_id),
+        }
+    }
+
+    pub(crate) fn transition_managed_worktree(
+        &mut self,
+        worktree_id: &str,
+        expected: ManagedWorktreeState,
+        next: ManagedWorktreeState,
+        next_anchor: Option<CheckoutAnchor>,
+        updated_at_ms: u64,
+    ) -> Result<ManagedWorktree> {
+        match self {
+            Self::Memory(glue) => managed_worktree::transition(
+                glue,
+                worktree_id,
+                expected,
+                next,
+                next_anchor,
+                updated_at_ms,
+            ),
+            Self::Redb(glue) => managed_worktree::transition(
+                glue,
+                worktree_id,
+                expected,
+                next,
+                next_anchor,
+                updated_at_ms,
+            ),
         }
     }
 }
@@ -535,77 +559,23 @@ impl TaskStore {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn bind_worktree_thread(
-        &self,
-        worktree_id: &str,
-        thread_id: &str,
-        updated_at_ms: u64,
-    ) -> Result<ManagedWorktree> {
-        match self {
-            Self::Memory(glue) => managed_worktree::bind_thread(
-                &mut *lock_glue(glue)?,
-                worktree_id,
-                thread_id,
-                updated_at_ms,
-            ),
-            Self::Redb(glue) => managed_worktree::bind_thread(
-                &mut *lock_glue(glue)?,
-                worktree_id,
-                thread_id,
-                updated_at_ms,
-            ),
-        }
-    }
-
-    pub(crate) fn update_worktree_checkout(
-        &self,
-        worktree_id: &str,
-        branch_name: &str,
-        head_sha: &str,
-        updated_at_ms: u64,
-    ) -> Result<ManagedWorktree> {
-        match self {
-            Self::Memory(glue) => managed_worktree::update_checkout(
-                &mut *lock_glue(glue)?,
-                worktree_id,
-                branch_name,
-                head_sha,
-                updated_at_ms,
-            ),
-            Self::Redb(glue) => managed_worktree::update_checkout(
-                &mut *lock_glue(glue)?,
-                worktree_id,
-                branch_name,
-                head_sha,
-                updated_at_ms,
-            ),
-        }
-    }
-
     pub(crate) fn transition_worktree(
         &self,
         worktree_id: &str,
         expected: ManagedWorktreeState,
         next: ManagedWorktreeState,
+        next_anchor: Option<CheckoutAnchor>,
         updated_at_ms: u64,
     ) -> Result<ManagedWorktree> {
-        match self {
-            Self::Memory(glue) => managed_worktree::transition(
-                &mut *lock_glue(glue)?,
+        self.transaction(|tables| {
+            tables.transition_managed_worktree(
                 worktree_id,
                 expected,
                 next,
+                next_anchor,
                 updated_at_ms,
-            ),
-            Self::Redb(glue) => managed_worktree::transition(
-                &mut *lock_glue(glue)?,
-                worktree_id,
-                expected,
-                next,
-                updated_at_ms,
-            ),
-        }
+            )
+        })
     }
 
     pub(crate) fn delete_worktree(&self, worktree_id: &str) -> Result<bool> {
@@ -713,15 +683,17 @@ mod tests {
         ManagedThread::new(id, Some(20), None, None)
     }
 
-    fn worktree(id: &str) -> ManagedWorktree {
+    fn worktree(id: &str, thread_id: &str) -> ManagedWorktree {
         ManagedWorktree {
             worktree_id: id.to_string(),
-            thread_id: None,
+            thread_id: Some(thread_id.to_string()),
             repository_git_dir: format!("/repositories/{id}/.git"),
             worktree_path: format!("/managed/{id}"),
-            branch_name: format!("caffold/{id}"),
-            head_sha: "abc123".to_string(),
-            state: ManagedWorktreeState::Creating,
+            state: ManagedWorktreeState::IsolatingClean,
+            checkout_anchor: Some(CheckoutAnchor {
+                branch_name: format!("caffold/{id}"),
+                head_sha: "abc123".to_string(),
+            }),
             created_at_ms: 100,
             updated_at_ms: 100,
         }
@@ -795,20 +767,20 @@ mod tests {
             );
 
             let worktree_id = format!("worktree-{index}");
-            store.create_worktree(worktree(&worktree_id)).unwrap();
+            store
+                .create_worktree(worktree(&worktree_id, &thread_id))
+                .unwrap();
             store
                 .transition_worktree(
                     &worktree_id,
-                    ManagedWorktreeState::Creating,
+                    ManagedWorktreeState::IsolatingClean,
                     ManagedWorktreeState::Ready,
+                    None,
                     110,
                 )
                 .unwrap();
-            let bound = store
-                .bind_worktree_thread(&worktree_id, &thread_id, 120)
-                .unwrap();
-            assert_eq!(store.worktree(&worktree_id).unwrap(), Some(bound.clone()));
-            assert_eq!(store.worktree_for_thread(&thread_id).unwrap(), Some(bound));
+            let ready = store.worktree(&worktree_id).unwrap().unwrap();
+            assert_eq!(store.worktree_for_thread(&thread_id).unwrap(), Some(ready));
 
             let archived = store.archive(&thread_id, 60).unwrap().unwrap();
             assert_eq!(store.get_archived(&thread_id).unwrap(), Some(archived));

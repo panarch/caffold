@@ -22,9 +22,9 @@ const COLUMN_DEFINITIONS: &[&str] = &[
     "thread_id TEXT NULL",
     "repository_git_dir TEXT",
     "worktree_path TEXT",
-    "branch_name TEXT",
-    "head_sha TEXT",
     "state TEXT",
+    "anchor_branch TEXT NULL",
+    "anchor_head_sha TEXT NULL",
     "created_at TIMESTAMP",
     "updated_at TIMESTAMP",
 ];
@@ -105,14 +105,19 @@ impl ManagedWorktreeState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CheckoutAnchor {
+    pub branch_name: String,
+    pub head_sha: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManagedWorktree {
     pub worktree_id: String,
     pub thread_id: Option<String>,
     pub repository_git_dir: String,
     pub worktree_path: String,
-    pub branch_name: String,
-    pub head_sha: String,
     pub state: ManagedWorktreeState,
+    pub checkout_anchor: Option<CheckoutAnchor>,
     pub created_at_ms: u64,
     pub updated_at_ms: u64,
 }
@@ -123,9 +128,9 @@ pub(super) struct ManagedWorktreeRow {
     pub thread_id: Option<String>,
     pub repository_git_dir: String,
     pub worktree_path: String,
-    pub branch_name: String,
-    pub head_sha: String,
     pub state: String,
+    pub anchor_branch: Option<String>,
+    pub anchor_head_sha: Option<String>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }
@@ -134,14 +139,21 @@ impl TryFrom<&ManagedWorktree> for ManagedWorktreeRow {
     type Error = TaskStoreError;
 
     fn try_from(worktree: &ManagedWorktree) -> Result<Self> {
+        validate_checkout_anchor(worktree.state, worktree.checkout_anchor.as_ref())?;
         Ok(Self {
             worktree_id: worktree.worktree_id.clone(),
             thread_id: worktree.thread_id.clone(),
             repository_git_dir: worktree.repository_git_dir.clone(),
             worktree_path: worktree.worktree_path.clone(),
-            branch_name: worktree.branch_name.clone(),
-            head_sha: worktree.head_sha.clone(),
             state: worktree.state.as_str().to_string(),
+            anchor_branch: worktree
+                .checkout_anchor
+                .as_ref()
+                .map(|anchor| anchor.branch_name.clone()),
+            anchor_head_sha: worktree
+                .checkout_anchor
+                .as_ref()
+                .map(|anchor| anchor.head_sha.clone()),
             created_at: to_db_timestamp(worktree.created_at_ms, "created_at_ms")?,
             updated_at: to_db_timestamp(worktree.updated_at_ms, "updated_at_ms")?,
         })
@@ -152,14 +164,23 @@ impl TryFrom<ManagedWorktreeRow> for ManagedWorktree {
     type Error = TaskStoreError;
 
     fn try_from(row: ManagedWorktreeRow) -> Result<Self> {
+        let state = ManagedWorktreeState::parse(row.state)?;
+        let checkout_anchor = match (row.anchor_branch, row.anchor_head_sha) {
+            (Some(branch_name), Some(head_sha)) => Some(CheckoutAnchor {
+                branch_name,
+                head_sha,
+            }),
+            (None, None) => None,
+            _ => return Err(invalid_checkout_anchor(state)),
+        };
+        validate_checkout_anchor(state, checkout_anchor.as_ref())?;
         Ok(Self {
             worktree_id: row.worktree_id,
             thread_id: row.thread_id,
             repository_git_dir: row.repository_git_dir,
             worktree_path: row.worktree_path,
-            branch_name: row.branch_name,
-            head_sha: row.head_sha,
-            state: ManagedWorktreeState::parse(row.state)?,
+            state,
+            checkout_anchor,
             created_at_ms: from_db_timestamp(row.created_at, "created_at_ms")?,
             updated_at_ms: from_db_timestamp(row.updated_at, "updated_at_ms")?,
         })
@@ -259,68 +280,12 @@ where
         .collect()
 }
 
-#[cfg(test)]
-pub(super) fn bind_thread<S>(
-    glue: &mut Glue<S>,
-    worktree_id: &str,
-    thread_id: &str,
-    updated_at_ms: u64,
-) -> Result<ManagedWorktree>
-where
-    S: GStore + GStoreMut + Planner,
-{
-    if let Some(existing) = get_for_thread(glue, thread_id)?
-        && existing.worktree_id != worktree_id
-    {
-        return Err(TaskStoreError::DuplicateManagedWorktreeThread(
-            thread_id.to_string(),
-        ));
-    }
-    let mut worktree = required(glue, worktree_id)?;
-    if let Some(bound_thread_id) = worktree.thread_id.as_deref()
-        && bound_thread_id != thread_id
-    {
-        return Err(TaskStoreError::ManagedWorktreeAlreadyBound {
-            worktree_id: worktree_id.to_string(),
-            thread_id: bound_thread_id.to_string(),
-        });
-    }
-    if worktree.state != ManagedWorktreeState::Ready {
-        return Err(TaskStoreError::ManagedWorktreeStateConflict {
-            worktree_id: worktree_id.to_string(),
-            actual: worktree.state.as_str().to_string(),
-            expected: ManagedWorktreeState::Ready.as_str().to_string(),
-        });
-    }
-    worktree.thread_id = Some(thread_id.to_string());
-    worktree.updated_at_ms = updated_at_ms;
-    update_all(glue, &worktree)?;
-    Ok(worktree)
-}
-
-pub(super) fn update_checkout<S>(
-    glue: &mut Glue<S>,
-    worktree_id: &str,
-    branch_name: &str,
-    head_sha: &str,
-    updated_at_ms: u64,
-) -> Result<ManagedWorktree>
-where
-    S: GStore + GStoreMut + Planner,
-{
-    let mut worktree = required(glue, worktree_id)?;
-    worktree.branch_name = branch_name.to_string();
-    worktree.head_sha = head_sha.to_string();
-    worktree.updated_at_ms = updated_at_ms;
-    update_all(glue, &worktree)?;
-    Ok(worktree)
-}
-
 pub(super) fn transition<S>(
     glue: &mut Glue<S>,
     worktree_id: &str,
     expected: ManagedWorktreeState,
     next: ManagedWorktreeState,
+    next_anchor: Option<CheckoutAnchor>,
     updated_at_ms: u64,
 ) -> Result<ManagedWorktree>
 where
@@ -340,7 +305,9 @@ where
             to: next.as_str().to_string(),
         });
     }
+    validate_checkout_anchor(next, next_anchor.as_ref())?;
     worktree.state = next;
+    worktree.checkout_anchor = next_anchor;
     worktree.updated_at_ms = updated_at_ms;
     update_all(glue, &worktree)?;
     Ok(worktree)
@@ -402,9 +369,12 @@ where
         .set("thread_id", optional_text(row.thread_id.as_deref()))
         .set("repository_git_dir", text(row.repository_git_dir))
         .set("worktree_path", text(row.worktree_path))
-        .set("branch_name", text(row.branch_name))
-        .set("head_sha", text(row.head_sha))
         .set("state", text(row.state))
+        .set("anchor_branch", optional_text(row.anchor_branch.as_deref()))
+        .set(
+            "anchor_head_sha",
+            optional_text(row.anchor_head_sha.as_deref()),
+        )
         .set("created_at", timestamp_value(row.created_at))
         .set("updated_at", timestamp_value(row.updated_at))
         .execute(glue)?;
@@ -412,6 +382,21 @@ where
         Payload::Update(1) => Ok(()),
         _ => Err(TaskStoreError::UnexpectedPayload),
     }
+}
+
+fn validate_checkout_anchor(
+    state: ManagedWorktreeState,
+    anchor: Option<&CheckoutAnchor>,
+) -> Result<()> {
+    if (state == ManagedWorktreeState::Ready) == anchor.is_none() {
+        Ok(())
+    } else {
+        Err(invalid_checkout_anchor(state))
+    }
+}
+
+fn invalid_checkout_anchor(state: ManagedWorktreeState) -> TaskStoreError {
+    TaskStoreError::InvalidManagedWorktreeCheckoutAnchor(state.as_str().to_string())
 }
 
 #[cfg(test)]
@@ -457,9 +442,11 @@ mod tests {
             thread_id: None,
             repository_git_dir: "/repo/.git".to_string(),
             worktree_path: path.to_string(),
-            branch_name: format!("caffold/{id}"),
-            head_sha: "abc123".to_string(),
-            state: ManagedWorktreeState::Creating,
+            state: ManagedWorktreeState::IsolatingClean,
+            checkout_anchor: Some(CheckoutAnchor {
+                branch_name: format!("caffold/{id}"),
+                head_sha: "abc123".to_string(),
+            }),
             created_at_ms: 100,
             updated_at_ms: 100,
         }
@@ -518,72 +505,69 @@ mod tests {
     }
 
     #[test]
-    fn binds_threads_updates_checkout_and_enforces_transitions() {
+    fn transitions_replace_anchor_and_enforce_state_invariants() {
         let mut glue = glue();
         create(&mut glue, worktree("one", "/managed/one")).unwrap();
-        transition(
-            &mut glue,
-            "one",
-            ManagedWorktreeState::Creating,
-            ManagedWorktreeState::Transferring,
-            105,
-        )
-        .unwrap();
-        transition(
-            &mut glue,
-            "one",
-            ManagedWorktreeState::Transferring,
-            ManagedWorktreeState::RecoveryRequired,
-            106,
-        )
-        .unwrap();
-        transition(
-            &mut glue,
-            "one",
-            ManagedWorktreeState::RecoveryRequired,
-            ManagedWorktreeState::Transferring,
-            107,
-        )
-        .unwrap();
         let ready = transition(
             &mut glue,
             "one",
-            ManagedWorktreeState::Transferring,
+            ManagedWorktreeState::IsolatingClean,
             ManagedWorktreeState::Ready,
+            None,
             110,
         )
         .unwrap();
         assert_eq!(ready.state, ManagedWorktreeState::Ready);
-        assert_eq!(
-            bind_thread(&mut glue, "one", "thread", 120)
-                .unwrap()
-                .thread_id
-                .as_deref(),
-            Some("thread")
-        );
-        let updated = update_checkout(&mut glue, "one", "feature/renamed", "def456", 130).unwrap();
-        assert_eq!(updated.branch_name, "feature/renamed");
-        assert_eq!(updated.head_sha, "def456");
-        assert!(matches!(
-            transition(
-                &mut glue,
-                "one",
-                ManagedWorktreeState::Creating,
-                ManagedWorktreeState::Archived,
-                140,
-            ),
-            Err(TaskStoreError::ManagedWorktreeStateConflict { .. })
-        ));
-        assert!(matches!(
-            bind_thread(&mut glue, "one", "other-thread", 150),
-            Err(TaskStoreError::ManagedWorktreeAlreadyBound { .. })
-        ));
+        assert_eq!(ready.checkout_anchor, None);
+        let anchor = CheckoutAnchor {
+            branch_name: "feature/renamed".to_string(),
+            head_sha: "def456".to_string(),
+        };
+        let removing = transition(
+            &mut glue,
+            "one",
+            ManagedWorktreeState::Ready,
+            ManagedWorktreeState::Removing,
+            Some(anchor.clone()),
+            130,
+        )
+        .unwrap();
+        assert_eq!(removing.checkout_anchor, Some(anchor));
         assert!(matches!(
             transition(
                 &mut glue,
                 "one",
                 ManagedWorktreeState::Ready,
+                ManagedWorktreeState::Archived,
+                None,
+                140,
+            ),
+            Err(TaskStoreError::ManagedWorktreeStateConflict { .. })
+        ));
+        assert!(matches!(
+            transition(
+                &mut glue,
+                "one",
+                ManagedWorktreeState::Removing,
+                ManagedWorktreeState::Ready,
+                Some(CheckoutAnchor {
+                    branch_name: "wrong".to_string(),
+                    head_sha: "wrong".to_string(),
+                }),
+                150,
+            ),
+            Err(TaskStoreError::InvalidManagedWorktreeCheckoutAnchor(_))
+        ));
+        assert!(matches!(
+            transition(
+                &mut glue,
+                "one",
+                ManagedWorktreeState::Removing,
                 ManagedWorktreeState::Restoring,
+                Some(CheckoutAnchor {
+                    branch_name: "feature/renamed".to_string(),
+                    head_sha: "def456".to_string(),
+                }),
                 160,
             ),
             Err(TaskStoreError::InvalidManagedWorktreeTransition { .. })
@@ -591,13 +575,47 @@ mod tests {
     }
 
     #[test]
-    fn binds_only_ready_worktrees() {
+    fn rejects_ready_anchor_and_missing_non_ready_anchor() {
         let mut glue = glue();
-        create(&mut glue, worktree("one", "/managed/one")).unwrap();
+        let mut ready = worktree("one", "/managed/one");
+        ready.state = ManagedWorktreeState::Ready;
+        assert!(matches!(
+            create(&mut glue, ready),
+            Err(TaskStoreError::InvalidManagedWorktreeCheckoutAnchor(_))
+        ));
+        let mut missing = worktree("two", "/managed/two");
+        missing.checkout_anchor = None;
+        assert!(matches!(
+            create(&mut glue, missing),
+            Err(TaskStoreError::InvalidManagedWorktreeCheckoutAnchor(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_a_persisted_partial_anchor_pair() {
+        let mut glue = glue();
+        let row = ManagedWorktreeRow {
+            worktree_id: "partial".to_string(),
+            thread_id: Some("thread".to_string()),
+            repository_git_dir: "/repo/.git".to_string(),
+            worktree_path: "/managed/partial".to_string(),
+            state: ManagedWorktreeState::Removing.as_str().to_string(),
+            anchor_branch: Some("review/partial".to_string()),
+            anchor_head_sha: None,
+            created_at: to_db_timestamp(100, "created_at_ms").unwrap(),
+            updated_at: to_db_timestamp(100, "updated_at_ms").unwrap(),
+        };
+        table(TABLE_NAME)
+            .insert()
+            .values_from(std::slice::from_ref(&row))
+            .unwrap()
+            .execute(&mut glue)
+            .unwrap();
 
         assert!(matches!(
-            bind_thread(&mut glue, "one", "thread", 110),
-            Err(TaskStoreError::ManagedWorktreeStateConflict { .. })
+            get(&mut glue, "partial"),
+            Err(TaskStoreError::InvalidManagedWorktreeCheckoutAnchor(state))
+                if state == ManagedWorktreeState::Removing.as_str()
         ));
     }
 
