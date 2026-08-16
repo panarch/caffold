@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "./origin-reachability.js";
+
 const documentListeners = new Map();
 globalThis.document = {
   visibilityState: "visible",
@@ -32,10 +34,10 @@ class MockEventSource {
   }
 }
 
-globalThis.window = {
+globalThis.window = Object.assign(new EventTarget(), {
   EventSource: MockEventSource,
   location: { origin: "http://localhost" },
-};
+});
 globalThis.EventSource = MockEventSource;
 
 const {
@@ -61,6 +63,26 @@ test("shares one EventSource until the final scope subscriber leaves", async () 
   assert.equal(source.closed, false);
   second();
   assert.equal(source.closed, true);
+});
+
+test("reports reachability only when the current watch source opens", () => {
+  let reachable = 0;
+  window.addEventListener(CAFFOLD_ORIGIN_REACHABLE_EVENT, () => {
+    reachable += 1;
+  });
+  const unsubscribe = subscribeToWatch("origin", {});
+  const stale = MockEventSource.instances.at(-1);
+
+  document.visibilityState = "hidden";
+  documentListeners.get("visibilitychange")();
+  document.visibilityState = "visible";
+  documentListeners.get("visibilitychange")();
+
+  stale.emit("open");
+  assert.equal(reachable, 0);
+  MockEventSource.instances.at(-1).emit("open");
+  assert.equal(reachable, 1);
+  unsubscribe();
 });
 
 test("coalesces an event burst into one trailing refresh", async () => {

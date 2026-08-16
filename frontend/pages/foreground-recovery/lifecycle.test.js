@@ -414,6 +414,44 @@ test("offline invalidates active work and online starts one fresh generation", a
   lifecycle.disconnect();
 });
 
+test("fresh origin reachability recovers without a browser online edge", async () => {
+  const browser = harness({ online: false });
+  const gate = deferred();
+  const recoveries = [];
+  const lifecycle = new ForegroundRecoveryRuntime({
+    ...browser,
+    onRecover: async (request) => {
+      recoveries.push(request);
+      await gate.promise;
+      return { retry: false };
+    },
+  });
+  lifecycle.connect();
+  assert.equal(lifecycle.snapshot().node.type, FOREGROUND_RECOVERY_NODE.OFFLINE);
+
+  const recovery = lifecycle.reportOriginReachable();
+  const duplicate = lifecycle.reportOriginReachable();
+  await Promise.resolve();
+
+  assert.equal(recoveries.length, 1);
+  assert.equal(await duplicate, null);
+  assert.equal(
+    recoveries[0].trigger,
+    FOREGROUND_RECOVERY_TRIGGER.ORIGIN_REACHABLE,
+  );
+  assert.equal(lifecycle.snapshot().lastTrigger, "origin");
+  assert.equal(
+    lifecycle.snapshot().node.type,
+    FOREGROUND_RECOVERY_NODE.VALIDATING_STATUS,
+  );
+  gate.resolve();
+  await recovery;
+  assert.equal(lifecycle.snapshot().node.type, FOREGROUND_RECOVERY_NODE.READY);
+  await lifecycle.reportOriginReachable();
+  assert.equal(recoveries.length, 1);
+  lifecycle.disconnect();
+});
+
 test("a network exception pauses without consuming server retry budget", async () => {
   const browser = harness();
   let attempts = 0;

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
+import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "../../../origin-reachability.js";
 import { TASK_TRANSPORT_STATE } from "./runtime-state.js";
 import { TaskStreamLifecycle } from "./stream.js";
 
@@ -61,11 +62,11 @@ function installBrowserHarness() {
     }
   }
 
-  globalThis.window = {
+  globalThis.window = Object.assign(new EventTarget(), {
     EventSource: MockEventSource,
     setTimeout,
     clearTimeout,
-  };
+  });
   globalThis.EventSource = MockEventSource;
   globalThis.document = {
     visibilityState: "visible",
@@ -98,6 +99,28 @@ function deferred() {
   });
   return { promise, resolve };
 }
+
+test("reports reachability only when the current source opens", async () => {
+  const browser = installBrowserHarness();
+  let reachable = 0;
+  window.addEventListener(CAFFOLD_ORIGIN_REACHABLE_EVENT, () => {
+    reachable += 1;
+  });
+  const lifecycle = new TaskStreamLifecycle({
+    createUrl: () => "/api/tasks/stream",
+  });
+
+  lifecycle.activate("task-list");
+  const stale = browser.sources[0];
+  lifecycle.retry();
+  stale.emitOpen();
+  assert.equal(reachable, 0);
+
+  browser.sources[1].emitOpen();
+  await nextTask();
+  assert.equal(reachable, 1);
+  lifecycle.deactivate();
+});
 
 test("replaces a terminal source and ignores its stale generation", async () => {
   const browser = installBrowserHarness();

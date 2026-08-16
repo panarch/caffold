@@ -1,3 +1,5 @@
+import { reportOriginReachable } from "./origin-reachability.js";
+
 export async function getHealth() {
   return requestJson("/api/health");
 }
@@ -339,6 +341,7 @@ async function requestJson(endpoint, params = {}, options = {}) {
     }
   }
 
+  reportOriginReachable();
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {

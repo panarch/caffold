@@ -120,5 +120,7 @@ test("public facade exposes semantic recovery progress without graph internals",
   await lifecycle.requestForegroundRecovery();
   assert.equal(requests[2].initialActivation, false);
   assert.equal(lifecycle.snapshot().lastTrigger, "reconnect");
+  assert.equal(await lifecycle.reportOriginReachable(), null);
+  assert.equal(requests.length, 3);
   lifecycle.disconnect();
 });

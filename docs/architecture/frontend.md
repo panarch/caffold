@@ -95,10 +95,12 @@ generation, and retry stops on success, hide, disconnect, or budget exhaustion.
 A visible `offline` signal is a pause, not a recovery attempt. It invalidates
 in-flight foreground work, releases Task transports, stops retry timers, and
 keeps the current workspace useful behind the shared no-network notice. No
-HTTP, SSE, or backoff work restarts on its own. A later visible lifecycle or
-connectivity hint may re-enter the ordinary recovery sequence, so an offline
-display state can never prevent the page from proving that connectivity has
-returned.
+HTTP, SSE, or backoff polling restarts on its own. A later visible lifecycle or
+connectivity hint may re-enter the ordinary recovery sequence. A fresh
+same-origin API response or current EventSource open is stronger reachability
+evidence and re-enters that same sequence even when the browser omits an
+`online` edge. The evidence never jumps directly to ready: status, list, and
+detail still validate through the current foreground generation.
 
 Browser-specific connectivity APIs such as `navigator.connection` are optional
 hints rather than a second connectivity owner. Definite offline state takes the
