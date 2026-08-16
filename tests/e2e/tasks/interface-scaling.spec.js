@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("scales visible Task controls without shrinking their touch targets", async ({
+test("scales visible Task controls without shrinking their touch targets", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const detail = await installScalingTask(page);

@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("focuses a new task prompt automatically only on desktop", async ({
+test("focuses a new task prompt automatically only on desktop", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const scenario = await installTaskLoopFixture(page);
@@ -128,7 +128,7 @@ test("focuses a new task prompt automatically only on desktop", async ({
   await expect(prompt).toBeFocused();
 });
 
-test("creates a task with responsive composer controls and canonical approval state", async ({
+test("creates a task with responsive composer controls and canonical approval state", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const scenario = await installTaskLoopFixture(page);

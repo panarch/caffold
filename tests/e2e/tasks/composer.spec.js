@@ -14,10 +14,9 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("starts a completed task follow-up clock only from canonical turn metadata", async ({
+test("starts a completed task follow-up clock only from canonical turn metadata", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Follow-up clock regression");
   await page.addInitScript(() => {
     window.__taskEventSources = [];
     window.EventSource = class MockEventSource {
@@ -193,7 +192,7 @@ test("starts a completed task follow-up clock only from canonical turn metadata"
     `${canonicalStartedMs}`,
   );
 });
-test("submits completed task follow-ups and reloads canonical messages", async ({
+test("submits completed task follow-ups and reloads canonical messages", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -506,10 +505,9 @@ test("submits completed task follow-ups and reloads canonical messages", async (
     }),
   ).toHaveAttribute("data-delivery-state", "outcomeUnknown");
 });
-test("unlocks a completed task when canonical item content arrives before the prompt response", async ({
+test("unlocks a completed task when canonical item content arrives before the prompt response", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Canonical prompt acknowledgement regression");
   await page.addInitScript(() => {
     window.__taskEventSources = [];
     window.EventSource = class MockEventSource {
@@ -667,10 +665,9 @@ test("unlocks a completed task when canonical item content arrives before the pr
   releaseFirstPrompt();
   await expect(form).toHaveAttribute("aria-busy", "false");
 });
-test("unlocks canonical follow-ups after switching tasks with a pending response", async ({
+test("unlocks canonical follow-ups after switching tasks with a pending response", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Wide task-switch regression");
   await installEventSourceMock(page, { autoOpen: true });
   await mockCodexModels(page);
 

@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("keeps Task tool menus above active Review controls", async ({ page }) => {
+test("keeps Task tool menus above active Review controls", { tag: "@all-viewports" }, async ({ page }) => {
   const { tasksPage } = await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
 
@@ -39,7 +39,7 @@ test("keeps Task tool menus above active Review controls", async ({ page }) => {
   }
 });
 
-test("uses two panes off phone and a semantic navigator/viewer split on phone", async ({
+test("uses two panes off phone and a semantic navigator/viewer split on phone", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
@@ -184,13 +184,9 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   }
 });
 
-test("owns one collapsed Back across Conversation and Review modes", async ({
+test("owns one collapsed Back across Conversation and Review modes", { tag: "@phone" }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "phone",
-    "The Review back control belongs to the collapsed workspace.",
-  );
   const { taskScenario, tasksPage } = await openCompletedTaskForReview(page);
   const workspace = page.locator("caffold-task-workspace");
   const masterPane = workspace.locator(".task-workspace-master-pane");
@@ -248,10 +244,9 @@ test("owns one collapsed Back across Conversation and Review modes", async ({
   }
 });
 
-test("keeps one compact file-navigation header on phone", async ({
+test("keeps one compact file-navigation header on phone", { tag: "@phone" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "phone", "Phone owns the single-pane back control.");
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
@@ -306,10 +301,9 @@ test("keeps one compact file-navigation header on phone", async ({
   await expect(taskReview).not.toHaveAttribute("data-file-selected", "");
 });
 
-test("clamps the navigator so the shared viewer keeps its minimum width", async ({
+test("clamps the navigator so the shared viewer keeps its minimum width", { tag: ["@desktop", "@foldable"] }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name === "phone", "Phone intentionally shows one pane at a time.");
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await taskReview.evaluate((review) => {
@@ -325,7 +319,7 @@ test("clamps the navigator so the shared viewer keeps its minimum width", async 
   expect(widths.viewer).toBeGreaterThanOrEqual(360);
 });
 
-test("keeps Review reflowed at the appearance extremes", async ({ page }, testInfo) => {
+test("keeps Review reflowed at the appearance extremes", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await taskReview.locator('button[data-file-tree-relative-path="planner.rs"]').click();
@@ -385,7 +379,7 @@ test("keeps Review reflowed at the appearance extremes", async ({ page }, testIn
   }
 });
 
-test("keeps compact Task segments pixel-aligned on Retina displays", async ({
+test("keeps compact Task segments pixel-aligned on Retina displays", { tag: "@all-viewports" }, async ({
   baseURL,
   browser,
 }, testInfo) => {
@@ -476,10 +470,9 @@ test("keeps compact Task segments pixel-aligned on Retina displays", async ({
   }
 });
 
-test("reflows Review at a desktop 200 percent effective viewport", async ({
+test("reflows Review at a desktop 200 percent effective viewport", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Desktop browser zoom is the reflow contract.");
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await page.setViewportSize({ width: 640, height: 400 });

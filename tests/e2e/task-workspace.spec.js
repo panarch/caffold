@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
   await mockCodexModels(page);
 });
 
-test("navigates Settings as responsive master-detail pages with browser history", async ({
+test("navigates Settings as responsive master-detail pages with browser history", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await page.goto("/settings");
@@ -222,13 +222,9 @@ test("navigates Settings as responsive master-detail pages with browser history"
   }
 });
 
-test("reflows the Settings root without changing its route", async ({
+test("reflows the Settings root without changing its route", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "One browser project covers the responsive root transition.",
-  );
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/settings");
@@ -261,7 +257,7 @@ test("reflows the Settings root without changing its route", async ({
   await expect(page).toHaveURL("/settings");
 });
 
-test("shares navigation pane resizing across Tasks and Settings", async ({
+test("shares navigation pane resizing across Tasks and Settings", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page);
@@ -450,13 +446,9 @@ test("shares navigation pane resizing across Tasks and Settings", async ({
   await expect(detailPane).toBeVisible();
 });
 
-test("clamps the shared navigation pane across the desktop boundary", async ({
+test("clamps the shared navigation pane across the desktop boundary", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "One browser project covers explicit window-resize clamping.",
-  );
 
   await installEventSourceMock(page);
   await installTaskRoutes(page, workspaceTask());
@@ -519,7 +511,7 @@ test("clamps the shared navigation pane across the desktop boundary", async ({
   });
 });
 
-test("preserves Tasks and Settings DOM while hidden task updates arrive", async ({
+test("preserves Tasks and Settings DOM while hidden task updates arrive", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, {
@@ -643,7 +635,7 @@ test("preserves Tasks and Settings DOM while hidden task updates arrive", async 
   await expect(prompt).toHaveValue("조합 중인 입력과 화면 상태를 그대로 유지한다");
 });
 
-test("keeps bottom navigation responsive in Conversation and hides it throughout Review", async ({
+test("keeps bottom navigation responsive in Conversation and hides it throughout Review", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const { taskScenario, tasksPage } = await openCompletedTaskForReview(page);

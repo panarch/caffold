@@ -22,7 +22,7 @@ async function switchWorkspaceMode(page, mode) {
   }
 }
 
-test("composer exposes Codex approval modes and confirms full access", async ({
+test("composer exposes Codex approval modes and confirms full access", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await installTaskApiFixture(page);
@@ -79,7 +79,7 @@ test("composer exposes Codex approval modes and confirms full access", async ({
   await expect(picker).toContainText("Full access");
 });
 
-test("model options use native popover dismissal and return focus to their trigger", async ({
+test("model options use native popover dismissal and return focus to their trigger", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -111,7 +111,7 @@ test("model options use native popover dismissal and return focus to their trigg
   await expect(popover).toBeHidden();
 });
 
-test("untouched approval mode preserves the effective Codex default", async ({ page }) => {
+test("untouched approval mode preserves the effective Codex default", { tag: "@all-viewports" }, async ({ page }) => {
   await installTaskApiFixture(page);
   await page.unroute("**/api/tasks");
   let submittedBody = null;
@@ -136,7 +136,7 @@ test("untouched approval mode preserves the effective Codex default", async ({ p
   expect(submittedBody.fastMode).toBe(false);
 });
 
-test("explicit approval mode is sent with a new task prompt", async ({ page }) => {
+test("explicit approval mode is sent with a new task prompt", { tag: "@all-viewports" }, async ({ page }) => {
   await installTaskApiFixture(page);
   await page.unroute("**/api/codex/permissions*");
   await page.route("**/api/codex/permissions*", (route) =>
@@ -173,7 +173,7 @@ test("explicit approval mode is sent with a new task prompt", async ({ page }) =
   });
 });
 
-test("new tasks start in Normal mode and submit an explicit Fast choice", async ({
+test("new tasks start in Normal mode and submit an explicit Fast choice", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -261,7 +261,7 @@ test("new tasks start in Normal mode and submit an explicit Fast choice", async 
   await expect(nextForm.locator(".task-model-fast")).toHaveCount(0);
 });
 
-test("resets option-only New Task selections after Settings navigation", async ({
+test("resets option-only New Task selections after Settings navigation", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -296,7 +296,7 @@ test("resets option-only New Task selections after Settings navigation", async (
   expect(submittedBody.fastMode).toBe(false);
 });
 
-test("preserves and clears New Task options with their meaningful draft", async ({
+test("preserves and clears New Task options with their meaningful draft", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -357,13 +357,9 @@ test("preserves and clears New Task options with their meaningful draft", async 
   });
 });
 
-test("reconciles an option-only follow-up to canonical Normal after Task switching", async ({
+test("reconciles an option-only follow-up to canonical Normal after Task switching", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "Wide Task switching regression",
-  );
   await installTaskApiFixture(page);
   const makeDetail = (threadId, title) => {
     const detail = taskDetailFixture({
@@ -454,7 +450,7 @@ test("reconciles an option-only follow-up to canonical Normal after Task switchi
   await expect(form.locator(".task-model-fast")).toHaveCount(0);
 });
 
-test("switching to a model without Fast support normalizes to Normal and hides Speed", async ({
+test("switching to a model without Fast support normalizes to Normal and hides Speed", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -512,7 +508,7 @@ test("switching to a model without Fast support normalizes to Normal and hides S
   ).toHaveCount(0);
 });
 
-test("new task submission stays single-flight and restores local input after rejection", async ({
+test("new task submission stays single-flight and restores local input after rejection", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -582,7 +578,7 @@ test("new task submission stays single-flight and restores local input after rej
   expect(adoptedDetailReads).toBe(0);
 });
 
-test("explicit approval mode is sent with a follow-up prompt", async ({ page }) => {
+test("explicit approval mode is sent with a follow-up prompt", { tag: "@all-viewports" }, async ({ page }) => {
   await installTaskApiFixture(page);
   const detail = {
     ...taskDetailFixture(),
@@ -626,7 +622,7 @@ test("explicit approval mode is sent with a follow-up prompt", async ({ page }) 
   });
 });
 
-test("send button does not return focus to the prompt after submission", async ({
+test("send button does not return focus to the prompt after submission", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -675,7 +671,7 @@ test("send button does not return focus to the prompt after submission", async (
   await expect(prompt).not.toBeFocused();
 });
 
-test("keeps an idle follow-up composer compact within the portrait content gutter", async ({
+test("keeps an idle follow-up composer compact within the portrait content gutter", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await installTaskApiFixture(page);
@@ -804,7 +800,7 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
   expect(reset.sendBackground).toBe(idle.sendBackground);
 });
 
-test("managed tasks restore their last applied model, reasoning, and speed", async ({
+test("managed tasks restore their last applied model, reasoning, and speed", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -892,7 +888,7 @@ test("managed tasks restore their last applied model, reasoning, and speed", asy
   await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
 });
 
-test("canonical task sync preserves an open follow-up model picker", async ({
+test("canonical task sync preserves an open follow-up model picker", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -939,10 +935,9 @@ test("canonical task sync preserves an open follow-up model picker", async ({
   await expect(form.locator('input[name="model"]')).toHaveValue("gpt-test");
 });
 
-test("keeps a tall follow-up model menu inside the conversation pane", async ({
+test("keeps a tall follow-up model menu inside the conversation pane", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "desktop uses the anchored model popover");
   await page.setViewportSize({ width: 1280, height: 360 });
   await installTaskApiFixture(page);
   await page.unroute("**/api/codex/models");
@@ -1011,7 +1006,7 @@ test("keeps a tall follow-up model menu inside the conversation pane", async ({
   await expect(form.locator('input[name="effort"]')).toHaveValue("medium");
 });
 
-test("active turns lock the approval mode until the next turn", async ({ page }) => {
+test("active turns lock the approval mode until the next turn", { tag: "@all-viewports" }, async ({ page }) => {
   await installTaskApiFixture(page);
   const detail = taskDetailFixture({ running: true });
   await page.route("**/api/tasks/thread-1", (route) =>
@@ -1088,7 +1083,7 @@ test("active turns lock the approval mode until the next turn", async ({ page })
     .toBe(initialSummaryHeight);
 });
 
-test("steering an active turn preserves its existing work clock", async ({ page }) => {
+test("steering an active turn preserves its existing work clock", { tag: "@all-viewports" }, async ({ page }) => {
   await installTaskApiFixture(page);
   const startedMs = Date.now() - 65_000;
   const detail = taskDetailFixture({ running: true });

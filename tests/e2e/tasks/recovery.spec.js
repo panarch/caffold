@@ -85,7 +85,7 @@ async function openRecovery(page, recovery) {
   await expect(page.locator("caffold-task-recovery")).toBeVisible();
 }
 
-test("opens archived-in-Codex recovery without opening ordinary Task detail and restores it", async ({
+test("opens archived-in-Codex recovery without opening ordinary Task detail and restores it", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const threadId = "thread_recovery_restore";
@@ -160,7 +160,7 @@ test("opens archived-in-Codex recovery without opening ordinary Task detail and 
   expect(detailReads).toBe(0);
 });
 
-test("moves an already-Codex-archived recovery Task into Caffold Archived", async ({
+test("moves an already-Codex-archived recovery Task into Caffold Archived", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const threadId = "thread_recovery_archive";
@@ -200,7 +200,7 @@ test("moves an already-Codex-archived recovery Task into Caffold Archived", asyn
   ).toBeVisible();
 });
 
-test("confirms before removing a missing Codex Thread from Caffold", async ({
+test("confirms before removing a missing Codex Thread from Caffold", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const threadId = "thread_recovery_missing";
@@ -231,7 +231,7 @@ test("confirms before removing a missing Codex Thread from Caffold", async ({
   ).toHaveCount(0);
 });
 
-test("recheck uses the explicit recovery endpoint without rewriting the cached list", async ({
+test("recheck uses the explicit recovery endpoint without rewriting the cached list", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const threadId = "thread_recovery_recheck";
@@ -271,7 +271,7 @@ test("recheck uses the explicit recovery endpoint without rewriting the cached l
   ).toHaveAttribute("data-task-recovery-reason", "codexArchived");
 });
 
-test("keeps a readable Section-placement recovery on ordinary Task detail", async ({
+test("keeps a readable Section-placement recovery on ordinary Task detail", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const threadId = "thread_recovery_readable";

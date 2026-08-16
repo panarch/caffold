@@ -71,7 +71,7 @@ async function threadOrder(page, sectionId = "section-one") {
     .evaluateAll((rows) => rows.map((row) => row.dataset.threadId));
 }
 
-test("reorders by keyboard, preserves row geometry, and persists across reloads", async ({
+test("reorders by keyboard, preserves row geometry, and persists across reloads", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await mockCodexModels(page);
@@ -463,7 +463,7 @@ test("reorders by keyboard, preserves row geometry, and persists across reloads"
   await expect(page).toHaveURL(/\/tasks\/new/);
 });
 
-test("starts pointer reordering only from a handle and keeps moves inside a Section", async ({
+test("starts pointer reordering only from a handle and keeps moves inside a Section", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   let order = [
@@ -539,7 +539,7 @@ test("starts pointer reordering only from a handle and keeps moves inside a Sect
   ]);
 });
 
-test("reconciles an optimistic move to a newer canonical order", async ({
+test("reconciles an optimistic move to a newer canonical order", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   let order = [
@@ -574,7 +574,7 @@ test("reconciles an optimistic move to a newer canonical order", async ({
   ]);
 });
 
-test("keeps reordering functional without state-preserving DOM moves", async ({
+test("keeps reordering functional without state-preserving DOM moves", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -619,10 +619,9 @@ test("keeps reordering functional without state-preserving DOM moves", async ({
   ]);
 });
 
-test("preserves touch scrolling away from handles and drags from a handle", async ({
+test("preserves touch scrolling away from handles and drags from a handle", { tag: ["@foldable", "@phone"] }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name === "desktop", "requires a touch viewport");
   let order = Array.from({ length: 24 }, (_, index) =>
     task(`thread-${index}`, `Task ${index}`)
   );
@@ -697,7 +696,7 @@ test("preserves touch scrolling away from handles and drags from a handle", asyn
   ]);
 });
 
-test("serializes moves and restores canonical order with a retryable error", async ({
+test("serializes moves and restores canonical order with a retryable error", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const longTitle =
@@ -789,7 +788,7 @@ test("serializes moves and restores canonical order with a retryable error", asy
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
-test("keeps local reordering available while Codex is unavailable and exits on navigation", async ({
+test("keeps local reordering available while Codex is unavailable and exits on navigation", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const order = [task("thread-a", "Alpha"), task("thread-b", "Bravo")];

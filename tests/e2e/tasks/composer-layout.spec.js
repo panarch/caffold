@@ -8,7 +8,7 @@ import {
   emitTaskDetailBootstrap,
 } from "../support/task-fixtures.js";
 
-test("keeps conversation position stable while the follow-up composer grows", async ({
+test("keeps conversation position stable while the follow-up composer grows", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const detail = await installScrollableTask(page);

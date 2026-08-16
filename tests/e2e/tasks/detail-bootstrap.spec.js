@@ -85,7 +85,7 @@ async function activeDetailSource(page, threadId) {
   return threadId;
 }
 
-test("uses one SSE snapshot for initial detail, reconnect, and cursor history", async ({
+test("uses one SSE snapshot for initial detail, reconnect, and cursor history", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { autoOpen: true });
@@ -221,7 +221,7 @@ test("uses one SSE snapshot for initial detail, reconnect, and cursor history", 
   expect(initialDetailReads).toBe(0);
 });
 
-test("preserves readable detail and buffers events through a loading reconnect bootstrap", async ({
+test("preserves readable detail and buffers events through a loading reconnect bootstrap", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { autoOpen: true });
@@ -321,7 +321,7 @@ test("preserves readable detail and buffers events through a loading reconnect b
   expect(detailReads).toBe(0);
 });
 
-test("uses one REST fallback per unsupported-EventSource attempt", async ({
+test("uses one REST fallback per unsupported-EventSource attempt", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -355,7 +355,7 @@ test("uses one REST fallback per unsupported-EventSource attempt", async ({
   await expect.poll(() => detailReads).toBe(2);
 });
 
-test("bounds a detail stream that never opens and falls back once", async ({
+test("bounds a detail stream that never opens and falls back once", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
@@ -386,7 +386,7 @@ test("bounds a detail stream that never opens and falls back once", async ({
   expect(detailReads).toBe(1);
 });
 
-test("uses one REST reconciliation when reconnect bootstrap retries exhaust", async ({
+test("uses one REST reconciliation when reconnect bootstrap retries exhaust", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
@@ -436,7 +436,7 @@ test("uses one REST reconciliation when reconnect bootstrap retries exhaust", as
   ).toContainText("Caffold server unavailable.");
 });
 
-test("rejects a late REST fallback after the session switches Tasks", async ({
+test("rejects a late REST fallback after the session switches Tasks", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -486,7 +486,7 @@ test("rejects a late REST fallback after the session switches Tasks", async ({
   expect(detailReads.get(taskB.threadId)).toBe(1);
 });
 
-test("does not let a pending REST fallback overwrite an explicit stream recovery", async ({
+test("does not let a pending REST fallback overwrite an explicit stream recovery", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {

@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("suppresses the first install but presents a later replacement", async ({
+test("suppresses the first install but presents a later replacement", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: false });
@@ -31,7 +31,7 @@ test("suppresses the first install but presents a later replacement", async ({
   await expect(page.getByRole("dialog", { name: "Caffold update ready" })).toBeVisible();
 });
 
-test("discovers a replacement while the current UI remains open", async ({ page }) => {
+test("discovers a replacement while the current UI remains open", { tag: "@all-viewports" }, async ({ page }) => {
   await installServiceWorkerFixture(page, { controlled: true });
   await page.goto("/");
   await waitForServiceWorkerRegistration(page);
@@ -49,7 +49,7 @@ test("discovers a replacement while the current UI remains open", async ({ page 
   await expect(page.getByRole("dialog", { name: "Caffold update ready" })).toBeVisible();
 });
 
-test("rechecks the worker and server diagnostics when About opens", async ({
+test("rechecks the worker and server diagnostics when About opens", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   let healthBuildId = "server-build-a";
@@ -103,7 +103,7 @@ test("rechecks the worker and server diagnostics when About opens", async ({
   await expect(page.locator("caffold-build-mismatch-alert")).toBeHidden();
 });
 
-test("keeps a dismissed update available and only reports a settled mismatch", async ({
+test("keeps a dismissed update available and only reports a settled mismatch", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -189,7 +189,7 @@ test("keeps a dismissed update available and only reports a settled mismatch", a
   await captureReviewScreenshot(page, testInfo, "pwa-exceptional-mismatch");
 });
 
-test("keeps consecutive server builds inside the update lifecycle", async ({
+test("keeps consecutive server builds inside the update lifecycle", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -242,7 +242,7 @@ test("keeps consecutive server builds inside the update lifecycle", async ({
   );
 });
 
-test("defers exceptional mismatch while an update check or install is pending", async ({
+test("defers exceptional mismatch while an update check or install is pending", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -274,7 +274,7 @@ test("defers exceptional mismatch while an update check or install is pending", 
   await expect(buildMismatchAlert).toBeVisible();
 });
 
-test("releases update observers while disconnected and restores them once", async ({
+test("releases update observers while disconnected and restores them once", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -336,7 +336,7 @@ test("releases update observers while disconnected and restores them once", asyn
     .toBe(true);
 });
 
-test("keeps a prepared cache safe from the current worker's pruning", async ({
+test("keeps a prepared cache safe from the current worker's pruning", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, {
@@ -354,7 +354,7 @@ test("keeps a prepared cache safe from the current worker's pruning", async ({
   expect(pruneRequests).toEqual([]);
 });
 
-test("removes a prepared update when its worker becomes unavailable", async ({
+test("removes a prepared update when its worker becomes unavailable", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -382,7 +382,7 @@ test("removes a prepared update when its worker becomes unavailable", async ({
   );
 });
 
-test("retains activation through an unowned transition and reloads on controllerchange", async ({
+test("retains activation through an unowned transition and reloads on controllerchange", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -449,7 +449,7 @@ test("retains activation through an unowned transition and reloads on controller
   expect(await preparedReloadCount(page)).toBe(1);
 });
 
-test("uses a differing controlled-message wrapper as a safe fallback hint", async ({
+test("uses a differing controlled-message wrapper as a safe fallback hint", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -472,7 +472,7 @@ test("uses a differing controlled-message wrapper as a safe fallback hint", asyn
   await expect.poll(() => preparedReloadCount(page)).toBe(1);
 });
 
-test("reconnect and repeated update requests safely resume one handoff", async ({
+test("reconnect and repeated update requests safely resume one handoff", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -507,7 +507,7 @@ test("reconnect and repeated update requests safely resume one handoff", async (
   await expect.poll(() => preparedReloadCount(page)).toBe(1);
 });
 
-test("retargets an in-flight handoff to the latest prepared build", async ({
+test("retargets an in-flight handoff to the latest prepared build", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -557,7 +557,7 @@ test("retargets an in-flight handoff to the latest prepared build", async ({
   await expect.poll(() => preparedReloadCount(page)).toBe(1);
 });
 
-test("routes dialog and About reload intents through the app shell", async ({ page }) => {
+test("routes dialog and About reload intents through the app shell", { tag: "@all-viewports" }, async ({ page }) => {
   await installServiceWorkerFixture(page, { controlled: true });
   await page.goto("/");
   await waitForServiceWorkerRegistration(page);
@@ -585,7 +585,7 @@ test("routes dialog and About reload intents through the app shell", async ({ pa
   await expect.poll(() => reloadRequests(page)).toBe(2);
 });
 
-test("prepares and reloads the latest consecutive replacement through the real browser lifecycle", async ({
+test("prepares and reloads the latest consecutive replacement through the real browser lifecycle", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   test.setTimeout(60_000);
@@ -728,7 +728,7 @@ test("prepares and reloads the latest consecutive replacement through the real b
   }
 });
 
-test("reloads through controllerchange without a custom acknowledgement or loop", async ({
+test("reloads through controllerchange without a custom acknowledgement or loop", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   test.setTimeout(60_000);
@@ -806,7 +806,7 @@ test("reloads through controllerchange without a custom acknowledgement or loop"
   }
 });
 
-test("recovers when the first controlled-update navigation leaves the old document alive", async ({
+test("recovers when the first controlled-update navigation leaves the old document alive", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   test.setTimeout(60_000);

@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("renders permission and network approvals without clipping at appearance extremes", async ({
+test("renders permission and network approvals without clipping at appearance extremes", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await page.addInitScript(() => {
@@ -263,7 +263,7 @@ test("renders permission and network approvals without clipping at appearance ex
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("opens resolved Markdown file links through Task Review with native link semantics", async ({
+test("opens resolved Markdown file links through Task Review with native link semantics", { tag: "@all-viewports" }, async ({
   context,
   page,
 }, testInfo) => {
@@ -584,7 +584,7 @@ function sourceLineIsVisible(viewer, line) {
   return rowRect.top >= scrollerRect.top && rowRect.bottom <= scrollerRect.bottom;
 }
 
-test("preserves ordered-list starts through Task Markdown sanitization", async ({ page }) => {
+test("preserves ordered-list starts through Task Markdown sanitization", { tag: "@all-viewports" }, async ({ page }) => {
   const completedAssistantResponse = [
     "1. First",
     "",
@@ -716,7 +716,7 @@ test("preserves ordered-list starts through Task Markdown sanitization", async (
   await expect(checkboxes.last()).toBeDisabled();
 });
 
-test("presents a completed canonical turn without duplicate or unsafe content", async ({
+test("presents a completed canonical turn without duplicate or unsafe content", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const contextPath = "Users/taehoon/Workspace/rust/codger";

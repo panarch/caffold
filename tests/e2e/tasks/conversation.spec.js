@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("keeps a large task usable while conversation history is loading", async ({
+test("keeps a large task usable while conversation history is loading", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -155,7 +155,7 @@ test("keeps a large task usable while conversation history is loading", async ({
   await expect(tasksPage.getByText("Recent history is ready.")).toBeVisible();
   await expect(composer).toHaveValue("Keep this draft while history arrives");
 });
-test("keeps the visible conversation anchor while loading older events by cursor", async ({
+test("keeps the visible conversation anchor while loading older events by cursor", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -469,7 +469,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
     })
     .toBeLessThan(1);
 });
-test("keeps the latest conversation when older history times out", async ({
+test("keeps the latest conversation when older history times out", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { autoOpen: true });
@@ -579,10 +579,9 @@ test("keeps the latest conversation when older history times out", async ({
   await expect(tasksPage.locator(".task-history-error")).toHaveCount(0);
   await expect(textarea).toHaveValue("Draft survives history timeout");
 });
-test("renders normalized Codex user messages instead of raw ambient context", async ({
+test("renders normalized Codex user messages instead of raw ambient context", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Codex message normalization regression");
   await installEventSourceMock(page, { autoOpen: true });
   await mockCodexModels(page);
 
@@ -656,10 +655,9 @@ test("renders normalized Codex user messages instead of raw ambient context", as
   await expect(tasksPage).not.toContainText("in-app-browser-context");
   await expect(tasksPage).not.toContainText("Files mentioned by the user");
 });
-test("orders separate turns by message chronology when a newer start marker is stale", async ({
+test("orders separate turns by message chronology when a newer start marker is stale", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Task chronology regression");
   await installEventSourceMock(page, { autoOpen: true });
   await mockCodexModels(page);
 
@@ -756,10 +754,9 @@ test("orders separate turns by message chronology when a newer start marker is s
     )
     .toEqual(["old-user", "old-answer", "new-user", "new-answer"]);
 });
-test("keeps cross-turn work chronological and the active status at the timeline tail", async ({
+test("keeps cross-turn work chronological and the active status at the timeline tail", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Task chronology regression");
   await installEventSourceMock(page, {
     registryKey: "__crossTurnChronologySources",
     autoOpen: true,
@@ -988,10 +985,9 @@ test("keeps cross-turn work chronological and the active status at the timeline 
   await expect(tasksPage.locator(".task-turn-work")).toHaveCount(1);
   await expect(tasksPage.locator(".task-turn-active")).toHaveCount(0);
 });
-test("keeps task event chronology stable through approval, completion, and reload", async ({
+test("keeps task event chronology stable through approval, completion, and reload", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Task chronology regression");
   await page.setViewportSize({ width: 1280, height: 560 });
   await page.addInitScript(() => {
     window.__taskEventSources = [];
@@ -1410,7 +1406,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
     "plan",
   ]);
 });
-test("keeps task conversation scroll anchored during live updates", async ({ page }, testInfo) => {
+test("keeps task conversation scroll anchored during live updates", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     window.__taskEventSources = [];
     window.EventSource = class MockEventSource {

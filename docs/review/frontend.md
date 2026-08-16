@@ -439,6 +439,12 @@ normal parallel execution. Review must reject a test whose result depends on
 retries, repeated execution, or favorable scheduler timing; those are test
 defects, not evidence that the behavior is covered.
 
+Each browser test must declare its minimum viewport coverage with the native
+Playwright tags `@desktop`, `@foldable`, `@phone`, or `@all-viewports`. Multiple
+project tags are valid when exactly those projects own the behavior. Review
+should reject both untagged tests and `@all-viewports` coverage that does not
+exercise a viewport-dependent production path or observable result.
+
 When an expected result depends on the order of independently delivered events
 or asynchronous completions, the test must gate the exact boundary the
 assertion needs. A test that releases one request and expects a newer request
