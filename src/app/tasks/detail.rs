@@ -2082,7 +2082,7 @@ mod sync_tests {
         fs::RootedFs,
     };
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn rollout_invalidation_never_synthesizes_thread_activity() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-rollout-path-after-resume";
@@ -2165,7 +2165,7 @@ mod sync_tests {
         assert_eq!(snapshot.active_turn_id, None);
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn background_sync_timeout_broadcasts_error_and_rejects_stale_detail() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-background-sync-timeout";

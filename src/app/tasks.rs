@@ -216,6 +216,9 @@ pub(in crate::app::tasks) mod test_support {
     use super::{TaskState, projection::*, routes::test_claim_task};
     use crate::{codex_app_server::CodexThreadClient, fs::RootedFs, task_store::TaskStore};
 
+    const MOCK_METHOD_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
+    const MOCK_METHOD_POLL_INTERVAL: Duration = Duration::from_millis(5);
+
     pub(in crate::app::tasks) async fn task_state_with_codex_client(
         fs: RootedFs,
         client: CodexThreadClient,
@@ -246,7 +249,8 @@ pub(in crate::app::tasks) mod test_support {
         method: &str,
         expected: usize,
     ) {
-        for _ in 0..100 {
+        let deadline = tokio::time::Instant::now() + MOCK_METHOD_WAIT_TIMEOUT;
+        loop {
             if client
                 .mock_requests()
                 .await
@@ -257,7 +261,11 @@ pub(in crate::app::tasks) mod test_support {
             {
                 return;
             }
-            tokio::time::sleep(Duration::from_millis(5)).await;
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            tokio::time::sleep(remaining.min(MOCK_METHOD_POLL_INTERVAL)).await;
         }
         panic!("mock Codex client did not receive {expected} {method} request(s)");
     }
