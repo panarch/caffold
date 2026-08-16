@@ -181,8 +181,6 @@ fn start_error(error: std::io::Error) -> CodexThreadError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(unix)]
-    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn decodes_started_and_existing_daemon_diagnostics() {
@@ -208,21 +206,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn supported_installation_starts_the_managed_daemon() {
-        let temp = tempfile::tempdir().expect("temporary Codex fixture");
-        let codex = temp.path().join("codex");
-        std::fs::write(
-            &codex,
-            r#"#!/bin/sh
-if [ "$1 $2 $3" != "app-server daemon start" ]; then
-  echo "unexpected arguments: $*" >&2
-  exit 2
-fi
-printf '%s' '{"status":"started","backend":"pid","pid":4271,"managedCodexPath":"/Users/example/.codex/packages/standalone/current/codex","managedCodexVersion":"0.147.0","cliVersion":"0.147.0","appServerVersion":"0.147.0"}'
-"#,
-        )
-        .expect("write fake Codex executable");
-        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755))
-            .expect("make fake Codex executable runnable");
+        let codex = checked_in_codex_fixture("fake-codex-daemon");
 
         let daemon = ensure_daemon(&codex)
             .await
@@ -236,21 +220,7 @@ printf '%s' '{"status":"started","backend":"pid","pid":4271,"managedCodexPath":"
     #[cfg(unix)]
     #[tokio::test]
     async fn restart_invokes_the_daemon_lifecycle_command_and_decodes_status() {
-        let temp = tempfile::tempdir().expect("temporary Codex fixture");
-        let codex = temp.path().join("codex");
-        std::fs::write(
-            &codex,
-            r#"#!/bin/sh
-if [ "$1 $2 $3" != "app-server daemon restart" ]; then
-  echo "unexpected arguments: $*" >&2
-  exit 2
-fi
-printf '%s' '{"status":"restarted","backend":"pid","pid":4271,"managedCodexVersion":"0.147.0","cliVersion":"0.147.0","appServerVersion":"0.147.0"}'
-"#,
-        )
-        .expect("write fake Codex executable");
-        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755))
-            .expect("make fake Codex executable runnable");
+        let codex = checked_in_codex_fixture("fake-codex-daemon");
 
         let daemon = restart_daemon(&codex)
             .await
@@ -265,18 +235,7 @@ printf '%s' '{"status":"restarted","backend":"pid","pid":4271,"managedCodexVersi
     #[cfg(unix)]
     #[tokio::test]
     async fn restart_preserves_daemon_command_failure_details() {
-        let temp = tempfile::tempdir().expect("temporary Codex fixture");
-        let codex = temp.path().join("codex");
-        std::fs::write(
-            &codex,
-            r#"#!/bin/sh
-echo "daemon is busy" >&2
-exit 9
-"#,
-        )
-        .expect("write failing Codex executable");
-        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755))
-            .expect("make failing Codex executable runnable");
+        let codex = checked_in_codex_fixture("fake-codex-daemon-failure");
 
         let error = restart_daemon(&codex)
             .await
@@ -288,12 +247,7 @@ exit 9
     #[cfg(unix)]
     #[tokio::test]
     async fn restart_identifies_an_invalid_restart_response() {
-        let temp = tempfile::tempdir().expect("temporary Codex fixture");
-        let codex = temp.path().join("codex");
-        std::fs::write(&codex, "#!/bin/sh\nprintf '%s' 'not-json'\n")
-            .expect("write invalid Codex executable");
-        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755))
-            .expect("make invalid Codex executable runnable");
+        let codex = checked_in_codex_fixture("fake-codex-invalid-response");
 
         let error = restart_daemon(&codex)
             .await
@@ -305,12 +259,7 @@ exit 9
     #[cfg(unix)]
     #[tokio::test]
     async fn daemon_start_is_bounded_when_codex_hangs() {
-        let temp = tempfile::tempdir().expect("temporary Codex fixture");
-        let codex = temp.path().join("codex");
-        std::fs::write(&codex, "#!/bin/sh\nwhile :; do :; done\n")
-            .expect("write hanging Codex executable");
-        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755))
-            .expect("make fake Codex executable runnable");
+        let codex = checked_in_codex_fixture("fake-codex-hang");
 
         let error =
             daemon_command_with_timeout(&codex, "start", std::time::Duration::from_millis(30))
@@ -329,12 +278,7 @@ exit 9
     #[cfg(unix)]
     #[tokio::test]
     async fn proxy_handshake_is_bounded_when_codex_never_responds() {
-        let temp = tempfile::tempdir().expect("temporary Codex fixture");
-        let codex = temp.path().join("codex");
-        std::fs::write(&codex, "#!/bin/sh\nwhile IFS= read -r line; do :; done\n")
-            .expect("write hanging Codex executable");
-        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755))
-            .expect("make fake Codex executable runnable");
+        let codex = checked_in_codex_fixture("fake-codex-hang");
 
         let error =
             match connect_proxy_with_timeout(&codex, None, std::time::Duration::from_millis(30))
@@ -351,5 +295,12 @@ exit 9
                 ..
             }
         ));
+    }
+
+    #[cfg(unix)]
+    fn checked_in_codex_fixture(name: &str) -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/codex_app_server/transport/fixtures")
+            .join(name)
     }
 }

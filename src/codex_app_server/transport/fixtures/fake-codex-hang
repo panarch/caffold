@@ -1,0 +1,8 @@
+#!/bin/sh
+
+if [ "$1 $2 $3" != "app-server daemon start" ] && [ "$1 $2" != "app-server proxy" ]; then
+  echo "unexpected arguments: $*" >&2
+  exit 2
+fi
+
+while :; do :; done

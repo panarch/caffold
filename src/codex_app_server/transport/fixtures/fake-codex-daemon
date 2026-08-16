@@ -1,0 +1,21 @@
+#!/bin/sh
+
+if [ "$1 $2" != "app-server daemon" ]; then
+  echo "unexpected arguments: $*" >&2
+  exit 2
+fi
+
+case "$3" in
+  start)
+    status=started
+    ;;
+  restart)
+    status=restarted
+    ;;
+  *)
+    echo "unexpected arguments: $*" >&2
+    exit 2
+    ;;
+esac
+
+printf '{"status":"%s","backend":"pid","pid":4271,"managedCodexPath":"/Users/example/.codex/packages/standalone/current/codex","managedCodexVersion":"0.147.0","cliVersion":"0.147.0","appServerVersion":"0.147.0"}' "$status"
