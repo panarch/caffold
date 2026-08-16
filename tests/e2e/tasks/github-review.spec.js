@@ -212,7 +212,11 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
       requests.taskCreates.push(route.request().postDataJSON());
       return route.fulfill({ json: createdDetail });
     }
-    return route.fulfill({ json: activeTaskProjection([task]) });
+    const projection = activeTaskProjection([task]);
+    if (options.sectionComposerSettings) {
+      projection.sections[0].composerSettings = options.sectionComposerSettings;
+    }
+    return route.fulfill({ json: projection });
   });
   await page.route(new RegExp(`/api/tasks/${THREAD_ID}(?:\\?|$)`), (route) =>
     route.fulfill({ json: taskDetail }),
@@ -919,8 +923,14 @@ test("preserves Issue Start Task setup, focus return, and created Task selection
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
 });
 
-test("starts a Task from a Section-scoped GitHub Issue", { tag: "@all-viewports" }, async ({ page }) => {
-  const fixture = await installLinkedWorktreeGithubFixture(page);
+test("starts a Task from a Section-scoped GitHub Issue", { tag: "@desktop" }, async ({ page }) => {
+  const fixture = await installLinkedWorktreeGithubFixture(page, {
+    sectionComposerSettings: {
+      model: "gpt-5.6-sol",
+      effort: "xhigh",
+      fastMode: true,
+    },
+  });
   await page.goto(
     "/?section=fixture-section-1&surface=github&tool=issues&number=1984",
   );
@@ -937,11 +947,25 @@ test("starts a Task from a Section-scoped GitHub Issue", { tag: "@all-viewports"
 
   const dialog = page.locator("caffold-github-task-start-dialog dialog");
   await expect(dialog).toBeVisible();
+  await expect.poll(() =>
+    dialog.locator("caffold-task-turn-options").evaluate((options) =>
+      options.submissionOptions()
+    )
+  ).toMatchObject({
+    model: "gpt-5.6-sol",
+    effort: "xhigh",
+    fastMode: true,
+  });
   await dialog.locator("select[name='baseRef']").selectOption("main");
   await dialog.getByRole("button", { name: "Start Task" }).click();
 
   await expect.poll(() => fixture.counts.taskCreates).toBe(1);
   expect(fixture.requests.taskCreates[0].cwd).toBe(WORKTREE_ROOT);
+  expect(fixture.requests.taskCreates[0]).toMatchObject({
+    model: "gpt-5.6-sol",
+    effort: "xhigh",
+    fastMode: true,
+  });
   expect(fixture.requests.taskCreates[0].prompt).toContain(
     "--- BEGIN UNTRUSTED ISSUE DATA ---",
   );

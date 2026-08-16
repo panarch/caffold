@@ -3,7 +3,7 @@ use gluesql::{
     core::{
         data::Value,
         executor::Payload,
-        query_builder::{Execute, ExprNode, col, table, text, value as glue_value},
+        query_builder::{Execute, ExprNode, col, null, table, text, value as glue_value},
         row_conversion::ToGlueRow as _,
         store::{GStore, GStoreMut, Planner},
     },
@@ -13,7 +13,7 @@ use gluesql::{
 #[cfg(test)]
 use gluesql::core::data::Schema;
 
-use super::{Result, TaskStoreError};
+use super::{ComposerSettings, Result, TaskStoreError};
 
 pub(super) const TABLE_NAME: &str = "managed_sections";
 const POSITION_STEP: i64 = 1024;
@@ -22,13 +22,63 @@ const COLUMN_DEFINITIONS: &[&str] = &[
     "section_id TEXT PRIMARY KEY",
     "logical_path TEXT",
     "position INTEGER",
+    "last_model TEXT NULL",
+    "last_reasoning_effort TEXT NULL",
+    "last_fast_mode BOOLEAN NULL",
 ];
 
-#[derive(Debug, Clone, PartialEq, Eq, FromGlueRow, ToGlueRow)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManagedSection {
     pub section_id: String,
     pub logical_path: String,
     pub position: i64,
+    pub last_composer_settings: Option<ComposerSettings>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, FromGlueRow, ToGlueRow)]
+struct ManagedSectionRow {
+    section_id: String,
+    logical_path: String,
+    position: i64,
+    last_model: Option<String>,
+    last_reasoning_effort: Option<String>,
+    last_fast_mode: Option<bool>,
+}
+
+impl From<&ManagedSection> for ManagedSectionRow {
+    fn from(section: &ManagedSection) -> Self {
+        let settings = section.last_composer_settings.as_ref();
+        Self {
+            section_id: section.section_id.clone(),
+            logical_path: section.logical_path.clone(),
+            position: section.position,
+            last_model: settings.and_then(|settings| settings.model.clone()),
+            last_reasoning_effort: settings.and_then(|settings| settings.reasoning_effort.clone()),
+            last_fast_mode: settings.map(|settings| settings.fast_mode),
+        }
+    }
+}
+
+impl TryFrom<ManagedSectionRow> for ManagedSection {
+    type Error = TaskStoreError;
+
+    fn try_from(row: ManagedSectionRow) -> Result<Self> {
+        let last_composer_settings = match row.last_fast_mode {
+            Some(fast_mode) => Some(ComposerSettings {
+                model: row.last_model,
+                reasoning_effort: row.last_reasoning_effort,
+                fast_mode,
+            }),
+            None if row.last_model.is_none() && row.last_reasoning_effort.is_none() => None,
+            None => return Err(TaskStoreError::InvalidRow("last_composer_settings")),
+        };
+        Ok(Self {
+            section_id: row.section_id,
+            logical_path: row.logical_path,
+            position: row.position,
+            last_composer_settings,
+        })
+    }
 }
 
 pub(super) fn create_table<S>(glue: &mut Glue<S>) -> Result<()>
@@ -72,19 +122,22 @@ where
         .project(columns())
         .limit(1)
         .execute(glue)
-        .rows_as::<ManagedSection>()?;
-    Ok(rows.into_iter().next())
+        .rows_as::<ManagedSectionRow>()?;
+    rows.into_iter().next().map(TryInto::try_into).transpose()
 }
 
 pub(super) fn list<S>(glue: &mut Glue<S>) -> Result<Vec<ManagedSection>>
 where
     S: GStore + GStoreMut + Planner,
 {
-    let mut sections = table(TABLE_NAME)
+    let mut sections: Vec<ManagedSection> = table(TABLE_NAME)
         .select()
         .project(columns())
         .execute(glue)
-        .rows_as::<ManagedSection>()?;
+        .rows_as::<ManagedSectionRow>()?
+        .into_iter()
+        .map(TryInto::try_into)
+        .collect::<Result<Vec<_>>>()?;
     sections.sort_by(|left, right| {
         left.position
             .cmp(&right.position)
@@ -110,6 +163,7 @@ where
         section_id: section_id.to_string(),
         logical_path: logical_path.to_string(),
         position,
+        last_composer_settings: None,
     };
     if sections.is_empty() || position < sections[0].position {
         upsert(glue, &section)?;
@@ -212,11 +266,42 @@ where
             _ => Err(TaskStoreError::UnexpectedPayload),
         }
     } else {
+        let row = ManagedSectionRow::from(section);
         table(TABLE_NAME)
             .insert()
-            .values_from(std::slice::from_ref(section))?
+            .values_from(std::slice::from_ref(&row))?
             .execute(glue)?;
         Ok(())
+    }
+}
+
+pub(super) fn update_composer_settings<S>(
+    glue: &mut Glue<S>,
+    section_id: &str,
+    settings: &ComposerSettings,
+) -> Result<Option<ManagedSection>>
+where
+    S: GStore + GStoreMut + Planner,
+{
+    if get(glue, section_id)?.is_none() {
+        return Ok(None);
+    }
+    let payload = table(TABLE_NAME)
+        .update()
+        .filter(col("section_id").eq(text(section_id.to_owned())))
+        .set("last_model", optional_text(settings.model.as_deref()))
+        .set(
+            "last_reasoning_effort",
+            optional_text(settings.reasoning_effort.as_deref()),
+        )
+        .set(
+            "last_fast_mode",
+            glue_value(Value::Bool(settings.fast_mode)),
+        )
+        .execute(glue)?;
+    match payload {
+        Payload::Update(1) => get(glue, section_id),
+        _ => Err(TaskStoreError::UnexpectedPayload),
     }
 }
 
@@ -232,10 +317,16 @@ where
 }
 
 fn columns() -> Vec<ExprNode<'static>> {
-    ManagedSection::glue_columns()
+    ManagedSectionRow::glue_columns()
         .iter()
         .map(|column| col(*column))
         .collect()
+}
+
+fn optional_text(value: Option<&str>) -> ExprNode<'static> {
+    value
+        .map(|value| text(value.to_string()))
+        .unwrap_or_else(null)
 }
 
 fn validate(section: &ManagedSection) -> Result<()> {
@@ -309,6 +400,7 @@ mod tests {
             section_id: "section-1".to_string(),
             logical_path: "Workspace/rust/codger".to_string(),
             position: 1024,
+            last_composer_settings: None,
         };
         upsert(&mut glue, &section).unwrap();
         section.logical_path = "Workspace/rust/caffold".to_string();
@@ -320,6 +412,7 @@ mod tests {
                 section_id: "root-section".to_string(),
                 logical_path: String::new(),
                 position: 0,
+                last_composer_settings: None,
             },
         )
         .unwrap();
@@ -337,9 +430,92 @@ mod tests {
                     section_id: "".to_string(),
                     logical_path: "path".to_string(),
                     position: 0,
+                    last_composer_settings: None,
                 },
             ),
             Err(TaskStoreError::InvalidRow("section_id"))
+        ));
+    }
+
+    #[test]
+    fn stores_last_composer_settings_and_preserves_them_across_section_upserts() {
+        let mut glue = memory();
+        let mut section = ManagedSection {
+            section_id: "section-settings".to_string(),
+            logical_path: "Workspace/original".to_string(),
+            position: 1024,
+            last_composer_settings: None,
+        };
+        upsert(&mut glue, &section).unwrap();
+        let settings = ComposerSettings {
+            model: Some("gpt-selected".to_string()),
+            reasoning_effort: Some("xhigh".to_string()),
+            fast_mode: true,
+        };
+
+        assert_eq!(
+            update_composer_settings(&mut glue, &section.section_id, &settings)
+                .unwrap()
+                .unwrap()
+                .last_composer_settings,
+            Some(settings.clone())
+        );
+        assert!(
+            update_composer_settings(&mut glue, "missing", &settings)
+                .unwrap()
+                .is_none()
+        );
+
+        section.logical_path = "Workspace/renamed".to_string();
+        upsert(&mut glue, &section).unwrap();
+        let stored = get(&mut glue, &section.section_id).unwrap().unwrap();
+        assert_eq!(stored.logical_path, "Workspace/renamed");
+        assert_eq!(stored.last_composer_settings, Some(settings));
+    }
+
+    #[test]
+    fn distinguishes_recorded_default_composer_settings_from_no_history() {
+        let mut glue = memory();
+        let section = ManagedSection {
+            section_id: "section-default-settings".to_string(),
+            logical_path: "Workspace/default-settings".to_string(),
+            position: 1024,
+            last_composer_settings: None,
+        };
+        upsert(&mut glue, &section).unwrap();
+
+        update_composer_settings(&mut glue, &section.section_id, &ComposerSettings::default())
+            .unwrap();
+
+        assert_eq!(
+            get(&mut glue, &section.section_id)
+                .unwrap()
+                .unwrap()
+                .last_composer_settings,
+            Some(ComposerSettings::default())
+        );
+    }
+
+    #[test]
+    fn rejects_partially_persisted_composer_settings() {
+        let mut glue = memory();
+        table(TABLE_NAME)
+            .insert()
+            .values_from(&[ManagedSectionRow {
+                section_id: "partial-settings".to_string(),
+                logical_path: "Workspace/partial".to_string(),
+                position: 0,
+                last_model: Some("gpt-selected".to_string()),
+                last_reasoning_effort: None,
+                last_fast_mode: None,
+            }])
+            .unwrap()
+            .execute(&mut glue)
+            .unwrap();
+
+        assert!(matches!(
+            list(&mut glue),
+            Err(TaskStoreError::InvalidRow("last_composer_settings"))
         ));
     }
 
@@ -353,6 +529,7 @@ mod tests {
                     section_id: id.to_string(),
                     logical_path: id.to_string(),
                     position,
+                    last_composer_settings: None,
                 },
             )
             .unwrap();
@@ -392,6 +569,7 @@ mod tests {
                     section_id: id.to_string(),
                     logical_path: id.to_string(),
                     position,
+                    last_composer_settings: None,
                 },
             )
             .unwrap();
@@ -424,6 +602,7 @@ mod tests {
                         section_id: (*id).to_string(),
                         logical_path: (*id).to_string(),
                         position: *position,
+                        last_composer_settings: None,
                     },
                 )
                 .unwrap();

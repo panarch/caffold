@@ -1,4 +1,5 @@
 mod active_list;
+mod composer_settings;
 mod detail;
 mod events;
 mod generated_images;

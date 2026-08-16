@@ -10,7 +10,7 @@ use crate::{
     codex_app_server::{CodexThread, CodexThreadClient, ThreadStatus},
     codex_thread_sessions::CodexThreadSessions,
     fs::RootedFs,
-    task_store::{ManagedSection, ManagedThread, TaskStore},
+    task_store::{ComposerSettings, ManagedSection, ManagedThread, TaskStore},
 };
 
 use super::{
@@ -29,7 +29,26 @@ pub(in crate::app) struct ActiveTaskSection {
     pub(in crate::app) id: String,
     pub(in crate::app) name: String,
     pub(in crate::app) repository: bool,
+    pub(in crate::app) composer_settings: Option<ActiveTaskComposerSettings>,
     pub(in crate::app) tasks: Vec<TaskRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(in crate::app) struct ActiveTaskComposerSettings {
+    pub(in crate::app) model: Option<String>,
+    pub(in crate::app) effort: Option<String>,
+    pub(in crate::app) fast_mode: bool,
+}
+
+impl From<&ComposerSettings> for ActiveTaskComposerSettings {
+    fn from(settings: &ComposerSettings) -> Self {
+        Self {
+            model: settings.model.clone(),
+            effort: settings.reasoning_effort.clone(),
+            fast_mode: settings.fast_mode,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -109,6 +128,10 @@ pub(in crate::app) async fn load_cached(
                 id: section.section_id.clone(),
                 name: section.logical_path,
                 repository: repository_sections.contains(&section.section_id),
+                composer_settings: section
+                    .last_composer_settings
+                    .as_ref()
+                    .map(ActiveTaskComposerSettings::from),
                 tasks: threads.iter().map(unavailable_active_task).collect(),
             })
         })
@@ -254,6 +277,7 @@ mod tests {
                     section_id: section_id.to_string(),
                     logical_path: logical_path.to_string(),
                     position: section_position,
+                    last_composer_settings: None,
                 };
                 tables.upsert_managed_section(&section)?;
                 tables.claim_managed_thread_at_top(
@@ -302,6 +326,19 @@ mod tests {
             "Workspace/a",
             1024,
         );
+        store
+            .transaction(|tables| {
+                tables.update_managed_section_composer_settings(
+                    "section-b",
+                    &ComposerSettings {
+                        model: Some("gpt-section".to_string()),
+                        reasoning_effort: Some("xhigh".to_string()),
+                        fast_mode: true,
+                    },
+                )?;
+                Ok(())
+            })
+            .unwrap();
 
         let before = cached_rows(&store);
         let projection = load_cached(fs, store.clone()).await.unwrap();
@@ -324,6 +361,15 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["Older zero", "Older one"]
         );
+        assert_eq!(
+            projection.sections[0].composer_settings,
+            Some(ActiveTaskComposerSettings {
+                model: Some("gpt-section".to_string()),
+                effort: Some("xhigh".to_string()),
+                fast_mode: true,
+            })
+        );
+        assert_eq!(projection.sections[1].composer_settings, None);
         assert!(
             projection
                 .sections

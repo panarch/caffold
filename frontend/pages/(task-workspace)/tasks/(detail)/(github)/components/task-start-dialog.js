@@ -17,6 +17,7 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
     this.error = null;
     this.createRequestId = 0;
     this.restoreFocus = true;
+    this.composerSettings = null;
     this.render();
     this.dialog().addEventListener("close", () => this.handleClose());
     this.dialog().addEventListener("cancel", (event) => {
@@ -71,7 +72,7 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
     return this.querySelector(":scope caffold-task-turn-options");
   }
 
-  open({ kind, payload, repository, opener } = {}) {
+  open({ kind, payload, repository, composerSettings, opener } = {}) {
     const sourceKind = kind === "pull" ? "pull" : kind === "issue" ? "issue" : null;
     const source = sourceKind ? payload?.[sourceKind] : null;
     const rootPath = `${repository?.rootPath ?? payload?.repository?.rootPath ?? ""}`.trim();
@@ -83,6 +84,7 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
     this.pullSource().deactivate();
     this.sourceKind = sourceKind;
     this.repository = { ...(repository ?? payload?.repository), rootPath };
+    this.composerSettings = normalizeComposerSettings(composerSettings);
     this.opener = opener instanceof HTMLElement ? opener : null;
     this.restoreFocus = true;
     this.createRequestId += 1;
@@ -91,7 +93,11 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
     this.issueSource().hidden = sourceKind !== "issue";
     this.pullSource().hidden = sourceKind !== "pull";
     this.sourceComponent().setContext({ payload, repository: this.repository });
-    this.turnOptions().reset({ cwd: rootPath, placement: "below" });
+    this.turnOptions().reset({
+      cwd: rootPath,
+      initialSelection: this.composerSettings ?? {},
+      placement: "below",
+    });
     this.patch();
 
     const dialog = this.dialog();
@@ -112,6 +118,16 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
     if (this.dialog().open) {
       this.dialog().close("cancel");
     }
+  }
+
+  setComposerSettings(settings) {
+    this.composerSettings = normalizeComposerSettings(settings);
+    if (!this.dialog()?.open) {
+      return;
+    }
+    this.turnOptions().setContext({
+      initialSelection: this.composerSettings ?? {},
+    });
   }
 
   async startTask() {
@@ -250,6 +266,17 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
       placement: "below",
     });
   }
+}
+
+function normalizeComposerSettings(settings) {
+  if (!settings || typeof settings !== "object") {
+    return null;
+  }
+  return {
+    model: `${settings.model ?? ""}`,
+    effort: `${settings.effort ?? ""}`,
+    fastMode: Boolean(settings.fastMode),
+  };
 }
 
 if (!customElements.get("caffold-github-task-start-dialog")) {

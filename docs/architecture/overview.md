@@ -124,8 +124,9 @@ lifetime; Tailscale is transport for remote browsers, not part of inference.
 - Codex thread/session: conversation, turns, agent activity
 - Caffold Redb: managed-thread membership, stable Active navigator names and
   Section placement, observed recency, persistent Web Push subscriptions and
-  the stable server VAPID keypair, composer/seen state, and Caffold-managed
-  worktree ownership and recovery
+  the stable server VAPID keypair, Task composer/seen state, each Section's
+  composer selection from its last successfully started turn, and
+  Caffold-managed worktree ownership and recovery
 - git worktree: actual file and code changes
 - browser/PWA: presentation and controller state, plus the browser-owned Web
   Push subscription and local installation identity

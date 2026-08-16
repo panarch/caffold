@@ -770,7 +770,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_task_persists_the_applied_model_and_reasoning_effort() {
+    async fn create_task_persists_the_applied_composer_settings_for_the_task_and_section() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-model-settings";
         let mut responses = vec![
@@ -845,12 +845,34 @@ mod tests {
             .expect("create response carries canonical top placement");
         assert_eq!(placement.section.id, "section-root");
         assert!(placement.before_thread_id.is_none());
-        match list_updates.recv().await.expect("placement list update") {
+        match tokio::time::timeout(std::time::Duration::from_secs(1), list_updates.recv())
+            .await
+            .expect("placement list update was not published")
+            .expect("placement list update channel remains open")
+        {
             TaskListUpdate::Placement(update) => {
                 assert_eq!(update.task.thread_id, thread_id);
                 assert_eq!(update.placement, *placement);
             }
             update => panic!("expected placement list update, got {update:?}"),
+        }
+        match tokio::time::timeout(std::time::Duration::from_secs(1), list_updates.recv())
+            .await
+            .expect("Section composer settings update was not published")
+            .expect("Section composer settings update channel remains open")
+        {
+            TaskListUpdate::SectionComposerSettings(update) => {
+                assert_eq!(update.section_id, "section-root");
+                assert_eq!(
+                    update.composer_settings,
+                    crate::app::tasks::active_list::ActiveTaskComposerSettings {
+                        model: Some("gpt-5.6-sol".to_string()),
+                        effort: Some("xhigh".to_string()),
+                        fast_mode: true,
+                    }
+                );
+            }
+            update => panic!("expected Section settings update, got {update:?}"),
         }
         let stored = task_store_get(&state, thread_id)
             .await
@@ -859,6 +881,22 @@ mod tests {
         assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
         assert!(stored.fast_mode);
+        let section = state
+            .task_store
+            .read(|tables| tables.managed_sections())
+            .unwrap()
+            .into_iter()
+            .find(|section| section.section_id == "section-root")
+            .unwrap();
+        assert_eq!(
+            section.last_composer_settings,
+            Some(crate::task_store::ComposerSettings {
+                model: Some("gpt-5.6-sol".to_string()),
+                reasoning_effort: Some("xhigh".to_string()),
+                fast_mode: true,
+            })
+        );
+        assert_eq!(state.task_list_events.refresh_count(), 0);
         let requests = client.mock_requests().await;
         assert_eq!(requests[2].0, "thread/start");
         assert_eq!(requests[2].1["serviceTier"], "priority");
@@ -948,7 +986,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn task_prompt_persists_the_applied_model_and_reasoning_effort() {
+    async fn task_prompt_persists_the_applied_composer_settings_for_the_task_and_section() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-follow-up-model-settings";
         let client = CodexThreadClient::mock(vec![
@@ -973,7 +1011,14 @@ mod tests {
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        manage_test_thread(&state, thread_id, root.path()).await;
+        claim_cached_active(
+            &state,
+            thread_id,
+            "Follow-up settings",
+            1,
+            "section-follow-up-settings",
+            "",
+        );
         task_store_update_composer_settings(
             &state,
             thread_id,
@@ -983,6 +1028,7 @@ mod tests {
         )
         .await
         .unwrap();
+        let (_, mut list_updates) = state.task_list_events.subscribe();
 
         let response = task_prompt(
             State(state.clone()),
@@ -1006,6 +1052,39 @@ mod tests {
         assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
         assert!(stored.fast_mode);
+        match tokio::time::timeout(std::time::Duration::from_secs(1), list_updates.recv())
+            .await
+            .expect("Section composer settings update was not published")
+            .expect("Section composer settings update channel remains open")
+        {
+            TaskListUpdate::SectionComposerSettings(update) => {
+                assert_eq!(update.section_id, stored.section_id.clone().unwrap());
+                assert_eq!(
+                    update.composer_settings.model.as_deref(),
+                    Some("gpt-5.6-sol")
+                );
+                assert_eq!(update.composer_settings.effort.as_deref(), Some("xhigh"));
+                assert!(update.composer_settings.fast_mode);
+            }
+            update => panic!("expected Section settings update, got {update:?}"),
+        }
+        let section_id = stored.section_id.as_deref().unwrap();
+        let section = state
+            .task_store
+            .read(|tables| tables.managed_sections())
+            .unwrap()
+            .into_iter()
+            .find(|section| section.section_id == section_id)
+            .unwrap();
+        assert_eq!(
+            section.last_composer_settings,
+            Some(crate::task_store::ComposerSettings {
+                model: Some("gpt-5.6-sol".to_string()),
+                reasoning_effort: Some("xhigh".to_string()),
+                fast_mode: true,
+            })
+        );
+        assert_eq!(state.task_list_events.refresh_count(), 0);
         let requests = client.mock_requests().await;
         assert_eq!(
             requests
@@ -1564,7 +1643,23 @@ mod tests {
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        manage_test_thread(&state, thread_id, root.path()).await;
+        claim_cached_active(
+            &state,
+            thread_id,
+            "Running prompt settings",
+            1,
+            "section-running-prompt",
+            "",
+        );
+        task_store_update_composer_settings(
+            &state,
+            thread_id,
+            Some("gpt-before-steer"),
+            Some("medium"),
+            false,
+        )
+        .await
+        .unwrap();
 
         let response = task_prompt(
             State(state.clone()),
@@ -1573,9 +1668,9 @@ mod tests {
             Json(TaskPromptRequest {
                 prompt: prompt.to_string(),
                 images: Vec::new(),
-                model: None,
-                effort: None,
-                fast_mode: false,
+                model: Some("gpt-not-applied-by-steer".to_string()),
+                effort: Some("xhigh".to_string()),
+                fast_mode: true,
                 permission_mode: None,
                 active_turn_id: Some(turn_id.to_string()),
             }),
@@ -1597,6 +1692,26 @@ mod tests {
                     .and_then(|payload| payload["text"].as_str())
                     == Some(prompt)
         }));
+        let stored = task_store_get(&state, thread_id).await.unwrap().unwrap();
+        assert_eq!(stored.model.as_deref(), Some("gpt-before-steer"));
+        assert_eq!(stored.reasoning_effort.as_deref(), Some("medium"));
+        assert!(!stored.fast_mode);
+        let section_id = stored.section_id.as_deref().unwrap();
+        let section = state
+            .task_store
+            .read(|tables| tables.managed_sections())
+            .unwrap()
+            .into_iter()
+            .find(|section| section.section_id == section_id)
+            .unwrap();
+        assert_eq!(
+            section.last_composer_settings,
+            Some(crate::task_store::ComposerSettings {
+                model: Some("gpt-before-steer".to_string()),
+                reasoning_effort: Some("medium".to_string()),
+                fast_mode: false,
+            })
+        );
         assert_eq!(
             client
                 .mock_requests()

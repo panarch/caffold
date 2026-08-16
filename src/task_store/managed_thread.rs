@@ -1,3 +1,5 @@
+#[cfg(test)]
+use super::ComposerSettings;
 use super::{Result, TaskStoreError};
 use chrono::{DateTime, NaiveDateTime, Utc};
 #[cfg(test)]
@@ -80,6 +82,15 @@ impl ManagedThread {
             self.last_seen_activity_ms
                 .is_none_or(|seen| completed > seen)
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn composer_settings(&self) -> ComposerSettings {
+        ComposerSettings {
+            model: self.model.clone(),
+            reasoning_effort: self.reasoning_effort.clone(),
+            fast_mode: self.fast_mode,
+        }
     }
 }
 

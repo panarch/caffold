@@ -231,6 +231,23 @@ class CaffoldDetailLayout extends HTMLElement {
     return sectionContextKey(this.section) === sectionContextKey(section);
   }
 
+  updateSection(section) {
+    if (!this.sectionContextMatches(section)) {
+      return false;
+    }
+    const previousSettings = JSON.stringify(this.section?.composerSettings ?? null);
+    const nextSettings = JSON.stringify(section?.composerSettings ?? null);
+    this.section = { ...section };
+    if (previousSettings === nextSettings) {
+      return false;
+    }
+    this.sectionDetail()?.setSection(this.section);
+    this.githubLayout()?.setContext({
+      composerSettings: this.section.composerSettings ?? null,
+    });
+    return true;
+  }
+
   activateSubject(kind) {
     if (this.subjectKind === kind) {
       this.hidden = false;
@@ -485,6 +502,10 @@ class CaffoldDetailLayout extends HTMLElement {
       context: {
         path: rootPath,
         repository: this.repositorySnapshot(),
+        composerSettings:
+          this.subjectKind === "section"
+            ? this.section?.composerSettings ?? null
+            : null,
       },
       routeOptions: {
         resolvePath: (path) => joinLogicalPath(rootPath, path),

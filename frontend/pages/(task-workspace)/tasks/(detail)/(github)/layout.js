@@ -62,6 +62,7 @@ class CaffoldTaskGithubLayout extends HTMLElement {
     this.activationGeneration ??= 0;
     this.currentPath ??= "";
     this.repository ??= null;
+    this.composerSettings ??= null;
     this.githubStatus ??= null;
     this.githubStatusRequestId ??= 0;
     this.issuesLayout.addEventListener("caffold:github-issues-state-change", () => {
@@ -97,6 +98,7 @@ class CaffoldTaskGithubLayout extends HTMLElement {
         kind: event.detail?.kind,
         payload: event.detail?.payload,
         repository: this.repository,
+        composerSettings: this.composerSettings,
         opener: event.detail?.opener,
       });
     });
@@ -175,6 +177,7 @@ class CaffoldTaskGithubLayout extends HTMLElement {
     this.mode = null;
     this.currentPath = "";
     this.repository = null;
+    this.composerSettings = null;
     this.githubStatus = null;
     this.githubStatusRequestId += 1;
     this.taskStartDialog.deactivate();
@@ -220,6 +223,10 @@ class CaffoldTaskGithubLayout extends HTMLElement {
     const { path, repository, githubStatus } = options;
     this.currentPath = path ?? this.currentPath ?? "";
     this.repository = repository ?? this.repository ?? null;
+    if (Object.hasOwn(options, "composerSettings")) {
+      this.composerSettings = options.composerSettings ?? null;
+      this.taskStartDialog.setComposerSettings(this.composerSettings);
+    }
     this.githubStatus = Object.prototype.hasOwnProperty.call(options, "githubStatus")
       ? githubStatus
       : (this.githubStatus ?? null);
