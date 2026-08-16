@@ -40,7 +40,7 @@ test("defines the exact handoff nodes and complete allowed-edge graph", () => {
     "idle",
     "activating",
     "claiming",
-    "reload-committed",
+    "applying",
   ];
   assert.deepEqual(Object.values(PWA_UPDATE_HANDOFF_NODE), nodes);
   assert.deepEqual(Object.keys(PWA_UPDATE_HANDOFF_TRANSITIONS), nodes);
@@ -50,30 +50,30 @@ test("defines the exact handoff nodes and complete allowed-edge graph", () => {
       "idle",
       "activating",
       "claiming",
-      "reload-committed",
+      "applying",
     ],
     idle: [
       "idle",
       "detached",
       "activating",
       "claiming",
-      "reload-committed",
+      "applying",
     ],
     activating: [
       "activating",
       "detached",
       "idle",
       "claiming",
-      "reload-committed",
+      "applying",
     ],
     claiming: [
       "claiming",
       "detached",
       "idle",
       "activating",
-      "reload-committed",
+      "applying",
     ],
-    "reload-committed": ["reload-committed", "detached"],
+    applying: ["applying", "detached", "idle", "activating", "claiming"],
   });
 });
 
@@ -90,7 +90,7 @@ test("reaches every declared allowed edge through the transition authority", () 
   }
 });
 
-test("moves waiting through activation, claim, control, and one reload", () => {
+test("moves waiting through activation and claim into retryable application", () => {
   let result = requestedState();
   assert.equal(result.state.node, PWA_UPDATE_HANDOFF_NODE.ACTIVATING);
   assert.deepEqual(result.effects, [{
@@ -122,29 +122,21 @@ test("moves waiting through activation, claim, control, and one reload", () => {
     PWA_UPDATE_HANDOFF_EVENT.CONTROLLER_CONFIRMED,
     { buildId: "build-b" },
   );
-  assert.equal(result.state.node, PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED);
-  assert.equal(result.state.reloadBuildId, "build-b");
+  assert.equal(result.state.node, PWA_UPDATE_HANDOFF_NODE.APPLYING);
   assert.deepEqual(result.effects, [{
     type: PWA_UPDATE_HANDOFF_EFFECT.RELOAD,
     buildId: "build-b",
   }]);
 
-  for (const type of [
+  const duplicateController = transition(
+    result.state,
     PWA_UPDATE_HANDOFF_EVENT.CONTROLLER_CONFIRMED,
-    PWA_UPDATE_HANDOFF_EVENT.RESUME_REQUESTED,
-    PWA_UPDATE_HANDOFF_EVENT.ACTIVATION_REQUESTED,
-  ]) {
-    const repeated = transition(result.state, type, {
-      buildId: "build-b",
-      generation: 1,
-      phase: PWA_UPDATE_TARGET_PHASE.CONTROLLED,
-    });
-    assert.strictEqual(repeated.state, result.state);
-    assert.deepEqual(repeated.effects, []);
-  }
+    { buildId: "build-b" },
+  );
+  assert.deepEqual(duplicateController.effects, []);
 });
 
-test("retains activation intent while the target is temporarily unowned", () => {
+test("retains the handoff target while it is temporarily unowned", () => {
   let result = requestedState();
   result = transition(
     result.state,
@@ -170,7 +162,7 @@ test("retains activation intent while the target is temporarily unowned", () => 
   assert.deepEqual(repeated.effects, []);
 });
 
-test("repeated intent and resume safely retry the current effect", () => {
+test("repeated update requests and resume safely retry the current effect", () => {
   let result = requestedState({ phase: PWA_UPDATE_TARGET_PHASE.ACTIVE });
   assert.equal(result.state.node, PWA_UPDATE_HANDOFF_NODE.CLAIMING);
   assert.deepEqual(result.effects.map(({ type }) => type), [
@@ -201,7 +193,44 @@ test("repeated intent and resume safely retry the current effect", () => {
   ]);
 });
 
-test("retargets pending intent to the latest prepared generation", () => {
+test("keeps a controlled target explicitly retryable while the old document survives", () => {
+  let result = requestedState({ phase: PWA_UPDATE_TARGET_PHASE.ACTIVE });
+  result = transition(
+    result.state,
+    PWA_UPDATE_HANDOFF_EVENT.CONTROLLER_CONFIRMED,
+    { buildId: "build-b" },
+  );
+  assert.equal(result.state.node, PWA_UPDATE_HANDOFF_NODE.APPLYING);
+  assert.deepEqual(result.effects, [{
+    type: PWA_UPDATE_HANDOFF_EFFECT.RELOAD,
+    buildId: "build-b",
+  }]);
+
+  const resumed = transition(
+    result.state,
+    PWA_UPDATE_HANDOFF_EVENT.RESUME_REQUESTED,
+    { buildId: "build-b", phase: PWA_UPDATE_TARGET_PHASE.CONTROLLED },
+  );
+  assert.equal(resumed.state.node, PWA_UPDATE_HANDOFF_NODE.APPLYING);
+  assert.deepEqual(resumed.effects, []);
+
+  const repeated = transition(
+    result.state,
+    PWA_UPDATE_HANDOFF_EVENT.ACTIVATION_REQUESTED,
+    {
+      buildId: "build-b",
+      generation: 1,
+      phase: PWA_UPDATE_TARGET_PHASE.CONTROLLED,
+    },
+  );
+  assert.equal(repeated.state.node, PWA_UPDATE_HANDOFF_NODE.APPLYING);
+  assert.deepEqual(repeated.effects, [{
+    type: PWA_UPDATE_HANDOFF_EFFECT.RELOAD,
+    buildId: "build-b",
+  }]);
+});
+
+test("retargets the pending handoff to the latest prepared generation", () => {
   let result = requestedState({ phase: PWA_UPDATE_TARGET_PHASE.ACTIVE });
   result = transition(
     result.state,
@@ -241,7 +270,7 @@ test("retargets pending intent to the latest prepared generation", () => {
   assert.deepEqual(stalePrepared.effects, []);
 });
 
-test("disconnect preserves intent and reconnect resumes the observed phase", () => {
+test("disconnect preserves the handoff target for an in-page reconnect", () => {
   let result = requestedState({ phase: PWA_UPDATE_TARGET_PHASE.ACTIVE });
   result = transition(
     result.state,
@@ -262,7 +291,7 @@ test("disconnect preserves intent and reconnect resumes the observed phase", () 
   }]);
 });
 
-test("a restored page reloads when its retained target already controls it", () => {
+test("an in-page reconnect reloads when its target already controls it", () => {
   let result = requestedState({ phase: PWA_UPDATE_TARGET_PHASE.ACTIVE });
   result = transition(
     result.state,
@@ -273,14 +302,14 @@ test("a restored page reloads when its retained target already controls it", () 
     PWA_UPDATE_HANDOFF_EVENT.CONNECTED,
     { phase: PWA_UPDATE_TARGET_PHASE.CONTROLLED },
   );
-  assert.equal(result.state.node, PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED);
+  assert.equal(result.state.node, PWA_UPDATE_HANDOFF_NODE.APPLYING);
   assert.deepEqual(result.effects, [{
     type: PWA_UPDATE_HANDOFF_EFFECT.RELOAD,
     buildId: "build-b",
   }]);
 });
 
-test("clears intent only when the intended generation is explicitly discarded", () => {
+test("clears the target only when its generation is explicitly discarded", () => {
   const requested = requestedState({
     phase: PWA_UPDATE_TARGET_PHASE.TRANSITIONING,
   }).state;
@@ -301,7 +330,7 @@ test("clears intent only when the intended generation is explicitly discarded", 
   assert.equal(discarded.state.targetGeneration, 0);
 });
 
-test("prepared observations do not invent activation intent", () => {
+test("prepared observations do not select a handoff target", () => {
   const idle = connectedState();
   const prepared = transition(
     idle,
@@ -326,7 +355,7 @@ function stateForEdge(from, to) {
         phase: PWA_UPDATE_TARGET_PHASE.ACTIVE,
       }).state);
     }
-    if (to === PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED) {
+    if (to === PWA_UPDATE_HANDOFF_NODE.APPLYING) {
       return disconnect(requestedState({
         phase: PWA_UPDATE_TARGET_PHASE.CONTROLLED,
       }).state);
@@ -355,7 +384,7 @@ function eventForEdge(from, to) {
     const phase = {
       [PWA_UPDATE_HANDOFF_NODE.ACTIVATING]: PWA_UPDATE_TARGET_PHASE.WAITING,
       [PWA_UPDATE_HANDOFF_NODE.CLAIMING]: PWA_UPDATE_TARGET_PHASE.ACTIVE,
-      [PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED]:
+      [PWA_UPDATE_HANDOFF_NODE.APPLYING]:
         PWA_UPDATE_TARGET_PHASE.CONTROLLED,
     }[to];
     return {
@@ -364,8 +393,8 @@ function eventForEdge(from, to) {
     };
   }
   if (
-    from === PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED &&
-    to === PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED
+    from === PWA_UPDATE_HANDOFF_NODE.APPLYING &&
+    to === PWA_UPDATE_HANDOFF_NODE.APPLYING
   ) {
     return {
       type: PWA_UPDATE_HANDOFF_EVENT.CONTROLLER_CONFIRMED,
@@ -376,7 +405,7 @@ function eventForEdge(from, to) {
     [PWA_UPDATE_HANDOFF_NODE.IDLE]: PWA_UPDATE_TARGET_PHASE.REDUNDANT,
     [PWA_UPDATE_HANDOFF_NODE.ACTIVATING]: PWA_UPDATE_TARGET_PHASE.WAITING,
     [PWA_UPDATE_HANDOFF_NODE.CLAIMING]: PWA_UPDATE_TARGET_PHASE.ACTIVE,
-    [PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED]:
+    [PWA_UPDATE_HANDOFF_NODE.APPLYING]:
       PWA_UPDATE_TARGET_PHASE.CONTROLLED,
   }[to];
   return {

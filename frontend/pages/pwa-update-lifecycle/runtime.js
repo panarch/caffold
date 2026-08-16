@@ -36,6 +36,8 @@ export class PwaUpdateRuntime {
     this.serviceWorkersByBuildId = new Map();
     this.observedServiceWorkers = new Map();
     this.handoffState = createPwaUpdateHandoffState();
+    this.navigationAttemptCount = 0;
+    this.lastNavigationAttemptBuildId = null;
     this.startedWithServiceWorkerController = Boolean(
       "serviceWorker" in navigator && navigator.serviceWorker.controller,
     );
@@ -169,6 +171,19 @@ export class PwaUpdateRuntime {
         ready: Boolean(this.readyServiceWorkerBuildId),
         buildId: this.readyServiceWorkerBuildId,
       },
+      diagnostics: {
+        handoffNode: this.handoffState.node,
+        targetBuildId: this.handoffState.targetBuildId,
+        controllerBuildId: this.controllerBuildId(),
+        activeBuildId: this.serviceWorkerBuildIds.get(
+          this.registration?.active,
+        ) ?? null,
+        waitingBuildId: this.serviceWorkerBuildIds.get(
+          this.registration?.waiting,
+        ) ?? null,
+        navigationAttemptCount: this.navigationAttemptCount,
+        lastNavigationAttemptBuildId: this.lastNavigationAttemptBuildId,
+      },
     };
   }
 
@@ -192,7 +207,7 @@ export class PwaUpdateRuntime {
           if (this.serverBuildId === checkedBuildId) {
             this.settledCheckServerBuildId = checkedBuildId;
           }
-          this.syncServiceWorkerState({ resumeHandoff: true });
+          this.syncServiceWorkerState({ resumeHandoff: false });
           this.ensureServerBuildChecked();
         }
       });
@@ -278,7 +293,7 @@ export class PwaUpdateRuntime {
     ) {
       // The custom response is only a hint. The current controller still decides
       // whether the intended build owns this document.
-      this.syncServiceWorkerState({ resumeHandoff: true });
+      this.syncServiceWorkerState({ resumeHandoff: false });
       return;
     }
     if (
@@ -620,6 +635,8 @@ export class PwaUpdateRuntime {
       return;
     }
     if (effect.type === PWA_UPDATE_HANDOFF_EFFECT.RELOAD) {
+      this.navigationAttemptCount += 1;
+      this.lastNavigationAttemptBuildId = effect.buildId;
       this.onReloadReady();
     }
   }
@@ -727,6 +744,13 @@ export class PwaUpdateRuntime {
       status.state,
       status.preparedUpdate.ready,
       status.preparedUpdate.buildId,
+      status.diagnostics.handoffNode,
+      status.diagnostics.targetBuildId,
+      status.diagnostics.controllerBuildId,
+      status.diagnostics.activeBuildId,
+      status.diagnostics.waitingBuildId,
+      status.diagnostics.navigationAttemptCount,
+      status.diagnostics.lastNavigationAttemptBuildId,
     ].join(":");
     if (statusKey === this.lastStatusKey) {
       return;

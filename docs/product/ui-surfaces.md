@@ -153,7 +153,9 @@ Settings includes:
   restart, and diagnostics;
 - About Caffold application and build information, including shared
   checking/ready/settled update status and a **Reload to update** action while
-  a prepared PWA generation remains ready.
+  a prepared PWA generation remains ready. Copied diagnostics also include the
+  private handoff node, target and observed worker builds, and navigation-attempt
+  count for stalled-update investigation.
 
 Normal update checking and readiness are distinct from the viewport-fixed red
 build-mismatch alert. That exceptional alert appears only after update checking

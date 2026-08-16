@@ -99,8 +99,16 @@ unit, browser-integration, and platform evidence.
 PWA build-handoff changes require the adjacent unit tests,
 `tests/service-worker.test.mjs`, and
 `tests/e2e/app-shell-update.spec.js`. The loopback lifecycle server provides
-real Chromium service-worker replacement coverage. Report unit, complete-shell
-inventory, deterministic browser, and real-browser evidence separately.
+real Chromium service-worker replacement coverage. Its core recovery case keeps
+an old document alive after the target controller takes over, drops the first
+navigation, verifies that page resume does not repeat it automatically, and
+requires a second explicit Reload action to replace the document. No handoff
+target is persisted across documents; a fresh page
+reconstructs update availability from browser and server state. The loopback
+test uses the Chromium protocol only to make the waiting-to-active worker edge
+deterministic; production activation messaging remains separate contract and
+mocked-browser evidence. Report unit, complete-shell inventory, deterministic
+browser, and real-browser evidence separately.
 
 ## Codex compatibility and live tests
 
