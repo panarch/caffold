@@ -39,8 +39,14 @@ class CaffoldTaskGitLayout extends HTMLElement {
         <header class="task-domain-header">
           <button type="button" class="task-domain-back" data-action="domain-back" hidden></button>
           <div class="task-domain-title">
-            <h2>Git</h2>
-            <span class="task-domain-subtitle"></span>
+            <div class="task-domain-title-row">
+              <h2>Git</h2>
+              <span class="task-domain-count" hidden></span>
+            </div>
+            <div class="task-domain-meta-row" hidden>
+              <span class="task-domain-primary-meta" hidden></span>
+              <span class="task-domain-secondary-meta" hidden></span>
+            </div>
           </div>
           <caffold-git-review-controls></caffold-git-review-controls>
         </header>
@@ -56,7 +62,10 @@ class CaffoldTaskGitLayout extends HTMLElement {
     `;
     this.backButton = this.querySelector(".task-domain-back");
     this.titleEl = this.querySelector(".task-domain-title h2");
-    this.subtitleEl = this.querySelector(".task-domain-subtitle");
+    this.countEl = this.querySelector(".task-domain-count");
+    this.metaRowEl = this.querySelector(".task-domain-meta-row");
+    this.primaryMetaEl = this.querySelector(".task-domain-primary-meta");
+    this.secondaryMetaEl = this.querySelector(".task-domain-secondary-meta");
     this.controls = this.querySelector("caffold-git-review-controls");
     this.compareView = this.querySelector(".git-mode-compare");
     this.logView = this.querySelector(".git-mode-log");
@@ -68,6 +77,13 @@ class CaffoldTaskGitLayout extends HTMLElement {
       () => this.performPendingRefresh(),
       (state) => this.setRefreshState(state),
     );
+    this.addEventListener("caffold:fetch-git-remote", (event) => {
+      if (!this.controls.contains(event.target)) {
+        return;
+      }
+      event.stopPropagation();
+      void this.fetchRemote();
+    });
     this.backButton.addEventListener("click", () => {
       const route = this.routeForWorkspaceBack();
       if (route) {
@@ -158,8 +174,7 @@ class CaffoldTaskGitLayout extends HTMLElement {
     this.active = false;
     this.activationGeneration += 1;
     this.pendingRefresh = false;
-    this.watchUnsubscribe?.();
-    this.watchUnsubscribe = null;
+    this.unsubscribeWatchScope();
     this.comparePage.invalidateRequests();
     this.logLayout.invalidateRequests();
     this.setRefreshState("idle");
@@ -200,8 +215,7 @@ class CaffoldTaskGitLayout extends HTMLElement {
       return;
     }
     this.watchScopePath = nextPath;
-    this.watchUnsubscribe?.();
-    this.watchUnsubscribe = null;
+    this.unsubscribeWatchScope();
     this.watchUnavailable = false;
     this.setRefreshState("idle");
     if (nextPath && this.active && this.isConnected) {
@@ -232,6 +246,24 @@ class CaffoldTaskGitLayout extends HTMLElement {
         this.setRefreshState("unavailable");
       },
     });
+  }
+
+  unsubscribeWatchScope() {
+    this.watchUnsubscribe?.();
+    this.watchUnsubscribe = null;
+  }
+
+  async fetchRemote() {
+    if (
+      !this.active ||
+      this.mode !== "log" ||
+      !this.logLayout.repository ||
+      this.logLayout.fetchState.status === "fetching"
+    ) {
+      return null;
+    }
+
+    return await this.logLayout.fetchRemote();
   }
 
   refresh() {
@@ -463,16 +495,23 @@ class CaffoldTaskGitLayout extends HTMLElement {
       (this.mode === "compare" && this.comparePage.detailView === "viewer") ||
       (commit && this.logLayout.detailView === "viewer");
     this.titleEl.textContent = commit ? "Commit" : this.mode === "log" ? "Log" : "Compare";
-    let subtitle = "";
+    let count = "";
+    let primaryMeta = "";
+    let secondaryMeta = "";
     if (commit) {
-      subtitle = this.logLayout.commitSubtitle();
+      primaryMeta = this.logLayout.commitSubtitle();
     } else if (this.mode === "log") {
-      subtitle = this.logLayout.logSubtitle();
+      const parts = this.logLayout.logSubtitleParts();
+      count = parts.count;
+      primaryMeta = parts.branch;
+      secondaryMeta = parts.relationship;
     } else if (this.repository) {
-      subtitle = `${this.repository.branch ?? "HEAD"}`;
+      primaryMeta = `${this.repository.branch ?? "HEAD"}`;
     }
-    this.subtitleEl.textContent = subtitle;
-    this.subtitleEl.setAttribute("title", subtitle);
+    this.renderHeaderPart(this.countEl, count);
+    this.renderHeaderPart(this.primaryMetaEl, primaryMeta);
+    this.renderHeaderPart(this.secondaryMetaEl, secondaryMeta);
+    this.metaRowEl.hidden = !primaryMeta && !secondaryMeta;
     this.backButton.hidden = !commit || fileOpen;
     this.backButton.setAttribute("aria-label", "Back to log");
     this.backButton.setAttribute("title", "Back to log");
@@ -483,11 +522,23 @@ class CaffoldTaskGitLayout extends HTMLElement {
     );
     this.controls.setSnapshot({
       mode: this.mode,
+      action: this.mode === "log" && !commit ? "fetch" : "refresh",
+      fetchState: this.logLayout.fetchState,
       refs: this.mode === "compare" ? this.comparePage.refsPayload?.refs ?? [] : [],
       baseRef: this.mode === "compare" ? this.compareBaseRef : "",
       headRef: this.mode === "compare" ? this.compareHeadRef : "",
       refreshState: this.refreshState,
     });
+  }
+
+  renderHeaderPart(element, value) {
+    element.textContent = value;
+    element.hidden = !value;
+    if (value) {
+      element.setAttribute("title", value);
+      return;
+    }
+    element.removeAttribute("title");
   }
 
   isMobileDetailOpen() {

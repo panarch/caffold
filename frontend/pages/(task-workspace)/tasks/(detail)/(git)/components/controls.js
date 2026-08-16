@@ -58,8 +58,11 @@ class CaffoldGitReviewControls extends HTMLElement {
     this.headRefSelect = this.querySelector('select[data-compare-ref="head"]');
     this.refreshButton = this.querySelector(".git-review-refresh");
     this.refreshButton.addEventListener("click", () => {
+      const eventName = this.snapshot?.action === "fetch"
+        ? "caffold:fetch-git-remote"
+        : "caffold:refresh-git-review";
       this.dispatchEvent(
-        new CustomEvent("caffold:refresh-git-review", {
+        new CustomEvent(eventName, {
           bubbles: true,
         }),
       );
@@ -98,23 +101,29 @@ class CaffoldGitReviewControls extends HTMLElement {
     this.headRefSelect.title = next.headRef;
     this.compareRefs.hidden = next.mode !== "compare" || next.refs.length === 0;
 
-    const refreshing = next.refreshState === "refreshing";
+    const fetching = next.action === "fetch" && next.fetchState.status === "fetching";
+    const refreshing = next.action === "refresh" && next.refreshState === "refreshing";
     const unavailable = next.refreshState === "unavailable";
-    const title = unavailable
-      ? "Live updates unavailable. Refresh manually."
-      : `Refresh ${next.mode ?? "Git"}`;
-    this.refreshButton.classList.toggle("is-refreshing", refreshing);
+    const title = actionTitle(next, unavailable);
+    this.refreshButton.classList.toggle("is-refreshing", fetching || refreshing);
+    this.refreshButton.classList.toggle(
+      "is-error",
+      next.action === "fetch" && next.fetchState.status === "error",
+    );
     this.refreshButton.classList.toggle("is-unavailable", unavailable);
+    this.refreshButton.disabled = fetching;
     this.refreshButton.setAttribute("aria-label", title);
     this.refreshButton.setAttribute("title", title);
     this.snapshot = next;
+    this.renderRefreshIcon();
   }
 
   renderRefreshIcon() {
     this.ensureRendered();
+    const label = this.snapshot?.action === "fetch" ? "Fetch remote" : "Refresh Git review";
     this.refreshButton.innerHTML = renderInlineIcon(
       "RefreshCw",
-      "Refresh Git review",
+      label,
       "git-review-refresh-icon",
     );
   }
@@ -131,6 +140,8 @@ function normalizeSnapshot(snapshot) {
         : null;
   return {
     mode,
+    action: snapshot?.action === "fetch" ? "fetch" : "refresh",
+    fetchState: normalizeFetchState(snapshot?.fetchState),
     refs: Array.isArray(snapshot?.refs) ? snapshot.refs : [],
     baseRef: snapshot?.baseRef ?? "",
     headRef: snapshot?.headRef ?? "",
@@ -139,6 +150,34 @@ function normalizeSnapshot(snapshot) {
         ? snapshot.refreshState
         : "idle",
   };
+}
+
+function normalizeFetchState(state) {
+  return state?.status === "fetching" || state?.status === "ready" || state?.status === "error"
+    ? state
+    : { status: "idle" };
+}
+
+function actionTitle(snapshot, unavailable) {
+  if (snapshot.action !== "fetch") {
+    return unavailable
+      ? "Live updates unavailable. Refresh manually."
+      : `Refresh ${snapshot.mode ?? "Git"}`;
+  }
+  if (snapshot.fetchState.status === "fetching") {
+    return "Fetching remote default branch";
+  }
+  if (snapshot.fetchState.status === "error") {
+    return `Fetch failed. ${snapshot.fetchState.error?.message ?? "Try again."}`;
+  }
+  if (snapshot.fetchState.status === "ready") {
+    const remote = snapshot.fetchState.result?.remote;
+    const branch = snapshot.fetchState.result?.branch;
+    return remote && branch ? `Fetch ${remote}/${branch} again` : "Fetch again";
+  }
+  return unavailable
+    ? "Fetch remote default branch. Live updates are unavailable."
+    : "Fetch remote default branch";
 }
 
 function refsFingerprint(refs) {

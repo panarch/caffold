@@ -1,4 +1,4 @@
-import { getGitLog } from "../../../../../../api.js";
+import { fetchGitRemote, getGitLog } from "../../../../../../api.js";
 import "./commit/page.js";
 import "./list/page.js";
 
@@ -22,6 +22,7 @@ class CaffoldGitLogLayout extends HTMLElement {
     this.list = this.querySelector("caffold-git-log-list-page");
     this.commitPage = this.querySelector("caffold-git-log-commit-page");
     this.logRequestId ??= 0;
+    this.fetchState ??= { status: "idle" };
     this.page ??= 1;
     this.view ??= "list";
     this.detailView ??= "list";
@@ -33,7 +34,8 @@ class CaffoldGitLogLayout extends HTMLElement {
 
   reset() {
     this.ensureRendered();
-    this.logRequestId += 1;
+    this.invalidateRequests();
+    this.clearFetchState();
     this.currentPath = "";
     this.repository = null;
     this.log = null;
@@ -48,7 +50,46 @@ class CaffoldGitLogLayout extends HTMLElement {
   invalidateRequests() {
     this.ensureRendered();
     this.logRequestId += 1;
+    this.fetchState = transitionFetchState(this.fetchState, { type: "cancel" });
     this.commitPage.invalidateRequests();
+  }
+
+  clearFetchState() {
+    this.fetchState = transitionFetchState(this.fetchState, { type: "clear" });
+  }
+
+  async fetchRemote() {
+    if (!this.repository) {
+      return null;
+    }
+
+    const pending = transitionFetchState(this.fetchState, { type: "start" });
+    if (pending === this.fetchState) {
+      return null;
+    }
+    this.fetchState = pending;
+    this.emitStateChange();
+    try {
+      const result = await fetchGitRemote(this.currentPath);
+      if (!this.settleFetch(pending, { type: "resolve", result })) {
+        return null;
+      }
+      return result;
+    } catch (error) {
+      this.settleFetch(pending, { type: "reject", error });
+      return null;
+    }
+  }
+
+  settleFetch(pending, event) {
+    const next = transitionFetchState(this.fetchState, { ...event, pending });
+    if (next === this.fetchState) {
+      return false;
+    }
+
+    this.fetchState = next;
+    this.emitStateChange();
+    return true;
   }
 
   async openList(options = {}) {
@@ -157,13 +198,15 @@ class CaffoldGitLogLayout extends HTMLElement {
     const nextRepository = repository ?? this.repository ?? null;
     const contextChanged =
       nextPath !== (this.currentPath ?? "") ||
-      nextRepository?.rootPath !== this.repository?.rootPath;
+      nextRepository?.rootPath !== this.repository?.rootPath ||
+      nextRepository?.branch !== this.repository?.branch;
 
     this.currentPath = nextPath;
     this.repository = nextRepository;
 
     if (contextChanged) {
       this.logRequestId += 1;
+      this.clearFetchState();
       this.log = null;
       this.commitPage.reset();
     }
@@ -184,8 +227,12 @@ class CaffoldGitLogLayout extends HTMLElement {
         return null;
       }
 
+      const branchChanged = log.repository?.branch !== this.repository?.branch;
       this.page = log.page ?? nextPage;
       this.repository = log.repository;
+      if (branchChanged) {
+        this.clearFetchState();
+      }
       this.log = log;
       if (options.preserveState) {
         this.list.updateLog(log);
@@ -246,14 +293,20 @@ class CaffoldGitLogLayout extends HTMLElement {
     return this.commitPage.commitSubtitle();
   }
 
-  logSubtitle() {
+  logSubtitleParts() {
     const repository = this.log?.repository ?? this.repository;
     if (!repository) {
-      return "";
+      return { branch: "", relationship: "", count: "" };
     }
     const count = this.log?.totalCommits;
-    const countLabel = count === undefined ? "" : `${count} commits`;
-    return [repository.branch ?? "HEAD", countLabel].filter(Boolean).join(" · ");
+    const countLabel = count === undefined
+      ? ""
+      : `${count} ${count === 1 ? "commit" : "commits"}`;
+    return {
+      branch: repository.branch ?? "HEAD",
+      relationship: fetchRelationship(this.fetchState),
+      count: countLabel,
+    };
   }
 
   setView(view) {
@@ -295,4 +348,62 @@ customElements.define("caffold-git-log-layout", CaffoldGitLogLayout);
 function normalizePage(page) {
   const value = Number.parseInt(`${page ?? 1}`, 10);
   return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+function fetchRelationship(state) {
+  if (state?.status === "error") {
+    return "Remote unavailable";
+  }
+  const result = state?.status === "ready"
+    ? state.result
+    : state?.status === "fetching" && state.previous?.status === "ready"
+      ? state.previous.result
+      : null;
+  if (!result) {
+    return "";
+  }
+
+  const branch = result.branch || "remote default";
+  const ahead = Number(result.ahead ?? 0);
+  const behind = Number(result.behind ?? 0);
+  if (ahead === 0 && behind === 0) {
+    return `Up to date with ${branch}`;
+  }
+  if (ahead > 0 && behind > 0) {
+    return `${ahead} ahead, ${behind} behind ${branch}`;
+  }
+  if (ahead > 0) {
+    return `${ahead} ahead of ${branch}`;
+  }
+  return `${behind} behind ${branch}`;
+}
+
+function transitionFetchState(state, event) {
+  const current = state ?? { status: "idle" };
+  if (event.type === "clear") {
+    return { status: "idle" };
+  }
+  if (event.type === "cancel") {
+    return current.status === "fetching"
+      ? current.previous ?? { status: "idle" }
+      : current;
+  }
+  if (event.type === "start") {
+    return current.status === "fetching"
+      ? current
+      : {
+          status: "fetching",
+          previous: current.status === "ready" ? current : null,
+        };
+  }
+  if (current !== event.pending || current.status !== "fetching") {
+    return current;
+  }
+  if (event.type === "resolve") {
+    return { status: "ready", result: event.result };
+  }
+  if (event.type === "reject") {
+    return { status: "error", error: event.error };
+  }
+  return current;
 }

@@ -109,6 +109,17 @@ pub struct GitLogResponse {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct GitFetchResponse {
+    pub repository: DirectoryGitInfo,
+    pub remote: String,
+    pub branch: String,
+    pub reference: String,
+    pub ahead: usize,
+    pub behind: usize,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct GitCommitResponse {
     pub repository: DirectoryGitInfo,
     pub commit: GitCommitSummary,
@@ -482,6 +493,14 @@ pub enum FsError {
     GitRepositoryNotFound { path: String },
     #[error("git command failed while trying to {action}: {path}")]
     GitCommandFailed { action: &'static str, path: String },
+    #[error("no Git fetch remote is configured for: {path}")]
+    GitRemoteNotFound { path: String },
+    #[error("multiple Git fetch remotes are configured for: {path}")]
+    GitRemoteAmbiguous { path: String },
+    #[error("the default branch is unavailable for Git remote: {remote}")]
+    GitRemoteHeadUnavailable { remote: String },
+    #[error("Git fetch failed for {remote}/{branch}")]
+    GitFetchFailed { remote: String, branch: String },
     #[error("path is not inside a GitHub repository: {path}")]
     GithubRepositoryNotFound { path: String },
     #[error("GitHub is unavailable for {action}: {path}")]
@@ -841,6 +860,38 @@ impl RootedFs {
             total_pages,
             has_previous: page > 1 && total_pages > 0,
             has_next: page < total_pages,
+        })
+    }
+
+    pub fn git_fetch(&self, requested_path: &str) -> Result<GitFetchResponse, FsError> {
+        let repository = self.repository_for_request(requested_path)?;
+        let repository_info = self.git_info_for_repository(&repository)?;
+        let fetched = git::fetch_remote_default(&repository).map_err(|error| match error {
+            git::GitFetchError::RemoteNotFound => FsError::GitRemoteNotFound {
+                path: requested_path.to_string(),
+            },
+            git::GitFetchError::RemoteAmbiguous => FsError::GitRemoteAmbiguous {
+                path: requested_path.to_string(),
+            },
+            git::GitFetchError::RemoteHeadUnavailable { remote } => {
+                FsError::GitRemoteHeadUnavailable { remote }
+            }
+            git::GitFetchError::FetchFailed { remote, branch } => {
+                FsError::GitFetchFailed { remote, branch }
+            }
+            git::GitFetchError::RelationshipUnavailable => FsError::GitCommandFailed {
+                action: "compare the fetched branch",
+                path: requested_path.to_string(),
+            },
+        })?;
+
+        Ok(GitFetchResponse {
+            repository: repository_info,
+            remote: fetched.remote,
+            branch: fetched.branch,
+            reference: fetched.reference,
+            ahead: fetched.ahead,
+            behind: fetched.behind,
         })
     }
 
