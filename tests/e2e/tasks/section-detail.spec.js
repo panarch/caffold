@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("selects a Section and opens fixed-directory Task creation", async ({ page }) => {
+test("selects a Section and opens fixed-directory Task creation", { tag: "@all-viewports" }, async ({ page }) => {
   await installEventSourceMock(page);
   await mockCodexModels(page);
   const task = {
@@ -74,7 +74,7 @@ test("selects a Section and opens fixed-directory Task creation", async ({ page 
   await expect(detail.locator("caffold-detail-view-switch")).toBeHidden();
 });
 
-test("returns a missing Section route to Tasks home", async ({ page }) => {
+test("returns a missing Section route to Tasks home", { tag: "@all-viewports" }, async ({ page }) => {
   await installEventSourceMock(page);
   await mockCodexModels(page);
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
@@ -88,7 +88,7 @@ test("returns a missing Section route to Tasks home", async ({ page }) => {
   await expect(page).toHaveURL("/");
 });
 
-test("keeps a repository Section draft while switching shared surfaces", async ({ page }) => {
+test("keeps a repository Section draft while switching shared surfaces", { tag: "@all-viewports" }, async ({ page }) => {
   await installEventSourceMock(page);
   await mockCodexModels(page);
   const task = {
@@ -172,7 +172,7 @@ test("keeps a repository Section draft while switching shared surfaces", async (
   await expect(prompt).toHaveValue("Preserve this Section draft");
 });
 
-test("replaces the New Task context when a selected Section path changes", async ({
+test("replaces the New Task context when a selected Section path changes", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installEventSourceMock(page);
@@ -234,7 +234,7 @@ test("replaces the New Task context when a selected Section path changes", async
   ).toBe("tests/fixtures/other");
 });
 
-test("clears shared repository context when the selected Section loses capability", async ({
+test("clears shared repository context when the selected Section loses capability", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, { registryKey: "__sectionDetailWatchSources" });

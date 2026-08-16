@@ -93,7 +93,7 @@ test.beforeEach(async ({ context, page }) => {
 });
 
 for (const [state, heading, navigatorMessage] of BLOCKING_STATES) {
-  test(`shows the canonical ${state} Task setup surface`, async ({ page }) => {
+  test(`shows the canonical ${state} Task setup surface`, { tag: "@all-viewports" }, async ({ page }) => {
     let taskRequests = 0;
     const cached = cachedTask();
     await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
@@ -169,7 +169,7 @@ for (const [state, heading, navigatorMessage] of BLOCKING_STATES) {
   });
 }
 
-test("identifies a standalone install without required daemon commands", async ({ page }) => {
+test("identifies a standalone install without required daemon commands", { tag: "@all-viewports" }, async ({ page }) => {
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -194,7 +194,7 @@ test("identifies a standalone install without required daemon commands", async (
   await expect(setup).toContainText("official standalone Codex CLI");
 });
 
-test("keeps the stable Task shell while readiness is checking", async ({ page }, testInfo) => {
+test("keeps the stable Task shell while readiness is checking", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   let releaseStatus;
   const statusGate = new Promise((resolve) => {
     releaseStatus = resolve;
@@ -255,7 +255,7 @@ test("keeps the stable Task shell while readiness is checking", async ({ page },
   await expect(newTask).toHaveAttribute("title", "New Task");
 });
 
-test("waits for explicit route activation when readiness settles first", async ({ page }) => {
+test("waits for explicit route activation when readiness settles first", { tag: "@all-viewports" }, async ({ page }) => {
   await page.goto("/");
 
   const routeOpens = await page.evaluate(async (status) => {
@@ -286,7 +286,7 @@ test("waits for explicit route activation when readiness settles first", async (
   });
 });
 
-test("a readiness load failure is not presented as a setup requirement", async ({ page }) => {
+test("a readiness load failure is not presented as a setup requirement", { tag: "@all-viewports" }, async ({ page }) => {
   let taskRequests = 0;
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
@@ -323,7 +323,7 @@ test("a readiness load failure is not presented as a setup requirement", async (
   await expect.poll(() => taskRequests).toBe(1);
 });
 
-test("a failed Task-store migration has its own explicit retry lifecycle", async ({
+test("a failed Task-store migration has its own explicit retry lifecycle", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   let retryRequests = 0;
@@ -362,7 +362,7 @@ test("a failed Task-store migration has its own explicit retry lifecycle", async
   await expect(page.locator("caffold-task-new textarea")).toBeEnabled();
 });
 
-test("Codex remains the visible cause while migration waits for it", async ({
+test("Codex remains the visible cause while migration waits for it", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const cached = cachedTask("thread_cached_waiting_migration");
@@ -395,7 +395,7 @@ test("Codex remains the visible cause while migration waits for it", async ({
   ).toContainText("Cached Task identity");
 });
 
-test("Retry transitions from setup into the ready Task surface", async ({ page }) => {
+test("Retry transitions from setup into the ready Task surface", { tag: "@all-viewports" }, async ({ page }) => {
   let ready = false;
   let taskRequests = 0;
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
@@ -425,7 +425,7 @@ test("Retry transitions from setup into the ready Task surface", async ({ page }
   await expect.poll(() => taskRequests).toBeGreaterThan(0);
 });
 
-test("restarts a stale Codex runtime directly from Task setup", async ({ page }) => {
+test("restarts a stale Codex runtime directly from Task setup", { tag: "@all-viewports" }, async ({ page }) => {
   let restarted = false;
   let restartRequests = 0;
   let taskRequests = 0;
@@ -496,7 +496,7 @@ test("restarts a stale Codex runtime directly from Task setup", async ({ page })
   await expect.poll(() => taskRequests).toBeGreaterThan(0);
 });
 
-test("a blocking transition releases the Task list and disables existing actions", async ({
+test("a blocking transition releases the Task list and disables existing actions", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installEventSourceMock(page, {
@@ -595,7 +595,7 @@ test("a blocking transition releases the Task list and disables existing actions
   expect(mutationRequests).toEqual([]);
 });
 
-test("Settings stays reachable while Codex setup blocks Tasks", async ({ page }) => {
+test("Settings stays reachable while Codex setup blocks Tasks", { tag: "@all-viewports" }, async ({ page }) => {
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -611,7 +611,7 @@ test("Settings stays reachable while Codex setup blocks Tasks", async ({ page })
   await expect(page.locator("caffold-settings-codex-page")).toContainText("Sign-in required");
 });
 
-test("a backend-declared nonblocking restart state keeps Tasks usable", async ({ page }) => {
+test("a backend-declared nonblocking restart state keeps Tasks usable", { tag: "@all-viewports" }, async ({ page }) => {
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -665,7 +665,7 @@ test("a backend-declared nonblocking restart state keeps Tasks usable", async ({
   )).toBe("none");
 });
 
-test("Codex attention remains visible without motion", async ({ page }) => {
+test("Codex attention remains visible without motion", { tag: "@all-viewports" }, async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
@@ -694,7 +694,7 @@ test("Codex attention remains visible without motion", async ({ page }) => {
   });
 });
 
-test("the setup card reflows without horizontal overflow", async ({ page }, testInfo) => {
+test("the setup card reflows without horizontal overflow", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -713,7 +713,7 @@ test("the setup card reflows without horizontal overflow", async ({ page }, test
   await captureReviewScreenshot(page, testInfo, "codex-readiness-update-required");
 });
 
-test("consumes the real backend readiness contract and gates Task creation", async ({ page }) => {
+test("consumes the real backend readiness contract and gates Task creation", { tag: "@all-viewports" }, async ({ page }) => {
   await page.unroute(/\/api\/codex\/status(?:\?|$)/);
 
   await page.goto("/");

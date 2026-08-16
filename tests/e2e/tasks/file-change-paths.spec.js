@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("renders managed Task file changes relative in live cards and Work details", async ({
+test("renders managed Task file changes relative in live cards and Work details", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, {

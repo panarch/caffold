@@ -21,7 +21,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("raw active flags prioritize approval over user input", async ({ page }) => {
+test("raw active flags prioritize approval over user input", { tag: "@all-viewports" }, async ({ page }) => {
   await installTaskApiFixture(page);
   const detail = taskDetailFixture({ running: true });
   detail.task.threadStatus.activeFlags = [
@@ -45,7 +45,7 @@ test("raw active flags prioritize approval over user input", async ({ page }) =>
   );
 });
 
-test("active task without a canonical turn keeps a disabled composer Stop action", async ({
+test("active task without a canonical turn keeps a disabled composer Stop action", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -79,13 +79,9 @@ test("active task without a canonical turn keeps a disabled composer Stop action
   await expect(active.locator(".task-turn-active-duration")).toHaveText("Working");
 });
 
-test("keeps the composer Stop action stable while an interrupt request is pending", async ({
+test("keeps the composer Stop action stable while an interrupt request is pending", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "Interrupt request state is viewport-independent",
-  );
   await installTaskApiFixture(page);
   const runningDetail = taskDetailFixture({ running: true });
   const stoppedDetail = taskDetailFixture();
@@ -129,7 +125,7 @@ test("keeps the composer Stop action stable while an interrupt request is pendin
   await expect(primaryAction).toBeEnabled();
 });
 
-test("updates stable detail regions and preserves an active IME composition", async ({
+test("updates stable detail regions and preserves an active IME composition", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -342,7 +338,7 @@ test("updates stable detail regions and preserves an active IME composition", as
     .toBe(true);
 });
 
-test("loading detail accepts a canonical task sync without a synthetic task", async ({
+test("loading detail accepts a canonical task sync without a synthetic task", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -446,7 +442,7 @@ test("loading detail accepts a canonical task sync without a synthetic task", as
   ).toHaveCount(0);
 });
 
-test("recovers task detail and prompt submission across bootstrap races", async ({
+test("recovers task detail and prompt submission across bootstrap races", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -684,7 +680,7 @@ test("recovers task detail and prompt submission across bootstrap races", async 
     },
   ]);
 });
-test("keeps task context and retries after an initial detail timeout", async ({
+test("keeps task context and retries after an initial detail timeout", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -764,13 +760,9 @@ test("keeps task context and retries after an initial detail timeout", async ({
   await expect(tasksPage).toContainText("Recovered canonical response.");
   await expect(tasksPage.locator(".task-detail-load-error")).toHaveCount(0);
 });
-test("preserves stable detail children through another task load failure", async ({
+test("preserves stable detail children through another task load failure", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "Wide master-detail lifecycle regression",
-  );
   await installTaskApiFixture(page);
   await page.unroute("**/api/tasks");
 
@@ -940,13 +932,9 @@ test("preserves stable detail children through another task load failure", async
     tasksPage.locator('[data-stable-child="composer"]'),
   ).toHaveCount(1);
 });
-test("keeps one Composer and its image draft per thread with a bounded clean inactive cache", async ({
+test("keeps one Composer and its image draft per thread with a bounded clean inactive cache", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "Wide master-detail Composer ownership regression",
-  );
   await installTaskApiFixture(page);
   await page.unroute("**/api/tasks");
 
@@ -1202,7 +1190,7 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
   await expect(attachment).toHaveCount(0);
 });
 
-test("keeps prompt, interrupt, and approval request errors with their owning controls", async ({
+test("keeps prompt, interrupt, and approval request errors with their owning controls", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
@@ -1330,13 +1318,9 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
   });
 });
 
-test("canonical stream sync clears errors and reconciles prompts without trusting older history", async ({
+test("canonical stream sync clears errors and reconciles prompts without trusting older history", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "Detail refresh ownership regression",
-  );
   await installTaskApiFixture(page);
   const promptText = "Reconcile this prompt from the canonical refresh";
   const initialDetail = taskDetailFixture({
@@ -1484,13 +1468,9 @@ test("canonical stream sync clears errors and reconciles prompts without trustin
   releasePrompt();
 });
 
-test("canonical action responses reject foreign tasks and preserve history cursors", async ({
+test("canonical action responses reject foreign tasks and preserve history cursors", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "Detail action response ownership regression",
-  );
   await installTaskApiFixture(page);
   const initialDetail = taskDetailFixture({
     running: true,
@@ -1571,7 +1551,7 @@ test("canonical action responses reject foreign tasks and preserve history curso
     });
 });
 
-test("accepts canonical task detail after stream revisions restart", async ({ page }) => {
+test("accepts canonical task detail after stream revisions restart", { tag: "@all-viewports" }, async ({ page }) => {
   await page.addInitScript(() => {
     window.__taskEventSources = [];
     window.EventSource = class MockEventSource {
@@ -1742,7 +1722,7 @@ test("accepts canonical task detail after stream revisions restart", async ({ pa
   await expect(tasksPage.locator(".task-detail-loading")).toHaveCount(0);
 });
 
-test("reconciles a canonical final answer over a retained transient item after reconnect", async ({
+test("reconciles a canonical final answer over a retained transient item after reconnect", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const registryKey = "__canonicalItemRecoverySources";
@@ -1894,7 +1874,7 @@ test("reconciles a canonical final answer over a retained transient item after r
   ).toHaveCount(0);
 });
 
-test("accepts canonical task sync after stream revisions restart", async ({ page }) => {
+test("accepts canonical task sync after stream revisions restart", { tag: "@all-viewports" }, async ({ page }) => {
   await page.addInitScript(() => {
     window.EventSource = class MockEventSource {
       constructor(url) {
@@ -2012,10 +1992,9 @@ test("accepts canonical task sync after stream revisions restart", async ({ page
   });
   await expect(row).toHaveAttribute("data-task-status", "idle");
 });
-test("opens a running conversation at the latest message from the stream bootstrap", async ({
+test("opens a running conversation at the latest message from the stream bootstrap", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Conversation reload scroll regression");
   await page.addInitScript(() => {
     window.__taskEventSources = [];
     window.EventSource = class MockEventSource {
@@ -2118,7 +2097,7 @@ test("opens a running conversation at the latest message from the stream bootstr
   expect(detailReads).toBe(0);
   await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
 });
-test("makes disconnected task state unavailable and reconciles an uncertain prompt", async ({
+test("makes disconnected task state unavailable and reconciles an uncertain prompt", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await page.addInitScript(() => {

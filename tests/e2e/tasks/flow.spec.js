@@ -15,7 +15,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("opens global Tasks without local registry state", async ({ page }, testInfo) => {
+test("opens global Tasks without local registry state", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   await installEventSourceMock(page);
   await mockCodexModels(page);
 
@@ -577,7 +577,7 @@ test("opens global Tasks without local registry state", async ({ page }, testInf
     "conversation",
   );
 });
-test("runs a minimal task from creation through follow-up", async ({ page }) => {
+test("runs a minimal task from creation through follow-up", { tag: "@all-viewports" }, async ({ page }) => {
   const scenario = await installTaskLoopFixture(page);
   await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
 

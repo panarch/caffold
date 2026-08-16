@@ -321,7 +321,7 @@ async function rootTreeNames(tree) {
     .allTextContents();
 }
 
-test("applies the global ordering to Compare and Commit without refetching", async ({
+test("applies the global ordering to Compare and Commit without refetching", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const counts = await installTaskGitFixture(page);
@@ -364,7 +364,7 @@ test("applies the global ordering to Compare and Commit without refetching", asy
   expect(counts.commit).toBe(1);
 });
 
-test("reloads Task-scoped Compare and releases its refs watch while inactive", async ({ page }) => {
+test("reloads Task-scoped Compare and releases its refs watch while inactive", { tag: "@all-viewports" }, async ({ page }) => {
   const counts = await installTaskGitFixture(page);
   const compareUrl =
     `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview`;
@@ -490,7 +490,7 @@ test("reloads Task-scoped Compare and releases its refs watch while inactive", a
   await expect.poll(() => counts.compare).toBe(3);
 });
 
-test("reloads Section-scoped Log from the Section repository context", async ({
+test("reloads Section-scoped Log from the Section repository context", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const counts = await installTaskGitFixture(page);
@@ -524,7 +524,7 @@ test("reloads Section-scoped Log from the Section repository context", async ({
   expect(counts.log).toBe(1);
 });
 
-test("keeps the loaded Git route stable across unrelated Task stream updates", async ({
+test("keeps the loaded Git route stable across unrelated Task stream updates", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const counts = await installTaskGitFixture(page);
@@ -540,7 +540,7 @@ test("keeps the loaded Git route stable across unrelated Task stream updates", a
   expect(counts.log).toBe(1);
 });
 
-test("navigates Compare files and Log commits with deterministic domain Back", async ({ page }) => {
+test("navigates Compare files and Log commits with deterministic domain Back", { tag: "@all-viewports" }, async ({ page }) => {
   await installTaskGitFixture(page);
   await page.goto(
     `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview`,
@@ -650,7 +650,7 @@ test("navigates Compare files and Log commits with deterministic domain Back", a
   await expect(page.locator("caffold-git-log-list-page")).toBeVisible();
 });
 
-test("keeps long Log metadata inside the two-row header", async ({ page }) => {
+test("keeps long Log metadata inside the two-row header", { tag: "@all-viewports" }, async ({ page }) => {
   const longBranch =
     "feature/git-log-remote-status-with-an-inconveniently-long-local-branch-name";
   const longRemoteBranch =
@@ -696,7 +696,7 @@ test("keeps long Log metadata inside the two-row header", async ({ page }) => {
   });
 });
 
-test("fetches remote Log status only on explicit request and retains settled status on re-entry", async ({
+test("fetches remote Log status only on explicit request and retains settled status on re-entry", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const counts = await installTaskGitFixture(page);
@@ -737,7 +737,7 @@ test("fetches remote Log status only on explicit request and retains settled sta
   expect(counts.fetch).toBe(1);
 });
 
-test("keeps an in-flight Fetch isolated across Git route re-entry", async ({ page }) => {
+test("keeps an in-flight Fetch isolated across Git route re-entry", { tag: "@all-viewports" }, async ({ page }) => {
   const counts = await installTaskGitFixture(page);
   await page.goto(`/tasks/${THREAD_ID}/git/log`);
 
@@ -802,7 +802,7 @@ test("keeps an in-flight Fetch isolated across Git route re-entry", async ({ pag
   ).toBeEnabled();
 });
 
-test("clears fetched relationship when the local branch changes", async ({ page }) => {
+test("clears fetched relationship when the local branch changes", { tag: "@all-viewports" }, async ({ page }) => {
   const counts = await installTaskGitFixture(page);
   await page.goto(`/tasks/${THREAD_ID}/git/log`);
 
@@ -820,7 +820,7 @@ test("clears fetched relationship when the local branch changes", async ({ page 
   await expect(fetch).toHaveAccessibleName("Fetch remote default branch");
 });
 
-test("connects the Fetch control to the actual backend Git boundary", async ({
+test("connects the Fetch control to the actual backend Git boundary", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const scenario = createFetchScenario(testInfo.project.name);
@@ -853,7 +853,7 @@ test("connects the Fetch control to the actual backend Git boundary", async ({
   }
 });
 
-test("exposes every Git fetch failure through the native Fetch tooltip", async ({ page }) => {
+test("exposes every Git fetch failure through the native Fetch tooltip", { tag: "@all-viewports" }, async ({ page }) => {
   const counts = await installTaskGitFixture(page);
   await page.goto(`/tasks/${THREAD_ID}/git/log`);
 
@@ -871,7 +871,7 @@ test("exposes every Git fetch failure through the native Fetch tooltip", async (
   }
 });
 
-test("deactivates and rebinds the shared Git child when the selected Task changes", async ({ page }) => {
+test("deactivates and rebinds the shared Git child when the selected Task changes", { tag: "@all-viewports" }, async ({ page }) => {
   const other = taskRecord("thread_task_git_other");
   await installTaskGitFixture(page, [taskRecord(), other]);
   await page.goto(`/tasks/${THREAD_ID}/git/log`);
@@ -892,7 +892,7 @@ test("deactivates and rebinds the shared Git child when the selected Task change
   await expect(layout).not.toHaveAttribute("data-active", "true");
 });
 
-test("stops an older Compare activation before it opens a file after a Log route wins", async ({
+test("stops an older Compare activation before it opens a file after a Log route wins", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const counts = await installTaskGitFixture(page);

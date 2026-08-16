@@ -126,6 +126,23 @@ async fn inspect_codex_installation_from(
     home: Option<&Path>,
     platform_paths: &[PathBuf],
 ) -> Result<CodexInstallation, CodexReadiness> {
+    inspect_codex_installation_from_with_probe(
+        explicit,
+        search_path,
+        home,
+        platform_paths,
+        &ProcessCodexProbe,
+    )
+    .await
+}
+
+async fn inspect_codex_installation_from_with_probe(
+    explicit: Option<&OsStr>,
+    search_path: Option<&OsStr>,
+    home: Option<&Path>,
+    platform_paths: &[PathBuf],
+    probe: &impl CodexProbe,
+) -> Result<CodexInstallation, CodexReadiness> {
     match discover_codex(explicit, search_path, home, platform_paths) {
         DiscoveredCodex::Missing => Err(CodexReadiness::blocking(
             CodexReadinessState::Missing,
@@ -146,7 +163,7 @@ async fn inspect_codex_installation_from(
             ))
         }
         DiscoveredCodex::Unsupported(path) => {
-            let version = probe_codex_version(&path).await.ok();
+            let version = probe.version(&path).await.ok();
             let executable = executable_info(&path, version);
             Err(CodexReadiness::blocking(
                 CodexReadinessState::UnsupportedInstall,
@@ -159,7 +176,7 @@ async fn inspect_codex_installation_from(
             ))
         }
         DiscoveredCodex::Supported(path) => {
-            let version = match probe_codex_version(&path).await {
+            let version = match probe.version(&path).await {
                 Ok(version) => version,
                 Err(VersionProbeError::CommandFailed(message)) => {
                     return Err(CodexReadiness::blocking(
@@ -192,7 +209,7 @@ async fn inspect_codex_installation_from(
                     Some(executable),
                 ));
             }
-            if let Err(error) = probe_required_app_server_commands(&path).await {
+            if let Err(error) = probe_required_app_server_commands(probe, &path).await {
                 let (state, reason_code) = match &error {
                     CapabilityProbeError::Unavailable(_) => (
                         CodexReadinessState::UnsupportedInstall,
@@ -286,6 +303,32 @@ enum VersionProbeError {
     Malformed(String),
 }
 
+trait CodexProbe {
+    async fn version(&self, path: &Path) -> Result<String, VersionProbeError>;
+
+    async fn app_server_command(
+        &self,
+        path: &Path,
+        subcommand: &'static str,
+    ) -> Result<(), CapabilityProbeError>;
+}
+
+struct ProcessCodexProbe;
+
+impl CodexProbe for ProcessCodexProbe {
+    async fn version(&self, path: &Path) -> Result<String, VersionProbeError> {
+        probe_codex_version(path).await
+    }
+
+    async fn app_server_command(
+        &self,
+        path: &Path,
+        subcommand: &'static str,
+    ) -> Result<(), CapabilityProbeError> {
+        probe_app_server_command(path, subcommand).await
+    }
+}
+
 async fn probe_codex_version(path: &Path) -> Result<String, VersionProbeError> {
     let output = timeout(
         VERSION_PROBE_TIMEOUT,
@@ -352,40 +395,52 @@ impl CapabilityProbeError {
     }
 }
 
-async fn probe_required_app_server_commands(path: &Path) -> Result<(), CapabilityProbeError> {
+async fn probe_required_app_server_commands(
+    probe: &impl CodexProbe,
+    path: &Path,
+) -> Result<(), CapabilityProbeError> {
     for subcommand in REQUIRED_APP_SERVER_COMMANDS {
-        let status = timeout(
-            CAPABILITY_PROBE_TIMEOUT,
-            Command::new(path)
-                .arg("app-server")
-                .arg(subcommand)
-                .arg("--help")
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .kill_on_drop(true)
-                .status(),
-        )
-        .await
-        .map_err(|_| CapabilityProbeError::CheckFailed(
-            format!(
-                "Timed out while checking the required Codex app-server {subcommand} command at {}.",
-                path.display()
-            )
-        ))?
-        .map_err(|error| CapabilityProbeError::CheckFailed(
-            format!(
-                "Failed to check the required Codex app-server {subcommand} command at {}: {error}",
-                path.display()
-            )
-        ))?;
+        probe.app_server_command(path, subcommand).await?;
+    }
 
-        if !status.success() {
-            return Err(CapabilityProbeError::Unavailable(format!(
-                "The Codex installation at {} does not provide the required app-server {subcommand} command.",
-                path.display()
-            )));
-        }
+    Ok(())
+}
+
+async fn probe_app_server_command(
+    path: &Path,
+    subcommand: &'static str,
+) -> Result<(), CapabilityProbeError> {
+    let status = timeout(
+        CAPABILITY_PROBE_TIMEOUT,
+        Command::new(path)
+            .arg("app-server")
+            .arg(subcommand)
+            .arg("--help")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .status(),
+    )
+    .await
+    .map_err(|_| {
+        CapabilityProbeError::CheckFailed(format!(
+            "Timed out while checking the required Codex app-server {subcommand} command at {}.",
+            path.display()
+        ))
+    })?
+    .map_err(|error| {
+        CapabilityProbeError::CheckFailed(format!(
+            "Failed to check the required Codex app-server {subcommand} command at {}: {error}",
+            path.display()
+        ))
+    })?;
+
+    if !status.success() {
+        return Err(CapabilityProbeError::Unavailable(format!(
+            "The Codex installation at {} does not provide the required app-server {subcommand} command.",
+            path.display()
+        )));
     }
 
     Ok(())
@@ -417,9 +472,108 @@ fn executable_info(path: &Path, version: Option<String>) -> CodexExecutableInfo 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
 
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+
+    #[derive(Debug, Clone, Copy)]
+    enum ScriptedVersion {
+        Supported(&'static str),
+        CommandFailed(&'static str),
+        Malformed(&'static str),
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    enum ScriptedCapability {
+        Supported,
+        Unavailable(&'static str),
+        CheckFailed(&'static str),
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum ProbeCall {
+        Version,
+        AppServerCommand(&'static str),
+    }
+
+    struct ScriptedCodexProbe {
+        version: ScriptedVersion,
+        daemon: ScriptedCapability,
+        proxy: ScriptedCapability,
+        calls: RefCell<Vec<ProbeCall>>,
+    }
+
+    impl ScriptedCodexProbe {
+        fn supported(version: &'static str) -> Self {
+            Self {
+                version: ScriptedVersion::Supported(version),
+                daemon: ScriptedCapability::Supported,
+                proxy: ScriptedCapability::Supported,
+                calls: RefCell::new(Vec::new()),
+            }
+        }
+
+        fn with_version(version: ScriptedVersion) -> Self {
+            Self {
+                version,
+                ..Self::supported("0.147.0")
+            }
+        }
+
+        fn with_daemon(mut self, daemon: ScriptedCapability) -> Self {
+            self.daemon = daemon;
+            self
+        }
+
+        fn with_proxy(mut self, proxy: ScriptedCapability) -> Self {
+            self.proxy = proxy;
+            self
+        }
+
+        fn calls(&self) -> Vec<ProbeCall> {
+            self.calls.borrow().clone()
+        }
+    }
+
+    impl CodexProbe for ScriptedCodexProbe {
+        async fn version(&self, _path: &Path) -> Result<String, VersionProbeError> {
+            self.calls.borrow_mut().push(ProbeCall::Version);
+            match self.version {
+                ScriptedVersion::Supported(version) => Ok(version.to_string()),
+                ScriptedVersion::CommandFailed(message) => {
+                    Err(VersionProbeError::CommandFailed(message.to_string()))
+                }
+                ScriptedVersion::Malformed(output) => {
+                    Err(VersionProbeError::Malformed(output.to_string()))
+                }
+            }
+        }
+
+        async fn app_server_command(
+            &self,
+            _path: &Path,
+            subcommand: &'static str,
+        ) -> Result<(), CapabilityProbeError> {
+            self.calls
+                .borrow_mut()
+                .push(ProbeCall::AppServerCommand(subcommand));
+            let outcome = match subcommand {
+                "daemon" => self.daemon,
+                "proxy" => self.proxy,
+                _ => panic!("unexpected app-server command: {subcommand}"),
+            };
+            match outcome {
+                ScriptedCapability::Supported => Ok(()),
+                ScriptedCapability::Unavailable(message) => {
+                    Err(CapabilityProbeError::Unavailable(message.to_string()))
+                }
+                ScriptedCapability::CheckFailed(message) => {
+                    Err(CapabilityProbeError::CheckFailed(message.to_string()))
+                }
+            }
+        }
+    }
 
     #[test]
     fn readiness_reason_codes_serialize_as_the_stable_wire_contract() {
@@ -495,26 +649,11 @@ mod tests {
     }
 
     #[cfg(unix)]
-    fn write_executable(path: &Path, body: &str) {
-        std::fs::write(path, format!("#!/bin/sh\n{body}\n")).expect("write executable fixture");
+    fn write_executable_marker(path: &Path) {
+        std::fs::write(path, "fixture selected by discovery tests\n")
+            .expect("write executable marker");
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
-            .expect("mark fixture executable");
-    }
-
-    #[cfg(unix)]
-    fn write_supported_executable(path: &Path, version: &str) {
-        write_executable(
-            path,
-            &format!(
-                concat!(
-                    "if [ \"$1\" = \"--version\" ]; then echo 'codex-cli {}'; exit 0; fi; ",
-                    "if [ \"$1 $3\" = \"app-server --help\" ] && ",
-                    "{{ [ \"$2\" = \"daemon\" ] || [ \"$2\" = \"proxy\" ]; }}; then exit 0; fi; ",
-                    "exit 2"
-                ),
-                version
-            ),
-        );
+            .expect("mark discovery fixture executable");
     }
 
     #[test]
@@ -548,20 +687,30 @@ mod tests {
         std::fs::create_dir_all(&home_bin).expect("create standalone bin");
         let standalone = home_bin.join("codex");
         let explicit = temp.path().join("override-codex");
-        write_supported_executable(&standalone, "0.148.0");
-        write_supported_executable(&explicit, "0.147.0");
+        write_executable_marker(&standalone);
+        write_executable_marker(&explicit);
+        let probe = ScriptedCodexProbe::supported("0.147.0");
 
-        let installation = inspect_codex_installation_from(
+        let installation = inspect_codex_installation_from_with_probe(
             Some(explicit.as_os_str()),
             None,
             Some(temp.path()),
             &[],
+            &probe,
         )
         .await
         .expect("explicit override is eligible");
 
         assert_eq!(installation.path, explicit);
         assert_eq!(installation.executable.version.as_deref(), Some("0.147.0"));
+        assert_eq!(
+            probe.calls(),
+            [
+                ProbeCall::Version,
+                ProbeCall::AppServerCommand("daemon"),
+                ProbeCall::AppServerCommand("proxy")
+            ]
+        );
     }
 
     #[cfg(unix)]
@@ -574,20 +723,30 @@ mod tests {
         std::fs::create_dir(&path_bin).expect("create PATH bin");
         let standalone = home_bin.join("codex");
         let path_codex = path_bin.join("codex");
-        write_supported_executable(&standalone, "0.147.0");
-        write_executable(&path_codex, "echo 'codex-cli 9.0.0'");
+        write_executable_marker(&standalone);
+        write_executable_marker(&path_codex);
         let search_path = env::join_paths([&path_bin]).expect("join PATH");
+        let probe = ScriptedCodexProbe::supported("0.147.0");
 
-        let installation = inspect_codex_installation_from(
+        let installation = inspect_codex_installation_from_with_probe(
             None,
             Some(search_path.as_os_str()),
             Some(temp.path()),
             &[],
+            &probe,
         )
         .await
         .expect("standalone install is eligible");
 
         assert_eq!(installation.path, standalone);
+        assert_eq!(
+            probe.calls(),
+            [
+                ProbeCall::Version,
+                ProbeCall::AppServerCommand("daemon"),
+                ProbeCall::AppServerCommand("proxy")
+            ]
+        );
     }
 
     #[cfg(unix)]
@@ -597,22 +756,26 @@ mod tests {
         let path_bin = temp.path().join("path-bin");
         std::fs::create_dir(&path_bin).expect("create PATH bin");
         let path_codex = path_bin.join("codex");
-        write_executable(&path_codex, "echo 'codex-cli 0.200.0'");
+        write_executable_marker(&path_codex);
         let search_path = env::join_paths([&path_bin]).expect("join PATH");
+        let probe = ScriptedCodexProbe::supported("0.200.0");
 
-        let readiness = inspect_codex_installation_from(
+        let readiness = inspect_codex_installation_from_with_probe(
             None,
             Some(search_path.as_os_str()),
             Some(temp.path()),
             &[],
+            &probe,
         )
         .await
-        .expect_err("PATH install must not be launched");
+        .expect_err("PATH install must remain diagnostic-only");
 
-        assert_eq!(readiness.state, CodexReadinessState::UnsupportedInstall);
         assert_eq!(
-            readiness.reason_code,
-            CodexReadinessReason::UnsupportedPathInstall
+            (readiness.state, readiness.reason_code),
+            (
+                CodexReadinessState::UnsupportedInstall,
+                CodexReadinessReason::UnsupportedPathInstall
+            )
         );
         assert_eq!(
             readiness
@@ -621,21 +784,61 @@ mod tests {
                 .and_then(|value| value.path.as_deref()),
             path_codex.to_str()
         );
+        assert_eq!(
+            readiness
+                .detected_executable
+                .as_ref()
+                .and_then(|value| value.version.as_deref()),
+            Some("0.200.0")
+        );
+        assert_eq!(probe.calls(), [ProbeCall::Version]);
     }
 
     #[tokio::test]
     async fn reports_missing_when_no_supported_or_diagnostic_candidate_exists() {
         let temp = tempfile::tempdir().expect("temporary Codex fixture");
-        let readiness = inspect_codex_installation_from(None, None, Some(temp.path()), &[])
-            .await
-            .expect_err("missing standalone install");
+        let probe = ScriptedCodexProbe::supported("0.147.0");
+        let readiness =
+            inspect_codex_installation_from_with_probe(None, None, Some(temp.path()), &[], &probe)
+                .await
+                .expect_err("missing standalone install");
 
-        assert_eq!(readiness.state, CodexReadinessState::Missing);
         assert_eq!(
-            readiness.reason_code,
-            CodexReadinessReason::OfficialStandaloneNotFound
+            (readiness.state, readiness.reason_code),
+            (
+                CodexReadinessState::Missing,
+                CodexReadinessReason::OfficialStandaloneNotFound
+            )
         );
         assert!(readiness.detected_executable.is_none());
+        assert!(probe.calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn invalid_override_is_rejected_without_running_a_probe() {
+        let temp = tempfile::tempdir().expect("temporary Codex fixture");
+        let missing = temp.path().join("missing-codex");
+        let probe = ScriptedCodexProbe::supported("0.147.0");
+
+        let readiness = inspect_codex_installation_from_with_probe(
+            Some(missing.as_os_str()),
+            None,
+            None,
+            &[],
+            &probe,
+        )
+        .await
+        .expect_err("invalid override must be rejected");
+
+        assert_eq!(
+            (readiness.state, readiness.reason_code),
+            (
+                CodexReadinessState::Error,
+                CodexReadinessReason::OverrideNotExecutable
+            )
+        );
+        assert!(readiness.diagnostic_message.contains("missing-codex"));
+        assert!(probe.calls().is_empty());
     }
 
     #[cfg(unix)]
@@ -644,17 +847,51 @@ mod tests {
         let temp = tempfile::tempdir().expect("temporary Codex fixture");
         let home_bin = temp.path().join(".local/bin");
         std::fs::create_dir_all(&home_bin).expect("create standalone bin");
-        write_executable(&home_bin.join("codex"), "echo 'codex-cli unknown'");
+        write_executable_marker(&home_bin.join("codex"));
+        let probe =
+            ScriptedCodexProbe::with_version(ScriptedVersion::Malformed("codex-cli unknown"));
 
-        let readiness = inspect_codex_installation_from(None, None, Some(temp.path()), &[])
-            .await
-            .expect_err("malformed version must be rejected");
+        let readiness =
+            inspect_codex_installation_from_with_probe(None, None, Some(temp.path()), &[], &probe)
+                .await
+                .expect_err("malformed version must be rejected");
 
-        assert_eq!(readiness.state, CodexReadinessState::UnsupportedInstall);
         assert_eq!(
-            readiness.reason_code,
-            CodexReadinessReason::VersionOutputMalformed
+            (readiness.state, readiness.reason_code),
+            (
+                CodexReadinessState::UnsupportedInstall,
+                CodexReadinessReason::VersionOutputMalformed
+            )
         );
+        assert!(readiness.diagnostic_message.contains("codex-cli unknown"));
+        assert_eq!(probe.calls(), [ProbeCall::Version]);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn version_command_failure_is_an_unsupported_install() {
+        let temp = tempfile::tempdir().expect("temporary Codex fixture");
+        let home_bin = temp.path().join(".local/bin");
+        std::fs::create_dir_all(&home_bin).expect("create standalone bin");
+        write_executable_marker(&home_bin.join("codex"));
+        let probe = ScriptedCodexProbe::with_version(ScriptedVersion::CommandFailed(
+            "scripted version failure",
+        ));
+
+        let readiness =
+            inspect_codex_installation_from_with_probe(None, None, Some(temp.path()), &[], &probe)
+                .await
+                .expect_err("failed version command must be rejected");
+
+        assert_eq!(
+            (readiness.state, readiness.reason_code),
+            (
+                CodexReadinessState::UnsupportedInstall,
+                CodexReadinessReason::VersionCommandFailed
+            )
+        );
+        assert_eq!(readiness.diagnostic_message, "scripted version failure");
+        assert_eq!(probe.calls(), [ProbeCall::Version]);
     }
 
     #[cfg(unix)]
@@ -663,29 +900,24 @@ mod tests {
         let temp = tempfile::tempdir().expect("temporary Codex fixture");
         let home_bin = temp.path().join(".local/bin");
         std::fs::create_dir_all(&home_bin).expect("create standalone bin");
-        let marker = temp.path().join("daemon-invoked");
         let codex = home_bin.join("codex");
-        write_executable(
-            &codex,
-            &format!(
-                "if [ \"$1\" = \"--version\" ]; then echo 'codex-cli 0.146.9'; else touch '{}'; fi",
-                marker.display()
-            ),
-        );
+        write_executable_marker(&codex);
+        let probe = ScriptedCodexProbe::supported("0.146.9");
 
-        let readiness = inspect_codex_installation_from(None, None, Some(temp.path()), &[])
-            .await
-            .expect_err("outdated version must be rejected");
+        let readiness =
+            inspect_codex_installation_from_with_probe(None, None, Some(temp.path()), &[], &probe)
+                .await
+                .expect_err("outdated version must be rejected");
 
-        assert_eq!(readiness.state, CodexReadinessState::UpdateRequired);
         assert_eq!(
-            readiness.reason_code,
-            CodexReadinessReason::VersionBelowMinimum
+            (readiness.state, readiness.reason_code),
+            (
+                CodexReadinessState::UpdateRequired,
+                CodexReadinessReason::VersionBelowMinimum
+            )
         );
-        assert!(
-            !marker.exists(),
-            "daemon command must not run before the version gate"
-        );
+        assert!(readiness.diagnostic_message.contains("0.146.9"));
+        assert_eq!(probe.calls(), [ProbeCall::Version]);
     }
 
     #[cfg(unix)]
@@ -694,21 +926,28 @@ mod tests {
         let temp = tempfile::tempdir().expect("temporary Codex fixture");
         let home_bin = temp.path().join(".local/bin");
         std::fs::create_dir_all(&home_bin).expect("create standalone bin");
-        write_executable(
-            &home_bin.join("codex"),
-            "if [ \"$1\" = \"--version\" ]; then echo 'codex-cli 0.147.0'; exit 0; fi; exit 2",
+        write_executable_marker(&home_bin.join("codex"));
+        let probe = ScriptedCodexProbe::supported("0.147.0").with_daemon(
+            ScriptedCapability::Unavailable("scripted app-server daemon unavailable"),
         );
 
-        let readiness = inspect_codex_installation_from(None, None, Some(temp.path()), &[])
-            .await
-            .expect_err("standalone without daemon support must be rejected");
+        let readiness =
+            inspect_codex_installation_from_with_probe(None, None, Some(temp.path()), &[], &probe)
+                .await
+                .expect_err("standalone without daemon support must be rejected");
 
-        assert_eq!(readiness.state, CodexReadinessState::UnsupportedInstall);
         assert_eq!(
-            readiness.reason_code,
-            CodexReadinessReason::AppServerCommandsUnavailable
+            (readiness.state, readiness.reason_code),
+            (
+                CodexReadinessState::UnsupportedInstall,
+                CodexReadinessReason::AppServerCommandsUnavailable
+            )
         );
         assert!(readiness.diagnostic_message.contains("app-server daemon"));
+        assert_eq!(
+            probe.calls(),
+            [ProbeCall::Version, ProbeCall::AppServerCommand("daemon")]
+        );
     }
 
     #[cfg(unix)]
@@ -717,25 +956,32 @@ mod tests {
         let temp = tempfile::tempdir().expect("temporary Codex fixture");
         let home_bin = temp.path().join(".local/bin");
         std::fs::create_dir_all(&home_bin).expect("create standalone bin");
-        write_executable(
-            &home_bin.join("codex"),
-            concat!(
-                "if [ \"$1\" = \"--version\" ]; then echo 'codex-cli 0.147.0'; exit 0; fi; ",
-                "if [ \"$1 $2 $3\" = \"app-server daemon --help\" ]; then exit 0; fi; ",
-                "exit 2"
-            ),
+        write_executable_marker(&home_bin.join("codex"));
+        let probe = ScriptedCodexProbe::supported("0.147.0").with_proxy(
+            ScriptedCapability::Unavailable("scripted app-server proxy unavailable"),
         );
 
-        let readiness = inspect_codex_installation_from(None, None, Some(temp.path()), &[])
-            .await
-            .expect_err("standalone without proxy support must be rejected");
+        let readiness =
+            inspect_codex_installation_from_with_probe(None, None, Some(temp.path()), &[], &probe)
+                .await
+                .expect_err("standalone without proxy support must be rejected");
 
-        assert_eq!(readiness.state, CodexReadinessState::UnsupportedInstall);
         assert_eq!(
-            readiness.reason_code,
-            CodexReadinessReason::AppServerCommandsUnavailable
+            (readiness.state, readiness.reason_code),
+            (
+                CodexReadinessState::UnsupportedInstall,
+                CodexReadinessReason::AppServerCommandsUnavailable
+            )
         );
         assert!(readiness.diagnostic_message.contains("app-server proxy"));
+        assert_eq!(
+            probe.calls(),
+            [
+                ProbeCall::Version,
+                ProbeCall::AppServerCommand("daemon"),
+                ProbeCall::AppServerCommand("proxy")
+            ]
+        );
     }
 
     #[cfg(unix)]
@@ -745,19 +991,15 @@ mod tests {
         let home_bin = temp.path().join(".local/bin");
         std::fs::create_dir_all(&home_bin).expect("create standalone bin");
         let codex = home_bin.join("codex");
-        write_executable(
-            &codex,
-            "if [ \"$1\" = \"--version\" ]; then /bin/chmod a-x -- \"$0\"; echo 'codex-cli 0.147.0'; exit 0; fi",
+        write_executable_marker(&codex);
+        let probe = ScriptedCodexProbe::supported("0.147.0").with_daemon(
+            ScriptedCapability::CheckFailed("scripted capability execution failure"),
         );
 
-        let inspection = inspect_codex_installation_from(None, None, Some(temp.path()), &[]).await;
-        assert!(codex.is_file(), "fixture must preserve the executable path");
-        assert!(
-            !is_executable_file(&codex),
-            "fixture must disable the executable before the capability probe"
-        );
-        let readiness = inspection
-            .expect_err("a failed capability check must not imply unsupported capabilities");
+        let readiness =
+            inspect_codex_installation_from_with_probe(None, None, Some(temp.path()), &[], &probe)
+                .await
+                .expect_err("a failed capability check must not imply unsupported capabilities");
 
         assert_eq!(
             (readiness.state, readiness.reason_code),
@@ -766,6 +1008,64 @@ mod tests {
                 CodexReadinessReason::AppServerCapabilityCheckFailed
             )
         );
+        assert_eq!(
+            readiness.diagnostic_message,
+            "scripted capability execution failure"
+        );
+        assert_eq!(
+            probe.calls(),
+            [ProbeCall::Version, ProbeCall::AppServerCommand("daemon")]
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn checked_in_fixture_exercises_the_process_probe_boundary() {
+        let codex = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fake-codex");
+
+        let installation =
+            inspect_codex_installation_from(Some(codex.as_os_str()), None, None, &[])
+                .await
+                .expect("checked-in fixture must satisfy every process probe");
+
+        assert_eq!(installation.path, codex);
+        assert_eq!(installation.executable.version.as_deref(), Some("0.147.0"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn checked_in_fixture_reports_an_unavailable_process_capability() {
+        let codex = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fake-codex");
+
+        let error = probe_app_server_command(&codex, "missing")
+            .await
+            .expect_err("unknown fixture capability must be unavailable");
+
+        let CapabilityProbeError::Unavailable(message) = error else {
+            panic!("non-zero capability exit must remain unavailable");
+        };
+        assert!(message.contains("app-server missing"));
+    }
+
+    #[tokio::test]
+    async fn missing_executable_reports_process_probe_execution_failures() {
+        let missing = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/missing-codex");
+
+        let version_error = probe_codex_version(&missing)
+            .await
+            .expect_err("missing version executable must fail");
+        let VersionProbeError::CommandFailed(version_message) = version_error else {
+            panic!("missing version executable must be a command failure");
+        };
+        assert!(version_message.contains("Failed to read the Codex version"));
+
+        let capability_error = probe_app_server_command(&missing, "daemon")
+            .await
+            .expect_err("missing capability executable must fail");
+        let CapabilityProbeError::CheckFailed(capability_message) = capability_error else {
+            panic!("missing capability executable must be a check failure");
+        };
+        assert!(capability_message.contains("Failed to check the required Codex app-server"));
     }
 
     #[test]

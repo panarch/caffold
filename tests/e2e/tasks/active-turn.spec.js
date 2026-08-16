@@ -17,7 +17,7 @@ test.beforeEach(async ({ page }) => {
   await mockCodexModels(page);
 });
 
-test("preserves active-turn and spinner identity until the turn changes", async ({
+test("preserves active-turn and spinner identity until the turn changes", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const threadId = "thread_active_turn_identity";
@@ -264,7 +264,7 @@ test("preserves active-turn and spinner identity until the turn changes", async 
   await expectActiveTurnIdentity(page, false);
 });
 
-test("does not reuse active-turn state between tasks with the same turn id", async ({
+test("does not reuse active-turn state between tasks with the same turn id", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const sharedTurnId = "turn_shared_between_tasks";

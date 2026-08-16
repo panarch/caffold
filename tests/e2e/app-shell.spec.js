@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("serves one Task workspace shell and only active static assets", async ({
+test("serves one Task workspace shell and only active static assets", { tag: "@all-viewports" }, async ({
   page,
   request,
 }) => {
@@ -75,7 +75,7 @@ test("serves one Task workspace shell and only active static assets", async ({
   expect(serviceWorker).not.toContain("networkFirst");
 });
 
-test("does not serve obsolete standalone application routes", async ({ request }) => {
+test("does not serve obsolete standalone application routes", { tag: "@all-viewports" }, async ({ request }) => {
   for (const route of [
     "/files",
     "/git/diff",
@@ -88,7 +88,7 @@ test("does not serve obsolete standalone application routes", async ({ request }
   }
 });
 
-test("keeps exceptional build mismatch outside application layout", async ({
+test("keeps exceptional build mismatch outside application layout", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await page.goto("/");

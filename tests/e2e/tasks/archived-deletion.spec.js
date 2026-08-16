@@ -51,7 +51,7 @@ async function mockArchivedList(page, tasks) {
   );
 }
 
-test("confirms permanent deletion and removes the archived row only after success", async ({
+test("confirms permanent deletion and removes the archived row only after success", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const task = archivedTask("thread_delete", "Delete archived task");
@@ -120,7 +120,7 @@ test("confirms permanent deletion and removes the archived row only after succes
   await expect(row).toHaveCount(0);
 });
 
-test("offers delete without restore when the archived conversation is unavailable", async ({
+test("offers delete without restore when the archived conversation is unavailable", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const task = archivedTask(

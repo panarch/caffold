@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("keeps the selected Review file identity stable while content loads", async ({
+test("keeps the selected Review file identity stable while content loads", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const { reviewScenario, tasksPage, taskReview } =
@@ -55,7 +55,7 @@ test("keeps the selected Review file identity stable while content loads", async
   await expect(viewer.locator(".viewer-subtitle")).toHaveCount(0);
 });
 
-test("normalizes and compacts shared file-tree statuses", async ({
+test("normalizes and compacts shared file-tree statuses", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const { reviewScenario, tasksPage, taskReview } = await openCompletedTaskForReview(page, {
@@ -221,7 +221,7 @@ test("normalizes and compacts shared file-tree statuses", async ({
   });
 });
 
-test("reviews working tree changes through the canonical Review route", async ({
+test("reviews working tree changes through the canonical Review route", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const { reviewScenario, taskScenario, tasksPage, taskReview } =
@@ -307,7 +307,7 @@ test("reviews working tree changes through the canonical Review route", async ({
   await captureReviewScreenshot(page, testInfo, "tasks-working-tree-diff");
 });
 
-test("keeps selectedPath while scope, navigator, and viewer switch independently", async ({
+test("keeps selectedPath while scope, navigator, and viewer switch independently", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const { reviewScenario, taskScenario, tasksPage, taskReview } =
@@ -396,7 +396,7 @@ test("keeps selectedPath while scope, navigator, and viewer switch independently
   await captureReviewScreenshot(page, testInfo, "tasks-branch-compare");
 });
 
-test("supports every scope navigator and viewer combination", async ({ page }) => {
+test("supports every scope navigator and viewer combination", { tag: "@all-viewports" }, async ({ page }) => {
   const { taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
@@ -481,7 +481,7 @@ test("supports every scope navigator and viewer combination", async ({ page }) =
   }
 });
 
-test("preserves valid Task Review base routes and falls back for missing refs", async ({
+test("preserves valid Task Review base routes and falls back for missing refs", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const { taskScenario, taskReview } = await openCompletedTaskForReview(page);
@@ -520,7 +520,7 @@ test("preserves valid Task Review base routes and falls back for missing refs", 
   ).toBeAttached();
 });
 
-test("selects local and remote Branch bases without replacing the picker", async ({
+test("selects local and remote Branch bases without replacing the picker", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const { reviewScenario, taskScenario, tasksPage, taskReview } =
@@ -582,7 +582,7 @@ test("selects local and remote Branch bases without replacing the picker", async
   );
 });
 
-test("keeps equivalent Branch header refreshes mutation-free", async ({ page }) => {
+test("keeps equivalent Branch header refreshes mutation-free", { tag: "@all-viewports" }, async ({ page }) => {
   const { reviewScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
@@ -624,13 +624,9 @@ test("keeps equivalent Branch header refreshes mutation-free", async ({ page }) 
   ).toEqual({ sameSelect: true, mutations: 0 });
 });
 
-test("refreshes Branch after returning from the background", async ({
+test("refreshes Branch after returning from the background", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "desktop",
-    "Browser visibility lifecycle regression",
-  );
   await page.addInitScript(() => {
     window.__caffoldVisibilityState = "visible";
     Object.defineProperty(document, "visibilityState", {
@@ -699,7 +695,7 @@ test("refreshes Branch after returning from the background", async ({
   ).toHaveText("-0");
 });
 
-test("falls back when the selected Branch base disappears", async ({ page }) => {
+test("falls back when the selected Branch base disappears", { tag: "@all-viewports" }, async ({ page }) => {
   const { reviewScenario, taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
@@ -726,7 +722,7 @@ test("falls back when the selected Branch base disappears", async ({ page }) => 
   expect(await baseSelect.evaluate((select) => select.stableBaseSelectorProbe)).toBe(true);
 });
 
-test("keeps compact review controls and available panes inside the workspace", async ({
+test("keeps compact review controls and available panes inside the workspace", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
@@ -1008,7 +1004,7 @@ test("keeps compact review controls and available panes inside the workspace", a
   }
 });
 
-test("keeps a 180-file change set inspectable without clipping its identity", async ({
+test("keeps a 180-file change set inspectable without clipping its identity", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page, {
@@ -1028,7 +1024,7 @@ test("keeps a 180-file change set inspectable without clipping its identity", as
   );
 });
 
-test("maps the visible source line when Diff and Source representations switch", async ({
+test("maps the visible source line when Diff and Source representations switch", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
@@ -1098,7 +1094,7 @@ test("maps the visible source line when Diff and Source representations switch",
     .toBe(sourceLine);
 });
 
-test("rejects a late branch response after returning to the working tree", async ({ page }) => {
+test("rejects a late branch response after returning to the working tree", { tag: "@all-viewports" }, async ({ page }) => {
   const { reviewScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
   reviewScenario.setCompareDelay("origin/main", 250);
@@ -1116,7 +1112,7 @@ test("rejects a late branch response after returning to the working tree", async
   await expect(taskReview.locator("caffold-git-diff-changes-tree")).toBeVisible();
 });
 
-test("rejects a late compare response after the Branch base changes again", async ({
+test("rejects a late compare response after the Branch base changes again", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const { reviewScenario, taskScenario, tasksPage, taskReview } =

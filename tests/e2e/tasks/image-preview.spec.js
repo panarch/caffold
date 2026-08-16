@@ -6,7 +6,7 @@ test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
 
-test("previews a composer image without coupling preview and removal", async ({
+test("previews a composer image without coupling preview and removal", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const scenario = await installTaskLoopFixture(page);
@@ -60,7 +60,7 @@ test("previews a composer image without coupling preview and removal", async ({
   await expect(dialog).toBeHidden();
 });
 
-test("keeps one sent-image dialog stable through live conversation updates", async ({
+test("keeps one sent-image dialog stable through live conversation updates", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const scenario = await installTaskLoopFixture(page);
@@ -135,7 +135,7 @@ test("keeps one sent-image dialog stable through live conversation updates", asy
   await expect(dialog).toBeHidden();
 });
 
-test("renders and previews assistant-generated images after history reload", async ({
+test("renders and previews assistant-generated images after history reload", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const scenario = await installTaskLoopFixture(page);

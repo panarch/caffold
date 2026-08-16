@@ -83,6 +83,20 @@ installed Codex app-server. Set `CAFFOLD_E2E_PORT` to an available port only for
 targeted diagnostics; an occupied override fails instead of attaching to that
 server.
 
+Every browser test declares the smallest viewport coverage that exercises its
+contract. Use `@desktop`, `@foldable`, or `@phone` for one-project coverage,
+combine project tags when two viewports own the behavior, and use
+`@all-viewports` only when the observable behavior must hold in all three.
+Viewport-independent behavior uses desktop as its canonical project; touch-only
+behavior uses foldable unless the phone's single-pane contract is relevant.
+These are Playwright test-detail tags, not title suffixes. Runtime project-name
+skips are not a coverage declaration.
+
+Pull-request and `main` checks run desktop, foldable, and phone in independent
+matrix jobs. Each job starts its own server and selects only its coverage tags;
+the stable `Browser Tests` gate requires all three jobs to pass. The ordinary
+local command still runs the complete tagged suite in one Playwright invocation.
+
 Test-server ports belong to individual Playwright runs, including runs in other
 worktrees. Do not stop a process merely because it owns a port used by an older
 test command; let Playwright shut down its own server, or retry a failed run.
