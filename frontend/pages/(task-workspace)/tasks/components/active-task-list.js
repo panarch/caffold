@@ -832,18 +832,13 @@ class CaffoldActiveTaskList extends HTMLElement {
     }
 
     const message = parseJson(event.data);
-    const detail = message?.detail;
-    if (message?.error) {
-      // A task-sync error belongs to one Task detail. The canonical list
-      // remains valid until its own request or transport fails.
-      return;
-    }
+    const task = message?.task;
     if (
-      detail?.task &&
-      message?.threadId === taskThreadId(detail.task) &&
+      task &&
+      message?.threadId === taskThreadId(task) &&
       this.acceptRevision(message.threadId, message.revision)
     ) {
-      this.upsertCanonicalTask(detail.task);
+      this.upsertCanonicalTask(task);
     }
   }
 

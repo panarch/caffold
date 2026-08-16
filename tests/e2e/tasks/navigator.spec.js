@@ -700,7 +700,7 @@ test("applies canonical top placements without list refetches or duplicate reord
     window.__activePlacementSource.emit("task-sync", {
       threadId: unknown.threadId,
       revision: 1,
-      detail: { task: unknown },
+      task: unknown,
     });
   }, initialNavigatorTask("thread_unknown_sync", "Unknown sync Task"));
   await page.waitForTimeout(100);
@@ -727,7 +727,7 @@ test("applies canonical top placements without list refetches or duplicate reord
     window.__activePlacementSource.emit("task-sync", {
       threadId: first.threadId,
       revision: 2,
-      detail: { task: { ...first, title: "First placed Task updated" } },
+      task: { ...first, title: "First placed Task updated" },
     });
     window.__activePlacementSource.emit("task-placed-at-top", {
       task: second,
@@ -3045,18 +3045,13 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
       latestTurnStatus: "inProgress",
     }),
   };
-  await page.evaluate((detail) => {
+  await page.evaluate((task) => {
     window.__taskListEventSource.emit("task-sync", {
-      threadId: detail.threadId,
+      threadId: task.threadId,
       revision: 3,
-      detail,
-      reason: "canonical-running",
+      task,
     });
-  }, {
-    threadId: "thread_gluesql_feature",
-    syncState: "ready",
-    task: tasks[0],
-  });
+  }, tasks[0]);
   await expect(featureTask).toHaveAttribute("data-task-status", "running");
   await expect(featureTask.locator(".task-status-spinner")).toBeVisible();
   detailEvents.push(
@@ -3096,18 +3091,13 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
     ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     unseen: true,
   };
-  await page.evaluate((detail) => {
+  await page.evaluate((task) => {
     window.__taskListEventSource.emit("task-sync", {
-      threadId: detail.threadId,
+      threadId: task.threadId,
       revision: 5,
-      detail,
-      reason: "canonical-idle",
+      task,
     });
-  }, {
-    threadId: "thread_gluesql_feature",
-    syncState: "ready",
-    task: idleTask,
-  });
+  }, idleTask);
   await expect(featureTask).toHaveAttribute("data-task-status", "idle");
   await expect(featureTask.locator(".task-status-spinner")).toHaveCount(0);
   await expect(featureTask.locator(".task-unseen-complete")).toBeVisible();
