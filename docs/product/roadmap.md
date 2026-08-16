@@ -5,12 +5,17 @@ implementation designs.
 
 ## Planned
 
-### Authenticated internet-facing deployment
+### Authenticated internet-facing self-hosting
 
 Support secure self-hosted deployment beyond a trusted local or private
 network. Authentication, authorization, session security, and audit controls
 would allow Caffold to run on an internet-reachable server without treating
 every network client as trusted.
+
+This is intended to become a first-class supported deployment path, not an
+incidental advanced configuration. A Caffold-operated managed service is not
+planned; the user continues to own the host, execution environment,
+repositories, credentials, and data.
 
 ### Event-driven GitHub integration
 

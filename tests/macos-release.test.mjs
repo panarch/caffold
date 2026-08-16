@@ -14,6 +14,7 @@ const renderCask = resolve(repoRoot, "desktop/macos/render-cask");
 const releaseWorkflow = resolve(repoRoot, ".github/workflows/release.yml");
 const rootReadme = resolve(repoRoot, "README.md");
 const macosReadme = resolve(repoRoot, "desktop/macos/README.md");
+const productInstallGuide = resolve(repoRoot, "docs/product/installation.md");
 const macosServerSource = resolve(repoRoot, "desktop/macos/CaffoldServer.swift");
 const macosArm64Only =
   process.platform === "darwin" && process.arch === "arm64"
@@ -127,7 +128,7 @@ test("Homebrew cask installs the app and bundled CLI without a user quarantine f
   assert.notEqual(invalid.status, 0);
   assert.match(invalid.stderr, /64 lowercase hexadecimal characters/);
 
-  for (const readme of [rootReadme, macosReadme]) {
+  for (const readme of [rootReadme, macosReadme, productInstallGuide]) {
     const documentation = readFileSync(readme, "utf8");
     assert.match(documentation, /brew install --cask panarch\/tap\/caffold/);
     assert.match(documentation, /Homebrew/);
