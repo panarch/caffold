@@ -57,8 +57,8 @@ application-bundle replacement, follow
 1. Start from a dedicated branch or worktree when the change should be isolated.
 2. Read the [review policy](docs/review/policy.md) and the affected area
    policy before editing.
-3. Keep production ownership, tests, fixtures, and documentation in the same
-   change.
+3. Keep required production code, ownership changes, tests, fixtures, and
+   documentation together in the same change.
 4. Run focused checks first, then the broader checks appropriate to the change.
 5. Inspect `git diff --check` and the final diff before committing.
 6. State direct runtime/browser validation separately from source inference or
