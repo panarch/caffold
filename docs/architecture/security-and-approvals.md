@@ -78,6 +78,12 @@ trust. Direct public-internet deployment is outside the current supported
 boundary. Supporting it requires application authentication, authorization,
 and audit controls and remains [planned product work](../product/roadmap.md).
 
+The optional `caffold tailscale` adapter accepts only an exact localhost HTTP
+target. It configures tailnet-only HTTPS Serve and refuses to replace or remove
+a different proxy, a shared handler set, or another TCP 443 handler. Tailscale
+installation, device authentication, tailnet policy, and HTTPS enablement
+remain externally owned.
+
 ## Voice Input
 
 - Model installation is an explicit first-use action and uses a pinned URL,

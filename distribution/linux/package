@@ -1,0 +1,223 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
+DIST_DIR="${REPO_DIR}/target/caffold-linux"
+VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' "${REPO_DIR}/Cargo.toml" | head -n 1)"
+WEB_VERSION="$(sed -n 's/^[[:space:]]*"version": "\([^"]*\)",/\1/p' "${REPO_DIR}/package.json" | head -n 1)"
+VULKAN_LOADER_LIB="${CAFFOLD_VULKAN_LOADER_LIB:-/home/linuxbrew/.linuxbrew/opt/vulkan-loader/lib}"
+
+fail() {
+  echo "Linux packaging failed: $*" >&2
+  exit 1
+}
+
+require_linux() {
+  [[ "$(uname -s)" == "Linux" ]] || fail "this command requires Linux"
+}
+
+release_architecture() {
+  case "$(uname -m)" in
+    x86_64)
+      echo "x86_64"
+      ;;
+    aarch64|arm64)
+      echo "aarch64"
+      ;;
+    *)
+      fail "supported releases require x86_64 or aarch64; found $(uname -m)"
+      ;;
+  esac
+}
+
+validate_source_versions() {
+  [[ -n "${VERSION}" ]] || fail "could not read the version from Cargo.toml"
+  [[ "${WEB_VERSION}" == "${VERSION}" ]] ||
+    fail "Cargo.toml (${VERSION}) and package.json (${WEB_VERSION}) versions differ"
+}
+
+archive_name() {
+  local arch="$1"
+  echo "Caffold-${VERSION}-linux-${arch}.tar.gz"
+}
+
+checksum_name() {
+  local arch="$1"
+  echo "$(archive_name "${arch}").sha256"
+}
+
+build_release() {
+  local rustflags="${RUSTFLAGS:-} -C link-arg=-Wl,-rpath,${VULKAN_LOADER_LIB}"
+  (
+    cd "${REPO_DIR}"
+    RUSTFLAGS="${rustflags# }" cargo build --release --locked
+  )
+}
+
+verify_binary() {
+  local binary="$1"
+  local expected_arch="$2"
+  local expected_version="$3"
+  local file_output
+
+  [[ -x "${binary}" ]] || fail "expected executable is missing: ${binary}"
+  file_output="$(file "${binary}")"
+  case "${expected_arch}" in
+    x86_64)
+      [[ "${file_output}" == *"x86-64"* ]] ||
+        fail "${binary} is not an x86_64 ELF executable: ${file_output}"
+      ;;
+    aarch64)
+      [[ "${file_output}" == *"aarch64"* || "${file_output}" == *"ARM aarch64"* ]] ||
+        fail "${binary} is not an aarch64 ELF executable: ${file_output}"
+      ;;
+    *)
+      fail "cannot verify unsupported architecture ${expected_arch}"
+      ;;
+  esac
+
+  "${binary}" --version | grep -Fx "caffold ${expected_version}" >/dev/null ||
+    fail "${binary} does not report Caffold ${expected_version}"
+  if ldd "${binary}" | grep -F "not found"; then
+    fail "${binary} has an unresolved dynamic dependency"
+  fi
+  ldd "${binary}" | grep -F "libvulkan.so.1" >/dev/null ||
+    fail "${binary} does not declare the Vulkan loader dependency"
+  readelf -d "${binary}" | grep -F "${VULKAN_LOADER_LIB}" >/dev/null ||
+    fail "${binary} does not contain the Homebrew Vulkan loader runpath"
+}
+
+prepare_archive() {
+  local arch="$1"
+  local root="${DIST_DIR}/Caffold-${VERSION}-linux-${arch}"
+  local archive="${DIST_DIR}/$(archive_name "${arch}")"
+  local checksum="${DIST_DIR}/$(checksum_name "${arch}")"
+
+  rm -rf -- "${root}"
+  rm -f -- "${archive}" "${checksum}"
+  mkdir -p "${root}"
+  cp "${REPO_DIR}/target/release/caffold" "${root}/caffold"
+  cp "${REPO_DIR}/LICENSE" "${root}/LICENSE"
+  cp "${SCRIPT_DIR}/README.md" "${root}/README.md"
+  chmod 755 "${root}/caffold"
+  verify_binary "${root}/caffold" "${arch}" "${VERSION}"
+  tar -C "${DIST_DIR}" -czf "${archive}" "$(basename "${root}")"
+  (
+    cd "${DIST_DIR}"
+    sha256sum "$(basename "${archive}")" >"$(basename "${checksum}")"
+  )
+}
+
+verify_archive() {
+  local archive="$1"
+  local expected_arch="$2"
+  local expected_version="$3"
+  local extract_dir
+  extract_dir="$(mktemp -d "${TMPDIR:-/tmp}/caffold-linux-release.XXXXXX")"
+  trap 'rm -rf -- "${extract_dir}"' RETURN
+  tar -xzf "${archive}" -C "${extract_dir}"
+  verify_binary \
+    "${extract_dir}/Caffold-${expected_version}-linux-${expected_arch}/caffold" \
+    "${expected_arch}" \
+    "${expected_version}"
+  [[ -f "${extract_dir}/Caffold-${expected_version}-linux-${expected_arch}/LICENSE" ]] ||
+    fail "archive does not contain LICENSE"
+  [[ -f "${extract_dir}/Caffold-${expected_version}-linux-${expected_arch}/README.md" ]] ||
+    fail "archive does not contain README.md"
+  rm -rf -- "${extract_dir}"
+  trap - RETURN
+}
+
+archive() {
+  local arch
+  require_linux
+  validate_source_versions
+  arch="$(release_architecture)"
+  mkdir -p "${DIST_DIR}"
+  build_release
+  prepare_archive "${arch}"
+  verify_archive "${DIST_DIR}/$(archive_name "${arch}")" "${arch}" "${VERSION}"
+  echo "version=${VERSION}"
+  echo "arch=${arch}"
+  echo "archive=$(archive_name "${arch}")"
+  echo "checksum=$(checksum_name "${arch}")"
+}
+
+verify_archive_command() {
+  local archive_path=""
+  local expected_arch=""
+  local expected_version="${VERSION}"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --expected-arch)
+        [[ $# -ge 2 ]] || fail "--expected-arch requires a value"
+        expected_arch="$2"
+        shift 2
+        ;;
+      --expected-version)
+        [[ $# -ge 2 ]] || fail "--expected-version requires a value"
+        expected_version="$2"
+        shift 2
+        ;;
+      --*)
+        fail "unknown verify-archive argument: $1"
+        ;;
+      *)
+        [[ -z "${archive_path}" ]] || fail "verify-archive accepts one archive"
+        archive_path="$1"
+        shift
+        ;;
+    esac
+  done
+  [[ -n "${archive_path}" ]] || fail "verify-archive requires an archive"
+  [[ "${expected_arch}" == "x86_64" || "${expected_arch}" == "aarch64" ]] ||
+    fail "--expected-arch must be x86_64 or aarch64"
+  [[ "${expected_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] ||
+    fail "--expected-version must be a release version"
+  verify_archive "${archive_path}" "${expected_arch}" "${expected_version}"
+}
+
+metadata() {
+  local arch
+  require_linux
+  validate_source_versions
+  arch="$(release_architecture)"
+  echo "version=${VERSION}"
+  echo "arch=${arch}"
+  echo "archive=$(archive_name "${arch}")"
+  echo "checksum=$(checksum_name "${arch}")"
+}
+
+usage() {
+  cat <<'EOF'
+usage: distribution/linux/package {archive|verify-archive|metadata}
+
+Commands:
+  archive          build, package, extract, verify, and checksum Caffold
+  verify-archive   verify one archive with --expected-arch and --expected-version
+  metadata         print the native release identity as key=value pairs
+EOF
+}
+
+case "${1:-}" in
+  archive)
+    archive
+    ;;
+  verify-archive)
+    require_linux
+    validate_source_versions
+    shift
+    verify_archive_command "$@"
+    ;;
+  metadata)
+    metadata
+    ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

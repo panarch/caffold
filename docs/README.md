@@ -10,6 +10,7 @@ These documents describe the product, its current behavior, and its direction.
 Only the roadmap should present unfinished product behavior as planned work.
 
 - [Vision](product/vision.md)
+- [Installation and Operation](product/installation.md)
 - [Current Product Status](product/status.md)
 - [Product Workflows](product/workflows.md)
 - [UI Surfaces](product/ui-surfaces.md)
@@ -55,3 +56,5 @@ These documents define maintainer procedures for distributing and operating
 supported artifacts.
 
 - [macOS Release Process](operations/macos-release.md)
+- [Shared Release Process](operations/release.md)
+- [Linux Release Process](operations/linux-release.md)

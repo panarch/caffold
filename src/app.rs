@@ -12,6 +12,7 @@ mod voice;
 mod workspace;
 
 use crate::{fs::RootedFs, server_settings::ServerSettingsStore};
+pub use voice::VoiceAcceleration;
 
 #[derive(Debug, Clone)]
 pub struct ServeConfig {
@@ -20,6 +21,7 @@ pub struct ServeConfig {
     pub root: Option<PathBuf>,
     pub data_dir: Option<PathBuf>,
     pub worktree_root: Option<PathBuf>,
+    pub voice_acceleration: VoiceAcceleration,
 }
 
 pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
@@ -44,7 +46,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let root = fs.root().to_path_buf();
     let shell_router = shell::router(fs.clone(), server_settings, initial_path.clone(), home_path);
     let workspace_router = workspace::router(fs.clone(), shutdown.clone());
-    let voice_router = voice::router(data_dir.join("models/whisper"));
+    let voice_router = voice::router(data_dir.join("models/whisper"), config.voice_acceleration);
     let listener = TcpListener::bind((config.host, config.port)).await?;
     let addr = listener.local_addr()?;
     let tasks = tasks::PersistentTasksGateway::new(
@@ -102,7 +104,10 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         None,
     );
     let workspace_router = workspace::router(fs.clone(), shutdown.clone());
-    let voice_router = voice::router(fs.root().join(".caffold-test/models/whisper"));
+    let voice_router = voice::router(
+        fs.root().join(".caffold-test/models/whisper"),
+        VoiceAcceleration::Auto,
+    );
     let worktree_root = fs.root().join(".caffold-test/worktrees");
     let tasks = tasks::TasksApp::memory(fs, String::new(), shutdown, worktree_root)?;
     Ok(router_with_states(

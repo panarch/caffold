@@ -18,7 +18,7 @@ cargo run -- serve \
 Then configure Tailscale Serve:
 
 ```sh
-tailscale serve --bg --yes --https=443 http://127.0.0.1:5177
+cargo run -- tailscale enable --target http://127.0.0.1:5177
 ```
 
 Open the HTTPS MagicDNS address from a device on the same tailnet:
@@ -27,12 +27,17 @@ Open the HTTPS MagicDNS address from a device on the same tailnet:
 https://<machine-name>.<tailnet-name>.ts.net/
 ```
 
-Use `tailscale serve status` to inspect the mapping and disable this development
+Use Caffold's adapter to inspect the mapping and disable this development
 mapping when it is no longer needed:
 
 ```sh
-tailscale serve --yes --https=443 off
+cargo run -- tailscale status --target http://127.0.0.1:5177
+cargo run -- tailscale disable --target http://127.0.0.1:5177
 ```
+
+The adapter changes or disables the mapping only when this exact target is its
+exclusive HTTPS handler. Another target or a shared handler set stops with a
+conflict instead of being overwritten.
 
 Important boundaries:
 

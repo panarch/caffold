@@ -130,6 +130,22 @@ private func runTests() throws {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [MockURLProtocol.self]
     let session = URLSession(configuration: configuration)
+    let missingTailscale = caffoldTailscaleStatus(.success(CommandResult(
+        status: 0,
+        output: #"{"installed":false,"connected":false,"serveEnabled":false,"target":"http://127.0.0.1:5178","url":null,"conflict":null,"message":null}"#
+    )))
+    try require(
+        missingTailscale.title == "Tailscale · Not installed",
+        "the shared CLI must preserve optional Tailscale setup status"
+    )
+    let conflictingTailscale = caffoldTailscaleStatus(.success(CommandResult(
+        status: 0,
+        output: #"{"installed":true,"connected":true,"serveEnabled":false,"target":"http://127.0.0.1:5178","url":"https://host.tail.ts.net/","conflict":"/ -> http://127.0.0.1:9000","message":null}"#
+    )))
+    try require(
+        conflictingTailscale.title == "Tailscale · Connected · Serve conflict",
+        "another Serve target must remain visible instead of being overwritten"
+    )
     let initialCodex = try probeCodexFixture(
         codexFixture(
             state: "ready",

@@ -5,8 +5,12 @@ boundaries.
 
 ## Available today
 
-- `caffold serve` and the macOS menu-bar server wrapper;
+- `caffold serve` on supported macOS and glibc Linux hosts, plus the macOS
+  menu-bar server wrapper and Linux Homebrew user service;
+- native Linux x86_64 and aarch64 release archives and Homebrew Formula;
 - browser/PWA access on the trusted host and tailnet-only Tailscale Serve;
+- optional collision-safe `caffold tailscale enable`, `status`, and `disable`
+  commands backed by an independently installed Tailscale CLI;
 - managed, thread-backed Tasks with canonical app-server lifecycle;
 - persistent app-server daemon plus replaceable proxy connection;
 - prompts, steering, interruption, command and permission approvals, images,
@@ -44,6 +48,11 @@ boundaries.
   source of truth.
 - Web Push is best-effort while the backend is running. It has no durable
   delivery queue, provider retry, or startup catch-up.
+- Linux package verification targets Ubuntu 24.04 on x86_64 and aarch64.
+  Other glibc distributions are not part of the direct CI contract; musl,
+  ARM32, and 32-bit x86 are unsupported.
+- Linux voice acceleration supports Vulkan with CPU fallback or explicit
+  CPU-only execution. CUDA is not distributed.
 
 ## Supported scenarios
 

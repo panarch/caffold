@@ -81,22 +81,12 @@ private struct GithubStatusResponse: Decodable {
     let hosts: [String: [Account]]
 }
 
-private struct TailscaleNodeResponse: Decodable {
-    struct Node: Decodable {
-        let dnsName: String?
-
-        enum CodingKeys: String, CodingKey {
-            case dnsName = "DNSName"
-        }
-    }
-
-    let backendState: String
-    let node: Node?
-
-    enum CodingKeys: String, CodingKey {
-        case backendState = "BackendState"
-        case node = "Self"
-    }
+private struct CaffoldTailscaleStatus: Decodable {
+    let installed: Bool
+    let connected: Bool
+    let serveEnabled: Bool
+    let url: String?
+    let conflict: String?
 }
 
 func probeGitStatus(completion: @escaping (IntegrationStatus) -> Void) {
@@ -367,104 +357,62 @@ private func formatWhisperRecordingLimit(_ seconds: Int) -> String {
 }
 
 func probeTailscaleStatus(
+    executable: URL,
     localTarget: String,
     completion: @escaping (TailscaleStatus) -> Void
 ) {
-    guard let tailscale = caffoldExecutable(named: "tailscale") else {
-        completion(TailscaleStatus(
-            title: "Tailscale · Not installed",
-            connected: false,
-            serveEnabled: false,
-            tailnetURL: nil
-        ))
-        return
-    }
-
-    runCommand(executable: tailscale, arguments: ["status", "--json"]) { statusResult in
-        guard case let .success(statusCommand) = statusResult else {
-            completion(TailscaleStatus(
-                title: "Tailscale · Status unavailable",
-                connected: false,
-                serveEnabled: false,
-                tailnetURL: nil
-            ))
-            return
-        }
-        guard
-            statusCommand.status == 0,
-            let statusData = statusCommand.output.data(using: .utf8),
-            let nodeStatus = try? JSONDecoder().decode(TailscaleNodeResponse.self, from: statusData)
-        else {
-            completion(TailscaleStatus(
-                title: "Tailscale · Status unavailable",
-                connected: false,
-                serveEnabled: false,
-                tailnetURL: nil
-            ))
-            return
-        }
-        guard nodeStatus.backendState == "Running" else {
-            completion(TailscaleStatus(
-                title: "Tailscale · Disconnected",
-                connected: false,
-                serveEnabled: false,
-                tailnetURL: nil
-            ))
-            return
-        }
-
-        runCommand(executable: tailscale, arguments: ["serve", "status", "--json"]) { serveResult in
-            let serve = serveStatus(
-                result: serveResult,
-                localTarget: localTarget,
-                dnsName: nodeStatus.node?.dnsName
-            )
-            completion(TailscaleStatus(
-                title: serve.enabled
-                    ? "Tailscale · Connected · Serve on"
-                    : "Tailscale · Connected · Serve off",
-                connected: true,
-                serveEnabled: serve.enabled,
-                tailnetURL: serve.url
-            ))
-        }
+    runCommand(
+        executable: executable,
+        arguments: ["tailscale", "status", "--target", localTarget, "--json"]
+    ) { result in
+        completion(caffoldTailscaleStatus(result))
     }
 }
 
-private func serveStatus(
-    result: Result<CommandResult, Error>,
-    localTarget: String,
-    dnsName: String?
-) -> (enabled: Bool, url: URL?) {
+func caffoldTailscaleStatus(
+    _ result: Result<CommandResult, Error>
+) -> TailscaleStatus {
     guard
         case let .success(command) = result,
         command.status == 0,
         let data = command.output.data(using: .utf8),
-        let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-        let web = payload["Web"] as? [String: Any]
+        let status = try? JSONDecoder().decode(CaffoldTailscaleStatus.self, from: data)
     else {
-        return (false, nil)
+        return TailscaleStatus(
+            title: "Tailscale · Status unavailable",
+            connected: false,
+            serveEnabled: false,
+            tailnetURL: nil
+        )
     }
-
-    for (host, value) in web {
-        guard
-            let entry = value as? [String: Any],
-            let handlers = entry["Handlers"] as? [String: Any]
-        else {
-            continue
-        }
-        let matchesTarget = handlers.values.contains { handler in
-            guard let handler = handler as? [String: Any] else { return false }
-            return handler["Proxy"] as? String == localTarget
-        }
-        if matchesTarget {
-            let hostWithoutDefaultPort = host.hasSuffix(":443")
-                ? String(host.dropLast(4))
-                : host
-            return (true, URL(string: "https://\(hostWithoutDefaultPort)/"))
-        }
+    if !status.installed {
+        return TailscaleStatus(
+            title: "Tailscale · Not installed",
+            connected: false,
+            serveEnabled: false,
+            tailnetURL: nil
+        )
     }
-
-    let normalizedDNSName = dnsName?.trimmingCharacters(in: CharacterSet(charactersIn: "."))
-    return (false, normalizedDNSName.flatMap { URL(string: "https://\($0)/") })
+    if !status.connected {
+        return TailscaleStatus(
+            title: "Tailscale · Disconnected",
+            connected: false,
+            serveEnabled: false,
+            tailnetURL: status.url.flatMap(URL.init(string:))
+        )
+    }
+    let title: String
+    if status.serveEnabled {
+        title = "Tailscale · Connected · Serve on"
+    } else if status.conflict != nil {
+        title = "Tailscale · Connected · Serve conflict"
+    } else {
+        title = "Tailscale · Connected · Serve off"
+    }
+    return TailscaleStatus(
+        title: title,
+        connected: true,
+        serveEnabled: status.serveEnabled,
+        tailnetURL: status.url.flatMap(URL.init(string:))
+    )
 }

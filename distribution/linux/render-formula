@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+fail() {
+  echo "Formula rendering failed: $*" >&2
+  exit 1
+}
+
+version=""
+x86_64_sha256=""
+aarch64_sha256=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --version)
+      [[ $# -ge 2 ]] || fail "--version requires a value"
+      version="$2"
+      shift 2
+      ;;
+    --x86-64-sha256)
+      [[ $# -ge 2 ]] || fail "--x86-64-sha256 requires a value"
+      x86_64_sha256="$2"
+      shift 2
+      ;;
+    --aarch64-sha256)
+      [[ $# -ge 2 ]] || fail "--aarch64-sha256 requires a value"
+      aarch64_sha256="$2"
+      shift 2
+      ;;
+    -h|--help)
+      echo "usage: distribution/linux/render-formula --version <version> --x86-64-sha256 <digest> --aarch64-sha256 <digest>"
+      exit 0
+      ;;
+    *)
+      fail "unknown argument: $1"
+      ;;
+  esac
+done
+
+[[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] ||
+  fail "version must be a release version such as 0.1.0"
+for digest in "${x86_64_sha256}" "${aarch64_sha256}"; do
+  [[ "${digest}" =~ ^[0-9a-f]{64}$ ]] ||
+    fail "SHA-256 values must contain exactly 64 lowercase hexadecimal characters"
+done
+
+cat <<EOF
+class Caffold < Formula
+  desc "Browser-based review and control surface for Codex-backed development tasks"
+  homepage "https://github.com/panarch/caffold"
+  version "${version}"
+  license "Apache-2.0"
+
+  on_intel do
+    url "https://github.com/panarch/caffold/releases/download/v#{version}/Caffold-#{version}-linux-x86_64.tar.gz"
+    sha256 "${x86_64_sha256}"
+  end
+
+  on_arm do
+    url "https://github.com/panarch/caffold/releases/download/v#{version}/Caffold-#{version}-linux-aarch64.tar.gz"
+    sha256 "${aarch64_sha256}"
+  end
+
+  depends_on :linux
+  depends_on "vulkan-loader"
+
+  def install
+    bin.install "caffold"
+  end
+
+  def caveats
+    <<~EOS
+      Start Caffold as your user service:
+        brew services start panarch/tap/caffold
+
+      Then open http://127.0.0.1:5177. Optional tailnet-only HTTPS access:
+        caffold tailscale enable
+    EOS
+  end
+
+  service do
+    run [opt_bin/"caffold", "serve", "--host", "127.0.0.1", "--port", "5177"]
+    keep_alive true
+    working_dir Dir.home
+    log_path var/"log/caffold.log"
+    error_log_path var/"log/caffold.log"
+    environment_variables PATH: std_service_path_env
+  end
+
+  test do
+    assert_match "caffold #{version}", shell_output("#{bin}/caffold --version")
+  end
+end
+EOF
