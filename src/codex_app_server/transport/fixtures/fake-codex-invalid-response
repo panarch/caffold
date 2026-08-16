@@ -1,0 +1,8 @@
+#!/bin/sh
+
+if [ "$1 $2 $3" != "app-server daemon restart" ]; then
+  echo "unexpected arguments: $*" >&2
+  exit 2
+fi
+
+printf '%s' 'not-json'
