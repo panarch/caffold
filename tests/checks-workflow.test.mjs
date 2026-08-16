@@ -7,6 +7,10 @@ const workflow = readFileSync(
   resolve(import.meta.dirname, "../.github/workflows/checks.yml"),
   "utf8",
 );
+const playwrightConfig = readFileSync(
+  resolve(import.meta.dirname, "../playwright.config.mjs"),
+  "utf8",
+);
 
 test("browser CI runs one explicit job per viewport project", () => {
   assert.match(workflow, /name: Browser Tests \/ \$\{\{ matrix\.project \}\}/);
@@ -20,6 +24,10 @@ test("browser CI runs one explicit job per viewport project", () => {
     workflow,
     /name: playwright-results-\$\{\{ matrix\.project \}\}/,
   );
+});
+
+test("browser CI parallelizes projects without parallelizing their shared server", () => {
+  assert.match(playwrightConfig, /workers: process\.env\.CI \? 1 : undefined/);
 });
 
 test("browser CI preserves one stable aggregate check", () => {
