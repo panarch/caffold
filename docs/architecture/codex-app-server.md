@@ -301,9 +301,13 @@ List and header badges use only `threadStatus`. Within active flags,
 `waitingOnApproval` takes display precedence over `waitingOnUserInput`, while
 the original flag array remains unchanged. Turn completion, failure, and
 interruption are rendered inside that conversation turn rather than replacing
-the thread badge. `task-event` updates transcript/event UI only; task lifecycle
-changes arrive through canonical REST responses and revisioned `task-sync`
-snapshots.
+the thread badge. Item lifecycle, raw response item, and diff notifications
+advance the in-memory session revision. Their live projections use `task-event`
+without materializing or broadcasting a full Task Detail snapshot. A later
+canonical Thread or Turn change may therefore publish a `task-sync` revision
+that skips those event-only revisions. Task lifecycle changes arrive through
+canonical REST responses, revisioned Task Detail `task-sync` snapshots, and the
+Task-list stream's revisioned Task-record syncs.
 
 ## Frontend Ownership
 
@@ -416,7 +420,10 @@ complete `task-list-snapshot` before queued steady-state events. Codex list
 names never replace Redb display names, and managed IDs missing from the live
 snapshot keep their cached not-loaded rows. The browser therefore renders the
 cached list immediately and upgrades all available status chips without
-opening Tasks one at a time.
+opening Tasks one at a time. Steady-state `task-sync` frames contain only the
+Thread ID, revision, and nullable canonical Task record. Transcript, history,
+approval, file-link, and Task-detail settings remain on the per-Task Detail
+stream.
 
 Create, rename, archive, restore, and permanent-delete commands update Codex
 first, then commit their corresponding local projection change, and only then

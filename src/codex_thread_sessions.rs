@@ -56,7 +56,7 @@ pub struct ThreadSessionSnapshot {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct NotificationApplyOutcome {
-    pub(crate) revision: Option<u64>,
+    pub(crate) canonical_state_changed: bool,
     pub(crate) terminal: Option<TerminalTurnApplyOutcome>,
 }
 

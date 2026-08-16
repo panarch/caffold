@@ -15,10 +15,9 @@ impl CodexThreadSessions {
         &self,
         generation: u64,
         notification: &CodexNotification,
-    ) -> Option<u64> {
+    ) {
         self.apply_notification_with_outcome(generation, notification)
-            .await
-            .revision
+            .await;
     }
 
     pub(crate) async fn apply_notification_with_outcome(
@@ -32,7 +31,7 @@ impl CodexThreadSessions {
         let Some(entry) = self.existing_entry(thread_id).await else {
             return NotificationApplyOutcome::default();
         };
-        let (changed, should_unsubscribe, revision, terminal) = {
+        let (effect, should_unsubscribe, terminal) = {
             let mut state = entry.state.lock().await;
             if state.generation != generation {
                 return NotificationApplyOutcome::default();
@@ -43,8 +42,9 @@ impl CodexThreadSessions {
                 }),
                 _ => None,
             };
-            let changed = apply_notification_state(&mut state, notification);
-            if changed {
+            let effect = apply_notification_state(&mut state, notification);
+            let advances_revision = effect != NotificationEffect::Ignored;
+            if advances_revision {
                 state.revision = state.revision.saturating_add(1);
                 if notification_changes_status(notification) {
                     state.status_revision = state.revision;
@@ -54,20 +54,27 @@ impl CodexThreadSessions {
                 }
             }
             (
-                changed,
+                effect,
                 state.viewer_leases == 0 && !state.runtime_lease,
-                state.revision,
                 terminal,
             )
         };
-        if changed && should_unsubscribe {
+        let advances_revision = effect != NotificationEffect::Ignored;
+        if advances_revision && should_unsubscribe {
             self.unsubscribe_if_unused(thread_id, &entry).await;
         }
         NotificationApplyOutcome {
-            revision: changed.then_some(revision),
+            canonical_state_changed: effect == NotificationEffect::CanonicalStateChanged,
             terminal,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NotificationEffect {
+    Ignored,
+    RevisionOnly,
+    CanonicalStateChanged,
 }
 
 fn notification_thread_id(notification: &CodexNotification) -> Option<&str> {
@@ -114,11 +121,11 @@ fn is_first_current_terminal_transition(state: &ThreadSessionState, turn: &Codex
 fn apply_notification_state(
     state: &mut ThreadSessionState,
     notification: &CodexNotification,
-) -> bool {
+) -> NotificationEffect {
     match notification {
         CodexNotification::ThreadStarted { thread } => {
             if state.lifecycle == ThreadSessionLifecycle::Subscribing || state.thread.is_some() {
-                return false;
+                return NotificationEffect::Ignored;
             }
             let next_active_turn_id = active_turn_id(thread, state.turns_page.as_ref())
                 .filter(|turn_id| !turn_is_terminal(state, turn_id));
@@ -126,7 +133,7 @@ fn apply_notification_state(
             state.terminal_candidate_turn_id = next_active_turn_id;
             state.thread = Some(thread.clone());
             state.pending_thread_status = None;
-            true
+            NotificationEffect::CanonicalStateChanged
         }
         CodexNotification::ThreadStatusChanged { status, .. } => {
             if let Some(thread) = state.thread.as_mut() {
@@ -142,27 +149,27 @@ fn apply_notification_state(
                     state.runtime_lease = false;
                 }
             }
-            true
+            NotificationEffect::CanonicalStateChanged
         }
         CodexNotification::ThreadNameUpdated { thread_name, .. } => {
             let Some(thread) = state.thread.as_mut() else {
-                return false;
+                return NotificationEffect::Ignored;
             };
             if thread.name == *thread_name {
-                return false;
+                return NotificationEffect::Ignored;
             }
             thread.name = thread_name.clone();
-            true
+            NotificationEffect::CanonicalStateChanged
         }
         CodexNotification::ThreadSettingsUpdated {
             thread_settings, ..
         } => {
             apply_thread_settings(state, thread_settings);
-            true
+            NotificationEffect::CanonicalStateChanged
         }
         CodexNotification::TurnStarted { turn, .. } => {
             if turn_is_terminal(state, &turn.id) {
-                return false;
+                return NotificationEffect::Ignored;
             }
             let inferred_cwd = state.thread.as_ref().map(|thread| thread.cwd.clone());
             update_active_turn(state, Some(turn.id.clone()), inferred_cwd);
@@ -171,11 +178,11 @@ fn apply_notification_state(
             }
             state.runtime_lease = true;
             upsert_turn(&mut state.turns_page, turn.clone());
-            true
+            NotificationEffect::CanonicalStateChanged
         }
         CodexNotification::TurnCompleted { turn, .. } => {
             if turn.status == TurnStatus::InProgress {
-                return false;
+                return NotificationEffect::Ignored;
             }
             if state.active_turn_id.as_deref() == Some(turn.id.as_str()) {
                 state.active_turn_id = None;
@@ -187,15 +194,15 @@ fn apply_notification_state(
                 state.runtime_lease = false;
             }
             upsert_turn(&mut state.turns_page, turn.clone());
-            true
+            NotificationEffect::CanonicalStateChanged
         }
         CodexNotification::ItemStarted { .. }
         | CodexNotification::ItemCompleted { .. }
         | CodexNotification::RawResponseItemCompleted { .. }
-        | CodexNotification::TurnDiffUpdated { .. } => true,
+        | CodexNotification::TurnDiffUpdated { .. } => NotificationEffect::RevisionOnly,
         CodexNotification::ThreadTokenUsageUpdated { .. }
-        | CodexNotification::ServerRequestResolved { .. } => false,
-        CodexNotification::Unknown { .. } => false,
+        | CodexNotification::ServerRequestResolved { .. } => NotificationEffect::Ignored,
+        CodexNotification::Unknown { .. } => NotificationEffect::Ignored,
     }
 }
 
@@ -203,6 +210,81 @@ fn apply_notification_state(
 mod tests {
     use super::*;
     use crate::codex_thread_sessions::test_support::*;
+
+    #[tokio::test]
+    async fn event_notifications_advance_revision_without_changing_canonical_state() {
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
+        )]);
+        let sessions = CodexThreadSessions::default();
+        let _viewer = sessions
+            .acquire_viewer(&client, 1, "thread-1")
+            .await
+            .expect("viewer");
+        let initial_revision = sessions
+            .snapshot("thread-1")
+            .await
+            .expect("initial snapshot")
+            .revision;
+        let notifications = [
+            CodexNotification::ItemStarted {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item: json!({ "id": "item-1", "type": "reasoning" }),
+                started_at_ms: 10,
+            },
+            CodexNotification::ItemCompleted {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item: json!({ "id": "item-1", "type": "reasoning" }),
+                completed_at_ms: 20,
+            },
+            CodexNotification::RawResponseItemCompleted {
+                thread_id: "thread-1".to_string(),
+                turn_id: "turn-1".to_string(),
+                item: json!({ "type": "message", "role": "assistant" }),
+            },
+            CodexNotification::TurnDiffUpdated {
+                thread_id: "thread-1".to_string(),
+                params: json!({ "threadId": "thread-1", "turnId": "turn-1" }),
+            },
+        ];
+
+        for (index, notification) in notifications.iter().enumerate() {
+            let outcome = sessions
+                .apply_notification_with_outcome(1, notification)
+                .await;
+            assert!(!outcome.canonical_state_changed);
+            assert_eq!(
+                sessions
+                    .snapshot("thread-1")
+                    .await
+                    .expect("event snapshot")
+                    .revision,
+                initial_revision + index as u64 + 1
+            );
+        }
+
+        let canonical = sessions
+            .apply_notification_with_outcome(
+                1,
+                &CodexNotification::ThreadStatusChanged {
+                    thread_id: "thread-1".to_string(),
+                    status: ThreadStatus::SystemError,
+                },
+            )
+            .await;
+        assert!(canonical.canonical_state_changed);
+        assert_eq!(
+            sessions
+                .snapshot("thread-1")
+                .await
+                .expect("canonical snapshot")
+                .revision,
+            initial_revision + 5
+        );
+    }
 
     #[tokio::test]
     async fn turn_started_notification_does_not_change_canonical_thread_status() {
@@ -314,7 +396,7 @@ mod tests {
         let first = sessions
             .apply_notification_with_outcome(1, &completion)
             .await;
-        assert!(first.revision.is_some());
+        assert!(first.canonical_state_changed);
         assert_eq!(
             first.terminal,
             Some(TerminalTurnApplyOutcome {
@@ -384,7 +466,7 @@ mod tests {
         let nonterminal = sessions
             .apply_notification_with_outcome(1, &in_progress_completion)
             .await;
-        assert_eq!(nonterminal.revision, None);
+        assert!(!nonterminal.canonical_state_changed);
         assert_eq!(
             nonterminal.terminal,
             Some(TerminalTurnApplyOutcome {
@@ -457,8 +539,8 @@ mod tests {
             .expect("subscription task joins")
             .expect("subscription baseline succeeds");
 
-        assert_eq!(
-            sessions
+        assert!(
+            !sessions
                 .apply_notification_with_outcome(
                     1,
                     &CodexNotification::TurnStarted {
@@ -467,8 +549,7 @@ mod tests {
                     },
                 )
                 .await
-                .revision,
-            None,
+                .canonical_state_changed,
             "a terminal turn in the baseline cannot regress to in-progress"
         );
         let bootstrap_completion = CodexNotification::TurnCompleted {
@@ -521,7 +602,7 @@ mod tests {
             .await
             .expect("subscribe");
 
-        let revision = sessions
+        sessions
             .apply_notification(
                 1,
                 &CodexNotification::ThreadNameUpdated {
@@ -531,8 +612,8 @@ mod tests {
             )
             .await;
 
-        assert_eq!(revision, Some(initial.revision + 1));
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
+        assert_eq!(snapshot.revision, initial.revision + 1);
         assert_eq!(
             snapshot.thread.expect("canonical thread").name.as_deref(),
             Some("Whisper voice input")
@@ -625,8 +706,13 @@ mod tests {
             .acquire_viewer(&client, 1, "thread-1")
             .await
             .expect("viewer");
+        let initial_revision = sessions
+            .snapshot("thread-1")
+            .await
+            .expect("initial snapshot")
+            .revision;
 
-        let revision = sessions
+        sessions
             .apply_notification(
                 1,
                 &CodexNotification::TurnStarted {
@@ -637,7 +723,7 @@ mod tests {
             .await;
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
 
-        assert!(revision.is_some());
+        assert_eq!(snapshot.revision, initial_revision + 1);
         assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-live"));
         assert!(snapshot.runtime_lease);
         assert!(

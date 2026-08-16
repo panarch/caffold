@@ -1976,12 +1976,7 @@ test("accepts canonical task sync after stream revisions restart", { tag: "@all-
     window.__taskListEventSource.emit("task-sync", {
       threadId,
       revision: 1,
-      detail: {
-        threadId,
-        syncState: "ready",
-        task,
-      },
-      reason: "canonical-idle-after-restart",
+      task,
     });
   }, {
     threadId,

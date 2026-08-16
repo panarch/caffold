@@ -84,6 +84,24 @@ struct TaskEventStreamState {
     initial_frames: VecDeque<Bytes>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskListSync<'a> {
+    thread_id: &'a str,
+    revision: u64,
+    task: Option<&'a TaskRecord>,
+}
+
+impl<'a> TaskListSync<'a> {
+    fn from_detail(sync: &'a TaskDetailSync) -> Self {
+        Self {
+            thread_id: &sync.thread_id,
+            revision: sync.revision,
+            task: sync.detail.task.as_ref(),
+        }
+    }
+}
+
 pub(super) async fn task_list_stream_initial_frames(
     state: &TaskState,
 ) -> Result<VecDeque<Bytes>, ApiError> {
@@ -166,7 +184,7 @@ fn task_list_event_stream(
                     message = state.receivers.sync.recv() => {
                         match message {
                             Ok(sync) => {
-                                let payload = serde_json::to_string(&sync)
+                                let payload = serde_json::to_string(&TaskListSync::from_detail(&sync))
                                     .unwrap_or_else(|_| "{}".to_string());
                                 let frame = format!("event: task-sync\ndata: {payload}\n\n");
                                 return Some((Ok::<_, Infallible>(Bytes::from(frame)), state));
@@ -541,10 +559,18 @@ mod tests {
             .expect("task list stream remains open")
             .unwrap();
         let third = std::str::from_utf8(&third).unwrap();
-        assert!(third.starts_with("event: task-sync\ndata: "));
-        assert!(third.contains("\"threadId\":\"thread-list-stream-first\""));
-        assert!(third.contains("\"title\":\"Persisted first name\""));
-        assert!(third.contains("\"type\":\"idle\""));
+        let payload = third
+            .strip_prefix("event: task-sync\ndata: ")
+            .and_then(|frame| frame.strip_suffix("\n\n"))
+            .expect("Task list runtime sync frame");
+        let payload: JsonValue = serde_json::from_str(payload).unwrap();
+        assert_eq!(payload["threadId"], first_id);
+        assert!(payload["revision"].as_u64().is_some());
+        assert_eq!(payload["task"]["title"], "Persisted first name");
+        assert_eq!(payload["task"]["threadStatus"]["type"], "idle");
+        assert_eq!(payload.as_object().unwrap().len(), 3);
+        assert!(payload.get("detail").is_none());
+        assert!(payload.get("reason").is_none());
         assert!(
             tokio::time::timeout(std::time::Duration::from_millis(20), body.next())
                 .await
