@@ -975,11 +975,81 @@ mod request_tests {
     use super::*;
     use crate::{
         app::error::ApiError,
-        codex_app_server::{CodexPermissionMode, CodexThreadClient, ThreadStatus, TurnStatus},
+        codex_app_server::{
+            CodexNotification, CodexPermissionMode, CodexRuntimeEvent, CodexThreadClient,
+            ThreadStatus, TurnStatus,
+        },
         codex_thread_sessions::{CodexThreadSessions, ThreadSessionLifecycle},
         fs::RootedFs,
         task_store::TaskStore,
     };
+
+    #[tokio::test]
+    async fn event_notification_does_not_broadcast_its_own_full_detail_snapshot() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-event-only-detail";
+        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+            "thread/resume",
+            resumed_task(thread_id, root.path()),
+        )]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        let _viewer = state
+            .codex_sessions
+            .acquire_viewer(&client, 1, thread_id)
+            .await
+            .expect("viewer");
+        let initial_revision = state
+            .codex_sessions
+            .snapshot(thread_id)
+            .await
+            .expect("initial snapshot")
+            .revision;
+        let mut task_events = state.task_events.subscribe();
+        let mut detail_syncs = state.task_sync.subscribe_updates();
+        state.detail.ensure_runtime_signal_driver().await;
+        state.codex_runtime.spawn_test_bridge(client.clone(), 1);
+
+        client.mock_publish_event(CodexRuntimeEvent::Notification(
+            CodexNotification::ItemStarted {
+                thread_id: thread_id.to_string(),
+                turn_id: "turn-1".to_string(),
+                item: json!({
+                    "id": "reasoning-1",
+                    "type": "reasoning",
+                    "summary": [],
+                    "content": []
+                }),
+                started_at_ms: 10,
+            },
+        ));
+        client.mock_publish_event(CodexRuntimeEvent::Notification(
+            CodexNotification::ThreadStatusChanged {
+                thread_id: thread_id.to_string(),
+                status: ThreadStatus::SystemError,
+            },
+        ));
+
+        let event = tokio::time::timeout(Duration::from_secs(1), task_events.recv())
+            .await
+            .expect("item notification publishes a Task event")
+            .expect("Task event channel remains open");
+        assert_eq!(event.thread_id, thread_id);
+        assert_eq!(event.event_type, "work_status");
+
+        let sync = tokio::time::timeout(Duration::from_secs(1), detail_syncs.recv())
+            .await
+            .expect("canonical status change publishes a detail sync")
+            .expect("detail sync channel remains open");
+        assert_eq!(sync.thread_id, thread_id);
+        assert_eq!(sync.revision, initial_revision + 2);
+        assert_eq!(sync.reason, "app-server-notification");
+        assert_eq!(
+            sync.detail.task.expect("canonical Task").thread_status,
+            ThreadStatus::SystemError
+        );
+    }
 
     #[tokio::test]
     async fn cached_task_detail_restores_managed_thread_composer_settings() {

@@ -301,9 +301,13 @@ List and header badges use only `threadStatus`. Within active flags,
 `waitingOnApproval` takes display precedence over `waitingOnUserInput`, while
 the original flag array remains unchanged. Turn completion, failure, and
 interruption are rendered inside that conversation turn rather than replacing
-the thread badge. `task-event` updates transcript/event UI only. Task lifecycle
-changes arrive through canonical REST responses, revisioned Task Detail
-`task-sync` snapshots, and the Task-list stream's revisioned Task-record syncs.
+the thread badge. Item lifecycle, raw response item, and diff notifications
+advance the in-memory session revision. Their live projections use `task-event`
+without materializing or broadcasting a full Task Detail snapshot. A later
+canonical Thread or Turn change may therefore publish a `task-sync` revision
+that skips those event-only revisions. Task lifecycle changes arrive through
+canonical REST responses, revisioned Task Detail `task-sync` snapshots, and the
+Task-list stream's revisioned Task-record syncs.
 
 ## Frontend Ownership
 

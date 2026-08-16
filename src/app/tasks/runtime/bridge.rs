@@ -39,7 +39,8 @@ impl CodexRuntime {
                                     .sessions
                                     .apply_notification_with_outcome(generation, &notification)
                                     .await;
-                                let revision = apply_outcome.revision;
+                                let canonical_state_changed =
+                                    apply_outcome.canonical_state_changed;
                                 let terminal_turn_is_first_current = apply_outcome
                                     .terminal
                                     .is_some_and(|terminal| terminal.first_current_transition);
@@ -47,7 +48,8 @@ impl CodexRuntime {
                                     &notification,
                                     CodexNotification::TurnCompleted { .. }
                                 );
-                                let snapshot = if (revision.is_some() || terminal_notification)
+                                let snapshot = if (canonical_state_changed
+                                    || terminal_notification)
                                     && let Some(thread_id) = thread_id.as_deref()
                                 {
                                     runtime.sessions.snapshot(thread_id).await
@@ -67,7 +69,7 @@ impl CodexRuntime {
                                     .reconcile_pending_approvals_for_notification(&notification)
                                     .await;
                                 runtime.handle_notification(notification);
-                                if revision.is_some()
+                                if canonical_state_changed
                                     && let Some(thread_id) = thread_id
                                     && let Some(snapshot) = snapshot
                                 {
@@ -428,6 +430,8 @@ fn notification_thread_id(notification: &CodexNotification) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use serde_json::{Value as JsonValue, json};
 
     use super::*;
@@ -495,6 +499,79 @@ mod tests {
                 "backwardsCursor": null
             }
         })
+    }
+
+    #[tokio::test]
+    async fn event_notification_has_no_session_changed_signal_of_its_own() {
+        let events = TaskEvents::default();
+        let runtime = runtime_with_events_and_store(
+            events.clone(),
+            TaskStore::memory().expect("in-memory task store"),
+        );
+        let thread_id = "thread-event-only";
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            active_resume(thread_id),
+        )]);
+        let _viewer = runtime
+            .sessions
+            .acquire_viewer(&client, 1, thread_id)
+            .await
+            .expect("viewer");
+        let initial_revision = runtime
+            .sessions
+            .snapshot(thread_id)
+            .await
+            .expect("initial snapshot")
+            .revision;
+        let mut task_events = events.subscribe();
+        let mut signals = runtime.subscribe();
+        runtime.spawn_test_bridge(client.clone(), 1);
+
+        client.mock_publish_event(CodexRuntimeEvent::Notification(
+            CodexNotification::ItemStarted {
+                thread_id: thread_id.to_string(),
+                turn_id: "turn-active".to_string(),
+                item: json!({
+                    "id": "reasoning-1",
+                    "type": "reasoning",
+                    "summary": [],
+                    "content": []
+                }),
+                started_at_ms: 10,
+            },
+        ));
+        client.mock_publish_event(CodexRuntimeEvent::Notification(
+            CodexNotification::ThreadStatusChanged {
+                thread_id: thread_id.to_string(),
+                status: ThreadStatus::Idle,
+            },
+        ));
+
+        let event = tokio::time::timeout(Duration::from_secs(1), task_events.recv())
+            .await
+            .expect("item notification publishes a Task event")
+            .expect("Task event channel remains open");
+        assert_eq!(event.thread_id, thread_id);
+        assert_eq!(event.event_type, "work_status");
+
+        let signal = tokio::time::timeout(Duration::from_secs(1), signals.recv())
+            .await
+            .expect("canonical status change publishes a runtime signal")
+            .expect("runtime signal channel remains open");
+        let CodexRuntimeSignal::SessionChanged {
+            thread_id: signal_thread_id,
+            snapshot,
+        } = signal
+        else {
+            panic!("expected a changed-session signal");
+        };
+        assert_eq!(signal_thread_id, thread_id);
+        assert_eq!(snapshot.revision, initial_revision + 2);
+        assert_eq!(
+            snapshot.thread.expect("canonical thread").status,
+            ThreadStatus::Idle
+        );
     }
 
     #[test]
