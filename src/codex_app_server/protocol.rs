@@ -48,6 +48,19 @@ pub(crate) const PERMISSION_PROFILE_LIST: &str = "permissionProfile/list";
 pub(crate) const CONFIG_READ: &str = "config/read";
 pub(crate) const RENAME_CURRENT_THREAD_TOOL_NAME: &str = "rename_current_thread";
 pub(crate) const ISOLATE_CURRENT_TASK_TOOL_NAME: &str = "isolate_current_task";
+pub(crate) const CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS: &str = concat!(
+    "This thread is a newly created Caffold task. ",
+    "On its first user turn, after you understand the user's underlying goal and immediately ",
+    "before your final response, you must call rename_current_thread exactly once with a ",
+    "concise, meaningful user-facing task name in the user's language. ",
+    "Do not copy response-format instructions, verification markers, or the eventual answer ",
+    "into the name. ",
+    "If the user specifies an exact task name or format, honor it in that same call. ",
+    "If isolate_current_task is needed on the first turn, call rename_current_thread immediately ",
+    "before isolation because no tools may run afterward. ",
+    "On later turns, call rename_current_thread only when the user explicitly asks to rename the ",
+    "task."
+);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -478,6 +491,8 @@ pub struct ThreadStartParams<'a> {
     pub cwd: &'a str,
     pub runtime_workspace_roots: [&'a str; 1],
     pub dynamic_tools: [DynamicToolSpec; 2],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub developer_instructions: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     approval_policy: Option<ApprovalPolicy>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1079,11 +1094,13 @@ pub(crate) fn thread_start_params<'a>(
     cwd: &'a str,
     permission_mode: Option<CodexPermissionMode>,
     service_tier: Option<&'a str>,
+    developer_instructions: Option<&'a str>,
 ) -> ThreadStartParams<'a> {
     ThreadStartParams {
         cwd,
         runtime_workspace_roots: [cwd],
         dynamic_tools: [rename_current_thread_tool(), isolate_current_task_tool()],
+        developer_instructions,
         approval_policy: permission_mode.map(CodexPermissionMode::approval_policy),
         approvals_reviewer: permission_mode.map(CodexPermissionMode::approvals_reviewer),
         permissions: permission_mode.map(CodexPermissionMode::profile_id),
@@ -1123,7 +1140,7 @@ fn rename_current_thread_tool() -> DynamicToolSpec {
     DynamicToolSpec {
         kind: DynamicToolType::Function,
         name: RENAME_CURRENT_THREAD_TOOL_NAME,
-        description: "Rename the current Caffold task when the user explicitly asks to rename this thread or task. Never use this tool to rename a different thread.",
+        description: "Set the user-facing name of the current Caffold task. Never use this tool to rename a different thread.",
         input_schema: json!({
             "type": "object",
             "additionalProperties": false,
@@ -1552,15 +1569,17 @@ mod tests {
                     "/workspace/project",
                     Some(CodexPermissionMode::ApproveForMe),
                     Some("priority"),
+                    Some(CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS),
                 ))
                 .expect("thread start params"),
                 json!({
                     "cwd": "/workspace/project",
                     "runtimeWorkspaceRoots": ["/workspace/project"],
+                    "developerInstructions": CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS,
                     "dynamicTools": [{
                         "type": "function",
                         "name": "rename_current_thread",
-                        "description": "Rename the current Caffold task when the user explicitly asks to rename this thread or task. Never use this tool to rename a different thread.",
+                        "description": "Set the user-facing name of the current Caffold task. Never use this tool to rename a different thread.",
                         "inputSchema": {
                             "type": "object",
                             "additionalProperties": false,
@@ -1844,15 +1863,17 @@ mod tests {
                 "/workspace/project",
                 None,
                 Some("default"),
+                Some(CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS),
             ))
             .expect("thread start params"),
             json!({
                 "cwd": "/workspace/project",
                 "runtimeWorkspaceRoots": ["/workspace/project"],
+                "developerInstructions": CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS,
                 "dynamicTools": [{
                     "type": "function",
                     "name": "rename_current_thread",
-                    "description": "Rename the current Caffold task when the user explicitly asks to rename this thread or task. Never use this tool to rename a different thread.",
+                    "description": "Set the user-facing name of the current Caffold task. Never use this tool to rename a different thread.",
                     "inputSchema": {
                         "type": "object",
                         "additionalProperties": false,

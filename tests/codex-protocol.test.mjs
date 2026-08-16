@@ -381,6 +381,7 @@ test(
       assert.match(threadStartParams, /approvalPolicy/);
       assert.match(threadStartParams, /approvalsReviewer/);
       assert.match(threadStartParams, /permissions/);
+      assert.match(threadStartParams, /developerInstructions/);
       assert.match(threadStartParams, /dynamicTools/);
 
       const serverRequests = readFileSync(join(outputDirectory, "ServerRequest.ts"), "utf8");

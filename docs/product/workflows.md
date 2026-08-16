@@ -39,9 +39,12 @@ lifecycle.
 2. For Global New, confirm or choose the cwd. Section New uses its managed
    logical path. Choose the model and reasoning effort, then send a prompt.
 3. Caffold starts a Codex thread in that cwd and records managed membership.
-4. Repository and worktree context are derived live from the thread cwd.
-5. Follow-up prompts start or steer a turn from canonical app-server state.
-6. Approvals, completion, interruption, and failures remain visible in the
+4. Near the end of the first turn, Codex is instructed to replace the initial
+   display name with a concise name based on the understood goal. This is
+   model-followed behavior rather than a completion gate.
+5. Repository and worktree context are derived live from the thread cwd.
+6. Follow-up prompts start or steer a turn from canonical app-server state.
+7. Approvals, completion, interruption, and failures remain visible in the
    thread-backed conversation.
 
 ### Open an existing Task

@@ -849,85 +849,114 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   await expect(navigator.locator(`.task-row[data-thread-id="${threadId}"]`)).toHaveCount(0);
 });
 
-test("renames a newly created Caffold task through the dynamic tool", async ({
+test("names a new Caffold task at first-turn completion and preserves it", async ({
   page,
 }) => {
   const cwd = liveCwd();
   const marker = `${Date.now()}`;
   const requestedName = `Caffold dynamic rename ${marker}`;
-  const reply = `caffold-live-renamed-${marker}`;
-  const siblingReply = `caffold-live-rename-sibling-${marker}`;
-
-  const siblingResponse = await page.request.post("/api/tasks", {
-    data: {
-      cwd,
-      prompt: `Reply with exactly ${siblingReply}. Do not modify files or run commands.`,
-      model: SPARK_MODEL,
-      effort: LIVE_REASONING_EFFORT,
-    },
-  });
-  const siblingBody = await siblingResponse.text();
-  expect(
-    siblingResponse.status(),
-    `create rename sibling response: ${siblingBody}`,
-  ).toBe(200);
-  const siblingThreadId = JSON.parse(siblingBody).threadId;
-  expect(siblingThreadId).toBeTruthy();
-  trackLiveThread(siblingThreadId, "spark", SPARK_MODEL);
-  await expectLiveThreadIdle(page.request, siblingThreadId);
-
-  await page.goto("/tasks");
-  const navigator = taskNavigator(page);
-  const siblingTask = navigator.locator(
-    `.task-row[data-thread-id="${siblingThreadId}"]`,
-  );
-  await expect(siblingTask).toHaveAttribute("data-task-status", "idle");
+  const initialReply = `caffold-live-auto-named-${marker}`;
+  const followUpReply = `caffold-live-name-preserved-${marker}`;
+  const renamedReply = `caffold-live-explicitly-renamed-${marker}`;
+  const firstPrompt = [
+    "데스크톱 작업 관리 앱에 키보드 단축키를 추가하는 간결한 3단계 계획을 제안해 줘.",
+    `응답 마지막에 검증 마커 ${initialReply}를 붙여 줘.`,
+    "파일을 살펴보거나 수정하거나 명령을 실행하지 마.",
+  ].join(" ");
 
   await page.goto(`/tasks/new?cwd=${encodeURIComponent(cwd)}`);
   const tasksPage = page.locator("caffold-tasks-page");
+  const navigator = taskNavigator(page);
   const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
   await expect(newTaskForm).toBeVisible();
   await chooseModel(newTaskForm, "spark");
 
   const newTaskPrompt = newTaskForm.getByRole("textbox", { name: "New task prompt" });
-  await newTaskPrompt.fill(
-    `Rename the current Caffold task to exactly "${requestedName}" using the rename_current_thread tool. You must call the tool; do not merely say it was renamed. After the tool succeeds, reply with exactly ${reply}. Do not modify files or run commands.`,
-  );
+  await newTaskPrompt.fill(firstPrompt);
   await newTaskPrompt.press("Enter");
   await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
   const threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
   expect(threadId).toBeTruthy();
   trackLiveThread(threadId, "spark", SPARK_MODEL);
 
-  await expect(
-    tasksPage
-      .locator('.task-message[data-message-role="assistant"][data-message-phase="final"]')
-      .filter({ hasText: reply }),
-  ).toBeVisible({ timeout: 60_000 });
-  await expect
-    .poll(async () => {
-      const response = await page.request.get(`/api/tasks/${threadId}`);
-      if (!response.ok()) {
-        return false;
-      }
-      const detail = await response.json();
-      return detail.events?.some(
-        (event) =>
-          event.type === "work_status" &&
-          event.payload?.itemType === "dynamicToolCall" &&
-          event.payload?.lifecycle === "completed",
-      );
-    })
-    .toBe(true);
+  const finalAssistantMessages = tasksPage.locator(
+    '.task-message[data-message-role="assistant"][data-message-phase="final"]',
+  );
+  const readTaskDetail = async () => {
+    const response = await page.request.get(`/api/tasks/${threadId}`);
+    expect(response.ok()).toBeTruthy();
+    return response.json();
+  };
+  const completedDynamicToolCalls = (detail) =>
+    (detail.events ?? []).filter(
+      (event) =>
+        event.type === "work_status" &&
+        event.payload?.itemType === "dynamicToolCall" &&
+        event.payload?.lifecycle === "completed",
+    );
+
+  await expect(finalAssistantMessages.filter({ hasText: initialReply })).toBeVisible({
+    timeout: 60_000,
+  });
+  await expectLiveThreadIdle(page.request, threadId);
+  const firstDetail = await readTaskDetail();
+  const automaticName = firstDetail.task?.title;
+  expect(typeof automaticName).toBe("string");
+  expect(automaticName.trim()).not.toBe("");
+  expect(automaticName).toMatch(/[가-힣]/);
+  expect(automaticName).not.toBe(firstPrompt);
+  expect(automaticName).not.toContain(initialReply);
+  expect(completedDynamicToolCalls(firstDetail)).toHaveLength(1);
+  const renameCompletedIndex = firstDetail.events.findIndex(
+    (event) =>
+      event.type === "work_status" &&
+      event.payload?.itemType === "dynamicToolCall" &&
+      event.payload?.lifecycle === "completed",
+  );
+  const finalResponseIndex = firstDetail.events.findIndex(
+    (event) =>
+      event.type === "assistant_message" &&
+      ["final", "final_answer"].includes(event.payload?.phase) &&
+      event.payload?.text?.includes(initialReply),
+  );
+  expect(renameCompletedIndex).toBeGreaterThanOrEqual(0);
+  expect(finalResponseIndex).toBeGreaterThan(renameCompletedIndex);
+  await expect(tasksPage.locator(".task-detail-heading h2")).toHaveText(automaticName);
+
+  const followUpForm = tasksPage.locator(
+    '.task-follow-up-form[data-task-form="follow-up"]',
+  );
+  await expect(followUpForm).toHaveAttribute("data-thread-id", threadId);
+  await chooseModel(followUpForm, "spark");
+  const followUpPrompt = followUpForm.getByRole("textbox", { name: "Follow-up prompt" });
+  await followUpPrompt.fill(
+    `Reply with exactly ${followUpReply}. Do not inspect files, modify files, or run commands.`,
+  );
+  await submitPromptAndExpectAccepted(page, threadId, () =>
+    followUpForm.getByRole("button", { name: "Send prompt" }).click(),
+  );
+  await expect(finalAssistantMessages.filter({ hasText: followUpReply })).toBeVisible();
+  await expectLiveThreadIdle(page.request, threadId);
+  const followUpDetail = await readTaskDetail();
+  expect(followUpDetail.task?.title).toBe(automaticName);
+  expect(completedDynamicToolCalls(followUpDetail)).toHaveLength(1);
+
+  await followUpPrompt.fill(
+    `Rename the current Caffold task to exactly "${requestedName}" using rename_current_thread. After the tool succeeds, reply with exactly ${renamedReply}. Do not inspect files, modify files, or run commands.`,
+  );
+  await submitPromptAndExpectAccepted(page, threadId, () => followUpPrompt.press("Enter"));
+  await expect(finalAssistantMessages.filter({ hasText: renamedReply })).toBeVisible();
+  await expectLiveThreadIdle(page.request, threadId);
+  const renamedDetail = await readTaskDetail();
+  expect(renamedDetail.task?.title).toBe(requestedName);
+  expect(completedDynamicToolCalls(renamedDetail)).toHaveLength(2);
   await expect(tasksPage.locator(".task-detail-heading h2")).toHaveText(requestedName);
-  await expect(siblingTask).toHaveAttribute("data-task-status", "idle");
 
   await page.goto("/tasks");
   const renamedTask = navigator.locator(`.task-row[data-thread-id="${threadId}"]`);
   await expect(renamedTask.locator(".task-row-title")).toHaveText(requestedName);
 
   await archiveLiveThread(page.request, threadId);
-  await archiveLiveThread(page.request, siblingThreadId);
   await page.goto("/tasks");
   await expect(
     navigator
