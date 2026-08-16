@@ -744,19 +744,27 @@ mod tests {
         let temp = tempfile::tempdir().expect("temporary Codex fixture");
         let home_bin = temp.path().join(".local/bin");
         std::fs::create_dir_all(&home_bin).expect("create standalone bin");
+        let codex = home_bin.join("codex");
         write_executable(
-            &home_bin.join("codex"),
-            "if [ \"$1\" = \"--version\" ]; then rm -- \"$0\"; echo 'codex-cli 0.147.0'; exit 0; fi",
+            &codex,
+            "if [ \"$1\" = \"--version\" ]; then /bin/chmod a-x -- \"$0\"; echo 'codex-cli 0.147.0'; exit 0; fi",
         );
 
-        let readiness = inspect_codex_installation_from(None, None, Some(temp.path()), &[])
-            .await
+        let inspection = inspect_codex_installation_from(None, None, Some(temp.path()), &[]).await;
+        assert!(codex.is_file(), "fixture must preserve the executable path");
+        assert!(
+            !is_executable_file(&codex),
+            "fixture must disable the executable before the capability probe"
+        );
+        let readiness = inspection
             .expect_err("a failed capability check must not imply unsupported capabilities");
 
-        assert_eq!(readiness.state, CodexReadinessState::Error);
         assert_eq!(
-            readiness.reason_code,
-            CodexReadinessReason::AppServerCapabilityCheckFailed
+            (readiness.state, readiness.reason_code),
+            (
+                CodexReadinessState::Error,
+                CodexReadinessReason::AppServerCapabilityCheckFailed
+            )
         );
     }
 
