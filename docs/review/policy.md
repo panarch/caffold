@@ -51,6 +51,20 @@ each related flow coherent, ordered from purpose to orchestration to detail. Do
 not reorder declarations when source order is itself semantic, such as
 initialization, migration steps, or the CSS cascade.
 
+## Source Module Ownership
+
+Keep extracted implementation inside the nearest existing production owner. If
+one owner exclusively consumes the implementation, place it in that owner's
+private child namespace rather than beside the owner in its parent's namespace.
+Promote an implementation to a sibling or common ancestor only when multiple
+owners at that boundary consume it or when it owns an independent domain
+boundary.
+
+File size, test placement, and hypothetical reuse do not by themselves justify
+promotion. When a language supports an entry module with an adjacent private
+implementation namespace, treat the entry module and that namespace as one
+ownership boundary and apply the same rule recursively.
+
 ## Review Workflow
 
 Caffold exists to make review-heavy agent work practical from a browser. A

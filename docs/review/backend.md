@@ -30,6 +30,18 @@ explicitly introduces a mutation.
 - Shape responses for review surfaces instead of exposing raw implementation
   details by default.
 
+## Rust Module Boundaries
+
+Apply the common [Source Module Ownership](policy.md#source-module-ownership)
+rules when a Rust implementation expands beyond one file.
+
+- `name.rs` and the modules it privately owns beneath `name/` form one ownership
+  boundary. Implementation private to that boundary belongs beneath `name/`,
+  not beside `name.rs` in its parent's namespace.
+- Keep owner-private child module declarations private and give their items the
+  narrowest visibility required by the owning module. Do not widen visibility
+  to make an extracted implementation appear shared.
+
 ## Rust Test And Coverage Ownership
 
 Rust unit tests should follow the implementation owner closely enough that a
