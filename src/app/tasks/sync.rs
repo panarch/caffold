@@ -421,7 +421,7 @@ mod tests {
     const SYNC_MAX_LATENCY_FOR_TEST: Duration = TASK_SYNC_MAX_LATENCY;
     const SYNC_RETRY_BASE_FOR_TEST: Duration = TASK_SYNC_RETRY_BASE;
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn task_sync_coordinator_only_invalidates_subscribed_threads() {
         let (shutdown, _) = broadcast::channel(1);
         let sync = TaskSync::<()>::new(shutdown);
@@ -461,7 +461,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn task_sync_coordinator_tracks_invalidations_until_canonical_sync() {
         let (shutdown, _) = broadcast::channel(1);
         let sync = TaskSync::<()>::new(shutdown);
@@ -484,7 +484,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn task_sync_coordinator_keeps_changes_observed_during_a_sync() {
         let (shutdown, _) = broadcast::channel(1);
         let sync = TaskSync::<()>::new(shutdown);
