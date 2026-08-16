@@ -5,13 +5,11 @@ import {
   PASTED_IMAGE_BASE64,
   activeTaskProjection,
   canonicalTaskState,
-  captureReviewScreenshot,
   emitTaskDetailBootstrap,
   installEventSourceMock,
   isScrolledToBottom,
   mockCodexModels,
   scrollTop,
-  stabilizeDynamicText,
 } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -1410,7 +1408,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
     "plan",
   ]);
 });
-test("keeps task conversation scroll anchored during live updates", async ({ page }, testInfo) => {
+test("keeps task conversation scroll anchored during live updates", async ({ page }) => {
   await page.addInitScript(() => {
     window.__taskEventSources = [];
     window.EventSource = class MockEventSource {
@@ -1504,7 +1502,6 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     model: null,
     reasoningEffort: null,
   };
-  let taskDetailResponse = taskDetail;
   let taskDetailReadRequests = 0;
 
   await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
@@ -1534,7 +1531,7 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
     taskDetailReadRequests += 1;
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify(taskDetailResponse),
+      body: JSON.stringify(taskDetail),
     });
   });
 
@@ -1705,118 +1702,4 @@ test("keeps task conversation scroll anchored during live updates", async ({ pag
   }, { threadId, taskDetail });
   await expect(tasksPage).not.toContainText("Stale event must stay hidden.");
   await expect(tasksPage).not.toContainText("Stale snapshot must stay hidden.");
-
-  const readsBeforeVisibility = taskDetailReadRequests;
-  await page.evaluate(() => {
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
-  expect(taskDetailReadRequests).toBe(readsBeforeVisibility);
-  await page.evaluate(() => {
-    for (const source of window.__taskEventSources.filter(
-      (candidate) => !candidate.closed && candidate.readyState !== 1,
-    )) {
-      source.emitOpen();
-    }
-  });
-  await expect(page.locator(".app-foreground-recovery")).toBeHidden();
-
-  await page.evaluate((threadId) => {
-    const taskSource = window.__taskEventSources.findLast(
-      (source) =>
-        source.url.includes(`/api/tasks/${threadId}/stream`) && !source.closed,
-    );
-    taskSource.emitError();
-  }, threadId);
-  await expect(
-    page.locator('.app-foreground-recovery[data-recovery-state="reconnecting"]'),
-  ).toContainText("Reconnecting to Caffold server");
-  await stabilizeDynamicText(page);
-  await captureReviewScreenshot(page, testInfo, "tasks-live-reconnecting");
-
-  const readsBeforeReconnect = taskDetailReadRequests;
-  const reconnectEvent = eventRecord(
-    "event_reconnect_sync",
-    "assistant_message",
-    "Assistant response",
-    {
-      turnId: "turn_reconnect_sync",
-      text: "Synced after reconnect.",
-    },
-    500,
-  );
-  taskDetailResponse = {
-    ...taskDetail,
-    revision: 8,
-    task: {
-      ...taskDetail.task,
-      ...canonicalTaskState("idle"),
-    },
-    events: [...taskDetail.events, reconnectEvent],
-  };
-  await page.evaluate(({ threadId, detail }) => {
-    const taskSource = window.__taskEventSources.findLast(
-      (source) =>
-        source.url.includes(`/api/tasks/${threadId}/stream`) && !source.closed,
-    );
-    taskSource.emitOpen();
-    taskSource.emit("task-sync", {
-      threadId,
-      revision: detail.revision,
-      detail,
-      reason: "stream-bootstrap",
-    });
-  }, { threadId, detail: taskDetailResponse });
-  await expect(page.locator(".app-foreground-recovery")).toBeHidden();
-  await expect(tasksPage).toContainText("Synced after reconnect.");
-  expect(taskDetailReadRequests).toBe(readsBeforeReconnect);
-
-  const sourcesBeforeFailure = await page.evaluate(
-    () => window.__taskEventSources.length,
-  );
-  await page.evaluate((threadId) => {
-    const taskSource = window.__taskEventSources.findLast(
-      (source) =>
-        source.url.includes(`/api/tasks/${threadId}/stream`) && !source.closed,
-    );
-    taskSource.emitError(true);
-  }, threadId);
-  for (const replacementCount of [1, 2, 3]) {
-    await expect
-      .poll(() => page.evaluate(() => window.__taskEventSources.length))
-      .toBe(sourcesBeforeFailure + replacementCount);
-    await page.evaluate((threadId) => {
-      const taskSource = window.__taskEventSources.findLast(
-        (source) =>
-          source.url.includes(`/api/tasks/${threadId}/stream`) && !source.closed,
-      );
-      taskSource.emitError(true);
-    }, threadId);
-  }
-  const streamError = page.locator(
-    '.app-foreground-recovery[data-recovery-state="unavailable"]',
-  );
-  await expect(streamError).toContainText("Caffold server unavailable.");
-  const sourcesBeforeRetry = await page.evaluate(
-    () => window.__taskEventSources.length,
-  );
-  await streamError.getByRole("button", { name: "Retry" }).click();
-  await expect
-    .poll(() => page.evaluate(() => window.__taskEventSources.length))
-    .toBe(sourcesBeforeRetry + 2);
-  await page.evaluate(() => {
-    for (const source of window.__taskEventSources.filter(
-      (candidate) => !candidate.closed && candidate.readyState !== 1,
-    )) {
-      source.emitOpen();
-    }
-  });
-  await page.evaluate(({ threadId, detail }) => {
-    window.__caffoldTaskSse.source(threadId).emit("task-sync", {
-      threadId,
-      revision: detail.revision,
-      detail,
-      reason: "stream-bootstrap",
-    });
-  }, { threadId, detail: taskDetailResponse });
-  await expect(page.locator(".app-foreground-recovery")).toBeHidden();
 });

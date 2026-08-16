@@ -1428,15 +1428,52 @@ async function primaryActionColors(page) {
 }
 
 async function skipWaitingServiceWorker(page, origin) {
-  // Keep the real-browser regression focused on controller and document
-  // ownership. The production activation message is covered by the mocked
-  // browser lifecycle and service-worker contract tests.
+  // Enabling the CDP domain publishes registration and worker snapshots
+  // independently. Wait for both before issuing the scope-based command, then
+  // keep the session alive until that exact replacement activates.
   const cdp = await page.context().newCDPSession(page);
+  const scriptURL = `${origin}/service-worker.js`;
+  const scopeURL = `${origin}/`;
+  let installedVersionId;
+  let reportActivated;
+  let reportInstalled;
+  let reportRegistered;
+  const activated = new Promise((resolve) => {
+    reportActivated = resolve;
+  });
+  const installed = new Promise((resolve) => {
+    reportInstalled = resolve;
+  });
+  const registered = new Promise((resolve) => {
+    reportRegistered = resolve;
+  });
+  cdp.on("ServiceWorker.workerRegistrationUpdated", ({ registrations }) => {
+    if (registrations.some((registration) =>
+      registration.scopeURL === scopeURL && !registration.isDeleted
+    )) {
+      reportRegistered();
+    }
+  });
+  cdp.on("ServiceWorker.workerVersionUpdated", ({ versions }) => {
+    const replacement = versions.find((version) =>
+      version.scriptURL === scriptURL && version.status === "installed"
+    );
+    if (replacement && !installedVersionId) {
+      installedVersionId = replacement.versionId;
+      reportInstalled();
+    }
+    if (versions.some(
+      (version) =>
+        version.versionId === installedVersionId && version.status === "activated",
+    )) {
+      reportActivated();
+    }
+  });
   try {
     await cdp.send("ServiceWorker.enable");
-    await cdp.send("ServiceWorker.skipWaiting", {
-      scopeURL: `${origin}/`,
-    });
+    await Promise.all([installed, registered]);
+    await cdp.send("ServiceWorker.skipWaiting", { scopeURL });
+    await activated;
   } finally {
     await cdp.detach();
   }
