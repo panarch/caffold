@@ -40,6 +40,7 @@ class CaffoldTaskCreate extends HTMLElement {
     this.stateReady = true;
     this.cwd = ".";
     this.browseCwd = true;
+    this.composerSettings = null;
     this.transportAvailable = true;
     this.codexOperationsBlocked = true;
     this.error = null;
@@ -66,13 +67,22 @@ class CaffoldTaskCreate extends HTMLElement {
     this.syncComposer();
   }
 
-  setContext({ cwd = this.cwd, browseCwd = this.browseCwd } = {}) {
+  setContext({
+    cwd = this.cwd,
+    browseCwd = this.browseCwd,
+    composerSettings = this.composerSettings,
+  } = {}) {
     this.ensureState();
     const nextCwd = cleanLogicalPath(cwd || ".");
     const nextBrowseCwd = Boolean(browseCwd);
-    const changed = this.cwd !== nextCwd || this.browseCwd !== nextBrowseCwd;
+    const nextComposerSettings = normalizeComposerSettings(composerSettings);
+    const changed =
+      this.cwd !== nextCwd ||
+      this.browseCwd !== nextBrowseCwd ||
+      JSON.stringify(this.composerSettings) !== JSON.stringify(nextComposerSettings);
     this.cwd = nextCwd;
     this.browseCwd = nextBrowseCwd;
+    this.composerSettings = nextComposerSettings;
     this.ensureRendered();
     if (changed) {
       this.error = null;
@@ -226,6 +236,7 @@ class CaffoldTaskCreate extends HTMLElement {
   }
 
   syncComposer() {
+    const settings = this.composerSettings ?? {};
     this.composer()?.setContext({
       mode: "create",
       className: "task-new-form",
@@ -235,6 +246,9 @@ class CaffoldTaskCreate extends HTMLElement {
       ariaLabel: "New task prompt",
       submitLabel: "Start task",
       cancel: false,
+      model: settings.model ?? "",
+      effort: settings.effort ?? "",
+      fastMode: Boolean(settings.fastMode),
       disabled:
         !this.transportAvailable ||
         this.codexOperationsBlocked ||
@@ -255,6 +269,17 @@ class CaffoldTaskCreate extends HTMLElement {
         </div>`
       : "";
   }
+}
+
+function normalizeComposerSettings(settings) {
+  if (!settings || typeof settings !== "object") {
+    return null;
+  }
+  return {
+    model: `${settings.model ?? ""}`,
+    effort: `${settings.effort ?? ""}`,
+    fastMode: Boolean(settings.fastMode),
+  };
 }
 
 if (!customElements.get("caffold-task-create")) {

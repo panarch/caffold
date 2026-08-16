@@ -173,6 +173,12 @@ fn task_list_event_stream(
                                 let frame = format!("event: task-placed-at-top\ndata: {payload}\n\n");
                                 return Some((Ok::<_, Infallible>(Bytes::from(frame)), state));
                             }
+                            Ok(TaskListUpdate::SectionComposerSettings(update)) => {
+                                let payload = serde_json::to_string(&update)
+                                    .unwrap_or_else(|_| "{}".to_string());
+                                let frame = format!("event: section-composer-settings\ndata: {payload}\n\n");
+                                return Some((Ok::<_, Infallible>(Bytes::from(frame)), state));
+                            }
                             Ok(TaskListUpdate::Refresh) => {
                                 let frame = "event: task-list-refresh\ndata: {}\n\n";
                                 return Some((Ok::<_, Infallible>(Bytes::from_static(frame.as_bytes())), state));
@@ -219,7 +225,42 @@ mod tests {
         app::tasks::{projection::*, test_support::*},
         codex_app_server::ThreadStatus,
         fs::RootedFs,
+        task_store::{ComposerSettings, ManagedSection},
     };
+
+    #[tokio::test]
+    async fn task_list_stream_serializes_targeted_section_composer_settings_updates() {
+        let root = tempfile::tempdir().unwrap();
+        let client = CodexThreadClient::mock(Vec::new());
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        let response =
+            task_list_event_stream(TaskEventReceivers::subscribe(&state), VecDeque::new());
+        let mut body = response.into_body().into_data_stream();
+
+        state
+            .task_list_events
+            .section_composer_settings(&ManagedSection {
+                section_id: "section-settings".to_string(),
+                logical_path: "Workspace/settings".to_string(),
+                position: 0,
+                last_composer_settings: Some(ComposerSettings {
+                    model: Some("gpt-section".to_string()),
+                    reasoning_effort: Some("xhigh".to_string()),
+                    fast_mode: true,
+                }),
+            });
+
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(1), body.next())
+            .await
+            .expect("targeted Section settings frame")
+            .expect("task list stream remains open")
+            .unwrap();
+        assert_eq!(
+            frame.as_ref(),
+            b"event: section-composer-settings\ndata: {\"sectionId\":\"section-settings\",\"composerSettings\":{\"model\":\"gpt-section\",\"effort\":\"xhigh\",\"fastMode\":true}}\n\n"
+        );
+        assert_eq!(state.task_list_events.refresh_count(), 0);
+    }
 
     #[tokio::test]
     async fn managed_list_never_projects_pending_approval_onto_thread_status() {

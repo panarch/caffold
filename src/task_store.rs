@@ -31,6 +31,13 @@ pub(crate) use push_installation::{
     PushInstallation, PushInstallationSummary, PushSubscriptionInput,
 };
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ComposerSettings {
+    pub model: Option<String>,
+    pub reasoning_effort: Option<String>,
+    pub fast_mode: bool,
+}
+
 #[derive(Debug, Error)]
 pub(crate) enum TaskStoreError {
     #[error("invalid thread pagination cursor")]
@@ -151,6 +158,21 @@ impl TaskStoreTables<'_> {
         }
     }
 
+    pub(crate) fn update_managed_section_composer_settings(
+        &mut self,
+        section_id: &str,
+        settings: &ComposerSettings,
+    ) -> Result<Option<ManagedSection>> {
+        match self {
+            Self::Memory(glue) => {
+                managed_section::update_composer_settings(glue, section_id, settings)
+            }
+            Self::Redb(glue) => {
+                managed_section::update_composer_settings(glue, section_id, settings)
+            }
+        }
+    }
+
     pub(crate) fn claim_managed_thread_at_top(
         &mut self,
         thread: ManagedThread,
@@ -216,6 +238,29 @@ impl TaskStoreTables<'_> {
         match self {
             Self::Memory(glue) => managed_thread::move_before(glue, thread_id, before_thread_id),
             Self::Redb(glue) => managed_thread::move_before(glue, thread_id, before_thread_id),
+        }
+    }
+
+    pub(crate) fn update_managed_thread_composer_settings(
+        &mut self,
+        thread_id: &str,
+        settings: &ComposerSettings,
+    ) -> Result<Option<ManagedThread>> {
+        match self {
+            Self::Memory(glue) => managed_thread::update_composer_settings(
+                glue,
+                thread_id,
+                settings.model.as_deref(),
+                settings.reasoning_effort.as_deref(),
+                settings.fast_mode,
+            ),
+            Self::Redb(glue) => managed_thread::update_composer_settings(
+                glue,
+                thread_id,
+                settings.model.as_deref(),
+                settings.reasoning_effort.as_deref(),
+                settings.fast_mode,
+            ),
         }
     }
 
@@ -513,6 +558,7 @@ impl TaskStore {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn update_composer_settings(
         &self,
         thread_id: &str,
@@ -764,6 +810,7 @@ mod tests {
                         section_id: section_id.clone(),
                         logical_path: format!("Workspace/{index}"),
                         position: 0,
+                        last_composer_settings: None,
                     })?;
                     let inserted = tables.insert_managed_section_at_top(
                         &peer_section_id,
@@ -948,6 +995,7 @@ mod tests {
             section_id: "section-rollback".to_string(),
             logical_path: "Workspace/rollback".to_string(),
             position: 0,
+            last_composer_settings: None,
         };
 
         let result = store.transaction(|tables| {

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { taskDetailFixture } from "../support/task-api-fixture.js";
 import {
   activeTaskProjection,
   canonicalTaskState,
@@ -253,6 +254,150 @@ test("replaces the New Task context when a selected Section path changes", { tag
   await expect.poll(() =>
     sectionDetail.locator("caffold-task-create").evaluate((taskCreate) => taskCreate.cwd)
   ).toBe("tests/fixtures/other");
+});
+
+test("uses the Section's last composer settings for its next Task request", { tag: "@desktop" }, async ({ page }) => {
+  await installEventSourceMock(page);
+  await mockCodexModels(page);
+  const sectionId = "section-composer-seed";
+  const rootPath = "tests/fixtures/home";
+  const task = {
+    id: "thread_section_composer_seed",
+    threadId: "thread_section_composer_seed",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Section composer seed",
+    cwd: rootPath,
+    cwdPath: rootPath,
+    relativeCwd: "",
+    worktree: null,
+    createdMs: Date.now(),
+    updatedMs: Date.now(),
+    lastEventSummary: "Section composer seed",
+  };
+  const projection = {
+    sections: [{
+      id: sectionId,
+      name: rootPath,
+      repository: false,
+      composerSettings: {
+        model: "gpt-5.6-sol",
+        effort: "xhigh",
+        fastMode: true,
+      },
+      tasks: [task],
+    }],
+    unsectioned: [],
+  };
+  let submittedBody = null;
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    if (route.request().method() === "POST") {
+      submittedBody = route.request().postDataJSON();
+      return route.fulfill({
+        json: taskDetailFixture({
+          model: "gpt-5.6-sol",
+          reasoningEffort: "xhigh",
+          fastMode: true,
+        }),
+      });
+    }
+    return route.fulfill({ json: projection });
+  });
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({ json: { tasks: [], nextCursor: null } })
+  );
+
+  await page.goto(`/?section=${sectionId}`);
+  const form = page.locator('caffold-section-detail .task-new-form[data-task-form="create"]');
+  await expect(form.locator('input[name="model"]')).toHaveValue("gpt-5.6-sol");
+  await expect(form.locator('input[name="effort"]')).toHaveValue("xhigh");
+  await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
+
+  await form.getByRole("textbox", { name: "New task prompt" }).fill("Use the Section settings");
+  await form.getByRole("textbox", { name: "New task prompt" }).press("Enter");
+
+  await expect.poll(() => submittedBody).not.toBeNull();
+  expect(submittedBody).toMatchObject({
+    cwd: rootPath,
+    prompt: "Use the Section settings",
+    model: "gpt-5.6-sol",
+    effort: "xhigh",
+    fastMode: true,
+  });
+});
+
+test("falls back stale Section settings and applies targeted updates without reloading", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page, { registryKey: "__sectionComposerSources" });
+  await mockCodexModels(page);
+  const sectionId = "section-composer-update";
+  const rootPath = "tests/fixtures/home";
+  const task = {
+    id: "thread_section_composer_update",
+    threadId: "thread_section_composer_update",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Section composer update",
+    cwd: rootPath,
+    cwdPath: rootPath,
+    relativeCwd: "",
+    worktree: null,
+    createdMs: Date.now(),
+    updatedMs: Date.now(),
+    lastEventSummary: "Section composer update",
+  };
+  let taskListReads = 0;
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    taskListReads += 1;
+    return route.fulfill({
+      json: {
+        sections: [{
+          id: sectionId,
+          name: rootPath,
+          repository: false,
+          composerSettings: {
+            model: "retired-model",
+            effort: "retired-effort",
+            fastMode: false,
+          },
+          tasks: [task],
+        }],
+        unsectioned: [],
+      },
+    });
+  });
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({ json: { tasks: [], nextCursor: null } })
+  );
+
+  await page.goto(`/?section=${sectionId}`);
+  const form = page.locator('caffold-section-detail .task-new-form[data-task-form="create"]');
+  await expect(form.locator('input[name="model"]')).toHaveValue("gpt-5.6-sol");
+  await expect(form.locator('input[name="effort"]')).toHaveValue("low");
+  await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
+  await expect.poll(() => page.evaluate(() =>
+    window.__sectionComposerSources.some((source) =>
+      source.url.startsWith("/api/tasks/stream")
+    )
+  )).toBe(true);
+
+  await page.evaluate((id) => {
+    const source = window.__sectionComposerSources.find((candidate) =>
+      candidate.url.startsWith("/api/tasks/stream")
+    );
+    source.emit("section-composer-settings", {
+      sectionId: id,
+      composerSettings: {
+        model: "gpt-5.6-sol",
+        effort: "xhigh",
+        fastMode: true,
+      },
+    });
+  }, sectionId);
+
+  await expect(form.locator('input[name="model"]')).toHaveValue("gpt-5.6-sol");
+  await expect(form.locator('input[name="effort"]')).toHaveValue("xhigh");
+  await expect(form.locator('input[name="fastMode"]')).toHaveValue("true");
+  expect(taskListReads).toBe(1);
 });
 
 test("clears shared repository context when the selected Section loses capability", { tag: "@all-viewports" }, async ({

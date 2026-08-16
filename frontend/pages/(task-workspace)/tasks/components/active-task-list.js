@@ -89,6 +89,7 @@ class CaffoldActiveTaskList extends HTMLElement {
         "task-removed",
         "task-updated",
         "task-placed-at-top",
+        "section-composer-settings",
         "task-list-refresh",
         "task-list-snapshot",
         "task-sync",
@@ -1051,6 +1052,14 @@ class CaffoldActiveTaskList extends HTMLElement {
       }
       return;
     }
+    if (type === "section-composer-settings") {
+      const update = parseJson(event.data);
+      this.updateSectionComposerSettings(
+        update?.sectionId,
+        update?.composerSettings,
+      );
+      return;
+    }
     if (type === "task-updated") {
       const task = parseJson(event.data);
       const threadId = taskThreadId(task);
@@ -1081,6 +1090,25 @@ class CaffoldActiveTaskList extends HTMLElement {
     for (const task of normalizeTaskList(tasks)) {
       this.upsertCanonicalTask(task);
     }
+  }
+
+  updateSectionComposerSettings(sectionId, composerSettings) {
+    if (!this.taskListLoaded) {
+      return false;
+    }
+    const section = this.sections.find(
+      (candidate) => candidate.id === `${sectionId ?? ""}`,
+    );
+    const normalized = normalizeComposerSettings(composerSettings);
+    if (!section || !normalized) {
+      return false;
+    }
+    if (JSON.stringify(section.composerSettings) === JSON.stringify(normalized)) {
+      return false;
+    }
+    section.composerSettings = normalized;
+    this.publishState();
+    return true;
   }
 
   dispatchArchiveSync(action, threadId) {
@@ -1177,6 +1205,9 @@ class CaffoldActiveTaskList extends HTMLElement {
           id: section.id,
           name: section.name,
           repository: section.repository,
+          composerSettings: section.composerSettings
+            ? { ...section.composerSettings }
+            : null,
         }
       : null;
   }
@@ -1592,11 +1623,23 @@ function normalizeActiveSections(sections, runtimeByThread = new Map()) {
       id: `${section.id ?? ""}`,
       name: `${section.name ?? ""}`,
       repository: Boolean(section.repository),
+      composerSettings: normalizeComposerSettings(section.composerSettings),
       tasks: normalizeTaskList(section.tasks).map((task) =>
         mergeTaskRuntime(task, runtimeByThread.get(taskThreadId(task))),
       ),
     }))
     .filter((section) => section.id && section.tasks.length);
+}
+
+function normalizeComposerSettings(settings) {
+  if (!settings || typeof settings !== "object") {
+    return null;
+  }
+  return {
+    model: `${settings.model ?? ""}`,
+    effort: `${settings.effort ?? ""}`,
+    fastMode: Boolean(settings.fastMode),
+  };
 }
 
 function mergeTaskRuntime(cached, runtime) {

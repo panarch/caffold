@@ -10,11 +10,12 @@ use crate::{
     },
     codex_thread_sessions::{CodexThreadSessions, StartedThreadSettings},
     fs::RootedFs,
-    task_store::{ManagedThread, TaskStore, TaskStoreError},
+    task_store::{ComposerSettings, ManagedThread, TaskStore, TaskStoreError},
 };
 
 use super::{
     CodexConnection, TaskRecord,
+    composer_settings::persist_started_turn_composer_settings,
     events::{TaskEvents, accepted_user_message_event, now_ms},
     projection::{resolve_thread_cwd, task_activity_ms, task_record_from_thread},
     routes::TaskListEvents,
@@ -465,22 +466,20 @@ impl TaskLifecycle {
         reasoning_effort: Option<&str>,
         fast_mode: bool,
     ) -> Result<(), ApiError> {
-        let store = self.store.clone();
-        let thread_id = thread_id.to_string();
-        let model = model.map(str::to_string);
-        let reasoning_effort = reasoning_effort.map(str::to_string);
-        tokio::task::spawn_blocking(move || {
-            store.update_composer_settings(
-                &thread_id,
-                model.as_deref(),
-                reasoning_effort.as_deref(),
+        let persisted = persist_started_turn_composer_settings(
+            self.store.clone(),
+            thread_id,
+            ComposerSettings {
+                model: model.map(str::to_string),
+                reasoning_effort: reasoning_effort.map(str::to_string),
                 fast_mode,
-            )
-        })
-        .await
-        .map_err(task_store_worker_error)?
-        .map(|_| ())
-        .map_err(|error| ApiError::Internal(error.to_string()))
+            },
+        )
+        .await?;
+        if let Some(section) = persisted.and_then(|persisted| persisted.section) {
+            self.list_events.section_composer_settings(&section);
+        }
+        Ok(())
     }
 
     async fn rollback_unclaimed_thread(&self, client: &CodexThreadClient, thread_id: &str) {

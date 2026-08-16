@@ -251,8 +251,12 @@ cwd-derived worktree into a Caffold-owned resource. See
 [Managed Worktree Lifecycle](worktree-lifecycle.md).
 Caffold persists managed-thread membership and display names, nullable Section
 placement, Managed Section IDs, logical paths and order, observed recency,
-Caffold-only open/seen timestamps, and optional composer settings in GlueSQL
-Redb. It does not persist thread status, active turn, preview, cwd, Codex
+Caffold-only open/seen timestamps, each Task's current composer settings, and
+each Section's composer settings from its last successfully started turn in
+GlueSQL Redb. Task and Section settings use the same value shape but remain separately
+owned records: the Task fields describe its current state, while the Section
+fields seed the next Task created in that Section. It does not persist thread
+status, active turn, preview, cwd, Codex
 timestamps, event summaries, turns, transcript items, approvals, or derived
 repository/worktree presentation. Only threads created and managed through
 Caffold are part of the Tasks product surface. Unmanaged app-server threads are
@@ -407,7 +411,12 @@ Tasks without an active detail subscriber do not trigger rollout-driven reads.
 The Active Tasks API is local-first. `GET /api/tasks` joins Caffold's
 `managed_threads` and `managed_sections` tables and returns the last committed
 Section order, Section membership, dense within-Section order, and stable
-display name without an app-server RPC or persistent write.
+display name without an app-server RPC or persistent write. A Section with a
+recorded composer selection also includes that model, reasoning effort, and
+Fast-mode value. Section Task Create and Section-owned GitHub Task Start use
+that selection as their initial value; Global New and Task-owned actions keep
+their existing defaults. If the recorded model or effort is no longer offered,
+the model picker applies its normal current-model fallback.
 Repository/worktree presentation remains an asynchronous Git-derived projection
 and is not stored with the Section. Rows without a complete placement are
 returned in an explicit recovery group instead of being silently dropped.
@@ -423,7 +432,11 @@ cached list immediately and upgrades all available status chips without
 opening Tasks one at a time. Steady-state `task-sync` frames contain only the
 Thread ID, revision, and nullable canonical Task record. Transcript, history,
 approval, file-link, and Task-detail settings remain on the per-Task Detail
-stream.
+stream. A successfully started non-steering turn commits its applied composer
+settings to the Task and its parent Section in one local transaction, then
+publishes a targeted `section-composer-settings` frame. The browser patches that
+Section in its existing Active projection without a full list reload. Steering
+an active turn does not replace either record.
 
 Create, rename, archive, restore, and permanent-delete commands update Codex
 first, then commit their corresponding local projection change, and only then
@@ -440,11 +453,13 @@ Upgrading a legacy Task store is a startup-owned exception. The coordinator
 first stages the local schema through v4, collects a read-only Codex snapshot
 for the managed inventory when one is required, and gives that structured
 snapshot to the v4-to-v5 executor. It then applies the remaining local
-migrations and replaces the source only with a fully validated v7 staging
+migrations and replaces the source only with a fully validated v8 staging
 database. The v6-to-v7 migration initializes durable Section positions from the
 previous active navigator's recency-derived order and deterministically places
-Sections without active Tasks afterward. While Codex is unavailable or
-incompatible, the HTTP server remains available with explicit
+Sections without active Tasks afterward. The v7-to-v8 migration adds nullable
+Section composer fields without backfilling historical selections; Sections
+begin recording them only after a later turn starts successfully. While Codex
+is unavailable or incompatible, the HTTP server remains available with explicit
 Task-store/Codex readiness and retry controls, but Task operations stay blocked.
 
 Archived Tasks remain Caffold-owned and independent of Sections. They continue

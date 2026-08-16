@@ -206,6 +206,13 @@ struct ActiveTaskPlacementUpdate {
     placement: ActiveTaskTopPlacement,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ActiveTaskSectionComposerSettingsUpdate {
+    section_id: String,
+    composer_settings: super::active_list::ActiveTaskComposerSettings,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskRestoreResponse {
@@ -224,6 +231,7 @@ struct TaskListRemoval {
 enum TaskListUpdate {
     Task(Box<TaskRecord>),
     Placement(Box<ActiveTaskPlacementUpdate>),
+    SectionComposerSettings(Box<ActiveTaskSectionComposerSettingsUpdate>),
     Refresh,
 }
 
@@ -262,6 +270,20 @@ impl TaskListEvents {
         let _ = self.updates.send(TaskListUpdate::Placement(Box::new(
             ActiveTaskPlacementUpdate { task, placement },
         )));
+    }
+
+    pub(super) fn section_composer_settings(&self, section: &crate::task_store::ManagedSection) {
+        let Some(settings) = section.last_composer_settings.as_ref() else {
+            return;
+        };
+        let _ = self
+            .updates
+            .send(TaskListUpdate::SectionComposerSettings(Box::new(
+                ActiveTaskSectionComposerSettingsUpdate {
+                    section_id: section.section_id.clone(),
+                    composer_settings: settings.into(),
+                },
+            )));
     }
 
     pub(super) fn refresh(&self) {
@@ -490,6 +512,7 @@ pub(super) mod test_support {
                     section_id: section_id.to_string(),
                     logical_path: logical_path.to_string(),
                     position: 0,
+                    last_composer_settings: None,
                 };
                 tables.upsert_managed_section(&section)?;
                 tables.claim_managed_thread_at_top(
@@ -510,6 +533,7 @@ pub(super) mod test_support {
                     section_id: section_id.to_string(),
                     logical_path: logical_path.to_string(),
                     position: 0,
+                    last_composer_settings: None,
                 })
             })
             .unwrap();

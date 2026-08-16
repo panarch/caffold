@@ -83,21 +83,23 @@ pub(super) async fn task_store_update_composer_settings(
     reasoning_effort: Option<&str>,
     fast_mode: bool,
 ) -> Result<Option<ManagedThread>, ApiError> {
-    let store = state.task_store.clone();
-    let thread_id = thread_id.to_string();
-    let model = model.map(str::to_string);
-    let reasoning_effort = reasoning_effort.map(str::to_string);
-    tokio::task::spawn_blocking(move || {
-        store.update_composer_settings(
-            &thread_id,
-            model.as_deref(),
-            reasoning_effort.as_deref(),
+    let persisted = super::super::composer_settings::persist_started_turn_composer_settings(
+        state.task_store.clone(),
+        thread_id,
+        crate::task_store::ComposerSettings {
+            model: model.map(str::to_string),
+            reasoning_effort: reasoning_effort.map(str::to_string),
             fast_mode,
-        )
-    })
-    .await
-    .map_err(task_store_join_error)?
-    .map_err(task_store_api_error)
+        },
+    )
+    .await?;
+    if let Some(section) = persisted
+        .as_ref()
+        .and_then(|persisted| persisted.section.as_ref())
+    {
+        state.task_list_events.section_composer_settings(section);
+    }
+    Ok(persisted.map(|persisted| persisted.thread))
 }
 
 pub(super) async fn task_store_archive(

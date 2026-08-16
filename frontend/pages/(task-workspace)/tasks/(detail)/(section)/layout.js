@@ -85,7 +85,11 @@ class CaffoldSectionDetail extends HTMLElement {
     if (!taskCreate) {
       return;
     }
-    taskCreate.setContext({ cwd: this.selectedContextPath(), browseCwd: false });
+    taskCreate.setContext({
+      cwd: this.selectedContextPath(),
+      browseCwd: false,
+      composerSettings: this.section?.composerSettings ?? null,
+    });
     taskCreate.setTransportAvailable(this.transportAvailable);
     taskCreate.setCodexStatusSnapshot(this.codexStatusSnapshot);
   }

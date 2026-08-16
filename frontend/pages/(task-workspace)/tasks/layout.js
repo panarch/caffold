@@ -523,6 +523,8 @@ class CaffoldTasksPage extends HTMLElement {
     }
     if (!this.taskDetail()?.sectionContextMatches(section)) {
       void this.taskDetail()?.openSection(section, this.currentRoute);
+    } else {
+      this.taskDetail()?.updateSection(section);
     }
   }
 
