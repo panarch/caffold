@@ -669,7 +669,7 @@ test("foreground recovery retries a blocking readiness snapshot with bounded bac
   expect(statusReads).toBe(settledReads);
 });
 
-test("foreground offline pauses recovery and preserves useful Task UI until online", { tag: "@all-viewports" }, async ({
+test("fresh origin reachability recovers a foreground offline pause without an online edge", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
@@ -779,8 +779,15 @@ test("foreground offline pauses recovery and preserves useful Task UI until onli
   );
 
   recovered = true;
-  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await page.evaluate(async () => {
+    const { getHealth } = await import("/assets/api.js");
+    await getHealth();
+  });
   await expect(notice).toBeHidden();
+  await expect(appShell).toHaveAttribute(
+    "data-foreground-recovery-trigger",
+    "origin",
+  );
   await expect(tasksPage).toContainText(
     "Conversation reconciled after network recovery.",
   );

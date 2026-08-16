@@ -1,6 +1,7 @@
 import { getHealth } from "../api.js";
 import { BUILD_INFO } from "../build-info.js";
 import { renderInlineIcon, warmIcons } from "../components/icons.js";
+import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "../origin-reachability.js";
 import {
   parentRoute,
   parseRoute,
@@ -23,6 +24,10 @@ class CaffoldAppShell extends HTMLElement {
   connectedCallback() {
     if (this.initialized) {
       window.addEventListener("caffold:icons-ready", this.boundIconsReady);
+      window.addEventListener(
+        CAFFOLD_ORIGIN_REACHABLE_EVENT,
+        this.boundOriginReachable,
+      );
       this.pwaUpdateLifecycle?.connect();
       this.foregroundRecoveryLifecycle?.connect();
       queueMicrotask(() => {
@@ -34,6 +39,9 @@ class CaffoldAppShell extends HTMLElement {
     this.initialized = true;
     this.foregroundRecoverySnapshot = null;
     this.boundIconsReady = () => this.renderForegroundRecoveryIcon();
+    this.boundOriginReachable = () => {
+      void this.foregroundRecoveryLifecycle?.reportOriginReachable();
+    };
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.currentRoute = null;
     this.initialPath = "";
@@ -59,6 +67,10 @@ class CaffoldAppShell extends HTMLElement {
         this.applyForegroundRecoverySnapshot(snapshot),
       onSuspend: () => this.taskWorkspace.suspendForeground(),
     });
+    window.addEventListener(
+      CAFFOLD_ORIGIN_REACHABLE_EVENT,
+      this.boundOriginReachable,
+    );
     this.foregroundRecoverySnapshot =
       this.foregroundRecoveryLifecycle.snapshot();
     this.installNavigationHandlers();
@@ -123,6 +135,10 @@ class CaffoldAppShell extends HTMLElement {
 
   disconnectedCallback() {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+    window.removeEventListener(
+      CAFFOLD_ORIGIN_REACHABLE_EVENT,
+      this.boundOriginReachable,
+    );
     this.pwaUpdateLifecycle?.disconnect();
     this.foregroundRecoveryLifecycle?.disconnect();
   }

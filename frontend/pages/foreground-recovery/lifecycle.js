@@ -148,6 +148,15 @@ export class ForegroundRecoveryRuntime {
     });
   }
 
+  reportOriginReachable() {
+    if (this.state.node.type !== FOREGROUND_RECOVERY_NODE.OFFLINE) {
+      return Promise.resolve(null);
+    }
+    return this.requestForegroundRecovery({
+      trigger: FOREGROUND_RECOVERY_TRIGGER.ORIGIN_REACHABLE,
+    });
+  }
+
   setTargets(targets) {
     this.apply({
       type: FOREGROUND_RECOVERY_EVENT.TARGETS_UPDATED,
