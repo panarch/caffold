@@ -165,6 +165,14 @@ pub(super) fn task_store_api_error(error: TaskStoreError) -> ApiError {
             code: "task_reorder_conflict",
             message: error.to_string(),
         },
+        error @ TaskStoreError::SectionReorderUnavailable(_) => ApiError::Conflict {
+            code: "section_reorder_unavailable",
+            message: error.to_string(),
+        },
+        error @ TaskStoreError::SectionReorderConflict(_) => ApiError::Conflict {
+            code: "section_reorder_conflict",
+            message: error.to_string(),
+        },
         error => ApiError::Internal(error.to_string()),
     }
 }

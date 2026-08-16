@@ -439,6 +439,10 @@ frontend/
 |           |-- components/
 |           |   |-- navigator.js
 |           |   |-- active-task-list.js
+|           |   |-- active-task-list/
+|           |   |   `-- components/
+|           |   |       |-- section.js
+|           |   |       `-- section/components/row.js
 |           |   |-- task-create.js
 |           |   `-- composer.js
 |           `-- (detail)/
@@ -482,6 +486,14 @@ represent; child Web Components use the nearest `components/` namespace. Names
 describe the current owner and role: Task-only Conversation and Command stay
 below `(task)`; shared review and repository domains are siblings below
 `(detail)`; reusable leaves stay outside `pages`.
+
+Within the Task navigator, `caffold-task-navigator` owns the exclusive Task or
+Section reorder mode selection. `caffold-active-task-list` owns the canonical
+active projection and serialized local reorder mutations. Each
+`caffold-active-task-section` owns its Section header and Task list, while each
+private `caffold-active-task-row` owns one Task row's selection and reorder
+interaction. Section and row components raise semantic intents to their parent
+instead of acquiring list API or persistence ownership.
 
 ## Styling and assets
 

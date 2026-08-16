@@ -36,10 +36,31 @@ test("selects a Section and opens fixed-directory Task creation", { tag: "@all-v
 
   await page.goto("/");
   const section = page.locator(
-    'caffold-active-task-list .task-repository-header[data-section-id="fixture-section-1"]',
+    'caffold-active-task-list .task-repository-select[data-section-id="fixture-section-1"]',
   );
+  const sectionHeader = page.locator(
+    'caffold-active-task-list caffold-active-task-section[data-section-id="fixture-section-1"] > .task-repository-header',
+  );
+  const sectionCount = sectionHeader.locator(".task-repository-count");
   await expect(section).toBeVisible();
-  await section.click();
+  await expect(section).toHaveJSProperty("tagName", "BUTTON");
+  await expect.poll(() => sectionCount.evaluate((count) => {
+    const bounds = count.getBoundingClientRect();
+    return document
+      .elementFromPoint(
+        bounds.left + bounds.width / 2,
+        bounds.top + bounds.height / 2,
+      )
+      ?.closest(".task-repository-select")?.tagName ?? "";
+  })).toBe("BUTTON");
+  const headerBounds = await sectionHeader.boundingBox();
+  const countBounds = await sectionCount.boundingBox();
+  await sectionHeader.click({
+    position: {
+      x: countBounds.x + countBounds.width / 2 - headerBounds.x,
+      y: countBounds.y + countBounds.height / 2 - headerBounds.y,
+    },
+  });
 
   await expect(page).toHaveURL("/?section=fixture-section-1");
   await expect(section).toHaveAttribute("aria-current", "page");
@@ -49,7 +70,7 @@ test("selects a Section and opens fixed-directory Task creation", { tag: "@all-v
     document.body.append(probe);
     const expectedBackground = getComputedStyle(probe).backgroundColor;
     probe.remove();
-    const style = getComputedStyle(element);
+    const style = getComputedStyle(element.parentElement);
     return {
       actualBackground: style.backgroundColor,
       borderLeftWidth: style.borderLeftWidth,
@@ -118,7 +139,7 @@ test("keeps a repository Section draft while switching shared surfaces", { tag: 
 
   await page.goto("/");
   await page.locator(
-    'caffold-active-task-list .task-repository-header[data-section-id="fixture-section-1"]',
+    'caffold-active-task-list .task-repository-select[data-section-id="fixture-section-1"]',
   ).click();
 
   const detail = page.locator("caffold-detail-layout");
@@ -222,8 +243,8 @@ test("replaces the New Task context when a selected Section path changes", { tag
     }],
     unsectioned: [],
   };
-  await page.locator("caffold-active-task-list").evaluate(async (list) => {
-    await list.loadTasks({ force: true });
+  await page.locator("caffold-active-task-list").evaluate((list) => {
+    void list.loadTasks({ force: true });
   });
 
   await expect(page).toHaveURL(`/?section=${sectionId}`);
@@ -318,8 +339,8 @@ test("clears shared repository context when the selected Section loses capabilit
     }],
     unsectioned: [],
   };
-  await page.locator("caffold-active-task-list").evaluate(async (list) => {
-    await list.loadTasks({ force: true });
+  await page.locator("caffold-active-task-list").evaluate((list) => {
+    void list.loadTasks({ force: true });
   });
 
   await expect(page).toHaveURL(`/?section=${sectionId}`);

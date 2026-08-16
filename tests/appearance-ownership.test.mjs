@@ -185,7 +185,7 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
 
   const selectedOwners = [
     "components/file-tree.css",
-    "pages/(task-workspace)/tasks/components/active-task-list/components/row.css",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css",
     "pages/(task-workspace)/settings/appearance/page.css",
   ];
   for (const path of selectedOwners) {
@@ -319,10 +319,10 @@ test("structural shadows separate fixed regions from floating elevation", () => 
 
 test("unseen completion attention blinks the marker without hiding it", () => {
   const activeList = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list/components/row.css",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css",
   );
   const activeTaskListView = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list/components/row.js",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js",
   );
 
   cssBlockMatching(activeList, ".task-unseen-complete::before", [
@@ -665,8 +665,8 @@ test("visible inline icons have explicit block geometry from their UI owner", ()
     ["pages/(task-workspace)/components/navigation.css", ".task-workspace-navigation-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/controls.css", ".task-action-icon", "--interface-icon-size"],
     ["pages/(task-workspace)/tasks/components/composer.css", ".task-primary-action-icon", "--interface-icon-size"],
-    ["pages/(task-workspace)/tasks/components/active-task-list.css", ".task-repository-icon", "--task-list-icon-size"],
-    ["pages/(task-workspace)/tasks/components/active-task-list/components/row.css", ".task-row-worktree-icon", "--task-list-icon-size"],
+    ["pages/(task-workspace)/tasks/components/active-task-list/components/section.css", ".task-repository-icon", "--task-list-icon-size"],
+    ["pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css", ".task-row-worktree-icon", "--task-list-icon-size"],
     ["pages/(task-workspace)/tasks/components/archived-task-list.css", ".task-repository-icon", "--task-list-icon-size"],
     ["pages/(task-workspace)/tasks/components/archived-task-list.css", ".task-row-worktree-icon", "--task-list-icon-size"],
     ["pages/(task-workspace)/tasks/components/archived-task-list.css", ".task-archived-action-icon", "--interface-icon-size"],
@@ -1090,10 +1090,13 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
 
 test("task rows use full-width selection and compact repository grouping", () => {
   const activeRow = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list/components/row.css",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css",
   );
   const activeList = readFrontend(
     "pages/(task-workspace)/tasks/components/active-task-list.css",
+  );
+  const sectionOwner = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section.css",
   );
   const archivedList = readFrontend(
     "pages/(task-workspace)/tasks/components/archived-task-list.css",
@@ -1105,19 +1108,19 @@ test("task rows use full-width selection and compact repository grouping", () =>
     activeRow,
     '& > .task-row[aria-current="true"]',
   );
-  const sectionHeader = cssBlock(
-    activeList,
-    "& .task-repository-header {",
+  const section = cssBlock(
+    sectionOwner,
+    "caffold-active-task-section {",
   );
   const selectedSection = cssBlock(
-    activeList,
-    '& button.task-repository-header[aria-current="page"]',
+    sectionOwner,
+    '& > .task-repository-header:has(> button.task-repository-select[aria-current="page"]),',
   );
 
   assert.doesNotMatch(row, /border-left/);
   assert.doesNotMatch(hover, /border-left/);
   assert.doesNotMatch(selected, /border-left/);
-  assert.doesNotMatch(sectionHeader, /border-left/);
+  assert.doesNotMatch(section, /border-left/);
   assert.doesNotMatch(selectedSection, /border-left/);
   assert.match(selectedSection, /background: var\(--selection-bg\)/);
   assert.match(row, /width: calc\(100% \+ var\(--task-repository-indent\)\)/);
@@ -1146,23 +1149,33 @@ test("task rows use full-width selection and compact repository grouping", () =>
   assert.match(selected, /background: var\(--selection-bg\)/);
   assert.doesNotMatch(selected, /color-mix/);
 
-  for (const [groupOwner, rowOwner] of [
-    [activeList, activeRow],
-    [archivedList, archivedList],
-  ]) {
-    const repositoryGap = cssBlock(
-      groupOwner,
-      "& .task-repository-group + .task-repository-group {",
-    );
-    const repositoryHeader = cssBlock(groupOwner, "& .task-repository-header {");
+  for (const rowOwner of [activeRow, archivedList]) {
     const title = cssBlock(rowOwner, "& .task-row-title");
     const indicators = cssBlock(rowOwner, "& .task-row-indicators");
-    assert.match(repositoryGap, /margin-top: var\(--interface-space-6\)/);
-    assert.match(repositoryHeader, /min-height: var\(--interface-space-14\)/);
     assert.match(title, /font-weight: 500/);
     assert.match(indicators, /width: 3rem/);
     assert.match(indicators, /min-width: 0/);
   }
+  assert.match(
+    cssBlock(activeList, "& .task-repository-group + .task-repository-group {"),
+    /margin-top: var\(--interface-space-8\)/,
+  );
+  assert.match(
+    cssBlock(sectionOwner, "& > .task-repository-header {"),
+    /min-height: var\(--task-list-row-height\)/,
+  );
+  assert.match(
+    cssBlock(sectionOwner, "& button.task-repository-select {"),
+    /position: absolute[\s\S]*inset: 0/,
+  );
+  assert.match(
+    cssBlock(archivedList, "& .task-repository-group + .task-repository-group {"),
+    /margin-top: var\(--interface-space-6\)/,
+  );
+  assert.match(
+    cssBlock(archivedList, "& .task-repository-header {"),
+    /min-height: var\(--interface-space-14\)/,
+  );
 });
 
 test("text actions use the shared Interface metadata scale instead of root body text", () => {

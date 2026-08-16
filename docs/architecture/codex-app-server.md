@@ -225,13 +225,13 @@ truth for:
 - turn status and history
 
 Caffold derives repository and Git worktree context from `thread.cwd` on every
-live response. For Active Tasks, Caffold owns local group identity,
-Thread-to-Section membership, and dense within-Section order. A Section stores
-only its Managed Section ID and RootedFs-logical repository/cwd path. Each Task
-has its own canonical worktree root for shared Integrated Review, Git, and
-GitHub when that Task is the active Detail subject. Outside Git, cwd remains
-useful as the thread's creation and file-review context, but it does not filter
-Tasks.
+live response. For Active Tasks, Caffold owns local group identity, durable
+Section order, Thread-to-Section membership, and dense within-Section order. A
+Section stores its Managed Section ID, RootedFs-logical repository/cwd path,
+and local order position. Each Task has its own canonical worktree root for
+shared Integrated Review, Git, and GitHub when that Task is the active Detail
+subject. Outside Git, cwd remains useful as the thread's creation and
+file-review context, but it does not filter Tasks.
 
 The derived worktree context contains only RootedFs-relative paths plus live
 branch, HEAD, linked-worktree, and relative-cwd information. Caffold does not
@@ -250,7 +250,7 @@ recreate only that verified owned path. This record never turns an external
 cwd-derived worktree into a Caffold-owned resource. See
 [Managed Worktree Lifecycle](worktree-lifecycle.md).
 Caffold persists managed-thread membership and display names, nullable Section
-placement, Managed Section IDs and logical paths, observed recency,
+placement, Managed Section IDs, logical paths and order, observed recency,
 Caffold-only open/seen timestamps, and optional composer settings in GlueSQL
 Redb. It does not persist thread status, active turn, preview, cwd, Codex
 timestamps, event summaries, turns, transcript items, approvals, or derived
@@ -406,11 +406,11 @@ Tasks without an active detail subscriber do not trigger rollout-driven reads.
 
 The Active Tasks API is local-first. `GET /api/tasks` joins Caffold's
 `managed_threads` and `managed_sections` tables and returns the last committed
-Section membership, dense within-Section order, and stable display name without
-an app-server RPC or persistent write. Repository/worktree presentation remains
-an asynchronous Git-derived projection and is not stored with the Section.
-Rows without a complete placement are returned in an explicit recovery group
-instead of being silently dropped.
+Section order, Section membership, dense within-Section order, and stable
+display name without an app-server RPC or persistent write.
+Repository/worktree presentation remains an asynchronous Git-derived projection
+and is not stored with the Section. Rows without a complete placement are
+returned in an explicit recovery group instead of being silently dropped.
 
 The existing Task-list SSE stream complements that persisted identity with
 process-local runtime state. A new connection registers every cached managed
@@ -430,15 +430,22 @@ first, then commit their corresponding local projection change, and only then
 publish the browser event. Normal runtime lifecycle commands do not create
 Codex Sections or move Codex Threads. New and restored Tasks are placed at
 local position zero, while archive clears their placement and compacts the
-remaining positions.
+remaining positions. Creating a managed Section inserts it at the top of the
+durable Section order. Task and Section reorder commands mutate only their
+respective local order, commit the move transaction, and then request a fresh
+Task-list projection; they do not call app-server or infer another placement
+from Codex state.
 
 Upgrading a legacy Task store is a startup-owned exception. The coordinator
 first stages the local schema through v4, collects a read-only Codex snapshot
 for the managed inventory when one is required, and gives that structured
-snapshot to the v4-to-v5 executor. Only a fully validated v5 staging database
-replaces the source. While Codex is unavailable or incompatible, the HTTP
-server remains available with explicit Task-store/Codex readiness and retry
-controls, but Task operations stay blocked.
+snapshot to the v4-to-v5 executor. It then applies the remaining local
+migrations and replaces the source only with a fully validated v7 staging
+database. The v6-to-v7 migration initializes durable Section positions from the
+previous active navigator's recency-derived order and deterministically places
+Sections without active Tasks afterward. While Codex is unavailable or
+incompatible, the HTTP server remains available with explicit
+Task-store/Codex readiness and retry controls, but Task operations stay blocked.
 
 Archived Tasks remain Caffold-owned and independent of Sections. They continue
 to read 30 managed IDs at a time from the archived Redb membership, resolve the

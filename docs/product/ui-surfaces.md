@@ -21,12 +21,18 @@ The Task navigator provides:
 - active and Archived sections;
 - repository grouping derived from canonical Task cwd/worktree state;
 - task title, recency, availability, and unseen-completion state;
+- exclusive Task and Section reorder modes for the persistent Active order;
 - New Task, Archive, Restore, and eligible delete actions.
 
 Managed Section headers are selectable and open Section Detail. Recovery group
 headings remain labels only. The selected Section is represented by local id;
 its managed logical path supplies the fixed cwd and its repository capability
 controls which shared review surfaces are available.
+
+Task reorder mode moves Tasks within their current Section. Section reorder
+mode presents the managed Section headers without their Task rows and moves the
+Sections as units. Only one mode is active at a time; recovery and Archived
+content are not reorderable.
 
 Selecting a Task opens its Conversation. Direct Task URLs load by `threadId`
 without requiring the Task to appear in the currently loaded navigator page.

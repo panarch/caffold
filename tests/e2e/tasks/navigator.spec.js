@@ -143,17 +143,18 @@ test("mounts initial loading once and preserves settled Task DOM across refresh"
     );
     element.__settledDom = {
       group,
-      header: group.querySelector(":scope > .task-repository-header"),
+      section: group.querySelector(":scope > caffold-active-task-section"),
+      header: group.querySelector(":scope > caffold-active-task-section > .task-repository-header"),
       label: group.querySelector(
-        ":scope > .task-repository-header > .task-repository-label",
+        ":scope > caffold-active-task-section > .task-repository-header > .task-repository-select > .task-repository-label",
       ),
       count: group.querySelector(
-        ":scope > .task-repository-header > .task-repository-count",
+        ":scope > caffold-active-task-section > .task-repository-header > .task-repository-count",
       ),
-      rows: [...group.querySelectorAll(":scope > .task-list > li")],
+      rows: [...group.querySelectorAll(":scope > caffold-active-task-section > .task-list > li")],
       components: [
         ...group.querySelectorAll(
-          ":scope > .task-list > li > caffold-active-task-row",
+          ":scope > caffold-active-task-section > .task-list > li > caffold-active-task-row",
         ),
       ],
     };
@@ -165,21 +166,23 @@ test("mounts initial loading once and preserves settled Task DOM across refresh"
       '.task-repository-group[data-task-repository-key="fixture-section-1"]',
     );
     const settled = element.__settledDom;
-    const rows = [...group.querySelectorAll(":scope > .task-list > li")];
+    const rows = [...group.querySelectorAll(":scope > caffold-active-task-section > .task-list > li")];
     const components = [
       ...group.querySelectorAll(
-        ":scope > .task-list > li > caffold-active-task-row",
+        ":scope > caffold-active-task-section > .task-list > li > caffold-active-task-row",
       ),
     ];
     return {
       group: group === settled.group,
-      header: group.querySelector(":scope > .task-repository-header") ===
+      section: group.querySelector(":scope > caffold-active-task-section") ===
+        settled.section,
+      header: group.querySelector(":scope > caffold-active-task-section > .task-repository-header") ===
         settled.header,
       label: group.querySelector(
-        ":scope > .task-repository-header > .task-repository-label",
+        ":scope > caffold-active-task-section > .task-repository-header > .task-repository-select > .task-repository-label",
       ) === settled.label,
       count: group.querySelector(
-        ":scope > .task-repository-header > .task-repository-count",
+        ":scope > caffold-active-task-section > .task-repository-header > .task-repository-count",
       ) === settled.count,
       rows: rows.every((row, index) => row === settled.rows[index]),
       components: components.every(
@@ -188,6 +191,7 @@ test("mounts initial loading once and preserves settled Task DOM across refresh"
     };
   })).resolves.toEqual({
     group: true,
+    section: true,
     header: true,
     label: true,
     count: true,
@@ -672,6 +676,14 @@ test("applies canonical top placements without list refetches or duplicate reord
     "thread_placement_existing",
     "Existing placed Task",
   );
+  const existingOther = {
+    ...initialNavigatorTask(
+      "thread_placement_existing_other",
+      "Existing Task in another Section",
+    ),
+    cwd: "tests/fixtures/other",
+    cwdPath: "tests/fixtures/other",
+  };
   const first = initialNavigatorTask(
     "thread_placement_first",
     "First placed Task",
@@ -684,17 +696,25 @@ test("applies canonical top placements without list refetches or duplicate reord
     "thread_placement_second",
     "Second placed Task",
   );
+  const newSectionTask = {
+    ...initialNavigatorTask(
+      "thread_placement_new_section",
+      "Task in newly placed Section",
+    ),
+    cwd: "tests/fixtures/new-section",
+    cwdPath: "tests/fixtures/new-section",
+  };
   let reads = 0;
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     reads += 1;
-    return route.fulfill({ json: activeTaskProjection([existing]) });
+    return route.fulfill({ json: activeTaskProjection([existing, existingOther]) });
   });
 
   await page.goto("/tasks");
   const rows = page.locator(
     'caffold-task-navigator .task-row[data-thread-id]',
   );
-  await expect(rows).toHaveCount(1);
+  await expect(rows).toHaveCount(2);
 
   await page.evaluate((unknown) => {
     window.__activePlacementSource.emit("task-sync", {
@@ -713,6 +733,7 @@ test("applies canonical top placements without list refetches or duplicate reord
       repository: false,
     },
     beforeThreadId: existing.threadId,
+    beforeSectionId: "fixture-section-2",
   };
   await page.evaluate(({ first, firstPlacement }) => {
     window.__activePlacementSource.emit("task-placed-at-top", {
@@ -720,7 +741,7 @@ test("applies canonical top placements without list refetches or duplicate reord
       placement: firstPlacement,
     });
   }, { first, firstPlacement });
-  await expect(rows).toHaveCount(2);
+  await expect(rows).toHaveCount(3);
   await expect(rows.nth(0)).toHaveAttribute("data-thread-id", first.threadId);
 
   await page.evaluate(({ first, second, firstPlacement }) => {
@@ -742,10 +763,68 @@ test("applies canonical top placements without list refetches or duplicate reord
     });
   }, { first, second, firstPlacement });
 
-  await expect(rows).toHaveCount(3);
+  await expect(rows).toHaveCount(4);
   await expect(rows.nth(0)).toHaveAttribute("data-thread-id", second.threadId);
   await expect(rows.nth(1)).toHaveAttribute("data-thread-id", first.threadId);
   await expect(rows.nth(1)).toContainText("First placed Task");
+  await page.evaluate((task) => {
+    window.__activePlacementSource.emit("task-placed-at-top", {
+      task,
+      placement: {
+        section: {
+          id: "fixture-section-new",
+          name: "tests/fixtures/new-section",
+          repository: false,
+        },
+        beforeThreadId: null,
+        beforeSectionId: "fixture-section-2",
+      },
+    });
+  }, newSectionTask);
+  await expect(rows).toHaveCount(5);
+  await expect.poll(() =>
+    page.locator(
+      "caffold-active-task-list .task-repository-group:not([data-task-recovery])",
+    ).evaluateAll((groups) =>
+      groups.map((group) => group.dataset.taskRepositoryKey)
+    )
+  ).toEqual([
+    "fixture-section-1",
+    "fixture-section-new",
+    "fixture-section-2",
+  ]);
+  await page.evaluate((task) => {
+    const item = document.querySelector(
+      `li[data-thread-id="${CSS.escape(task.threadId)}"]`,
+    );
+    window.__transferredTaskItem = item;
+    window.__activePlacementSource.emit("task-placed-at-top", {
+      task,
+      placement: {
+        section: {
+          id: "fixture-section-1",
+          name: "tests/fixtures/home",
+          repository: false,
+        },
+        beforeThreadId: null,
+        beforeSectionId: "fixture-section-new",
+      },
+    });
+  }, existingOther);
+  await expect(rows).toHaveCount(5);
+  await expect.poll(() => page.evaluate((threadId) => {
+    const item = document.querySelector(
+      `li[data-thread-id="${CSS.escape(threadId)}"]`,
+    );
+    return {
+      itemPreserved: item === window.__transferredTaskItem,
+      sectionId: item?.closest(".task-repository-group")
+        ?.dataset.taskRepositoryKey,
+    };
+  }, existingOther.threadId)).toEqual({
+    itemPreserved: true,
+    sectionId: "fixture-section-1",
+  });
   await page.waitForTimeout(100);
   expect(reads).toBe(1);
 });
@@ -941,7 +1020,7 @@ test("keeps Task row indicator columns aligned across worktree and meta states",
       const countBounds = row
         .closest(".task-repository-group")
         .querySelector(
-          ":scope > .task-repository-header > .task-repository-count",
+          ":scope > caffold-active-task-section > .task-repository-header > .task-repository-count",
         )
         .getBoundingClientRect();
       return {
@@ -3172,7 +3251,9 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
   });
   expect(treeLayout.bottomPadding).toBeGreaterThanOrEqual(20);
   expect(treeLayout.headerBackground).toBe("rgba(0, 0, 0, 0)");
-  expect(treeLayout.headerHeight).toBeLessThan(treeLayout.rowHeight);
+  expect(Math.abs(treeLayout.headerHeight - treeLayout.rowHeight)).toBeLessThanOrEqual(
+    0.6,
+  );
   expect(treeLayout.rowBorderBottom).toBe("0px");
   expect(treeLayout.rowTitleInset).toBeCloseTo(treeLayout.rootFontSize, 1);
   expect(treeLayout.rowTitleOffsetFromIcon).toBeGreaterThan(0);
@@ -3184,7 +3265,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
   const secondGroupGap = await groups.nth(1).evaluate((group) =>
     Number.parseFloat(getComputedStyle(group).marginTop),
   );
-  expect(secondGroupGap).toBeCloseTo(treeLayout.rootFontSize * 0.75, 1);
+  expect(secondGroupGap).toBeCloseTo(treeLayout.rootFontSize, 1);
   if (testInfo.project.name === "phone") {
     await expect(tasksPage.locator(".task-workspace-master-pane")).toBeVisible();
     await expect(tasksPage.locator(".tasks-detail-pane")).toBeHidden();

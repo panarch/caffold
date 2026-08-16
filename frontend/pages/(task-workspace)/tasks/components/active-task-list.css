@@ -1,11 +1,4 @@
 caffold-active-task-list {
-  & .task-list {
-    min-height: 0;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
   & .task-section-message {
     margin: 0;
     padding: 0.625rem 0.75rem;
@@ -40,90 +33,14 @@ caffold-active-task-list {
   }
 
   & .task-repository-group + .task-repository-group {
-    margin-top: var(--interface-space-6);
+    margin-top: var(--interface-space-8);
   }
 
-  & .task-repository-header {
-    display: grid;
-    grid-template-columns:
-      var(--task-list-icon-size)
-      minmax(0, 1fr)
-      max(var(--interface-icon-slot-size), 3ch);
-    align-items: center;
-    gap: 0.4375rem;
-    min-height: var(--interface-space-14);
-    padding: 0.1875rem 0.5625rem 0.1875rem var(--interface-space-6);
-    width: 100%;
-    border: 0;
-    background: transparent;
-    color: var(--muted);
-    font-family: inherit;
-    font-size: var(--task-group-font-size);
-    text-align: start;
+  &[data-reorder-mode="sections"] .task-repository-group + .task-repository-group {
+    margin-top: var(--interface-space-2);
   }
 
-  & button.task-repository-header {
-    cursor: pointer;
-  }
-
-  & button.task-repository-header:hover {
-    background: var(--surface-muted);
-    color: var(--text);
-  }
-
-  & button.task-repository-header:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: -2px;
-  }
-
-  & button.task-repository-header[aria-current="page"] {
-    background: var(--selection-bg);
-    color: var(--text);
-  }
-
-  & .task-repository-icon {
-    display: block;
-    width: var(--task-list-icon-size);
-    height: var(--task-list-icon-size);
-    color: var(--muted);
-    stroke-width: 1.8;
-  }
-
-  & .task-repository-label {
-    overflow: hidden;
-    font-weight: 600;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  & .task-repository-count {
-    min-width: 2ch;
-    opacity: 1;
-    color: var(--muted);
-    font-size: inherit;
-    font-variant-numeric: tabular-nums;
-    text-align: center;
-    transition: opacity 120ms ease-out;
-
-    @starting-style {
-      opacity: 0;
-    }
-  }
-
-  &:has(.task-row-reorder-mode) .task-repository-count {
-    opacity: 0;
-    transition-duration: 0ms;
-  }
-
-  & .task-repository-group > .task-list {
-    margin-left: var(--task-repository-indent);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  caffold-active-task-list {
-    & .task-repository-count {
-      transition: none;
-    }
+  &[data-reorder-mode="sections"] .task-repository-group[data-task-recovery] {
+    display: none;
   }
 }

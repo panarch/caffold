@@ -36,6 +36,42 @@ pub(super) async fn task_reorder(
     }))
 }
 
+pub(super) async fn section_reorder(
+    State(state): State<TaskState>,
+    AxumPath(section_id): AxumPath<String>,
+    Json(request): Json<SectionReorderRequest>,
+) -> Result<Json<SectionReorderResponse>, ApiError> {
+    let before_section_id = request
+        .before_section_id
+        .map(|section_id| section_id.trim().to_string());
+    if before_section_id.as_deref() == Some("") {
+        return Err(ApiError::BadRequest {
+            code: "section_reorder_anchor_invalid",
+            message: "beforeSectionId must be a non-empty Section ID or null".to_string(),
+        });
+    }
+
+    let store = state.task_store.clone();
+    let moved_section_id = section_id.clone();
+    let requested_anchor = before_section_id.clone();
+    let changed = tokio::task::spawn_blocking(move || {
+        store.transaction(|tables| {
+            tables.move_managed_section_before(&moved_section_id, requested_anchor.as_deref())
+        })
+    })
+    .await
+    .map_err(task_store_join_error)?
+    .map_err(task_store_api_error)?;
+    if changed {
+        state.task_list_events.refresh();
+    }
+    Ok(Json(SectionReorderResponse {
+        section_id,
+        before_section_id,
+        changed,
+    }))
+}
+
 pub(super) fn task_store_join_error(error: tokio::task::JoinError) -> ApiError {
     ApiError::Internal(format!("task store worker failed: {error}"))
 }
@@ -587,6 +623,114 @@ mod tests {
                 .position_in_section,
             Some(0)
         );
+    }
+
+    #[tokio::test]
+    async fn section_reorder_persists_canonical_order_and_refreshes_after_commit() {
+        let root = tempfile::tempdir().unwrap();
+        let state = task_state_with_codex_client(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        for id in ["section-a", "section-b", "section-c"] {
+            seed_section(&state, id, &format!("/workspace/{id}"));
+        }
+
+        let response = router(state.clone())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/tasks/sections/section-c/reorder")
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"beforeSectionId":"section-a"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), 4096)
+            .await
+            .unwrap();
+        let body: JsonValue = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["sectionId"], "section-c");
+        assert_eq!(body["beforeSectionId"], "section-a");
+        assert_eq!(body["changed"], true);
+        assert_eq!(state.task_list_events.refresh_count(), 1);
+        let (sections, _) = cached_projection_rows(&state);
+        assert_eq!(
+            sections
+                .iter()
+                .map(|section| section.section_id.as_str())
+                .collect::<Vec<_>>(),
+            ["section-c", "section-a", "section-b"]
+        );
+
+        let response = router(state.clone())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/tasks/sections/section-c/reorder")
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"beforeSectionId":"section-a"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert_eq!(state.task_list_events.refresh_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn section_reorder_rejects_missing_self_and_empty_anchors_without_writes() {
+        let root = tempfile::tempdir().unwrap();
+        let state = task_state_with_codex_client(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        seed_section(&state, "section-one", "/workspace/one");
+
+        for (path, body, expected_status, expected_code) in [
+            (
+                "/api/tasks/sections/missing/reorder",
+                r#"{"beforeSectionId":null}"#,
+                axum::http::StatusCode::CONFLICT,
+                "section_reorder_unavailable",
+            ),
+            (
+                "/api/tasks/sections/section-one/reorder",
+                r#"{"beforeSectionId":"section-one"}"#,
+                axum::http::StatusCode::CONFLICT,
+                "section_reorder_conflict",
+            ),
+            (
+                "/api/tasks/sections/section-one/reorder",
+                r#"{"beforeSectionId":""}"#,
+                axum::http::StatusCode::BAD_REQUEST,
+                "section_reorder_anchor_invalid",
+            ),
+        ] {
+            let response = router(state.clone())
+                .oneshot(
+                    axum::http::Request::builder()
+                        .method("POST")
+                        .uri(path)
+                        .header(axum::http::header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(body))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), expected_status);
+            let body = axum::body::to_bytes(response.into_body(), 4096)
+                .await
+                .unwrap();
+            let body: JsonValue = serde_json::from_slice(&body).unwrap();
+            assert_eq!(body["error"]["code"], expected_code);
+        }
+        assert_eq!(state.task_list_events.refresh_count(), 0);
     }
 
     #[tokio::test]

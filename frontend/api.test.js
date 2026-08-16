@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
-import { getHealth } from "./api.js";
+import { getHealth, reorderSection } from "./api.js";
 import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "./origin-reachability.js";
 
 const originalBrowserGlobals = {
@@ -78,4 +78,34 @@ test("does not report reachability for a network exception", async () => {
 
   await assert.rejects(getHealth(), /Failed to fetch/);
   assert.equal(reachable, 0);
+});
+
+test("serializes Section reorder intent at the API owner", async () => {
+  const requests = [];
+  installBrowserHarness(async (url, options) => {
+    requests.push({ url: `${url}`, options });
+    return jsonResponse({ changed: true });
+  });
+
+  await reorderSection("section/one", "section two");
+  await reorderSection("section/one", null);
+
+  assert.deepEqual(requests, [
+    {
+      url: "http://127.0.0.1/api/tasks/sections/section%2Fone/reorder",
+      options: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ beforeSectionId: "section two" }),
+      },
+    },
+    {
+      url: "http://127.0.0.1/api/tasks/sections/section%2Fone/reorder",
+      options: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ beforeSectionId: null }),
+      },
+    },
+  ]);
 });

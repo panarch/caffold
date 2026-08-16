@@ -185,6 +185,20 @@ struct TaskReorderResponse {
     changed: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SectionReorderRequest {
+    before_section_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SectionReorderResponse {
+    section_id: String,
+    before_section_id: Option<String>,
+    changed: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ActiveTaskPlacementUpdate {
@@ -318,6 +332,10 @@ pub(super) fn router(state: TaskState) -> Router {
         .route("/api/tasks/{thread_id}/archive", post(task_archive))
         .route("/api/tasks/{thread_id}/restore", post(task_restore))
         .route("/api/tasks/{thread_id}/reorder", post(task_reorder))
+        .route(
+            "/api/tasks/sections/{section_id}/reorder",
+            post(section_reorder),
+        )
         .route(
             "/api/tasks/{thread_id}/recovery/recheck",
             post(task_recovery_recheck),
@@ -471,6 +489,7 @@ pub(super) mod test_support {
                 let section = ManagedSection {
                     section_id: section_id.to_string(),
                     logical_path: logical_path.to_string(),
+                    position: 0,
                 };
                 tables.upsert_managed_section(&section)?;
                 tables.claim_managed_thread_at_top(
@@ -490,6 +509,7 @@ pub(super) mod test_support {
                 tables.upsert_managed_section(&ManagedSection {
                     section_id: section_id.to_string(),
                     logical_path: logical_path.to_string(),
+                    position: 0,
                 })
             })
             .unwrap();
