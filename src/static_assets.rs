@@ -16,6 +16,7 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "styles.css" => Some(css(include_str!("../frontend/styles.css"))),
         "app.js" => Some(js(include_str!("../frontend/app.js"))),
         "api.js" => Some(js(include_str!("../frontend/api.js"))),
+        "origin-reachability.js" => Some(js(include_str!("../frontend/origin-reachability.js"))),
         "file-status.js" => Some(js(include_str!("../frontend/file-status.js"))),
         "fonts.js" => Some(js(include_str!("../frontend/fonts.js"))),
         "navigation-routes.js" => Some(js(include_str!("../frontend/navigation-routes.js"))),

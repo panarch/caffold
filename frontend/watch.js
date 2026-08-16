@@ -1,4 +1,5 @@
 import { watchUrl } from "./api.js";
+import { reportOriginReachable } from "./origin-reachability.js";
 
 const scopes = new Map();
 
@@ -114,6 +115,12 @@ function connectScope(scope) {
   const source = new EventSource(watchUrl(scope.path));
   scope.source = source;
 
+  source.addEventListener("open", () => {
+    if (scope.source !== source) {
+      return;
+    }
+    reportOriginReachable();
+  });
   source.addEventListener("ready", (event) => {
     if (scope.source !== source) {
       return;

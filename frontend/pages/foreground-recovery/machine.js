@@ -219,6 +219,9 @@ export const FOREGROUND_RECOVERY_TRIGGER = Object.freeze({
   // Network Information reported a meaningful connection-type edge.
   CONNECTION_CHANGED: "connection",
 
+  // A current same-origin API response or EventSource open proved reachability.
+  ORIGIN_REACHABLE: "origin",
+
   // The service worker focused this page for a validated notification route.
   NOTIFICATION_ACTIVATED: "notification",
 

@@ -329,6 +329,7 @@ test("keeps diagnostic triggers outside the control graph", () => {
     "focus",
     "online",
     "connection",
+    "origin",
     "notification",
     "manual-retry",
   ]);

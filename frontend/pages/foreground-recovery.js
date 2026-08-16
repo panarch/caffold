@@ -57,6 +57,10 @@ export class ForegroundRecoveryLifecycle {
     });
   }
 
+  reportOriginReachable() {
+    return this.runtime.reportOriginReachable();
+  }
+
   setTargets(targets) {
     this.runtime.setTargets(targets);
   }

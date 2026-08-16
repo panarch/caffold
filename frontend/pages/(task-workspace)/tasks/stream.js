@@ -1,4 +1,5 @@
 import { TASK_TRANSPORT_STATE } from "./runtime-state.js";
+import { reportOriginReachable } from "../../../origin-reachability.js";
 
 const DEFAULT_RECONNECT_TIMEOUT_MS = 8_000;
 const DEFAULT_RETRY_DELAYS_MS = Object.freeze([250, 1_000, 3_000]);
@@ -186,6 +187,7 @@ export class TaskStreamLifecycle {
     if (!this.isCurrent(source, contextKey, generation)) {
       return;
     }
+    reportOriginReachable();
     this.clearConnectionTimer();
     this.clearReconnectTimer();
     this.hasConnected = true;
