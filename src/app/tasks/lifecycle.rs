@@ -10,7 +10,7 @@ use crate::{
     },
     codex_thread_sessions::{CodexThreadSessions, StartedThreadSettings},
     fs::RootedFs,
-    task_store::{ManagedSection, ManagedThread, TaskStore},
+    task_store::{ManagedThread, TaskStore, TaskStoreError},
 };
 
 use super::{
@@ -50,6 +50,7 @@ pub(in crate::app) struct ActiveTaskSectionIdentity {
 #[serde(rename_all = "camelCase")]
 pub(in crate::app) struct ActiveTaskTopPlacement {
     pub(in crate::app) section: ActiveTaskSectionIdentity,
+    pub(in crate::app) before_section_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(in crate::app) before_thread_id: Option<String>,
 }
@@ -378,14 +379,17 @@ impl TaskLifecycle {
         let thread_id = task.thread_id.clone();
         let result = tokio::task::spawn_blocking(move || {
             store.transaction(|tables| {
-                let section = tables
+                let section = match tables
                     .managed_sections()?
                     .into_iter()
                     .find(|section| section.logical_path == identity.logical_path)
-                    .unwrap_or_else(|| ManagedSection {
-                        section_id: Uuid::new_v4().to_string(),
-                        logical_path: identity.logical_path.clone(),
-                    });
+                {
+                    Some(section) => section,
+                    None => tables.insert_managed_section_at_top(
+                        &Uuid::new_v4().to_string(),
+                        &identity.logical_path,
+                    )?,
+                };
                 let before_thread_id = tables
                     .active_managed_threads()?
                     .into_iter()
@@ -399,7 +403,6 @@ impl TaskLifecycle {
                             .then_with(|| left.thread_id.cmp(&right.thread_id))
                     })
                     .map(|thread| thread.thread_id);
-                tables.upsert_managed_section(&section)?;
                 let managed = match mutation {
                     LocalPlacementMutation::Claim {
                         thread,
@@ -417,12 +420,31 @@ impl TaskLifecycle {
                         tables.restore_managed_thread_at_top(&thread_id, &section.section_id)?
                     }
                 };
-                Ok(managed.map(|_| ActiveTaskTopPlacement {
+                let Some(_) = managed else {
+                    return Ok(None);
+                };
+                let active_section_ids = tables
+                    .active_managed_threads()?
+                    .into_iter()
+                    .filter_map(|thread| thread.section_id)
+                    .collect::<std::collections::HashSet<_>>();
+                let ordered_sections = tables.managed_sections()?;
+                let section_index = ordered_sections
+                    .iter()
+                    .position(|candidate| candidate.section_id == section.section_id)
+                    .ok_or(TaskStoreError::UnexpectedPayload)?;
+                let before_section_id = ordered_sections
+                    .into_iter()
+                    .skip(section_index + 1)
+                    .find(|candidate| active_section_ids.contains(&candidate.section_id))
+                    .map(|candidate| candidate.section_id);
+                Ok(Some(ActiveTaskTopPlacement {
                     section: ActiveTaskSectionIdentity {
                         id: section.section_id,
                         name: section.logical_path,
                         repository: identity.repository,
                     },
+                    before_section_id,
                     before_thread_id,
                 }))
             })
@@ -605,6 +627,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(first_placement.section.id, second_placement.section.id);
+        assert_eq!(first_placement.before_section_id, None);
+        assert_eq!(second_placement.before_section_id, None);
         assert_eq!(
             second_placement.before_thread_id.as_deref(),
             Some("thread-first")
@@ -621,6 +645,77 @@ mod tests {
                 .map(|thread| (thread.thread_id.as_str(), thread.position_in_section))
                 .collect::<Vec<_>>(),
             [("thread-second", Some(-1024)), ("thread-first", Some(0))]
+        );
+    }
+
+    #[tokio::test]
+    async fn new_sections_are_placed_at_top_and_existing_sections_keep_their_rank() {
+        let (root, lifecycle) = fixture();
+        let first_directory = root.path().join("first");
+        let second_directory = root.path().join("second");
+        std::fs::create_dir_all(&first_directory).unwrap();
+        std::fs::create_dir_all(&second_directory).unwrap();
+        let first = task(&lifecycle, "thread-first", &first_directory);
+        let second = task(&lifecycle, "thread-second", &second_directory);
+        let first_placement = lifecycle
+            .claim_at_top(
+                managed_thread_from_task_record(&first, None, None, false),
+                &first.title,
+                &first,
+            )
+            .await
+            .unwrap();
+        let second_placement = lifecycle
+            .claim_at_top(
+                managed_thread_from_task_record(&second, None, None, false),
+                &second.title,
+                &second,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            second_placement.before_section_id.as_deref(),
+            Some(first_placement.section.id.as_str())
+        );
+        let sections = lifecycle
+            .store
+            .read(|tables| tables.managed_sections())
+            .unwrap();
+        assert_eq!(
+            sections
+                .iter()
+                .map(|section| section.section_id.as_str())
+                .collect::<Vec<_>>(),
+            [
+                second_placement.section.id.as_str(),
+                first_placement.section.id.as_str(),
+            ]
+        );
+
+        let first_replacement = task(&lifecycle, "thread-first-next", &first_directory);
+        let replacement_placement = lifecycle
+            .claim_at_top(
+                managed_thread_from_task_record(&first_replacement, None, None, false),
+                &first_replacement.title,
+                &first_replacement,
+            )
+            .await
+            .unwrap();
+        assert_eq!(replacement_placement.section.id, first_placement.section.id);
+        assert_eq!(replacement_placement.before_section_id, None);
+        assert_eq!(
+            lifecycle
+                .store
+                .read(|tables| tables.managed_sections())
+                .unwrap()
+                .iter()
+                .map(|section| section.section_id.as_str())
+                .collect::<Vec<_>>(),
+            [
+                second_placement.section.id.as_str(),
+                first_placement.section.id.as_str(),
+            ]
         );
     }
 

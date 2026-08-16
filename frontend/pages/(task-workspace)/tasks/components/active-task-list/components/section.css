@@ -1,0 +1,190 @@
+caffold-active-task-section {
+  display: block;
+
+  & > .task-repository-header {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 3rem;
+    align-items: center;
+    gap: 0.25rem;
+    min-height: var(--task-list-row-height);
+    padding-inline-end: 0.5625rem;
+    width: 100%;
+    background: transparent;
+    color: var(--muted);
+  }
+
+  & > .task-list {
+    min-height: 0;
+    margin: 0 0 0 var(--task-repository-indent);
+    padding: 0;
+    list-style: none;
+  }
+
+  & .task-repository-select {
+    display: grid;
+    grid-column: 1;
+    grid-row: 1;
+    grid-template-columns: var(--task-list-icon-size) minmax(0, 1fr);
+    align-items: center;
+    gap: 0.4375rem;
+    align-self: stretch;
+    min-width: 0;
+    padding: 0.1875rem 0 0.1875rem var(--interface-space-6);
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    font-size: var(--task-group-font-size);
+    text-align: start;
+  }
+
+  & button.task-repository-select {
+    position: absolute;
+    inset: 0;
+    padding-inline-end: calc(3rem + 0.8125rem);
+    cursor: pointer;
+  }
+
+  & > .task-repository-header:has(> button.task-repository-select:hover),
+  & > .task-repository-header:has(> button.task-repository-select:focus-visible),
+  & > .task-repository-header:has(> .section-reorder-handle:hover),
+  & > .task-repository-header:has(> .section-reorder-handle:focus-visible) {
+    background: var(--surface-muted);
+    color: var(--text);
+  }
+
+  & > .task-repository-header:has(> button.task-repository-select:focus-visible),
+  & > .task-repository-header:has(> .section-reorder-handle:focus-visible) {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+
+  & > .task-repository-header:has(> button.task-repository-select[aria-current="page"]),
+  & > .task-repository-header:has(> div.task-repository-select[aria-current="page"]) {
+    background: var(--selection-bg);
+    color: var(--text);
+  }
+
+  & button.task-repository-select:focus-visible,
+  & .section-reorder-handle:focus-visible {
+    outline: none;
+  }
+
+  & .task-repository-icon {
+    display: block;
+    width: var(--task-list-icon-size);
+    height: var(--task-list-icon-size);
+    color: var(--muted);
+    stroke-width: 1.8;
+  }
+
+  & .task-repository-label {
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .task-repository-count {
+    position: relative;
+    z-index: 1;
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    width: max(var(--interface-icon-slot-size), 3ch);
+    min-width: 2ch;
+    opacity: 1;
+    color: var(--muted);
+    font-size: inherit;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    pointer-events: none;
+    transition: opacity 120ms ease-out;
+
+    @starting-style {
+      opacity: 0;
+    }
+  }
+
+  &[data-reorder-mode="tasks"] .task-repository-count,
+  &[data-reorder-mode="sections"] .task-repository-count {
+    opacity: 0;
+    transition-duration: 0ms;
+  }
+
+  & .section-reorder-handle {
+    display: none;
+    grid-column: 2;
+    grid-row: 1;
+    align-self: stretch;
+    width: 100%;
+    min-width: var(--interface-icon-slot-size);
+    margin: 0;
+    padding: 0;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    color: var(--control-fg);
+    cursor: grab;
+    touch-action: none;
+  }
+
+  &[data-reorder-mode="sections"] .section-reorder-handle {
+    display: grid;
+  }
+
+  & .section-reorder-handle-icon {
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+    stroke-width: 1.9;
+  }
+
+  &[data-reorder-mode="sections"] > .task-list {
+    display: none;
+  }
+
+  &[data-dragging] > .task-repository-header {
+    background: var(--selection-bg);
+    opacity: 0.72;
+  }
+
+  &[data-dragging] .section-reorder-handle {
+    cursor: grabbing;
+  }
+
+  &[data-section-drop-before] > .task-repository-header {
+    box-shadow: inset 0 2px var(--selection-indicator);
+  }
+
+  &[data-section-drop-after] > .task-repository-header {
+    box-shadow: inset 0 -2px var(--selection-indicator);
+  }
+}
+
+caffold-active-task-list[data-task-reveal] caffold-active-task-section > .task-list {
+  animation: task-section-tasks-reveal 160ms ease-out;
+}
+
+@keyframes task-section-tasks-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  caffold-active-task-section .task-repository-count {
+    transition: none;
+  }
+
+  caffold-active-task-list[data-task-reveal] caffold-active-task-section > .task-list {
+    animation: none;
+  }
+}

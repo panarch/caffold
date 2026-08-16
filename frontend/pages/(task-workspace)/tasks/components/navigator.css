@@ -39,6 +39,12 @@ caffold-task-navigator {
     display: none;
   }
 
+  &[data-reorder-mode="sections"]
+    .task-list-scroll
+    > caffold-archived-task-list {
+    display: none;
+  }
+
   & .task-list-primary-header {
     box-sizing: border-box;
     display: flex;
@@ -108,6 +114,56 @@ caffold-task-navigator {
     width: var(--interface-icon-size);
     height: var(--interface-icon-size);
     stroke-width: 1.9;
+  }
+
+  & .task-list-reorder {
+    anchor-name: --task-list-reorder-trigger;
+  }
+
+  & .task-list-reorder-popover {
+    position: fixed;
+    z-index: 8;
+    inset: auto;
+    position-anchor: --task-list-reorder-trigger;
+    position-area: block-end center;
+    position-try-fallbacks: flip-block;
+    width: 10.75rem;
+    margin: var(--interface-space-3) var(--interface-space-5);
+    padding: 0.25rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    box-shadow: 0 12px 30px rgb(var(--shadow-rgb) / 16%);
+  }
+
+  & .task-list-reorder-popover:popover-open {
+    display: grid;
+  }
+
+  & .task-list-reorder-popover button {
+    box-sizing: border-box;
+    height: var(--interface-compact-control-size);
+    min-height: var(--interface-compact-control-size);
+    padding: 0 var(--interface-space-5);
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  & .task-list-reorder-popover button:hover,
+  & .task-list-reorder-popover button:focus-visible {
+    background: var(--control-hover-bg);
+    outline: none;
+  }
+
+  &:has(.task-list-reorder-popover:popover-open) .task-list-reorder::before {
+    border-color: var(--border-strong);
+    background: var(--surface-muted);
   }
 
   & .task-list-header-action:hover,

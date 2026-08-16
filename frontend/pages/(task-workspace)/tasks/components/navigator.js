@@ -19,6 +19,8 @@ import {
   ARCHIVED_TASK_LIST_STATE_EVENT,
 } from "./archived-task-list.js";
 
+let taskNavigatorInstanceId = 0;
+
 class CaffoldTaskNavigator extends HTMLElement {
   connectedCallback() {
     this.ensureState();
@@ -106,7 +108,9 @@ class CaffoldTaskNavigator extends HTMLElement {
     }
     this.stateReady = true;
     this.active = false;
-    this.reorderMode = false;
+    this.reorderMode = "none";
+    taskNavigatorInstanceId += 1;
+    this.reorderPopoverId = `task-list-reorder-${taskNavigatorInstanceId}`;
     this.codexTaskOperations = codexTaskOperationsPresentation(null);
     this.lastPublishedListState = "";
     this.boundClick = (event) => this.handleClick(event);
@@ -276,25 +280,29 @@ class CaffoldTaskNavigator extends HTMLElement {
     return this.activeTaskList.recoverForeground();
   }
 
-  setReorderMode(active, { restoreFocus = true } = {}) {
+  setReorderMode(mode, { restoreFocus = true } = {}) {
     this.ensureChildren();
-    const next = Boolean(active);
+    const next = normalizeReorderMode(mode);
     if (this.reorderMode === next) {
       return;
     }
-    const handleHadFocus = document.activeElement?.matches?.(
-      "caffold-active-task-row .task-reorder-handle",
+    const handleHadFocus = this.activeTaskList?.containsReorderFocus(
+      document.activeElement,
     );
+    const previous = this.reorderMode;
     this.reorderMode = next;
-    this.activeTaskList.setReorderMode(next);
+    this.dataset.reorderMode = next;
+    this.activeTaskList.setReorderMode(next, {
+      revealTasks: previous === "sections" && next === "none" && restoreFocus,
+    });
     this.syncPrimaryHeader();
-    if (!next && restoreFocus && handleHadFocus) {
+    if (next === "none" && restoreFocus && handleHadFocus) {
       queueMicrotask(() => this.reorderButton?.focus());
     }
   }
 
   exitReorderMode(options = {}) {
-    this.setReorderMode(false, options);
+    this.setReorderMode("none", options);
   }
 
   setCodexStatusSnapshot(snapshot) {
@@ -318,7 +326,14 @@ class CaffoldTaskNavigator extends HTMLElement {
     }
     event.stopPropagation();
     if (action.dataset.taskAction === "toggle-reorder") {
-      this.setReorderMode(!this.reorderMode);
+      if (this.reorderMode !== "none") {
+        event.preventDefault();
+        this.setReorderMode("none");
+      }
+      return;
+    }
+    if (action.dataset.taskAction === "select-reorder-mode") {
+      this.setReorderMode(action.dataset.reorderMode);
       return;
     }
     if (this.codexTaskOperations.blocked) {
@@ -474,15 +489,21 @@ class CaffoldTaskNavigator extends HTMLElement {
     }
     const reorderButton = this.reorderButton;
     if (reorderButton) {
+      const active = this.reorderMode !== "none";
+      const modeLabel = this.reorderMode === "sections" ? "Sections" : "Tasks";
       syncHeaderActionIcon(
         reorderButton,
         "ArrowDownUp",
         "Reorder tasks",
       );
-      reorderButton.setAttribute("aria-pressed", `${this.reorderMode}`);
-      reorderButton.title = this.reorderMode
-        ? "Finish reordering Tasks"
-        : "Reorder Tasks";
+      reorderButton.setAttribute("aria-pressed", `${active}`);
+      reorderButton.setAttribute("aria-label", active
+        ? `Finish reordering ${modeLabel}`
+        : "Choose what to reorder");
+      reorderButton.title = active
+        ? `Finish reordering ${modeLabel}`
+        : "Reorder";
+      reorderButton.setAttribute("popovertarget", this.reorderPopoverId);
     }
   }
 
@@ -497,10 +518,33 @@ class CaffoldTaskNavigator extends HTMLElement {
             type="button"
             class="task-list-header-action task-list-reorder"
             data-task-action="toggle-reorder"
-            aria-label="Reorder Tasks"
-            aria-pressed="${this.reorderMode}"
-            title="${this.reorderMode ? "Finish reordering Tasks" : "Reorder Tasks"}"
+            aria-label="Choose what to reorder"
+            aria-pressed="${this.reorderMode !== "none"}"
+            title="Reorder"
+            popovertarget="${this.reorderPopoverId}"
           >${renderInlineIcon("ArrowDownUp", "Reorder tasks", "task-action-icon")}</button>
+          <div
+            id="${this.reorderPopoverId}"
+            class="task-list-reorder-popover"
+            popover="auto"
+            role="group"
+            aria-label="Reorder options"
+          >
+            <button
+              type="button"
+              data-task-action="select-reorder-mode"
+              data-reorder-mode="tasks"
+              popovertarget="${this.reorderPopoverId}"
+              popovertargetaction="hide"
+            >Reorder Tasks</button>
+            <button
+              type="button"
+              data-task-action="select-reorder-mode"
+              data-reorder-mode="sections"
+              popovertarget="${this.reorderPopoverId}"
+              popovertargetaction="hide"
+            >Reorder Sections</button>
+          </div>
           <button
             type="button"
             class="task-list-header-action task-list-new-task"
@@ -514,6 +558,13 @@ class CaffoldTaskNavigator extends HTMLElement {
     `;
   }
 
+}
+
+function normalizeReorderMode(mode) {
+  if (mode === true) {
+    return "tasks";
+  }
+  return ["tasks", "sections"].includes(mode) ? mode : "none";
 }
 
 function syncHeaderActionIcon(button, name, label) {

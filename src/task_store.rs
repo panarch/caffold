@@ -45,6 +45,10 @@ pub(crate) enum TaskStoreError {
     TaskReorderUnavailable(&'static str),
     #[error("task reorder conflicts with the current Section order: {0}")]
     TaskReorderConflict(&'static str),
+    #[error("Section cannot be reordered: {0}")]
+    SectionReorderUnavailable(&'static str),
+    #[error("Section reorder conflicts with the current order: {0}")]
+    SectionReorderConflict(&'static str),
     #[error("managed worktree already exists for thread: {0}")]
     DuplicateManagedWorktreeThread(String),
     #[error("managed worktree path is already owned: {0}")]
@@ -117,10 +121,33 @@ impl TaskStoreTables<'_> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn upsert_managed_section(&mut self, section: &ManagedSection) -> Result<()> {
         match self {
             Self::Memory(glue) => managed_section::upsert(glue, section),
             Self::Redb(glue) => managed_section::upsert(glue, section),
+        }
+    }
+
+    pub(crate) fn insert_managed_section_at_top(
+        &mut self,
+        section_id: &str,
+        logical_path: &str,
+    ) -> Result<ManagedSection> {
+        match self {
+            Self::Memory(glue) => managed_section::insert_at_top(glue, section_id, logical_path),
+            Self::Redb(glue) => managed_section::insert_at_top(glue, section_id, logical_path),
+        }
+    }
+
+    pub(crate) fn move_managed_section_before(
+        &mut self,
+        section_id: &str,
+        before_section_id: Option<&str>,
+    ) -> Result<bool> {
+        match self {
+            Self::Memory(glue) => managed_section::move_before(glue, section_id, before_section_id),
+            Self::Redb(glue) => managed_section::move_before(glue, section_id, before_section_id),
         }
     }
 
@@ -729,13 +756,31 @@ mod tests {
             assert!(configured.fast_mode);
 
             let section_id = format!("section-{index}");
+            let peer_section_id = format!("section-peer-{index}");
             let peer_id = format!("task-peer-{index}");
             store
                 .transaction(|tables| {
                     tables.upsert_managed_section(&ManagedSection {
                         section_id: section_id.clone(),
                         logical_path: format!("Workspace/{index}"),
+                        position: 0,
                     })?;
+                    let inserted = tables.insert_managed_section_at_top(
+                        &peer_section_id,
+                        &format!("Workspace/peer-{index}"),
+                    )?;
+                    assert_eq!(inserted.section_id, peer_section_id);
+                    assert!(
+                        tables.move_managed_section_before(&section_id, Some(&peer_section_id),)?
+                    );
+                    assert_eq!(
+                        tables
+                            .managed_sections()?
+                            .iter()
+                            .map(|section| section.section_id.as_str())
+                            .collect::<Vec<_>>(),
+                        [section_id.as_str(), peer_section_id.as_str()]
+                    );
                     tables.place_managed_thread_at_top(&thread_id, &section_id)?;
                     tables.claim_managed_thread_at_top(
                         thread(&peer_id),
@@ -902,6 +947,7 @@ mod tests {
         let section = ManagedSection {
             section_id: "section-rollback".to_string(),
             logical_path: "Workspace/rollback".to_string(),
+            position: 0,
         };
 
         let result = store.transaction(|tables| {

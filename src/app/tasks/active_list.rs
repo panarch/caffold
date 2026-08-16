@@ -74,7 +74,8 @@ pub(in crate::app) async fn load_cached(
     }
 
     let sections = stored_sections
-        .into_iter()
+        .iter()
+        .cloned()
         .map(|section| (section.section_id.clone(), section))
         .collect::<BTreeMap<_, _>>();
     let repository_sections = repository_sections(fs, &sections).await;
@@ -95,51 +96,30 @@ pub(in crate::app) async fn load_cached(
         }
     }
 
-    let mut projected_sections = grouped
+    let projected_sections = stored_sections
         .into_iter()
-        .map(|(section_id, mut threads)| {
+        .filter_map(|section| {
+            let mut threads = grouped.remove(&section.section_id)?;
             threads.sort_by(|left, right| {
                 left.position_in_section
                     .cmp(&right.position_in_section)
                     .then_with(|| left.thread_id.cmp(&right.thread_id))
             });
-            let updated_ms = threads
-                .iter()
-                .map(|thread| {
-                    thread
-                        .last_observed_recency_ms
-                        .unwrap_or(thread.claimed_at_ms)
-                })
-                .max()
-                .unwrap_or_default();
-            let section = &sections[&section_id];
-            (
-                ActiveTaskSection {
-                    id: section_id,
-                    name: section.logical_path.clone(),
-                    repository: repository_sections.contains(&section.section_id),
-                    tasks: threads.iter().map(unavailable_active_task).collect(),
-                },
-                updated_ms,
-            )
+            Some(ActiveTaskSection {
+                id: section.section_id.clone(),
+                name: section.logical_path,
+                repository: repository_sections.contains(&section.section_id),
+                tasks: threads.iter().map(unavailable_active_task).collect(),
+            })
         })
         .collect::<Vec<_>>();
-    projected_sections.sort_by(|(left, left_updated), (right, right_updated)| {
-        right_updated
-            .cmp(left_updated)
-            .then_with(|| left.name.cmp(&right.name))
-            .then_with(|| left.id.cmp(&right.id))
-    });
     recovery.sort_by(|left, right| {
         task_activity_ms(&right.task)
             .cmp(&task_activity_ms(&left.task))
             .then_with(|| left.thread_id.cmp(&right.thread_id))
     });
     Ok(ActiveTaskProjection {
-        sections: projected_sections
-            .into_iter()
-            .map(|(section, _)| section)
-            .collect(),
+        sections: projected_sections,
         unsectioned: recovery,
     })
 }
@@ -266,12 +246,14 @@ mod tests {
         recency_ms: u64,
         section_id: &str,
         logical_path: &str,
+        section_position: i64,
     ) {
         store
             .transaction(|tables| {
                 let section = ManagedSection {
                     section_id: section_id.to_string(),
                     logical_path: logical_path.to_string(),
+                    position: section_position,
                 };
                 tables.upsert_managed_section(&section)?;
                 tables.claim_managed_thread_at_top(
@@ -291,7 +273,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cached_projection_uses_dense_positions_and_derived_section_recency() {
+    async fn cached_projection_uses_persisted_section_and_task_positions() {
         let (_root, fs, store) = fixture();
         claim_at_top(
             &store,
@@ -300,6 +282,7 @@ mod tests {
             100,
             "section-b",
             "Workspace/b",
+            0,
         );
         claim_at_top(
             &store,
@@ -308,8 +291,17 @@ mod tests {
             200,
             "section-b",
             "Workspace/b",
+            0,
         );
-        claim_at_top(&store, "newer", "Newer", 300, "section-a", "Workspace/a");
+        claim_at_top(
+            &store,
+            "newer",
+            "Newer",
+            300,
+            "section-a",
+            "Workspace/a",
+            1024,
+        );
 
         let before = cached_rows(&store);
         let projection = load_cached(fs, store.clone()).await.unwrap();
@@ -322,10 +314,10 @@ mod tests {
                 .iter()
                 .map(|section| section.id.as_str())
                 .collect::<Vec<_>>(),
-            ["section-a", "section-b"]
+            ["section-b", "section-a"]
         );
         assert_eq!(
-            projection.sections[1]
+            projection.sections[0]
                 .tasks
                 .iter()
                 .map(|task| task.title.as_str())
@@ -384,6 +376,7 @@ mod tests {
             100,
             "section-repository",
             "repository",
+            0,
         );
         let before = cached_rows(&store);
 

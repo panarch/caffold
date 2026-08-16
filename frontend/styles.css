@@ -45,7 +45,8 @@
 @import "./pages/(task-workspace)/tasks/(detail)/(review)/layout.css";
 @import "./pages/(task-workspace)/tasks/components/navigator.css";
 @import "./pages/(task-workspace)/tasks/components/active-task-list.css";
-@import "./pages/(task-workspace)/tasks/components/active-task-list/components/row.css";
+@import "./pages/(task-workspace)/tasks/components/active-task-list/components/section.css";
+@import "./pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css";
 @import "./pages/(task-workspace)/tasks/components/archived-task-list.css";
 @import "./pages/(task-workspace)/tasks/components/task-create.css";
 @import "./pages/(task-workspace)/tasks/new/page.css";

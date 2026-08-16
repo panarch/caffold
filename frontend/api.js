@@ -94,6 +94,17 @@ export async function reorderTask(threadId, beforeThreadId) {
   );
 }
 
+export async function reorderSection(sectionId, beforeSectionId) {
+  return requestJson(
+    `/api/tasks/sections/${encodeURIComponent(sectionId)}/reorder`,
+    {},
+    {
+      method: "POST",
+      body: { beforeSectionId: beforeSectionId ?? null },
+    },
+  );
+}
+
 export async function archiveTask(threadId) {
   return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/archive`, {}, {
     method: "POST",

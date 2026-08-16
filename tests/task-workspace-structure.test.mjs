@@ -473,10 +473,16 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
     "pages/(task-workspace)/tasks/components/archived-task-list.js",
   );
   const activeRow = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list/components/row.js",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js",
   );
   const activeRowStyles = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list/components/row.css",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css",
+  );
+  const section = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section.js",
+  );
+  const sectionStyles = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section.css",
   );
   const archivedStyles = readFrontend(
     "pages/(task-workspace)/tasks/components/archived-task-list.css",
@@ -489,8 +495,35 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
   assert.doesNotMatch(active, /getArchivedTasks|restoreTask|deleteTask/);
   assert.doesNotMatch(active, /load-more-tasks|taskListNextCursor/);
   assert.match(activeRow, /customElements\.define\("caffold-active-task-row"/);
-  assert.match(active, /createElement\("caffold-active-task-row"\)/);
+  assert.doesNotMatch(
+    active,
+    /ACTIVE_TASK_ROW_INTENT_EVENT|caffold-active-task-row|li\[data-thread-id/,
+  );
+  assert.match(section, /createElement\("caffold-active-task-row"\)/);
+  assert.match(section, /\.\/section\/components\/row\.js/);
+  assert.match(section, /ACTIVE_TASK_ROW_INTENT_EVENT/);
+  assert.match(section, /detail: \{ subject: "task", \.\.\.event\.detail \}/);
+  assert.doesNotMatch(activeRow, /ACTIVE_TASK_SECTION_INTENT_EVENT/);
+  assert.match(
+    section,
+    /customElements\.define\(\s*"caffold-active-task-section"/,
+  );
+  assert.match(active, /createElement\(\s*"caffold-active-task-section"/);
+  assert.match(section, /list\.className = "task-list"/);
+  assert.match(
+    section,
+    /reconcileRows\(\{ availableRows = new Map\(\), prune = true \} = \{\}\)/,
+  );
+  assert.match(section, /transferableRows\(localThreadIds, projectedThreadIds\)/);
+  assert.match(section, /updateTask\(task\)/);
+  assert.match(active, /section\?\.updateTask\(nextTask\)/);
+  assert.doesNotMatch(section, /closest\("caffold-active-task-list"\)/);
+  assert.doesNotMatch(
+    navigator,
+    /task-reorder-handle|section-reorder-handle/,
+  );
   assert.match(activeRowStyles, /\.task-unseen-complete/);
+  assert.match(sectionStyles, /\.task-repository-header|task-repository-select/);
   assert.doesNotMatch(activeStyles, /\.task-row(?:\s|\{|:)/);
   assert.doesNotMatch(
     activeStyles,
@@ -516,7 +549,7 @@ test("active and archived Task lists own distinct state and lifecycle boundaries
   );
 });
 
-test("active Task reordering keeps navigation, ordering, and row presentation owners bounded", () => {
+test("Task and Section reordering keep navigation, ordering, and row presentation owners bounded", () => {
   const api = readFrontend("api.js");
   const tasksPage = readFrontend("pages/(task-workspace)/tasks/layout.js");
   const navigator = readFrontend(
@@ -529,26 +562,52 @@ test("active Task reordering keeps navigation, ordering, and row presentation ow
     "pages/(task-workspace)/tasks/components/active-task-list.css",
   );
   const row = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list/components/row.js",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js",
   );
   const rowStyles = readFrontend(
-    "pages/(task-workspace)/tasks/components/active-task-list/components/row.css",
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css",
+  );
+  const section = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section.js",
+  );
+  const sectionStyles = readFrontend(
+    "pages/(task-workspace)/tasks/components/active-task-list/components/section.css",
   );
 
   assert.match(api, /export async function reorderTask\(threadId, beforeThreadId\)/);
   assert.match(api, /body: \{ beforeThreadId: beforeThreadId \?\? null \}/);
+  assert.match(api, /export async function reorderSection\(sectionId, beforeSectionId\)/);
+  assert.match(api, /body: \{ beforeSectionId: beforeSectionId \?\? null \}/);
   const reorderControl = navigator.indexOf('data-task-action="toggle-reorder"');
   const newControl = navigator.indexOf('data-task-action="open-new"');
   assert.ok(reorderControl >= 0 && reorderControl < newControl);
-  assert.match(navigator, /aria-pressed="\$\{this\.reorderMode\}"/);
+  assert.match(navigator, /aria-pressed="\$\{this\.reorderMode !== "none"\}"/);
+  assert.match(navigator, /popover="auto"/);
+  assert.match(navigator, />Reorder Tasks<\/button>/);
+  assert.match(navigator, />Reorder Sections<\/button>/);
   assert.match(navigator, /renderInlineIcon\(\s*"ArrowDownUp"/);
-  assert.match(navigator, /this\.activeTaskList\.setReorderMode\(next\)/);
+  assert.match(navigator, /this\.activeTaskList\.setReorderMode\(next, \{/);
   assert.match(tasksPage, /exitReorderMode\(\{ restoreFocus: false \}\)/);
 
   assert.match(active, /reorderTask\(threadId, move\.beforeThreadId\)/);
+  assert.match(active, /reorderSection\(sectionId, move\.beforeSectionId\)/);
   assert.match(active, /this\.pendingMove/);
   assert.match(active, /class="sr-only task-reorder-announcement" aria-live="polite"/);
-  assert.match(active, /createElement\("caffold-active-task-row"\)/);
+  assert.doesNotMatch(
+    active,
+    /ACTIVE_TASK_ROW_INTENT_EVENT|caffold-active-task-row|li\[data-thread-id/,
+  );
+  assert.match(active, /ACTIVE_TASK_SECTION_INTENT_EVENT/);
+  assert.match(active, /createElement\(\s*"caffold-active-task-section"/);
+  assert.match(section, /createElement\("caffold-active-task-row"\)/);
+  assert.match(section, /list\.className = "task-list"/);
+  assert.match(section, /updateTaskDropTarget\(threadId, clientY\)/);
+  assert.match(section, /clearTaskDropTarget\(\)/);
+  assert.match(active, /sectionComponentFor\(drag\.sectionId\)[\s\S]*?updateTaskDropTarget/);
+  assert.match(active, /sectionComponentFor\(drag\.sectionId\)\?\.clearTaskDropTarget/);
+  assert.doesNotMatch(active, /\.matches\("\.task-list"\)/);
+  assert.doesNotMatch(active, /renderInlineIcon\(\s*"Grip",\s*"Reorder Section"/);
+  assert.doesNotMatch(active, /addEventListener\("pointer(?:down|move|up|cancel)"/);
   assert.doesNotMatch(active, /function renderTaskRowMeta|function patchTaskListRow/);
 
   assert.match(row, /renderInlineIcon\("Grip"/);
@@ -577,13 +636,32 @@ test("active Task reordering keeps navigation, ordering, and row presentation ow
     /& \.task-reorder-handle-icon \{[\s\S]*?translate: 0\.5rem 0/,
   );
   assert.match(
-    activeStyles,
-    /&:has\(\.task-row-reorder-mode\) \.task-repository-count \{[\s\S]*?transition-duration: 0ms/,
+    sectionStyles,
+    /&\[data-reorder-mode="tasks"\] \.task-repository-count,[\s\S]*?transition-duration: 0ms/,
+  );
+  assert.match(sectionStyles, /translateY\(-8px\)/);
+  assert.match(
+    sectionStyles,
+    /& button\.task-repository-select \{[\s\S]*?position: absolute[\s\S]*?inset: 0/,
   );
   assert.match(
-    activeStyles,
+    sectionStyles,
     /& \.task-repository-count \{[\s\S]*?@starting-style/,
   );
+  assert.match(section, /renderInlineIcon\(\s*"Grip",\s*"Reorder Section"/);
+  assert.match(section, /const POINTER_DRAG_THRESHOLD_PX = 5/);
+  assert.match(section, /event\.isPrimary === false/);
+  assert.match(section, /handle\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(section, /handle\.setPointerCapture\(event\.pointerId\)/);
+  assert.match(section, /"lostpointercapture"/);
+  assert.match(section, /handle\.releasePointerCapture\(gesture\.pointerId\)/);
+  assert.match(section, /event\.key === "ArrowUp"/);
+  assert.match(section, /event\.key === "ArrowDown"/);
+  assert.match(
+    section,
+    /const selectable = !section\.recovery && this\.snapshot\.reorderMode === "none"/,
+  );
+  assert.doesNotMatch(activeStyles, /section-reorder-handle|task-repository-count/);
   assert.match(rowStyles, /min-height: var\(--task-list-row-height\)/);
   assert.match(rowStyles, /@media \(prefers-reduced-motion: reduce\)/);
 });

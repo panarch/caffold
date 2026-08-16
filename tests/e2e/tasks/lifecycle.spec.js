@@ -395,7 +395,7 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
     "Foreground recovery renamed in Caffold",
   );
   await expect(
-    workspace.locator('.task-repository-header[title="src/Recovered Section"]'),
+    workspace.locator('.task-repository-select[title="src/Recovered Section"]'),
   ).toBeVisible();
   await expect(row).toHaveAttribute("data-task-status", "running");
   await expect(workspace).toContainText(

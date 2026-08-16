@@ -1,16 +1,16 @@
-import { escapeHtml } from "../../../../../../components/dom.js";
-import { renderInlineIcon, warmIcons } from "../../../../../../components/icons.js";
-import { PENDING_CODEX_TASK_OPERATIONS } from "../../../../codex-status.js";
+import { escapeHtml } from "../../../../../../../../components/dom.js";
+import { renderInlineIcon, warmIcons } from "../../../../../../../../components/icons.js";
+import { PENDING_CODEX_TASK_OPERATIONS } from "../../../../../../codex-status.js";
 import {
   taskStatusView,
   taskThreadStatusType,
-} from "../../../runtime-state.js";
-import { taskThreadId, taskWorktreeLabel } from "../../../task-list-model.js";
-import { formatRelativeAgePresentation } from "../../../task-format.js";
+} from "../../../../../runtime-state.js";
+import { taskThreadId, taskWorktreeLabel } from "../../../../../task-list-model.js";
+import { formatRelativeAgePresentation } from "../../../../../task-format.js";
 import {
   patchTaskStatusChip,
   renderTaskStatusChip,
-} from "../../task-status.js";
+} from "../../../../task-status.js";
 
 export const ACTIVE_TASK_ROW_INTENT_EVENT = "caffold:active-task-row-intent";
 
@@ -94,6 +94,19 @@ class CaffoldActiveTaskRow extends HTMLElement {
 
   focusHandle() {
     this.querySelector(":scope > .task-row .task-reorder-handle")?.focus();
+  }
+
+  containsReorderFocus(element) {
+    return Boolean(
+      element &&
+        this.querySelector(":scope > .task-row .task-reorder-handle")
+          ?.contains(element),
+    );
+  }
+
+  setDropPosition(position = "") {
+    this.toggleAttribute("data-task-drop-before", position === "before");
+    this.toggleAttribute("data-task-drop-after", position === "after");
   }
 
   handleClick(event) {

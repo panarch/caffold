@@ -21,9 +21,26 @@ afterEach(() => {
   }
 });
 
-function installBrowserHarness() {
+function installBrowserHarness({ manualTimers = false } = {}) {
   const sources = [];
   const documentListeners = new Map();
+  const timers = new Map();
+  let timerId = 0;
+  let timerNow = 0;
+
+  const scheduleTimer = manualTimers
+    ? (callback, delay = 0) => {
+        timerId += 1;
+        timers.set(timerId, {
+          callback,
+          dueAt: timerNow + Math.max(0, Number(delay) || 0),
+        });
+        return timerId;
+      }
+    : setTimeout;
+  const cancelTimer = manualTimers
+    ? (id) => timers.delete(id)
+    : clearTimeout;
 
   class MockEventSource {
     constructor(url) {
@@ -64,8 +81,8 @@ function installBrowserHarness() {
 
   globalThis.window = Object.assign(new EventTarget(), {
     EventSource: MockEventSource,
-    setTimeout,
-    clearTimeout,
+    setTimeout: scheduleTimer,
+    clearTimeout: cancelTimer,
   });
   globalThis.EventSource = MockEventSource;
   globalThis.document = {
@@ -85,11 +102,27 @@ function installBrowserHarness() {
     },
   };
 
-  return { sources };
+  return {
+    sources,
+    runAllTimers() {
+      let iterations = 0;
+      while (timers.size) {
+        iterations += 1;
+        assert.ok(iterations <= 100, "manual browser timers must settle");
+        const [id, timer] = [...timers.entries()].sort(
+          ([leftId, left], [rightId, right]) =>
+            left.dueAt - right.dueAt || leftId - rightId,
+        )[0];
+        timers.delete(id);
+        timerNow = timer.dueAt;
+        timer.callback();
+      }
+    },
+  };
 }
 
-function nextTask() {
-  return new Promise((resolve) => setTimeout(resolve, 5));
+function settleAsyncWork() {
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 function deferred() {
@@ -117,13 +150,13 @@ test("reports reachability only when the current source opens", async () => {
   assert.equal(reachable, 0);
 
   browser.sources[1].emitOpen();
-  await nextTask();
+  await settleAsyncWork();
   assert.equal(reachable, 1);
   lifecycle.deactivate();
 });
 
 test("replaces a terminal source and ignores its stale generation", async () => {
-  const browser = installBrowserHarness();
+  const browser = installBrowserHarness({ manualTimers: true });
   const events = [];
   const reconciliations = [];
   const lifecycle = new TaskStreamLifecycle({
@@ -144,13 +177,13 @@ test("replaces a terminal source and ignores its stale generation", async () => 
   first.emitError({ closed: true });
   assert.equal(first.closed, true);
   assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.RECONNECTING);
-  await nextTask();
+  browser.runAllTimers();
 
   assert.equal(browser.sources.length, 2);
   const replacement = browser.sources[1];
   first.emit("task-updated", { value: "stale" });
   replacement.emitOpen();
-  await nextTask();
+  await settleAsyncWork();
   replacement.emit("task-updated", { value: "current" });
 
   assert.deepEqual(reconciliations, [{ recovery: true }]);
@@ -160,7 +193,7 @@ test("replaces a terminal source and ignores its stale generation", async () => 
 });
 
 test("bounds replacement attempts and lets an explicit retry start a new cycle", async () => {
-  const browser = installBrowserHarness();
+  const browser = installBrowserHarness({ manualTimers: true });
   const lifecycle = new TaskStreamLifecycle({
     createUrl: () => "/api/tasks/stream",
     retryDelaysMs: [0, 0],
@@ -169,11 +202,11 @@ test("bounds replacement attempts and lets an explicit retry start a new cycle",
   lifecycle.activate("task-list");
   browser.sources[0].emitOpen();
   browser.sources[0].emitError({ closed: true });
-  await nextTask();
+  browser.runAllTimers();
   browser.sources[1].emitError({ closed: true });
-  await nextTask();
+  browser.runAllTimers();
   browser.sources[2].emitError({ closed: true });
-  await nextTask();
+  browser.runAllTimers();
 
   assert.equal(browser.sources.length, 3);
   assert.equal(lifecycle.source, null);
@@ -182,13 +215,13 @@ test("bounds replacement attempts and lets an explicit retry start a new cycle",
   lifecycle.retry();
   assert.equal(browser.sources.length, 4);
   browser.sources[3].emitOpen();
-  await nextTask();
+  await settleAsyncWork();
   assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
   lifecycle.deactivate();
 });
 
-test("bounds a source that never opens or errors", async () => {
-  const browser = installBrowserHarness();
+test("bounds a source that never opens or errors", () => {
+  const browser = installBrowserHarness({ manualTimers: true });
   const lifecycle = new TaskStreamLifecycle({
     createUrl: () => "/api/tasks/stream",
     connectionTimeoutMs: 1,
@@ -196,8 +229,7 @@ test("bounds a source that never opens or errors", async () => {
   });
 
   lifecycle.activate("task-list");
-  await nextTask();
-  await nextTask();
+  browser.runAllTimers();
 
   assert.equal(browser.sources.length, 3);
   assert.equal(lifecycle.source, null);
@@ -219,7 +251,7 @@ test("keeps transport connecting until its owner reports readiness", async () =>
   assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.CONNECTING);
 
   readiness.resolve(true);
-  await nextTask();
+  await settleAsyncWork();
   assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
   lifecycle.deactivate();
 });
@@ -238,7 +270,7 @@ test("lets a stream-bootstrap owner retry without a duplicate reconciliation", a
   browser.sources[0].emitOpen();
   lifecycle.retry({ reconcile: false });
   browser.sources[1].emitOpen();
-  await nextTask();
+  await settleAsyncWork();
 
   assert.equal(reconciliations, 0);
   assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
@@ -262,7 +294,7 @@ test("foreground recovery clears an interrupted stream-bootstrap retry", async (
   const recovery = lifecycle.recover();
   browser.sources[2].emitOpen();
   await recovery;
-  await nextTask();
+  await settleAsyncWork();
 
   assert.equal(reconciliations, 1);
   assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
@@ -288,7 +320,7 @@ test("foreground validation is silent until a real transport failure", async () 
   reconcileGate.resolve();
   await recovery;
   browser.sources[1].emitOpen();
-  await nextTask();
+  await settleAsyncWork();
   assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
   assert.equal(states.includes(TASK_TRANSPORT_STATE.RECONNECTING), false);
   lifecycle.deactivate();
@@ -314,7 +346,7 @@ test("lets a reconnecting source recover without creating a duplicate", async ()
   assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.RECONNECTING);
 
   source.emitOpen();
-  await nextTask();
+  await settleAsyncWork();
   assert.equal(browser.sources.length, 1);
   assert.equal(reconciliations, 1);
   assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
@@ -322,7 +354,7 @@ test("lets a reconnecting source recover without creating a duplicate", async ()
 });
 
 test("distinguishes requested reconciliation from transport recovery", async () => {
-  const browser = installBrowserHarness();
+  const browser = installBrowserHarness({ manualTimers: true });
   const reconciliations = [];
   const lifecycle = new TaskStreamLifecycle({
     createUrl: () => "/api/tasks/thread-a/stream",
@@ -337,9 +369,9 @@ test("distinguishes requested reconciliation from transport recovery", async () 
   assert.deepEqual(reconciliations, [{ recovery: false }]);
 
   browser.sources[0].emitError({ closed: true });
-  await nextTask();
+  browser.runAllTimers();
   browser.sources[1].emitOpen();
-  await nextTask();
+  await settleAsyncWork();
 
   assert.deepEqual(reconciliations, [
     { recovery: false },
@@ -372,7 +404,7 @@ test("explicit recovery replaces and reconciles an already-open stream", async (
   assert.equal(reconciliations, 1);
   browser.releaseRecoveryReconciliation();
   await recovery;
-  await nextTask();
+  await settleAsyncWork();
   assert.equal(reconciliations, 1);
   assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
   lifecycle.deactivate();
@@ -408,7 +440,7 @@ test("explicit recovery invalidates an older requested reconciliation", async ()
     { recovery: true },
   ]);
   browser.sources[1].emitOpen();
-  await nextTask();
+  await settleAsyncWork();
   assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
   lifecycle.deactivate();
 });

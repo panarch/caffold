@@ -155,7 +155,7 @@ mod tests {
     use gluesql::core::query_builder::table;
 
     use super::*;
-    use crate::task_store::{CheckoutAnchor, ManagedWorktreeState, TaskStore};
+    use crate::task_store::TaskStore;
 
     fn timestamp(milliseconds: i64) -> NaiveDateTime {
         chrono::DateTime::from_timestamp_millis(milliseconds)
@@ -209,27 +209,21 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("v5.redb");
         let states = [
-            ("creating", ManagedWorktreeState::Creating),
-            ("ready", ManagedWorktreeState::Ready),
-            ("isolating_clean", ManagedWorktreeState::IsolatingClean),
-            ("handing_off", ManagedWorktreeState::HandingOff),
-            ("transferring", ManagedWorktreeState::Transferring),
-            ("removing", ManagedWorktreeState::Removing),
-            ("archived", ManagedWorktreeState::Archived),
-            ("restoring", ManagedWorktreeState::Restoring),
-            (
-                "clean_recovery_required",
-                ManagedWorktreeState::CleanRecoveryRequired,
-            ),
-            (
-                "handoff_recovery_required",
-                ManagedWorktreeState::HandoffRecoveryRequired,
-            ),
-            ("recovery_required", ManagedWorktreeState::RecoveryRequired),
+            "creating",
+            "ready",
+            "isolating_clean",
+            "handing_off",
+            "transferring",
+            "removing",
+            "archived",
+            "restoring",
+            "clean_recovery_required",
+            "handoff_recovery_required",
+            "recovery_required",
         ];
         let rows = states
             .iter()
-            .map(|(state, _)| {
+            .map(|state| {
                 row(
                     state,
                     state,
@@ -256,12 +250,19 @@ mod tests {
         );
         let mut glue = Glue::new(RedbStorage::new(&path).unwrap());
         assert_eq!(schema_migration::current_version(&mut glue).unwrap(), 6);
-        drop(glue);
-
-        let store = TaskStore::redb(&path).unwrap();
-        let mut migrated = store.managed_worktrees().unwrap();
+        let mut migrated = table(schema::v6::MANAGED_WORKTREES_TABLE)
+            .select()
+            .project(
+                V6ManagedWorktreeRow::glue_columns()
+                    .iter()
+                    .map(|column| col(*column))
+                    .collect::<Vec<_>>(),
+            )
+            .execute(&mut glue)
+            .rows_as::<V6ManagedWorktreeRow>()
+            .unwrap();
         migrated.sort_by(|left, right| left.worktree_id.cmp(&right.worktree_id));
-        for (state_name, expected_state) in states {
+        for state_name in states {
             let worktree = migrated
                 .iter()
                 .find(|worktree| worktree.worktree_id == state_name)
@@ -278,15 +279,21 @@ mod tests {
                 format!("/repositories/{state_name}/.git")
             );
             assert_eq!(worktree.worktree_path, format!("/managed/{state_name}"));
-            assert_eq!(worktree.state, expected_state);
-            let expected_anchor =
-                (expected_state != ManagedWorktreeState::Ready).then(|| CheckoutAnchor {
-                    branch_name: format!("review/{state_name}"),
-                    head_sha: format!("head-{state_name}"),
-                });
-            assert_eq!(worktree.checkout_anchor, expected_anchor);
-            assert_eq!(worktree.created_at_ms, 100);
-            assert_eq!(worktree.updated_at_ms, 200);
+            assert_eq!(worktree.state, state_name);
+            assert_eq!(
+                worktree.anchor_branch.as_deref(),
+                (state_name != "ready")
+                    .then(|| format!("review/{state_name}"))
+                    .as_deref()
+            );
+            assert_eq!(
+                worktree.anchor_head_sha.as_deref(),
+                (state_name != "ready")
+                    .then(|| format!("head-{state_name}"))
+                    .as_deref()
+            );
+            assert_eq!(worktree.created_at, timestamp(100));
+            assert_eq!(worktree.updated_at, timestamp(200));
         }
     }
 
