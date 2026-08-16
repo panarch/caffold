@@ -672,12 +672,20 @@ test("prepares and reloads the latest consecutive replacement through the real b
       page.getByRole("button", { name: "Reload to update" }),
     ).toHaveCount(1);
     await captureReviewScreenshot(page, testInfo, "pwa-update-about-latest-ready");
-    const navigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
+    await deferUpdateNavigation(page);
     await about.getByRole("button", { name: "Reload to update" }).click();
-    await expect.poll(() => page.locator("caffold-app-shell").evaluate(
-      (shell) => shell.pwaUpdateLifecycle.runtime.handoffState.targetBuildId,
-    )).toBe("browser-build-c");
+    await expect.poll(() => serviceWorkerDiagnostics(page)).toMatchObject({
+      targetBuildId: "browser-build-c",
+    });
     await skipWaitingServiceWorker(page, fixture.origin);
+    await expect.poll(() => reconcileServiceWorkerDiagnostics(page)).toMatchObject({
+      controllerBuildId: "browser-build-c",
+      handoffNode: "applying",
+      navigationAttemptCount: 1,
+      targetBuildId: "browser-build-c",
+    });
+    const navigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
+    await releaseDeferredUpdateNavigation(page);
     const navigationResponse = await navigation;
     expect(navigationResponse.headers()["x-caffold-test-build"]).toBe(
       "browser-build-c",
@@ -758,12 +766,20 @@ test("reloads through controllerchange without a custom acknowledgement or loop"
       name: "Caffold update ready",
     });
     await expect(updateDialog).toBeVisible();
-    const navigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
+    await deferUpdateNavigation(page);
     await updateDialog.getByRole("button", { name: "Reload" }).click();
-    await expect.poll(() => page.locator("caffold-app-shell").evaluate(
-      (shell) => shell.pwaUpdateLifecycle.runtime.handoffState.targetBuildId,
-    )).toBe("browser-build-b");
+    await expect.poll(() => serviceWorkerDiagnostics(page)).toMatchObject({
+      targetBuildId: "browser-build-b",
+    });
     await skipWaitingServiceWorker(page, fixture.origin);
+    await expect.poll(() => reconcileServiceWorkerDiagnostics(page)).toMatchObject({
+      controllerBuildId: "browser-build-b",
+      handoffNode: "applying",
+      navigationAttemptCount: 1,
+      targetBuildId: "browser-build-b",
+    });
+    const navigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
+    await releaseDeferredUpdateNavigation(page);
     const navigationResponse = await navigation;
     expect(navigationResponse.headers()["x-caffold-test-build"]).toBe(
       "browser-build-b",
@@ -1273,6 +1289,27 @@ async function interceptPreparedReloads(page) {
   });
 }
 
+async function deferUpdateNavigation(page) {
+  await page.locator("caffold-app-shell").evaluate((shell) => {
+    let releaseNavigation;
+    const navigationReleased = new Promise((resolve) => {
+      releaseNavigation = resolve;
+    });
+    window.__caffoldReleaseDeferredUpdateNavigation = releaseNavigation;
+    shell.pwaUpdateLifecycle.runtime.onReloadReady = () => {
+      void navigationReleased.then(() => window.location.reload());
+    };
+  });
+}
+
+async function releaseDeferredUpdateNavigation(page) {
+  await page.evaluate(() => {
+    const releaseNavigation = window.__caffoldReleaseDeferredUpdateNavigation;
+    window.__caffoldReleaseDeferredUpdateNavigation = null;
+    window.setTimeout(releaseNavigation, 0);
+  });
+}
+
 async function preparedReloadCount(page) {
   return await page.evaluate(() => window.__caffoldPreparedReloads ?? 0);
 }
@@ -1323,7 +1360,12 @@ async function serviceWorkerDiagnostics(page) {
     const shell = document.querySelector("caffold-app-shell");
     const lifecycle = shell.pwaUpdateLifecycle.runtime;
     return {
+      controllerBuildId: lifecycle.controllerBuildId(),
+      handoffNode: lifecycle.handoffState.node,
       lifecycleState: lifecycle.snapshot().state,
+      navigationAttemptCount:
+        lifecycle.snapshot().diagnostics.navigationAttemptCount,
+      targetBuildId: lifecycle.handoffState.targetBuildId,
       activeState: lifecycle.registration?.active?.state ?? null,
       waitingState: lifecycle.registration?.waiting?.state ?? null,
       controllerState: navigator.serviceWorker.controller?.state ?? null,
@@ -1338,6 +1380,15 @@ async function serviceWorkerDiagnostics(page) {
       updatePending: Boolean(lifecycle.updateRequest),
     };
   });
+}
+
+async function reconcileServiceWorkerDiagnostics(page) {
+  await page.locator("caffold-app-shell").evaluate((shell) => {
+    shell.pwaUpdateLifecycle.runtime.syncServiceWorkerState({
+      resumeHandoff: false,
+    });
+  });
+  return serviceWorkerDiagnostics(page);
 }
 
 async function appShellLayout(page) {
