@@ -11,6 +11,7 @@ class CaffoldSettingsAboutPage extends HTMLElement {
     this.updateStatusValue = {
       state: "checking",
       preparedUpdate: { ready: false, buildId: null },
+      diagnostics: emptyUpdateDiagnostics(),
     };
     this.addEventListener("click", (event) => {
       if (event.target.closest('[data-action="copy-diagnostics"]')) {
@@ -48,6 +49,7 @@ class CaffoldSettingsAboutPage extends HTMLElement {
             ? status.preparedUpdate.buildId
             : null,
       },
+      diagnostics: normalizeUpdateDiagnostics(status?.diagnostics),
     };
     if (this.initialized) {
       this.render();
@@ -65,6 +67,7 @@ class CaffoldSettingsAboutPage extends HTMLElement {
   }
 
   diagnosticsText() {
+    const diagnostics = this.updateStatusValue.diagnostics;
     return [
       `Caffold ${BUILD_INFO.version}`,
       `UI build: ${BUILD_INFO.id}`,
@@ -73,6 +76,13 @@ class CaffoldSettingsAboutPage extends HTMLElement {
       `Status: ${buildStatus(this.healthValue, this.updateStatusValue).label}`,
       `Update lifecycle: ${this.updateStatusValue.state}`,
       `Prepared update: ${this.updateStatusValue.preparedUpdate.ready ? "ready" : "none"}`,
+      `Update handoff: ${diagnostics.handoffNode ?? "none"}`,
+      `Update target: ${diagnostics.targetBuildId ?? "none"}`,
+      `Service Worker controller: ${diagnostics.controllerBuildId ?? "none"}`,
+      `Service Worker active: ${diagnostics.activeBuildId ?? "none"}`,
+      `Service Worker waiting: ${diagnostics.waitingBuildId ?? "none"}`,
+      `Update navigation attempts: ${diagnostics.navigationAttemptCount}`,
+      `Last update navigation target: ${diagnostics.lastNavigationAttemptBuildId ?? "none"}`,
     ].join("\n");
   }
 
@@ -149,6 +159,32 @@ function buildStatus(
     return { type: "mismatch", label: "Reload required" };
   }
   return { type: "current", label: "Current" };
+}
+
+function normalizeUpdateDiagnostics(diagnostics) {
+  return {
+    handoffNode: diagnosticValue(diagnostics?.handoffNode),
+    targetBuildId: diagnosticValue(diagnostics?.targetBuildId),
+    controllerBuildId: diagnosticValue(diagnostics?.controllerBuildId),
+    activeBuildId: diagnosticValue(diagnostics?.activeBuildId),
+    waitingBuildId: diagnosticValue(diagnostics?.waitingBuildId),
+    navigationAttemptCount:
+      Number.isInteger(diagnostics?.navigationAttemptCount) &&
+      diagnostics.navigationAttemptCount >= 0
+        ? diagnostics.navigationAttemptCount
+        : 0,
+    lastNavigationAttemptBuildId: diagnosticValue(
+      diagnostics?.lastNavigationAttemptBuildId,
+    ),
+  };
+}
+
+function emptyUpdateDiagnostics() {
+  return normalizeUpdateDiagnostics(null);
+}
+
+function diagnosticValue(value) {
+  return typeof value === "string" && value ? value : null;
 }
 
 customElements.define("caffold-settings-about-page", CaffoldSettingsAboutPage);

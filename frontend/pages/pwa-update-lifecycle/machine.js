@@ -1,7 +1,7 @@
 // Control graph
 
 export const PWA_UPDATE_HANDOFF_NODE = Object.freeze({
-  // Browser listeners are detached. Activation intent is retained for reconnect.
+  // Browser listeners are detached. The in-memory handoff target is retained.
   DETACHED: "detached",
 
   // No explicit prepared-build activation is pending.
@@ -13,16 +13,16 @@ export const PWA_UPDATE_HANDOFF_NODE = Object.freeze({
   // The intended build is active, but it does not yet control this document.
   CLAIMING: "claiming",
 
-  // The intended build controls this document and one reload has been committed.
-  RELOAD_COMMITTED: "reload-committed",
+  // The intended build controls the page, but this document still needs replacement.
+  APPLYING: "applying",
 });
 
 // Control invariants:
 // - only this reducer changes the node;
-// - detached may retain activation intent for a later connection;
+// - detached may retain the in-memory handoff target for a later connection;
 // - idle has no pending target;
-// - activating and claiming retain one intended target generation; and
-// - reload-committed records that target as the one reload already started.
+// - activating, claiming, and applying retain one intended target generation; and
+// - applying stays retryable until a new document boots on the intended build.
 
 // Complete control graph. No reducer branch may move outside this table.
 export const PWA_UPDATE_HANDOFF_TRANSITIONS = Object.freeze({
@@ -31,32 +31,35 @@ export const PWA_UPDATE_HANDOFF_TRANSITIONS = Object.freeze({
     PWA_UPDATE_HANDOFF_NODE.IDLE,
     PWA_UPDATE_HANDOFF_NODE.ACTIVATING,
     PWA_UPDATE_HANDOFF_NODE.CLAIMING,
-    PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED,
+    PWA_UPDATE_HANDOFF_NODE.APPLYING,
   ]),
   [PWA_UPDATE_HANDOFF_NODE.IDLE]: Object.freeze([
     PWA_UPDATE_HANDOFF_NODE.IDLE,
     PWA_UPDATE_HANDOFF_NODE.DETACHED,
     PWA_UPDATE_HANDOFF_NODE.ACTIVATING,
     PWA_UPDATE_HANDOFF_NODE.CLAIMING,
-    PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED,
+    PWA_UPDATE_HANDOFF_NODE.APPLYING,
   ]),
   [PWA_UPDATE_HANDOFF_NODE.ACTIVATING]: Object.freeze([
     PWA_UPDATE_HANDOFF_NODE.ACTIVATING,
     PWA_UPDATE_HANDOFF_NODE.DETACHED,
     PWA_UPDATE_HANDOFF_NODE.IDLE,
     PWA_UPDATE_HANDOFF_NODE.CLAIMING,
-    PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED,
+    PWA_UPDATE_HANDOFF_NODE.APPLYING,
   ]),
   [PWA_UPDATE_HANDOFF_NODE.CLAIMING]: Object.freeze([
     PWA_UPDATE_HANDOFF_NODE.CLAIMING,
     PWA_UPDATE_HANDOFF_NODE.DETACHED,
     PWA_UPDATE_HANDOFF_NODE.IDLE,
     PWA_UPDATE_HANDOFF_NODE.ACTIVATING,
-    PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED,
+    PWA_UPDATE_HANDOFF_NODE.APPLYING,
   ]),
-  [PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED]: Object.freeze([
-    PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED,
+  [PWA_UPDATE_HANDOFF_NODE.APPLYING]: Object.freeze([
+    PWA_UPDATE_HANDOFF_NODE.APPLYING,
     PWA_UPDATE_HANDOFF_NODE.DETACHED,
+    PWA_UPDATE_HANDOFF_NODE.IDLE,
+    PWA_UPDATE_HANDOFF_NODE.ACTIVATING,
+    PWA_UPDATE_HANDOFF_NODE.CLAIMING,
   ]),
 });
 
@@ -93,7 +96,6 @@ export function createPwaUpdateHandoffState() {
     targetBuildId: null,
     targetGeneration: 0,
     targetPhase: PWA_UPDATE_TARGET_PHASE.MISSING,
-    reloadBuildId: null,
   });
 }
 
@@ -131,9 +133,6 @@ function connect(state, event) {
   if (!state.targetBuildId) {
     return move(state, PWA_UPDATE_HANDOFF_NODE.IDLE);
   }
-  if (state.reloadBuildId === state.targetBuildId) {
-    return move(state, PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED);
-  }
   const connected = freezeState({
     ...state,
     node: PWA_UPDATE_HANDOFF_NODE.IDLE,
@@ -148,7 +147,6 @@ function connect(state, event) {
 function requestActivation(state, event) {
   if (
     state.node === PWA_UPDATE_HANDOFF_NODE.DETACHED ||
-    state.node === PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED ||
     !validBuildId(event.buildId)
   ) {
     return result(state, []);
@@ -158,7 +156,6 @@ function requestActivation(state, event) {
     targetBuildId: event.buildId,
     targetGeneration: validGeneration(event.generation),
     targetPhase: normalizePhase(event.phase),
-    reloadBuildId: null,
   });
   return applyTargetPhase(next, next.targetPhase, true);
 }
@@ -166,7 +163,6 @@ function requestActivation(state, event) {
 function replacePreparedTarget(state, event) {
   if (
     !state.targetBuildId ||
-    state.node === PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED ||
     !validBuildId(event.buildId) ||
     !Number.isInteger(event.generation) ||
     event.generation <= state.targetGeneration
@@ -178,7 +174,6 @@ function replacePreparedTarget(state, event) {
     targetBuildId: event.buildId,
     targetGeneration: event.generation,
     targetPhase: normalizePhase(event.phase),
-    reloadBuildId: null,
   });
   if (state.node === PWA_UPDATE_HANDOFF_NODE.DETACHED) {
     return result(next, []);
@@ -204,7 +199,6 @@ function observeTargetPhase(state, event) {
 function resumeHandoff(state, event) {
   if (
     state.node === PWA_UPDATE_HANDOFF_NODE.DETACHED ||
-    state.node === PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED ||
     !matchesTarget(state, event.buildId)
   ) {
     return result(state, []);
@@ -214,34 +208,38 @@ function resumeHandoff(state, event) {
     phase === state.targetPhase
       ? state
       : freezeState({ ...state, targetPhase: phase });
-  return applyTargetPhase(next, phase, true);
+  return applyTargetPhase(
+    next,
+    phase,
+    state.node !== PWA_UPDATE_HANDOFF_NODE.APPLYING,
+  );
 }
 
 function confirmController(state, event) {
   if (
     state.node === PWA_UPDATE_HANDOFF_NODE.DETACHED ||
-    state.node === PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED ||
     !matchesTarget(state, event.buildId)
   ) {
     return result(state, []);
   }
   const next = freezeState({
     ...state,
-    node: PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED,
+    node: PWA_UPDATE_HANDOFF_NODE.APPLYING,
     targetPhase: PWA_UPDATE_TARGET_PHASE.CONTROLLED,
-    reloadBuildId: state.targetBuildId,
   });
-  return checkedResult(state, next, [{
-    type: PWA_UPDATE_HANDOFF_EFFECT.RELOAD,
-    buildId: state.targetBuildId,
-  }]);
+  const shouldReload =
+    state.node !== PWA_UPDATE_HANDOFF_NODE.APPLYING || event.retry === true;
+  const effects = shouldReload
+    ? [{
+        type: PWA_UPDATE_HANDOFF_EFFECT.RELOAD,
+        buildId: state.targetBuildId,
+      }]
+    : [];
+  return checkedResult(state, next, effects);
 }
 
 function discardTarget(state, event) {
-  if (
-    state.node === PWA_UPDATE_HANDOFF_NODE.RELOAD_COMMITTED ||
-    !matchesTarget(state, event.buildId)
-  ) {
+  if (!matchesTarget(state, event.buildId)) {
     return result(state, []);
   }
   const node =
@@ -254,7 +252,6 @@ function discardTarget(state, event) {
     targetBuildId: null,
     targetGeneration: 0,
     targetPhase: PWA_UPDATE_TARGET_PHASE.MISSING,
-    reloadBuildId: null,
   });
   return checkedResult(state, next, []);
 }
@@ -263,6 +260,7 @@ function applyTargetPhase(state, phase, startEffect) {
   if (phase === PWA_UPDATE_TARGET_PHASE.CONTROLLED) {
     return confirmController(state, {
       buildId: state.targetBuildId,
+      retry: startEffect,
       type: PWA_UPDATE_HANDOFF_EVENT.CONTROLLER_CONFIRMED,
     });
   }

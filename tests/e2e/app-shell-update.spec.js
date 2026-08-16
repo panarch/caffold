@@ -92,9 +92,13 @@ test("rechecks the worker and server diagnostics when About opens", async ({
   await expect(
     about.getByRole("button", { name: "Reload to update" }),
   ).toBeVisible();
-  expect(await about.evaluate((page) => page.diagnosticsText())).toContain(
-    "Status: Update ready",
-  );
+  const diagnostics = await about.evaluate((page) => page.diagnosticsText());
+  expect(diagnostics).toContain("Status: Update ready");
+  expect(diagnostics).toContain("Update handoff: idle");
+  expect(diagnostics).toContain("Update target: none");
+  expect(diagnostics).toContain("Service Worker controller: none");
+  expect(diagnostics).toContain("Service Worker active: server-build-b");
+  expect(diagnostics).toContain("Update navigation attempts: 0");
   await expect(page.getByRole("dialog", { name: "Caffold update ready" })).toBeVisible();
   await expect(page.locator("caffold-build-mismatch-alert")).toBeHidden();
 });
@@ -217,7 +221,7 @@ test("keeps consecutive server builds inside the update lifecycle", async ({
   const buildMismatchAlert = page.locator("caffold-build-mismatch-alert");
   await expect
     .poll(() => serviceWorkerUpdateSnapshot(page))
-    .toEqual({
+    .toMatchObject({
       state: "ready",
       preparedUpdate: { ready: true, buildId: "replacement-build-b" },
     });
@@ -226,7 +230,7 @@ test("keeps consecutive server builds inside the update lifecycle", async ({
   await releaseServiceWorkerUpdates(page);
   await expect
     .poll(() => serviceWorkerUpdateSnapshot(page))
-    .toEqual({
+    .toMatchObject({
       state: "ready",
       preparedUpdate: { ready: true, buildId: "replacement-build-c" },
     });
@@ -468,7 +472,7 @@ test("uses a differing controlled-message wrapper as a safe fallback hint", asyn
   await expect.poll(() => preparedReloadCount(page)).toBe(1);
 });
 
-test("reconnect and repeated activation intent safely resume one handoff", async ({
+test("reconnect and repeated update requests safely resume one handoff", async ({
   page,
 }) => {
   await installServiceWorkerFixture(page, { controlled: true });
@@ -668,10 +672,21 @@ test("prepares and reloads the latest consecutive replacement through the real b
       page.getByRole("button", { name: "Reload to update" }),
     ).toHaveCount(1);
     await captureReviewScreenshot(page, testInfo, "pwa-update-about-latest-ready");
-    const [navigationResponse] = await Promise.all([
-      page.waitForNavigation({ waitUntil: "domcontentloaded" }),
-      about.getByRole("button", { name: "Reload to update" }).click(),
-    ]);
+    await deferUpdateNavigation(page);
+    await about.getByRole("button", { name: "Reload to update" }).click();
+    await expect.poll(() => serviceWorkerDiagnostics(page)).toMatchObject({
+      targetBuildId: "browser-build-c",
+    });
+    await skipWaitingServiceWorker(page, fixture.origin);
+    await expect.poll(() => reconcileServiceWorkerDiagnostics(page)).toMatchObject({
+      controllerBuildId: "browser-build-c",
+      handoffNode: "applying",
+      navigationAttemptCount: 1,
+      targetBuildId: "browser-build-c",
+    });
+    const navigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
+    await releaseDeferredUpdateNavigation(page);
+    const navigationResponse = await navigation;
     expect(navigationResponse.headers()["x-caffold-test-build"]).toBe(
       "browser-build-c",
     );
@@ -751,10 +766,21 @@ test("reloads through controllerchange without a custom acknowledgement or loop"
       name: "Caffold update ready",
     });
     await expect(updateDialog).toBeVisible();
-    const [navigationResponse] = await Promise.all([
-      page.waitForNavigation({ waitUntil: "domcontentloaded" }),
-      updateDialog.getByRole("button", { name: "Reload" }).click(),
-    ]);
+    await deferUpdateNavigation(page);
+    await updateDialog.getByRole("button", { name: "Reload" }).click();
+    await expect.poll(() => serviceWorkerDiagnostics(page)).toMatchObject({
+      targetBuildId: "browser-build-b",
+    });
+    await skipWaitingServiceWorker(page, fixture.origin);
+    await expect.poll(() => reconcileServiceWorkerDiagnostics(page)).toMatchObject({
+      controllerBuildId: "browser-build-b",
+      handoffNode: "applying",
+      navigationAttemptCount: 1,
+      targetBuildId: "browser-build-b",
+    });
+    const navigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
+    await releaseDeferredUpdateNavigation(page);
+    const navigationResponse = await navigation;
     expect(navigationResponse.headers()["x-caffold-test-build"]).toBe(
       "browser-build-b",
     );
@@ -774,6 +800,122 @@ test("reloads through controllerchange without a custom acknowledgement or loop"
       "browser-build-b",
     );
     await expect(page.locator("caffold-build-mismatch-alert")).toBeHidden();
+    await expect(updateDialog).toBeHidden();
+  } finally {
+    await fixture.close();
+  }
+});
+
+test("recovers when the first controlled-update navigation leaves the old document alive", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  const fixture = await startBuildLifecycleServer(testInfo.project.use.baseURL);
+  try {
+    await page.goto(fixture.origin);
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.reload();
+    await expect.poll(() => activeControllerState(page)).toBe("activated");
+    await expect(page.locator('meta[name="caffold-test-build"]')).toHaveAttribute(
+      "content",
+      "browser-build-a",
+    );
+
+    fixture.setBuild("browser-build-b", 2, { omitControlledAck: true });
+    await page.locator("caffold-app-shell").evaluate(async (shell) => {
+      await shell.pwaUpdateLifecycle.checkForUpdate();
+      window.__caffoldLostUpdateNavigations = 0;
+      shell.pwaUpdateLifecycle.runtime.onReloadReady = () => {
+        window.__caffoldLostUpdateNavigations += 1;
+      };
+    });
+
+    const updateDialog = page.getByRole("dialog", {
+      name: "Caffold update ready",
+    });
+    await expect(updateDialog).toBeVisible();
+    await updateDialog.getByRole("button", { name: "Reload" }).click();
+    await expect.poll(() => page.locator("caffold-app-shell").evaluate(
+      (shell) => shell.pwaUpdateLifecycle.runtime.handoffState.targetBuildId,
+    )).toBe("browser-build-b");
+    await skipWaitingServiceWorker(page, fixture.origin);
+    await expect.poll(() => page.locator("caffold-app-shell").evaluate(
+      (shell) => {
+        const runtime = shell.pwaUpdateLifecycle.runtime;
+        return {
+          activeBuildId: runtime.serviceWorkerBuildIds.get(
+            runtime.registration?.active,
+          ) ?? null,
+          activeState: runtime.registration?.active?.state ?? null,
+          controllerBuildId: runtime.controllerBuildId(),
+          handoffNode: runtime.handoffState.node,
+          targetBuildId: runtime.handoffState.targetBuildId,
+          targetPhase: runtime.handoffState.targetPhase,
+          waitingState: runtime.registration?.waiting?.state ?? null,
+        };
+      },
+    )).toEqual({
+      activeBuildId: "browser-build-b",
+      activeState: "activated",
+      controllerBuildId: "browser-build-b",
+      handoffNode: "applying",
+      targetBuildId: "browser-build-b",
+      targetPhase: "controlled",
+      waitingState: null,
+    });
+    await expect.poll(() => page.evaluate(
+      () => window.__caffoldLostUpdateNavigations,
+    )).toBe(1);
+
+    const stalled = await page.locator("caffold-app-shell").evaluate((shell) => {
+      const runtime = shell.pwaUpdateLifecycle.runtime;
+      return {
+        controllerBuildId: runtime.controllerBuildId(),
+        documentBuildId: document
+          .querySelector('meta[name="caffold-test-build"]')
+          ?.getAttribute("content"),
+        handoffNode: runtime.handoffState.node,
+        navigationAttemptCount:
+          runtime.snapshot().diagnostics.navigationAttemptCount,
+        targetBuildId: runtime.handoffState.targetBuildId,
+      };
+    });
+    expect(stalled).toMatchObject({
+      controllerBuildId: "browser-build-b",
+      documentBuildId: "browser-build-a",
+      handoffNode: "applying",
+      navigationAttemptCount: 1,
+      targetBuildId: "browser-build-b",
+    });
+
+    await page.locator("caffold-app-shell").evaluate(async (shell) => {
+      document.dispatchEvent(new Event("resume"));
+      await shell.pwaUpdateLifecycle.checkForUpdate();
+    });
+    expect(await page.evaluate(
+      () => window.__caffoldLostUpdateNavigations,
+    )).toBe(1);
+
+    await page.locator("caffold-app-shell").evaluate((shell) => {
+      shell.pwaUpdateLifecycle.runtime.onReloadReady = () =>
+        window.location.reload();
+    });
+    await openAboutWithoutReload(page);
+    const reloadButton = page
+      .locator("caffold-settings-about-page")
+      .getByRole("button", { name: "Reload to update" });
+    await expect(reloadButton).toBeVisible();
+    const navigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
+    await reloadButton.click();
+    const navigationResponse = await navigation;
+
+    expect(navigationResponse.headers()["x-caffold-test-build"]).toBe(
+      "browser-build-b",
+    );
+    await expect(page.locator('meta[name="caffold-test-build"]')).toHaveAttribute(
+      "content",
+      "browser-build-b",
+    );
     await expect(updateDialog).toBeHidden();
   } finally {
     await fixture.close();
@@ -1147,6 +1289,27 @@ async function interceptPreparedReloads(page) {
   });
 }
 
+async function deferUpdateNavigation(page) {
+  await page.locator("caffold-app-shell").evaluate((shell) => {
+    let releaseNavigation;
+    const navigationReleased = new Promise((resolve) => {
+      releaseNavigation = resolve;
+    });
+    window.__caffoldReleaseDeferredUpdateNavigation = releaseNavigation;
+    shell.pwaUpdateLifecycle.runtime.onReloadReady = () => {
+      void navigationReleased.then(() => window.location.reload());
+    };
+  });
+}
+
+async function releaseDeferredUpdateNavigation(page) {
+  await page.evaluate(() => {
+    const releaseNavigation = window.__caffoldReleaseDeferredUpdateNavigation;
+    window.__caffoldReleaseDeferredUpdateNavigation = null;
+    window.setTimeout(releaseNavigation, 0);
+  });
+}
+
 async function preparedReloadCount(page) {
   return await page.evaluate(() => window.__caffoldPreparedReloads ?? 0);
 }
@@ -1197,7 +1360,12 @@ async function serviceWorkerDiagnostics(page) {
     const shell = document.querySelector("caffold-app-shell");
     const lifecycle = shell.pwaUpdateLifecycle.runtime;
     return {
+      controllerBuildId: lifecycle.controllerBuildId(),
+      handoffNode: lifecycle.handoffState.node,
       lifecycleState: lifecycle.snapshot().state,
+      navigationAttemptCount:
+        lifecycle.snapshot().diagnostics.navigationAttemptCount,
+      targetBuildId: lifecycle.handoffState.targetBuildId,
       activeState: lifecycle.registration?.active?.state ?? null,
       waitingState: lifecycle.registration?.waiting?.state ?? null,
       controllerState: navigator.serviceWorker.controller?.state ?? null,
@@ -1212,6 +1380,15 @@ async function serviceWorkerDiagnostics(page) {
       updatePending: Boolean(lifecycle.updateRequest),
     };
   });
+}
+
+async function reconcileServiceWorkerDiagnostics(page) {
+  await page.locator("caffold-app-shell").evaluate((shell) => {
+    shell.pwaUpdateLifecycle.runtime.syncServiceWorkerState({
+      resumeHandoff: false,
+    });
+  });
+  return serviceWorkerDiagnostics(page);
 }
 
 async function appShellLayout(page) {
@@ -1248,6 +1425,21 @@ async function primaryActionColors(page) {
     probe.remove();
     return colors;
   });
+}
+
+async function skipWaitingServiceWorker(page, origin) {
+  // Keep the real-browser regression focused on controller and document
+  // ownership. The production activation message is covered by the mocked
+  // browser lifecycle and service-worker contract tests.
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send("ServiceWorker.enable");
+    await cdp.send("ServiceWorker.skipWaiting", {
+      scopeURL: `${origin}/`,
+    });
+  } finally {
+    await cdp.detach();
+  }
 }
 
 async function startBuildLifecycleServer(upstreamOrigin) {

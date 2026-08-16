@@ -95,6 +95,22 @@ verify that normal bootstrap reconstructs readiness, list, selected detail, and
 transports. A discarded document has no callback and must not depend on the
 foreground recovery state retained by the previous page.
 
+## Android installed-PWA update handoff smoke test
+
+1. Keep installed Caffold build A open, replace the server with build B, and
+   wait for **Update ready** with **Prepared update: Ready** in About Caffold.
+2. Tap **Reload to update**. Verify that About Caffold reports UI build B and
+   that the update dialog closes.
+3. Repeat from build A while preventing or interrupting the first navigation.
+   Verify that **Reload to update** remains available in About Caffold, then tap
+   it again and confirm that the document reaches build B.
+4. Repeat once more, terminate the installed PWA after the failed navigation,
+   and reopen it. If build A is restored, verify that update readiness is
+   reconstructed and that tapping **Reload to update** reaches build B.
+5. If any step stalls, copy About diagnostics before replacing the server app.
+   Record the handoff node, target, controller, active and waiting build IDs,
+   and navigation-attempt count with the Android and Chrome versions.
+
 ## Web Push smoke test
 
 Use the HTTPS PWA origin above because remote browsers require a secure context

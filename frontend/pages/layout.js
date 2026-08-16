@@ -43,6 +43,7 @@ class CaffoldAppShell extends HTMLElement {
     this.pwaUpdateStatus = {
       state: "checking",
       preparedUpdate: { ready: false, buildId: null },
+      diagnostics: emptyPwaUpdateDiagnostics(),
     };
     this.render();
     this.taskWorkspace = this.querySelector("caffold-task-workspace");
@@ -371,6 +372,7 @@ class CaffoldAppShell extends HTMLElement {
         ready: Boolean(status?.preparedUpdate?.ready),
         buildId: status?.preparedUpdate?.buildId ?? null,
       },
+      diagnostics: normalizePwaUpdateDiagnostics(status?.diagnostics),
     };
     const preparedUpdate = this.pwaUpdateStatus.preparedUpdate;
     this.taskWorkspace?.setUpdateStatus(this.pwaUpdateStatus);
@@ -443,6 +445,32 @@ class CaffoldAppShell extends HTMLElement {
     }
     return true;
   }
+}
+
+function normalizePwaUpdateDiagnostics(diagnostics) {
+  return {
+    handoffNode: diagnosticString(diagnostics?.handoffNode),
+    targetBuildId: diagnosticString(diagnostics?.targetBuildId),
+    controllerBuildId: diagnosticString(diagnostics?.controllerBuildId),
+    activeBuildId: diagnosticString(diagnostics?.activeBuildId),
+    waitingBuildId: diagnosticString(diagnostics?.waitingBuildId),
+    navigationAttemptCount:
+      Number.isInteger(diagnostics?.navigationAttemptCount) &&
+      diagnostics.navigationAttemptCount >= 0
+        ? diagnostics.navigationAttemptCount
+        : 0,
+    lastNavigationAttemptBuildId: diagnosticString(
+      diagnostics?.lastNavigationAttemptBuildId,
+    ),
+  };
+}
+
+function emptyPwaUpdateDiagnostics() {
+  return normalizePwaUpdateDiagnostics(null);
+}
+
+function diagnosticString(value) {
+  return typeof value === "string" && value ? value : null;
 }
 
 customElements.define("caffold-app-shell", CaffoldAppShell);

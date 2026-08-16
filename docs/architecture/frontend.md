@@ -136,19 +136,26 @@ Reload explicitly transitions to that prepared generation. The viewport-fixed
 appears only when UI and server builds differ after the lifecycle is `settled`.
 
 The private update-handoff graph contains `detached`, `idle`, `activating`,
-`claiming`, and `reload-committed`. Prepared-worker metadata, registration and
+`claiming`, and `applying`. Prepared-worker metadata, registration and
 update requests, server diagnostics, and the public checking/ready/settled
-presentation remain orthogonal control data. Explicit activation intent retains
-its target generation while that worker moves through waiting, activating,
-active, and temporarily unowned registration observations. A later prepared
-generation replaces that target without accepting stale controller completion.
+presentation remain orthogonal control data. An explicit update action selects
+one target generation in the current page while that worker moves through
+waiting, activating, active, and temporarily unowned registration observations.
+A later prepared generation replaces that target without accepting stale
+controller completion.
 
-The browser's `controllerchange` observation and current controller are
-authoritative for completing the handoff. The worker's custom controlled message
-only requests another controller reconciliation. Once the intended generation
-controls the document, the graph commits one reload before starting the
-navigation effect. Shell-cache pruning remains disabled until no activation
-intent or prepared generation remains and the active worker controls the page.
+The browser's current registration and controller are authoritative for worker
+phase. The worker's custom controlled message only requests another controller
+reconciliation. Once the intended generation controls the old document, the
+graph enters `applying` and requests navigation. It remains retryable on explicit
+Reload while the old document remains alive; a later page-resume rechecks worker
+phase but does not repeat an already attempted navigation. The handoff target is
+deliberately page-local and is not persisted. A discarded page reconstructs
+update availability from the server and browser registration, then allows the
+user to request Reload again. Shell-cache pruning remains disabled
+until no handoff target or prepared generation remains and the active worker
+controls the page. About Caffold copy diagnostics includes the handoff node,
+target and observed worker build IDs, and navigation-attempt count.
 
 The service worker also validates terminal Web Push payloads, presents system
 notifications in foreground and background states, and limits notification
