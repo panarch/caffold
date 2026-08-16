@@ -59,6 +59,11 @@ jobs:
       - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2
 
+      - name: Install Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes glslc libvulkan-dev
+
       - name: Install Node.js 22
         uses: actions/setup-node@v7
         with:
@@ -108,6 +113,11 @@ jobs:
       - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2
 
+      - name: Install Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes glslc libvulkan-dev
+
       - name: Check formatting
         run: cargo fmt --check
 
@@ -116,3 +126,48 @@ jobs:
 
       - name: Test Rust
         run: cargo test --locked
+
+  linux-package:
+    name: Linux Package (${{ matrix.release_arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            release_arch: x86_64
+          - runner: ubuntu-24.04-arm
+            release_arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust 1.96
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes binutils file glslc libvulkan-dev
+
+      - name: Build and verify the native release archive
+        run: distribution/linux/package archive
+
+      - name: Upload the verified archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: caffold-pr-linux-${{ matrix.release_arch }}
+          path: |
+            target/caffold-linux/*.tar.gz
+            target/caffold-linux/*.sha256
+          if-no-files-found: error
+          retention-days: 7

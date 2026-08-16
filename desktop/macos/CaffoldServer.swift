@@ -60,6 +60,10 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         "http://127.0.0.1:\(preferences.port)"
     }
 
+    private var bundledCaffoldBinary: URL? {
+        Bundle.main.resourceURL?.appendingPathComponent("caffold")
+    }
+
     private lazy var applicationSupportDirectory: URL = {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Caffold", isDirectory: true)
@@ -341,8 +345,20 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         probeWhisperStatus(url: whisperStatusURL) { [weak self] status in
             self?.applyIntegrationStatus(status, to: self?.whisperStatusMenuItem)
         }
-        probeTailscaleStatus(localTarget: tailscaleTarget) { [weak self] status in
-            self?.applyTailscaleStatus(status)
+        if let bundledCaffoldBinary {
+            probeTailscaleStatus(
+                executable: bundledCaffoldBinary,
+                localTarget: tailscaleTarget
+            ) { [weak self] status in
+                self?.applyTailscaleStatus(status)
+            }
+        } else {
+            applyTailscaleStatus(TailscaleStatus(
+                title: "Tailscale · Status unavailable",
+                connected: false,
+                serveEnabled: false,
+                tailnetURL: nil
+            ))
         }
     }
 
@@ -771,23 +787,22 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func configureTailscaleServe() {
-        guard let tailscale = caffoldExecutable(named: "tailscale") else {
+        guard let bundledCaffoldBinary else {
             applyTailscaleStatus(TailscaleStatus(
-                title: "Tailscale · Not installed",
+                title: "Tailscale · Status unavailable",
                 connected: false,
                 serveEnabled: false,
                 tailnetURL: nil
             ))
-            appendLog("Tailscale CLI not found; local Caffold remains available.")
+            appendLog("Bundled Caffold CLI not found; local Caffold remains available.")
             return
         }
         tailscaleStatusMenuItem?.title = "Tailscale · Configuring Serve..."
         tailscaleToggleMenuItem?.isEnabled = false
         runCommand(
-            executable: tailscale,
+            executable: bundledCaffoldBinary,
             arguments: [
-                "serve", "--bg", "--yes", "--https=443",
-                tailscaleTarget,
+                "tailscale", "enable", "--target", tailscaleTarget, "--json",
             ]
         ) { [weak self] result in
             guard let self else { return }
@@ -806,12 +821,14 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func disableTailscaleServe() {
-        guard let tailscale = caffoldExecutable(named: "tailscale") else { return }
+        guard let bundledCaffoldBinary else { return }
         tailscaleStatusMenuItem?.title = "Tailscale · Turning Serve off..."
         tailscaleToggleMenuItem?.isEnabled = false
         runCommand(
-            executable: tailscale,
-            arguments: ["serve", "--yes", "--https=443", "off"]
+            executable: bundledCaffoldBinary,
+            arguments: [
+                "tailscale", "disable", "--target", tailscaleTarget, "--json",
+            ]
         ) { [weak self] result in
             guard let self else { return }
             switch result {

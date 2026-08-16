@@ -231,19 +231,116 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  linux:
+    name: Verify Linux ${{ matrix.release_arch }} release
+    needs: bump_release
+    if: always() && (needs.bump_release.result == 'success' || needs.bump_release.result == 'skipped')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            release_arch: x86_64
+          - runner: ubuntu-24.04-arm
+            release_arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+
+    steps:
+      - name: Require main
+        env:
+          SELECTED_REF: ${{ github.ref }}
+        run: |
+          if [[ "${SELECTED_REF}" != "refs/heads/main" ]]; then
+            echo "Release runs must be dispatched from main, not ${SELECTED_REF}." >&2
+            exit 1
+          fi
+
+      - name: Resolve the release source
+        id: release_source
+        env:
+          BUMP_RELEASE_SHA: ${{ needs.bump_release.outputs.release_sha }}
+          REQUESTED_SHA: ${{ github.sha }}
+        run: |
+          release_sha="${BUMP_RELEASE_SHA:-${REQUESTED_SHA}}"
+          echo "release_sha=${release_sha}" >>"${GITHUB_OUTPUT}"
+
+      - name: Check out the complete release history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: main
+
+      - name: Verify the requested commit
+        env:
+          RELEASE_SHA: ${{ steps.release_source.outputs.release_sha }}
+        run: |
+          git fetch origin main
+          if [[ "$(git rev-parse HEAD)" != "${RELEASE_SHA}" ]]; then
+            echo "Checked out source does not match ${RELEASE_SHA}." >&2
+            exit 1
+          fi
+          if [[ "$(git rev-parse origin/main)" != "${RELEASE_SHA}" ]]; then
+            echo "main changed after this workflow was dispatched; run it again." >&2
+            exit 1
+          fi
+
+      - name: Install Rust 1.96
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+
+      - name: Install Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes binutils file glslc libvulkan-dev
+
+      - name: Read release metadata
+        id: release_metadata
+        run: distribution/linux/package metadata >>"${GITHUB_OUTPUT}"
+
+      - name: Verify the native architecture
+        env:
+          EXPECTED_ARCH: ${{ matrix.release_arch }}
+          ACTUAL_ARCH: ${{ steps.release_metadata.outputs.arch }}
+        run: test "${ACTUAL_ARCH}" = "${EXPECTED_ARCH}"
+
+      - name: Test Rust on Linux
+        run: cargo test --locked
+
+      - name: Build and verify the Linux artifact
+        run: distribution/linux/package archive
+
+      - name: Upload the verified Linux artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: caffold-linux-${{ matrix.release_arch }}-v${{ steps.release_metadata.outputs.version }}
+          path: |
+            target/caffold-linux/${{ steps.release_metadata.outputs.archive }}
+            target/caffold-linux/${{ steps.release_metadata.outputs.checksum }}
+          if-no-files-found: error
+          retention-days: 7
+
   publish_release:
     name: Publish GitHub Release
-    needs: macos
-    if: always() && needs.macos.result == 'success' && inputs.action != 'dry-run'
+    needs:
+      - macos
+      - linux
+    if: always() && needs.macos.result == 'success' && needs.linux.result == 'success' && inputs.action != 'dry-run'
     runs-on: macos-14
     timeout-minutes: 15
     permissions:
       contents: write
     env:
       RELEASE_VERSION: ${{ needs.macos.outputs.version }}
-      RELEASE_ARCHIVE: ${{ needs.macos.outputs.archive }}
-      RELEASE_CHECKSUM: ${{ needs.macos.outputs.checksum }}
       RELEASE_SHA: ${{ needs.macos.outputs.release_sha }}
+      MACOS_ARCHIVE: ${{ needs.macos.outputs.archive }}
+      MACOS_CHECKSUM: ${{ needs.macos.outputs.checksum }}
+      LINUX_X86_ARCHIVE: Caffold-${{ needs.macos.outputs.version }}-linux-x86_64.tar.gz
+      LINUX_X86_CHECKSUM: Caffold-${{ needs.macos.outputs.version }}-linux-x86_64.tar.gz.sha256
+      LINUX_ARM_ARCHIVE: Caffold-${{ needs.macos.outputs.version }}-linux-aarch64.tar.gz
+      LINUX_ARM_CHECKSUM: Caffold-${{ needs.macos.outputs.version }}-linux-aarch64.tar.gz.sha256
 
     steps:
       - name: Check out the release source
@@ -253,25 +350,38 @@ jobs:
           persist-credentials: false
           ref: ${{ needs.macos.outputs.release_sha }}
 
-      - name: Download the verified artifact
+      - name: Download all verified artifacts
         uses: actions/download-artifact@v8
         with:
-          name: ${{ needs.macos.outputs.artifact_name }}
-          path: target/caffold-server
+          pattern: caffold-*-v${{ needs.macos.outputs.version }}
+          path: target/release-artifacts
+          merge-multiple: true
 
-      - name: Verify the downloaded artifact
+      - name: Verify the downloaded artifacts
         run: |
-          cd target/caffold-server
-          test -f "${RELEASE_ARCHIVE}"
-          test -f "${RELEASE_CHECKSUM}"
-          shasum -a 256 -c "${RELEASE_CHECKSUM}"
+          cd target/release-artifacts
+          for checksum in "${MACOS_CHECKSUM}" "${LINUX_X86_CHECKSUM}" "${LINUX_ARM_CHECKSUM}"; do
+            test -f "${checksum}"
+            shasum -a 256 -c "${checksum}"
+          done
+          desktop_root="Caffold-${RELEASE_VERSION}-linux"
+          tar -tzf "${LINUX_X86_ARCHIVE}" | grep -Fx "${desktop_root}-x86_64/caffold"
+          tar -tzf "${LINUX_ARM_ARCHIVE}" | grep -Fx "${desktop_root}-aarch64/caffold"
 
-      - name: Publish or verify the immutable GitHub Release
+      - name: Publish or verify the immutable multi-platform GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="v${RELEASE_VERSION}"
-          artifact_dir="${GITHUB_WORKSPACE}/target/caffold-server"
+          artifact_dir="${GITHUB_WORKSPACE}/target/release-artifacts"
+          assets=(
+            "${MACOS_ARCHIVE}"
+            "${MACOS_CHECKSUM}"
+            "${LINUX_X86_ARCHIVE}"
+            "${LINUX_X86_CHECKSUM}"
+            "${LINUX_ARM_ARCHIVE}"
+            "${LINUX_ARM_CHECKSUM}"
+          )
 
           if gh release view "${tag}" >/dev/null 2>&1; then
             if ! tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${tag}" --jq .sha 2>/dev/null)"; then
@@ -280,27 +390,37 @@ jobs:
             fi
             existing_dir="$(mktemp -d "${RUNNER_TEMP}/caffold-existing-release.XXXXXX")"
             trap 'rm -rf -- "${existing_dir}"' EXIT
-            gh release download "${tag}" \
-              --pattern "${RELEASE_ARCHIVE}" \
-              --pattern "${RELEASE_CHECKSUM}" \
-              --dir "${existing_dir}"
+            download_args=("${tag}" --dir "${existing_dir}")
+            for asset in "${assets[@]}"; do
+              download_args+=(--pattern "${asset}")
+            done
+            gh release download "${download_args[@]}"
             (
               cd "${existing_dir}"
-              shasum -a 256 -c "${RELEASE_CHECKSUM}"
+              shasum -a 256 -c "${MACOS_CHECKSUM}"
+              shasum -a 256 -c "${LINUX_X86_CHECKSUM}"
+              shasum -a 256 -c "${LINUX_ARM_CHECKSUM}"
+              tar -tzf "${LINUX_X86_ARCHIVE}" | grep -Fx "Caffold-${RELEASE_VERSION}-linux-x86_64/caffold"
+              tar -tzf "${LINUX_ARM_ARCHIVE}" | grep -Fx "Caffold-${RELEASE_VERSION}-linux-aarch64/caffold"
             )
             tag_build_number="$(git rev-list --count "${tag_sha}")"
             desktop/macos/package-app verify-archive \
-              "${existing_dir}/${RELEASE_ARCHIVE}" \
+              "${existing_dir}/${MACOS_ARCHIVE}" \
               --expected-version "${RELEASE_VERSION}" \
               --expected-build-number "${tag_build_number}"
-            cp "${existing_dir}/${RELEASE_ARCHIVE}" "${artifact_dir}/${RELEASE_ARCHIVE}"
-            cp "${existing_dir}/${RELEASE_CHECKSUM}" "${artifact_dir}/${RELEASE_CHECKSUM}"
-            echo "${tag} already contains valid release artifacts; reusing them."
+            for asset in "${assets[@]}"; do
+              cp "${existing_dir}/${asset}" "${artifact_dir}/${asset}"
+            done
+            echo "${tag} already contains valid multi-platform release artifacts; reusing them."
           else
             release_args=(
               "${tag}"
-              "${artifact_dir}/${RELEASE_ARCHIVE}#Caffold Server ${RELEASE_VERSION} for macOS arm64"
-              "${artifact_dir}/${RELEASE_CHECKSUM}#SHA-256 checksum"
+              "${artifact_dir}/${MACOS_ARCHIVE}#Caffold Server ${RELEASE_VERSION} for macOS arm64"
+              "${artifact_dir}/${MACOS_CHECKSUM}#macOS SHA-256 checksum"
+              "${artifact_dir}/${LINUX_X86_ARCHIVE}#Caffold ${RELEASE_VERSION} for Linux x86_64"
+              "${artifact_dir}/${LINUX_X86_CHECKSUM}#Linux x86_64 SHA-256 checksum"
+              "${artifact_dir}/${LINUX_ARM_ARCHIVE}#Caffold ${RELEASE_VERSION} for Linux aarch64"
+              "${artifact_dir}/${LINUX_ARM_CHECKSUM}#Linux aarch64 SHA-256 checksum"
               --title "Caffold ${tag}"
               --generate-notes
             )
@@ -316,31 +436,34 @@ jobs:
             gh release create "${release_args[@]}"
           fi
 
-      - name: Preserve the published artifact for Homebrew
+      - name: Preserve the published artifacts for Homebrew
         uses: actions/upload-artifact@v7
         with:
-          name: published-caffold-macos-arm64-v${{ needs.macos.outputs.version }}
-          path: |
-            target/caffold-server/${{ needs.macos.outputs.archive }}
-            target/caffold-server/${{ needs.macos.outputs.checksum }}
+          name: published-caffold-v${{ needs.macos.outputs.version }}
+          path: target/release-artifacts/*
           if-no-files-found: error
           retention-days: 7
 
-  publish_homebrew:
-    name: Publish Homebrew Cask
+  verify_linux_formula:
+    name: Verify Linux ${{ matrix.release_arch }} Formula
     needs:
       - macos
       - publish_release
     if: always() && needs.macos.result == 'success' && needs.publish_release.result == 'success' && inputs.action != 'dry-run'
-    environment: release
-    runs-on: macos-14
-    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            release_arch: x86_64
+          - runner: ubuntu-24.04-arm
+            release_arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
     permissions:
       contents: read
     env:
       RELEASE_VERSION: ${{ needs.macos.outputs.version }}
-      RELEASE_ARCHIVE: ${{ needs.macos.outputs.archive }}
-      RELEASE_CHECKSUM: ${{ needs.macos.outputs.checksum }}
 
     steps:
       - name: Check out the release source
@@ -349,18 +472,90 @@ jobs:
           persist-credentials: false
           ref: ${{ needs.macos.outputs.release_sha }}
 
-      - name: Download the verified artifact
+      - name: Download the published artifacts
         uses: actions/download-artifact@v8
         with:
-          name: published-caffold-macos-arm64-v${{ needs.macos.outputs.version }}
-          path: target/caffold-server
+          name: published-caffold-v${{ needs.macos.outputs.version }}
+          path: target/release-artifacts
 
-      - name: Verify the downloaded artifact
+      - name: Check out the Homebrew tap without publication credentials
+        uses: actions/checkout@v7
+        with:
+          repository: panarch/homebrew-tap
+          ref: main
+          path: homebrew-tap
+          persist-credentials: false
+
+      - name: Render the Formula
         run: |
-          cd target/caffold-server
-          test -f "${RELEASE_ARCHIVE}"
-          test -f "${RELEASE_CHECKSUM}"
-          shasum -a 256 -c "${RELEASE_CHECKSUM}"
+          x86_checksum="target/release-artifacts/Caffold-${RELEASE_VERSION}-linux-x86_64.tar.gz.sha256"
+          arm_checksum="target/release-artifacts/Caffold-${RELEASE_VERSION}-linux-aarch64.tar.gz.sha256"
+          distribution/linux/render-formula \
+            --version "${RELEASE_VERSION}" \
+            --x86-64-sha256 "$(awk '{print $1}' "${x86_checksum}")" \
+            --aarch64-sha256 "$(awk '{print $1}' "${arm_checksum}")" \
+            >homebrew-tap/Formula/caffold.rb
+
+      - name: Audit and install the unpublished Formula
+        run: |
+          brew tap panarch/tap "${GITHUB_WORKSPACE}/homebrew-tap"
+          brew trust --formula panarch/tap/caffold
+          brew style panarch/tap
+          brew audit --formula --strict panarch/tap/caffold
+          brew install --formula panarch/tap/caffold
+          test "$(uname -m)" = "${{ matrix.release_arch == 'aarch64' && 'aarch64' || 'x86_64' }}"
+          caffold --version | grep -Fx "caffold ${RELEASE_VERSION}"
+          caffold serve --whisper-acceleration cpu >"${RUNNER_TEMP}/caffold.log" 2>&1 &
+          caffold_pid=$!
+          trap 'kill "${caffold_pid}" 2>/dev/null || true' EXIT
+          for attempt in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:5177/api/health >/dev/null; then
+              break
+            fi
+            sleep 0.25
+          done
+          curl --fail --silent http://127.0.0.1:5177/api/health >/dev/null
+          kill "${caffold_pid}"
+          wait "${caffold_pid}" || true
+          trap - EXIT
+          brew uninstall --formula panarch/tap/caffold
+
+  publish_homebrew:
+    name: Publish Homebrew packages
+    needs:
+      - macos
+      - publish_release
+      - verify_linux_formula
+    if: always() && needs.macos.result == 'success' && needs.publish_release.result == 'success' && needs.verify_linux_formula.result == 'success' && inputs.action != 'dry-run'
+    environment: release
+    runs-on: macos-14
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      RELEASE_VERSION: ${{ needs.macos.outputs.version }}
+      MACOS_ARCHIVE: ${{ needs.macos.outputs.archive }}
+      MACOS_CHECKSUM: ${{ needs.macos.outputs.checksum }}
+
+    steps:
+      - name: Check out the release source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ needs.macos.outputs.release_sha }}
+
+      - name: Download the published artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: published-caffold-v${{ needs.macos.outputs.version }}
+          path: target/release-artifacts
+
+      - name: Verify the downloaded artifacts
+        run: |
+          cd target/release-artifacts
+          shasum -a 256 -c "${MACOS_CHECKSUM}"
+          shasum -a 256 -c "Caffold-${RELEASE_VERSION}-linux-x86_64.tar.gz.sha256"
+          shasum -a 256 -c "Caffold-${RELEASE_VERSION}-linux-aarch64.tar.gz.sha256"
 
       - name: Check out the Homebrew tap
         uses: actions/checkout@v7
@@ -372,26 +567,31 @@ jobs:
           persist-credentials: true
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
-      - name: Render the Cask
+      - name: Render the Cask and Formula
         run: |
-          archive_sha="$(awk '{print $1}' "target/caffold-server/${RELEASE_CHECKSUM}")"
+          archive_sha="$(awk '{print $1}' "target/release-artifacts/${MACOS_CHECKSUM}")"
           desktop/macos/render-cask \
             --version "${RELEASE_VERSION}" \
             --sha256 "${archive_sha}" \
             >homebrew-tap/Casks/caffold.rb
+          distribution/linux/render-formula \
+            --version "${RELEASE_VERSION}" \
+            --x86-64-sha256 "$(awk '{print $1}' "target/release-artifacts/Caffold-${RELEASE_VERSION}-linux-x86_64.tar.gz.sha256")" \
+            --aarch64-sha256 "$(awk '{print $1}' "target/release-artifacts/Caffold-${RELEASE_VERSION}-linux-aarch64.tar.gz.sha256")" \
+            >homebrew-tap/Formula/caffold.rb
 
       - name: Prepare the unpublished Homebrew tap update
         id: tap_update
         working-directory: homebrew-tap
         run: |
-          if [[ -z "$(git status --porcelain -- Casks/caffold.rb)" ]]; then
-            echo "Casks/caffold.rb already describes v${RELEASE_VERSION}."
+          if [[ -z "$(git status --porcelain -- Casks/caffold.rb Formula/caffold.rb)" ]]; then
+            echo "The Cask and Formula already describe v${RELEASE_VERSION}."
             echo "changed=false" >>"${GITHUB_OUTPUT}"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Casks/caffold.rb
+          git add Casks/caffold.rb Formula/caffold.rb
           git commit -m "Update Caffold to ${RELEASE_VERSION}"
           echo "changed=true" >>"${GITHUB_OUTPUT}"
 

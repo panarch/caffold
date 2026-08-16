@@ -38,6 +38,18 @@ const AUDIO_SAMPLE_RATE: u32 = 16_000;
 const MAX_AUDIO_SECONDS: usize = 5 * 60;
 const MAX_AUDIO_SAMPLES: usize = AUDIO_SAMPLE_RATE as usize * MAX_AUDIO_SECONDS;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VoiceAcceleration {
+    Auto,
+    Cpu,
+}
+
+impl VoiceAcceleration {
+    fn use_gpu(self) -> bool {
+        matches!(self, Self::Auto)
+    }
+}
+
 #[derive(Clone)]
 struct ModelSpec {
     id: String,
@@ -69,13 +81,21 @@ trait LoadedVoiceModel: Send + Sync {
     fn transcribe(&self, audio: &[f32], cancelled: Arc<AtomicBool>) -> Result<String, String>;
 }
 
-struct WhisperVoiceEngine;
+struct WhisperVoiceEngine {
+    acceleration: VoiceAcceleration,
+}
+
+impl WhisperVoiceEngine {
+    fn new(acceleration: VoiceAcceleration) -> Self {
+        Self { acceleration }
+    }
+}
 
 impl VoiceEngine for WhisperVoiceEngine {
     fn load(&self, path: &Path) -> Result<Arc<dyn LoadedVoiceModel>, String> {
         install_logging_hooks();
         let mut params = WhisperContextParameters::default();
-        params.use_gpu(true);
+        params.use_gpu(self.acceleration.use_gpu());
         let context = WhisperContext::new_with_params(path, params)
             .map_err(|error| format!("could not load Whisper model: {error}"))?;
         Ok(Arc::new(WhisperVoiceModel { context }))
@@ -160,12 +180,12 @@ impl Drop for TranscriptionGuard {
 }
 
 impl VoiceService {
-    fn new(model_dir: PathBuf) -> Self {
+    fn new(model_dir: PathBuf, acceleration: VoiceAcceleration) -> Self {
         Self::with_dependencies(
             model_dir,
             ModelSpec::large_v3_turbo(),
             reqwest::Client::new(),
-            Arc::new(WhisperVoiceEngine),
+            Arc::new(WhisperVoiceEngine::new(acceleration)),
         )
     }
 
@@ -515,8 +535,8 @@ impl IntoResponse for VoiceApiError {
     }
 }
 
-pub(super) fn router(model_dir: PathBuf) -> Router {
-    router_with_service(VoiceService::new(model_dir))
+pub(super) fn router(model_dir: PathBuf, acceleration: VoiceAcceleration) -> Router {
+    router_with_service(VoiceService::new(model_dir, acceleration))
 }
 
 fn router_with_service(service: VoiceService) -> Router {
@@ -597,6 +617,12 @@ mod tests {
         assert_eq!(audio[0], -1.0);
         assert_eq!(audio[1], 0.0);
         assert!(audio[2] > 0.999);
+    }
+
+    #[test]
+    fn acceleration_selects_gpu_probe_or_cpu_only() {
+        assert!(VoiceAcceleration::Auto.use_gpu());
+        assert!(!VoiceAcceleration::Cpu.use_gpu());
     }
 
     #[test]
@@ -847,7 +873,9 @@ mod tests {
             std::env::var("CAFFOLD_WHISPER_WAV").expect("set CAFFOLD_WHISPER_WAV to a WAV file");
         let wav = std::fs::read(wav_path).unwrap();
         let audio = decode_wav(&wav).unwrap();
-        let model = WhisperVoiceEngine.load(Path::new(&model_path)).unwrap();
+        let model = WhisperVoiceEngine::new(VoiceAcceleration::Cpu)
+            .load(Path::new(&model_path))
+            .unwrap();
         let transcript = model
             .transcribe(&audio, Arc::new(AtomicBool::new(false)))
             .unwrap();

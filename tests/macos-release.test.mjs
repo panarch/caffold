@@ -141,11 +141,15 @@ test("manual release workflow isolates versioning, verification, and publication
   )?.[1];
   const bumpStart = source.indexOf("  bump_release:");
   const macosStart = source.indexOf("  macos:");
+  const linuxStart = source.indexOf("  linux:");
   const releaseStart = source.indexOf("  publish_release:");
+  const verifyFormulaStart = source.indexOf("  verify_linux_formula:");
   const homebrewStart = source.indexOf("  publish_homebrew:");
   const bumpJob = source.slice(bumpStart, macosStart);
-  const macosJob = source.slice(macosStart, releaseStart);
-  const releaseJob = source.slice(releaseStart, homebrewStart);
+  const macosJob = source.slice(macosStart, linuxStart);
+  const linuxJob = source.slice(linuxStart, releaseStart);
+  const releaseJob = source.slice(releaseStart, verifyFormulaStart);
+  const formulaJob = source.slice(verifyFormulaStart, homebrewStart);
   const homebrewJob = source.slice(homebrewStart);
 
   assert.match(source, /^name: Release$/m);
@@ -167,8 +171,10 @@ test("manual release workflow isolates versioning, verification, and publication
   assert.ok(
     bumpStart >= 0 &&
       macosStart > bumpStart &&
-      releaseStart > macosStart &&
-      homebrewStart > releaseStart,
+      linuxStart > macosStart &&
+      releaseStart > linuxStart &&
+      verifyFormulaStart > releaseStart &&
+      homebrewStart > verifyFormulaStart,
   );
 
   assert.match(bumpJob, /if: startsWith\(inputs\.action, 'release-'\)/);
@@ -214,14 +220,23 @@ test("manual release workflow isolates versioning, verification, and publication
     assert.doesNotMatch(macosJob, new RegExp(publishingCommand, "i"));
   }
 
+  assert.match(linuxJob, /ubuntu-24\.04-arm/);
+  assert.match(linuxJob, /release_arch: x86_64/);
+  assert.match(linuxJob, /release_arch: aarch64/);
+  assert.match(linuxJob, /glslc libvulkan-dev/);
+  assert.match(linuxJob, /cargo test --locked/);
+  assert.match(linuxJob, /distribution\/linux\/package archive/);
+  assert.match(linuxJob, /caffold-linux-\$\{\{ matrix\.release_arch \}\}-v/);
+  assert.doesNotMatch(linuxJob, /contents: write|HOMEBREW_TAP_TOKEN|gh release create/);
+
   assert.match(
     releaseJob,
-    /if: always\(\) && needs\.macos\.result == 'success' && inputs\.action != 'dry-run'/,
+    /needs\.linux\.result == 'success' && inputs\.action != 'dry-run'/,
   );
   assert.match(releaseJob, /^\s+contents: write$/m);
   assert.match(releaseJob, /RELEASE_SHA: \$\{\{ needs\.macos\.outputs\.release_sha \}\}/);
   assert.match(releaseJob, /actions\/download-artifact@v\d+/);
-  assert.match(releaseJob, /published-caffold-macos-arm64-v/);
+  assert.match(releaseJob, /published-caffold-v/);
   assert.match(releaseJob, /gh release create/);
   assert.match(releaseJob, /gh release download/);
   assert.match(releaseJob, /package-app verify-archive/);
@@ -229,6 +244,9 @@ test("manual release workflow isolates versioning, verification, and publication
   assert.match(releaseJob, /--expected-version "\$\{RELEASE_VERSION\}"/);
   assert.match(releaseJob, /--expected-build-number "\$\{tag_build_number\}"/);
   assert.match(releaseJob, /shasum -a 256 -c/);
+  assert.match(releaseJob, /LINUX_X86_ARCHIVE/);
+  assert.match(releaseJob, /LINUX_ARM_ARCHIVE/);
+  assert.match(releaseJob, /multi-platform GitHub Release/);
   const existingReleaseIndex = releaseJob.indexOf(
     'if gh release view "${tag}"',
   );
@@ -248,18 +266,28 @@ test("manual release workflow isolates versioning, verification, and publication
   assert.doesNotMatch(releaseJob, /HOMEBREW_TAP_TOKEN/);
   assert.doesNotMatch(releaseJob, /brew install|git push/);
 
+  assert.match(formulaJob, /ubuntu-24\.04-arm/);
+  assert.match(formulaJob, /distribution\/linux\/render-formula/);
+  assert.match(formulaJob, /brew audit --formula --strict panarch\/tap\/caffold/);
+  assert.match(formulaJob, /brew install --formula panarch\/tap\/caffold/);
+  assert.match(formulaJob, /--whisper-acceleration cpu/);
+  assert.doesNotMatch(formulaJob, /HOMEBREW_TAP_TOKEN|git push/);
+
   assert.match(
     homebrewJob,
-    /if: always\(\) && needs\.macos\.result == 'success' && needs\.publish_release\.result == 'success' && inputs\.action != 'dry-run'/,
+    /needs\.verify_linux_formula\.result == 'success' && inputs\.action != 'dry-run'/,
   );
   assert.match(homebrewJob, /^\s+environment: release$/m);
   assert.match(homebrewJob, /^\s+contents: read$/m);
   assert.doesNotMatch(homebrewJob, /contents: write/);
-  assert.match(homebrewJob, /published-caffold-macos-arm64-v/);
+  assert.match(homebrewJob, /published-caffold-v/);
   assert.match(homebrewJob, /repository: panarch\/homebrew-tap/);
   assert.match(homebrewJob, /token: \$\{\{ secrets\.HOMEBREW_TAP_TOKEN \}\}/);
   const renderIndex = homebrewJob.indexOf(
     ">homebrew-tap/Casks/caffold.rb",
+  );
+  const formulaRenderIndex = homebrewJob.indexOf(
+    ">homebrew-tap/Formula/caffold.rb",
   );
   const commitIndex = homebrewJob.indexOf(
     'git commit -m "Update Caffold to ${RELEASE_VERSION}"',
@@ -279,7 +307,8 @@ test("manual release workflow isolates versioning, verification, and publication
   const pushIndex = homebrewJob.indexOf("git push origin HEAD:main");
   assert.ok(
     renderIndex >= 0 &&
-      commitIndex > renderIndex &&
+      formulaRenderIndex > renderIndex &&
+      commitIndex > formulaRenderIndex &&
       tapIndex > commitIndex &&
       trustIndex > tapIndex &&
       auditIndex > trustIndex &&
@@ -289,6 +318,7 @@ test("manual release workflow isolates versioning, verification, and publication
   assert.match(homebrewJob, /if: steps\.tap_update\.outputs\.changed == 'true'/);
   assert.doesNotMatch(homebrewJob, /HOMEBREW_NO_REQUIRE_TAP_TRUST/);
   assert.match(homebrewJob, /brew install --cask panarch\/tap\/caffold/);
+  assert.match(homebrewJob, /git add Casks\/caffold\.rb Formula\/caffold\.rb/);
   assert.match(homebrewJob, /git push origin HEAD:main/);
   assert.doesNotMatch(homebrewJob, /gh release create/);
 });

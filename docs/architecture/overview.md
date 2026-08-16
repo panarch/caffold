@@ -11,20 +11,28 @@ That instance serves the UI, manages Codex app-server, talks to the local filesy
 flowchart TD
     PWA["Browser / PWA / Service Worker"]
     MacWrapper["macOS menu bar wrapper"]
+    LinuxService["Linux Homebrew user service"]
+    OperationsCLI["Caffold operational CLI"]
     Backend["Caffold Rust Backend"]
     PushService["Browser vendor Push Service"]
     Proxy["Codex proxy child"]
     AppServer["Persistent Codex app-server daemon"]
     Git["git worktree"]
     Whisper["Host-local Whisper model"]
+    Tailscale["Optional Tailscale CLI / Serve"]
 
     PWA -->|"HTTP / SSE"| Backend
     PWA -->|"16 kHz mono PCM WAV"| Backend
     MacWrapper -->|"HTTP"| Backend
+    LinuxService -->|"starts"| Backend
     Backend -->|"JSON-RPC / WebSocket"| Proxy
     Proxy --> AppServer
     Backend --> Git
     Backend --> Whisper
+    MacWrapper --> OperationsCLI
+    OperationsCLI -->|"validated Serve commands"| Tailscale
+    PWA -->|"tailnet HTTPS"| Tailscale
+    Tailscale -->|"localhost proxy"| Backend
     Backend -->|"encrypted Web Push"| PushService
     PushService -->|"Push API delivery"| PWA
     AppServer -->|"agent events / approvals / thread data"| Proxy
@@ -53,6 +61,26 @@ implement different operational semantics. Platform failures before the
 backend is available, macOS application lifecycle, and native launch behavior
 remain wrapper-owned.
 
+The wrapper invokes the bundled Caffold CLI for Tailscale status and mutation.
+Swift retains menu presentation and pre-server failure handling, while Rust
+owns target validation, Serve configuration parsing, collision refusal, and
+disable ownership.
+
+### Linux Service
+
+The Homebrew Formula installs the same Rust executable and generates a systemd
+user service that starts it on localhost. Homebrew owns process registration;
+Caffold owns its server shutdown and runtime state. The Formula adds the Vulkan
+loader but does not install a GPU driver, Codex, GitHub CLI, or Tailscale.
+
+### Operational CLI
+
+`caffold tailscale` is a pre-server operational capability in the same Rust
+executable. It validates a localhost target, invokes the independently
+installed Tailscale CLI, and mutates HTTPS Serve only when the handler is empty
+or exclusively owned by that exact target. The macOS wrapper and Linux users
+consume this same command contract.
+
 ### Rust Backend
 
 The backend owns:
@@ -63,6 +91,7 @@ The backend owns:
 - JSON-RPC adapter
 - git status, diff, log, and file APIs
 - host-local Whisper model installation, verification, and transcription
+- platform voice-acceleration selection and CPU fallback
 - browser Push subscription persistence and isolated outbound delivery
 - shared server-backed product settings and capability APIs consumed by
   browser and platform clients
@@ -118,6 +147,9 @@ model, serializes inference, and returns text for insertion at the selection
 saved when recording began. It never stores raw recordings or calls an external
 speech-to-text service. The model remains loaded for the backend process
 lifetime; Tailscale is transport for remote browsers, not part of inference.
+On macOS, automatic acceleration enables Metal. On Linux, it enables Vulkan;
+the bundled Whisper backend retains CPU as fallback. Explicit CPU mode prevents
+GPU initialization on either platform.
 
 ## Source of Truth
 

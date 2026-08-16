@@ -17,6 +17,10 @@ npx playwright install chromium
 Rust checks use the 1.96 toolchain pinned by `rust-toolchain.toml` and bounded by
 `Cargo.toml`'s minimum supported version.
 
+Linux Rust builds also require `glslc` and Vulkan development files because the
+distributed Whisper backend includes Vulkan even when runtime inference uses
+CPU fallback.
+
 ## Rust
 
 ```sh
@@ -186,3 +190,33 @@ An actual replacement of `/Applications/Caffold Server.app` is direct runtime
 validation, not an automated test. Perform it only when the change needs user
 review in the installed application, then verify the expected build ID and port
 owner as described in the macOS development guide.
+
+## Linux packaging tests
+
+The top-level contract suite validates the Linux package script, Formula
+renderer, release workflow, and CI ownership without trying to execute an ELF
+binary on macOS:
+
+```sh
+node --test tests/linux-release.test.mjs tests/macos-release.test.mjs
+```
+
+Pull-request Actions run `distribution/linux/package archive` on native
+Ubuntu 24.04 x86_64 and aarch64 runners. That command builds the release binary,
+checks its ELF architecture, version, Vulkan loader dependency and runpath,
+extracts its tarball, and verifies the checksum. The ordinary Linux browser
+and Rust jobs compile the Vulkan dependency graph on x86_64.
+
+The manual `Whisper Smoke` workflow is distinct evidence. It downloads the
+checksum-pinned multilingual tiny model and WAV fixture and runs the ignored
+real-inference Rust test on Linux CPU. It is opt-in so ordinary pull requests do
+not repeatedly download a model. To reproduce it locally after supplying those
+files:
+
+```sh
+CAFFOLD_WHISPER_MODEL=/path/to/ggml-tiny.bin \
+CAFFOLD_WHISPER_WAV=/path/to/sample.wav \
+cargo test --locked --lib \
+  app::voice::tests::live_pinned_model_transcribes_a_real_wav -- \
+  --ignored --exact --nocapture
+```

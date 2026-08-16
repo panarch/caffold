@@ -12,6 +12,7 @@ The supported contributor baseline is:
 - Node.js 22 and npm;
 - Git;
 - CMake and the Xcode Command Line Tools on macOS;
+- CMake, `glslc`, and Vulkan development files on Linux;
 - the authenticated standalone Codex CLI for live app-server work.
 
 On macOS:
@@ -19,6 +20,13 @@ On macOS:
 ```sh
 brew install cmake
 xcode-select --install
+npm ci
+```
+
+On Ubuntu Linux:
+
+```sh
+sudo apt-get install build-essential cmake glslc libvulkan-dev
 npm ci
 ```
 
@@ -30,7 +38,8 @@ npx playwright install chromium
 
 ## Run a development server
 
-Use a port and data directory distinct from the installed macOS application:
+Use a port and data directory distinct from any installed application or user
+service:
 
 ```sh
 cargo run -- serve \
@@ -46,6 +55,10 @@ The installed application normally owns port 5178 and stores data under
 live probes must not open that database. The command above keeps development
 state under `.caffold-dev`; it may be removed when its local task history is no
 longer needed.
+
+On Linux, the Homebrew service normally owns port 5177 and stores data under
+`~/.caffold`. Stop that user service or select another development port before
+running the command above.
 
 For private phone or PWA testing, follow
 [Mobile and PWA testing](docs/development/mobile-pwa-testing.md). For a local
@@ -79,7 +92,8 @@ cargo clippy --all-targets -- -D warnings
 ```
 
 Frontend and protocol changes have additional Node and Playwright suites.
-macOS code has Swift and installer lifecycle checks. See the complete
+macOS code has Swift and installer lifecycle checks. Linux distribution changes
+have native x86_64/aarch64 packaging checks. See the complete
 [testing guide](docs/development/testing.md) for the test matrix, live-test
 boundary, and coverage workflow.
 

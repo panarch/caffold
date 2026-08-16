@@ -43,7 +43,9 @@ target/caffold-server/Caffold-Server-<version>-macos-arm64.zip
 target/caffold-server/Caffold-Server-<version>-macos-arm64.zip.sha256
 ```
 
-Maintainers preparing a distribution should follow the [macOS release process](../../docs/operations/macos-release.md).
+Maintainers preparing a distribution should follow the shared
+[release process](../../docs/operations/release.md) and the platform-specific
+[macOS release process](../../docs/operations/macos-release.md).
 
 For a local development replacement of `/Applications/Caffold Server.app`, use
 the tracked safe installer and runbook:
@@ -69,7 +71,9 @@ Missing optional dependencies do not prevent the server from starting. The menu 
 ## Runtime behavior
 
 - Caffold listens on `http://127.0.0.1:5178`.
-- When Tailscale is available, the app configures tailnet-only Tailscale Serve on HTTPS port 443.
+- When Tailscale is available, the app invokes the bundled Caffold CLI to
+  configure tailnet-only Tailscale Serve on HTTPS port 443. The shared adapter
+  refuses to replace or disable another Serve target.
 - Startup keeps the server in the menu bar without opening the default browser.
 - `Open Caffold` in the menu opens the browser; reopening the running app does the same.
 - The menu bar icon also configures the server, exposes logs, retries Tailscale Serve, and quits the server.

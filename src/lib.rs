@@ -1,6 +1,7 @@
 pub mod app;
 pub mod cli;
 pub mod fs;
+pub mod tailscale;
 
 mod codex_app_server;
 mod codex_thread_sessions;
