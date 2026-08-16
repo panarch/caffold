@@ -119,11 +119,20 @@ navigation, verifies that page resume does not repeat it automatically, and
 requires a second explicit Reload action to replace the document. No handoff
 target is persisted across documents; a fresh page
 reconstructs update availability from browser and server state. The loopback
-test addresses its exact waiting worker through a fixture-only activation
-control to make the waiting-to-active edge deterministic; production activation
-messaging remains separate contract and mocked-browser evidence. Report unit,
-complete-shell inventory, deterministic browser, and real-browser evidence
-separately.
+test arms its exact waiting worker through a fixture-only `MessageChannel` and
+waits for that worker to acknowledge the production activation request. It then
+uses `ServiceWorker.stopAllWorkers` inside the isolated browser context to clear
+the active worker's internal pending-event boundary without waiting for CDP
+version events. It rearms the page's original waiting worker, verifies its build
+ID again, and invokes `skipWaiting()` in that build's Playwright service-worker
+runtime without another extendable message event. CDP does not select or
+activate the waiting worker. Activation completion is the page's original
+worker object's `statechange`. The gate records every boundary so the
+waiting-to-active edge does not infer progress from scheduling latency or
+registration-slot polling.
+Production activation behavior remains separate contract and mocked-browser
+evidence. Report unit, complete-shell inventory, deterministic browser, and
+real-browser evidence separately.
 
 ## Codex compatibility and live tests
 
