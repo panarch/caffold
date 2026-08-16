@@ -758,11 +758,12 @@ mod tests {
             .worktree_for_thread(thread_id)
             .unwrap()
             .unwrap();
+        let branch_name = inspect_ready_worktree(&worktree).unwrap().branch_name;
 
         let _ = task_archive(State(state.clone()), AxumPath(thread_id.to_string()))
             .await
             .expect("archive succeeds");
-        assert!(git_branch_exists(&source, &worktree.branch_name));
+        assert!(git_branch_exists(&source, &branch_name));
 
         let response = task_delete(State(state.clone()), AxumPath(thread_id.to_string()))
             .await
@@ -777,7 +778,7 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
-        assert!(git_branch_exists(&source, &worktree.branch_name));
+        assert!(git_branch_exists(&source, &branch_name));
         assert_eq!(
             client
                 .mock_requests()

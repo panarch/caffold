@@ -16,10 +16,7 @@ pub(crate) use worktree::{
     restore_attached_worktree,
 };
 #[cfg(test)]
-pub(crate) use worktree::{
-    create_attached_worktree, create_prepared_worktree, managed_repository,
-    prepare_attached_worktree,
-};
+pub(crate) use worktree::{create_attached_worktree, managed_repository};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Repository {

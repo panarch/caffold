@@ -501,7 +501,11 @@ mod tests {
 
     use super::super::test_support::*;
     use super::*;
-    use crate::{app::tasks::test_support::*, fs::RootedFs, task_store::ManagedThread};
+    use crate::{
+        app::tasks::test_support::*,
+        fs::RootedFs,
+        task_store::{CheckoutAnchor, ManagedThread},
+    };
 
     async fn publish_permission_approval(
         state: &TaskState,
@@ -987,7 +991,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn task_prompt_starts_and_steers_the_same_thread_in_its_ready_managed_worktree() {
+    async fn task_prompt_continues_the_same_thread_after_a_ready_branch_switch_without_writes() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-managed-follow-up";
         let managed_cwd = root.path().join("managed/worktree-1");
@@ -1029,13 +1033,24 @@ mod tests {
                 thread_id: Some(thread_id.to_string()),
                 repository_git_dir: checkout.common_dir.display().to_string(),
                 worktree_path: managed_cwd.display().to_string(),
-                branch_name: checkout.branch_name,
-                head_sha: checkout.head_sha,
                 state: ManagedWorktreeState::Ready,
+                checkout_anchor: None,
                 created_at_ms: 1,
                 updated_at_ms: 1,
             })
             .unwrap();
+        let stored_before = state.task_store.worktree("worktree-1").unwrap().unwrap();
+        let switched = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&managed_cwd)
+            .args(["switch", "-c", "review/next"])
+            .output()
+            .unwrap();
+        assert!(
+            switched.status.success(),
+            "{}",
+            String::from_utf8_lossy(&switched.stderr)
+        );
 
         let response = task_prompt(
             State(state.clone()),
@@ -1111,7 +1126,7 @@ mod tests {
         );
 
         let response = task_prompt(
-            State(state),
+            State(state.clone()),
             AxumPath(thread_id.to_string()),
             Query(TasksQuery { cursor: None }),
             Json(TaskPromptRequest {
@@ -1137,6 +1152,10 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["thread/resume", "turn/start", "turn/steer"]
         );
+        assert_eq!(
+            state.task_store.worktree("worktree-1").unwrap().unwrap(),
+            stored_before
+        );
     }
 
     #[tokio::test]
@@ -1157,9 +1176,8 @@ mod tests {
                 thread_id: Some(thread_id.to_string()),
                 repository_git_dir: repository.common_dir.display().to_string(),
                 worktree_path: missing.display().to_string(),
-                branch_name: "caffold/missing".to_string(),
-                head_sha: repository.head_sha,
                 state: ManagedWorktreeState::Ready,
+                checkout_anchor: None,
                 created_at_ms: 1,
                 updated_at_ms: 1,
             })
@@ -1207,9 +1225,11 @@ mod tests {
                 thread_id: Some(thread_id.to_string()),
                 repository_git_dir: root.path().join(".git").display().to_string(),
                 worktree_path: root.path().join("managed/recovery").display().to_string(),
-                branch_name: "caffold/recovery".to_string(),
-                head_sha: "deadbeef".to_string(),
                 state: ManagedWorktreeState::RecoveryRequired,
+                checkout_anchor: Some(CheckoutAnchor {
+                    branch_name: "caffold/recovery".to_string(),
+                    head_sha: "deadbeef".to_string(),
+                }),
                 created_at_ms: 1,
                 updated_at_ms: 1,
             })
@@ -1284,9 +1304,8 @@ mod tests {
                 thread_id: Some(thread_id.to_string()),
                 repository_git_dir: checkout.common_dir.display().to_string(),
                 worktree_path: managed_cwd.display().to_string(),
-                branch_name: checkout.branch_name,
-                head_sha: checkout.head_sha,
                 state: ManagedWorktreeState::Ready,
+                checkout_anchor: None,
                 created_at_ms: 1,
                 updated_at_ms: 1,
             })

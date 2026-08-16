@@ -15,11 +15,10 @@ use crate::{
         prepare_worktree_transfer, recover_worktree_transfer, remove_attached_worktree,
         restore_attached_worktree,
     },
-    task_store::{ManagedWorktree, ManagedWorktreeState, TaskStore, TaskStoreError},
+    task_store::{
+        CheckoutAnchor, ManagedWorktree, ManagedWorktreeState, TaskStore, TaskStoreError,
+    },
 };
-
-#[cfg(test)]
-use crate::git::{create_prepared_worktree, prepare_attached_worktree};
 
 #[derive(Debug, Error)]
 pub(in crate::app) enum ManagedWorktreeError {
@@ -55,9 +54,13 @@ pub(in crate::app) enum RestoreOutcome {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::app) enum IsolateOutcome {
-    AlreadyReady(ManagedWorktree),
+    AlreadyReady {
+        worktree: ManagedWorktree,
+        checkout: WorktreeCheckout,
+    },
     Isolated {
         worktree: ManagedWorktree,
+        checkout: WorktreeCheckout,
         source_warning: Option<String>,
     },
 }
@@ -93,27 +96,6 @@ impl ManagedWorktrees {
         Ok(worktrees)
     }
 
-    #[cfg(test)]
-    pub(in crate::app) async fn create(
-        &self,
-        source: PathBuf,
-        task_name: String,
-        requested_branch: Option<String>,
-        base_ref: Option<String>,
-    ) -> Result<ManagedWorktree, ManagedWorktreeError> {
-        let worktrees = self.clone();
-        tokio::task::spawn_blocking(move || {
-            worktrees.create_blocking(
-                &source,
-                &task_name,
-                requested_branch.as_deref(),
-                base_ref.as_deref(),
-            )
-        })
-        .await
-        .map_err(|error| ManagedWorktreeError::Worker(error.to_string()))?
-    }
-
     pub(in crate::app) async fn isolate_current(
         &self,
         source: PathBuf,
@@ -133,22 +115,6 @@ impl ManagedWorktrees {
                 base_ref.as_deref(),
                 include_changes,
             )
-        })
-        .await
-        .map_err(|error| ManagedWorktreeError::Worker(error.to_string()))?
-    }
-
-    #[cfg(test)]
-    pub(in crate::app) async fn bind_thread(
-        &self,
-        worktree_id: String,
-        thread_id: String,
-    ) -> Result<ManagedWorktree, ManagedWorktreeError> {
-        let store = self.store.clone();
-        tokio::task::spawn_blocking(move || {
-            store
-                .bind_worktree_thread(&worktree_id, &thread_id, now_ms()?)
-                .map_err(Into::into)
         })
         .await
         .map_err(|error| ManagedWorktreeError::Worker(error.to_string()))?
@@ -184,78 +150,6 @@ impl ManagedWorktrees {
             .map_err(|error| ManagedWorktreeError::Worker(error.to_string()))?
     }
 
-    #[cfg(test)]
-    pub(in crate::app) async fn discard_unbound(
-        &self,
-        worktree_id: String,
-    ) -> Result<(), ManagedWorktreeError> {
-        let worktrees = self.clone();
-        tokio::task::spawn_blocking(move || worktrees.discard_unbound_blocking(&worktree_id))
-            .await
-            .map_err(|error| ManagedWorktreeError::Worker(error.to_string()))?
-    }
-
-    #[cfg(test)]
-    fn create_blocking(
-        &self,
-        source: &Path,
-        task_name: &str,
-        requested_branch: Option<&str>,
-        base_ref: Option<&str>,
-    ) -> Result<ManagedWorktree, ManagedWorktreeError> {
-        let worktree_id = Uuid::new_v4().to_string();
-        let path = self.root.join(&worktree_id);
-        let branch_name = requested_branch
-            .map(str::trim)
-            .filter(|branch| !branch.is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| automatic_branch_name(task_name, &worktree_id));
-        let plan = prepare_attached_worktree(source, &path, &branch_name, base_ref)?;
-        let created_at_ms = now_ms()?;
-        let record = ManagedWorktree {
-            worktree_id: worktree_id.clone(),
-            thread_id: None,
-            repository_git_dir: path_text(&plan.common_dir)?.to_string(),
-            worktree_path: path_text(&path)?.to_string(),
-            branch_name: branch_name.clone(),
-            head_sha: plan.base_head.clone(),
-            state: ManagedWorktreeState::Creating,
-            created_at_ms,
-            updated_at_ms: created_at_ms,
-        };
-        self.store.create_worktree(record)?;
-
-        let checkout = match create_prepared_worktree(&plan) {
-            Ok(checkout) => checkout,
-            Err(error) => {
-                self.try_discard_after_create_failure(&worktree_id);
-                return Err(error.into());
-            }
-        };
-        let now = now_ms()?;
-        if let Err(error) = self.store.update_worktree_checkout(
-            &worktree_id,
-            &checkout.branch_name,
-            &checkout.head_sha,
-            now,
-        ) {
-            self.try_discard_after_create_failure(&worktree_id);
-            return Err(error.into());
-        }
-        match self.store.transition_worktree(
-            &worktree_id,
-            ManagedWorktreeState::Creating,
-            ManagedWorktreeState::Ready,
-            now,
-        ) {
-            Ok(record) => Ok(record),
-            Err(error) => {
-                self.try_discard_after_create_failure(&worktree_id);
-                Err(error.into())
-            }
-        }
-    }
-
     fn isolate_current_blocking(
         &self,
         source: &Path,
@@ -267,7 +161,11 @@ impl ManagedWorktrees {
     ) -> Result<IsolateOutcome, ManagedWorktreeError> {
         if let Some(existing) = self.store.worktree_for_thread(thread_id)? {
             return if existing.state == ManagedWorktreeState::Ready {
-                Ok(IsolateOutcome::AlreadyReady(existing))
+                let checkout = inspect_ready_worktree(&existing)?;
+                Ok(IsolateOutcome::AlreadyReady {
+                    worktree: existing,
+                    checkout,
+                })
             } else {
                 Err(TaskStoreError::ManagedWorktreeStateConflict {
                     worktree_id: existing.worktree_id,
@@ -297,9 +195,11 @@ impl ManagedWorktrees {
             thread_id: Some(thread_id.to_string()),
             repository_git_dir: path_text(&plan.common_dir)?.to_string(),
             worktree_path: path_text(&path)?.to_string(),
-            branch_name: plan.branch_name.clone(),
-            head_sha: plan.head_sha.clone(),
             state: active_state,
+            checkout_anchor: Some(CheckoutAnchor {
+                branch_name: plan.branch_name.clone(),
+                head_sha: plan.head_sha.clone(),
+            }),
             created_at_ms,
             updated_at_ms: created_at_ms,
         })?;
@@ -310,7 +210,7 @@ impl ManagedWorktrees {
                 return Err(error.into());
             }
         };
-        let ready = match self.finish_isolation(&worktree_id, active_state, &transferred.checkout) {
+        let ready = match self.finish_isolation(&worktree_id, active_state) {
             Ok(ready) => ready,
             Err(error) => {
                 self.mark_recovery_required(&worktree_id);
@@ -320,6 +220,7 @@ impl ManagedWorktrees {
         self.try_delete_transfer_snapshot(&ready);
         Ok(IsolateOutcome::Isolated {
             worktree: ready,
+            checkout: transferred.checkout,
             source_warning: transferred.source_warning,
         })
     }
@@ -328,44 +229,40 @@ impl ManagedWorktrees {
         &self,
         worktree_id: &str,
         expected_state: ManagedWorktreeState,
-        checkout: &WorktreeCheckout,
     ) -> Result<ManagedWorktree, ManagedWorktreeError> {
-        self.store.update_worktree_checkout(
-            worktree_id,
-            &checkout.branch_name,
-            &checkout.head_sha,
-            now_ms()?,
-        )?;
         self.store
             .transition_worktree(
                 worktree_id,
                 expected_state,
                 ManagedWorktreeState::Ready,
+                None,
                 now_ms()?,
             )
             .map_err(Into::into)
     }
 
     fn mark_recovery_required(&self, worktree_id: &str) {
-        let expected = match self.store.worktree(worktree_id) {
-            Ok(Some(record)) => record.state,
+        let record = match self.store.worktree(worktree_id) {
+            Ok(Some(record)) => record,
             Ok(None) => return,
             Err(error) => {
                 eprintln!("failed to read interrupted worktree transfer {worktree_id}: {error}");
                 return;
             }
         };
-        if isolation_recovery_mode(expected).is_some() {
+        if isolation_recovery_mode(record.state).is_some() {
             return;
         }
-        let Some(recovery_state) = isolation_mode_for_state(expected).map(isolation_recovery_state)
+        let Some(recovery_state) =
+            isolation_mode_for_state(record.state).map(isolation_recovery_state)
         else {
             return;
         };
         if let Err(error) = self.store.transition_worktree(
             worktree_id,
-            expected,
+            record.state,
             recovery_state,
+            record.checkout_anchor,
             now_ms().unwrap_or(u64::MAX),
         ) {
             eprintln!(
@@ -392,21 +289,19 @@ impl ManagedWorktrees {
         require_state(&record, ManagedWorktreeState::Ready)?;
         let path = self.owned_path(&record)?;
         let common_dir = PathBuf::from(&record.repository_git_dir);
-        let checkout =
-            inspect_attached_worktree(&path, &common_dir, Some(record.branch_name.as_str()))?;
+        let checkout = inspect_attached_worktree(&path, &common_dir, None)?;
         if checkout.dirty {
             return Err(WorktreeError::Dirty(path.display().to_string()).into());
         }
-        self.store.update_worktree_checkout(
-            &record.worktree_id,
-            &checkout.branch_name,
-            &checkout.head_sha,
-            now_ms()?,
-        )?;
+        let anchor = CheckoutAnchor {
+            branch_name: checkout.branch_name.clone(),
+            head_sha: checkout.head_sha.clone(),
+        };
         self.store.transition_worktree(
             &record.worktree_id,
             ManagedWorktreeState::Ready,
             ManagedWorktreeState::Removing,
+            Some(anchor.clone()),
             now_ms()?,
         )?;
         if let Err(error) =
@@ -416,6 +311,7 @@ impl ManagedWorktrees {
                 &record.worktree_id,
                 ManagedWorktreeState::Removing,
                 ManagedWorktreeState::Ready,
+                None,
                 now_ms()?,
             );
             return Err(error.into());
@@ -424,6 +320,7 @@ impl ManagedWorktrees {
             &record.worktree_id,
             ManagedWorktreeState::Removing,
             ManagedWorktreeState::Archived,
+            Some(anchor),
             now_ms()?,
         )?;
         Ok(ArchiveOutcome::Archived(archived))
@@ -435,11 +332,8 @@ impl ManagedWorktrees {
         };
         require_state(&record, ManagedWorktreeState::Ready)?;
         let path = self.owned_path(&record)?;
-        let checkout = inspect_attached_worktree(
-            &path,
-            Path::new(&record.repository_git_dir),
-            Some(record.branch_name.as_str()),
-        )?;
+        let checkout =
+            inspect_attached_worktree(&path, Path::new(&record.repository_git_dir), None)?;
         if checkout.dirty {
             return Err(WorktreeError::Dirty(path.display().to_string()).into());
         }
@@ -453,69 +347,34 @@ impl ManagedWorktrees {
         require_state(&record, ManagedWorktreeState::Archived)?;
         let path = self.owned_path(&record)?;
         let common_dir = PathBuf::from(&record.repository_git_dir);
+        let anchor = required_anchor(&record)?.clone();
         self.store.transition_worktree(
             &record.worktree_id,
             ManagedWorktreeState::Archived,
             ManagedWorktreeState::Restoring,
+            Some(anchor.clone()),
             now_ms()?,
         )?;
-        let checkout = match restore_attached_worktree(&common_dir, &path, &record.branch_name) {
-            Ok(checkout) => checkout,
-            Err(error) => {
-                if !path.exists() {
-                    let _ = self.store.transition_worktree(
-                        &record.worktree_id,
-                        ManagedWorktreeState::Restoring,
-                        ManagedWorktreeState::Archived,
-                        now_ms()?,
-                    );
-                }
-                return Err(error.into());
+        if let Err(error) = restore_attached_worktree(&common_dir, &path, &anchor.branch_name) {
+            if !path.exists() {
+                let _ = self.store.transition_worktree(
+                    &record.worktree_id,
+                    ManagedWorktreeState::Restoring,
+                    ManagedWorktreeState::Archived,
+                    Some(anchor.clone()),
+                    now_ms()?,
+                );
             }
-        };
-        self.store.update_worktree_checkout(
-            &record.worktree_id,
-            &checkout.branch_name,
-            &checkout.head_sha,
-            now_ms()?,
-        )?;
+            return Err(error.into());
+        }
         let restored = self.store.transition_worktree(
             &record.worktree_id,
             ManagedWorktreeState::Restoring,
             ManagedWorktreeState::Ready,
+            None,
             now_ms()?,
         )?;
         Ok(RestoreOutcome::Restored(restored))
-    }
-
-    #[cfg(test)]
-    fn discard_unbound_blocking(&self, worktree_id: &str) -> Result<(), ManagedWorktreeError> {
-        let Some(record) = self.store.worktree(worktree_id)? else {
-            return Ok(());
-        };
-        if record.thread_id.is_some() {
-            return Err(ManagedWorktreeError::UnownedPath(record.worktree_path));
-        }
-        let path = self.owned_path(&record)?;
-        if path.exists() {
-            remove_attached_worktree(
-                &path,
-                Path::new(&record.repository_git_dir),
-                &record.branch_name,
-            )?;
-        }
-        delete_created_branch_if_unchanged(&record)?;
-        self.store.delete_worktree(worktree_id)?;
-        Ok(())
-    }
-
-    #[cfg(test)]
-    fn try_discard_after_create_failure(&self, worktree_id: &str) {
-        if let Err(error) = self.discard_unbound_blocking(worktree_id) {
-            eprintln!(
-                "failed to clean up an incomplete managed worktree; preserving its ownership record for recovery: {error}"
-            );
-        }
     }
 
     fn recover_interrupted(&self) -> Result<(), ManagedWorktreeError> {
@@ -523,11 +382,12 @@ impl ManagedWorktrees {
             let path = self.owned_path(&record)?;
             match record.state {
                 ManagedWorktreeState::Creating if record.thread_id.is_none() => {
+                    let anchor = required_anchor(&record)?;
                     if path.exists() {
                         remove_attached_worktree(
                             &path,
                             Path::new(&record.repository_git_dir),
-                            &record.branch_name,
+                            &anchor.branch_name,
                         )?;
                     }
                     delete_created_branch_if_unchanged(&record)?;
@@ -558,19 +418,16 @@ impl ManagedWorktrees {
                     ),
                 },
                 ManagedWorktreeState::Removing => {
+                    let anchor = required_anchor(&record)?.clone();
                     let next = if !path.exists() {
                         ManagedWorktreeState::Archived
                     } else {
-                        match inspect_ready_worktree(&record) {
-                            Ok(checkout) => {
-                                self.store.update_worktree_checkout(
-                                    &record.worktree_id,
-                                    &checkout.branch_name,
-                                    &checkout.head_sha,
-                                    now_ms()?,
-                                )?;
-                                ManagedWorktreeState::Ready
-                            }
+                        match inspect_attached_worktree(
+                            &path,
+                            Path::new(&record.repository_git_dir),
+                            Some(&anchor.branch_name),
+                        ) {
+                            Ok(_) => ManagedWorktreeState::Ready,
                             Err(error) => {
                                 eprintln!(
                                     "managed worktree removal {} requires recovery: {error}",
@@ -584,13 +441,23 @@ impl ManagedWorktrees {
                         &record.worktree_id,
                         ManagedWorktreeState::Removing,
                         next,
+                        if next == ManagedWorktreeState::Ready {
+                            None
+                        } else {
+                            Some(anchor)
+                        },
                         now_ms()?,
                     )?;
                 }
                 ManagedWorktreeState::Restoring => {
+                    let anchor = required_anchor(&record)?.clone();
                     let next = if path.exists() {
-                        let checkout = match inspect_ready_worktree(&record) {
-                            Ok(checkout) => checkout,
+                        match inspect_attached_worktree(
+                            &path,
+                            Path::new(&record.repository_git_dir),
+                            Some(&anchor.branch_name),
+                        ) {
+                            Ok(_) => {}
                             Err(error) => {
                                 eprintln!(
                                     "managed worktree restoration {} requires recovery: {error}",
@@ -598,13 +465,7 @@ impl ManagedWorktrees {
                                 );
                                 continue;
                             }
-                        };
-                        self.store.update_worktree_checkout(
-                            &record.worktree_id,
-                            &checkout.branch_name,
-                            &checkout.head_sha,
-                            now_ms()?,
-                        )?;
+                        }
                         ManagedWorktreeState::Ready
                     } else {
                         ManagedWorktreeState::Archived
@@ -613,6 +474,11 @@ impl ManagedWorktrees {
                         &record.worktree_id,
                         ManagedWorktreeState::Restoring,
                         next,
+                        if next == ManagedWorktreeState::Ready {
+                            None
+                        } else {
+                            Some(anchor)
+                        },
                         now_ms()?,
                     )?;
                 }
@@ -631,24 +497,25 @@ impl ManagedWorktrees {
             TaskStoreError::InvalidManagedWorktreeState(record.state.as_str().to_string())
         })?;
         let active_state = isolation_active_state(mode);
+        let anchor = required_anchor(record)?.clone();
         if record.state != active_state {
             self.store.transition_worktree(
                 &record.worktree_id,
                 record.state,
                 active_state,
+                Some(anchor.clone()),
                 now_ms()?,
             )?;
         }
         let transferred = recover_worktree_transfer(
             Path::new(&record.repository_git_dir),
             path,
-            &record.branch_name,
-            &record.head_sha,
+            &anchor.branch_name,
+            &anchor.head_sha,
             &record.worktree_id,
             mode,
         )?;
-        let ready =
-            self.finish_isolation(&record.worktree_id, active_state, &transferred.checkout)?;
+        let ready = self.finish_isolation(&record.worktree_id, active_state)?;
         if let Some(warning) = transferred.source_warning {
             eprintln!(
                 "managed worktree transfer {} recovered with a source checkout warning: {warning}",
@@ -701,7 +568,7 @@ pub(super) fn inspect_ready_worktree(
     inspect_attached_worktree(
         Path::new(&record.worktree_path),
         Path::new(&record.repository_git_dir),
-        Some(&record.branch_name),
+        None,
     )
 }
 
@@ -737,13 +604,21 @@ fn isolation_recovery_mode(state: ManagedWorktreeState) -> Option<WorktreeIsolat
     }
 }
 
+fn required_anchor(record: &ManagedWorktree) -> Result<&CheckoutAnchor, ManagedWorktreeError> {
+    record.checkout_anchor.as_ref().ok_or_else(|| {
+        TaskStoreError::InvalidManagedWorktreeCheckoutAnchor(record.state.as_str().to_string())
+            .into()
+    })
+}
+
 fn delete_created_branch_if_unchanged(
     record: &ManagedWorktree,
 ) -> Result<(), ManagedWorktreeError> {
+    let anchor = required_anchor(record)?;
     match delete_local_branch_if_matches(
         Path::new(&record.repository_git_dir),
-        &record.branch_name,
-        &record.head_sha,
+        &anchor.branch_name,
+        &anchor.head_sha,
     ) {
         Ok(_) | Err(WorktreeError::BranchHeadMismatch { .. }) => Ok(()),
         Err(error) => Err(error.into()),
@@ -850,7 +725,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn owns_create_archive_and_restore_lifecycle() {
+    async fn ready_branch_switch_survives_restart_and_becomes_the_archive_restore_anchor() {
         if !git_is_available() {
             return;
         }
@@ -859,45 +734,90 @@ mod tests {
         fs::create_dir(&source).unwrap();
         initialize_repository(&source);
         let fs = Arc::new(RootedFs::new(temp.path()).unwrap());
-        let store = TaskStore::memory().unwrap();
+        let store_path = temp.path().join("tasks.redb");
+        let store = TaskStore::redb(&store_path).unwrap();
+        let managed_root = temp.path().join("managed");
         let worktrees =
-            ManagedWorktrees::new(fs, store.clone(), temp.path().join("managed")).unwrap();
+            ManagedWorktrees::new(fs.clone(), store.clone(), managed_root.clone()).unwrap();
 
-        let created = worktrees
-            .create(source, "Review branch".to_string(), None, None)
+        let IsolateOutcome::Isolated {
+            worktree: created,
+            checkout,
+            ..
+        } = worktrees
+            .isolate_current(
+                source,
+                "thread-1".to_string(),
+                "Review branch".to_string(),
+                None,
+                None,
+                false,
+            )
             .await
-            .unwrap();
+            .unwrap()
+        else {
+            panic!("isolation should create a managed worktree");
+        };
         assert_eq!(created.state, ManagedWorktreeState::Ready);
-        assert!(created.branch_name.starts_with("caffold/review-branch-"));
+        assert_eq!(created.checkout_anchor, None);
+        assert!(checkout.branch_name.starts_with("caffold/review-branch-"));
         assert!(Path::new(&created.worktree_path).is_dir());
-        worktrees
-            .bind_thread(created.worktree_id.clone(), "thread-1".to_string())
-            .await
-            .unwrap();
+        let ready_before_switch = store.worktree(&created.worktree_id).unwrap().unwrap();
+        let path = Path::new(&created.worktree_path);
+        git(path, &["switch", "-c", "review/next"]);
+        fs::write(path.join("next.txt"), "archive this branch\n").unwrap();
+        git(path, &["add", "next.txt"]);
+        git(path, &["commit", "-m", "Advance archive branch"]);
+        let archived_head = git_output(path, &["rev-parse", "HEAD"]);
 
-        assert!(matches!(
-            worktrees
-                .archive_for_thread("thread-1".to_string())
-                .await
-                .unwrap(),
-            ArchiveOutcome::Archived(ManagedWorktree {
-                state: ManagedWorktreeState::Archived,
-                ..
+        drop(worktrees);
+        drop(store);
+        let store = TaskStore::redb(&store_path).unwrap();
+        let worktrees = ManagedWorktrees::new(fs, store.clone(), managed_root).unwrap();
+        assert_eq!(
+            store.worktree(&created.worktree_id).unwrap().unwrap(),
+            ready_before_switch,
+            "restart inspection must not persist the live Ready checkout"
+        );
+        assert_eq!(
+            inspect_ready_worktree(&ready_before_switch)
+                .unwrap()
+                .branch_name,
+            "review/next"
+        );
+
+        let ArchiveOutcome::Archived(archived) = worktrees
+            .archive_for_thread("thread-1".to_string())
+            .await
+            .unwrap()
+        else {
+            panic!("managed worktree should archive");
+        };
+        assert_eq!(archived.state, ManagedWorktreeState::Archived);
+        assert_eq!(
+            archived.checkout_anchor,
+            Some(CheckoutAnchor {
+                branch_name: "review/next".to_string(),
+                head_sha: archived_head.clone(),
             })
-        ));
+        );
         assert!(!Path::new(&created.worktree_path).exists());
 
-        assert!(matches!(
-            worktrees
-                .restore_for_thread("thread-1".to_string())
-                .await
-                .unwrap(),
-            RestoreOutcome::Restored(ManagedWorktree {
-                state: ManagedWorktreeState::Ready,
-                ..
-            })
-        ));
+        let RestoreOutcome::Restored(restored) = worktrees
+            .restore_for_thread("thread-1".to_string())
+            .await
+            .unwrap()
+        else {
+            panic!("managed worktree should restore");
+        };
+        assert_eq!(restored.state, ManagedWorktreeState::Ready);
+        assert_eq!(restored.checkout_anchor, None);
         assert!(Path::new(&created.worktree_path).is_dir());
+        assert_eq!(
+            git_output(path, &["branch", "--show-current"]),
+            "review/next"
+        );
+        assert_eq!(git_output(path, &["rev-parse", "HEAD"]), archived_head);
     }
 
     #[tokio::test]
@@ -1053,7 +973,9 @@ mod tests {
         ));
         assert!(store.managed_worktrees().unwrap().is_empty());
 
-        let IsolateOutcome::Isolated { worktree, .. } = worktrees
+        let IsolateOutcome::Isolated {
+            worktree, checkout, ..
+        } = worktrees
             .isolate_current(
                 source.clone(),
                 "thread-selected-base".to_string(),
@@ -1069,7 +991,7 @@ mod tests {
         };
 
         let target = Path::new(&worktree.worktree_path);
-        assert_eq!(worktree.branch_name, "issue/62");
+        assert_eq!(checkout.branch_name, "issue/62");
         assert_eq!(
             git_output(target, &["branch", "--show-current"]),
             "issue/62"
@@ -1107,7 +1029,9 @@ mod tests {
         )
         .unwrap();
 
-        let IsolateOutcome::Isolated { worktree, .. } = worktrees
+        let IsolateOutcome::Isolated {
+            worktree, checkout, ..
+        } = worktrees
             .isolate_current(
                 source.clone(),
                 "thread-clean-feature".to_string(),
@@ -1121,7 +1045,7 @@ mod tests {
         else {
             panic!("clean feature branch should be handed off");
         };
-        assert_eq!(worktree.branch_name, "review/pr-42");
+        assert_eq!(checkout.branch_name, "review/pr-42");
         assert_eq!(git_output(&source, &["branch", "--show-current"]), "main");
         assert_eq!(
             git_output(
@@ -1174,13 +1098,16 @@ mod tests {
             )
             .await
             .unwrap();
-        let IsolateOutcome::Isolated { worktree, .. } = isolated else {
+        let IsolateOutcome::Isolated {
+            worktree, checkout, ..
+        } = isolated
+        else {
             panic!("first isolation should create a managed worktree");
         };
         let target = Path::new(&worktree.worktree_path);
         assert_eq!(worktree.thread_id.as_deref(), Some("thread-1"));
         assert_eq!(worktree.state, ManagedWorktreeState::Ready);
-        assert!(worktree.branch_name.starts_with("caffold/review-issue-42-"));
+        assert!(checkout.branch_name.starts_with("caffold/review-issue-42-"));
         assert_eq!(git_output(&source, &["branch", "--show-current"]), "main");
         assert_eq!(git_output(&source, &["status", "--porcelain=v1"]), "");
         assert!(source.join("ignored.txt").exists());
@@ -1211,10 +1138,13 @@ mod tests {
                 )
                 .await
                 .unwrap(),
-            IsolateOutcome::AlreadyReady(ManagedWorktree {
-                state: ManagedWorktreeState::Ready,
+            IsolateOutcome::AlreadyReady {
+                worktree: ManagedWorktree {
+                    state: ManagedWorktreeState::Ready,
+                    ..
+                },
                 ..
-            })
+            }
         ));
     }
 
@@ -1234,7 +1164,9 @@ mod tests {
         let store = TaskStore::memory().unwrap();
         let worktrees = ManagedWorktrees::new(fs, store, temp.path().join("managed")).unwrap();
 
-        let IsolateOutcome::Isolated { worktree, .. } = worktrees
+        let IsolateOutcome::Isolated {
+            worktree, checkout, ..
+        } = worktrees
             .isolate_current(
                 source.clone(),
                 "thread-1".to_string(),
@@ -1249,7 +1181,7 @@ mod tests {
             panic!("first isolation should create a managed worktree");
         };
 
-        assert_eq!(worktree.branch_name, "review/pr-42");
+        assert_eq!(checkout.branch_name, "review/pr-42");
         assert_eq!(git_output(&source, &["branch", "--show-current"]), "main");
         assert_eq!(
             git_output(
@@ -1283,7 +1215,9 @@ mod tests {
         let store = TaskStore::memory().unwrap();
         let worktrees = ManagedWorktrees::new(fs, store, temp.path().join("managed")).unwrap();
 
-        let IsolateOutcome::Isolated { worktree, .. } = worktrees
+        let IsolateOutcome::Isolated {
+            worktree, checkout, ..
+        } = worktrees
             .isolate_current(
                 source.clone(),
                 "thread-1".to_string(),
@@ -1298,7 +1232,7 @@ mod tests {
             panic!("first isolation should create a managed worktree");
         };
 
-        assert_eq!(worktree.branch_name, "review/detached");
+        assert_eq!(checkout.branch_name, "review/detached");
         assert_eq!(
             git_output(
                 Path::new(&worktree.worktree_path),
@@ -1341,9 +1275,11 @@ mod tests {
                 thread_id: Some("thread-clean-recovery".to_string()),
                 repository_git_dir: repository.common_dir.display().to_string(),
                 worktree_path: worktree_path.display().to_string(),
-                branch_name: "caffold/recovered-clean".to_string(),
-                head_sha: repository.head_sha,
                 state: ManagedWorktreeState::IsolatingClean,
+                checkout_anchor: Some(CheckoutAnchor {
+                    branch_name: "caffold/recovered-clean".to_string(),
+                    head_sha: repository.head_sha,
+                }),
                 created_at_ms: 100,
                 updated_at_ms: 100,
             })
@@ -1407,9 +1343,11 @@ mod tests {
                 thread_id: Some("thread-clean-recovery".to_string()),
                 repository_git_dir: repository.common_dir.display().to_string(),
                 worktree_path: worktree_path.display().to_string(),
-                branch_name: checkout.branch_name,
-                head_sha: checkout.head_sha,
                 state: ManagedWorktreeState::IsolatingClean,
+                checkout_anchor: Some(CheckoutAnchor {
+                    branch_name: checkout.branch_name,
+                    head_sha: checkout.head_sha,
+                }),
                 created_at_ms: 100,
                 updated_at_ms: 100,
             })
@@ -1456,9 +1394,11 @@ mod tests {
                 thread_id: Some("thread-clean-handoff".to_string()),
                 repository_git_dir: repository.common_dir.display().to_string(),
                 worktree_path: worktree_path.display().to_string(),
-                branch_name: "review/recover-clean".to_string(),
-                head_sha: repository.head_sha,
                 state: ManagedWorktreeState::HandingOff,
+                checkout_anchor: Some(CheckoutAnchor {
+                    branch_name: "review/recover-clean".to_string(),
+                    head_sha: repository.head_sha,
+                }),
                 created_at_ms: 100,
                 updated_at_ms: 100,
             })
@@ -1487,6 +1427,71 @@ mod tests {
     }
 
     #[test]
+    fn dirty_handoff_enters_its_specific_recovery_state_and_resumes_after_remediation() {
+        if !git_is_available() {
+            return;
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        fs::create_dir(&source).unwrap();
+        initialize_repository(&source);
+        git(&source, &["branch", "-M", "main"]);
+        git(&source, &["switch", "-c", "review/recover-handoff"]);
+        let repository = crate::git::managed_repository(&source).unwrap();
+        let store = TaskStore::memory().unwrap();
+        let managed_root = temp.path().join("managed");
+        fs::create_dir(&managed_root).unwrap();
+        let managed_root = managed_root.canonicalize().unwrap();
+        let worktree_id = Uuid::new_v4().to_string();
+        let worktree_path = managed_root.join(&worktree_id);
+        store
+            .create_worktree(ManagedWorktree {
+                worktree_id: worktree_id.clone(),
+                thread_id: Some("thread-handoff-recovery".to_string()),
+                repository_git_dir: repository.common_dir.display().to_string(),
+                worktree_path: worktree_path.display().to_string(),
+                state: ManagedWorktreeState::HandingOff,
+                checkout_anchor: Some(CheckoutAnchor {
+                    branch_name: "review/recover-handoff".to_string(),
+                    head_sha: repository.head_sha,
+                }),
+                created_at_ms: 100,
+                updated_at_ms: 100,
+            })
+            .unwrap();
+        let obstruction = source.join("untracked.txt");
+        fs::write(&obstruction, "remove before retry\n").unwrap();
+
+        ManagedWorktrees::new(
+            Arc::new(RootedFs::new(temp.path()).unwrap()),
+            store.clone(),
+            managed_root.clone(),
+        )
+        .unwrap();
+        assert_eq!(
+            store.worktree(&worktree_id).unwrap().unwrap().state,
+            ManagedWorktreeState::HandoffRecoveryRequired
+        );
+        assert!(!worktree_path.exists());
+
+        fs::remove_file(obstruction).unwrap();
+        ManagedWorktrees::new(
+            Arc::new(RootedFs::new(temp.path()).unwrap()),
+            store.clone(),
+            managed_root,
+        )
+        .unwrap();
+        let ready = store.worktree(&worktree_id).unwrap().unwrap();
+        assert_eq!(ready.state, ManagedWorktreeState::Ready);
+        assert_eq!(ready.checkout_anchor, None);
+        assert_eq!(git_output(&source, &["branch", "--show-current"]), "main");
+        assert_eq!(
+            git_output(&worktree_path, &["branch", "--show-current"]),
+            "review/recover-handoff"
+        );
+    }
+
+    #[test]
     fn startup_recovers_a_snapshot_created_before_the_target_worktree() {
         if !git_is_available() {
             return;
@@ -1511,9 +1516,11 @@ mod tests {
                 thread_id: Some("thread-1".to_string()),
                 repository_git_dir: repository.common_dir.display().to_string(),
                 worktree_path: worktree_path.display().to_string(),
-                branch_name: "caffold/recovered".to_string(),
-                head_sha: repository.head_sha,
                 state: ManagedWorktreeState::Transferring,
+                checkout_anchor: Some(CheckoutAnchor {
+                    branch_name: "caffold/recovered".to_string(),
+                    head_sha: repository.head_sha,
+                }),
                 created_at_ms: 100,
                 updated_at_ms: 100,
             })
@@ -1592,9 +1599,11 @@ mod tests {
                 thread_id: Some("thread-1".to_string()),
                 repository_git_dir: repository.common_dir.display().to_string(),
                 worktree_path: worktree_path.display().to_string(),
-                branch_name: checkout.branch_name,
-                head_sha: checkout.head_sha,
                 state: ManagedWorktreeState::Transferring,
+                checkout_anchor: Some(CheckoutAnchor {
+                    branch_name: checkout.branch_name,
+                    head_sha: checkout.head_sha,
+                }),
                 created_at_ms: 100,
                 updated_at_ms: 100,
             })
@@ -1669,9 +1678,11 @@ mod tests {
                 thread_id: Some("thread-1".to_string()),
                 repository_git_dir: repository.common_dir.display().to_string(),
                 worktree_path: worktree_path.display().to_string(),
-                branch_name: "review/pr-77".to_string(),
-                head_sha: repository.head_sha,
                 state: ManagedWorktreeState::Transferring,
+                checkout_anchor: Some(CheckoutAnchor {
+                    branch_name: "review/pr-77".to_string(),
+                    head_sha: repository.head_sha,
+                }),
                 created_at_ms: 100,
                 updated_at_ms: 100,
             })
@@ -1729,9 +1740,11 @@ mod tests {
                 thread_id: Some("thread-1".to_string()),
                 repository_git_dir: repository.common_dir.display().to_string(),
                 worktree_path: worktree_path.display().to_string(),
-                branch_name: checkout.branch_name,
-                head_sha: checkout.head_sha,
                 state: ManagedWorktreeState::Transferring,
+                checkout_anchor: Some(CheckoutAnchor {
+                    branch_name: checkout.branch_name,
+                    head_sha: checkout.head_sha,
+                }),
                 created_at_ms: 100,
                 updated_at_ms: 100,
             })
@@ -1774,51 +1787,7 @@ mod tests {
                 .unwrap(),
             RestoreOutcome::NotManaged
         );
-        worktrees
-            .discard_unbound("missing".to_string())
-            .await
-            .unwrap();
         assert!(store.managed_worktrees().unwrap().is_empty());
-    }
-
-    #[tokio::test]
-    async fn refuses_to_discard_a_bound_worktree() {
-        if !git_is_available() {
-            return;
-        }
-        let temp = tempfile::tempdir().unwrap();
-        let source = temp.path().join("source");
-        fs::create_dir(&source).unwrap();
-        initialize_repository(&source);
-        let fs = Arc::new(RootedFs::new(temp.path()).unwrap());
-        let store = TaskStore::memory().unwrap();
-        let worktrees =
-            ManagedWorktrees::new(fs, store.clone(), temp.path().join("managed")).unwrap();
-        let created = worktrees
-            .create(source, "Bound task".to_string(), None, None)
-            .await
-            .unwrap();
-        worktrees
-            .bind_thread(created.worktree_id.clone(), "thread-1".to_string())
-            .await
-            .unwrap();
-
-        assert!(matches!(
-            worktrees
-                .discard_unbound(created.worktree_id.clone())
-                .await,
-            Err(ManagedWorktreeError::UnownedPath(path)) if path == created.worktree_path
-        ));
-        assert!(Path::new(&created.worktree_path).exists());
-        assert_eq!(
-            store
-                .worktree(&created.worktree_id)
-                .unwrap()
-                .unwrap()
-                .thread_id
-                .as_deref(),
-            Some("thread-1")
-        );
     }
 
     #[tokio::test]
@@ -1838,11 +1807,13 @@ mod tests {
 
         assert!(matches!(
             worktrees
-                .create(
+                .isolate_current(
                     source.clone(),
+                    "thread-existing-branch".to_string(),
                     "Existing branch".to_string(),
                     Some("shared/review".to_string()),
                     None,
+                    false,
                 )
                 .await,
             Err(ManagedWorktreeError::Git(
@@ -1855,42 +1826,6 @@ mod tests {
         );
         assert!(store.managed_worktrees().unwrap().is_empty());
         assert_eq!(fs::read_dir(managed_root).unwrap().count(), 0);
-    }
-
-    #[tokio::test]
-    async fn discarding_an_unbound_worktree_preserves_an_advanced_branch() {
-        if !git_is_available() {
-            return;
-        }
-        let temp = tempfile::tempdir().unwrap();
-        let source = temp.path().join("source");
-        fs::create_dir(&source).unwrap();
-        initialize_repository(&source);
-        let fs = Arc::new(RootedFs::new(temp.path()).unwrap());
-        let store = TaskStore::memory().unwrap();
-        let worktrees =
-            ManagedWorktrees::new(fs, store.clone(), temp.path().join("managed")).unwrap();
-        let created = worktrees
-            .create(source.clone(), "Advanced branch".to_string(), None, None)
-            .await
-            .unwrap();
-        let worktree_path = Path::new(&created.worktree_path);
-        fs::write(worktree_path.join("README.md"), "advanced\n").unwrap();
-        git(worktree_path, &["commit", "-am", "Advance managed branch"]);
-        let advanced_head = git_output(worktree_path, &["rev-parse", "HEAD"]);
-        assert_ne!(advanced_head, created.head_sha);
-
-        worktrees
-            .discard_unbound(created.worktree_id.clone())
-            .await
-            .unwrap();
-
-        assert!(store.worktree(&created.worktree_id).unwrap().is_none());
-        assert!(!worktree_path.exists());
-        assert_eq!(
-            git_output(&source, &["rev-parse", &created.branch_name]),
-            advanced_head
-        );
     }
 
     #[cfg(unix)]
@@ -1923,9 +1858,8 @@ mod tests {
                 thread_id: Some("thread-1".to_string()),
                 repository_git_dir: checkout.common_dir.display().to_string(),
                 worktree_path: owned_slot.display().to_string(),
-                branch_name: branch_name.to_string(),
-                head_sha: checkout.head_sha.clone(),
                 state: ManagedWorktreeState::Ready,
+                checkout_anchor: None,
                 created_at_ms: 100,
                 updated_at_ms: 100,
             })
@@ -1960,14 +1894,22 @@ mod tests {
         let store = TaskStore::memory().unwrap();
         let worktrees =
             ManagedWorktrees::new(fs, store.clone(), temp.path().join("managed")).unwrap();
-        let created = worktrees
-            .create(source, "Dirty task".to_string(), None, None)
+        let IsolateOutcome::Isolated {
+            worktree: created, ..
+        } = worktrees
+            .isolate_current(
+                source,
+                "thread-1".to_string(),
+                "Dirty task".to_string(),
+                None,
+                None,
+                false,
+            )
             .await
-            .unwrap();
-        worktrees
-            .bind_thread(created.worktree_id.clone(), "thread-1".to_string())
-            .await
-            .unwrap();
+            .unwrap()
+        else {
+            panic!("isolation should create a managed worktree");
+        };
         fs::write(
             Path::new(&created.worktree_path).join("dirty.txt"),
             "dirty\n",
@@ -1998,19 +1940,29 @@ mod tests {
         let store = TaskStore::memory().unwrap();
         let worktrees =
             ManagedWorktrees::new(fs, store.clone(), temp.path().join("managed")).unwrap();
-        let created = worktrees
-            .create(source.clone(), "Missing branch".to_string(), None, None)
+        let IsolateOutcome::Isolated {
+            worktree: created,
+            checkout,
+            ..
+        } = worktrees
+            .isolate_current(
+                source.clone(),
+                "thread-1".to_string(),
+                "Missing branch".to_string(),
+                None,
+                None,
+                false,
+            )
             .await
-            .unwrap();
-        worktrees
-            .bind_thread(created.worktree_id.clone(), "thread-1".to_string())
-            .await
-            .unwrap();
+            .unwrap()
+        else {
+            panic!("isolation should create a managed worktree");
+        };
         worktrees
             .archive_for_thread("thread-1".to_string())
             .await
             .unwrap();
-        git(&source, &["branch", "-D", &created.branch_name]);
+        git(&source, &["branch", "-D", &checkout.branch_name]);
 
         assert!(matches!(
             worktrees.restore_for_thread("thread-1".to_string()).await,
@@ -2041,8 +1993,6 @@ mod tests {
         let worktrees =
             ManagedWorktrees::new(fs.clone(), store.clone(), managed_root.clone()).unwrap();
         let canonical_managed_root = managed_root.canonicalize().unwrap();
-
-        let repository = crate::git::managed_repository(&source).unwrap();
         let creating_id = Uuid::new_v4().to_string();
         let creating_path = canonical_managed_root.join(&creating_id);
         let creating_branch = "caffold/interrupted-create";
@@ -2053,56 +2003,90 @@ mod tests {
             .create_worktree(ManagedWorktree {
                 worktree_id: creating_id.clone(),
                 thread_id: None,
-                repository_git_dir: repository.common_dir.display().to_string(),
+                repository_git_dir: creating_checkout.common_dir.display().to_string(),
                 worktree_path: creating_path.display().to_string(),
-                branch_name: creating_branch.to_string(),
-                head_sha: creating_checkout.head_sha,
                 state: ManagedWorktreeState::Creating,
+                checkout_anchor: Some(CheckoutAnchor {
+                    branch_name: creating_branch.to_string(),
+                    head_sha: creating_checkout.head_sha,
+                }),
                 created_at_ms: 100,
                 updated_at_ms: 100,
             })
             .unwrap();
-
-        let removing = worktrees
-            .create(source.clone(), "Interrupted remove".to_string(), None, None)
+        let IsolateOutcome::Isolated {
+            worktree: removing,
+            checkout: removing_checkout,
+            ..
+        } = worktrees
+            .isolate_current(
+                source.clone(),
+                "thread-removing".to_string(),
+                "Interrupted remove".to_string(),
+                None,
+                None,
+                false,
+            )
             .await
-            .unwrap();
+            .unwrap()
+        else {
+            panic!("isolation should create a removing fixture");
+        };
+        let removing_anchor = CheckoutAnchor {
+            branch_name: removing_checkout.branch_name,
+            head_sha: removing_checkout.head_sha,
+        };
         store
             .transition_worktree(
                 &removing.worktree_id,
                 ManagedWorktreeState::Ready,
                 ManagedWorktreeState::Removing,
+                Some(removing_anchor.clone()),
                 200,
             )
             .unwrap();
         crate::git::remove_attached_worktree(
             Path::new(&removing.worktree_path),
             Path::new(&removing.repository_git_dir),
-            &removing.branch_name,
+            &removing_anchor.branch_name,
         )
         .unwrap();
 
-        let restoring = worktrees
-            .create(
+        let IsolateOutcome::Isolated {
+            worktree: restoring,
+            checkout: restoring_checkout,
+            ..
+        } = worktrees
+            .isolate_current(
                 source.clone(),
+                "thread-restoring".to_string(),
                 "Interrupted restore".to_string(),
                 None,
                 None,
+                false,
             )
             .await
-            .unwrap();
+            .unwrap()
+        else {
+            panic!("isolation should create a restoring fixture");
+        };
+        let restoring_anchor = CheckoutAnchor {
+            branch_name: restoring_checkout.branch_name,
+            head_sha: restoring_checkout.head_sha,
+        };
         store
             .transition_worktree(
                 &restoring.worktree_id,
                 ManagedWorktreeState::Ready,
                 ManagedWorktreeState::Removing,
+                Some(restoring_anchor.clone()),
                 300,
             )
             .unwrap();
         crate::git::remove_attached_worktree(
             Path::new(&restoring.worktree_path),
             Path::new(&restoring.repository_git_dir),
-            &restoring.branch_name,
+            &restoring_anchor.branch_name,
         )
         .unwrap();
         store
@@ -2110,6 +2094,7 @@ mod tests {
                 &restoring.worktree_id,
                 ManagedWorktreeState::Removing,
                 ManagedWorktreeState::Archived,
+                Some(restoring_anchor.clone()),
                 310,
             )
             .unwrap();
@@ -2118,13 +2103,14 @@ mod tests {
                 &restoring.worktree_id,
                 ManagedWorktreeState::Archived,
                 ManagedWorktreeState::Restoring,
+                Some(restoring_anchor.clone()),
                 320,
             )
             .unwrap();
         crate::git::restore_attached_worktree(
             Path::new(&restoring.repository_git_dir),
             Path::new(&restoring.worktree_path),
-            &restoring.branch_name,
+            &restoring_anchor.branch_name,
         )
         .unwrap();
 
@@ -2172,40 +2158,73 @@ mod tests {
         let worktrees =
             ManagedWorktrees::new(fs.clone(), store.clone(), managed_root.clone()).unwrap();
 
-        let removing = worktrees
-            .create(
+        let IsolateOutcome::Isolated {
+            worktree: removing,
+            checkout: removing_checkout,
+            ..
+        } = worktrees
+            .isolate_current(
                 source.clone(),
+                "thread-removing".to_string(),
                 "Removal did not happen".to_string(),
                 None,
                 None,
+                false,
             )
             .await
-            .unwrap();
+            .unwrap()
+        else {
+            panic!("isolation should create a removing fixture");
+        };
+        let removing_anchor = CheckoutAnchor {
+            branch_name: removing_checkout.branch_name,
+            head_sha: removing_checkout.head_sha,
+        };
         store
             .transition_worktree(
                 &removing.worktree_id,
                 ManagedWorktreeState::Ready,
                 ManagedWorktreeState::Removing,
+                Some(removing_anchor),
                 200,
             )
             .unwrap();
 
-        let restoring = worktrees
-            .create(source, "Restore did not happen".to_string(), None, None)
+        let IsolateOutcome::Isolated {
+            worktree: restoring,
+            checkout: restoring_checkout,
+            ..
+        } = worktrees
+            .isolate_current(
+                source,
+                "thread-restoring".to_string(),
+                "Restore did not happen".to_string(),
+                None,
+                None,
+                false,
+            )
             .await
-            .unwrap();
+            .unwrap()
+        else {
+            panic!("isolation should create a restoring fixture");
+        };
+        let restoring_anchor = CheckoutAnchor {
+            branch_name: restoring_checkout.branch_name,
+            head_sha: restoring_checkout.head_sha,
+        };
         store
             .transition_worktree(
                 &restoring.worktree_id,
                 ManagedWorktreeState::Ready,
                 ManagedWorktreeState::Removing,
+                Some(restoring_anchor.clone()),
                 300,
             )
             .unwrap();
         crate::git::remove_attached_worktree(
             Path::new(&restoring.worktree_path),
             Path::new(&restoring.repository_git_dir),
-            &restoring.branch_name,
+            &restoring_anchor.branch_name,
         )
         .unwrap();
         store
@@ -2213,6 +2232,7 @@ mod tests {
                 &restoring.worktree_id,
                 ManagedWorktreeState::Removing,
                 ManagedWorktreeState::Archived,
+                Some(restoring_anchor.clone()),
                 310,
             )
             .unwrap();
@@ -2221,6 +2241,7 @@ mod tests {
                 &restoring.worktree_id,
                 ManagedWorktreeState::Archived,
                 ManagedWorktreeState::Restoring,
+                Some(restoring_anchor),
                 320,
             )
             .unwrap();
@@ -2270,9 +2291,8 @@ mod tests {
                 thread_id: Some("thread-missing-ready".to_string()),
                 repository_git_dir: repository.common_dir.display().to_string(),
                 worktree_path: worktree_path.display().to_string(),
-                branch_name: "caffold/missing-ready".to_string(),
-                head_sha: repository.head_sha,
                 state: ManagedWorktreeState::Ready,
+                checkout_anchor: None,
                 created_at_ms: 100,
                 updated_at_ms: 100,
             })
@@ -2317,9 +2337,11 @@ mod tests {
                 thread_id: Some("thread-restoring".to_string()),
                 repository_git_dir: repository.common_dir.display().to_string(),
                 worktree_path: worktree_path.display().to_string(),
-                branch_name: "caffold/restoring".to_string(),
-                head_sha: repository.head_sha,
                 state: ManagedWorktreeState::Restoring,
+                checkout_anchor: Some(CheckoutAnchor {
+                    branch_name: "caffold/restoring".to_string(),
+                    head_sha: repository.head_sha,
+                }),
                 created_at_ms: 100,
                 updated_at_ms: 100,
             })
@@ -2339,57 +2361,6 @@ mod tests {
         assert_eq!(
             fs::read_to_string(worktree_path.join("keep.txt")).unwrap(),
             "external state\n"
-        );
-    }
-
-    #[test]
-    fn startup_recovery_preserves_a_branch_advanced_after_its_creation_record() {
-        if !git_is_available() {
-            return;
-        }
-        let temp = tempfile::tempdir().unwrap();
-        let source = temp.path().join("source");
-        fs::create_dir(&source).unwrap();
-        initialize_repository(&source);
-        let fs = Arc::new(RootedFs::new(temp.path()).unwrap());
-        let store = TaskStore::memory().unwrap();
-        let managed_root = temp.path().join("managed");
-        fs::create_dir(&managed_root).unwrap();
-        let canonical_managed_root = managed_root.canonicalize().unwrap();
-        let repository = crate::git::managed_repository(&source).unwrap();
-        let worktree_id = Uuid::new_v4().to_string();
-        let worktree_path = canonical_managed_root.join(&worktree_id);
-        let branch_name = "caffold/interrupted-advanced";
-        let created =
-            crate::git::create_attached_worktree(&source, &worktree_path, branch_name, None)
-                .unwrap();
-        store
-            .create_worktree(ManagedWorktree {
-                worktree_id: worktree_id.clone(),
-                thread_id: None,
-                repository_git_dir: repository.common_dir.display().to_string(),
-                worktree_path: worktree_path.display().to_string(),
-                branch_name: branch_name.to_string(),
-                head_sha: created.head_sha,
-                state: ManagedWorktreeState::Creating,
-                created_at_ms: 100,
-                updated_at_ms: 100,
-            })
-            .unwrap();
-        fs::write(worktree_path.join("README.md"), "advanced\n").unwrap();
-        git(
-            &worktree_path,
-            &["commit", "-am", "Advance before recovery"],
-        );
-        let advanced_head = git_output(&worktree_path, &["rev-parse", "HEAD"]);
-
-        ManagedWorktrees::new(fs, store.clone(), managed_root).unwrap();
-
-        assert!(store.worktree(&worktree_id).unwrap().is_none());
-        assert!(!worktree_path.exists());
-        assert_eq!(
-            git_output(&source, &["rev-parse", branch_name]),
-            advanced_head
         );
     }
 
@@ -2419,9 +2390,8 @@ mod tests {
                 thread_id: Some("thread-1".to_string()),
                 repository_git_dir: temp.path().join("repository/.git").display().to_string(),
                 worktree_path: temp.path().join("not-owned").display().to_string(),
-                branch_name: "caffold/not-owned".to_string(),
-                head_sha: "deadbeef".to_string(),
                 state: ManagedWorktreeState::Ready,
+                checkout_anchor: None,
                 created_at_ms: 100,
                 updated_at_ms: 100,
             })

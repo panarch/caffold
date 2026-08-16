@@ -793,10 +793,10 @@ mod inline_tests {
     use serde_json::json;
 
     use super::*;
-    use crate::task_store::ManagedWorktree;
+    use crate::task_store::{CheckoutAnchor, ManagedWorktree};
 
     #[test]
-    fn ready_managed_worktree_overrides_stale_app_server_cwd_projection() {
+    fn ready_branch_switch_projects_live_git_context_without_persisting_the_observation() {
         let temp = tempfile::tempdir().unwrap();
         let source = temp.path().join("source");
         initialize_repository(&source);
@@ -811,13 +811,18 @@ mod inline_tests {
                 thread_id: Some("thread-1".to_string()),
                 repository_git_dir: checkout.common_dir.display().to_string(),
                 worktree_path: managed.display().to_string(),
-                branch_name: checkout.branch_name,
-                head_sha: checkout.head_sha,
                 state: ManagedWorktreeState::Ready,
+                checkout_anchor: None,
                 created_at_ms: 1,
                 updated_at_ms: 1,
             })
             .unwrap();
+        let stored_before = store.worktree("worktree-1").unwrap().unwrap();
+        git(&managed, &["switch", "-c", "review/next"]);
+        std::fs::write(managed.join("next.txt"), "next branch\n").unwrap();
+        git(&managed, &["add", "next.txt"]);
+        git(&managed, &["commit", "-m", "Advance next branch"]);
+        let live_head = git_output(&managed, &["rev-parse", "HEAD"]);
 
         let projected = project_managed_worktree_cwd(
             &store,
@@ -826,6 +831,17 @@ mod inline_tests {
         .unwrap();
 
         assert_eq!(projected["cwd"], managed.display().to_string());
+        let fs = RootedFs::new(temp.path()).unwrap();
+        let context = resolve_thread_cwd(&fs, &projected)
+            .unwrap()
+            .worktree
+            .unwrap();
+        assert_eq!(context.branch.as_deref(), Some("review/next"));
+        assert_eq!(context.head_sha, live_head);
+        assert_eq!(
+            store.worktree("worktree-1").unwrap().unwrap(),
+            stored_before
+        );
     }
 
     #[test]
@@ -842,9 +858,8 @@ mod inline_tests {
                 thread_id: Some("thread-1".to_string()),
                 repository_git_dir: repository.common_dir.display().to_string(),
                 worktree_path: missing.display().to_string(),
-                branch_name: "caffold/review".to_string(),
-                head_sha: repository.head_sha,
                 state: ManagedWorktreeState::Ready,
+                checkout_anchor: None,
                 created_at_ms: 1,
                 updated_at_ms: 1,
             })
@@ -877,9 +892,11 @@ mod inline_tests {
                 thread_id: Some("thread-1".to_string()),
                 repository_git_dir: temp.path().join(".git").display().to_string(),
                 worktree_path: managed.display().to_string(),
-                branch_name: "caffold/review".to_string(),
-                head_sha: "deadbeef".to_string(),
                 state: ManagedWorktreeState::RecoveryRequired,
+                checkout_anchor: Some(CheckoutAnchor {
+                    branch_name: "caffold/review".to_string(),
+                    head_sha: "deadbeef".to_string(),
+                }),
                 created_at_ms: 1,
                 updated_at_ms: 1,
             })
@@ -920,6 +937,21 @@ mod inline_tests {
             "git {args:?} failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    fn git_output(path: &std::path::Path, args: &[&str]) -> String {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap().trim().to_string()
     }
 }
 
