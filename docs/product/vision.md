@@ -51,10 +51,11 @@ connected and readable, not to create a second version of either one.
 
 The browser is a practical choice here. It gives Caffold one responsive
 interface across devices and lets each device install that interface as a PWA.
-It is not an attempt to make the product cloud-hosted: the trusted Mac still
-owns execution, repositories, credentials, and data.
+Caffold is meant to remain self-hosted as that access expands: execution,
+repositories, credentials, and data stay on a host the developer controls. A
+Caffold-operated managed service is not planned.
 
-## What it is not trying to become
+## What should stay true as it grows
 
 Caffold is not an autonomous agent orchestrator. The developer is expected to
 read, judge, and redirect the work.
@@ -64,11 +65,11 @@ client on every screen. Direct controls belong in Caffold when they make a
 repeated review step clearer or safer. Everything else can stay with Codex and
 the existing developer tools.
 
-Public hosting and multi-user collaboration require a different security
-model. Caffold currently assumes one trusted user, one trusted host, and local
-or tailnet-only access. That limit is part of the current product, not a claim
-that a browser interface is secure wherever it is exposed.
+Today Caffold assumes one trusted user, one trusted host, and local or
+tailnet-only access. The roadmap includes fully supported, authenticated
+internet-facing self-hosting. That requires a different security model, but it
+does not change who owns the host or turn Caffold into a managed service.
 
-The goal is modest: let the machine keep doing the mechanical part while the
-developer can read, decide, and continue the work from whichever screen is at
-hand.
+The aim stays concrete: let the user's machine keep doing the mechanical part
+while the developer can read, decide, and continue the work from whichever
+screen is at hand.
