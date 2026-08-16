@@ -19,9 +19,9 @@ explicitly introduces a mutation.
 - Do not move unrelated dependencies behind an `AppState`, generic
   `SharedState`, service locator, or catch-all `shared` module to make an
   extraction compile.
-- Trace every external state writer during backend extraction. Routes, caches,
-  databases, file watchers, and optimistic events must not become alternate
-  writers for externally owned lifecycle state.
+- Trace every writer of externally owned state affected by a backend
+  extraction. Routes, caches, databases, file watchers, and optimistic events
+  must not become alternate writers for that state.
 - Keep path handling rooted and canonicalized.
 - Do not allow path escape through symlinks or traversal.
 - Return clear JSON errors for unsupported files and operations.

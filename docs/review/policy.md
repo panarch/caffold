@@ -19,6 +19,23 @@ Review changes in this order:
 4. Prefer narrow, observable changes over broad rewrites.
 5. Verify behavior in the browser, not only in code.
 
+## Change Scope
+
+Make the smallest coherent change that completes the requested current
+behavior. Include the work required to keep the affected behavior and its
+ownership boundaries correct under this policy and verifiable. Smallest means
+the narrowest complete behavior, not the fewest edited lines.
+
+Do not add abstractions, state, persistence, compatibility, or infrastructure
+only for hypothetical future needs. Existing policy debt is out of scope unless
+the change would rely on it or preserve it in the affected behavior. In that
+case, correct the nearest owning boundary needed for the current behavior, then
+stop.
+
+Every part of the diff must support the requested behavior, an affected
+invariant, or its verification. Keep independent improvements as follow-up
+work.
+
 ## Readable Source Flow
 
 Treat each source file as a document that should explain itself from top to
@@ -72,15 +89,15 @@ leases, revisions, cache invalidations, optimistic submissions, and loading
 indicators may coordinate communication, but they do not change the external
 domain state being displayed.
 
-Every review that changes state handling must trace:
+Every review that changes state handling must trace each affected state field:
 
-- the owner of each state field;
+- its owner;
 - every writer and the source that authorizes it;
 - whether the value is persisted;
 - every backend and frontend consumer.
 
-A state change is not ready while an unowned writer, stale fallback, or
-cross-layer status overlay remains.
+An affected state flow is not ready while an unowned writer, stale fallback, or
+cross-layer status overlay remains in that flow.
 
 ## Explicit Control Models
 
