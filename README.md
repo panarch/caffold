@@ -1,17 +1,18 @@
 # Caffold
 
-Caffold is a browser interface for doing development work with Codex on a Mac
-you control.
+Caffold lets you keep Codex working on a Mac you control and use the same
+development workspace from a desktop, foldable, tablet, or phone.
 
-It started from a simple change in the way coding felt. Once Codex was doing
-more of the typing and command execution, the part that still needed a
-developer was mostly reading code, checking diffs, making decisions, and giving
-the next instruction. That part turned out to work well in a browser, whether
-the browser was on a desktop, a foldable, a tablet, or a phone.
+The layout adapts to the screen; the workflow stays the same. A Task still
+brings together the Codex conversation, approvals, command and test output,
+files, Git history, and actual diff. Desktop, foldable, and tablet are
+first-class ways to do the same work. On a phone, less fits on screen at once,
+but it remains the same Task and workflow rather than a reduced companion view.
 
-Caffold keeps that whole loop together. It is not a remote terminal, and it
-does not hide the underlying work: the conversation, commands, tests, files,
-and Git diff stay available for inspection.
+Start work on one screen, leave it running on the Mac, and return from another
+to inspect what actually changed and decide what happens next—by text or voice.
+Caffold is not a remote terminal or a hosted service; Codex, repositories, and
+data remain on your Mac.
 
 ## What it looks like
 
@@ -23,9 +24,6 @@ _Follow the Task as it runs, then read the result and decide what comes next._
 
 _Open Working Tree to review the actual files and diff without leaving the
 Task._
-
-Both images come from the repository's reproducible Playwright showcase rather
-than a hand-built mockup.
 
 ## How it works
 
@@ -63,6 +61,9 @@ running Caffold, and reachable for another device to use it.
 3. Read the result, command and test output, changed files, and actual diff.
 4. Type or dictate the next instruction, or return later and continue the same
    Task.
+
+For longer turns, each browser can opt in to system notifications under
+**Settings → Notifications**.
 
 Caffold also keeps the Task connected to its repository, optional managed
 worktree, Git history, and read-only GitHub Issue or Pull Request context.

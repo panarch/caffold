@@ -44,13 +44,19 @@ connected and readable, not to create a second version of either one.
 - Begin in an ordinary checkout without setup ceremony.
 - Leave a longer Task running and return without reconstructing its context.
 - Read the actual changes instead of relying only on an assistant's summary.
-- Use the same workflow on a large monitor, laptop, foldable, or phone.
+- Use the same workflow on a desktop, foldable, tablet, or phone instead of a
+  separate reduced companion surface.
 - Give direction by text, images, or host-local voice input.
 - Create an isolated worktree when separation is useful, without making it a
   prerequisite for every Task.
 
 The browser is a practical choice here. It gives Caffold one responsive
 interface across devices and lets each device install that interface as a PWA.
+The layout can adapt without changing the kind of work available: desktop,
+foldable, and tablet are first-class ways to use the whole workspace. A phone
+shows less at once, but it stays connected to the same Task and workflow rather
+than becoming a separate lightweight product.
+
 Caffold is meant to remain self-hosted as that access expands: execution,
 repositories, credentials, and data stay on a host the developer controls. A
 Caffold-operated managed service is not planned.

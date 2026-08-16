@@ -66,9 +66,29 @@ Choose `Open Caffold` from the menu to open `http://127.0.0.1:5178`. The
 menu-bar app starts and controls the local backend; the browser or installed PWA
 contains the complete Caffold workspace.
 
-Start a Task by choosing its directory and sending a prompt. Repository-backed
-Tasks expose Conversation, Working Tree, Branch, Git, and read-only GitHub
-surfaces from the same workspace.
+Start a Task by choosing its directory and sending a prompt. A Task keeps the
+Codex conversation and work associated with that directory together. It can
+start in an ordinary checkout and explicitly prepare a Caffold-managed
+worktree later when isolation is useful.
+
+A Section is an optional fixed-directory workspace for a repository or another
+location you return to often. It can start Tasks without choosing the directory
+again. Repository-backed Tasks and Sections expose Working Tree, Branch, Git,
+and read-only GitHub surfaces from the same workspace; each Task also keeps its
+own Conversation.
+
+## Private access with Tailscale
+
+Install Tailscale on the Mac and connect it to the tailnet used by the reviewing
+device. Choose `Turn On Tailscale Serve` from the Caffold menu. The menu reports
+the tailnet-only HTTPS URL when Serve is ready.
+
+`Server Settings...` can start Tailscale Serve automatically. Caffold remains
+bound to localhost and uses Tailscale Serve for the private HTTPS path; LAN
+binding is not required.
+
+Caffold refuses to replace a different Tailscale Serve target. It does not use
+Tailscale Funnel, and direct public-internet exposure is not supported.
 
 ## Install the browser interface as a PWA
 
@@ -84,6 +104,18 @@ If you run more than one Caffold host, set a distinct installed PWA name under
 `Server Settings...` before installing it on a device. An existing PWA may
 need to be reinstalled after that name changes.
 
+## Completion notifications
+
+Each browser can opt in separately under **Settings → Notifications**. Choose
+**Enable** and approve the browser permission to receive a system notification
+when a managed Task turn completes, fails, or is interrupted. On iOS, add
+Caffold to the Home Screen before enabling notifications.
+
+Notifications contain only the Task name and terminal status, never prompts,
+generated content, repository paths, or working directories. Delivery is
+best-effort while the Caffold backend is running; missed notifications are not
+sent later when the backend restarts.
+
 ## Optional GitHub views
 
 Install and authenticate GitHub CLI on the Mac that runs Caffold:
@@ -96,19 +128,6 @@ gh auth login
 Caffold derives the active GitHub repository from the selected Task or Section.
 Its GitHub surfaces are read-only; comments, reviews, Pull Requests, and other
 remote mutations remain outside the product boundary.
-
-## Private access with Tailscale
-
-Install Tailscale on the Mac and connect it to the tailnet used by the reviewing
-device. Choose `Turn On Tailscale Serve` from the Caffold menu. The menu reports
-the tailnet-only HTTPS URL when Serve is ready.
-
-`Server Settings...` can start Tailscale Serve automatically. Caffold remains
-bound to localhost and uses Tailscale Serve for the private HTTPS path; LAN
-binding is not required.
-
-Caffold refuses to replace a different Tailscale Serve target. It does not use
-Tailscale Funnel, and direct public-internet exposure is not supported.
 
 ## Voice input
 
@@ -158,8 +177,10 @@ brew uninstall --cask panarch/tap/caffold
 ```
 
 A normal uninstall does not request Cask `zap`. The Cask's zap operation also
-removes Caffold data, logs, and preferences, so inspect and retain any work you
-need before using it.
+removes Caffold data, logs, and preferences. This includes the default
+`data/worktrees` directory used for Caffold-managed worktrees and can remove
+uncommitted changes stored there. Inspect those worktrees and retain or commit
+any work you need before using `zap`.
 
 ## Package and contributor details
 
