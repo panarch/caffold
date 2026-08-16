@@ -343,6 +343,27 @@ test("unseen completion attention blinks the marker without hiding it", () => {
   );
 });
 
+test("refresh controls share a defined spin animation with reduced-motion fallback", () => {
+  const root = readFrontend("styles.css");
+  const fileNavigator = readFrontend("components/file-navigator/list.css");
+  const fileViewer = readFrontend("components/file-viewer.css");
+  const gitControls = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css",
+  );
+
+  assert.match(
+    root,
+    /@keyframes caffold-refresh-spin[\s\S]*transform: rotate\(360deg\)/,
+  );
+  assert.match(
+    root,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.file-refresh-button\.is-refreshing \.file-refresh-icon,[\s\S]*\.viewer-refresh-button\.is-refreshing \.viewer-refresh-icon,[\s\S]*\.git-review-refresh\.is-refreshing \.git-review-refresh-icon[\s\S]*animation: none/,
+  );
+  for (const source of [fileNavigator, fileViewer, gitControls]) {
+    assert.match(source, /animation: caffold-refresh-spin 0\.8s linear infinite/);
+  }
+});
+
 test("workspace header identity and titles share semantic ownership", () => {
   const tokens = readFrontend("styles.css");
   const brand = readFrontend(

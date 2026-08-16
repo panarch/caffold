@@ -76,6 +76,24 @@ pub struct CompareRefs {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitFetchResult {
+    pub remote: String,
+    pub branch: String,
+    pub reference: String,
+    pub ahead: usize,
+    pub behind: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GitFetchError {
+    RemoteNotFound,
+    RemoteAmbiguous,
+    RemoteHeadUnavailable { remote: String },
+    FetchFailed { remote: String, branch: String },
+    RelationshipUnavailable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BranchRef {
     pub name: String,
     pub kind: BranchRefKind,
@@ -549,6 +567,125 @@ pub fn default_compare_base_ref(repository: &Repository) -> Option<String> {
     ["origin/main", "origin/master", "main", "master"]
         .into_iter()
         .find_map(|candidate| resolve_compare_ref(repository, candidate))
+}
+
+pub fn fetch_remote_default(repository: &Repository) -> Result<GitFetchResult, GitFetchError> {
+    let remotes = remote_names(repository).ok_or(GitFetchError::RemoteNotFound)?;
+    let configured = repository
+        .branch
+        .as_deref()
+        .and_then(|branch| configured_branch_remote(repository, branch));
+    let remote = select_fetch_remote(configured.as_deref(), &remotes)?;
+    let branch = remote_default_branch(repository, &remote)?;
+    let reference = format!("{remote}/{branch}");
+    let destination = format!("refs/remotes/{reference}");
+    let refspec = format!("+refs/heads/{branch}:{destination}");
+    let fetched = Command::new("git")
+        .arg("-C")
+        .arg(&repository.root)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .args([
+            "fetch",
+            "--no-write-fetch-head",
+            "--no-recurse-submodules",
+            "--no-tags",
+            "--",
+            &remote,
+            &refspec,
+        ])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+    if !fetched {
+        return Err(GitFetchError::FetchFailed { remote, branch });
+    }
+
+    let relationship = format!("HEAD...{destination}");
+    let counts = run_git(
+        &repository.root,
+        &["rev-list", "--left-right", "--count", &relationship],
+    )
+    .and_then(|output| parse_ahead_behind(&output))
+    .ok_or(GitFetchError::RelationshipUnavailable)?;
+
+    Ok(GitFetchResult {
+        remote,
+        branch,
+        reference,
+        ahead: counts.0,
+        behind: counts.1,
+    })
+}
+
+fn remote_names(repository: &Repository) -> Option<Vec<String>> {
+    Some(
+        run_git(&repository.root, &["remote"])?
+            .lines()
+            .map(str::trim)
+            .filter(|remote| !remote.is_empty())
+            .map(str::to_string)
+            .collect(),
+    )
+}
+
+fn configured_branch_remote(repository: &Repository, branch: &str) -> Option<String> {
+    let key = format!("branch.{branch}.remote");
+    run_git(&repository.root, &["config", "--get", &key])
+        .filter(|remote| remote != "." && !remote.is_empty())
+}
+
+fn select_fetch_remote(
+    configured: Option<&str>,
+    remotes: &[String],
+) -> Result<String, GitFetchError> {
+    if let Some(configured) = configured
+        && remotes.iter().any(|remote| remote == configured)
+    {
+        return Ok(configured.to_string());
+    }
+    if remotes.len() == 1 {
+        return Ok(remotes[0].clone());
+    }
+    if remotes.iter().any(|remote| remote == "origin") {
+        return Ok("origin".to_string());
+    }
+    if remotes.is_empty() {
+        return Err(GitFetchError::RemoteNotFound);
+    }
+    Err(GitFetchError::RemoteAmbiguous)
+}
+
+fn remote_default_branch(repository: &Repository, remote: &str) -> Result<String, GitFetchError> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(&repository.root)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .args(["ls-remote", "--symref", "--", remote, "HEAD"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .ok_or_else(|| GitFetchError::RemoteHeadUnavailable {
+            remote: remote.to_string(),
+        })?;
+    parse_remote_head(&output.stdout).ok_or_else(|| GitFetchError::RemoteHeadUnavailable {
+        remote: remote.to_string(),
+    })
+}
+
+fn parse_remote_head(output: &[u8]) -> Option<String> {
+    String::from_utf8_lossy(output).lines().find_map(|line| {
+        let reference = line
+            .strip_prefix("ref: refs/heads/")?
+            .strip_suffix("\tHEAD")?;
+        (!reference.is_empty()).then(|| reference.to_string())
+    })
+}
+
+fn parse_ahead_behind(output: &str) -> Option<(usize, usize)> {
+    let mut counts = output.split_whitespace();
+    let ahead = counts.next()?.parse().ok()?;
+    let behind = counts.next()?.parse().ok()?;
+    counts.next().is_none().then_some((ahead, behind))
 }
 
 fn resolve_compare_ref(repository: &Repository, ref_name: &str) -> Option<String> {
@@ -1465,6 +1602,169 @@ mod tests {
                     kind: BranchRefKind::Remote,
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn selects_fetch_remote_without_treating_origin_as_required() {
+        let remotes = vec!["company".to_string(), "origin".to_string()];
+        assert_eq!(
+            select_fetch_remote(Some("company"), &remotes),
+            Ok("company".to_string())
+        );
+        assert_eq!(
+            select_fetch_remote(None, &remotes),
+            Ok("origin".to_string())
+        );
+        assert_eq!(
+            select_fetch_remote(None, &["company".to_string()]),
+            Ok("company".to_string())
+        );
+        assert_eq!(
+            select_fetch_remote(None, &["company".to_string(), "upstream".to_string()]),
+            Err(GitFetchError::RemoteAmbiguous)
+        );
+        assert_eq!(
+            select_fetch_remote(None, &[]),
+            Err(GitFetchError::RemoteNotFound)
+        );
+    }
+
+    #[test]
+    fn parses_remote_head_and_relationship_counts() {
+        assert_eq!(
+            parse_remote_head(b"ref: refs/heads/main\tHEAD\n0123456789\tHEAD\n").as_deref(),
+            Some("main")
+        );
+        assert_eq!(parse_remote_head(b"0123456789\tHEAD\n"), None);
+        assert_eq!(parse_ahead_behind("3\t2\n"), Some((3, 2)));
+        assert_eq!(parse_ahead_behind("3"), None);
+    }
+
+    #[test]
+    fn fetches_a_renamed_remote_default_without_changing_checkout_state() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let seed = temp.path().join("seed");
+        let remote = temp.path().join("remote.git");
+        let local = temp.path().join("local");
+        fs::create_dir(&seed).unwrap();
+        fs::create_dir(&remote).unwrap();
+        git(&seed, &["init"]);
+        fs::write(seed.join("base.txt"), "base\n").unwrap();
+        git(&seed, &["add", "base.txt"]);
+        commit(&seed, "Add base");
+        git(&seed, &["branch", "-M", "main"]);
+        git(&remote, &["init", "--bare"]);
+        git(&remote, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        git(
+            &seed,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
+        git(&seed, &["push", "origin", "main"]);
+        git(
+            temp.path(),
+            &["clone", remote.to_str().unwrap(), local.to_str().unwrap()],
+        );
+        git(&local, &["remote", "rename", "origin", "company"]);
+        git(&local, &["checkout", "-b", "feature/review"]);
+        fs::write(local.join("feature.txt"), "feature\n").unwrap();
+        git(&local, &["add", "feature.txt"]);
+        commit(&local, "Add feature");
+        fs::write(local.join("base.txt"), "dirty\n").unwrap();
+        fs::write(local.join("untracked.txt"), "untracked\n").unwrap();
+
+        fs::write(seed.join("remote.txt"), "remote\n").unwrap();
+        git(&seed, &["add", "remote.txt"]);
+        commit(&seed, "Advance main");
+        git(&seed, &["push", "origin", "main"]);
+
+        let repository = repository_for(&local).unwrap();
+        let head = run_git(&local, &["rev-parse", "HEAD"]).unwrap();
+        let status = run_git(&local, &["status", "--short"]).unwrap();
+        let fetch_head = local.join(".git/FETCH_HEAD");
+        fs::write(&fetch_head, "existing fetch state\n").unwrap();
+        let result = fetch_remote_default(&repository).unwrap();
+
+        assert_eq!(
+            result,
+            GitFetchResult {
+                remote: "company".to_string(),
+                branch: "main".to_string(),
+                reference: "company/main".to_string(),
+                ahead: 1,
+                behind: 1,
+            }
+        );
+        assert_eq!(
+            run_git(&local, &["rev-parse", "HEAD"]).as_deref(),
+            Some(head.as_str())
+        );
+        assert_eq!(
+            run_git(&local, &["status", "--short"]).as_deref(),
+            Some(status.as_str())
+        );
+        assert_eq!(
+            fs::read_to_string(fetch_head).unwrap(),
+            "existing fetch state\n"
+        );
+        assert_eq!(
+            run_git(&local, &["rev-parse", "company/main"]),
+            run_git(&seed, &["rev-parse", "main"])
+        );
+    }
+
+    #[test]
+    fn fetches_an_option_like_remote_name_as_data() {
+        if !git_is_available() {
+            return;
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let seed = temp.path().join("seed");
+        let remote = temp.path().join("remote.git");
+        let local = temp.path().join("local");
+        fs::create_dir(&seed).unwrap();
+        fs::create_dir(&remote).unwrap();
+        git(&seed, &["init"]);
+        fs::write(seed.join("base.txt"), "base\n").unwrap();
+        git(&seed, &["add", "base.txt"]);
+        commit(&seed, "Add base");
+        git(&seed, &["branch", "-M", "main"]);
+        git(&remote, &["init", "--bare"]);
+        git(&remote, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+        git(
+            &seed,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
+        git(&seed, &["push", "origin", "main"]);
+        git(
+            temp.path(),
+            &["clone", remote.to_str().unwrap(), local.to_str().unwrap()],
+        );
+        git(
+            &local,
+            &[
+                "config",
+                "--rename-section",
+                "remote.origin",
+                "remote.-company",
+            ],
+        );
+        git(&local, &["config", "branch.main.remote", "-company"]);
+
+        let repository = repository_for(&local).unwrap();
+        let result = fetch_remote_default(&repository).unwrap();
+        assert_eq!(result.remote, "-company");
+        assert_eq!(result.branch, "main");
+        assert_eq!(result.ahead, 0);
+        assert_eq!(result.behind, 0);
+        assert_eq!(
+            run_git(&local, &["rev-parse", "refs/remotes/-company/main"]),
+            run_git(&seed, &["rev-parse", "main"])
         );
     }
 

@@ -154,6 +154,26 @@ impl IntoResponse for ApiError {
                 "git_command_failed",
                 format!("git command failed while trying to {action}: {path}"),
             ),
+            ApiError::Fs(FsError::GitRemoteNotFound { path }) => (
+                StatusCode::BAD_REQUEST,
+                "git_remote_not_found",
+                format!("no Git fetch remote is configured for: {path}"),
+            ),
+            ApiError::Fs(FsError::GitRemoteAmbiguous { path }) => (
+                StatusCode::CONFLICT,
+                "git_remote_ambiguous",
+                format!("multiple Git fetch remotes are configured for: {path}"),
+            ),
+            ApiError::Fs(FsError::GitRemoteHeadUnavailable { remote }) => (
+                StatusCode::BAD_GATEWAY,
+                "git_remote_head_unavailable",
+                format!("the default branch is unavailable for Git remote: {remote}"),
+            ),
+            ApiError::Fs(FsError::GitFetchFailed { remote, branch }) => (
+                StatusCode::BAD_GATEWAY,
+                "git_fetch_failed",
+                format!("Git fetch failed for {remote}/{branch}"),
+            ),
             ApiError::Fs(FsError::GithubRepositoryNotFound { path }) => (
                 StatusCode::BAD_REQUEST,
                 "github_repository_not_found",

@@ -304,7 +304,10 @@ that cached review instance.
 `caffold-task-git-layout` is a direct shared Detail child under the pathless
 `tasks/(detail)/(git)` directory. It owns arbitrary Compare and bounded Log modes,
 repository ref status, canonical reconciliation, domain-local routes, request
-generations, and a refs-only watch while active.
+generations, and a refs-only watch while active. Log owns an explicit Fetch
+request that updates the selected remote-tracking default branch and publishes
+its relationship to the current checkout; activation and watch invalidation do
+not start that request, and Fetch does not alter the active watch lifetime.
 
 It does not own Working Tree status, current Task Branch comparison, or a Diff
 mode. Compare and Log leaves retain their own list, commit, file, diff, and

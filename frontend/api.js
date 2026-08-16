@@ -227,6 +227,13 @@ export async function getGitLog(path = "", page = 1, perPage = 50) {
   return requestJson("/api/git/log", { path, page, perPage });
 }
 
+export async function fetchGitRemote(path = "") {
+  return requestJson("/api/git/fetch", {}, {
+    method: "POST",
+    body: { path },
+  });
+}
+
 export async function getGitCommit(path = "", sha) {
   return requestJson("/api/git/commit", { path, sha });
 }
