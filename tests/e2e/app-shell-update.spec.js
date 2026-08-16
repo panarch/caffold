@@ -8,7 +8,10 @@ const serviceWorkerSource = readFileSync(
   new URL("../../frontend/service-worker.js", import.meta.url),
   "utf8",
 );
-const TEST_ACTIVATE_WAITING_MESSAGE = "caffold:test-activate-waiting";
+const TEST_ACTIVATION_GATE_MESSAGE = "caffold:test-activation-gate";
+const TEST_ACTIVATION_REQUEST_OBSERVED_MESSAGE =
+  "caffold:test-activation-request-observed";
+const TEST_ACTIVATION_GATE_TIMEOUT_MS = 7_500;
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
@@ -674,11 +677,16 @@ test("prepares and reloads the latest consecutive replacement through the real b
     ).toHaveCount(1);
     await captureReviewScreenshot(page, testInfo, "pwa-update-about-latest-ready");
     await deferUpdateNavigation(page);
+    await armWaitingServiceWorkerActivation(page, "browser-build-c");
     await about.getByRole("button", { name: "Reload to update" }).click();
+    await expectWaitingServiceWorkerActivationRequest(
+      page,
+      "browser-build-c",
+    );
     await expect.poll(() => serviceWorkerDiagnostics(page)).toMatchObject({
       targetBuildId: "browser-build-c",
     });
-    await activateWaitingServiceWorker(page);
+    await releaseWaitingServiceWorkerActivation(page, "browser-build-c");
     await expect.poll(() => reconcileServiceWorkerDiagnostics(page)).toMatchObject({
       controllerBuildId: "browser-build-c",
       handoffNode: "applying",
@@ -768,11 +776,16 @@ test("reloads through controllerchange without a custom acknowledgement or loop"
     });
     await expect(updateDialog).toBeVisible();
     await deferUpdateNavigation(page);
+    await armWaitingServiceWorkerActivation(page, "browser-build-b");
     await updateDialog.getByRole("button", { name: "Reload" }).click();
+    await expectWaitingServiceWorkerActivationRequest(
+      page,
+      "browser-build-b",
+    );
     await expect.poll(() => serviceWorkerDiagnostics(page)).toMatchObject({
       targetBuildId: "browser-build-b",
     });
-    await activateWaitingServiceWorker(page);
+    await releaseWaitingServiceWorkerActivation(page, "browser-build-b");
     await expect.poll(() => reconcileServiceWorkerDiagnostics(page)).toMatchObject({
       controllerBuildId: "browser-build-b",
       handoffNode: "applying",
@@ -835,11 +848,16 @@ test("recovers when the first controlled-update navigation leaves the old docume
       name: "Caffold update ready",
     });
     await expect(updateDialog).toBeVisible();
+    await armWaitingServiceWorkerActivation(page, "browser-build-b");
     await updateDialog.getByRole("button", { name: "Reload" }).click();
+    await expectWaitingServiceWorkerActivationRequest(
+      page,
+      "browser-build-b",
+    );
     await expect.poll(() => page.locator("caffold-app-shell").evaluate(
       (shell) => shell.pwaUpdateLifecycle.runtime.handoffState.targetBuildId,
     )).toBe("browser-build-b");
-    await activateWaitingServiceWorker(page);
+    await releaseWaitingServiceWorkerActivation(page, "browser-build-b");
     await expect.poll(() => page.locator("caffold-app-shell").evaluate(
       (shell) => {
         const runtime = shell.pwaUpdateLifecycle.runtime;
@@ -1428,23 +1446,344 @@ async function primaryActionColors(page) {
   });
 }
 
-async function activateWaitingServiceWorker(page) {
-  // Keep the real-browser regression focused on controller and document
-  // ownership. The production activation message is covered by the mocked
-  // browser lifecycle and service-worker contract tests. Address the exact
-  // waiting worker instead of using CDP's acknowledgement-free scope lookup.
-  const waitingState = await page.evaluate(async (messageType) => {
+async function armWaitingServiceWorkerActivation(page, expectedBuildId) {
+  const result = await page.evaluate(async ({
+    expectedBuildId,
+    gateMessageType,
+    observedMessageType,
+    timeoutMs,
+  }) => {
     const registration = await navigator.serviceWorker.getRegistration();
-    registration?.waiting?.postMessage({ type: messageType });
-    return registration?.waiting?.state ?? null;
-  }, TEST_ACTIVATE_WAITING_MESSAGE);
-  expect(waitingState).toBe("installed");
-  await expect.poll(async () => page.evaluate(async () => {
-    const registration = await navigator.serviceWorker.getRegistration();
-    return registration?.waiting?.state ?? null;
-  }), {
-    message: "waiting service worker should begin activation",
-  }).not.toBe("installed");
+    const worker = registration?.waiting;
+    if (!registration || !worker) {
+      throw new Error("activation gate requires a waiting service worker");
+    }
+    if (worker.state !== "installed") {
+      throw new Error(
+        `activation gate expected an installed worker, received ${worker.state}`,
+      );
+    }
+
+    const channel = new MessageChannel();
+    const phaseWaiters = new Map();
+    const startedAt = performance.now();
+    const gate = {
+      deadline: startedAt + timeoutMs,
+      activeBuildId: document
+        .querySelector("caffold-app-shell")
+        ?.pwaUpdateLifecycle.runtime.serviceWorkerBuildIds.get(
+          registration.active,
+        ) ?? null,
+      activeWorker: registration.active,
+      expectedBuildId,
+      failure: null,
+      gateMessageType,
+      phaseWaiters,
+      port: channel.port1,
+      registration,
+      transcript: [],
+      worker,
+      record(entry) {
+        const recorded = {
+          activeWorkerState: this.activeWorker?.state ?? null,
+          buildId: entry.buildId ?? null,
+          error: entry.error ?? null,
+          phase: entry.phase,
+          source: entry.source ?? null,
+          sourceMatchesWorker: entry.sourceMatchesWorker ?? null,
+          workerState: worker.state,
+        };
+        this.transcript.push(recorded);
+        if (recorded.phase === "skip-waiting-rejected") {
+          this.failure = recorded;
+          for (const waiters of this.phaseWaiters.values()) {
+            for (const waiter of waiters) {
+              waiter.reject(new Error(JSON.stringify(recorded)));
+            }
+          }
+          this.phaseWaiters.clear();
+          return recorded;
+        }
+        const waiters = this.phaseWaiters.get(recorded.phase) ?? [];
+        for (const waiter of waiters) {
+          waiter.resolve(recorded);
+        }
+        this.phaseWaiters.delete(recorded.phase);
+        return recorded;
+      },
+      snapshot() {
+        return {
+          activeBuildId: this.activeBuildId,
+          activeWorkerState: this.activeWorker?.state ?? null,
+          elapsedMs: Math.round(performance.now() - startedAt),
+          expectedBuildId: this.expectedBuildId,
+          failure: this.failure,
+          transcript: this.transcript,
+          waitingIsWorker: this.registration.waiting === this.worker,
+          waitingState: this.registration.waiting?.state ?? null,
+          workerState: this.worker.state,
+        };
+      },
+      waitForPhase(phase) {
+        const recorded = this.transcript.find((entry) => entry.phase === phase);
+        if (recorded) {
+          return Promise.resolve(recorded);
+        }
+        if (this.failure) {
+          return Promise.reject(new Error(JSON.stringify(this.failure)));
+        }
+        return new Promise((resolve, reject) => {
+          const waiters = this.phaseWaiters.get(phase) ?? [];
+          waiters.push({ reject, resolve });
+          this.phaseWaiters.set(phase, waiters);
+        });
+      },
+      async waitForPhaseWithTimeout(phase) {
+        let timeoutId;
+        try {
+          const remainingMs = Math.max(0, this.deadline - performance.now());
+          const entry = await Promise.race([
+            this.waitForPhase(phase),
+            new Promise((_, reject) => {
+              timeoutId = window.setTimeout(() => {
+                reject(new Error(
+                  `activation gate timed out waiting for ${phase}: ${JSON.stringify(this.snapshot())}`,
+                ));
+              }, remainingMs);
+            }),
+          ]);
+          return { entry, snapshot: this.snapshot() };
+        } finally {
+          window.clearTimeout(timeoutId);
+        }
+      },
+    };
+    window.__caffoldWaitingActivationGate = gate;
+
+    worker.addEventListener("statechange", () => {
+      gate.record({ phase: "statechange", source: "worker" });
+    });
+    navigator.serviceWorker.addEventListener("message", (event) => {
+      if (event.data?.type !== observedMessageType) {
+        return;
+      }
+      gate.record({
+        buildId: event.data.buildId,
+        phase: "activation-request-observed",
+        source: "service-worker",
+        sourceMatchesWorker: event.source === worker,
+      });
+    });
+    channel.port1.addEventListener("message", (event) => {
+      gate.record({
+        buildId: event.data?.buildId,
+        error: event.data?.error,
+        phase: event.data?.phase ?? "unknown-control-message",
+        source: "message-port",
+      });
+    });
+    channel.port1.start();
+    worker.postMessage({
+      action: "arm",
+      type: gateMessageType,
+    }, [channel.port2]);
+    return await gate.waitForPhaseWithTimeout("armed");
+  }, {
+    expectedBuildId,
+    gateMessageType: TEST_ACTIVATION_GATE_MESSAGE,
+    observedMessageType: TEST_ACTIVATION_REQUEST_OBSERVED_MESSAGE,
+    timeoutMs: TEST_ACTIVATION_GATE_TIMEOUT_MS,
+  });
+
+  const diagnostic = activationGateDiagnostic(result.snapshot);
+  expect(result.entry, diagnostic).toMatchObject({
+    buildId: expectedBuildId,
+    phase: "armed",
+    workerState: "installed",
+  });
+  expect(result.snapshot, diagnostic).toMatchObject({
+    expectedBuildId,
+    waitingIsWorker: true,
+    waitingState: "installed",
+    workerState: "installed",
+  });
+}
+
+async function expectWaitingServiceWorkerActivationRequest(
+  page,
+  expectedBuildId,
+) {
+  const result = await waitForWaitingServiceWorkerActivationPhase(
+    page,
+    "activation-request-observed",
+  );
+  const diagnostic = activationGateDiagnostic(result.snapshot);
+  expect(result.entry, diagnostic).toMatchObject({
+    buildId: expectedBuildId,
+    phase: "activation-request-observed",
+    sourceMatchesWorker: true,
+    workerState: "installed",
+  });
+  expect(result.snapshot, diagnostic).toMatchObject({
+    expectedBuildId,
+    waitingIsWorker: true,
+    waitingState: "installed",
+    workerState: "installed",
+  });
+}
+
+async function releaseWaitingServiceWorkerActivation(page, expectedBuildId) {
+  await stopActiveServiceWorker(page);
+  const waitingTarget = await serviceWorkerTargetForBuild(page, expectedBuildId);
+  await page.evaluate(() => {
+    const gate = window.__caffoldWaitingActivationGate;
+    if (!gate) {
+      throw new Error("activation gate is not armed");
+    }
+    gate.record({ phase: "release-sent", source: "page" });
+  });
+  const release = await waitingTarget.evaluate(() => {
+    const waitingState = self.registration.waiting?.state ?? null;
+    const activation = self.skipWaiting();
+    activation.catch((error) => {
+      console.error("Caffold lifecycle fixture skipWaiting failed", error);
+    });
+    return { buildId: BUILD_ID, waitingState };
+  });
+  const releaseSnapshot = await page.evaluate((release) => {
+    const gate = window.__caffoldWaitingActivationGate;
+    gate.record({
+      buildId: release.buildId,
+      phase: "skip-waiting-invoked",
+      source: "playwright-worker",
+    });
+    return gate.snapshot();
+  }, release);
+  const releaseDiagnostic = activationGateDiagnostic(releaseSnapshot);
+  expect(release, releaseDiagnostic).toEqual({
+    buildId: expectedBuildId,
+    waitingState: "installed",
+  });
+  const stateChange = await waitForWaitingServiceWorkerActivationPhase(
+    page,
+    "statechange",
+  );
+  const diagnostic = activationGateDiagnostic(stateChange.snapshot);
+  expect(stateChange.entry.workerState, diagnostic).not.toBe("installed");
+
+  const snapshot = stateChange.snapshot;
+  const phases = snapshot.transcript.map((entry) => entry.phase);
+  const position = (phase) => phases.indexOf(phase);
+  expect(position("armed"), diagnostic).toBeLessThan(
+    position("activation-request-observed"),
+  );
+  expect(position("activation-request-observed"), diagnostic).toBeLessThan(
+    position("active-stop-requested"),
+  );
+  expect(position("active-stop-requested"), diagnostic).toBeLessThan(
+    position("active-stopped"),
+  );
+  expect(position("active-stopped"), diagnostic).toBeLessThan(
+    position("rearmed"),
+  );
+  expect(position("rearmed"), diagnostic).toBeLessThan(
+    position("release-sent"),
+  );
+  expect(position("release-sent"), diagnostic).toBeLessThan(
+    position("skip-waiting-invoked"),
+  );
+  expect(position("release-sent"), diagnostic).toBeLessThan(
+    position("statechange"),
+  );
+}
+
+async function stopActiveServiceWorker(page) {
+  const requested = await page.evaluate(() => {
+    const gate = window.__caffoldWaitingActivationGate;
+    if (!gate?.activeWorker) {
+      throw new Error("activation gate requires an active service worker");
+    }
+    gate.record({ phase: "active-stop-requested", source: "page" });
+    return gate.snapshot();
+  });
+  const requestedDiagnostic = activationGateDiagnostic(requested);
+  expect(requested.activeBuildId, requestedDiagnostic).toBeTruthy();
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send("ServiceWorker.enable");
+    await cdp.send("ServiceWorker.stopAllWorkers");
+  } finally {
+    await cdp.detach();
+  }
+  const result = await page.evaluate(async ({ gateMessageType }) => {
+    const gate = window.__caffoldWaitingActivationGate;
+    gate.record({
+      buildId: gate.activeBuildId,
+      phase: "active-stopped",
+      source: "cdp",
+    });
+    const channel = new MessageChannel();
+    channel.port1.addEventListener("message", (event) => {
+      gate.record({
+        buildId: event.data?.buildId,
+        phase: event.data?.phase ?? "unknown-rearm-message",
+        source: "message-port",
+      });
+    });
+    channel.port1.start();
+    gate.worker.postMessage({
+      action: "rearm",
+      type: gateMessageType,
+    }, [channel.port2]);
+    return await gate.waitForPhaseWithTimeout("rearmed");
+  }, { gateMessageType: TEST_ACTIVATION_GATE_MESSAGE });
+  const diagnostic = activationGateDiagnostic(result.snapshot);
+  expect(result.entry, diagnostic).toMatchObject({
+    activeWorkerState: "activated",
+    buildId: requested.expectedBuildId,
+    phase: "rearmed",
+    workerState: "installed",
+  });
+  expect(result.snapshot, diagnostic).toMatchObject({
+    waitingIsWorker: true,
+    waitingState: "installed",
+    workerState: "installed",
+  });
+}
+
+async function serviceWorkerTargetForBuild(page, expectedBuildId) {
+  const observed = [];
+  for (const target of page.context().serviceWorkers()) {
+    try {
+      observed.push({
+        buildId: await target.evaluate(() => BUILD_ID),
+        target,
+        url: target.url(),
+      });
+    } catch (error) {
+      observed.push({ error: String(error), target, url: target.url() });
+    }
+  }
+  const matches = observed.filter(({ buildId }) => buildId === expectedBuildId);
+  expect(
+    matches.map(({ buildId, error, url }) => ({ buildId, error, url })),
+    `expected one running service worker target for ${expectedBuildId}`,
+  ).toHaveLength(1);
+  return matches[0].target;
+}
+
+async function waitForWaitingServiceWorkerActivationPhase(page, phase) {
+  return await page.evaluate(async (phase) => {
+    const gate = window.__caffoldWaitingActivationGate;
+    if (!gate) {
+      throw new Error("activation gate is not armed");
+    }
+    return await gate.waitForPhaseWithTimeout(phase);
+  }, phase);
+}
+
+function activationGateDiagnostic(snapshot) {
+  return `activation gate transcript: ${JSON.stringify(snapshot)}`;
 }
 
 async function startBuildLifecycleServer(upstreamOrigin) {
@@ -1474,14 +1813,27 @@ async function startBuildLifecycleServer(upstreamOrigin) {
           productionActivationHandler,
           [
             "  if (event.data?.type === ACTIVATE_PREPARED_BUILD_MESSAGE) {",
-            "    // The lifecycle fixture owns this edge through an explicit control.",
+            `    event.source?.postMessage({ type: ${JSON.stringify(TEST_ACTIVATION_REQUEST_OBSERVED_MESSAGE)}, buildId: BUILD_ID });`,
+            "    // The lifecycle fixture releases this edge through the exact worker runtime.",
             "    return;",
             "  }",
           ].join("\n"),
         );
         body += `\nself.addEventListener("message", (event) => {
-  if (event.data?.type === ${JSON.stringify(TEST_ACTIVATE_WAITING_MESSAGE)}) {
-    event.waitUntil(self.skipWaiting());
+  if (event.data?.type !== ${JSON.stringify(TEST_ACTIVATION_GATE_MESSAGE)}) {
+    return;
+  }
+  const port = event.ports[0];
+  if (!port) {
+    return;
+  }
+  if (event.data.action === "arm" || event.data.action === "rearm") {
+    port.postMessage({
+      phase: event.data.action === "arm" ? "armed" : "rearmed",
+      buildId: BUILD_ID,
+    });
+    port.close();
+    return;
   }
 });\n`;
         if (currentBuild.omitControlledAck) {
