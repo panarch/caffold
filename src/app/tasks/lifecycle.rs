@@ -23,6 +23,8 @@ use super::{
     },
 };
 
+mod initial_request_name;
+
 pub(in crate::app) struct StartTask {
     pub(in crate::app) cwd: String,
     pub(in crate::app) prompt: String,
@@ -124,7 +126,7 @@ impl TaskLifecycle {
             )
             .await?;
         let initial_name = initial_name
-            .or_else(|| non_empty_thread_name(&prompt))
+            .or_else(|| initial_request_name::from_prompt(&prompt))
             .unwrap_or_else(|| format!("Thread {}", short_thread_id(&thread.thread_id)));
         // Keep the app-server's canonical Thread name aligned with the name
         // Caffold persists in its navigator ledger.
@@ -480,11 +482,6 @@ fn task_section_identity(task: &TaskRecord) -> Option<TaskSectionIdentity> {
         logical_path: cwd_path.clone(),
         repository: false,
     })
-}
-
-fn non_empty_thread_name(prompt: &str) -> Option<String> {
-    let prompt = prompt.trim();
-    (!prompt.is_empty()).then(|| prompt.to_string())
 }
 
 fn short_thread_id(thread_id: &str) -> &str {

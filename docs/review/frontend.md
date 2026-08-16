@@ -135,6 +135,10 @@ placement at the same boundary as the visual change.
 
 ### Frontend Module Boundaries
 
+Apply the common [Source Module Ownership](policy.md#source-module-ownership)
+rules when deciding whether frontend implementation remains private to its
+current owner or moves to a shared boundary.
+
 When one frontend module grows beyond a single file, use an adjacent same-stem
 directory: `name.js` and `name/` form one ownership boundary. `name.js` is the
 primary public entry point for non-visual behavior. `name/` contains the

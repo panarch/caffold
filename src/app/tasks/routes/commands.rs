@@ -694,7 +694,7 @@ mod tests {
             "thread/name/set",
             json!({
                 "threadId": thread_id,
-                "name": "Use the selected approval mode",
+                "name": "[REQ] Use the selected approval mode",
             }),
             json!({}),
         ));
@@ -730,6 +730,10 @@ mod tests {
         assert_eq!(
             response.0.permission_mode,
             Some(CodexPermissionMode::ApproveForMe)
+        );
+        assert_eq!(
+            response.0.task.as_ref().map(|task| task.title.as_str()),
+            Some("[REQ] Use the selected approval mode")
         );
         let requests = client.mock_requests().await;
         assert_eq!(requests[0].0, "config/read");
@@ -797,7 +801,7 @@ mod tests {
         ];
         responses.push(crate::codex_app_server::MockCodexResponse::ok_for(
             "thread/name/set",
-            json!({ "threadId": thread_id, "name": "Use xhigh" }),
+            json!({ "threadId": thread_id, "name": "[REQ] Use xhigh" }),
             json!({}),
         ));
         responses.push(crate::codex_app_server::MockCodexResponse::ok(
@@ -891,7 +895,7 @@ mod tests {
                 "thread/name/set",
                 json!({
                     "threadId": thread_id,
-                    "name": "Must not become managed",
+                    "name": "[REQ] Must not become managed",
                 }),
                 json!({}),
             ),
