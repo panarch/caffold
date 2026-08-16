@@ -8,6 +8,7 @@ const serviceWorkerSource = readFileSync(
   new URL("../../frontend/service-worker.js", import.meta.url),
   "utf8",
 );
+const TEST_ACTIVATE_WAITING_MESSAGE = "caffold:test-activate-waiting";
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
@@ -677,7 +678,7 @@ test("prepares and reloads the latest consecutive replacement through the real b
     await expect.poll(() => serviceWorkerDiagnostics(page)).toMatchObject({
       targetBuildId: "browser-build-c",
     });
-    await skipWaitingServiceWorker(page, fixture.origin);
+    await activateWaitingServiceWorker(page);
     await expect.poll(() => reconcileServiceWorkerDiagnostics(page)).toMatchObject({
       controllerBuildId: "browser-build-c",
       handoffNode: "applying",
@@ -771,7 +772,7 @@ test("reloads through controllerchange without a custom acknowledgement or loop"
     await expect.poll(() => serviceWorkerDiagnostics(page)).toMatchObject({
       targetBuildId: "browser-build-b",
     });
-    await skipWaitingServiceWorker(page, fixture.origin);
+    await activateWaitingServiceWorker(page);
     await expect.poll(() => reconcileServiceWorkerDiagnostics(page)).toMatchObject({
       controllerBuildId: "browser-build-b",
       handoffNode: "applying",
@@ -838,7 +839,7 @@ test("recovers when the first controlled-update navigation leaves the old docume
     await expect.poll(() => page.locator("caffold-app-shell").evaluate(
       (shell) => shell.pwaUpdateLifecycle.runtime.handoffState.targetBuildId,
     )).toBe("browser-build-b");
-    await skipWaitingServiceWorker(page, fixture.origin);
+    await activateWaitingServiceWorker(page);
     await expect.poll(() => page.locator("caffold-app-shell").evaluate(
       (shell) => {
         const runtime = shell.pwaUpdateLifecycle.runtime;
@@ -1427,19 +1428,23 @@ async function primaryActionColors(page) {
   });
 }
 
-async function skipWaitingServiceWorker(page, origin) {
+async function activateWaitingServiceWorker(page) {
   // Keep the real-browser regression focused on controller and document
   // ownership. The production activation message is covered by the mocked
-  // browser lifecycle and service-worker contract tests.
-  const cdp = await page.context().newCDPSession(page);
-  try {
-    await cdp.send("ServiceWorker.enable");
-    await cdp.send("ServiceWorker.skipWaiting", {
-      scopeURL: `${origin}/`,
-    });
-  } finally {
-    await cdp.detach();
-  }
+  // browser lifecycle and service-worker contract tests. Address the exact
+  // waiting worker instead of using CDP's acknowledgement-free scope lookup.
+  const waitingState = await page.evaluate(async (messageType) => {
+    const registration = await navigator.serviceWorker.getRegistration();
+    registration?.waiting?.postMessage({ type: messageType });
+    return registration?.waiting?.state ?? null;
+  }, TEST_ACTIVATE_WAITING_MESSAGE);
+  expect(waitingState).toBe("installed");
+  await expect.poll(async () => page.evaluate(async () => {
+    const registration = await navigator.serviceWorker.getRegistration();
+    return registration?.waiting?.state ?? null;
+  }), {
+    message: "waiting service worker should begin activation",
+  }).not.toBe("installed");
 }
 
 async function startBuildLifecycleServer(upstreamOrigin) {
@@ -1456,6 +1461,29 @@ async function startBuildLifecycleServer(upstreamOrigin) {
           '"caffold-shell-__CAFFOLD_BUILD_ID__"',
           JSON.stringify(`caffold-shell-${currentBuild.id}`),
         );
+        const productionActivationHandler = [
+          "  if (event.data?.type === ACTIVATE_PREPARED_BUILD_MESSAGE) {",
+          "    event.waitUntil(self.skipWaiting());",
+          "    return;",
+          "  }",
+        ].join("\n");
+        if (!body.includes(productionActivationHandler)) {
+          throw new Error("PWA lifecycle fixture activation hook is stale");
+        }
+        body = body.replace(
+          productionActivationHandler,
+          [
+            "  if (event.data?.type === ACTIVATE_PREPARED_BUILD_MESSAGE) {",
+            "    // The lifecycle fixture owns this edge through an explicit control.",
+            "    return;",
+            "  }",
+          ].join("\n"),
+        );
+        body += `\nself.addEventListener("message", (event) => {
+  if (event.data?.type === ${JSON.stringify(TEST_ACTIVATE_WAITING_MESSAGE)}) {
+    event.waitUntil(self.skipWaiting());
+  }
+});\n`;
         if (currentBuild.omitControlledAck) {
           body = body.replace(
             "  client?.postMessage({ type: UPDATE_CONTROLLED_MESSAGE, buildId: BUILD_ID });",

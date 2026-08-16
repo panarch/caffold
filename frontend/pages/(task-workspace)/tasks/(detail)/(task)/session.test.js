@@ -22,6 +22,7 @@ afterEach(() => {
 
 function installBrowserHarness() {
   const sources = [];
+  const sourceWaiters = new Map();
 
   class MockEventSource {
     constructor(url) {
@@ -29,7 +30,9 @@ function installBrowserHarness() {
       this.listeners = new Map();
       this.readyState = 0;
       this.closed = false;
-      sources.push(this);
+      const index = sources.push(this) - 1;
+      sourceWaiters.get(index)?.(this);
+      sourceWaiters.delete(index);
     }
 
     addEventListener(type, listener) {
@@ -69,7 +72,15 @@ function installBrowserHarness() {
   globalThis.EventSource = MockEventSource;
   globalThis.document = { visibilityState: "visible" };
 
-  return { sources };
+  return {
+    sources,
+    waitForSource(index) {
+      if (sources[index]) {
+        return Promise.resolve(sources[index]);
+      }
+      return new Promise((resolve) => sourceWaiters.set(index, resolve));
+    },
+  };
 }
 
 function detail(threadId, revision, { readable = true } = {}) {
@@ -302,10 +313,8 @@ test("bounds invalid bootstrap retries and settles the acquisition once", async 
 
   const acquisition = session.open("thread-a");
   browser.sources[0].emitOpen();
-  await nextTask();
-  browser.sources[1].emitOpen();
-  await nextTask();
-  browser.sources[2].emitOpen();
+  (await browser.waitForSource(1)).emitOpen();
+  (await browser.waitForSource(2)).emitOpen();
   const outcome = await acquisition;
 
   assert.equal(browser.sources.length, 3);

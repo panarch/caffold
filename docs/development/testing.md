@@ -119,10 +119,11 @@ navigation, verifies that page resume does not repeat it automatically, and
 requires a second explicit Reload action to replace the document. No handoff
 target is persisted across documents; a fresh page
 reconstructs update availability from browser and server state. The loopback
-test uses the Chromium protocol only to make the waiting-to-active worker edge
-deterministic; production activation messaging remains separate contract and
-mocked-browser evidence. Report unit, complete-shell inventory, deterministic
-browser, and real-browser evidence separately.
+test addresses its exact waiting worker through a fixture-only activation
+control to make the waiting-to-active edge deterministic; production activation
+messaging remains separate contract and mocked-browser evidence. Report unit,
+complete-shell inventory, deterministic browser, and real-browser evidence
+separately.
 
 ## Codex compatibility and live tests
 

@@ -1184,6 +1184,85 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
   await expect(composer).toHaveValue("Keep this offline recovery draft");
 });
 
+test("reopened Task detail waits for a readable stream bootstrap", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const registryKey = "__taskDetailReconnectSources";
+  await installEventSourceMock(page, { registryKey, autoOpen: true });
+  await mockCodexModels(page);
+
+  const threadId = "thread_detail_stream_reconnect";
+  const task = {
+    ...transportOverlayTask(threadId),
+    title: "Task detail stream reconnect",
+  };
+  const detail = (text, revision) => ({
+    threadId,
+    syncState: "ready",
+    revision,
+    task,
+    events: [
+      {
+        id: `event_detail_reconnect_${revision}`,
+        threadId,
+        type: "assistant_message",
+        summary: "Assistant response",
+        payload: { turnId: `turn_detail_reconnect_${revision}`, text },
+        createdMs: task.updatedMs + revision,
+      },
+    ],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+  });
+  const initialDetail = detail("Conversation before stream reconnect.", 1);
+  const recoveredDetail = detail("Conversation after stream reconnect.", 2);
+  let detailReads = 0;
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) => {
+    detailReads += 1;
+    return route.fulfill({ json: initialDetail });
+  });
+
+  await page.goto(`/tasks/${threadId}?cwd=src`);
+  await emitTaskDetailBootstrap(page, initialDetail);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const notice = page.locator(".app-foreground-recovery");
+  await expect(tasksPage).toContainText("Conversation before stream reconnect.");
+  await expect(notice).toBeHidden();
+  expect(detailReads).toBe(0);
+
+  await page.evaluate((requestedThreadId) => {
+    window.__caffoldTaskSse.source(requestedThreadId).emitError();
+  }, threadId);
+  await expect(notice).toHaveAttribute("data-recovery-state", "reconnecting");
+
+  await page.evaluate((requestedThreadId) => {
+    window.__caffoldTaskSse.open(
+      window.__caffoldTaskSse.source(requestedThreadId),
+    );
+  }, threadId);
+  await expect.poll(() => tasksPage.evaluate((element) => {
+    const session = element.taskDetail().taskDetail().detailSession;
+    return { phase: session.phase, state: session.state };
+  })).toEqual({ phase: "waiting-bootstrap", state: "reconnecting" });
+  await expect(notice).toHaveAttribute("data-recovery-state", "reconnecting");
+
+  await page.evaluate(({ requestedThreadId, bootstrapDetail }) => {
+    window.__caffoldTaskSse.source(requestedThreadId).emit("task-sync", {
+      threadId: requestedThreadId,
+      revision: bootstrapDetail.revision,
+      detail: bootstrapDetail,
+      reason: "stream-bootstrap",
+    });
+  }, { requestedThreadId: threadId, bootstrapDetail: recoveredDetail });
+  await expect(notice).toBeHidden();
+  await expect(tasksPage).toContainText("Conversation after stream reconnect.");
+  expect(detailReads).toBe(0);
+});
+
 test("replaces terminal Task streams and reconciles list and detail", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
