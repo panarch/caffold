@@ -1,11 +1,8 @@
 import "../../components/task-create.js";
+import "./components/github-shortcuts.js";
 import { cleanLogicalPath } from "../../task-format.js";
 
 class CaffoldSectionDetail extends HTMLElement {
-  connectedCallback() {
-    this.ensureState();
-  }
-
   ensureState() {
     if (this.stateReady) {
       return;
@@ -21,8 +18,12 @@ class CaffoldSectionDetail extends HTMLElement {
     if (this.querySelector(":scope > caffold-task-create")) {
       return;
     }
-    this.innerHTML = `<caffold-task-create></caffold-task-create>`;
+    this.innerHTML = `
+      <caffold-task-create></caffold-task-create>
+      <caffold-section-github-shortcuts hidden></caffold-section-github-shortcuts>
+    `;
     this.syncTaskCreate();
+    this.syncGitHubShortcuts();
   }
 
   setSection(section) {
@@ -31,19 +32,22 @@ class CaffoldSectionDetail extends HTMLElement {
     const nextContext = this.sectionContextKey(section);
     if (previousContext && previousContext !== nextContext) {
       this.taskCreate()?.remove();
-      this.append(document.createElement("caffold-task-create"));
+      this.prepend(document.createElement("caffold-task-create"));
     }
     this.section = section ? { ...section } : null;
     this.syncTaskCreate();
+    this.syncGitHubShortcuts();
   }
 
   activate() {
     this.ensureRendered();
     this.hidden = false;
+    this.githubShortcuts()?.activate();
     this.taskCreate()?.activate();
   }
 
   deactivate() {
+    this.githubShortcuts()?.deactivate();
     this.taskCreate()?.deactivate();
   }
 
@@ -80,6 +84,10 @@ class CaffoldSectionDetail extends HTMLElement {
     return this.querySelector(":scope > caffold-task-create");
   }
 
+  githubShortcuts() {
+    return this.querySelector(":scope > caffold-section-github-shortcuts");
+  }
+
   syncTaskCreate() {
     const taskCreate = this.taskCreate();
     if (!taskCreate) {
@@ -92,6 +100,14 @@ class CaffoldSectionDetail extends HTMLElement {
     });
     taskCreate.setTransportAvailable(this.transportAvailable);
     taskCreate.setCodexStatusSnapshot(this.codexStatusSnapshot);
+  }
+
+  syncGitHubShortcuts() {
+    this.githubShortcuts()?.setContext({
+      key: this.sectionContextKey(this.section),
+      path: this.selectedContextPath(),
+      repository: Boolean(this.section?.repository),
+    });
   }
 }
 

@@ -461,7 +461,9 @@ frontend/
 |               |       `-- conversation/...
 |               |-- (section)/
 |               |   |-- layout.js
-|               |   `-- components/summary.js
+|               |   `-- components/
+|               |       |-- github-shortcuts.js
+|               |       `-- summary.js
 |               |-- (review)/layout.js
 |               |-- (git)/
 |               |   |-- layout.js

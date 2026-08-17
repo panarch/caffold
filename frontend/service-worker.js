@@ -97,6 +97,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(section)/layout.css",
   "/assets/pages/(task-workspace)/tasks/(detail)/(section)/layout.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.css",
+  "/assets/pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css",
   "/assets/pages/(task-workspace)/tasks/(detail)/(section)/components/summary.js",
   "/assets/pages/(task-workspace)/tasks/runtime-state.js",

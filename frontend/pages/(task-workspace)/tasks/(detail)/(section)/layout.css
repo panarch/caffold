@@ -15,4 +15,15 @@ caffold-section-detail {
     width: min(calc(100% - 1.75rem), 952px);
     margin: 0 auto;
   }
+
+  & > caffold-section-github-shortcuts {
+    width: min(calc(100% - 5.25rem), 896px);
+    margin: 0 auto;
+  }
+}
+
+@media (max-width: 959px) {
+  caffold-section-detail > caffold-section-github-shortcuts {
+    width: min(calc(100% - 3rem), 932px);
+  }
 }

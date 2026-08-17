@@ -1,0 +1,71 @@
+caffold-section-github-shortcuts {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+
+  &[hidden] {
+    display: none;
+  }
+
+  & .section-github-repository {
+    display: flex;
+    align-items: center;
+    gap: var(--interface-space-4);
+    min-width: 0;
+    min-height: var(--interface-header-size);
+    padding: 0 var(--interface-space-6);
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface-subtle);
+    color: var(--muted);
+  }
+
+  & .section-github-icon {
+    flex: 0 0 auto;
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
+    background-image: var(--brand-github-image);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: contain;
+  }
+
+  & .section-github-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & nav {
+    display: grid;
+  }
+
+  & button {
+    width: 100%;
+    min-height: var(--interface-row-size);
+    padding: 0 var(--interface-space-6);
+    border: 0;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  & button + button {
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  & button:hover,
+  & button:focus-visible {
+    background: var(--control-hover-bg);
+  }
+
+  & button:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+}

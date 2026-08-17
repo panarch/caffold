@@ -243,6 +243,16 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/(detail)/(section)/layout.js" => Some(js(include_str!(
             "../frontend/pages/(task-workspace)/tasks/(detail)/(section)/layout.js"
         ))),
+        "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css" => {
             Some(css(include_str!(
                 "../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css"
@@ -1365,6 +1375,10 @@ mod tests {
                 b"caffold-section-detail".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.js",
+                b"caffold-section-github-shortcuts".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.js",
                 b"caffold-section-detail-summary".as_slice(),
             ),
@@ -1508,6 +1522,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/(detail)/(section)/layout.css",
                 b"caffold-section-detail".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.css",
+                b"caffold-section-github-shortcuts".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css",
