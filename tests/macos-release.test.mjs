@@ -140,12 +140,12 @@ test("manual release workflow isolates versioning, verification, and publication
   const rustVersion = readFileSync(resolve(repoRoot, "Cargo.toml"), "utf8").match(
     /^rust-version = "([^"]+)"$/m,
   )?.[1];
-  const bumpStart = source.indexOf("  bump_release:");
   const macosStart = source.indexOf("  macos:");
+  const commitStart = source.indexOf("  commit_release:");
   const releaseStart = source.indexOf("  publish_release:");
   const homebrewStart = source.indexOf("  publish_homebrew:");
-  const bumpJob = source.slice(bumpStart, macosStart);
-  const macosJob = source.slice(macosStart, releaseStart);
+  const macosJob = source.slice(macosStart, commitStart);
+  const commitJob = source.slice(commitStart, releaseStart);
   const releaseJob = source.slice(releaseStart, homebrewStart);
   const homebrewJob = source.slice(homebrewStart);
 
@@ -166,27 +166,17 @@ test("manual release workflow isolates versioning, verification, and publication
     assert.match(source, new RegExp(`^\\s+- ${action}$`, "m"));
   }
   assert.ok(
-    bumpStart >= 0 &&
-      macosStart > bumpStart &&
-      releaseStart > macosStart &&
+    macosStart >= 0 &&
+      commitStart > macosStart &&
+      releaseStart > commitStart &&
       homebrewStart > releaseStart,
   );
-
-  assert.match(bumpJob, /if: startsWith\(inputs\.action, 'release-'\)/);
-  assert.match(bumpJob, /^\s+contents: write$/m);
-  assert.match(bumpJob, /scripts\/bump-release-version\.mjs/);
-  assert.match(bumpJob, /Cargo\.lock/);
-  assert.match(bumpJob, /Cargo\.toml/);
-  assert.match(bumpJob, /package\.json/);
-  assert.match(bumpJob, /git commit -m "Release v\$\{RELEASE_VERSION\}"/);
-  assert.match(bumpJob, /git push origin HEAD:main/);
-  assert.doesNotMatch(bumpJob, /HOMEBREW_TAP_TOKEN|gh release create|brew install/);
+  assert.doesNotMatch(source, /^  bump_release:$/m);
 
   assert.match(macosJob, /runs-on: macos-14/);
-  assert.match(macosJob, /^\s+needs: bump_release$/m);
-  assert.match(macosJob, /BUMP_RELEASE_SHA: \$\{\{ needs\.bump_release\.outputs\.release_sha \}\}/);
   assert.match(macosJob, /REQUESTED_SHA: \$\{\{ github\.sha \}\}/);
-  assert.match(macosJob, /release_sha="\$\{BUMP_RELEASE_SHA:-\$\{REQUESTED_SHA\}\}"/);
+  assert.match(macosJob, /CANDIDATE_SHA: \$\{\{ steps\.release_commit\.outputs\.release_sha \}\}/);
+  assert.match(macosJob, /release_sha="\$\{CANDIDATE_SHA:-\$\{REQUESTED_SHA\}\}"/);
   assert.match(macosJob, /fetch-depth: 0/);
   assert.match(macosJob, /persist-credentials: false/);
   assert.match(
@@ -197,27 +187,69 @@ test("manual release workflow isolates versioning, verification, and publication
     macosJob,
     /ref: \$\{\{ steps\.release_source\.outputs\.release_sha \}\}/,
   );
+  assert.match(macosJob, /scripts\/bump-release-version\.mjs/);
+  assert.match(macosJob, /git commit -m "Release v\$\{RELEASE_VERSION\}"/);
+  assert.match(macosJob, /git bundle create/);
+  assert.match(macosJob, /git bundle verify/);
+  assert.match(macosJob, /caffold-release-candidate-v/);
+  for (const canonicalFile of ["Cargo.lock", "Cargo.toml", "package.json"]) {
+    assert.match(macosJob, new RegExp(canonicalFile.replace(".", "\\.")));
+  }
   assert.match(macosJob, new RegExp(`rustup toolchain install ${rustVersion}(?:\\.0)?`));
   assert.match(macosJob, /npm ci/);
   assert.match(macosJob, /playwright install chromium/);
   assert.match(macosJob, /release --dry-run/);
+  assert.match(macosJob, /cargo test --locked/);
+  assert.match(macosJob, /cargo clippy --locked --all-targets -- -D warnings/);
   const browserBuildIndex = macosJob.indexOf("cargo build --locked");
   const browserTestIndex = macosJob.indexOf("npm run test:e2e");
-  assert.ok(browserBuildIndex >= 0 && browserTestIndex > browserBuildIndex);
+  const candidateCommitIndex = macosJob.indexOf(
+    'git commit -m "Release v${RELEASE_VERSION}"',
+  );
+  const candidateBundleIndex = macosJob.indexOf("git bundle create");
+  assert.ok(
+    candidateCommitIndex >= 0 &&
+      browserBuildIndex > candidateCommitIndex &&
+      browserTestIndex > browserBuildIndex &&
+      candidateBundleIndex > browserTestIndex,
+  );
   for (const command of ["test:unit", "test:contract", "test:e2e", "test:macos"]) {
     assert.match(macosJob, new RegExp(`npm run ${command}`));
   }
+  assert.match(macosJob, /name: Upload browser failure artifacts/);
+  assert.match(macosJob, /name: playwright-release-results-v/);
   assert.doesNotMatch(macosJob, /npm run test:codex-(?:compat|live)/);
   assert.match(macosJob, /actions\/upload-artifact@v\d+/);
   assert.doesNotMatch(macosJob, /contents: write/);
   assert.doesNotMatch(macosJob, /HOMEBREW_TAP_TOKEN/);
-  for (const publishingCommand of ["git push", "gh release", "brew install"]) {
+  for (const publishingCommand of ["git push", "gh release create", "brew install"]) {
     assert.doesNotMatch(macosJob, new RegExp(publishingCommand, "i"));
   }
 
+  assert.match(commitJob, /^\s+needs: macos$/m);
+  assert.match(
+    commitJob,
+    /needs\.macos\.result == 'success' && startsWith\(inputs\.action, 'release-'\)/,
+  );
+  assert.match(commitJob, /^\s+contents: write$/m);
+  assert.match(commitJob, /caffold-release-candidate-v/);
+  assert.match(commitJob, /git bundle verify/);
+  assert.match(commitJob, /Release candidate is not a direct child/);
+  assert.match(commitJob, /main changed after verification/);
+  assert.match(commitJob, /git push origin "\$\{RELEASE_SHA\}:refs\/heads\/main"/);
+  assert.match(commitJob, /git ls-remote origin refs\/heads\/main/);
+  assert.doesNotMatch(
+    commitJob,
+    /npm run|cargo (?:build|test|clippy)|gh release|brew install|HOMEBREW_TAP_TOKEN/,
+  );
+
   assert.match(
     releaseJob,
-    /if: always\(\) && needs\.macos\.result == 'success' && inputs\.action != 'dry-run'/,
+    /startsWith\(inputs\.action, 'release-'\) && needs\.commit_release\.result == 'success'/,
+  );
+  assert.match(
+    releaseJob,
+    /inputs\.action == 'resume' && needs\.commit_release\.result == 'skipped'/,
   );
   assert.match(releaseJob, /^\s+contents: write$/m);
   assert.match(releaseJob, /RELEASE_SHA: \$\{\{ needs\.macos\.outputs\.release_sha \}\}/);

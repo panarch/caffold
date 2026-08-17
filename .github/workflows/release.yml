@@ -24,96 +24,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  bump_release:
-    name: Commit release version
-    if: startsWith(inputs.action, 'release-')
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    outputs:
-      version: ${{ steps.bump.outputs.version }}
-      release_sha: ${{ steps.release_commit.outputs.release_sha }}
-
-    steps:
-      - name: Require main
-        env:
-          SELECTED_REF: ${{ github.ref }}
-        run: |
-          if [[ "${SELECTED_REF}" != "refs/heads/main" ]]; then
-            echo "Release runs must be dispatched from main, not ${SELECTED_REF}." >&2
-            exit 1
-          fi
-
-      - name: Check out the complete release history
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: true
-          ref: main
-
-      - name: Verify the requested commit
-        env:
-          REQUESTED_SHA: ${{ github.sha }}
-        run: |
-          if [[ "$(git rev-parse HEAD)" != "${REQUESTED_SHA}" ]]; then
-            echo "main changed after this workflow was dispatched; run it again." >&2
-            exit 1
-          fi
-
-      - name: Install Node.js 22
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          package-manager-cache: false
-
-      - name: Bump the release version
-        id: bump
-        env:
-          RELEASE_ACTION: ${{ inputs.action }}
-        run: |
-          bump="${RELEASE_ACTION#release-}"
-          node scripts/bump-release-version.mjs "${bump}" >>"${GITHUB_OUTPUT}"
-
-      - name: Require an unused release version
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ steps.bump.outputs.version }}
-        run: |
-          tag="v${RELEASE_VERSION}"
-          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
-            echo "${tag} already exists." >&2
-            exit 1
-          fi
-          if gh release view "${tag}" >/dev/null 2>&1; then
-            echo "Release ${tag} already exists." >&2
-            exit 1
-          fi
-
-      - name: Commit and push the release version
-        id: release_commit
-        env:
-          RELEASE_VERSION: ${{ steps.bump.outputs.version }}
-        run: |
-          changed_files="$(git diff --name-only | LC_ALL=C sort)"
-          expected_files="$(printf '%s\n' Cargo.lock Cargo.toml package.json | LC_ALL=C sort)"
-          if [[ "${changed_files}" != "${expected_files}" ]]; then
-            echo "Version bump changed unexpected files:" >&2
-            printf '%s\n' "${changed_files}" >&2
-            exit 1
-          fi
-          git diff --check
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock Cargo.toml package.json
-          git commit -m "Release v${RELEASE_VERSION}"
-          git push origin HEAD:main
-          echo "release_sha=$(git rev-parse HEAD)" >>"${GITHUB_OUTPUT}"
-
   macos:
     name: Verify macOS arm64 release
-    needs: bump_release
-    if: always() && (needs.bump_release.result == 'success' || needs.bump_release.result == 'skipped')
     runs-on: macos-14
     timeout-minutes: 45
     outputs:
@@ -133,15 +45,6 @@ jobs:
             exit 1
           fi
 
-      - name: Resolve the release source
-        id: release_source
-        env:
-          BUMP_RELEASE_SHA: ${{ needs.bump_release.outputs.release_sha }}
-          REQUESTED_SHA: ${{ github.sha }}
-        run: |
-          release_sha="${BUMP_RELEASE_SHA:-${REQUESTED_SHA}}"
-          echo "release_sha=${release_sha}" >>"${GITHUB_OUTPUT}"
-
       - name: Check out the complete release history
         uses: actions/checkout@v7
         with:
@@ -151,14 +54,14 @@ jobs:
 
       - name: Verify the requested commit
         env:
-          RELEASE_SHA: ${{ steps.release_source.outputs.release_sha }}
+          REQUESTED_SHA: ${{ github.sha }}
         run: |
           git fetch origin main
-          if [[ "$(git rev-parse HEAD)" != "${RELEASE_SHA}" ]]; then
-            echo "Checked out source does not match ${RELEASE_SHA}." >&2
+          if [[ "$(git rev-parse HEAD)" != "${REQUESTED_SHA}" ]]; then
+            echo "Checked out source does not match ${REQUESTED_SHA}." >&2
             exit 1
           fi
-          if [[ "$(git rev-parse origin/main)" != "${RELEASE_SHA}" ]]; then
+          if [[ "$(git rev-parse origin/main)" != "${REQUESTED_SHA}" ]]; then
             echo "main changed after this workflow was dispatched; run it again." >&2
             exit 1
           fi
@@ -176,6 +79,64 @@ jobs:
         with:
           node-version: 22
           package-manager-cache: false
+
+      - name: Bump the release version locally
+        if: startsWith(inputs.action, 'release-')
+        id: bump
+        env:
+          RELEASE_ACTION: ${{ inputs.action }}
+        run: |
+          bump="${RELEASE_ACTION#release-}"
+          node scripts/bump-release-version.mjs "${bump}" >>"${GITHUB_OUTPUT}"
+
+      - name: Require an unused release version
+        if: startsWith(inputs.action, 'release-')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          tag="v${RELEASE_VERSION}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "${tag} already exists." >&2
+            exit 1
+          fi
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "Release ${tag} already exists." >&2
+            exit 1
+          fi
+
+      - name: Commit the local release candidate
+        if: startsWith(inputs.action, 'release-')
+        id: release_commit
+        env:
+          RELEASE_VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          changed_files="$(git diff --name-only | LC_ALL=C sort)"
+          expected_files="$(printf '%s\n' Cargo.lock Cargo.toml package.json | LC_ALL=C sort)"
+          if [[ "${changed_files}" != "${expected_files}" ]]; then
+            echo "Version bump changed unexpected files:" >&2
+            printf '%s\n' "${changed_files}" >&2
+            exit 1
+          fi
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock Cargo.toml package.json
+          git commit -m "Release v${RELEASE_VERSION}"
+          echo "release_sha=$(git rev-parse HEAD)" >>"${GITHUB_OUTPUT}"
+
+      - name: Resolve the release source
+        id: release_source
+        env:
+          CANDIDATE_SHA: ${{ steps.release_commit.outputs.release_sha }}
+          REQUESTED_SHA: ${{ github.sha }}
+        run: |
+          release_sha="${CANDIDATE_SHA:-${REQUESTED_SHA}}"
+          if [[ "$(git rev-parse HEAD)" != "${release_sha}" ]]; then
+            echo "Prepared source does not match ${release_sha}." >&2
+            exit 1
+          fi
+          echo "release_sha=${release_sha}" >>"${GITHUB_OUTPUT}"
 
       - name: Install JavaScript dependencies
         run: npm ci
@@ -204,6 +165,15 @@ jobs:
       - name: Test browser behavior
         run: npm run test:e2e
 
+      - name: Upload browser failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-release-results-v${{ steps.release_metadata.outputs.version }}
+          path: test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Test macOS application behavior
         run: npm run test:macos
 
@@ -211,15 +181,34 @@ jobs:
         run: cargo fmt --check
 
       - name: Test Rust
-        run: cargo test
+        run: cargo test --locked
 
       - name: Lint Rust
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets -- -D warnings
 
       - name: Build and verify the macOS artifact
         env:
           RELEASE_VERSION: ${{ steps.release_metadata.outputs.version }}
         run: desktop/macos/release --dry-run --version "${RELEASE_VERSION}"
+
+      - name: Bundle the verified release candidate
+        if: startsWith(inputs.action, 'release-')
+        env:
+          RELEASE_SHA: ${{ steps.release_source.outputs.release_sha }}
+          REQUESTED_SHA: ${{ github.sha }}
+        run: |
+          bundle="target/caffold-server/release-candidate.bundle"
+          if [[ "$(git rev-parse HEAD)" != "${RELEASE_SHA}" ]]; then
+            echo "Verified source changed before bundling." >&2
+            exit 1
+          fi
+          git bundle create "${bundle}" HEAD ^"${REQUESTED_SHA}"
+          git bundle verify "${bundle}"
+          bundle_sha="$(git bundle list-heads "${bundle}" | awk '$2 == "HEAD" { print $1 }')"
+          if [[ "${bundle_sha}" != "${RELEASE_SHA}" ]]; then
+            echo "Candidate bundle contains ${bundle_sha:-no HEAD}, not ${RELEASE_SHA}." >&2
+            exit 1
+          fi
 
       - name: Upload the verified macOS artifact
         uses: actions/upload-artifact@v7
@@ -231,10 +220,99 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Upload the verified release candidate
+        if: startsWith(inputs.action, 'release-')
+        uses: actions/upload-artifact@v7
+        with:
+          name: caffold-release-candidate-v${{ steps.release_metadata.outputs.version }}
+          path: target/caffold-server/release-candidate.bundle
+          if-no-files-found: error
+          retention-days: 7
+
+  commit_release:
+    name: Push verified release commit
+    needs: macos
+    if: always() && needs.macos.result == 'success' && startsWith(inputs.action, 'release-')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      RELEASE_SHA: ${{ needs.macos.outputs.release_sha }}
+      RELEASE_VERSION: ${{ needs.macos.outputs.version }}
+      REQUESTED_SHA: ${{ github.sha }}
+
+    steps:
+      - name: Check out the requested source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          ref: ${{ github.sha }}
+
+      - name: Download the verified release candidate
+        uses: actions/download-artifact@v8
+        with:
+          name: caffold-release-candidate-v${{ needs.macos.outputs.version }}
+          path: target/caffold-server
+
+      - name: Verify and push the release candidate
+        run: |
+          bundle="target/caffold-server/release-candidate.bundle"
+          candidate_ref="refs/remotes/caffold/release-candidate"
+          test -f "${bundle}"
+          git bundle verify "${bundle}"
+          bundle_sha="$(git bundle list-heads "${bundle}" | awk '$2 == "HEAD" { print $1 }')"
+          if [[ "${bundle_sha}" != "${RELEASE_SHA}" ]]; then
+            echo "Candidate bundle contains ${bundle_sha:-no HEAD}, not ${RELEASE_SHA}." >&2
+            exit 1
+          fi
+          git fetch "${bundle}" "HEAD:${candidate_ref}"
+          if [[ "$(git rev-parse "${candidate_ref}")" != "${RELEASE_SHA}" ]]; then
+            echo "Fetched candidate does not match ${RELEASE_SHA}." >&2
+            exit 1
+          fi
+          if [[ "$(git rev-parse "${RELEASE_SHA}^")" != "${REQUESTED_SHA}" ]]; then
+            echo "Release candidate is not a direct child of ${REQUESTED_SHA}." >&2
+            exit 1
+          fi
+          if [[ "$(git show -s --format=%s "${RELEASE_SHA}")" != "Release v${RELEASE_VERSION}" ]]; then
+            echo "Release candidate has an unexpected commit subject." >&2
+            exit 1
+          fi
+          changed_files="$(git diff --name-only "${REQUESTED_SHA}..${RELEASE_SHA}" | LC_ALL=C sort)"
+          expected_files="$(printf '%s\n' Cargo.lock Cargo.toml package.json | LC_ALL=C sort)"
+          if [[ "${changed_files}" != "${expected_files}" ]]; then
+            echo "Release candidate changed unexpected files:" >&2
+            printf '%s\n' "${changed_files}" >&2
+            exit 1
+          fi
+          git diff --check "${REQUESTED_SHA}..${RELEASE_SHA}"
+          git fetch origin main
+          if [[ "$(git rev-parse origin/main)" != "${REQUESTED_SHA}" ]]; then
+            echo "main changed after verification; run the release again." >&2
+            exit 1
+          fi
+          git push origin "${RELEASE_SHA}:refs/heads/main"
+          remote_sha="$(git ls-remote origin refs/heads/main | awk '{ print $1 }')"
+          if [[ "${remote_sha}" != "${RELEASE_SHA}" ]]; then
+            echo "main points to ${remote_sha:-nothing}, not ${RELEASE_SHA}." >&2
+            exit 1
+          fi
+
   publish_release:
     name: Publish GitHub Release
-    needs: macos
-    if: always() && needs.macos.result == 'success' && inputs.action != 'dry-run'
+    needs:
+      - macos
+      - commit_release
+    if: >-
+      always() &&
+      needs.macos.result == 'success' &&
+      inputs.action != 'dry-run' &&
+      (
+        (startsWith(inputs.action, 'release-') && needs.commit_release.result == 'success') ||
+        (inputs.action == 'resume' && needs.commit_release.result == 'skipped')
+      )
     runs-on: macos-14
     timeout-minutes: 15
     permissions:
