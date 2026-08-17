@@ -78,6 +78,16 @@ trust. Direct public-internet deployment is outside the current supported
 boundary. Supporting it requires application authentication, authorization,
 and audit controls and remains [planned product work](../product/roadmap.md).
 
+The backend is the only Tailscale integration owner. It derives status from the
+local CLI and accepts only fixed commands for Caffold's localhost target on
+private HTTPS port 443. It refuses a foreign mapping instead of replacing it.
+Status and the private Tailnet URL are readable through the tailnet, but Serve
+mutations require a loopback Host and, for browsers, the matching Origin.
+The read-only QR resource accepts only a bounded canonical `https://*.ts.net/`
+address and returns a fixed SVG image; it cannot change Serve state or encode an
+arbitrary payload. Funnel, arbitrary targets, ACLs, and account administration
+are not exposed.
+
 ## Voice Input
 
 - Model installation is an explicit first-use action and uses a pinned URL,

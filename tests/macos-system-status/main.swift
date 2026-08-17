@@ -31,6 +31,28 @@ private func require(_ condition: Bool, _ message: String) throws {
     guard condition else { throw TestFailure(description: message) }
 }
 
+private func requestBody(_ request: URLRequest) throws -> Data {
+    if let body = request.httpBody {
+        return body
+    }
+    guard let stream = request.httpBodyStream else {
+        throw TestFailure(description: "request body is missing")
+    }
+    stream.open()
+    defer { stream.close() }
+    var data = Data()
+    var buffer = [UInt8](repeating: 0, count: 1_024)
+    while stream.hasBytesAvailable {
+        let count = stream.read(&buffer, maxLength: buffer.count)
+        guard count >= 0 else {
+            throw stream.streamError ?? TestFailure(description: "request body could not be read")
+        }
+        if count == 0 { break }
+        data.append(buffer, count: count)
+    }
+    return data
+}
+
 private func voiceResponse(
     supported: Bool = true,
     installed: Bool = false,
@@ -68,6 +90,59 @@ private func awaitIntegrationStatus(
         throw TestFailure(description: "integration status probe timed out")
     }
     return result
+}
+
+private func awaitTailscaleStatus(
+    _ start: (@escaping (TailscaleStatus) -> Void) -> Void
+) throws -> TailscaleStatus {
+    var result: TailscaleStatus?
+    start { status in
+        result = status
+    }
+    let deadline = Date().addingTimeInterval(2)
+    while result == nil, Date() < deadline {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    guard let result else {
+        throw TestFailure(description: "Tailscale status request timed out")
+    }
+    return result
+}
+
+private func awaitTailscaleUpdate(
+    _ start: (@escaping (Result<TailscaleStatus, Error>) -> Void) -> Void
+) throws -> TailscaleStatus {
+    var result: Result<TailscaleStatus, Error>?
+    start { update in
+        result = update
+    }
+    let deadline = Date().addingTimeInterval(2)
+    while result == nil, Date() < deadline {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    guard let result else {
+        throw TestFailure(description: "Tailscale Serve update timed out")
+    }
+    return try result.get()
+}
+
+private func tailscaleFixture(
+    state: String,
+    canManage: Bool = true,
+    tailnetURL: String? = nil
+) -> Data {
+    let url = tailnetURL.map { "\"\($0)\"" } ?? "null"
+    return Data(
+        """
+        {
+          "state": "\(state)",
+          "reasonCode": "fixtureReason",
+          "diagnosticMessage": "Fixture diagnostic.",
+          "tailnetUrl": \(url),
+          "canManage": \(canManage)
+        }
+        """.utf8
+    )
 }
 
 private func probeCodexFixture(
@@ -130,6 +205,146 @@ private func runTests() throws {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [MockURLProtocol.self]
     let session = URLSession(configuration: configuration)
+
+    let tailscaleStatusURL = URL(string: "http://127.0.0.1:5178/api/tailscale/status")!
+    let tailscaleServeURL = URL(string: "http://127.0.0.1:5178/api/tailscale/serve")!
+    let canonicalTailscaleStates: [(String, String, Bool)] = [
+        ("notInstalled", "Tailscale · Not installed", false),
+        ("disconnected", "Tailscale · Disconnected", false),
+        ("serveOff", "Tailscale · Connected · Serve off", true),
+        ("configuring", "Tailscale · Configuring Serve...", false),
+        ("disabling", "Tailscale · Turning Serve off...", false),
+        ("unavailable", "Tailscale · Unavailable", false),
+        ("failed", "Tailscale · Failed", false),
+    ]
+    for (state, expectedTitle, expectedCanToggle) in canonicalTailscaleStates {
+        MockURLProtocol.handler = { request in
+            try require(
+                request.url == tailscaleStatusURL,
+                "the menu must probe the server-owned Tailscale status endpoint"
+            )
+            let response = HTTPURLResponse(
+                url: tailscaleStatusURL,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, tailscaleFixture(state: state))
+        }
+        let status = try awaitTailscaleStatus { completion in
+            probeTailscaleStatus(
+                url: tailscaleStatusURL,
+                session: session,
+                completion: completion
+            )
+        }
+        try require(status.title == expectedTitle, "\(state) must keep its compact menu title")
+        try require(
+            status.canToggleServe == expectedCanToggle,
+            "\(state) must keep its canonical menu action availability"
+        )
+    }
+
+    let tailnetURL = "https://caffold.example.ts.net/"
+    MockURLProtocol.handler = { request in
+        let response = HTTPURLResponse(
+            url: tailscaleStatusURL,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        return (
+            response,
+            tailscaleFixture(state: "ready", tailnetURL: tailnetURL)
+        )
+    }
+    let readyTailscale = try awaitTailscaleStatus { completion in
+        probeTailscaleStatus(url: tailscaleStatusURL, session: session, completion: completion)
+    }
+    try require(readyTailscale.serveEnabled, "ready must turn the compact menu action off")
+    try require(readyTailscale.canToggleServe, "a local ready response must allow disabling")
+    try require(
+        readyTailscale.tailnetURL?.absoluteString == tailnetURL,
+        "the native menu must use the canonical tailnet URL"
+    )
+
+    MockURLProtocol.handler = { request in
+        try require(request.url == tailscaleServeURL, "Serve must use the shared server endpoint")
+        try require(request.httpMethod == "PUT", "Serve changes must use PUT")
+        try require(
+            request.value(forHTTPHeaderField: "Content-Type") == "application/json",
+            "Serve changes must use JSON"
+        )
+        let body = try JSONSerialization.jsonObject(with: requestBody(request))
+        let enabled = (body as? [String: Bool])?["enabled"]
+        try require(enabled == true, "the native toggle must request only the enabled flag")
+        let response = HTTPURLResponse(
+            url: tailscaleServeURL,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        return (
+            response,
+            tailscaleFixture(state: "ready", tailnetURL: tailnetURL)
+        )
+    }
+    let enabledTailscale = try awaitTailscaleUpdate { completion in
+        updateTailscaleServe(
+            url: tailscaleServeURL,
+            enabled: true,
+            session: session,
+            completion: completion
+        )
+    }
+    try require(
+        enabledTailscale.tailnetURL?.absoluteString == tailnetURL,
+        "the native action must consume the canonical update response"
+    )
+
+    MockURLProtocol.handler = { request in
+        try require(request.url == tailscaleServeURL, "Serve off must use the shared endpoint")
+        let body = try JSONSerialization.jsonObject(with: requestBody(request))
+        let enabled = (body as? [String: Bool])?["enabled"]
+        try require(enabled == false, "the native toggle must request the disabled state")
+        let response = HTTPURLResponse(
+            url: tailscaleServeURL,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        return (response, tailscaleFixture(state: "serveOff"))
+    }
+    let disabledTailscale = try awaitTailscaleUpdate { completion in
+        updateTailscaleServe(
+            url: tailscaleServeURL,
+            enabled: false,
+            session: session,
+            completion: completion
+        )
+    }
+    try require(
+        disabledTailscale.state == .serveOff,
+        "the native menu must consume the canonical disabled response"
+    )
+
+    MockURLProtocol.handler = { request in
+        let response = HTTPURLResponse(
+            url: tailscaleStatusURL,
+            statusCode: 503,
+            httpVersion: nil,
+            headerFields: nil
+        )!
+        return (response, Data())
+    }
+    let unavailableTailscale = try awaitTailscaleStatus { completion in
+        probeTailscaleStatus(url: tailscaleStatusURL, session: session, completion: completion)
+    }
+    try require(
+        unavailableTailscale == .serverUnavailable,
+        "server failures must not be classified by the native wrapper"
+    )
+
     let initialCodex = try probeCodexFixture(
         codexFixture(
             state: "ready",

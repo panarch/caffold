@@ -30,6 +30,17 @@ export async function getVoiceStatus() {
   return requestJson("/api/voice/status");
 }
 
+export async function getTailscaleStatus() {
+  return requestJson("/api/tailscale/status");
+}
+
+export async function setTailscaleServe(enabled) {
+  return requestJson("/api/tailscale/serve", {}, {
+    method: "PUT",
+    body: { enabled },
+  });
+}
+
 export async function getPushConfig() {
   return requestJson("/api/push/config");
 }

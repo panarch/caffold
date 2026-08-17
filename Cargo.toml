@@ -17,6 +17,7 @@ hound = "3.5.1"
 notify = "8.2.0"
 percent-encoding = "2.3.2"
 pulldown-cmark = { version = "0.13.4", default-features = false }
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 reqwest = { version = "0.12.23", default-features = false, features = ["rustls-tls", "stream"] }
 semver = "1.0.28"
 serde = { version = "1.0.219", features = ["derive"] }

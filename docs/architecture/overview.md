@@ -17,6 +17,7 @@ flowchart TD
     AppServer["Persistent Codex app-server daemon"]
     Git["git worktree"]
     Whisper["Host-local Whisper model"]
+    Tailscale["Tailscale CLI / Serve"]
 
     PWA -->|"HTTP / SSE"| Backend
     PWA -->|"16 kHz mono PCM WAV"| Backend
@@ -25,6 +26,7 @@ flowchart TD
     Proxy --> AppServer
     Backend --> Git
     Backend --> Whisper
+    Backend -->|"fixed status and Serve commands"| Tailscale
     Backend -->|"encrypted Web Push"| PushService
     PushService -->|"Push API delivery"| PWA
     AppServer -->|"agent events / approvals / thread data"| Proxy
@@ -63,6 +65,9 @@ The backend owns:
 - JSON-RPC adapter
 - git status, diff, log, and file APIs
 - host-local Whisper model installation, verification, and transcription
+- canonical Tailscale status classification, private URL derivation,
+  constrained Caffold Serve operations, and SVG QR encoding limited to a
+  canonical private Tailnet URL
 - browser Push subscription persistence and isolated outbound delivery
 - shared server-backed product settings and capability APIs consumed by
   browser and platform clients
@@ -88,15 +93,19 @@ src/app/tasks/sync.rs          rollout invalidation scheduling and retry timing
 src/app/tasks/projection.rs    pure thread/turn to browser task projection
 src/app/tasks/events.rs        event normalization, merge, cache, and publication
 src/app/voice.rs               model lifecycle, WAV validation, and local transcription
+src/app/tailscale.rs           Tailscale HTTP routes, service orchestration, and fixed Serve control
+src/app/tailscale/status.rs    canonical status model, Serve classification, and private URL validation
+src/app/tailscale/cli.rs       bounded Tailscale CLI discovery and process execution
 ```
 
-`src/app.rs` does not own feature state. It constructs the Shell, Workspace, and
-Tasks applications and merges their completed routers. Each HTTP owner keeps
-its route state and DTOs private. Tasks lower modules receive only the
-capabilities they use; they do not depend on Axum extractors or the full Tasks
-route state. Within Tasks, Projection and Events are the stateless or
-bounded-memory base, Runtime owns app-server transport, Sync owns scheduling,
-Detail applies canonical reads, and Routes adapts those owners to HTTP.
+`src/app.rs` does not own feature state. It constructs the Shell, Workspace,
+Tasks, Voice, and Tailscale applications and merges their completed routers.
+Each HTTP owner keeps its route state and DTOs private. Tasks lower modules
+receive only the capabilities they use; they do not depend on Axum extractors
+or the full Tasks route state. Within Tasks, Projection and Events are the
+stateless or bounded-memory base, Runtime owns app-server transport, Sync owns
+scheduling, Detail applies canonical reads, and Routes adapts those owners to
+HTTP.
 
 ### Codex App Server
 
@@ -128,6 +137,8 @@ lifetime; Tailscale is transport for remote browsers, not part of inference.
   composer selection from its last successfully started turn, and
   Caffold-managed worktree ownership and recovery
 - git worktree: actual file and code changes
+- Tailscale CLI and Serve configuration: live connection, mapping, and private
+  Tailnet address state
 - browser/PWA: presentation and controller state, plus the browser-owned Web
   Push subscription and local installation identity
 

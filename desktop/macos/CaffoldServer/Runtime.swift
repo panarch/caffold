@@ -140,7 +140,6 @@ func caffoldExecutable(named name: String) -> URL? {
     }
 
     let appCandidates = [
-        "tailscale": "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
         "codex": "/Applications/Codex.app/Contents/Resources/codex",
     ]
     guard let path = appCandidates[name] else { return nil }

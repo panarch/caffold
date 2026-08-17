@@ -75,7 +75,7 @@ Missing optional dependencies do not prevent the server from starting. The menu 
 ## Runtime behavior
 
 - Caffold listens on `http://127.0.0.1:5178`.
-- When Tailscale is available, the app configures tailnet-only Tailscale Serve on HTTPS port 443.
+- When requested, the Rust server capability configures tailnet-only Tailscale Serve on HTTPS port 443 for its own localhost target.
 - Startup keeps the server in the menu bar without opening the default browser.
 - `Open Caffold` in the menu opens the browser; reopening the running app does the same.
 - The menu bar icon also configures the server, exposes logs, retries Tailscale Serve, and quits the server.
@@ -100,16 +100,14 @@ Missing optional dependencies do not prevent the server from starting. The menu 
 `Server Settings...` controls the installed PWA name, bind mode, port, and automatic Tailscale Serve startup. Use a distinct name before installing the PWA to distinguish multiple Caffold servers; existing installations may need to be reinstalled after a name change. Local-only binding is the default. LAN binding is an explicit opt-in and is not required for Tailscale Serve.
 
 The menu reports stable status rows for Codex, Git, GitHub CLI, Whisper model
-readiness, Tailscale connectivity, and the Caffold Serve URL. Codex uses the
-backend's canonical compact summary, and its current recovery action opens the
-shared Codex Settings page. Here, avoiding duplication means that Swift does
-not own separate setup classification, version heuristics, storage, or a
-complete client-specific repair workflow. It does not forbid native menu
-controls: Swift and the PWA may both expose a useful setting or action when
-both call the same backend capability. Adding a complete browser setting does
-not by itself require removing its compact native entry point. Missing
-integrations disable only their related features; the file browser and server
-remain available.
+readiness, Tailscale connectivity, and the Caffold Serve URL. Codex and
+Tailscale both use backend-owned status. Swift does not locate the Tailscale
+CLI, classify its output, derive the Tailnet URL, or issue Serve commands; it
+calls the same fixed server capability used by **Settings → Remote Access**.
+The native automatic-start preference and compact on/off and open actions
+remain wrapper presentation. Tailnet-origin browser controls are read-only,
+while the native client calls the local API. Missing integrations disable only
+their related features; the file browser and server remain available.
 
 This same boundary applies as settings currently available only in the wrapper
 gain browser surfaces. Shared product settings and operations belong behind the

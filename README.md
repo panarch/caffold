@@ -49,6 +49,10 @@ Tailscale Serve provides a private HTTPS address. Open that address in the
 device's browser and, if useful, install it with the browser's **Install App**
 or **Add to Home Screen** action.
 
+Set up and copy that address from **Settings → Remote Access** on the host Mac.
+The ready page also provides a QR code for handoff to another permitted device.
+Tailscale remains optional for localhost use.
+
 Each PWA is a window onto the same Mac, not another copy of the server. Tasks,
 Codex execution, repositories, and local data remain on the host. Closing a
 browser or PWA does not end an active Codex turn, but the Mac must stay awake,

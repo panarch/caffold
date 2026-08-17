@@ -393,6 +393,7 @@ test("gives every Settings route one page title and landmark hierarchy", { tag: 
     ["/settings/appearance", "Appearance", "caffold-settings-appearance-page"],
     ["/settings/files", "Files", "caffold-settings-files-page"],
     ["/settings/notifications", "Notifications", "caffold-settings-notifications-page"],
+    ["/settings/remote-access", "Remote Access", "caffold-settings-remote-access-page"],
     ["/settings/codex", "Codex", "caffold-settings-codex-page"],
     ["/settings/about", "About Caffold", "caffold-settings-about-page"],
   ];

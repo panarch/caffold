@@ -80,8 +80,21 @@ own Conversation.
 ## Private access with Tailscale
 
 Install Tailscale on the Mac and connect it to the tailnet used by the reviewing
-device. Choose `Turn On Tailscale Serve` from the Caffold menu. The menu reports
-the tailnet-only HTTPS URL when Serve is ready.
+device. Open local Caffold, then choose **Settings → Remote Access**. The page
+distinguishes installation, connection, Serve, transition, conflict, and failure
+states. When Tailscale is connected, choose **Enable** to configure only
+Caffold's tailnet-only Serve mapping.
+
+When access is ready, the page reports the private HTTPS Tailnet URL and offers
+**Copy link**, **Open link**, and a QR code for that exact address. Install
+Tailscale on the other device and sign in to an account permitted on the same
+tailnet before opening or scanning it. A browser already using the Tailnet URL
+can read status and the address, but Serve controls remain available only from
+localhost on the host Mac.
+
+The macOS menu retains its compact status, on/off action, and ready URL. Both
+the menu and browser consume the same server-owned Tailscale status and Serve
+operation rather than probing or configuring Tailscale independently.
 
 `Server Settings...` can start Tailscale Serve automatically. Caffold remains
 bound to localhost and uses Tailscale Serve for the private HTTPS path; LAN

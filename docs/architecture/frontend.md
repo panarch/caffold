@@ -411,6 +411,32 @@ runtime-restart request snapshots, repair guidance, diagnostics, and intents
 for Refresh or restart. The workspace Codex status lifecycle remains active
 across Tasks and Settings route changes and owns the HTTP request generations.
 
+Remote Access owns a route-scoped Tailscale request lifecycle. Server responses
+are the only writers of canonical status, `canManage`, diagnostics, and the
+Tailnet URL. The browser retains the last canonical status while tracking its
+request phase, retry intent, and transport error separately. During a Serve
+mutation it starts the constrained PUT and polls status concurrently so only a
+server-published configuring or disabling state appears as domain progress.
+
+The lifecycle nodes and complete allowed edges are:
+
+- `inactive -> refreshing`;
+- `idle -> refreshing | mutating | inactive`;
+- `refreshing -> idle | polling | inactive`;
+- `mutating -> idle | polling | inactive`; and
+- `polling -> refreshing | inactive`.
+
+`refreshing` owns one status GET, `mutating` owns one Serve PUT plus periodic
+status polling, and `polling` owns the timer for canonical reconciliation.
+Entering `inactive` invalidates the request generation and clears its timer.
+Transport failure preserves the last canonical status and publishes a separate
+retryable request error instead of inventing a Tailscale state or management
+capability. That retained snapshot remains visible but cannot authorize a Serve
+control until a later server response makes it current again. The page retains
+one DOM and renders the ready URL into text and link actions. Its QR image uses
+the same canonical URL as input to the server's constrained SVG resource; the
+browser owns when and where that derived image is presented.
+
 ## Physical hierarchy
 
 Relevant source ownership follows the routed hierarchy:
