@@ -164,8 +164,14 @@ class CaffoldActiveTaskList extends HTMLElement {
     if (!threadId) {
       return;
     }
+    const currentTask = this.taskFor(threadId);
+    const canonicalTask = currentTask?.recovery && !task?.recovery
+      ? currentTask
+      : task;
     const nextTask =
-      threadId === this.selectedThreadId ? { ...task, unseen: false } : task;
+      threadId === this.selectedThreadId
+        ? { ...canonicalTask, unseen: false }
+        : canonicalTask;
     const listKey = this.replaceTaskInPlace(nextTask);
     if (!listKey) {
       return;
@@ -1246,12 +1252,21 @@ class CaffoldActiveTaskList extends HTMLElement {
 
   listState() {
     this.ensureState();
+    const selectedRecovery = this.recoveryFor(this.selectedThreadId);
     return {
       count: this.allTasks().length,
       loaded: this.taskListLoaded,
       loading: this.taskListLoading || !this.initialRequestSettled,
       error: this.taskListError?.message ?? "",
       selectedSection: this.sectionFor(this.selectedSectionId),
+      selectedRecovery: selectedRecovery
+        ? {
+            threadId: taskThreadId(selectedRecovery),
+            title: selectedRecovery.title,
+            reason: selectedRecovery.recovery.reason,
+            actions: selectedRecovery.recovery.actions,
+          }
+        : null,
     };
   }
 

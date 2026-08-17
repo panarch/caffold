@@ -85,6 +85,26 @@ async function openRecovery(page, recovery) {
   await expect(page.locator("caffold-task-recovery")).toBeVisible();
 }
 
+async function emitTaskListEvent(page, type, payload) {
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__recoveryEventSources.some((source) =>
+          source.url.startsWith("/api/tasks/stream") && source.readyState !== 2
+        )
+      )
+    )
+    .toBe(true);
+  await page.evaluate(({ eventType, eventPayload }) => {
+    const source = [...window.__recoveryEventSources]
+      .reverse()
+      .find((candidate) =>
+        candidate.url.startsWith("/api/tasks/stream") && candidate.readyState !== 2
+      );
+    source.emit(eventType, eventPayload);
+  }, { eventType: type, eventPayload: payload });
+}
+
 test("opens archived-in-Codex recovery without opening ordinary Task detail and restores it", { tag: "@all-viewports" }, async ({
   page,
 }) => {
@@ -271,7 +291,7 @@ test("recheck uses the explicit recovery endpoint without rewriting the cached l
   ).toHaveAttribute("data-task-recovery-reason", "codexArchived");
 });
 
-test("keeps a readable Section-placement recovery on ordinary Task detail", { tag: "@all-viewports" }, async ({
+test("opens a readable Section-placement recovery on Recovery detail", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const threadId = "thread_recovery_readable";
@@ -279,7 +299,7 @@ test("keeps a readable Section-placement recovery on ordinary Task detail", { ta
     ...task(threadId, "Readable placement recovery"),
     recovery: {
       reason: "sectionPlacementPending",
-      actions: ["recheck"],
+      actions: ["restoreToActive", "recheck"],
     },
   };
   await installRecoveryList(page, readable);
@@ -290,13 +310,108 @@ test("keeps a readable Section-placement recovery on ordinary Task detail", { ta
   });
 
   await page.goto("/tasks");
-  await page.locator(`.task-row[data-thread-id="${threadId}"]`).click();
+  const row = page.locator(`.task-row[data-thread-id="${threadId}"]`);
+  await expect(row.locator(".task-row-recovery-icon")).toBeVisible();
+  await row.click();
 
-  await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}$`));
-  await emitTaskDetailBootstrap(page, taskDetail(readable));
-  await expect(page.locator("caffold-task-recovery")).toBeHidden();
+  await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}/recovery$`));
   await expect(
-    page.getByRole("heading", { name: "Readable placement recovery" }),
+    page.getByRole("heading", { name: "Section placement is pending" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Restore to Active/ }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /Recheck/ })).toBeVisible();
   expect(detailReads).toBe(0);
+});
+
+test("redirects an ordinary Task deep link when the DB projection requires Recovery", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const threadId = "thread_recovery_deep_link";
+  const recovery = recoveryTask(
+    threadId,
+    "Placement recovery opened from a stale link",
+    "sectionPlacementPending",
+    ["restoreToActive", "recheck"],
+  );
+  await installRecoveryList(page, recovery);
+
+  await page.goto(`/tasks/${threadId}`);
+
+  await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}/recovery$`));
+  await expect(page.locator("caffold-task-detail")).toBeHidden();
+  await expect(page.locator("caffold-task-recovery")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Section placement is pending" }),
+  ).toBeVisible();
+});
+
+test("keeps the DB Recovery projection authoritative over a runtime snapshot", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const threadId = "thread_recovery_runtime_snapshot";
+  const recovery = recoveryTask(
+    threadId,
+    "Runtime-readable placement recovery",
+    "sectionPlacementPending",
+    ["restoreToActive", "recheck"],
+  );
+  await installRecoveryList(page, recovery);
+
+  await page.goto("/tasks");
+  await emitTaskListEvent(page, "task-list-snapshot", {
+    tasks: [task(threadId, recovery.title)],
+  });
+
+  const row = page.locator(`.task-row[data-thread-id="${threadId}"]`);
+  await expect(row.locator(".task-row-recovery-icon")).toBeVisible();
+  await expect(row).toHaveAttribute(
+    "data-task-recovery-reason",
+    "sectionPlacementPending",
+  );
+  await row.click();
+  await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}/recovery$`));
+  await expect(
+    page.getByRole("heading", { name: "Section placement is pending" }),
+  ).toBeVisible();
+});
+
+test("reconciles an open ordinary Task detail to a later DB Recovery projection", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const threadId = "thread_recovery_selected_transition";
+  const ordinary = task(threadId, "Selected Task awaiting placement recovery");
+  const recovery = recoveryTask(
+    threadId,
+    ordinary.title,
+    "sectionPlacementPending",
+    ["restoreToActive", "recheck"],
+  );
+  const state = {
+    projection: activeTaskProjection([ordinary]),
+  };
+  await installRecoveryList(page, recovery, state);
+
+  await page.goto("/tasks");
+  const row = page.locator(`.task-row[data-thread-id="${threadId}"]`);
+  await row.click();
+  await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}$`));
+  await emitTaskDetailBootstrap(page, taskDetail(ordinary));
+  await expect(page.locator("caffold-task-detail")).toBeVisible();
+
+  state.projection = activeTaskProjection([], [recovery]);
+  await emitTaskListEvent(page, "task-list-refresh", {});
+
+  await expect(row.locator(".task-row-recovery-icon")).toHaveCount(1);
+  await expect(row).toHaveAttribute(
+    "data-task-recovery-reason",
+    "sectionPlacementPending",
+  );
+  await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}/recovery$`));
+  await expect(page.locator("caffold-task-detail")).toBeHidden();
+  await expect(page.locator("caffold-task-recovery")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Restore to Active/ }),
+  ).toBeVisible();
 });

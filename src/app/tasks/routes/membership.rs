@@ -1276,6 +1276,84 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn recovery_restore_places_an_active_unsectioned_task_in_the_existing_section() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-recovery-active-existing-section";
+        let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+        let client = CodexThreadClient::mock(active_recovery_location_responses(vec![thread]));
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        state
+            .task_store
+            .claim(ManagedThread::new(thread_id, Some(1), None, None), 1)
+            .unwrap();
+        seed_section(&state, "section-root", "");
+
+        let restored = task_recovery_restore(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .expect("active unsectioned recovery restore succeeds")
+            .0;
+
+        assert_eq!(restored.active_top_placement.section.id, "section-root");
+        let (sections, threads) = cached_projection_rows(&state);
+        assert_eq!(sections.len(), 1);
+        assert_eq!(threads.len(), 1);
+        assert_eq!(threads[0].section_id.as_deref(), Some("section-root"));
+        assert_eq!(threads[0].position_in_section, Some(0));
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/list"]
+        );
+    }
+
+    #[tokio::test]
+    async fn recovery_restore_creates_a_section_for_an_active_unsectioned_task() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-recovery-active-new-section";
+        let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+        let client = CodexThreadClient::mock(active_recovery_location_responses(vec![thread]));
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        state
+            .task_store
+            .claim(ManagedThread::new(thread_id, Some(1), None, None), 1)
+            .unwrap();
+
+        let restored = task_recovery_restore(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .expect("active unsectioned recovery restore succeeds")
+            .0;
+
+        let (sections, threads) = cached_projection_rows(&state);
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].logical_path, "");
+        assert_eq!(
+            sections[0].section_id,
+            restored.active_top_placement.section.id
+        );
+        assert_eq!(threads.len(), 1);
+        assert_eq!(
+            threads[0].section_id.as_deref(),
+            Some(restored.active_top_placement.section.id.as_str())
+        );
+        assert_eq!(threads[0].position_in_section, Some(0));
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/list"]
+        );
+    }
+
+    #[tokio::test]
     async fn explicit_recovery_recheck_classifies_codex_archived_without_mutating_the_projection() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-recheck-archived";

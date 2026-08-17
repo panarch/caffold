@@ -423,6 +423,7 @@ class CaffoldTaskNavigator extends HTMLElement {
       loading: active.loading || archived.loading,
       error: active.error || archived.error,
       selectedSection: active.selectedSection ?? null,
+      selectedRecovery: active.selectedRecovery ?? null,
     };
   }
 

@@ -350,6 +350,14 @@ class CaffoldTasksPage extends HTMLElement {
     }
     if (route?.threadId) {
       this.taskNew()?.deactivate();
+      const recovery = this.taskNavigator()?.recoveryFor(route.threadId);
+      if (recovery) {
+        this.requestRoute(
+          { kind: "tasks", threadId: route.threadId, recovery: true },
+          { replace: true },
+        );
+        return null;
+      }
       const result = await this.taskDetail()?.open(route.threadId, {
         preserveLoadedTask: prepared.preserveLoadedTask,
         route,
@@ -488,6 +496,7 @@ class CaffoldTasksPage extends HTMLElement {
   }
 
   syncTaskListState(state = {}) {
+    this.reconcileSelectedTask(state);
     this.reconcileSelectedSection(state);
     const count = Number(state.count ?? 0);
     const nextState = state.loaded
@@ -504,6 +513,28 @@ class CaffoldTasksPage extends HTMLElement {
     }
     this.taskListState = nextState;
     this.render();
+  }
+
+  reconcileSelectedTask(state = {}) {
+    if (!this.selectedThreadId || !state.loaded) {
+      return;
+    }
+    const recovery = this.taskNavigator()?.recoveryFor(this.selectedThreadId);
+    if (!recovery) {
+      return;
+    }
+    if (this.view === "recovery") {
+      if (!sameRecoveryPresentation(this.taskRecovery()?.recovery, recovery)) {
+        this.taskRecovery()?.updateRecovery(recovery);
+      }
+      return;
+    }
+    if (this.view === "detail") {
+      this.requestRoute(
+        { kind: "tasks", threadId: this.selectedThreadId, recovery: true },
+        { replace: true },
+      );
+    }
   }
 
   reconcileSelectedSection(state = {}) {
@@ -648,6 +679,18 @@ function taskRoutePresentation(route) {
     return target === "files" || target === "file" ? "code" : "reading";
   }
   return target === "review" || target === "review-file" ? "code" : "reading";
+}
+
+function sameRecoveryPresentation(left, right) {
+  const leftActions = left?.recovery?.actions ?? [];
+  const rightActions = right?.recovery?.actions ?? [];
+  return (
+    taskDetailThreadId({ task: left }) === taskDetailThreadId({ task: right }) &&
+    left?.title === right?.title &&
+    left?.recovery?.reason === right?.recovery?.reason &&
+    leftActions.length === rightActions.length &&
+    leftActions.every((action, index) => action === rightActions[index])
+  );
 }
 
 if (!customElements.get("caffold-tasks-page")) {
