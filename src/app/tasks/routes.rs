@@ -486,6 +486,26 @@ pub(super) mod test_support {
         ]
     }
 
+    pub(super) fn active_recovery_location_responses(
+        active_threads: Vec<JsonValue>,
+    ) -> Vec<crate::codex_app_server::MockCodexResponse> {
+        vec![crate::codex_app_server::MockCodexResponse::ok_for(
+            "thread/list",
+            json!({
+                "limit": 100,
+                "sortKey": "recency_at",
+                "sortDirection": "desc",
+                "archived": false,
+                "useStateDbOnly": true,
+            }),
+            json!({
+                "data": active_threads,
+                "nextCursor": null,
+                "backwardsCursor": null,
+            }),
+        )]
+    }
+
     pub(super) fn projected_active_tasks(
         projection: &super::super::active_list::ActiveTaskProjection,
     ) -> Vec<&TaskRecord> {

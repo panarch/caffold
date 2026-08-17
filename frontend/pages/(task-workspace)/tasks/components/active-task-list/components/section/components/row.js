@@ -328,7 +328,7 @@ function renderRow(snapshot, mode) {
   const unseen = Boolean(
     threadId && task?.unseen && threadId !== snapshot.selectedThreadId,
   );
-  const recoveryCopy = task?.recovery && task?.conversationAvailable === false
+  const recoveryCopy = task?.recovery
     ? recoveryReasonCopy(task.recovery.reason)
     : "";
   const meta = recoveryCopy
