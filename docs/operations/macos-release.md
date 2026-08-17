@@ -10,7 +10,7 @@ upgrade; it does not download or replace executable content itself.
 
 `Cargo.toml` is the application version source; `package.json` and the Caffold package entry in `Cargo.lock` must contain the same value. `scripts/bump-release-version.mjs` validates all three values before changing them and supports stable `major`, `minor`, and `patch` increments.
 
-The manual Release workflow creates and pushes a `Release v<version>` commit when a `release-patch`, `release-minor`, or `release-major` action is selected. The bump job may change only `Cargo.toml`, `package.json`, and `Cargo.lock`. Its resulting commit SHA, rather than the workflow dispatch SHA, becomes the source for every build and publication job.
+The manual Release workflow creates a local `Release v<version>` candidate commit when a `release-patch`, `release-minor`, or `release-major` action is selected. The candidate may change only `Cargo.toml`, `package.json`, and `Cargo.lock`. Its resulting commit SHA, rather than the workflow dispatch SHA, becomes the source for every build and publication job. The workflow does not push that commit to `main` until its tests and macOS artifact have passed.
 
 The app bundle uses:
 
@@ -48,23 +48,24 @@ artifact; it does not publish anything.
 `.github/workflows/release.yml` exposes preparation, versioning, publication, and recovery through one manual `Release` workflow. Its required `action` input has five unambiguous choices:
 
 - `dry-run` verifies and packages the currently committed version without repository or public mutation.
-- `release-patch`, `release-minor`, and `release-major` increment the current version, push the version commit, then publish that exact commit.
+- `release-patch`, `release-minor`, and `release-major` increment the current version locally, verify that exact candidate, then push and publish it.
 - `resume` does not change the version. It reconciles the currently committed version with its tag, GitHub Release, and Homebrew Cask after a partial failure.
-
-For a new release action, the version job runs with `contents: write`; checks that the workflow still targets the current `main`; rejects an already-used target tag or Release; changes only the three canonical version files; and pushes the version commit. `dry-run` and `resume` skip this job and retain read-only source handling.
 
 The verification job:
 
 1. can only continue when dispatched from `main`;
-2. checks out the selected commit with complete history so the bundle build number remains meaningful;
+2. checks out the workflow dispatch commit with complete history and verifies that it is still the current `main`;
 3. retains no checkout credentials and has only `contents: read` permission;
-4. verifies source version agreement, release contracts, Rust formatting, tests, and Clippy;
-5. runs the local release dry run on a GitHub-hosted macOS arm64 runner; and
-6. uploads only the versioned zip and SHA-256 file as a seven-day workflow artifact.
+4. for a new release, changes only the three canonical version files, rejects an already-used target tag or Release, and creates the candidate commit locally;
+5. verifies source version agreement, release contracts, browser behavior, macOS application behavior, Rust formatting, locked tests, and locked Clippy against the selected source;
+6. runs the local release dry run on a GitHub-hosted macOS arm64 runner; and
+7. uploads the versioned zip and SHA-256 file, plus a Git bundle containing the verified candidate for a new release, as seven-day workflow artifacts.
+
+After a new release candidate passes verification, a separate job receives `contents: write`, downloads and verifies the candidate bundle, confirms that the candidate is a direct child of the workflow dispatch commit and changes only the three version files, and rechecks that `main` has not moved. Only then does it fast-forward `main` to the exact verified candidate SHA. A failed test, package build, candidate upload, or stale `main` therefore leaves the Caffold repository unchanged. `dry-run` and `resume` skip this source-push job.
 
 With `action: dry-run`, no publication job runs. The artifact is for inspecting the runner-built output and is not a stable distribution URL.
 
-With any `release-*` action or `resume`, two narrower jobs run after verification. `publish_release` receives `contents: write` only for `panarch/caffold`; it creates or reconciles the GitHub Release without receiving the tap token. After that succeeds, `publish_homebrew` uses the `release` environment, keeps only `contents: read` for Caffold, and receives the `HOMEBREW_TAP_TOKEN` environment secret, whose fine-grained access is limited to `panarch/homebrew-tap`. Together they:
+With any `release-*` action or `resume`, two narrower publication jobs run after verification and, for a new release, the verified source push. `publish_release` receives `contents: write` only for `panarch/caffold`; it creates or reconciles the GitHub Release without receiving the tap token. After that succeeds, `publish_homebrew` uses the `release` environment, keeps only `contents: read` for Caffold, and receives the `HOMEBREW_TAP_TOKEN` environment secret, whose fine-grained access is limited to `panarch/homebrew-tap`. Together they:
 
 1. download and recheck the exact artifact produced by the verification job;
 2. create the immutable version tag and GitHub Release, or on `resume` verify the existing tag, download the already-published assets, and revalidate their checksum, release-tag version and build number, bundle, architecture, and signature;
@@ -72,7 +73,7 @@ With any `release-*` action or `resume`, two narrower jobs run after verificatio
 4. create an unpublished local tap commit when the rendered Cask changed, register that exact commit with Homebrew, trust only the generated Caffold Cask, run Homebrew style and strict Cask audit, install the app and bundled CLI, check that quarantine was removed, and uninstall the smoke-test copy; and
 5. push the already-verified tap commit only after the release and Homebrew installation checks pass.
 
-The publish jobs never edit or commit Caffold source. After a GitHub Release exists, its tag and validated assets remain canonical, so a later workflow-fix commit with the same application version can `resume` a failed tap update without replacing the release. Archive verification derives `CFBundleVersion` from the release tag's commit count rather than the later workflow commit. When no release exists yet, an existing version tag must still point to the selected release commit before assets can be published.
+The GitHub Release and Homebrew publication jobs never edit or commit Caffold source. After a GitHub Release exists, its tag and validated assets remain canonical, so a later workflow-fix commit with the same application version can `resume` a failed tap update without replacing the release. Archive verification derives `CFBundleVersion` from the release tag's commit count rather than the later workflow commit. When no release exists yet, an existing version tag must still point to the selected release commit before assets can be published.
 
 `resume` is desired-state reconciliation, not continuation from a stored step number. Completed external state is validated and reused; missing state is created in order. Conflicting tag ownership, invalid or missing canonical assets, or mismatched release metadata stop with an error instead of being overwritten.
 
