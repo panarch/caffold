@@ -5,7 +5,8 @@ use crate::codex_app_server::{
 
 use super::turns::{
     active_turn_id, bound_latest_turns_page, merge_canonical_turns, merge_latest_turns_page,
-    merge_stale_turns_page, sort_turns_desc, turn_is_in_progress, update_active_turn,
+    merge_stale_turns_page, replace_active_turn, sort_turns_desc, turn_is_in_progress,
+    update_active_turn,
 };
 use super::{ThreadSessionLifecycle, ThreadSessionState, now_unix_ms};
 
@@ -33,20 +34,39 @@ fn merge_external_resume_response(
     base_revision: u64,
 ) -> MetadataMergeOutcome {
     apply_thread_settings(state, &response.extra);
-    merge_external_snapshot(
+    merge_external_snapshot_with_active_cwd(
         state,
         response.thread,
         response.initial_turns_page,
         base_revision,
+        Some(response.cwd),
     )
 }
 
 pub(super) fn merge_external_snapshot(
     state: &mut ThreadSessionState,
-    mut incoming_thread: CodexThread,
+    incoming_thread: CodexThread,
     latest_turns: Option<TurnsPage>,
     base_revision: u64,
 ) -> MetadataMergeOutcome {
+    merge_external_snapshot_with_active_cwd(
+        state,
+        incoming_thread,
+        latest_turns,
+        base_revision,
+        None,
+    )
+}
+
+fn merge_external_snapshot_with_active_cwd(
+    state: &mut ThreadSessionState,
+    mut incoming_thread: CodexThread,
+    latest_turns: Option<TurnsPage>,
+    base_revision: u64,
+    resumed_active_turn_cwd: Option<String>,
+) -> MetadataMergeOutcome {
+    let resumed_active_turn_id = active_turn_id(&incoming_thread, latest_turns.as_ref());
+    let active_turn_cwd = incoming_thread.cwd.clone();
     let newer_status = newer_thread_status(state, base_revision);
     let preserve_newer_status = newer_status.is_some();
     let newer_name = newer_thread_name(state, base_revision);
@@ -72,11 +92,13 @@ pub(super) fn merge_external_snapshot(
     let next_active_turn_id = newer_active_turn_id
         .filter(|turn_id| turn_is_in_progress(state, turn_id))
         .or_else(|| active_turn_id(&incoming_thread, state.turns_page.as_ref()));
-    update_active_turn(
-        state,
-        next_active_turn_id,
-        Some(incoming_thread.cwd.clone()),
-    );
+    if let Some(active_turn_cwd) =
+        resumed_active_turn_cwd.filter(|_| next_active_turn_id == resumed_active_turn_id)
+    {
+        replace_active_turn(state, next_active_turn_id, active_turn_cwd);
+    } else {
+        update_active_turn(state, next_active_turn_id, Some(active_turn_cwd));
+    }
     if !matches!(incoming_thread.status, ThreadStatus::Active { .. }) {
         state.runtime_lease = false;
     }
@@ -145,6 +167,7 @@ pub(super) fn apply_resume_response(
         .then(|| state.terminal_candidate_turn_id.clone())
         .flatten();
     apply_thread_settings(state, &response.extra);
+    let active_turn_cwd = response.cwd;
     let thread = response.thread;
     let active_turn_id = active_turn_id(&thread, response.initial_turns_page.as_ref());
     let thread_is_active = matches!(thread.status, ThreadStatus::Active { .. });
@@ -152,7 +175,7 @@ pub(super) fn apply_resume_response(
     state.lifecycle = ThreadSessionLifecycle::Subscribed;
     state.client = Some(client.clone());
     state.generation = generation;
-    update_active_turn(state, active_turn_id.clone(), Some(thread.cwd.clone()));
+    replace_active_turn(state, active_turn_id.clone(), active_turn_cwd);
     state.thread = Some(thread);
     state.pending_thread_status = None;
     if merge_history {
@@ -189,6 +212,7 @@ pub(super) fn apply_stale_refresh_response(
 ) {
     let preserved_terminal_candidate = state.terminal_candidate_turn_id.clone();
     apply_thread_settings(state, &response.extra);
+    let active_turn_cwd = response.cwd;
     let baseline_active_turn_id =
         active_turn_id(&response.thread, response.initial_turns_page.as_ref());
     let newer_status = newer_thread_status(state, base_revision);
@@ -219,7 +243,11 @@ pub(super) fn apply_stale_refresh_response(
         .clone()
         .filter(|turn_id| turn_is_in_progress(state, turn_id))
         .or_else(|| active_turn_id(&thread, state.turns_page.as_ref()));
-    update_active_turn(state, next_active_turn_id.clone(), Some(thread.cwd.clone()));
+    if next_active_turn_id == baseline_active_turn_id {
+        replace_active_turn(state, next_active_turn_id.clone(), active_turn_cwd);
+    } else {
+        update_active_turn(state, next_active_turn_id.clone(), Some(active_turn_cwd));
+    }
     let thread_is_active = matches!(thread.status, ThreadStatus::Active { .. });
 
     state.lifecycle = ThreadSessionLifecycle::Subscribed;
@@ -307,6 +335,59 @@ mod tests {
                 response.initial_turns_page.expect("latest turns page"),
             )
             .await
+    }
+
+    #[tokio::test]
+    async fn subscription_recovers_the_active_turn_runtime_cwd() {
+        let active = ThreadStatus::Active {
+            active_flags: Vec::new(),
+        };
+        let current_turn = turn("turn-managed", TurnStatus::InProgress);
+        let mut response = resume_response(active, vec![current_turn.clone()], vec![current_turn]);
+        response.thread.cwd = "/workspace/source".to_string();
+        response.cwd = "/workspace/managed".to_string();
+        let listed_thread = response.thread.clone();
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::delayed_ok(
+            "thread/resume",
+            response,
+            Duration::from_millis(100),
+        )]);
+        let sessions = CodexThreadSessions::default();
+        sessions.observe_thread_metadata(listed_thread).await;
+
+        let subscribing_sessions = sessions.clone();
+        let subscribing_client = client.clone();
+        let subscription = tokio::spawn(async move {
+            subscribing_sessions
+                .ensure_subscribed(&subscribing_client, 1, "thread-1")
+                .await
+        });
+        wait_for_method_count(&client, "thread/resume", 1).await;
+        sessions
+            .apply_notification(
+                1,
+                &CodexNotification::ItemStarted {
+                    thread_id: "thread-1".to_string(),
+                    turn_id: "turn-managed".to_string(),
+                    item: json!({ "id": "item-replayed", "type": "agentMessage" }),
+                    started_at_ms: 2,
+                },
+            )
+            .await;
+
+        let snapshot = subscription
+            .await
+            .expect("subscription task joins")
+            .expect("resume active managed turn");
+
+        assert_eq!(
+            snapshot.thread.expect("canonical thread").cwd,
+            "/workspace/source"
+        );
+        assert_eq!(
+            snapshot.active_turn_cwd.as_deref(),
+            Some("/workspace/managed")
+        );
     }
 
     #[tokio::test]

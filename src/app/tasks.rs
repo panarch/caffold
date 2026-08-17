@@ -323,6 +323,7 @@ pub(in crate::app::tasks) mod test_support {
                 "updatedAt": 2.0,
                 "turns": []
             },
+            "cwd": cwd.display().to_string(),
             "initialTurnsPage": {
                 "data": [],
                 "nextCursor": null,

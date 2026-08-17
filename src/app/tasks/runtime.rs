@@ -267,6 +267,7 @@ mod tests {
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             json!({
+                "cwd": "Workspace/rust/codger",
                 "thread": {
                     "id": "thread_restart",
                     "preview": "Restart recovery",
