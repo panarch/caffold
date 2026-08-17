@@ -56,8 +56,12 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         localURL.appendingPathComponent("api/voice/status")
     }
 
-    private var tailscaleTarget: String {
-        "http://127.0.0.1:\(preferences.port)"
+    private var tailscaleStatusURL: URL {
+        localURL.appendingPathComponent("api/tailscale/status")
+    }
+
+    private var tailscaleServeURL: URL {
+        localURL.appendingPathComponent("api/tailscale/serve")
     }
 
     private lazy var applicationSupportDirectory: URL = {
@@ -341,7 +345,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         probeWhisperStatus(url: whisperStatusURL) { [weak self] status in
             self?.applyIntegrationStatus(status, to: self?.whisperStatusMenuItem)
         }
-        probeTailscaleStatus(localTarget: tailscaleTarget) { [weak self] status in
+        probeTailscaleStatus(url: tailscaleStatusURL) { [weak self] status in
             self?.applyTailscaleStatus(status)
         }
     }
@@ -353,7 +357,7 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
         tailscaleToggleMenuItem?.title = status.serveEnabled
             ? "Turn Off Tailscale Serve"
             : "Turn On Tailscale Serve"
-        tailscaleToggleMenuItem?.isEnabled = status.connected
+        tailscaleToggleMenuItem?.isEnabled = status.canToggleServe
     }
 
     private func applyIntegrationStatus(
@@ -666,19 +670,27 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .success:
                 if runtimeChanged, self.lastTailscaleStatus?.serveEnabled == true {
                     self.configureTailscaleAfterRestart = true
-                }
-                self.preferences = nextPreferences
-                self.preferences.save()
-
-                if runtimeChanged {
-                    self.restartServerProcess()
-                } else {
-                    if self.preferences.autoStartTailscaleServe,
-                       self.lastTailscaleStatus?.serveEnabled != true
-                    {
-                        self.configureTailscaleServe()
+                    self.disableTailscaleServe { [weak self] disabled in
+                        guard let self else { return }
+                        guard disabled else {
+                            self.configureTailscaleAfterRestart = false
+                            self.setStatus(self.serverStatusTitle())
+                            self.presentError(
+                                "Server runtime settings were not changed",
+                                detail: "Caffold could not disable its current Tailscale Serve mapping before changing the server address. Retry after checking Tailscale."
+                            )
+                            return
+                        }
+                        self.applySavedServerPreferences(
+                            nextPreferences,
+                            runtimeChanged: runtimeChanged
+                        )
                     }
-                    self.refreshSystemStatus()
+                } else {
+                    self.applySavedServerPreferences(
+                        nextPreferences,
+                        runtimeChanged: runtimeChanged
+                    )
                 }
             case let .failure(error):
                 self.setStatus("Server settings update failed")
@@ -688,6 +700,24 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 )
             }
         }
+    }
+
+    private func applySavedServerPreferences(
+        _ nextPreferences: ServerRuntimePreferences,
+        runtimeChanged: Bool
+    ) {
+        preferences = nextPreferences
+        preferences.save()
+        if runtimeChanged {
+            restartServerProcess()
+            return
+        }
+        if preferences.autoStartTailscaleServe,
+           lastTailscaleStatus?.serveEnabled != true
+        {
+            configureTailscaleServe()
+        }
+        refreshSystemStatus()
     }
 
     private func startOwnedServerFromExternal(
@@ -709,13 +739,42 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 return
             }
 
-            self.configureTailscaleAfterRestart = self.lastTailscaleStatus?.serveEnabled == true
-            self.preferences = nextPreferences
-            self.preferences.save()
-            self.serverNameAfterStart = name
-            self.serverRunning = false
-            self.startServer()
+            if self.lastTailscaleStatus?.serveEnabled == true {
+                self.configureTailscaleAfterRestart = true
+                self.disableTailscaleServe { [weak self] disabled in
+                    guard let self else { return }
+                    guard disabled else {
+                        self.configureTailscaleAfterRestart = false
+                        self.setStatus(self.serverStatusTitle(external: true))
+                        self.presentError(
+                            "Server runtime settings were not changed",
+                            detail: "Caffold could not disable its current Tailscale Serve mapping before starting on the new port. Retry after checking Tailscale."
+                            )
+                            return
+                        }
+                    self.startOwnedServer(
+                        name: name,
+                        preferences: nextPreferences
+                    )
+                }
+            } else {
+                self.startOwnedServer(
+                    name: name,
+                    preferences: nextPreferences
+                )
+            }
         }
+    }
+
+    private func startOwnedServer(
+        name: String,
+        preferences nextPreferences: ServerRuntimePreferences
+    ) {
+        preferences = nextPreferences
+        preferences.save()
+        serverNameAfterStart = name
+        serverRunning = false
+        startServer()
     }
 
     private func restartServerProcess() {
@@ -771,59 +830,33 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func configureTailscaleServe() {
-        guard let tailscale = caffoldExecutable(named: "tailscale") else {
-            applyTailscaleStatus(TailscaleStatus(
-                title: "Tailscale · Not installed",
-                connected: false,
-                serveEnabled: false,
-                tailnetURL: nil
-            ))
-            appendLog("Tailscale CLI not found; local Caffold remains available.")
-            return
-        }
         tailscaleStatusMenuItem?.title = "Tailscale · Configuring Serve..."
         tailscaleToggleMenuItem?.isEnabled = false
-        runCommand(
-            executable: tailscale,
-            arguments: [
-                "serve", "--bg", "--yes", "--https=443",
-                tailscaleTarget,
-            ]
-        ) { [weak self] result in
+        updateTailscaleServe(url: tailscaleServeURL, enabled: true) { [weak self] result in
             guard let self else { return }
             switch result {
-            case let .success(command) where command.status == 0:
-                self.appendLog(command.output)
-                self.refreshSystemStatus()
-            case let .success(command):
-                self.appendLog("Tailscale Serve failed: \(command.output)")
-                self.tailscaleStatusMenuItem?.title = "Tailscale · Serve setup failed"
+            case let .success(status):
+                self.applyTailscaleStatus(status)
             case let .failure(error):
                 self.appendLog("Failed to start Tailscale Serve: \(error.localizedDescription)")
-                self.tailscaleStatusMenuItem?.title = "Tailscale · Serve setup failed"
+                self.refreshSystemStatus()
             }
         }
     }
 
-    private func disableTailscaleServe() {
-        guard let tailscale = caffoldExecutable(named: "tailscale") else { return }
+    private func disableTailscaleServe(completion: ((Bool) -> Void)? = nil) {
         tailscaleStatusMenuItem?.title = "Tailscale · Turning Serve off..."
         tailscaleToggleMenuItem?.isEnabled = false
-        runCommand(
-            executable: tailscale,
-            arguments: ["serve", "--yes", "--https=443", "off"]
-        ) { [weak self] result in
+        updateTailscaleServe(url: tailscaleServeURL, enabled: false) { [weak self] result in
             guard let self else { return }
             switch result {
-            case let .success(command) where command.status == 0:
-                self.appendLog(command.output)
-                self.refreshSystemStatus()
-            case let .success(command):
-                self.appendLog("Failed to disable Tailscale Serve: \(command.output)")
-                self.tailscaleStatusMenuItem?.title = "Tailscale · Serve update failed"
+            case let .success(status):
+                self.applyTailscaleStatus(status)
+                completion?(status.state == .serveOff)
             case let .failure(error):
                 self.appendLog("Failed to disable Tailscale Serve: \(error.localizedDescription)")
-                self.tailscaleStatusMenuItem?.title = "Tailscale · Serve update failed"
+                self.refreshSystemStatus()
+                completion?(false)
             }
         }
     }

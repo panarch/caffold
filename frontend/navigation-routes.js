@@ -86,6 +86,17 @@ const ROUTE_DEFINITIONS = [
     parent: () => settingsRoute(),
   }),
   routeDefinition({
+    id: "settings-remote-access",
+    kind: "settings",
+    pattern: "/settings/remote-access",
+    surface: "task-workspace",
+    target: "remote-access",
+    toRoute: () => settingsRoute("remote-access"),
+    matchesRoute: (route) =>
+      route?.kind === "settings" && route.section === "remote-access",
+    parent: () => settingsRoute(),
+  }),
+  routeDefinition({
     id: "settings-codex",
     kind: "settings",
     pattern: "/settings/codex",
@@ -712,9 +723,14 @@ function sectionParentRoute(route) {
 function settingsRoute(section = "") {
   return {
     kind: "settings",
-    section: ["appearance", "files", "notifications", "codex", "about"].includes(
-      section,
-    )
+    section: [
+      "appearance",
+      "files",
+      "notifications",
+      "remote-access",
+      "codex",
+      "about",
+    ].includes(section)
       ? section
       : "",
   };

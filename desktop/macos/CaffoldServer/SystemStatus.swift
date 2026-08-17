@@ -1,12 +1,5 @@
 import Foundation
 
-struct TailscaleStatus {
-    let title: String
-    let connected: Bool
-    let serveEnabled: Bool
-    let tailnetURL: URL?
-}
-
 enum IntegrationState: Equatable {
     case checking
     case ready
@@ -79,24 +72,6 @@ private struct GithubStatusResponse: Decodable {
     }
 
     let hosts: [String: [Account]]
-}
-
-private struct TailscaleNodeResponse: Decodable {
-    struct Node: Decodable {
-        let dnsName: String?
-
-        enum CodingKeys: String, CodingKey {
-            case dnsName = "DNSName"
-        }
-    }
-
-    let backendState: String
-    let node: Node?
-
-    enum CodingKeys: String, CodingKey {
-        case backendState = "BackendState"
-        case node = "Self"
-    }
 }
 
 func probeGitStatus(completion: @escaping (IntegrationStatus) -> Void) {
@@ -366,105 +341,126 @@ private func formatWhisperRecordingLimit(_ seconds: Int) -> String {
     return "\(seconds) seconds"
 }
 
-func probeTailscaleStatus(
-    localTarget: String,
-    completion: @escaping (TailscaleStatus) -> Void
-) {
-    guard let tailscale = caffoldExecutable(named: "tailscale") else {
-        completion(TailscaleStatus(
-            title: "Tailscale · Not installed",
-            connected: false,
-            serveEnabled: false,
-            tailnetURL: nil
-        ))
-        return
+struct TailscaleStatus: Decodable, Equatable {
+    enum State: String, Decodable {
+        case notInstalled
+        case disconnected
+        case serveOff
+        case configuring
+        case disabling
+        case ready
+        case unavailable
+        case failed
     }
 
-    runCommand(executable: tailscale, arguments: ["status", "--json"]) { statusResult in
-        guard case let .success(statusCommand) = statusResult else {
-            completion(TailscaleStatus(
-                title: "Tailscale · Status unavailable",
-                connected: false,
-                serveEnabled: false,
-                tailnetURL: nil
-            ))
-            return
-        }
-        guard
-            statusCommand.status == 0,
-            let statusData = statusCommand.output.data(using: .utf8),
-            let nodeStatus = try? JSONDecoder().decode(TailscaleNodeResponse.self, from: statusData)
-        else {
-            completion(TailscaleStatus(
-                title: "Tailscale · Status unavailable",
-                connected: false,
-                serveEnabled: false,
-                tailnetURL: nil
-            ))
-            return
-        }
-        guard nodeStatus.backendState == "Running" else {
-            completion(TailscaleStatus(
-                title: "Tailscale · Disconnected",
-                connected: false,
-                serveEnabled: false,
-                tailnetURL: nil
-            ))
-            return
-        }
+    let state: State
+    let reasonCode: String
+    let diagnosticMessage: String
+    let tailnetURL: URL?
+    let canManage: Bool
 
-        runCommand(executable: tailscale, arguments: ["serve", "status", "--json"]) { serveResult in
-            let serve = serveStatus(
-                result: serveResult,
-                localTarget: localTarget,
-                dnsName: nodeStatus.node?.dnsName
-            )
-            completion(TailscaleStatus(
-                title: serve.enabled
-                    ? "Tailscale · Connected · Serve on"
-                    : "Tailscale · Connected · Serve off",
-                connected: true,
-                serveEnabled: serve.enabled,
-                tailnetURL: serve.url
-            ))
+    enum CodingKeys: String, CodingKey {
+        case state
+        case reasonCode
+        case diagnosticMessage
+        case tailnetURL = "tailnetUrl"
+        case canManage
+    }
+
+    var title: String {
+        switch state {
+        case .notInstalled:
+            "Tailscale · Not installed"
+        case .disconnected:
+            "Tailscale · Disconnected"
+        case .serveOff:
+            "Tailscale · Connected · Serve off"
+        case .configuring:
+            "Tailscale · Configuring Serve..."
+        case .disabling:
+            "Tailscale · Turning Serve off..."
+        case .ready:
+            "Tailscale · Connected · Serve on"
+        case .unavailable:
+            "Tailscale · Unavailable"
+        case .failed:
+            "Tailscale · Failed"
         }
     }
+
+    var serveEnabled: Bool { state == .ready }
+
+    var canToggleServe: Bool {
+        canManage && (state == .serveOff || state == .ready)
+    }
+
+    static let serverUnavailable = Self(
+        state: .unavailable,
+        reasonCode: "serverUnavailable",
+        diagnosticMessage: "The local Caffold server is unavailable.",
+        tailnetURL: nil,
+        canManage: false
+    )
 }
 
-private func serveStatus(
-    result: Result<CommandResult, Error>,
-    localTarget: String,
-    dnsName: String?
-) -> (enabled: Bool, url: URL?) {
-    guard
-        case let .success(command) = result,
-        command.status == 0,
-        let data = command.output.data(using: .utf8),
-        let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-        let web = payload["Web"] as? [String: Any]
-    else {
-        return (false, nil)
-    }
+func probeTailscaleStatus(
+    url: URL,
+    session: URLSession = .shared,
+    completion: @escaping (TailscaleStatus) -> Void
+) {
+    var request = URLRequest(url: url)
+    request.timeoutInterval = 4
+    session.dataTask(with: request) { data, response, _ in
+        let status: TailscaleStatus
+        if
+            let response = response as? HTTPURLResponse,
+            response.statusCode == 200,
+            let data,
+            let decoded = try? JSONDecoder().decode(TailscaleStatus.self, from: data)
+        {
+            status = decoded
+        } else {
+            status = .serverUnavailable
+        }
+        DispatchQueue.main.async {
+            completion(status)
+        }
+    }.resume()
+}
 
-    for (host, value) in web {
-        guard
-            let entry = value as? [String: Any],
-            let handlers = entry["Handlers"] as? [String: Any]
-        else {
-            continue
+func updateTailscaleServe(
+    url: URL,
+    enabled: Bool,
+    session: URLSession = .shared,
+    completion: @escaping (Result<TailscaleStatus, Error>) -> Void
+) {
+    var request = URLRequest(url: url)
+    request.httpMethod = "PUT"
+    request.timeoutInterval = 12
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = try? JSONEncoder().encode(["enabled": enabled])
+    session.dataTask(with: request) { data, response, error in
+        let result: Result<TailscaleStatus, Error>
+        if
+            let response = response as? HTTPURLResponse,
+            response.statusCode == 200,
+            let data,
+            let status = try? JSONDecoder().decode(TailscaleStatus.self, from: data)
+        {
+            result = .success(status)
+        } else {
+            result = .failure(TailscaleAPIError.requestFailed(error))
         }
-        let matchesTarget = handlers.values.contains { handler in
-            guard let handler = handler as? [String: Any] else { return false }
-            return handler["Proxy"] as? String == localTarget
+        DispatchQueue.main.async {
+            completion(result)
         }
-        if matchesTarget {
-            let hostWithoutDefaultPort = host.hasSuffix(":443")
-                ? String(host.dropLast(4))
-                : host
-            return (true, URL(string: "https://\(hostWithoutDefaultPort)/"))
-        }
-    }
+    }.resume()
+}
 
-    let normalizedDNSName = dnsName?.trimmingCharacters(in: CharacterSet(charactersIn: "."))
-    return (false, normalizedDNSName.flatMap { URL(string: "https://\($0)/") })
+private enum TailscaleAPIError: Error, LocalizedError {
+    case requestFailed(Error?)
+
+    var errorDescription: String? {
+        "The local Caffold server could not update Tailscale Serve."
+    }
 }

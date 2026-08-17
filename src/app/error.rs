@@ -21,6 +21,7 @@ pub(super) enum ApiError {
     Timeout { code: &'static str, message: String },
     NotFound { code: &'static str, message: String },
     BadRequest { code: &'static str, message: String },
+    Forbidden { code: &'static str, message: String },
     Conflict { code: &'static str, message: String },
 }
 
@@ -35,6 +36,7 @@ impl std::fmt::Display for ApiError {
             | Self::Unavailable { message, .. }
             | Self::NotFound { message, .. }
             | Self::BadRequest { message, .. }
+            | Self::Forbidden { message, .. }
             | Self::Conflict { message, .. } => formatter.write_str(message),
         }
     }
@@ -237,6 +239,7 @@ impl IntoResponse for ApiError {
             ApiError::Timeout { code, message } => (StatusCode::GATEWAY_TIMEOUT, code, message),
             ApiError::NotFound { code, message } => (StatusCode::NOT_FOUND, code, message),
             ApiError::BadRequest { code, message } => (StatusCode::BAD_REQUEST, code, message),
+            ApiError::Forbidden { code, message } => (StatusCode::FORBIDDEN, code, message),
             ApiError::Conflict { code, message } => (StatusCode::CONFLICT, code, message),
         };
 

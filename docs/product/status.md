@@ -7,6 +7,8 @@ boundaries.
 
 - `caffold serve` and the macOS menu-bar server wrapper;
 - browser/PWA access on the trusted host and tailnet-only Tailscale Serve;
+- responsive **Settings → Remote Access** status, private URL/QR handoff, and
+  localhost-only control of Caffold's Tailscale Serve mapping;
 - managed, thread-backed Tasks with canonical app-server lifecycle;
 - persistent app-server daemon plus replaceable proxy connection;
 - prompts, steering, interruption, command and permission approvals, images,

@@ -15,6 +15,7 @@
 @import "./pages/(task-workspace)/settings/appearance/page.css";
 @import "./pages/(task-workspace)/settings/files/page.css";
 @import "./pages/(task-workspace)/settings/notifications/page.css";
+@import "./pages/(task-workspace)/settings/remote-access/page.css";
 @import "./pages/(task-workspace)/settings/codex/page.css";
 @import "./pages/(task-workspace)/settings/about/page.css";
 @import "./pages/(task-workspace)/tasks/controls.css";
@@ -177,6 +178,7 @@
   --conversation-line-height: 1.47;
   --code-font-size: 13px;
   --code-line-height: 1.55;
+  --qr-background: #ffffff;
 
   --line-gutter-width: calc(var(--code-font-size) * 4.9);
   --file-tree-font-size: 0.8125rem;

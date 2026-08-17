@@ -1,0 +1,246 @@
+caffold-settings-remote-access-page {
+  container: settings-remote-access / inline-size;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  font-size: var(--interface-font-size);
+  line-height: var(--interface-line-height);
+
+  & .settings-content-scroll {
+    height: 100%;
+    min-height: 0;
+    overflow: auto;
+    padding-block: var(--settings-content-padding-block);
+    padding-inline: var(--settings-content-padding-inline);
+  }
+
+  & .settings-content-section {
+    display: grid;
+    width: min(100%, var(--settings-content-max-width));
+    min-width: 0;
+    margin: 0 auto;
+  }
+
+  & .settings-content-section > header,
+  & .settings-remote-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--interface-space-7);
+  }
+
+  & .settings-content-section > header {
+    align-items: end;
+    padding-bottom: var(--interface-space-6);
+    border-bottom: 1px solid var(--border);
+  }
+
+  & .settings-content-section > header > div,
+  & .settings-remote-status > div:first-child,
+  & .settings-remote-handoff > div:first-child,
+  & .settings-remote-prerequisite {
+    display: grid;
+    gap: var(--interface-space-2);
+    min-width: 0;
+  }
+
+  & p,
+  & h2,
+  & h3,
+  & figure {
+    margin: 0;
+  }
+
+  & .settings-content-section > header p,
+  & .settings-remote-status p,
+  & .settings-remote-ready p,
+  & figcaption,
+  & .settings-remote-readonly,
+  & .settings-remote-message,
+  & .settings-remote-copy-message {
+    color: var(--muted);
+    font-size: var(--settings-small-text-size);
+  }
+
+  & button,
+  & .settings-remote-link-actions a {
+    display: inline-flex;
+    min-height: var(--settings-page-action-size);
+    align-items: center;
+    justify-content: center;
+    padding: 0 var(--interface-control-padding-inline);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--settings-small-text-size);
+    line-height: 1;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  & button:hover:not(:disabled),
+  & button:focus-visible,
+  & .settings-remote-link-actions a:hover,
+  & .settings-remote-link-actions a:focus-visible {
+    border-color: var(--border-strong);
+    outline: none;
+    background: var(--control-hover-bg);
+  }
+
+  & button:disabled {
+    color: var(--disabled-text);
+    cursor: default;
+  }
+
+  & .settings-remote-status {
+    margin-top: var(--interface-space-10);
+    padding: var(--interface-space-8);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--surface-subtle);
+  }
+
+  & .settings-remote-status h2,
+  & .settings-remote-ready h2,
+  & .settings-remote-prerequisite h3 {
+    font-size: var(--settings-field-label-size);
+  }
+
+  & .settings-remote-status[data-state="ready"] h2 {
+    color: var(--success);
+  }
+
+  & .settings-remote-status[data-state="failed"] h2,
+  & .settings-remote-status[data-state="requestFailed"] h2 {
+    color: var(--danger);
+  }
+
+  & .settings-remote-status[data-state="notInstalled"] h2,
+  & .settings-remote-status[data-state="disconnected"] h2,
+  & .settings-remote-status[data-state="unavailable"] h2 {
+    color: var(--warning);
+  }
+
+  & .settings-remote-actions,
+  & .settings-remote-link-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--interface-space-4);
+  }
+
+  & .settings-remote-actions [data-action="enable"],
+  & .settings-remote-link-actions [data-action="open"] {
+    border-color: var(--primary-action-border);
+    background: var(--primary-action-bg);
+    color: var(--primary-action-fg);
+  }
+
+  & .settings-remote-diagnostic {
+    overflow-wrap: anywhere;
+  }
+
+  & .settings-remote-readonly,
+  & .settings-remote-message {
+    margin-top: var(--interface-space-5);
+    padding: var(--interface-space-5) var(--interface-space-6);
+    border-left: 3px solid var(--border-strong);
+    background: var(--surface-subtle);
+  }
+
+  & .settings-remote-message {
+    border-left-color: var(--danger);
+  }
+
+  & .settings-remote-ready {
+    margin-top: var(--interface-space-12);
+    padding-top: var(--interface-space-7);
+    border-top: 1px solid var(--border);
+  }
+
+  & .settings-remote-handoff {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(10rem, 13rem);
+    gap: var(--interface-space-10);
+    align-items: start;
+  }
+
+  & .settings-remote-address {
+    display: grid;
+    gap: var(--interface-space-5);
+    margin-top: var(--interface-space-6);
+    padding: var(--interface-space-6);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--surface-subtle);
+  }
+
+  & .settings-remote-address code {
+    color: var(--text);
+    font-size: var(--settings-detail-value-size);
+    overflow-wrap: anywhere;
+    user-select: all;
+  }
+
+  & .settings-remote-copy-message {
+    min-height: 1.2em;
+    margin-top: var(--interface-space-3);
+  }
+
+  & .settings-remote-prerequisite {
+    margin-top: var(--interface-space-8);
+  }
+
+  & figure {
+    display: grid;
+    gap: var(--interface-space-4);
+    justify-items: center;
+    min-width: 0;
+  }
+
+  & .settings-remote-qr {
+    display: block;
+    width: min(100%, 13rem);
+    aspect-ratio: 1;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--qr-background);
+  }
+
+  & figcaption {
+    text-align: center;
+  }
+}
+
+@container settings-remote-access (max-width: 38rem) {
+  caffold-settings-remote-access-page {
+    & .settings-content-section > header,
+    & .settings-remote-status {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    & .settings-content-section > header button,
+    & .settings-remote-actions {
+      align-self: start;
+    }
+
+    & .settings-remote-handoff {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    & figure {
+      justify-items: start;
+    }
+
+    & figcaption {
+      max-width: 13rem;
+      text-align: left;
+    }
+  }
+}

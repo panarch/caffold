@@ -158,6 +158,8 @@ Settings includes:
   Conversation text, and Code text;
 - Notifications controls for the current browser's permission and subscription,
   plus the active browser-installation count, labels, short IDs, and removal;
+- Remote Access status and constrained Tailscale Serve controls, with the ready
+  private Tailnet URL, copy/open actions, QR handoff, and same-tailnet guidance;
 - Codex installation readiness, repair guidance, runtime status, Refresh,
   restart, and diagnostics;
 - About Caffold application and build information, including shared
@@ -178,6 +180,16 @@ installation ID with server-owned registration or revocation state. Permission
 is requested only by the explicit **Enable** action. Removing another browser
 revokes that installation; opening Notifications there applies the revocation
 locally instead of silently subscribing again.
+
+Remote Access projects the backend-owned Tailscale state and Caffold Serve
+operation. Localhost may enable, disable, or retry only Caffold's HTTPS port 443
+mapping. Tailnet-origin browsers are read-only, still receive the same ready
+address, and render the server-produced QR SVG for that exact canonical URL.
+Browser request progress and transport errors remain separate from that
+canonical status, so a failed refresh retains the last server-reported state
+for context but disables Serve controls until a later status response
+revalidates them. The surface does not administer accounts, tailnet membership,
+ACLs, arbitrary targets, or Funnel.
 
 Tasks and Codex Settings present the same backend readiness and restart outcome.
 Only refreshed readiness restores Task actions. The browser is the complete
