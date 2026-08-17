@@ -910,11 +910,12 @@ test("preserves the visible Section scroll anchor across compact mode", { tag: "
   await page.goto("/");
   const navigator = page.locator("caffold-task-navigator");
   const activeList = navigator.locator("caffold-active-task-list");
-  const anchor = await activeList.evaluate((list) => {
-    const scroller = list.closest(".task-list-scroll");
-    const group = list.querySelector(
-      '.task-repository-group[data-task-repository-key="section-4"]',
-    );
+  const anchorGroup = activeList.locator(
+    '.task-repository-group[data-task-repository-key="section-4"]',
+  );
+  await expect(anchorGroup).toHaveCount(1);
+  const anchor = await anchorGroup.evaluate((group) => {
+    const scroller = group.closest(".task-list-scroll");
     scroller.scrollTop = group.offsetTop - 18;
     return {
       sectionId: group.dataset.taskRepositoryKey,
