@@ -115,6 +115,10 @@ const ownership = new Map([
     ["caffold-section-detail"],
   ],
   [
+    "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.css",
+    ["caffold-section-github-shortcuts"],
+  ],
+  [
     "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css",
     ["caffold-section-detail-summary"],
   ],

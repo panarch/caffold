@@ -93,7 +93,139 @@ test("selects a Section and opens fixed-directory Task creation", { tag: "@all-v
   await expect(
     detail.locator('caffold-section-detail [data-composer-action="browse-cwd"]'),
   ).toHaveCount(0);
+  await expect(
+    detail.locator("caffold-section-github-shortcuts"),
+  ).toBeHidden();
   await expect(detail.locator("caffold-detail-view-switch")).toBeHidden();
+});
+
+test("offers GitHub work shortcuts from repository Task creation", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockCodexModels(page);
+  const rootPath = "tests/fixtures/home";
+  const repository = { rootPath, branch: "main", dirty: false };
+  const github = {
+    owner: "panarch",
+    name: "caffold",
+    nameWithOwner: "panarch/caffold",
+    url: "https://github.com/panarch/caffold",
+  };
+  const task = {
+    id: "thread_section_github_shortcuts",
+    threadId: "thread_section_github_shortcuts",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Section GitHub shortcuts",
+    cwd: rootPath,
+    cwdPath: rootPath,
+    relativeCwd: "",
+    worktree: {
+      rootPath: `${rootPath}/.caffold-worktrees/github-shortcuts`,
+      repositoryRootPath: rootPath,
+      branch: "feature/github-shortcuts",
+      headSha: "0123456789abcdef0123456789abcdef01234567",
+    },
+    createdMs: Date.now(),
+    updatedMs: Date.now(),
+    lastEventSummary: "Section GitHub shortcuts",
+  };
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) })
+  );
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({ json: { tasks: [], nextCursor: null } })
+  );
+  await page.route(/\/api\/github\/status(?:\?|$)/, (route) => {
+    expect(new URL(route.request().url()).searchParams.get("path")).toBe(rootPath);
+    return route.fulfill({
+      json: {
+        repository,
+        github,
+        ghAvailable: true,
+        authenticated: true,
+        issuesAvailable: true,
+        pullsAvailable: true,
+        message: null,
+      },
+    });
+  });
+  await page.route(/\/api\/github\/issues(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        repository,
+        github,
+        state: "open",
+        issues: [],
+        page: 1,
+        perPage: 50,
+        totalIssues: 0,
+        totalPages: 0,
+        hasPrevious: false,
+        hasNext: false,
+      },
+    })
+  );
+
+  await page.goto("/?section=fixture-section-1");
+  const detail = page.locator("caffold-detail-layout");
+  const shortcuts = detail.locator("caffold-section-github-shortcuts");
+  await expect(shortcuts).toBeVisible();
+  await expect(shortcuts.locator(".section-github-name")).toHaveText(
+    "panarch/caffold",
+  );
+  await expect(shortcuts.getByRole("button")).toHaveText([
+    "Issues",
+    "Pull Requests",
+  ]);
+
+  const composerPanel = detail.locator(
+    "caffold-section-detail .task-composer-panel",
+  );
+  const expectedGap = await page.evaluate(() =>
+    window.innerWidth <= 959 ? 10 : 14
+  );
+  const measureAlignment = async () => {
+    const [composerBox, shortcutBox] = await Promise.all([
+      composerPanel.boundingBox(),
+      shortcuts.boundingBox(),
+    ]);
+    if (!composerBox || !shortcutBox) {
+      return null;
+    }
+    return {
+      left: Math.abs(shortcutBox.x - composerBox.x),
+      right: Math.abs(
+        shortcutBox.x + shortcutBox.width - composerBox.x - composerBox.width,
+      ),
+      gap: shortcutBox.y - composerBox.y - composerBox.height,
+    };
+  };
+  await expect.poll(async () => {
+    const alignment = await measureAlignment();
+    return alignment ? Math.max(alignment.left, alignment.right) : Infinity;
+  }).toBeLessThanOrEqual(0.5);
+  await expect.poll(async () => {
+    const alignment = await measureAlignment();
+    return alignment ? Math.abs(alignment.gap - expectedGap) : Infinity;
+  }).toBeLessThanOrEqual(1);
+
+  const [issuesBox, pullsBox] = await Promise.all([
+    shortcuts.getByRole("button", { name: "Issues" }).boundingBox(),
+    shortcuts.getByRole("button", { name: "Pull Requests" }).boundingBox(),
+  ]);
+  expect(issuesBox).not.toBeNull();
+  expect(pullsBox).not.toBeNull();
+  if (!issuesBox || !pullsBox) {
+    throw new Error("GitHub shortcut rows did not render");
+  }
+  expect(pullsBox.y).toBeGreaterThanOrEqual(issuesBox.y + issuesBox.height);
+
+  await shortcuts.getByRole("button", { name: "Issues" }).click();
+  await expect(page).toHaveURL(
+    "/?section=fixture-section-1&surface=github&tool=issues",
+  );
+  await expect(detail.locator("caffold-github-issues-list-page")).toBeVisible();
 });
 
 test("returns a missing Section route to Tasks home", { tag: "@all-viewports" }, async ({ page }) => {
@@ -217,7 +349,7 @@ test("replaces the New Task context when a selected Section path changes", { tag
     sections: [{
       id: sectionId,
       name: "tests/fixtures/home",
-      repository: false,
+      repository: true,
       tasks: [task],
     }],
     unsectioned: [],
@@ -228,18 +360,48 @@ test("replaces the New Task context when a selected Section path changes", { tag
   await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
     route.fulfill({ json: { tasks: [], nextCursor: null } })
   );
+  let staleStatusRoute = null;
+  await page.route(/\/api\/github\/status(?:\?|$)/, (route) => {
+    const path = new URL(route.request().url()).searchParams.get("path");
+    if (path === "tests/fixtures/home") {
+      staleStatusRoute = route;
+      return;
+    }
+    expect(path).toBe("tests/fixtures/other");
+    return route.fulfill({
+      json: {
+        repository: { rootPath: path, branch: "main", dirty: false },
+        github: {
+          owner: "fixture",
+          name: "other",
+          nameWithOwner: "fixture/other",
+          url: "https://github.com/fixture/other",
+        },
+        ghAvailable: true,
+        authenticated: true,
+        issuesAvailable: true,
+        pullsAvailable: true,
+        message: null,
+      },
+    });
+  });
 
   await page.goto(`/?section=${sectionId}`);
   const sectionDetail = page.locator("caffold-section-detail");
+  const shortcuts = sectionDetail.locator(
+    "caffold-section-github-shortcuts",
+  );
   const prompt = sectionDetail.locator("textarea[name=prompt]");
   await expect(sectionDetail).toContainText("tests/fixtures/home");
+  await expect.poll(() => Boolean(staleStatusRoute)).toBe(true);
+  await expect(shortcuts).toBeHidden();
   await prompt.fill("Discard this stale Section draft");
 
   projection = {
     sections: [{
       id: sectionId,
       name: "tests/fixtures/other",
-      repository: false,
+      repository: true,
       tasks: [task],
     }],
     unsectioned: [],
@@ -254,6 +416,33 @@ test("replaces the New Task context when a selected Section path changes", { tag
   await expect.poll(() =>
     sectionDetail.locator("caffold-task-create").evaluate((taskCreate) => taskCreate.cwd)
   ).toBe("tests/fixtures/other");
+  await expect(shortcuts.locator(".section-github-name")).toHaveText(
+    "fixture/other",
+  );
+
+  await staleStatusRoute.fulfill({
+    json: {
+      repository: {
+        rootPath: "tests/fixtures/home",
+        branch: "main",
+        dirty: false,
+      },
+      github: {
+        owner: "fixture",
+        name: "home",
+        nameWithOwner: "fixture/home",
+        url: "https://github.com/fixture/home",
+      },
+      ghAvailable: true,
+      authenticated: true,
+      issuesAvailable: true,
+      pullsAvailable: true,
+      message: null,
+    },
+  });
+  await expect(shortcuts.locator(".section-github-name")).toHaveText(
+    "fixture/other",
+  );
 });
 
 test("uses the Section's last composer settings for its next Task request", { tag: "@desktop" }, async ({ page }) => {

@@ -103,6 +103,10 @@ class CaffoldDetailLayout extends HTMLElement {
       "caffold:request-github-route",
       (event) => this.handleGithubRouteIntent(event),
     );
+    this.addEventListener(
+      "caffold:section-detail-intent",
+      (event) => this.handleSectionDetailIntent(event),
+    );
     this.addEventListener("caffold:change-compare-refs", (event) => {
       if (!this.gitLayout()?.contains(event.target)) {
         return;
@@ -790,6 +794,22 @@ class CaffoldDetailLayout extends HTMLElement {
     } else {
       this.requestTaskDomainRoute(event.detail?.route, event.detail?.options);
     }
+  }
+
+  handleSectionDetailIntent(event) {
+    if (
+      !this.sectionDetail()?.contains(event.target) ||
+      event.detail?.type !== "open-github" ||
+      !["issues", "pulls"].includes(event.detail?.kind)
+    ) {
+      return;
+    }
+    event.stopPropagation();
+    this.requestSectionRoute({
+      sectionId: this.section?.id,
+      sectionSurface: "github",
+      sectionTool: event.detail.kind,
+    });
   }
 
   requestTaskDomainRoute(route, options = {}) {
