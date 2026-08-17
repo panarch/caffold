@@ -1084,6 +1084,7 @@ mod request_tests {
         let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
             "thread/resume",
             json!({
+                "cwd": root.path().display().to_string(),
                 "thread": {
                     "id": thread_id,
                     "preview": "Canonical model settings",
@@ -1143,6 +1144,7 @@ mod request_tests {
         let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
             "thread/resume",
             json!({
+                "cwd": root.path().display().to_string(),
                 "thread": {
                     "id": thread_id,
                     "preview": "Canonical speed only",
@@ -1394,6 +1396,7 @@ mod request_tests {
             crate::codex_app_server::MockCodexResponse::ok(
                 "thread/resume",
                 json!({
+                    "cwd": root.path().display().to_string(),
                     "thread": {
                         "id": thread_id,
                         "preview": "Cached task detail regression",
@@ -1804,6 +1807,7 @@ mod request_tests {
             CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
                 "thread/resume",
                 json!({
+                    "cwd": "/tmp",
                     "thread": {
                         "id": "thread-slow-recovery",
                         "preview": "Slow recovery regression",
@@ -1832,6 +1836,7 @@ mod request_tests {
             crate::codex_app_server::MockCodexResponse::delayed_ok(
                 "thread/resume",
                 json!({
+                    "cwd": "/tmp",
                     "thread": {
                         "id": "thread-slow-recovery",
                         "preview": "Slow recovery regression",
@@ -1887,6 +1892,7 @@ mod request_tests {
             crate::codex_app_server::MockCodexResponse::ok(
                 "thread/resume",
                 json!({
+                    "cwd": root.path().display().to_string(),
                     "thread": {
                         "id": thread_id,
                         "preview": "Handler lifecycle regression",
@@ -1948,6 +1954,7 @@ mod request_tests {
             crate::codex_app_server::MockCodexResponse::delayed_ok(
                 "thread/resume",
                 json!({
+                    "cwd": root.path().display().to_string(),
                     "thread": {
                         "id": thread_id,
                         "preview": "Shared handler lifecycle regression",
@@ -2023,6 +2030,7 @@ mod request_tests {
         let thread_id = "thread-detail-stream-reopen";
         let resume = || {
             json!({
+                "cwd": root.path().display().to_string(),
                 "thread": {
                     "id": thread_id,
                     "preview": "Reopen lifecycle regression",

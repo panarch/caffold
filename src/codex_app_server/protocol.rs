@@ -229,6 +229,7 @@ pub struct ThreadStartResponse {
 #[serde(rename_all = "camelCase")]
 pub struct ThreadResumeResponse {
     pub thread: CodexThread,
+    pub cwd: String,
     #[serde(default)]
     pub initial_turns_page: Option<TurnsPage>,
     #[serde(flatten)]
@@ -1772,6 +1773,7 @@ mod tests {
             THREAD_RESUME,
             json!({
                 "thread": idle_thread,
+                "cwd": "/workspace/project",
                 "initialTurnsPage": {
                     "data": [turn.clone()],
                     "nextCursor": "older",
@@ -1780,6 +1782,7 @@ mod tests {
             }),
         )
         .expect("thread resume response");
+        assert_eq!(resumed.cwd, "/workspace/project");
         assert_eq!(resumed.initial_turns_page.unwrap().data[0].id, "turn_1");
 
         let turn_started: TurnStartResponse =

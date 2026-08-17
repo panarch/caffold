@@ -1391,6 +1391,7 @@ mod tests {
                     "updatedAt": 2.0,
                     "turns": []
                 },
+                "cwd": root.path().display().to_string(),
                 "initialTurnsPage": {
                     "data": [{
                         "id": "turn-isolation",
@@ -1455,6 +1456,103 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn task_prompt_steers_a_managed_turn_after_server_restart_with_stale_thread_cwd() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-restarted-managed-turn";
+        let turn_id = "turn-after-isolation";
+        let managed_cwd = root.path().join("managed/worktree-1");
+        initialize_git_repository(root.path());
+        let checkout =
+            crate::git::create_attached_worktree(root.path(), &managed_cwd, "caffold/review", None)
+                .unwrap();
+        let client = CodexThreadClient::mock(vec![
+            crate::codex_app_server::MockCodexResponse::ok(
+                "thread/resume",
+                json!({
+                    "thread": {
+                        "id": thread_id,
+                        "preview": "Managed turn survived a server restart",
+                        "status": { "type": "active", "activeFlags": [] },
+                        "cwd": root.path().display().to_string(),
+                        "createdAt": 1.0,
+                        "updatedAt": 3.0,
+                        "turns": []
+                    },
+                    "cwd": managed_cwd.display().to_string(),
+                    "initialTurnsPage": {
+                        "data": [{
+                            "id": turn_id,
+                            "items": [],
+                            "status": "inProgress",
+                            "startedAt": 3.0
+                        }],
+                        "nextCursor": null,
+                        "backwardsCursor": null
+                    }
+                }),
+            ),
+            crate::codex_app_server::MockCodexResponse::ok(
+                "turn/steer",
+                json!({ "turnId": turn_id }),
+            ),
+        ]);
+        // A fresh TaskState models the empty in-memory session state after the
+        // Caffold server restarts. The canonical thread cwd remains the source
+        // checkout even though this active turn started in the managed worktree.
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        state
+            .task_store
+            .create_worktree(ManagedWorktree {
+                worktree_id: "worktree-1".to_string(),
+                thread_id: Some(thread_id.to_string()),
+                repository_git_dir: checkout.common_dir.display().to_string(),
+                worktree_path: managed_cwd.display().to_string(),
+                state: ManagedWorktreeState::Ready,
+                checkout_anchor: None,
+                created_at_ms: 2_000,
+                updated_at_ms: 2_000,
+            })
+            .unwrap();
+
+        let response = task_prompt(
+            State(state.clone()),
+            AxumPath(thread_id.to_string()),
+            Query(TasksQuery { cursor: None }),
+            Json(TaskPromptRequest {
+                prompt: "Steer the managed turn after restart".to_string(),
+                images: Vec::new(),
+                model: None,
+                effort: None,
+                fast_mode: false,
+                permission_mode: None,
+                active_turn_id: Some(turn_id.to_string()),
+            }),
+        )
+        .await
+        .expect("post-restart managed turn remains steerable");
+
+        assert!(response.0.steered);
+        let snapshot = state.codex_sessions.snapshot(thread_id).await.unwrap();
+        assert_eq!(snapshot.active_turn_id.as_deref(), Some(turn_id));
+        assert_eq!(
+            snapshot.active_turn_cwd.as_deref(),
+            Some(managed_cwd.to_str().unwrap()),
+            "restart recovery uses the app-server runtime cwd instead of stale thread metadata"
+        );
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            ["thread/resume", "turn/steer"]
+        );
+    }
+
+    #[tokio::test]
     async fn task_prompt_recovers_a_system_error_thread_with_a_new_turn() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-system-error-recovery";
@@ -1475,6 +1573,7 @@ mod tests {
                             "status": "failed"
                         }]
                     },
+                    "cwd": root.path().display().to_string(),
                     "initialTurnsPage": {
                         "data": [{
                             "id": "turn-failed",
@@ -1556,6 +1655,7 @@ mod tests {
                     "updatedAt": 2.0,
                     "turns": []
                 },
+                "cwd": root.path().display().to_string(),
                 "initialTurnsPage": {
                     "data": [],
                     "nextCursor": null,
@@ -1633,7 +1733,8 @@ mod tests {
                             "items": [],
                             "status": "inProgress"
                         }]
-                    }
+                    },
+                    "cwd": root.path().display().to_string()
                 }),
             ),
             crate::codex_app_server::MockCodexResponse::ok(
@@ -1745,6 +1846,7 @@ mod tests {
                             "status": "inProgress"
                         }]
                     },
+                    "cwd": root.path().display().to_string(),
                     "initialTurnsPage": {
                         "data": [{
                             "id": stale_turn_id,
@@ -1778,6 +1880,7 @@ mod tests {
                             "status": "completed"
                         }]
                     },
+                    "cwd": root.path().display().to_string(),
                     "initialTurnsPage": {
                         "data": [{
                             "id": stale_turn_id,

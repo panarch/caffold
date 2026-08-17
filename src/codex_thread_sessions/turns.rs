@@ -72,6 +72,15 @@ pub(super) fn update_active_turn(
     state.active_turn_cwd = active_turn_cwd;
 }
 
+pub(super) fn replace_active_turn(
+    state: &mut ThreadSessionState,
+    active_turn_id: Option<String>,
+    cwd: String,
+) {
+    state.active_turn_cwd = active_turn_id.as_ref().map(|_| cwd);
+    state.active_turn_id = active_turn_id;
+}
+
 pub(super) fn turn_is_in_progress(state: &ThreadSessionState, turn_id: &str) -> bool {
     state
         .thread
@@ -235,6 +244,7 @@ mod tests {
             MockCodexResponse::ok(
                 "thread/resume",
                 ThreadResumeResponse {
+                    cwd: "/tmp".to_string(),
                     thread: thread(ThreadStatus::Idle, Vec::new()),
                     initial_turns_page: Some(page(
                         vec![
@@ -250,6 +260,7 @@ mod tests {
             MockCodexResponse::ok(
                 "thread/resume",
                 ThreadResumeResponse {
+                    cwd: "/tmp".to_string(),
                     thread: thread(ThreadStatus::Idle, Vec::new()),
                     initial_turns_page: Some(page(
                         vec![
@@ -313,6 +324,7 @@ mod tests {
             MockCodexResponse::ok(
                 "thread/resume",
                 ThreadResumeResponse {
+                    cwd: "/tmp".to_string(),
                     thread: thread(ThreadStatus::Idle, Vec::new()),
                     initial_turns_page: Some(page(initial_turns, Some("older"), Some("anchor-1"))),
                     extra: BTreeMap::new(),
@@ -321,6 +333,7 @@ mod tests {
             MockCodexResponse::ok(
                 "thread/resume",
                 ThreadResumeResponse {
+                    cwd: "/tmp".to_string(),
                     thread: thread(ThreadStatus::Idle, Vec::new()),
                     initial_turns_page: Some(page(refreshed_turns, None, Some("anchor-2"))),
                     extra: BTreeMap::new(),
@@ -358,6 +371,7 @@ mod tests {
             MockCodexResponse::ok(
                 "thread/resume",
                 ThreadResumeResponse {
+                    cwd: "/tmp".to_string(),
                     thread: thread(ThreadStatus::Idle, Vec::new()),
                     initial_turns_page: Some(page(
                         vec![turn_at("turn-2", TurnStatus::Completed, 2.0)],
@@ -410,6 +424,7 @@ mod tests {
             MockCodexResponse::ok(
                 "thread/resume",
                 ThreadResumeResponse {
+                    cwd: "/tmp".to_string(),
                     thread: thread(ThreadStatus::Idle, Vec::new()),
                     initial_turns_page: Some(page(
                         latest_turns.clone(),
@@ -459,6 +474,7 @@ mod tests {
             MockCodexResponse::ok(
                 "thread/resume",
                 ThreadResumeResponse {
+                    cwd: "/tmp".to_string(),
                     thread: thread(ThreadStatus::Idle, Vec::new()),
                     initial_turns_page: Some(page(
                         vec![latest_turn.clone()],

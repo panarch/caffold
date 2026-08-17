@@ -479,6 +479,7 @@ mod tests {
 
     fn active_resume(thread_id: &str) -> JsonValue {
         json!({
+            "cwd": "/Users/example/project",
             "thread": {
                 "id": thread_id,
                 "preview": "Recovered task",

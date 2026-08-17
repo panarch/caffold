@@ -200,6 +200,12 @@ test(
       assert.match(resumeParams, /initialTurnsPage/);
       assert.match(resumeParams, /serviceTier\?: string \| null/);
 
+      const resumeResponse = readFileSync(
+        join(outputDirectory, "v2", "ThreadResumeResponse.ts"),
+        "utf8",
+      );
+      assert.match(resumeResponse, /cwd: AbsolutePathBuf/);
+
       const listParams = readFileSync(join(outputDirectory, "v2", "ThreadListParams.ts"), "utf8");
       assert.match(listParams, /cursor/);
       assert.match(listParams, /sortKey/);

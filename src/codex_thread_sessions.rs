@@ -349,8 +349,10 @@ pub(super) mod test_support {
         thread_turns: Vec<CodexTurn>,
         page_turns: Vec<CodexTurn>,
     ) -> ThreadResumeResponse {
+        let thread = thread(status, thread_turns);
         ThreadResumeResponse {
-            thread: thread(status, thread_turns),
+            cwd: thread.cwd.clone(),
+            thread,
             initial_turns_page: Some(page(page_turns, None, Some("latest-anchor"))),
             extra: BTreeMap::new(),
         }
