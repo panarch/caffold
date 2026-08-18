@@ -244,7 +244,9 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
     await expect(entry.action).toHaveCSS("background-color", colors.active);
     await page.mouse.up();
     await expect(dialog).toHaveAttribute("open", "");
-    await dialog.getByRole("button", { name: "Close command output" }).click();
+    await closeDialog(dialog, () =>
+      dialog.getByRole("button", { name: "Close command output" }).click(),
+    );
     await expect(entry.action).toBeFocused();
   }
 
@@ -258,12 +260,46 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
     dialog,
     surfaces[1].completed.action,
   );
-  await openWithKeyboardAndRestoreFocus(
-    page,
-    dialog,
-    surfaces[1].failed.action,
-    "Space",
-  );
+  // A queued close event must not steal a newer focus move after native close.
+  await surfaces[1].completed.action.click();
+  await expect(dialog).toHaveAttribute("open", "");
+  await closeDialogAndMoveFocus(dialog, surfaces[1].failed.action);
+
+  const reconciledDetail = {
+    ...detail,
+    revision: 2,
+    task: {
+      ...detail.task,
+      updatedMs: now + 30_000,
+      recencyMs: now + 30_000,
+    },
+    events: [
+      ...detail.events,
+      event("active_refresh", "assistant_message", now + 15_000, activeTurnId, {
+        itemId: "active_refresh",
+        phase: "commentary",
+        text: "Keep the exact command output opener during reconciliation.",
+      }),
+    ],
+  };
+  const repeatCount = testInfo.project.name === "foldable" ? 5 : 1;
+  for (let attempt = 0; attempt < repeatCount; attempt += 1) {
+    await openWithKeyboardAndRestoreFocus(
+      page,
+      dialog,
+      surfaces[1].failed.action,
+      "Space",
+      attempt === 0
+        ? async () => {
+            await emitTaskDetailBootstrap(page, reconciledDetail);
+            await expect(surfaces[1].failed.action).toHaveAttribute(
+              "data-command-key",
+              "item:thread_command_output_activation:turn_completed:completed_turn_failure",
+            );
+          }
+        : undefined,
+    );
+  }
 
   if (testInfo.project.use.hasTouch) {
     for (const surface of surfaces) {
@@ -319,18 +355,65 @@ async function resolvedThemeColors(page) {
 async function openWithPointerAndRestoreFocus(dialog, action) {
   await action.click();
   await expect(dialog).toHaveAttribute("open", "");
-  await dialog.getByRole("button", { name: "Close command output" }).click();
-  await expect(dialog).not.toHaveAttribute("open", "");
+  await closeDialog(dialog, () =>
+    dialog.getByRole("button", { name: "Close command output" }).click(),
+  );
   await expect(action).toBeFocused();
 }
 
-async function openWithKeyboardAndRestoreFocus(page, dialog, action, key) {
+async function openWithKeyboardAndRestoreFocus(
+  page,
+  dialog,
+  action,
+  key,
+  beforeClose,
+) {
   await action.focus();
   await action.press(key);
   await expect(dialog).toHaveAttribute("open", "");
-  await page.keyboard.press("Escape");
-  await expect(dialog).not.toHaveAttribute("open", "");
+  await beforeClose?.();
+  await closeDialog(dialog, () => page.keyboard.press("Escape"));
   await expect(action).toBeFocused();
+}
+
+async function closeDialog(dialog, close) {
+  const closeCount = await observeDialogClose(dialog);
+  await close();
+  await expectDialogClose(dialog, closeCount);
+}
+
+async function closeDialogAndMoveFocus(dialog, action) {
+  const closeCount = await observeDialogClose(dialog);
+  await action.evaluate((nextAction) => {
+    const closeButton = nextAction.ownerDocument.querySelector(
+      'caffold-task-command-dialog [data-command-dialog-action="close"]',
+    );
+    closeButton.click();
+    nextAction.focus();
+  });
+  await expectDialogClose(dialog, closeCount);
+  await expect(action).toBeFocused();
+}
+
+async function observeDialogClose(dialog) {
+  return dialog.evaluate((element) => {
+    if (!Number.isInteger(element.caffoldTestCloseCount)) {
+      element.caffoldTestCloseCount = 0;
+      element.addEventListener("close", () => {
+        element.caffoldTestCloseCount += 1;
+      });
+    }
+    return element.caffoldTestCloseCount;
+  });
+}
+
+async function expectDialogClose(dialog, closeCount) {
+  await expect
+    .poll(() =>
+      dialog.evaluate((element) => element.caffoldTestCloseCount),
+    )
+    .toBe(closeCount + 1);
+  await expect(dialog).not.toHaveAttribute("open", "");
 }
 
 async function touchScrollFrom(page, target) {

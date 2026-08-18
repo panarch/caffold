@@ -127,21 +127,7 @@ class CaffoldTaskDetail extends HTMLElement {
           event.detail.scope,
         );
       } else if (event.detail?.type === "command-output") {
-        this.commandDialog()?.openCommand(
-          event.detail.command,
-          event.detail.commandKey,
-          event.detail.returnFocusOwner,
-        );
-      }
-    });
-    this.addEventListener("caffold:task-command-dialog-closed", (event) => {
-      event.stopPropagation();
-      const returnFocusKey = `${event.detail?.returnFocusKey ?? ""}`;
-      if (returnFocusKey) {
-        this.conversationComponent()?.focusCommandOutputAction(
-          returnFocusKey,
-          event.detail?.returnFocusOwner,
-        );
+        this.commandDialog()?.openCommand(event.detail.command);
       }
     });
     this.addEventListener("caffold:task-composer-submit", (event) => {
@@ -301,7 +287,7 @@ class CaffoldTaskDetail extends HTMLElement {
     } else {
       this.deactivateFollowUpComposer();
     }
-    this.commandDialog()?.dismiss({ restoreFocus: false });
+    this.commandDialog()?.dismiss();
     this.hidden = true;
   }
 

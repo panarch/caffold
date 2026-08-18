@@ -15,11 +15,8 @@ class CaffoldTaskCommandDialog extends HTMLElement {
 
     this.initialized = true;
     this.threadId = "";
-    this.returnFocusKey = "";
-    this.returnFocusOwner = null;
     this.addEventListener("click", (event) => this.handleClick(event));
     this.render();
-    this.dialog().addEventListener("close", () => this.handleClose());
     warmIcons();
   }
 
@@ -47,15 +44,13 @@ class CaffoldTaskCommandDialog extends HTMLElement {
   setThreadId(threadId) {
     const nextThreadId = `${threadId ?? ""}`;
     if (this.threadId && this.threadId !== nextThreadId) {
-      this.dismiss({ restoreFocus: false });
+      this.dismiss();
     }
     this.threadId = nextThreadId;
   }
 
-  openCommand(event, returnFocusKey, returnFocusOwner = null) {
+  openCommand(event) {
     const payload = event?.payload ?? {};
-    this.returnFocusKey = `${returnFocusKey ?? ""}`;
-    this.returnFocusOwner = returnFocusOwner;
     this.renderCommand({
       command: `${payload.command ?? ""}`.trim(),
       cwd: `${payload.cwd ?? ""}`.trim(),
@@ -70,14 +65,9 @@ class CaffoldTaskCommandDialog extends HTMLElement {
       dialog.showModal();
     }
     this.resetScroll();
-    this.querySelector('[data-command-dialog-action="close"]')?.focus();
   }
 
-  dismiss(options = {}) {
-    if (options.restoreFocus === false) {
-      this.returnFocusKey = "";
-      this.returnFocusOwner = null;
-    }
+  dismiss() {
     const dialog = this.dialog();
     if (dialog?.open) {
       dialog.close();
@@ -96,21 +86,6 @@ class CaffoldTaskCommandDialog extends HTMLElement {
     if (closeButton) {
       dialog.close();
     }
-  }
-
-  handleClose() {
-    const returnFocusKey = this.returnFocusKey;
-    const returnFocusOwner = this.returnFocusOwner;
-    this.returnFocusKey = "";
-    this.returnFocusOwner = null;
-    this.resetScroll();
-    this.dispatchEvent(
-      new CustomEvent("caffold:task-command-dialog-closed", {
-        bubbles: true,
-        composed: true,
-        detail: { returnFocusKey, returnFocusOwner },
-      }),
-    );
   }
 
   resetScroll() {

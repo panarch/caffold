@@ -90,12 +90,6 @@ class CaffoldTaskCommand extends HTMLElement {
       ?.getBoundingClientRect().top ?? null;
   }
 
-  focusAction() {
-    const action = this.action();
-    action?.focus();
-    return Boolean(action);
-  }
-
   update() {
     this.dataset.commandStatus = this.presentation.status;
     this.dataset.commandTone = this.presentation.tone;
