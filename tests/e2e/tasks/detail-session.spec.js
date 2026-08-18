@@ -858,11 +858,12 @@ test("preserves stable detail children through another task load failure", { tag
   const conversation = tasksPage.locator(
     '[data-stable-child="conversation"]',
   );
+  await conversation.evaluate((element) => {
+    window.__stableTaskActiveTurn = element.activeTurn();
+  });
   await expect
     .poll(() =>
-      conversation.evaluate(
-        (element) => element.activeTurnClockTimer !== null,
-      ),
+      page.evaluate(() => Boolean(window.__stableTaskActiveTurn?.clockTimer)),
     )
     .toBe(true);
 
@@ -911,9 +912,10 @@ test("preserves stable detail children through another task load failure", { tag
     .toBe(true);
   await expect
     .poll(() =>
-      conversation.evaluate(
-        (element) => element.activeTurnClockTimer === null,
-      ),
+      page.evaluate(() => {
+        const activeTurn = window.__stableTaskActiveTurn;
+        return activeTurn?.clockTimer === null && !activeTurn.isConnected;
+      }),
     )
     .toBe(true);
 
