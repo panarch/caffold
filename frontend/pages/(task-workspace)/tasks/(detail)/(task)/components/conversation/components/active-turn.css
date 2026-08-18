@@ -1,0 +1,55 @@
+caffold-task-active-turn {
+  display: grid;
+  grid-template-columns:
+    var(--interface-icon-small-size) max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: var(--interface-compact-control-size);
+  color: var(--muted);
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+
+  & .task-active-turn-spinner {
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 999px;
+    color: var(--control-fg);
+    animation: task-active-turn-spin 800ms linear infinite;
+  }
+
+  & .task-turn-active-duration {
+    white-space: nowrap;
+  }
+
+  & .task-turn-active-state {
+    overflow: hidden;
+    color: var(--text);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@keyframes task-active-turn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  caffold-task-active-turn .task-active-turn-spinner {
+    animation: none;
+  }
+}
+
+@media (max-width: 620px) {
+  caffold-task-active-turn {
+    grid-template-columns: var(--interface-icon-small-size) minmax(0, 1fr);
+
+    & .task-turn-active-state {
+      grid-column: 2;
+    }
+  }
+}

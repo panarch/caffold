@@ -1090,6 +1090,55 @@ mod normalization_tests {
     use super::*;
 
     #[test]
+    fn context_compaction_lifecycle_is_preserved_in_work_status_events() {
+        let started = task_event_from_item_lifecycle(
+            "thread_1",
+            10,
+            &json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "item": {
+                    "type": "contextCompaction",
+                    "id": "context_compaction_1"
+                }
+            }),
+            "started",
+        )
+        .expect("context compaction started event");
+        let completed = task_event_from_item_lifecycle(
+            "thread_1",
+            20,
+            &json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "item": {
+                    "type": "contextCompaction",
+                    "id": "context_compaction_1"
+                }
+            }),
+            "completed",
+        )
+        .expect("context compaction completed event");
+
+        assert_eq!(started.id, completed.id);
+        assert_eq!(started.event_type, "work_status");
+        assert_eq!(
+            started.payload.as_ref().unwrap()["itemType"],
+            "contextCompaction"
+        );
+        assert_eq!(started.payload.as_ref().unwrap()["lifecycle"], "started");
+
+        let merged = merge_task_event_record(started, completed);
+        assert_eq!(merged.created_ms, 10);
+        assert_eq!(merged.updated_ms, Some(20));
+        assert_eq!(
+            merged.payload.as_ref().unwrap()["itemType"],
+            "contextCompaction"
+        );
+        assert_eq!(merged.payload.as_ref().unwrap()["lifecycle"], "completed");
+    }
+
+    #[test]
     fn task_user_messages_hide_legacy_ambient_browser_context() {
         let item = json!({
             "content": [{

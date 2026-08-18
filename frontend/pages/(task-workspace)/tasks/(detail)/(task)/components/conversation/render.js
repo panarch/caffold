@@ -4,7 +4,6 @@ import {
   PROMPT_SUBMISSION_STATE,
   isTaskActivelyWorking,
   promptSubmissionState,
-  taskActiveFlagLabel,
 } from "../../../../runtime-state.js";
 import {
   assistantMessagePhase,
@@ -30,7 +29,9 @@ import {
   formatDuration,
   formatStatus,
 } from "../../../../task-format.js";
+import { activeTurnPresentation } from "./components/active-turn/model.js";
 export function renderConversation(events, task, approvals = [], options = {}) {
+  const activeTurns = new Map();
   const workDetails = new Map();
   const changedFiles = new Map();
   const commands = new Map();
@@ -114,9 +115,10 @@ export function renderConversation(events, task, approvals = [], options = {}) {
         events: [],
       },
       task,
+      activeTurns,
     );
   }
-  return { html, workDetails, changedFiles, commands };
+  return { html, activeTurns, workDetails, changedFiles, commands };
 }
 
 function renderedTimelineEntry(events, html, eventOrder) {
@@ -343,18 +345,15 @@ function renderActiveTurnTimelineEvent(
   return "";
 }
 
-function renderActiveTurnStatus(group, task) {
-  const startedMs = activeTurnStartMs(task);
-  const state = activeTurnStateLabel(group.events, task);
+function renderActiveTurnStatus(group, task, activeTurns) {
+  const presentation = activeTurnPresentation(group.events, task);
   const threadId = `${task?.threadId ?? task?.id ?? ""}`.trim();
   const turnId = `${group.turnId ?? task?.activeTurn?.id ?? "active-turn"}`;
   const identity = `active-turn:${threadId}:${turnId}`;
-  const startedAttribute = startedMs
-    ? ` data-active-turn-started-ms="${escapeHtml(startedMs)}"`
+  activeTurns.set(identity, presentation);
+  const startedAttribute = presentation.startedMs
+    ? ` data-active-turn-started-ms="${escapeHtml(presentation.startedMs)}"`
     : "";
-  const duration = startedMs
-    ? `Working for ${formatDuration(Date.now() - startedMs)}`
-    : "Working";
   return `
     <li
       class="task-event task-turn-active"
@@ -362,73 +361,9 @@ function renderActiveTurnStatus(group, task) {
       data-turn-id="${escapeHtml(turnId)}"
       data-conversation-entry-key="${escapeHtml(identity)}"
     >
-      <span class="task-status-spinner" aria-hidden="true"></span>
-      <span class="task-turn-active-duration">${escapeHtml(duration)}</span>
-      <span class="task-turn-active-state" title="${escapeHtml(state)}" aria-live="polite">${escapeHtml(state)}</span>
+      <caffold-task-active-turn></caffold-task-active-turn>
     </li>
   `;
-}
-
-function activeTurnStartMs(task) {
-  const taskStartedMs = Number(task?.activeTurn?.startedAtMs);
-  if (Number.isFinite(taskStartedMs) && taskStartedMs > 0) {
-    return taskStartedMs;
-  }
-  return null;
-}
-
-function activeTurnStateLabel(events, task) {
-  const activeFlagLabel = taskActiveFlagLabel(task);
-  if (activeFlagLabel) {
-    return activeFlagLabel;
-  }
-
-  const event =
-    [...events]
-      .reverse()
-      .find((entry) => entry.payload?.lifecycle === "started") ??
-    [...events]
-      .reverse()
-      .find((entry) =>
-        entry.type === "work_status" ||
-        entry.type === "reasoning" ||
-        entry.type === "plan" ||
-        entry.type === "command_execution" ||
-        entry.type === "file_change" ||
-        entry.type === "assistant_message",
-      );
-  if (!event) {
-    return "Thinking";
-  }
-  if (event.type === "work_status") {
-    return activeWorkItemLabel(event.payload?.itemType);
-  }
-  if (event.type === "reasoning") {
-    return "Thinking";
-  }
-  if (event.type === "plan") {
-    return "Updating plan";
-  }
-  if (event.type === "command_execution") {
-    return "Running command";
-  }
-  if (event.type === "file_change") {
-    return "Editing files";
-  }
-  return "Thinking";
-}
-
-function activeWorkItemLabel(itemType) {
-  if (itemType === "plan") {
-    return "Updating plan";
-  }
-  if (["commandExecution", "mcpToolCall", "dynamicToolCall"].includes(itemType)) {
-    return "Running command";
-  }
-  if (itemType === "fileChange") {
-    return "Editing files";
-  }
-  return "Thinking";
 }
 
 function renderApprovalFlow(approvals, options = {}) {

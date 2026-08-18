@@ -40,6 +40,7 @@
 @import "./pages/(task-workspace)/tasks/(detail)/components/github-menu.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css";
+@import "./pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css";
