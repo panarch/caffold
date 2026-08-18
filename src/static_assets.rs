@@ -396,6 +396,21 @@ pub fn get(path: &str) -> Option<StaticAsset> {
                 "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js"
             )))
         }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn/model.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn/model.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css" => {
             Some(css(include_str!(
                 "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css"
@@ -1358,6 +1373,10 @@ mod tests {
                 b"caffold-task-conversation".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.js",
+                b"caffold-task-active-turn".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.js",
                 b"caffold-task-changed-files".as_slice(),
             ),
@@ -1497,6 +1516,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
                 b"caffold-task-conversation".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css",
+                b"caffold-task-active-turn".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css",

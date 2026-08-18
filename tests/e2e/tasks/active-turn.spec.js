@@ -17,6 +17,76 @@ test.beforeEach(async ({ page }) => {
   await mockCodexModels(page);
 });
 
+test("shows context compaction only while its lifecycle item is active", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const threadId = "thread_context_compaction_status";
+  const turnId = "turn_context_compaction_status";
+  const startedAtMs = Date.now() - 1_000;
+  const task = activeTask({
+    threadId,
+    title: "Context compaction status",
+    turnId,
+    startedAtMs,
+  });
+  const turnStarted = turnEvent({
+    id: "event_context_compaction_turn_started",
+    threadId,
+    turnId,
+    type: "turn_started",
+    createdMs: startedAtMs,
+    payload: { status: "inProgress" },
+  });
+  const initialDetail = taskDetail(task, [turnStarted], 1);
+
+  await routeTaskList(page, [task]);
+  await page.route(
+    new RegExp(`/api/tasks/${threadId}(?:\\?|$)`),
+    (route) => route.fulfill({ json: initialDetail }),
+  );
+
+  await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(page, { ...initialDetail, threadId });
+  const activeTurn = page.locator(".task-turn-active");
+  const state = activeTurn.locator(".task-turn-active-state");
+  await expect(state).toHaveText("Thinking");
+  await rememberActiveTurnIdentity(page);
+
+  const compactionStarted = turnEvent({
+    id: `${turnId}:context-compaction-1`,
+    threadId,
+    turnId,
+    type: "work_status",
+    createdMs: startedAtMs + 1_000,
+    payload: {
+      itemId: "context-compaction-1",
+      itemType: "contextCompaction",
+      lifecycle: "started",
+    },
+  });
+  await emitTaskEvent(page, threadId, compactionStarted, 2);
+  await expect(state).toHaveText("Compacting context…");
+  await expect(state).toHaveAttribute("title", "Compacting context…");
+  await expectActiveTurnIdentity(page, true);
+
+  const compactionCompleted = {
+    ...compactionStarted,
+    summary: "Context compacted",
+    payload: {
+      ...compactionStarted.payload,
+      lifecycle: "completed",
+    },
+    updatedMs: startedAtMs + 2_000,
+  };
+  await emitTaskEvent(page, threadId, compactionCompleted, 3);
+  await expect(state).toHaveText("Thinking");
+  await expect(state).toHaveAttribute("title", "Thinking");
+  await expectActiveTurnIdentity(page, true);
+  await expect(
+    page.getByText("Compacting context…", { exact: true }),
+  ).toHaveCount(0);
+});
+
 test("preserves active-turn and spinner identity until the turn changes", { tag: "@all-viewports" }, async ({
   page,
 }) => {
@@ -157,7 +227,7 @@ test("preserves active-turn and spinner identity until the turn changes", { tag:
   await expectActiveTurnIdentity(page, true);
   await expectActiveTurnAttachment(page);
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await expect(activeTurn.locator(".task-status-spinner")).toHaveCSS(
+  await expect(activeTurn.locator(".task-active-turn-spinner")).toHaveCSS(
     "animation-name",
     "none",
   );
@@ -230,7 +300,7 @@ test("preserves active-turn and spinner identity until the turn changes", { tag:
     await secondActiveTurn.evaluate(
       (element) =>
         element !== window.__activeTurnIdentity.element &&
-        element.querySelector(".task-status-spinner") !==
+        element.querySelector(".task-active-turn-spinner") !==
           window.__activeTurnIdentity.spinner,
     ),
   ).toBe(true);
@@ -352,7 +422,7 @@ test("does not reuse active-turn state between tasks with the same turn id", { t
     await secondActiveTurn.evaluate(
       (element) =>
         element !== window.__activeTurnIdentity.element &&
-        element.querySelector(".task-status-spinner") !==
+        element.querySelector(".task-active-turn-spinner") !==
           window.__activeTurnIdentity.spinner,
     ),
   ).toBe(true);
@@ -422,7 +492,7 @@ async function rememberActiveTurnIdentity(page) {
   await page.locator(".task-turn-active").evaluate((element) => {
     window.__activeTurnIdentity = {
       element,
-      spinner: element.querySelector(".task-status-spinner"),
+      spinner: element.querySelector(".task-active-turn-spinner"),
       state: element.querySelector(".task-turn-active-state"),
     };
   });
@@ -441,7 +511,7 @@ async function expectActiveTurnIdentity(page, connected) {
       const current = document.querySelector(".task-turn-active");
       return (
         current === identity.element &&
-        current?.querySelector(".task-status-spinner") === identity.spinner &&
+        current?.querySelector(".task-active-turn-spinner") === identity.spinner &&
         current?.querySelector(".task-turn-active-state") === identity.state
       );
     }, { connected }),

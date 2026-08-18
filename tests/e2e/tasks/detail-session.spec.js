@@ -71,7 +71,7 @@ test("active task without a canonical turn keeps a disabled composer Stop action
   ).toBeDisabled();
   const active = page.locator(".task-turn-active");
   await expect(active).toBeVisible();
-  await expect(active.locator(".task-status-spinner")).toHaveCSS(
+  await expect(active.locator(".task-active-turn-spinner")).toHaveCSS(
     "color",
     "rgb(74, 74, 74)",
   );

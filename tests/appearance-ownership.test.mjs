@@ -159,13 +159,19 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
     /--activity-fg:/,
     "Progress spinners must use neutral control color rather than a green activity role",
   );
-  for (const path of [
-    "pages/(task-workspace)/tasks/components/task-status.css",
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
+  for (const [path, spinner] of [
+    [
+      "pages/(task-workspace)/tasks/components/task-status.css",
+      "task-status-spinner",
+    ],
+    [
+      "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css",
+      "task-active-turn-spinner",
+    ],
   ]) {
     assert.match(
       readFrontend(path),
-      /task-status-spinner[\s\S]*color: var\(--control-fg\)/,
+      new RegExp(`${spinner}[\\s\\S]*color: var\\(--control-fg\\)`),
       `${path} must keep progress spinners neutral`,
     );
   }

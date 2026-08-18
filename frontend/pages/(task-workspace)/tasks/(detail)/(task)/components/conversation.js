@@ -1,5 +1,4 @@
 import { escapeHtml } from "../../../../../../components/dom.js";
-import { formatDuration } from "../../../task-format.js";
 import {
   dedupeCanonicalEvents,
   eventIdentityKey,
@@ -7,6 +6,7 @@ import {
 } from "../../../task-events.js";
 import { isTaskTransportStale } from "../../../runtime-state.js";
 import { requestTaskImagePreview } from "../../../components/image-preview-dialog.js";
+import "./conversation/components/active-turn.js";
 import "./conversation/components/changed-files.js";
 import "./conversation/components/command.js";
 import "./conversation/components/markdown.js";
@@ -62,7 +62,6 @@ class CaffoldTaskConversation extends HTMLElement {
       this.boundCommandDisclosureIntent,
     );
     this.disconnectResizeObserver();
-    this.stopActiveTurnClock();
   }
 
   ensureState() {
@@ -88,7 +87,6 @@ class CaffoldTaskConversation extends HTMLElement {
     this.pendingDisclosureAnchorByThread = new Map();
     this.pendingMarkdownScrollByThread = new Map();
     this.resizeObserver = null;
-    this.activeTurnClockTimer = null;
     this.boundClick = (event) => this.handleClick(event);
     this.boundScroll = (event) => {
       if (event.target === this.scroller()) {
@@ -195,6 +193,14 @@ class CaffoldTaskConversation extends HTMLElement {
     return this.scroller()?.querySelector(":scope .task-conversation") ?? null;
   }
 
+  activeTurn() {
+    return (
+      this.conversationList()?.querySelector(
+        ":scope > .task-turn-active > caffold-task-active-turn",
+      ) ?? null
+    );
+  }
+
   hasScrollSnapshot(threadId) {
     this.ensureState();
     return this.scrollByThread.has(`${threadId ?? ""}`);
@@ -212,13 +218,13 @@ class CaffoldTaskConversation extends HTMLElement {
       this.pendingDisclosureAnchorByThread.delete(this.snapshot.threadId);
       this.pendingMarkdownScrollByThread.delete(this.snapshot.threadId);
       this.disconnectResizeObserver();
-      this.stopActiveTurnClock();
+      this.activeTurn()?.setActive(false);
       return;
     }
     this.active = true;
     this.reconcileViewportResize();
     this.bindResizeObserver();
-    this.syncActiveTurnClock();
+    this.activeTurn()?.setActive(true);
   }
 
   reconcileViewportResize() {
@@ -244,7 +250,6 @@ class CaffoldTaskConversation extends HTMLElement {
       this.pendingMarkdownScrollByThread.delete(this.snapshot.threadId);
       this.innerHTML = "";
       this.disconnectResizeObserver();
-      this.stopActiveTurnClock();
       return;
     }
     const approvals = pendingApprovals(this.snapshot.events);
@@ -260,9 +265,11 @@ class CaffoldTaskConversation extends HTMLElement {
     reconcileConversationList(
       this.conversationList(),
       view.html,
+      view.activeTurns,
       view.workDetails,
       view.changedFiles,
       view.commands,
+      this.active,
     );
     const threadId = this.snapshot.threadId;
     const hasPendingMarkdown = this.hasPendingMarkdownRender();
@@ -280,7 +287,6 @@ class CaffoldTaskConversation extends HTMLElement {
       this.snapshot.threadId,
     );
     this.bindResizeObserver();
-    this.syncActiveTurnClock();
     if (!this.pendingMarkdownScrollByThread.has(threadId)) {
       this.rememberScroll();
     }
@@ -852,47 +858,16 @@ class CaffoldTaskConversation extends HTMLElement {
     }
     this.rememberScroll();
   }
-
-  syncActiveTurnClock() {
-    const activeTurn = this.querySelector("[data-active-turn-started-ms]");
-    if (!activeTurn) {
-      this.stopActiveTurnClock();
-      return;
-    }
-    this.updateActiveTurnClock();
-    if (!this.activeTurnClockTimer) {
-      this.activeTurnClockTimer = window.setInterval(
-        () => this.updateActiveTurnClock(),
-        1_000,
-      );
-    }
-  }
-
-  updateActiveTurnClock() {
-    const activeTurn = this.querySelector("[data-active-turn-started-ms]");
-    const duration = activeTurn?.querySelector(".task-turn-active-duration");
-    const startedMs = Number(activeTurn?.dataset.activeTurnStartedMs);
-    if (!activeTurn || !duration || !Number.isFinite(startedMs)) {
-      this.stopActiveTurnClock();
-      return;
-    }
-    duration.textContent = `Working for ${formatDuration(
-      Date.now() - startedMs,
-    )}`;
-  }
-
-  stopActiveTurnClock() {
-    window.clearInterval(this.activeTurnClockTimer);
-    this.activeTurnClockTimer = null;
-  }
 }
 
 function reconcileConversationList(
   list,
   html,
+  activeTurns,
   workDetails,
   changedFiles = new Map(),
   commands = new Map(),
+  active = true,
 ) {
   if (!list) {
     return;
@@ -949,8 +924,17 @@ function reconcileConversationList(
     if (
       entry.matches(".task-turn-active") &&
       existingActiveTurn?.dataset.conversationEntryKey === key &&
-      patchActiveTurnEntry(existingActiveTurn, entry)
+      existingActiveTurn.querySelector(
+        ":scope > caffold-task-active-turn",
+      ) &&
+      activeTurns.has(key)
     ) {
+      syncElementAttributes(existingActiveTurn, entry, [
+        "class",
+        "data-active-turn-started-ms",
+        "data-turn-id",
+        "data-conversation-entry-key",
+      ]);
       return existingActiveTurn;
     }
     const commandSnapshot = commands.get(key);
@@ -985,6 +969,14 @@ function reconcileConversationList(
   reconcileElementChildren(list, desiredEntries);
   for (const entry of desiredEntries) {
     const key = `${entry.dataset.conversationEntryKey ?? ""}`;
+    const activeTurnSnapshot = activeTurns.get(key);
+    const activeTurnOwner = entry.querySelector(
+      ":scope > caffold-task-active-turn",
+    );
+    if (activeTurnOwner && activeTurnSnapshot) {
+      activeTurnOwner.setSnapshot(activeTurnSnapshot);
+      activeTurnOwner.setActive(active);
+    }
     const snapshot = workDetails.get(key);
     const owner = entry.querySelector(
       ":scope > caffold-task-work-details",
@@ -1049,53 +1041,6 @@ function patchFileChangeEntry(current, desired) {
   return true;
 }
 
-function patchActiveTurnEntry(current, desired) {
-  const currentSpinner = current.querySelector(":scope > .task-status-spinner");
-  const desiredSpinner = desired.querySelector(":scope > .task-status-spinner");
-  const currentDuration = current.querySelector(
-    ":scope > .task-turn-active-duration",
-  );
-  const desiredDuration = desired.querySelector(
-    ":scope > .task-turn-active-duration",
-  );
-  const currentState = current.querySelector(
-    ":scope > .task-turn-active-state",
-  );
-  const desiredState = desired.querySelector(
-    ":scope > .task-turn-active-state",
-  );
-  if (
-    !currentSpinner ||
-    !desiredSpinner ||
-    !currentDuration ||
-    !desiredDuration ||
-    !currentState ||
-    !desiredState
-  ) {
-    return false;
-  }
-
-  syncElementAttributes(current, desired, [
-    "class",
-    "data-active-turn-started-ms",
-    "data-turn-id",
-    "data-conversation-entry-key",
-  ]);
-  syncElementAttributes(currentSpinner, desiredSpinner, [
-    "class",
-    "aria-hidden",
-  ]);
-  syncElementAttributes(currentDuration, desiredDuration, ["class"]);
-  syncElementAttributes(currentState, desiredState, [
-    "class",
-    "title",
-    "aria-live",
-  ]);
-  patchText(currentDuration, desiredDuration.textContent);
-  patchText(currentState, desiredState.textContent);
-  return true;
-}
-
 function syncElementAttributes(current, desired, names) {
   for (const name of names) {
     if (desired.hasAttribute(name)) {
@@ -1124,8 +1069,8 @@ function reconcileElementChildren(parent, desiredChildren) {
     }
   }
 
-  // Reconcile from the stable tail so the active-turn entry is not detached
-  // while older timeline entries ahead of it are replaced.
+  // Reconcile from the stable tail so stateful entries are not detached while
+  // older timeline entries ahead of them are replaced.
   let anchor = null;
   for (let index = desiredChildren.length - 1; index >= 0; index -= 1) {
     const child = desiredChildren[index];

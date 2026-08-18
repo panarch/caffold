@@ -58,6 +58,10 @@ const ownership = new Map([
     ["caffold-task-conversation"],
   ],
   [
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css",
+    ["caffold-task-active-turn"],
+  ],
+  [
     "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css",
     ["caffold-task-changed-files"],
   ],
