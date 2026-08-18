@@ -44,6 +44,8 @@
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css";
+@import "./pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css";
+@import "./pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(review)/layout.css";
 @import "./pages/(task-workspace)/tasks/components/navigator.css";

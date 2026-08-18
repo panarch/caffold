@@ -147,9 +147,43 @@ export async function installExternalModuleDefaults(page) {
             const checked = task[1].toLowerCase() === "x" ? " checked" : "";
             return '<li><input type="checkbox" disabled' + checked + '> ' + inline(task[2]) + '</li>';
           };
+          const markdownBlocks = (source) => {
+            const blocks = [];
+            let current = [];
+            let fenced = false;
+            for (const line of source.split("\\n")) {
+              const fence = line.startsWith("\\x60\\x60\\x60");
+              if (fence && !fenced && current.length) {
+                blocks.push(current.join("\\n"));
+                current = [];
+              }
+              if (!fenced && !fence && line === "") {
+                if (current.length) {
+                  blocks.push(current.join("\\n"));
+                  current = [];
+                }
+                continue;
+              }
+              current.push(line);
+              if (fence) {
+                fenced = !fenced;
+                if (!fenced) {
+                  blocks.push(current.join("\\n"));
+                  current = [];
+                }
+              }
+            }
+            if (current.length) {
+              blocks.push(current.join("\\n"));
+            }
+            return blocks;
+          };
           export const marked = {
             parse(source) {
-              const blocks = source.split(/\\n{2,}/);
+              if (source === "[[caffold-test:markdown-error]]") {
+                throw new Error("fixture Markdown parse failure");
+              }
+              const blocks = markdownBlocks(source);
               return blocks.map((sourceBlock) => {
                 if (sourceBlock.trimStart().startsWith("<")) {
                   return sourceBlock;
@@ -157,7 +191,12 @@ export async function installExternalModuleDefaults(page) {
                 const block = escapeHtml(sourceBlock);
                 if (block.startsWith("\\x60\\x60\\x60")) {
                   const lines = block.split("\\n");
-                  return '<pre><code>' + lines.slice(1, -1).join("\\n") + '</code></pre>';
+                  const language = lines[0].slice(3).trim().split(/\\s+/, 1)[0];
+                  const languageClass = language
+                    ? ' class="language-' + language + '"'
+                    : '';
+                  const code = lines.slice(1, -1).join("\\n");
+                  return '<pre><code' + languageClass + '>' + code + (code ? "\\n" : "") + '</code></pre>';
                 }
                 const heading = block.match(/^(#{1,6}) (.+)$/);
                 if (heading) {
@@ -242,6 +281,7 @@ export async function installExternalModuleDefaults(page) {
         export const CircleSlash = [["circle", { cx: "12", cy: "12", r: "10" }], ["path", { d: "m5 5 14 14" }]];
         export const Circle = [["circle", { cx: "12", cy: "12", r: "10" }]];
         export const Check = [["path", { d: "m20 6-11 11-5-5" }]];
+        export const Copy = [["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2" }], ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" }]];
         export const ChevronDown = [["path", { d: "m6 9 6 6 6-6" }]];
         export const ChevronFirst = [["path", { d: "m17 18-6-6 6-6" }], ["path", { d: "M7 6v12" }]];
         export const ChevronLast = [["path", { d: "m7 18 6-6-6-6" }], ["path", { d: "M17 6v12" }]];
@@ -285,6 +325,7 @@ export async function installExternalModuleDefaults(page) {
         export const Square = [["rect", { x: "5", y: "5", width: "14", height: "14", rx: "1" }]];
         export const TriangleAlert = [["path", { d: "M10.3 2.9 1.8 17a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.9a2 2 0 0 0-3.4 0Z" }], ["path", { d: "M12 9v4" }], ["path", { d: "M12 17h.01" }]];
         export const Trash2 = [["path", { d: "M3 6h18" }], ["path", { d: "M8 6V4h8v2" }], ["path", { d: "M19 6l-1 15H6L5 6" }]];
+        export const WrapText = [["path", { d: "M3 6h18" }], ["path", { d: "M3 12h15a3 3 0 1 1 0 6h-4" }], ["path", { d: "m16 16-2 2 2 2" }], ["path", { d: "M3 18h7" }]];
         export const X = [["path", { d: "M18 6 6 18" }], ["path", { d: "m6 6 12 12" }]];
         export const Zap = [["path", { d: "M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" }]];
         export function createElement(iconNode, attrs = {}) {

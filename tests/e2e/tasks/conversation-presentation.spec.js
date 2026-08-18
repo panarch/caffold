@@ -748,7 +748,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   await expect
     .poll(() =>
       assistantMarkdown.evaluate((element) => {
-        const body = element.shadowRoot.querySelector(".markdown-body");
+        const body = element.querySelector(":scope > .markdown-body");
         return body.scrollWidth <= body.clientWidth;
       }),
     )
@@ -759,7 +759,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
         const probe = document.createElement("caffold-task-markdown");
         probe.textContent = "Fallback content";
         document.body.append(probe);
-        const loading = probe.shadowRoot.querySelector(".markdown-loading");
+        const loading = probe.querySelector(":scope > .markdown-body > .markdown-loading");
         const style = getComputedStyle(loading);
         const result = {
           backgroundColor: style.backgroundColor,
