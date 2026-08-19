@@ -66,6 +66,7 @@ caffold-task-detail-git {
 
   & > .task-git-popover:popover-open {
     display: grid;
+    align-content: start;
   }
 
   & > .task-git-popover button {
