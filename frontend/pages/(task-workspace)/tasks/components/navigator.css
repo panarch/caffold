@@ -138,6 +138,7 @@ caffold-task-navigator {
 
   & .task-list-reorder-popover:popover-open {
     display: grid;
+    align-content: start;
   }
 
   & .task-list-reorder-popover button {
