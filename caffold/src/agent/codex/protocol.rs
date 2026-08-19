@@ -179,12 +179,6 @@ pub struct CodexThread {
     pub extra: BTreeMap<String, Value>,
 }
 
-impl CodexThread {
-    pub fn into_value(self) -> Value {
-        serde_json::to_value(self).expect("serializing a decoded Codex thread cannot fail")
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadReadResponse {

@@ -215,7 +215,11 @@ pub(in crate::app::tasks) mod test_support {
     use tokio::sync::broadcast;
 
     use super::{TaskState, projection::*, routes::test_claim_task};
-    use crate::{agent::codex::CodexThreadClient, fs::RootedFs, task_store::TaskStore};
+    use crate::{
+        agent::codex::{CodexThread, CodexThreadClient},
+        fs::RootedFs,
+        task_store::TaskStore,
+    };
 
     const MOCK_METHOD_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
     const MOCK_METHOD_POLL_INTERVAL: Duration = Duration::from_millis(5);
@@ -292,10 +296,11 @@ pub(in crate::app::tasks) mod test_support {
         thread_id: &str,
         cwd: &Path,
     ) {
-        let thread = task_thread_list(thread_id, cwd)["data"][0].clone();
+        let thread: CodexThread =
+            serde_json::from_value(task_thread_list(thread_id, cwd)["data"][0].clone())
+                .expect("the fixture decodes as a Codex thread");
         let resolved = resolve_thread_cwd(&state.fs, &thread);
-        let task = task_record_from_thread(&thread, &[], resolved.as_ref())
-            .expect("test thread projection");
+        let task = task_record_from_thread(&thread, &[], resolved.as_ref());
         test_claim_task(state, &task)
             .await
             .expect("test thread is managed");

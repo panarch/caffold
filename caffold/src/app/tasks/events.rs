@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 use tokio::sync::broadcast;
 
+use crate::agent::codex::{CodexThread, TurnStatus};
+
 use super::generated_images::{GeneratedImageObservation, GeneratedImageStore};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -257,35 +259,26 @@ pub(in crate::app) fn sort_task_events(events: &mut [TaskEventRecord]) {
     });
 }
 
-pub(in crate::app) fn thread_events(thread: &JsonValue) -> Vec<TaskEventRecord> {
-    let Some(thread_id) = thread_id(thread) else {
-        return Vec::new();
-    };
+pub(in crate::app) fn thread_events(thread: &CodexThread) -> Vec<TaskEventRecord> {
+    let thread_id = thread.id.as_str();
     let mut events = Vec::new();
-    let thread_created_ms = seconds_to_ms(thread.get("createdAt").and_then(JsonValue::as_f64));
+    let thread_created_ms = seconds_to_ms(Some(thread.created_at));
     let thread_activity_ms = thread
-        .get("recencyAt")
-        .and_then(JsonValue::as_f64)
-        .or_else(|| thread.get("updatedAt").and_then(JsonValue::as_f64))
+        .recency_at
+        .or(Some(thread.updated_at))
         .map(seconds_to_ms_value)
         .unwrap_or(thread_created_ms)
         .max(thread_created_ms);
-    let turns = thread
-        .get("turns")
-        .and_then(JsonValue::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or_default();
+    let turns = thread.turns.as_slice();
     let mut previous_turn_ms = thread_created_ms.saturating_sub(1);
     for (turn_index, turn) in turns.iter().enumerate() {
-        let turn_id = turn.get("id").and_then(JsonValue::as_str).unwrap_or("turn");
+        let turn_id = turn.id.as_str();
         let canonical_started_ms = turn
-            .get("startedAt")
-            .and_then(JsonValue::as_f64)
+            .started_at
             .map(seconds_to_ms_value)
             .filter(|value| *value > 0);
         let canonical_completed_ms = turn
-            .get("completedAt")
-            .and_then(JsonValue::as_f64)
+            .completed_at
             .map(seconds_to_ms_value)
             .filter(|value| *value > 0);
         let minimum_turn_ms = if turn_index == 0 {
@@ -315,13 +308,9 @@ pub(in crate::app) fn thread_events(thread: &JsonValue) -> Vec<TaskEventRecord> 
             started.sort_index = Some(0);
             events.push(started);
         }
-        for (index, item) in turn
-            .get("items")
-            .and_then(JsonValue::as_array)
-            .into_iter()
-            .flatten()
-            .enumerate()
-        {
+        // A turn's items stay provider JSON: what they mean is the item
+        // vocabulary, which the browser still reads directly.
+        for (index, item) in turn.items.iter().enumerate() {
             let params = json!({
                 "threadId": thread_id,
                 "turnId": turn_id,
@@ -333,15 +322,11 @@ pub(in crate::app) fn thread_events(thread: &JsonValue) -> Vec<TaskEventRecord> 
             }
         }
         if let Some(completed_ms) = canonical_completed_ms {
-            let status = turn
-                .get("status")
-                .and_then(JsonValue::as_str)
-                .unwrap_or("completed");
-            let summary = match status {
-                "failed" => "Turn failed",
-                "interrupted" => "Turn interrupted",
-                "completed" => "Turn completed",
-                _ => "Turn updated",
+            let (summary, status) = match turn.status {
+                TurnStatus::Failed => ("Turn failed", "failed"),
+                TurnStatus::Interrupted => ("Turn interrupted", "interrupted"),
+                TurnStatus::Completed => ("Turn completed", "completed"),
+                TurnStatus::InProgress => ("Turn updated", "inProgress"),
             };
             events.push(task_event_record(
                 thread_id,
@@ -966,14 +951,6 @@ pub(in crate::app) fn command_execution_summary(item: &JsonValue) -> String {
     format!("Command {status}")
 }
 
-pub(in crate::app) fn thread_id(thread: &JsonValue) -> Option<&str> {
-    thread.get("id").and_then(JsonValue::as_str)
-}
-
-pub(in crate::app) fn thread_cwd(thread: &JsonValue) -> Option<&str> {
-    thread.get("cwd").and_then(JsonValue::as_str)
-}
-
 pub(in crate::app) fn seconds_to_ms(value: Option<f64>) -> u64 {
     value.map(seconds_to_ms_value).unwrap_or(0)
 }
@@ -1088,6 +1065,12 @@ mod normalization_tests {
     use serde_json::{Value as JsonValue, json};
 
     use super::*;
+
+    /// Decode a fixture the way the adapter decodes a real response, so a test
+    /// cannot assert against a shape the adapter would have rejected.
+    fn decoded_thread(thread: JsonValue) -> CodexThread {
+        serde_json::from_value(thread).expect("the fixture decodes as a Codex thread")
+    }
 
     #[test]
     fn context_compaction_lifecycle_is_preserved_in_work_status_events() {
@@ -1343,7 +1326,7 @@ mod normalization_tests {
             ]
         });
 
-        let events = thread_events(&thread);
+        let events = thread_events(&decoded_thread(thread));
         let event_types = events
             .iter()
             .map(|event| event.event_type.as_str())
@@ -1390,7 +1373,9 @@ mod normalization_tests {
     #[test]
     fn missing_turn_start_does_not_move_a_newer_turn_to_thread_creation() {
         let thread = json!({
+            "status": { "type": "idle" },
             "id": "thread_1",
+            "cwd": "/tmp",
             "createdAt": 1.0,
             "updatedAt": 1.0,
             "recencyAt": 20.0,
@@ -1436,7 +1421,7 @@ mod normalization_tests {
             ]
         });
 
-        let mut events = thread_events(&thread);
+        let mut events = thread_events(&decoded_thread(thread.clone()));
         sort_task_events(&mut events);
 
         assert!(
@@ -1534,7 +1519,9 @@ mod normalization_tests {
     #[test]
     fn image_only_user_messages_are_kept_in_the_transcript() {
         let thread = json!({
+            "status": { "type": "idle" },
             "id": "thread_1",
+            "cwd": "/tmp",
             "createdAt": 1.0,
             "turns": [{
                 "id": "turn_1",
@@ -1552,7 +1539,7 @@ mod normalization_tests {
             }]
         });
 
-        let user_message = thread_events(&thread)
+        let user_message = thread_events(&decoded_thread(thread.clone()))
             .into_iter()
             .find(|event| event.event_type == "user_message")
             .expect("image-only user message");
@@ -1564,11 +1551,14 @@ mod normalization_tests {
     #[test]
     fn transcript_item_ids_are_scoped_to_their_turn() {
         let thread = json!({
+            "status": { "type": "idle" },
             "id": "thread_1",
+            "cwd": "/tmp",
             "createdAt": 1.0,
             "turns": [
                 {
                     "id": "turn_1",
+                    "status": "completed",
                     "startedAt": 1.0,
                     "items": [{
                         "type": "agentMessage",
@@ -1579,6 +1569,7 @@ mod normalization_tests {
                 },
                 {
                     "id": "turn_2",
+                    "status": "completed",
                     "startedAt": 2.0,
                     "items": [{
                         "type": "agentMessage",
@@ -1590,7 +1581,7 @@ mod normalization_tests {
             ]
         });
 
-        let answer_ids = thread_events(&thread)
+        let answer_ids = thread_events(&decoded_thread(thread.clone()))
             .into_iter()
             .filter(|event| event.event_type == "assistant_message")
             .map(|event| event.id)
@@ -1605,7 +1596,9 @@ mod normalization_tests {
     #[test]
     fn canonical_thread_events_keep_codex_item_order_when_timestamps_match() {
         let thread = json!({
+            "status": { "type": "idle" },
             "id": "thread_1",
+            "cwd": "/tmp",
             "createdAt": 1.0,
             "turns": [{
                 "id": "turn_1",
@@ -1633,7 +1626,7 @@ mod normalization_tests {
             }]
         });
 
-        let mut events = thread_events(&thread);
+        let mut events = thread_events(&decoded_thread(thread.clone()));
         sort_task_events(&mut events);
         let item_events = events
             .into_iter()
@@ -1853,7 +1846,7 @@ mod normalization_tests {
             ]
         });
 
-        let events = thread_events(&thread);
+        let events = thread_events(&decoded_thread(thread));
         let reasoning = events
             .iter()
             .find(|event| event.event_type == "reasoning")

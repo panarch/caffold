@@ -222,7 +222,7 @@ mod tests {
     use super::super::test_support::*;
     use super::*;
     use crate::{
-        agent::codex::ThreadStatus,
+        agent,
         app::tasks::{projection::*, test_support::*},
         fs::RootedFs,
         task_store::{ComposerSettings, ManagedSection},
@@ -286,7 +286,7 @@ mod tests {
         let tasks = projected_active_tasks(&response.0);
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].title, "Stable cached name");
-        assert_eq!(tasks[0].thread_status, ThreadStatus::NotLoaded);
+        assert_eq!(tasks[0].thread_status, agent::ThreadStatus::NotLoaded);
         assert!(client.mock_requests().await.is_empty());
         assert_eq!(cached_projection_rows(&state), before);
     }
@@ -298,8 +298,10 @@ mod tests {
         let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
         let client = CodexThreadClient::mock(Vec::new());
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        let thread: crate::agent::codex::CodexThread =
+            serde_json::from_value(thread).expect("the fixture decodes as a Codex thread");
         let resolved = resolve_thread_cwd(&state.fs, &thread);
-        let task = task_record_from_thread(&thread, &[], resolved.as_ref()).unwrap();
+        let task = task_record_from_thread(&thread, &[], resolved.as_ref());
         task_store_claim(
             &state,
             managed_thread_from_task_record(&task, None, None, false),
@@ -709,8 +711,10 @@ mod tests {
                 .expect("Task list stream opens")
         });
         wait_for_mock_method(&client, "thread/list").await;
+        let thread: crate::agent::codex::CodexThread =
+            serde_json::from_value(thread).expect("the fixture decodes as a Codex thread");
         let resolved = resolve_thread_cwd(&state.fs, &thread);
-        let mut queued = task_record_from_thread(&thread, &[], resolved.as_ref()).unwrap();
+        let mut queued = task_record_from_thread(&thread, &[], resolved.as_ref());
         queued.title = "Queued after subscription".to_string();
         state.task_list_events.update(queued);
 

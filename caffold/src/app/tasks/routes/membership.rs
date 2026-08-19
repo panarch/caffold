@@ -443,7 +443,7 @@ pub(super) fn unavailable_archived_task(managed: &ManagedThread) -> TaskRecord {
         conversation_available: false,
         title: managed.display_name.clone(),
         preview: "Conversation unavailable".to_string(),
-        thread_status: ThreadStatus::NotLoaded,
+        thread_status: crate::agent::ThreadStatus::NotLoaded,
         latest_turn_status: None,
         active_turn: None,
         cwd: String::new(),

@@ -22,7 +22,9 @@ use super::{
     worktrees::inspect_ready_worktree,
 };
 use crate::{
-    agent::codex::{CodexPermissionMode, CodexThreadClient, CodexThreadError, TurnsPage},
+    agent::codex::{
+        CodexPermissionMode, CodexThread, CodexThreadClient, CodexThreadError, TurnsPage,
+    },
     app::error::ApiError,
     codex_thread_sessions::{CodexThreadSessions, ThreadSessionSnapshot},
     fs::RootedFs,
@@ -482,18 +484,12 @@ impl DetailContext {
         let mut turns = page
             .as_ref()
             .map(|page| page.data.clone())
-            .unwrap_or_default()
-            .into_iter()
-            .map(|turn| serde_json::to_value(turn).expect("decoded turn serializes"))
-            .collect::<Vec<_>>();
+            .unwrap_or_default();
         turns.reverse();
         let next_cursor = page.and_then(|page| page.next_cursor);
-        let thread = snapshot
-            .thread
-            .expect("thread metadata was checked above")
-            .into_value();
+        let thread = snapshot.thread.expect("thread metadata was checked above");
         let thread = self.project_managed_worktree_cwd(thread)?;
-        let thread = thread_with_turns(&thread, turns)?;
+        let thread = thread_with_turns(&thread, turns);
         let mut events = thread_events(&thread);
         self.events.observe(&events);
         events = merge_task_event_records(events, self.events.for_thread(&thread_id));
@@ -501,8 +497,8 @@ impl DetailContext {
         events = merge_task_event_records(events, pending_approvals.clone());
         sort_task_events(&mut events);
         let resolved_cwd = resolve_thread_cwd(&self.fs, &thread);
-        let mut task = task_record_from_thread(&thread, &events, resolved_cwd.as_ref())?;
-        apply_canonical_turn_projection(&mut task, &thread)?;
+        let mut task = task_record_from_thread(&thread, &events, resolved_cwd.as_ref());
+        apply_canonical_turn_projection(&mut task, &thread);
         let managed = self.store_get(&thread_id).await?;
         if let Some(current) = managed {
             task.title = current.display_name.clone();
@@ -538,17 +534,14 @@ impl DetailContext {
 
     pub(in crate::app) fn record_from_codex_thread(
         &self,
-        thread: &crate::agent::codex::CodexThread,
+        thread: &CodexThread,
     ) -> Result<TaskRecord, ApiError> {
-        let thread = self.project_managed_worktree_cwd(thread.clone().into_value())?;
+        let thread = self.project_managed_worktree_cwd(thread.clone())?;
         let resolved = resolve_thread_cwd(&self.fs, &thread);
-        task_record_from_thread(&thread, &[], resolved.as_ref())
+        Ok(task_record_from_thread(&thread, &[], resolved.as_ref()))
     }
 
-    fn project_managed_worktree_cwd(
-        &self,
-        thread: serde_json::Value,
-    ) -> Result<serde_json::Value, ApiError> {
+    fn project_managed_worktree_cwd(&self, thread: CodexThread) -> Result<CodexThread, ApiError> {
         project_managed_worktree_cwd(&self.store, thread)
     }
 
@@ -716,19 +709,17 @@ impl DetailContext {
     }
 }
 
+/// Point a thread at the worktree Caffold moved it into.
+///
+/// Codex reports the directory it was started in, which is no longer where the
+/// work happens once a Task has been isolated. Everything downstream — Git,
+/// review, file links — resolves from this one field.
 pub(in crate::app) fn project_managed_worktree_cwd(
     store: &TaskStore,
-    mut thread: serde_json::Value,
-) -> Result<serde_json::Value, ApiError> {
-    let Some(thread_id) = thread
-        .get("id")
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string)
-    else {
-        return Ok(thread);
-    };
+    mut thread: CodexThread,
+) -> Result<CodexThread, ApiError> {
     let worktree = store
-        .worktree_for_thread(&thread_id)
+        .worktree_for_thread(&thread.id)
         .map_err(|error| ApiError::Internal(error.to_string()))?;
     if let Some(worktree) = worktree
         && worktree.state == ManagedWorktreeState::Ready
@@ -740,12 +731,7 @@ pub(in crate::app) fn project_managed_worktree_cwd(
                 worktree.worktree_path
             ),
         })?;
-        if let Some(object) = thread.as_object_mut() {
-            object.insert(
-                "cwd".to_string(),
-                serde_json::Value::String(worktree.worktree_path),
-            );
-        }
+        thread.cwd = worktree.worktree_path;
     }
     Ok(thread)
 }
@@ -795,6 +781,17 @@ mod inline_tests {
     use super::*;
     use crate::task_store::{CheckoutAnchor, ManagedWorktree};
 
+    /// A Codex thread whose only interesting field is where it says it is
+    /// running, which is what the managed-worktree projection replaces.
+    fn codex_thread(cwd: &str) -> CodexThread {
+        serde_json::from_value(json!({
+            "id": "thread-1",
+            "cwd": cwd,
+            "status": { "type": "idle" },
+        }))
+        .expect("the fixture decodes as a Codex thread")
+    }
+
     #[test]
     fn ready_branch_switch_projects_live_git_context_without_persisting_the_observation() {
         let temp = tempfile::tempdir().unwrap();
@@ -824,13 +821,10 @@ mod inline_tests {
         git(&managed, &["commit", "-m", "Advance next branch"]);
         let live_head = git_output(&managed, &["rev-parse", "HEAD"]);
 
-        let projected = project_managed_worktree_cwd(
-            &store,
-            json!({ "id": "thread-1", "cwd": "/stale/source" }),
-        )
-        .unwrap();
+        let projected =
+            project_managed_worktree_cwd(&store, codex_thread("/stale/source")).unwrap();
 
-        assert_eq!(projected["cwd"], managed.display().to_string());
+        assert_eq!(projected.cwd, managed.display().to_string());
         let fs = RootedFs::new(temp.path()).unwrap();
         let context = resolve_thread_cwd(&fs, &projected)
             .unwrap()
@@ -865,11 +859,8 @@ mod inline_tests {
             })
             .unwrap();
 
-        let error = project_managed_worktree_cwd(
-            &store,
-            json!({ "id": "thread-1", "cwd": "/stale/source" }),
-        )
-        .unwrap_err();
+        let error =
+            project_managed_worktree_cwd(&store, codex_thread("/stale/source")).unwrap_err();
 
         assert!(matches!(
             error,
@@ -902,13 +893,10 @@ mod inline_tests {
             })
             .unwrap();
 
-        let projected = project_managed_worktree_cwd(
-            &store,
-            json!({ "id": "thread-1", "cwd": "/original/source" }),
-        )
-        .unwrap();
+        let projected =
+            project_managed_worktree_cwd(&store, codex_thread("/original/source")).unwrap();
 
-        assert_eq!(projected["cwd"], "/original/source");
+        assert_eq!(projected.cwd, "/original/source");
     }
 
     fn initialize_repository(path: &std::path::Path) {
@@ -974,9 +962,9 @@ mod request_tests {
     };
     use super::*;
     use crate::{
-        agent::codex::{
-            CodexNotification, CodexPermissionMode, CodexRuntimeEvent, CodexThreadClient,
-            ThreadStatus, TurnStatus,
+        agent::{
+            ThreadStatus, TurnStatus, codex,
+            codex::{CodexNotification, CodexPermissionMode, CodexRuntimeEvent, CodexThreadClient},
         },
         app::error::ApiError,
         codex_thread_sessions::{CodexThreadSessions, ThreadSessionLifecycle},
@@ -1027,7 +1015,7 @@ mod request_tests {
         client.mock_publish_event(CodexRuntimeEvent::Notification(
             CodexNotification::ThreadStatusChanged {
                 thread_id: thread_id.to_string(),
-                status: ThreadStatus::SystemError,
+                status: codex::ThreadStatus::SystemError,
             },
         ));
 
@@ -2181,7 +2169,7 @@ mod sync_tests {
     };
     use super::*;
     use crate::{
-        agent::codex::{CodexThreadClient, ThreadStatus, TurnStatus},
+        agent::{codex, codex::CodexThreadClient},
         app::error::ApiError,
         fs::RootedFs,
     };
@@ -2263,7 +2251,7 @@ mod sync_tests {
         drop(response);
         assert_eq!(
             snapshot.thread.expect("canonical thread").status,
-            ThreadStatus::Idle,
+            codex::ThreadStatus::Idle,
             "rollout contents only invalidate the canonical app-server snapshot"
         );
         assert_eq!(snapshot.active_turn_id, None);
@@ -2359,8 +2347,8 @@ mod sync_tests {
         )
         .unwrap();
 
-        assert_eq!(thread.status, ThreadStatus::Idle);
-        assert_eq!(turns.data[0].status, TurnStatus::InProgress);
+        assert_eq!(thread.status, codex::ThreadStatus::Idle);
+        assert_eq!(turns.data[0].status, codex::TurnStatus::InProgress);
 
         assert_eq!(
             client

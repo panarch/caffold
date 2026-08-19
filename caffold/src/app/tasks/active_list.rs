@@ -6,7 +6,10 @@ use std::{
 use serde::Serialize;
 
 use crate::{
-    agent::codex::{CodexThread, CodexThreadClient, ThreadStatus},
+    agent::{
+        ThreadStatus,
+        codex::{CodexThread, CodexThreadClient},
+    },
     app::error::ApiError,
     codex_thread_sessions::CodexThreadSessions,
     fs::RootedFs,
@@ -180,10 +183,10 @@ pub(in crate::app) async fn load_runtime_snapshot(
         let Some(managed) = managed.get(&thread.id) else {
             continue;
         };
-        let projected = project_managed_worktree_cwd(&store, thread.clone().into_value())?;
+        let projected = project_managed_worktree_cwd(&store, thread.clone())?;
         let resolved = resolve_thread_cwd(&fs, &projected);
-        let mut task = task_record_from_thread(&projected, &[], resolved.as_ref())?;
-        apply_canonical_turn_projection(&mut task, &projected)?;
+        let mut task = task_record_from_thread(&projected, &[], resolved.as_ref());
+        apply_canonical_turn_projection(&mut task, &projected);
         apply_managed_runtime_metadata(&mut task, managed);
         observed_threads.push(thread);
         tasks.push(task);

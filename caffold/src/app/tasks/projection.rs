@@ -1,13 +1,12 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value as JsonValue;
 use std::path::{Path, PathBuf};
 
-use super::events::{
-    TaskEventRecord, non_empty_string, seconds_to_ms, seconds_to_ms_value, thread_cwd, thread_id,
-};
+use super::events::{TaskEventRecord, non_empty_string, seconds_to_ms, seconds_to_ms_value};
 use crate::{
-    agent::codex::{ThreadStatus, TurnStatus},
-    app::error::ApiError,
+    agent::{
+        ThreadStatus, TurnStatus,
+        codex::{CodexThread, CodexTurn},
+    },
     fs::RootedFs,
     git,
 };
@@ -62,44 +61,37 @@ pub(in crate::app) struct ResolvedTaskCwd {
     pub(in crate::app) repository_common_dir: Option<PathBuf>,
 }
 
+/// A thread carrying the turns that were read separately.
+///
+/// A thread read without its turns and a page of turns arrive as two responses,
+/// and everything below here wants one subject.
 pub(in crate::app) fn thread_with_turns(
-    thread: &JsonValue,
-    turns: Vec<JsonValue>,
-) -> Result<JsonValue, ApiError> {
-    let mut thread = thread.clone();
-    let Some(object) = thread.as_object_mut() else {
-        return Err(ApiError::CodexThread(
-            "thread/read response did not include a thread object".to_string(),
-        ));
-    };
-    object.insert("turns".to_string(), JsonValue::Array(turns));
-    Ok(thread)
+    thread: &CodexThread,
+    turns: Vec<CodexTurn>,
+) -> CodexThread {
+    CodexThread {
+        turns,
+        ..thread.clone()
+    }
 }
 
 pub(in crate::app) fn task_record_from_thread(
-    thread: &JsonValue,
+    thread: &CodexThread,
     events: &[TaskEventRecord],
     resolved_cwd: Option<&ResolvedTaskCwd>,
-) -> Result<TaskRecord, ApiError> {
-    let thread_id = thread_id(thread).ok_or_else(|| ApiError::BadRequest {
-        code: "thread_id_missing",
-        message: "Codex thread did not include an id".to_string(),
-    })?;
-    let cwd = thread_cwd(thread).unwrap_or("").to_string();
-    let title = non_empty_string(thread.get("name").and_then(JsonValue::as_str))
-        .or_else(|| non_empty_string(thread.get("preview").and_then(JsonValue::as_str)))
+) -> TaskRecord {
+    let thread_id = thread.id.as_str();
+    let cwd = thread.cwd.clone();
+    let title = non_empty_string(thread.name.as_deref())
+        .or_else(|| non_empty_string(Some(thread.preview.as_str())))
         .unwrap_or_else(|| format!("Thread {}", short_thread_id(thread_id)));
-    let preview = thread
-        .get("preview")
-        .and_then(JsonValue::as_str)
-        .unwrap_or("")
-        .to_string();
-    let thread_status = decode_thread_status(thread.get("status"))?;
+    let preview = thread.preview.clone();
+    let thread_status = thread.status.clone().into();
     let last_event_summary = events
         .last()
         .map(|event| event.summary.clone())
         .or_else(|| non_empty_string(Some(&preview)));
-    Ok(TaskRecord {
+    TaskRecord {
         id: thread_id.to_string(),
         thread_id: thread_id.to_string(),
         conversation_available: true,
@@ -114,60 +106,42 @@ pub(in crate::app) fn task_record_from_thread(
             .unwrap_or_else(|| cwd.clone()),
         worktree: resolved_cwd.and_then(|resolved| resolved.worktree.clone()),
         cwd,
-        created_ms: seconds_to_ms(thread.get("createdAt").and_then(JsonValue::as_f64)),
-        updated_ms: seconds_to_ms(thread.get("updatedAt").and_then(JsonValue::as_f64)),
-        recency_ms: thread
-            .get("recencyAt")
-            .and_then(JsonValue::as_f64)
-            .map(seconds_to_ms_value),
+        created_ms: seconds_to_ms(Some(thread.created_at)),
+        updated_ms: seconds_to_ms(Some(thread.updated_at)),
+        recency_ms: thread.recency_at.map(seconds_to_ms_value),
         last_completed_ms: None,
         last_event_summary,
         unseen: false,
-    })
+    }
 }
 
-pub(in crate::app) fn apply_canonical_turn_projection(
-    task: &mut TaskRecord,
-    thread: &JsonValue,
-) -> Result<(), ApiError> {
-    let turns = thread
-        .get("turns")
-        .and_then(JsonValue::as_array)
-        .map(Vec::as_slice)
-        .unwrap_or_default();
-    task.latest_turn_status = turns
-        .last()
-        .map(|turn| decode_turn_status(turn.get("status")))
-        .transpose()?;
+pub(in crate::app) fn apply_canonical_turn_projection(task: &mut TaskRecord, thread: &CodexThread) {
+    let turns = thread.turns.as_slice();
+    task.latest_turn_status = turns.last().map(|turn| turn.status.into());
     task.last_completed_ms = turns
         .iter()
-        .filter_map(|turn| turn.get("completedAt").and_then(JsonValue::as_f64))
+        .filter_map(|turn| turn.completed_at)
         .map(seconds_to_ms_value)
         .filter(|value| *value > 0)
         .max();
+    // The active turn is a control pointer rather than a second source of
+    // status: it is offered only while the thread itself says it is active.
     task.active_turn = if matches!(task.thread_status, ThreadStatus::Active { .. }) {
         turns
             .last()
             .filter(|turn| {
-                turn.get("status").and_then(JsonValue::as_str) == Some("inProgress")
-                    && turn.get("id").and_then(JsonValue::as_str).is_some()
+                TurnStatus::from(turn.status) == TurnStatus::InProgress && !turn.id.is_empty()
             })
             .map(|turn| TaskActiveTurn {
-                id: turn
-                    .get("id")
-                    .and_then(JsonValue::as_str)
-                    .expect("active turn was checked above")
-                    .to_string(),
+                id: turn.id.clone(),
                 started_at_ms: turn
-                    .get("startedAt")
-                    .and_then(JsonValue::as_f64)
+                    .started_at
                     .map(seconds_to_ms_value)
                     .filter(|value| *value > 0),
             })
     } else {
         None
     };
-    Ok(())
 }
 
 pub(in crate::app) fn task_activity_ms(task: &TaskRecord) -> u64 {
@@ -177,9 +151,9 @@ pub(in crate::app) fn task_activity_ms(task: &TaskRecord) -> u64 {
 
 pub(in crate::app) fn resolve_thread_cwd(
     fs: &RootedFs,
-    thread: &JsonValue,
+    thread: &CodexThread,
 ) -> Option<ResolvedTaskCwd> {
-    thread_cwd(thread).and_then(|cwd| resolve_task_cwd(fs, cwd))
+    resolve_task_cwd(fs, &thread.cwd)
 }
 
 pub(in crate::app) fn resolve_task_cwd(fs: &RootedFs, cwd: &str) -> Option<ResolvedTaskCwd> {
@@ -256,26 +230,6 @@ pub(in crate::app) fn has_git_ancestor(path: &Path) -> bool {
     path.ancestors().any(git::has_git_marker)
 }
 
-pub(in crate::app) fn decode_thread_status(
-    status: Option<&JsonValue>,
-) -> Result<ThreadStatus, ApiError> {
-    serde_json::from_value(status.cloned().ok_or_else(|| {
-        ApiError::CodexThread("Codex thread did not include a status".to_string())
-    })?)
-    .map_err(|error| ApiError::CodexThread(format!("invalid Codex thread status: {error}")))
-}
-
-pub(in crate::app) fn decode_turn_status(
-    status: Option<&JsonValue>,
-) -> Result<TurnStatus, ApiError> {
-    serde_json::from_value(
-        status.cloned().ok_or_else(|| {
-            ApiError::CodexThread("Codex turn did not include a status".to_string())
-        })?,
-    )
-    .map_err(|error| ApiError::CodexThread(format!("invalid Codex turn status: {error}")))
-}
-
 pub(in crate::app) fn short_thread_id(thread_id: &str) -> &str {
     thread_id.get(..8).unwrap_or(thread_id)
 }
@@ -297,8 +251,14 @@ mod tests {
     use serde_json::{Value as JsonValue, json};
 
     use super::*;
+
+    /// Decode a fixture the way the adapter decodes a real response, so a test
+    /// cannot assert against a shape the adapter would have rejected.
+    fn decoded_thread(thread: serde_json::Value) -> CodexThread {
+        serde_json::from_value(thread).expect("the fixture decodes as a Codex thread")
+    }
     use crate::{
-        agent::codex::{ThreadStatus, TurnStatus},
+        agent::{ThreadStatus, TurnStatus},
         app::tasks::events::*,
         fs::RootedFs,
     };
@@ -363,14 +323,16 @@ mod tests {
             ]
         });
 
-        let mut completed = task_record_from_thread(&completed_thread, &[], None).unwrap();
-        apply_canonical_turn_projection(&mut completed, &completed_thread).unwrap();
+        let mut completed =
+            task_record_from_thread(&decoded_thread(completed_thread.clone()), &[], None);
+        apply_canonical_turn_projection(&mut completed, &decoded_thread(completed_thread.clone()));
         assert_eq!(completed.latest_turn_status, Some(TurnStatus::Completed));
         assert_eq!(completed.active_turn, None);
         assert_eq!(completed.last_completed_ms, Some(4_000));
 
-        let mut running = task_record_from_thread(&running_thread, &[], None).unwrap();
-        apply_canonical_turn_projection(&mut running, &running_thread).unwrap();
+        let mut running =
+            task_record_from_thread(&decoded_thread(running_thread.clone()), &[], None);
+        apply_canonical_turn_projection(&mut running, &decoded_thread(running_thread.clone()));
         assert_eq!(running.latest_turn_status, Some(TurnStatus::InProgress));
         assert_eq!(running.active_turn.unwrap().id, "latest");
         assert_eq!(running.last_completed_ms, Some(3_000));
@@ -393,10 +355,10 @@ mod tests {
                 "items": []
             }]
         });
-        let mut task = task_record_from_thread(&thread, &[], None).unwrap();
+        let mut task = task_record_from_thread(&decoded_thread(thread.clone()), &[], None);
         assert_eq!(task.latest_turn_status, None);
         assert_eq!(task.active_turn, None);
-        apply_canonical_turn_projection(&mut task, &thread).unwrap();
+        apply_canonical_turn_projection(&mut task, &decoded_thread(thread.clone()));
 
         assert!(matches!(task.thread_status, ThreadStatus::Active { .. }));
         assert_eq!(task.latest_turn_status, Some(TurnStatus::InProgress));
@@ -425,7 +387,7 @@ mod tests {
                 "startedAt": null
             }]
         });
-        let mut task = task_record_from_thread(&thread, &[], None).unwrap();
+        let mut task = task_record_from_thread(&decoded_thread(thread.clone()), &[], None);
         let list_value = serde_json::to_value(&task).unwrap();
         assert_eq!(
             list_value["threadStatus"],
@@ -439,7 +401,7 @@ mod tests {
         assert!(list_value.get("status").is_none());
         assert!(list_value.get("activeTurnId").is_none());
 
-        apply_canonical_turn_projection(&mut task, &thread).unwrap();
+        apply_canonical_turn_projection(&mut task, &decoded_thread(thread.clone()));
         let detail_value = serde_json::to_value(&task).unwrap();
         assert_eq!(detail_value["latestTurnStatus"], "inProgress");
         assert_eq!(
@@ -466,8 +428,8 @@ mod tests {
             }]
         });
 
-        let mut task = task_record_from_thread(&thread, &[], None).unwrap();
-        apply_canonical_turn_projection(&mut task, &thread).unwrap();
+        let mut task = task_record_from_thread(&decoded_thread(thread.clone()), &[], None);
+        apply_canonical_turn_projection(&mut task, &decoded_thread(thread.clone()));
 
         assert_eq!(task.thread_status, ThreadStatus::Idle);
         assert_eq!(task.latest_turn_status, Some(TurnStatus::InProgress));
@@ -486,8 +448,8 @@ mod tests {
             "status": { "type": "active", "activeFlags": [] },
             "turns": []
         });
-        let mut task = task_record_from_thread(&thread, &[], None).unwrap();
-        apply_canonical_turn_projection(&mut task, &thread).unwrap();
+        let mut task = task_record_from_thread(&decoded_thread(thread.clone()), &[], None);
+        apply_canonical_turn_projection(&mut task, &decoded_thread(thread.clone()));
 
         assert!(matches!(task.thread_status, ThreadStatus::Active { .. }));
         assert_eq!(task.latest_turn_status, None);
@@ -593,7 +555,7 @@ mod tests {
             1,
         )];
 
-        let task = task_record_from_thread(&thread, &events, None).unwrap();
+        let task = task_record_from_thread(&decoded_thread(thread.clone()), &events, None);
         assert!(matches!(task.thread_status, ThreadStatus::Active { .. }));
     }
 
@@ -647,7 +609,7 @@ mod tests {
             ),
         ];
 
-        let task = task_record_from_thread(&thread, &events, None).unwrap();
+        let task = task_record_from_thread(&decoded_thread(thread.clone()), &events, None);
         assert_eq!(task.thread_status, ThreadStatus::Idle);
     }
 
@@ -696,7 +658,7 @@ mod tests {
             ),
         ];
 
-        let task = task_record_from_thread(&thread, &events, None).unwrap();
+        let task = task_record_from_thread(&decoded_thread(thread.clone()), &events, None);
         assert_eq!(task.thread_status, ThreadStatus::Idle);
     }
 
@@ -713,8 +675,8 @@ mod tests {
             "turns": []
         });
 
-        let mut task = task_record_from_thread(&thread, &[], None).unwrap();
-        apply_canonical_turn_projection(&mut task, &thread).unwrap();
+        let mut task = task_record_from_thread(&decoded_thread(thread.clone()), &[], None);
+        apply_canonical_turn_projection(&mut task, &decoded_thread(thread.clone()));
 
         assert_eq!(task.thread_status, ThreadStatus::Idle);
         assert_eq!(task.active_turn, None);

@@ -343,9 +343,8 @@ impl TaskLifecycle {
         &self,
         thread: &crate::agent::codex::CodexThread,
     ) -> Result<TaskRecord, ApiError> {
-        let thread = thread.clone().into_value();
-        let resolved = resolve_thread_cwd(&self.fs, &thread);
-        task_record_from_thread(&thread, &[], resolved.as_ref())
+        let resolved = resolve_thread_cwd(&self.fs, thread);
+        Ok(task_record_from_thread(thread, &[], resolved.as_ref()))
     }
 
     async fn claim_at_top(
@@ -598,8 +597,10 @@ mod tests {
             "updatedAt": 2.0,
             "turns": [],
         });
+        let thread: crate::agent::codex::CodexThread =
+            serde_json::from_value(thread).expect("the fixture decodes as a Codex thread");
         let resolved = resolve_thread_cwd(&lifecycle.fs, &thread);
-        task_record_from_thread(&thread, &[], resolved.as_ref()).unwrap()
+        task_record_from_thread(&thread, &[], resolved.as_ref())
     }
 
     #[tokio::test]
