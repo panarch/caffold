@@ -62,7 +62,7 @@ for diagnostics but are not retry control flow.
 Run the opt-in compatibility check after upgrading Codex CLI:
 
 ```sh
-npm run test:codex-compat
+cargo test --test codex_protocol -- --ignored
 ```
 
 The check runs `codex app-server generate-ts --experimental` and verifies the

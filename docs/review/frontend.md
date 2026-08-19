@@ -473,7 +473,7 @@ line-count limits: a long fixture containing one coherent wire contract can be
 valid, while a short test that combines unrelated owners is not.
 
 Tasks Detail Git and GitHub behavior belongs in focused specs below
-`tests/e2e/tasks/`. App Shell coverage should assert only application-lifetime
+`frontend/tests/e2e/tasks/`. App Shell coverage should assert only application-lifetime
 coordination and route/asset boundaries. Task and Section behavior must be
 exercised through fixtures owned by their Tasks surface.
 

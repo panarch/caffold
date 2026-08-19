@@ -112,7 +112,7 @@ jobs:
           RELEASE_VERSION: ${{ steps.bump.outputs.version }}
         run: |
           changed_files="$(git diff --name-only | LC_ALL=C sort)"
-          expected_files="$(printf '%s\n' Cargo.lock Cargo.toml package.json | LC_ALL=C sort)"
+          expected_files="$(printf '%s\n' Cargo.lock Cargo.toml frontend/package.json | LC_ALL=C sort)"
           if [[ "${changed_files}" != "${expected_files}" ]]; then
             echo "Version bump changed unexpected files:" >&2
             printf '%s\n' "${changed_files}" >&2
@@ -121,7 +121,7 @@ jobs:
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock Cargo.toml package.json
+          git add Cargo.lock Cargo.toml frontend/package.json
           git commit -m "Release v${RELEASE_VERSION}"
           echo "release_sha=$(git rev-parse HEAD)" >>"${GITHUB_OUTPUT}"
 
@@ -140,9 +140,11 @@ jobs:
 
       - name: Install JavaScript dependencies
         run: npm ci
+        working-directory: frontend
 
       - name: Install Chromium
         run: npx playwright install chromium
+        working-directory: frontend
 
       - name: Verify native build tools
         run: |
@@ -155,15 +157,18 @@ jobs:
 
       - name: Test frontend units
         run: npm run test:unit
+        working-directory: frontend
 
-      - name: Test repository contracts
+      - name: Test frontend contracts
         run: npm run test:contract
+        working-directory: frontend
 
       - name: Build browser test server
         run: cargo build --locked
 
       - name: Test browser behavior
         run: npm run test:e2e
+        working-directory: frontend
 
       - name: Upload browser failure artifacts
         if: failure()
@@ -174,8 +179,20 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Test documentation contracts
+        run: node --test docs/tests/*.test.mjs
+
+      - name: Test repository tooling
+        run: node --test scripts/tests/*.test.mjs
+
+      - name: Test macOS packaging contracts
+        run: desktop/macos/test-contracts
+
       - name: Test macOS application behavior
-        run: npm run test:macos
+        run: |
+          desktop/macos/test-runtime
+          desktop/macos/test-system-status
+          desktop/macos/test-updater
 
       - name: Check Rust formatting
         run: cargo fmt --check
@@ -281,7 +298,7 @@ jobs:
             exit 1
           fi
           changed_files="$(git diff --name-only "${REQUESTED_SHA}..${RELEASE_SHA}" | LC_ALL=C sort)"
-          expected_files="$(printf '%s\n' Cargo.lock Cargo.toml package.json | LC_ALL=C sort)"
+          expected_files="$(printf '%s\n' Cargo.lock Cargo.toml frontend/package.json | LC_ALL=C sort)"
           if [[ "${changed_files}" != "${expected_files}" ]]; then
             echo "Release candidate changed unexpected files:" >&2
             printf '%s\n' "${changed_files}" >&2

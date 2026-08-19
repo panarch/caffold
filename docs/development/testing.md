@@ -7,9 +7,13 @@ different evidence and must be reported separately.
 
 ## Setup
 
+The npm package lives in `frontend/`. Run every JavaScript and browser command
+from that directory; Rust and release commands stay at the repository root.
+
 Use Node.js 22 and the committed npm lockfile:
 
 ```sh
+cd frontend
 npm ci
 npx playwright install chromium
 ```
@@ -44,16 +48,66 @@ run did not exercise.
 
 ## JavaScript and browser tests
 
-Package commands expose execution boundaries rather than individual test files:
+Commands are owned by the thing they verify rather than by one package, so each
+one records where it runs from and what it needs:
 
-| Command | Boundary |
+| Command | Run from | Requires | Boundary |
+| --- | --- | --- | --- |
+| `npm run test:unit` | `frontend/` | Node | all focused frontend Node unit tests |
+| `npm run test:contract` | `frontend/` | Node | frontend policy and browser-infrastructure contracts, plus the repository, release, and protocol contracts that have not yet moved to an owner |
+| `npm run test:e2e` | `frontend/` | Node, Chromium, a built server | deterministic fixture-backed Playwright coverage |
+| `cargo test --test codex_protocol -- --ignored` | repository root | installed Codex CLI | Codex CLI schema compatibility without authentication or model usage |
+| `npm run test:codex-live` | `frontend/` | authenticated Codex CLI | authenticated Codex browser coverage with model usage |
+| `node --test docs/tests/*.test.mjs` | repository root | Node | documentation index, links, entrypoints, and this command index |
+| `node --test scripts/tests/*.test.mjs` | repository root | Node | repository tooling behavior, such as the release version bump |
+| `desktop/macos/test-contracts` | repository root | Node | macOS packaging, release, and installer contracts, from `desktop/macos/tests/` |
+| `desktop/macos/test-runtime` | repository root | macOS, Xcode tools | Swift wrapper process lifecycle |
+| `desktop/macos/test-system-status` | repository root | macOS, Xcode tools | Swift system-status behavior |
+| `desktop/macos/test-updater` | repository root | macOS, Xcode tools | Swift updater behavior |
+
+The macOS contracts verify shell scripts, workflow definitions, and
+documentation, so they run on any platform and belong in the ordinary pull
+request checks. Only the Swift programs and the one packaging-metadata check
+need a macOS host; that check skips itself elsewhere.
+
+Every test belongs to the thing it verifies. Owners outside the frontend
+package keep their Node contracts in a `tests/` directory of their own and are
+invoked by path: `docs/tests/` verifies the documentation, `scripts/tests/`
+verifies the repository tooling, and `desktop/macos/tests/` verifies the macOS
+application. The frontend package keeps its own under
+`frontend/tests/contracts/`.
+
+The repository-level `tests/` directory belongs to the Rust server, which is the
+root Cargo package. It holds Cargo integration tests and the fixtures the
+backend shares — today the Codex protocol contract and the stub Codex CLI that
+the readiness tests and the browser server both use. A test written in Node does
+not make it frontend material, and a contract on the backend's own boundary
+belongs to the backend even when a different harness would be easier.
+
+Continuous integration follows the same ownership. Pull-request checks run one
+job per owner, and each job name says both whose it is and what kind of
+verification it performs:
+
+| Job | Verifies |
 | --- | --- |
-| `npm run test:unit` | all focused frontend Node unit tests |
-| `npm run test:contract` | top-level repository, policy, build, release, protocol, and browser-infrastructure contracts |
-| `npm run test:e2e` | deterministic fixture-backed Playwright coverage |
-| `npm run test:macos` | compiled Swift application behavior on macOS |
-| `npm run test:codex-compat` | installed Codex CLI schema compatibility without authentication or model usage |
-| `npm run test:codex-live` | authenticated Codex browser coverage with model usage |
+| Frontend Tests | colocated units and frontend contracts |
+| Documentation Contracts | the documentation index, links, and command index |
+| Repository Tooling Tests | the release version tooling, by calling it |
+| macOS Packaging Contracts | packaging, release, and installer definitions |
+| Browser Tests / _viewport_ | browser behavior, one job per viewport |
+| Rust Checks | formatting, lints, and the Rust suites |
+
+A failing check therefore names its owner without being opened. The contract
+jobs read shell scripts, workflow definitions, and documentation rather than
+running a macOS application, so `macOS Packaging Contracts` needs no macOS host
+and runs on the ordinary Ubuntu runner.
+
+The release workflow keeps all of this in one linear job on the macOS host,
+because it is a gate in front of an artifact rather than feedback on a change.
+It re-runs every pull-request suite and adds what needs that host: the Swift
+programs and the packaging verification. A contract keeps the split honest —
+every suite must run where it can run, and the release gate must not be weaker
+than the pull-request checks.
 
 Focused Node unit tests live beside their owning frontend module as
 `name.test.js`. They may import that module directly, but must not require
@@ -61,11 +115,17 @@ test-only exports from a public entry point. Production ownership scans, the
 static import graph, the Rust asset table, and the service-worker shell
 inventory exclude colocated `*.test.js` files.
 
-Keep tests under `tests/` when they compare multiple production owners or
-validate repository policy, inventories, build/release behavior, protocols, or
-browser-test infrastructure. `test:contract` discovers every top-level
-`tests/*.test.mjs` file, while Playwright specs remain under `tests/e2e/`. Run
-an individual top-level test directly with `node --test` while iterating. A
+Contracts that compare multiple production owners belong to the owner they
+verify. Frontend policy, asset, layout, and browser-infrastructure contracts
+live in `frontend/tests/contracts/`, beside the Playwright configuration, its
+Node support modules, and the browser suites under `frontend/tests/e2e/` and
+`frontend/tests/live/`.
+
+The repository-level `tests/` directory still holds the repository, release,
+packaging, and Codex protocol contracts that have not been given an owner yet,
+so `test:contract` currently discovers both locations. Reserving that directory
+for Cargo integration tests is tracked separately. Run an individual contract
+directly with `node --test` while iterating. A
 cross-cutting frontend or release change should run every affected boundary
 rather than relying on `test:e2e` alone.
 
@@ -105,7 +165,7 @@ For layout changes, inspect the generated screenshots under `test-results` and
 exercise the relevant desktop, foldable, and phone projects. For fixture or
 shared-state changes, compare normal parallel execution with `--workers=1`.
 
-`tests/e2e/showcase.spec.js` owns a small documentation-oriented desktop
+`frontend/tests/e2e/showcase.spec.js` owns a small documentation-oriented desktop
 scenario. Its dedicated fixture presents a completed review-first Task and a
 representative Working Tree diff without an authenticated Codex session. Run it
 with:
@@ -129,7 +189,7 @@ unit, browser-integration, and platform evidence.
 
 PWA build-handoff changes require the adjacent unit tests,
 `tests/service-worker.test.mjs`, and
-`tests/e2e/app-shell-update.spec.js`. The loopback lifecycle server provides
+`frontend/tests/e2e/app-shell-update.spec.js`. The loopback lifecycle server provides
 real Chromium service-worker replacement coverage. Its core recovery case keeps
 an old document alive after the target controller takes over, drops the first
 navigation, verifies that page resume does not repeat it automatically, and
@@ -157,7 +217,7 @@ The installed CLI compatibility check does not authenticate or start a Codex
 session and does not consume model usage:
 
 ```sh
-npm run test:codex-compat
+cargo test --test codex_protocol -- --ignored
 ```
 
 It runs `codex app-server generate-ts --experimental` and verifies the schema
@@ -200,26 +260,36 @@ app-server connection.
 
 ## macOS application tests
 
-These checks require macOS and Xcode command-line tools:
+`desktop/macos/` owns its own tests. Their sources live in
+`desktop/macos/tests/`, beside the production Swift they compile against.
+
+The Swift programs require macOS and the Xcode command-line tools:
 
 ```sh
-npm run test:macos
+desktop/macos/test-runtime
+desktop/macos/test-system-status
+desktop/macos/test-updater
 ```
 
-The command compiles and runs the Swift runtime, system-status, and updater test
-programs. The runtime test launches owned child processes and verifies both
-graceful termination and the exact-PID forced fallback.
+Each compiles the production wrapper source together with its test program. The
+runtime test launches owned child processes and verifies both graceful
+termination and the exact-PID forced fallback.
 
-The Node-hosted macOS packaging, release, and local-install contracts remain
-part of `test:contract`. The local-install contract uses controlled fake system
-tools to verify that an orphaned bundled server blocks replacement and that
-rollback stops a failed runtime before restoring the backup.
+The packaging, release, and local-install contracts need only Node:
+
+```sh
+desktop/macos/test-contracts
+```
+
+The local-install contract uses controlled fake system tools to verify that an
+orphaned bundled server blocks replacement and that rollback stops a failed
+runtime before restoring the backup. The one check that reads real packaging
+metadata skips itself off macOS arm64.
 
 When changing the application wrapper, process lifecycle, packaging, updater,
 or installer, also run:
 
 ```sh
-npm run test:contract
 desktop/macos/package-app build
 ```
 

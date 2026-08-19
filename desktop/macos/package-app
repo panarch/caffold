@@ -20,7 +20,7 @@ MACOS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 ARCH="$(uname -m)"
 VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' "${REPO_DIR}/Cargo.toml" | head -n 1)"
-WEB_VERSION="$(sed -n 's/^[[:space:]]*"version": "\([^"]*\)",/\1/p' "${REPO_DIR}/package.json" | head -n 1)"
+WEB_VERSION="$(sed -n 's/^[[:space:]]*"version": "\([^"]*\)",/\1/p' "${REPO_DIR}/frontend/package.json" | head -n 1)"
 BUILD_NUMBER="$(git -C "${REPO_DIR}" rev-list --count HEAD)"
 BUILD_TIMESTAMP="${CAFFOLD_BUILD_TIMESTAMP:-$(date '+%Y-%m-%d %H:%M %Z')}"
 ARCHIVE_BASENAME="Caffold-Server-${VERSION}-macos-${ARCH}.zip"
@@ -47,7 +47,7 @@ validate_source_versions() {
     exit 1
   fi
   if [[ "${WEB_VERSION}" != "${VERSION}" ]]; then
-    echo "Cargo.toml (${VERSION}) and package.json (${WEB_VERSION}) versions differ." >&2
+    echo "Cargo.toml (${VERSION}) and frontend/package.json (${WEB_VERSION}) versions differ." >&2
     exit 1
   fi
 }

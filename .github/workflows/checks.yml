@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  javascript:
-    name: JavaScript Tests
+  frontend:
+    name: Frontend Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -30,21 +30,88 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
+        working-directory: frontend
 
       - name: Test frontend units
         run: npm run test:unit
+        working-directory: frontend
 
-      - name: Test repository contracts
+      - name: Test frontend contracts
         run: npm run test:contract
+        working-directory: frontend
+
+  documentation:
+    name: Documentation Contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Test documentation contracts
+        run: node --test docs/tests/*.test.mjs
+
+  repository_tooling:
+    name: Repository Tooling Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Test repository tooling
+        run: node --test scripts/tests/*.test.mjs
+
+  macos_packaging:
+    name: macOS Packaging Contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # These verify shell scripts, workflow definitions, and documentation, so
+      # they need no macOS host. The Swift programs and the packaging-metadata
+      # check do, and run in the release workflow.
+      - name: Test macOS packaging contracts
+        run: desktop/macos/test-contracts
 
   browser:
     name: Browser Tests / ${{ matrix.project }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
+      # A viewport failure is usually specific to that viewport, so let the
+      # others finish and report. Cancelling them hides whether the change broke
+      # one layout or all of them.
       fail-fast: false
       matrix:
         project: [desktop, foldable, phone]
@@ -68,18 +135,22 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
+        working-directory: frontend
 
       - name: Install Chromium
         run: npx playwright install chromium
+        working-directory: frontend
 
       - name: Build the browser test server
         run: cargo build --locked
 
       - name: Test browser behavior
         run: npm run test:e2e -- --project=${{ matrix.project }}
+        working-directory: frontend
 
       - name: Upload browser failure artifacts
         if: failure()
@@ -89,23 +160,6 @@ jobs:
           path: test-results
           if-no-files-found: ignore
           retention-days: 7
-
-  browser_gate:
-    name: Browser Tests
-    if: ${{ always() }}
-    needs: browser
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    steps:
-      - name: Require every viewport project
-        env:
-          BROWSER_RESULT: ${{ needs.browser.result }}
-        run: |
-          if [[ "${BROWSER_RESULT}" != "success" ]]; then
-            echo "One or more viewport projects did not pass." >&2
-            exit 1
-          fi
 
   rust:
     name: Rust Checks

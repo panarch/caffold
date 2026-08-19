@@ -549,7 +549,7 @@ APIs for tests.
 
 Top-level `tests/` contains cross-owner contracts, repository policy and
 complete inventories, build/release and protocol boundaries, and browser-test
-infrastructure. Playwright regression tests live under `tests/e2e/`.
+infrastructure. Playwright regression tests live under `frontend/tests/e2e/`.
 
 Colocated tests are source files for Node only. Production JavaScript scans,
 the production static import graph, the service-worker asset inventory, and the
