@@ -3,7 +3,7 @@ mod v4_to_v5_codex;
 use std::path::PathBuf;
 
 use crate::{
-    codex_app_server::{CodexStatusResponse, CodexThreadError},
+    agent::codex::{CodexStatusResponse, CodexThreadError},
     task_store::{
         NavigatorMigrationSnapshot, PendingTaskStoreMigration, PreparedTaskStoreMigration,
         TaskStoreError, prepare_task_store_migration,
@@ -117,7 +117,7 @@ mod tests {
     #[ignore = "requires an authenticated installed Codex app-server"]
     async fn live_v4_migration_reads_real_codex_names_sections_and_order() {
         use crate::{
-            codex_app_server::{
+            agent::codex::{
                 CodexNotification, CodexRuntimeEvent, CodexThreadClient, CodexTurnOptions,
                 NORMAL_SERVICE_TIER_ID, ThreadSectionFilter, TurnStatus,
                 inspect_codex_installation,

@@ -4,10 +4,10 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
-    app::error::ApiError,
-    codex_app_server::{
+    agent::codex::{
         CodexThreadClient, CodexTurnOptions, is_fast_service_tier, service_tier_for_fast_mode,
     },
+    app::error::ApiError,
     codex_thread_sessions::{CodexThreadSessions, StartedThreadSettings},
     fs::RootedFs,
     task_store::{ComposerSettings, ManagedThread, TaskStore, TaskStoreError},
@@ -341,7 +341,7 @@ impl TaskLifecycle {
 
     fn record_from_codex_thread(
         &self,
-        thread: &crate::codex_app_server::CodexThread,
+        thread: &crate::agent::codex::CodexThread,
     ) -> Result<TaskRecord, ApiError> {
         let thread = thread.clone().into_value();
         let resolved = resolve_thread_cwd(&self.fs, &thread);

@@ -215,7 +215,7 @@ pub(in crate::app::tasks) mod test_support {
     use tokio::sync::broadcast;
 
     use super::{TaskState, projection::*, routes::test_claim_task};
-    use crate::{codex_app_server::CodexThreadClient, fs::RootedFs, task_store::TaskStore};
+    use crate::{agent::codex::CodexThreadClient, fs::RootedFs, task_store::TaskStore};
 
     const MOCK_METHOD_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
     const MOCK_METHOD_POLL_INTERVAL: Duration = Duration::from_millis(5);

@@ -15,7 +15,7 @@ use std::{
 use serde::Serialize;
 use tokio::sync::Mutex as AsyncMutex;
 
-use crate::codex_app_server::{
+use crate::agent::codex::{
     CodexPermissionMode, CodexThread, CodexThreadClient, ThreadStatus, TurnsPage,
 };
 
@@ -292,7 +292,7 @@ pub(super) mod test_support {
         CodexThreadSessions, INITIAL_TURNS_PAGE_SIZE, PromptTarget, TerminalTurnApplyOutcome,
         ThreadSessionLifecycle, ThreadSessionSnapshot,
     };
-    pub(super) use crate::codex_app_server::{
+    pub(super) use crate::agent::codex::{
         CodexNotification, CodexPermissionMode, CodexThread, CodexThreadClient, CodexTurn,
         CodexTurnOptions, MockCodexResponse, ThreadResumeResponse, ThreadStatus, TurnItemsView,
         TurnStatus, TurnsPage,

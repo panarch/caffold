@@ -8,7 +8,7 @@ use tokio::sync::{Mutex, broadcast};
 
 use super::{events::TaskEvents, lifecycle::TaskLifecycle, push::PushService};
 use crate::{
-    codex_app_server::{CodexThreadClient, CodexThreadError, ThreadTokenUsage},
+    agent::codex::{CodexThreadClient, CodexThreadError, ThreadTokenUsage},
     codex_thread_sessions::{CodexThreadSessions, ThreadSessionSnapshot},
     task_store::TaskStore,
 };
@@ -172,7 +172,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::codex_app_server::{CodexDaemonInfo, CodexReadiness, MockCodexResponse};
+    use crate::agent::codex::{CodexDaemonInfo, CodexReadiness, MockCodexResponse};
 
     fn test_runtime(store: TaskStore) -> CodexRuntime {
         let (shutdown, _) = broadcast::channel(1);
@@ -191,8 +191,8 @@ mod tests {
             .install_test_client(3, CodexThreadClient::mock(Vec::new()))
             .await;
         let readiness = CodexReadiness::blocking(
-            crate::codex_app_server::CodexReadinessState::UpdateRequired,
-            crate::codex_app_server::CodexReadinessReason::VersionBelowMinimum,
+            crate::agent::codex::CodexReadinessState::UpdateRequired,
+            crate::agent::codex::CodexReadinessReason::VersionBelowMinimum,
             "Codex must be updated before Task operations can run.",
             None,
         );

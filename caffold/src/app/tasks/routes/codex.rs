@@ -296,7 +296,7 @@ mod tests {
     #[tokio::test]
     async fn codex_models_preserves_app_server_reasoning_efforts() {
         let root = tempfile::tempdir().unwrap();
-        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
             "model/list",
             json!({
                 "data": [{
@@ -347,7 +347,7 @@ mod tests {
     async fn codex_permissions_use_app_server_profiles_and_effective_defaults() {
         let root = tempfile::tempdir().unwrap();
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "permissionProfile/list",
                 json!({
                     "data": [
@@ -365,7 +365,7 @@ mod tests {
                     "nextCursor": null
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "config/read",
                 json!({
                     "config": {
@@ -395,14 +395,8 @@ mod tests {
     #[tokio::test]
     async fn codex_turn_options_accepts_server_reported_reasoning_efforts() {
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
-                "model/list",
-                current_model_list_response(),
-            ),
-            crate::codex_app_server::MockCodexResponse::ok(
-                "model/list",
-                current_model_list_response(),
-            ),
+            crate::agent::codex::MockCodexResponse::ok("model/list", current_model_list_response()),
+            crate::agent::codex::MockCodexResponse::ok("model/list", current_model_list_response()),
         ]);
 
         let xhigh = codex_turn_options(
@@ -433,18 +427,9 @@ mod tests {
     #[tokio::test]
     async fn codex_turn_options_maps_fast_mode_and_normalizes_unsupported_models() {
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
-                "model/list",
-                current_model_list_response(),
-            ),
-            crate::codex_app_server::MockCodexResponse::ok(
-                "model/list",
-                current_model_list_response(),
-            ),
-            crate::codex_app_server::MockCodexResponse::ok(
-                "model/list",
-                current_model_list_response(),
-            ),
+            crate::agent::codex::MockCodexResponse::ok("model/list", current_model_list_response()),
+            crate::agent::codex::MockCodexResponse::ok("model/list", current_model_list_response()),
+            crate::agent::codex::MockCodexResponse::ok("model/list", current_model_list_response()),
         ]);
 
         let fast = codex_turn_options(
@@ -483,7 +468,7 @@ mod tests {
 
     #[tokio::test]
     async fn codex_turn_options_rejects_effort_not_supported_by_selected_model() {
-        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
             "model/list",
             current_model_list_response(),
         )]);
@@ -509,7 +494,7 @@ mod tests {
 
     #[tokio::test]
     async fn codex_turn_options_rejects_model_missing_from_server_list() {
-        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
             "model/list",
             current_model_list_response(),
         )]);

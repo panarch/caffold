@@ -1,4 +1,4 @@
-use crate::codex_app_server::{CodexThread, CodexThreadError, TurnsPage};
+use crate::agent::codex::{CodexThread, CodexThreadError, TurnsPage};
 
 use super::{
     CodexThreadSessions, ThreadSessionLifecycle, ThreadSessionSnapshot, now_unix_ms, snapshot,

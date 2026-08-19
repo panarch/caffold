@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::codex_app_server::{
+use crate::agent::codex::{
     CodexThread, CodexThreadClient, CodexThreadError, service_tier_for_fast_mode,
 };
 

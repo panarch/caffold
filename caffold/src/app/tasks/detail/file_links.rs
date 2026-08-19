@@ -786,11 +786,11 @@ mod tests {
 
     use super::*;
     use crate::{
+        agent::codex::CodexThreadClient,
         app::tasks::{
             events::task_event_record,
             test_support::{cache_and_manage_test_thread, task_state_with_codex_client},
         },
-        codex_app_server::CodexThreadClient,
     };
 
     fn prepared(fs: &RootedFs, task_root: &str) -> PreparedTaskRoot {

@@ -3,12 +3,12 @@ use serde_json::json;
 use tokio::sync::broadcast;
 
 use super::{CodexConnection, CodexRuntime, CodexRuntimeSignal};
+use crate::agent::codex::{
+    CodexNotification, CodexRuntimeEvent, CodexThreadClient, ThreadStatus, TurnStatus,
+};
 use crate::app::tasks::events::{
     event_id_from_params, now_ms, seconds_to_ms_value, task_event_from_item_lifecycle,
     task_event_from_raw_response_item, task_event_record,
-};
-use crate::codex_app_server::{
-    CodexNotification, CodexRuntimeEvent, CodexThreadClient, ThreadStatus, TurnStatus,
 };
 
 impl CodexRuntime {
@@ -436,11 +436,11 @@ mod tests {
 
     use super::*;
     use crate::{
+        agent::codex::{self, CodexThreadClient, MockCodexResponse},
         app::tasks::{
             events::TaskEvents, lifecycle::TaskLifecycle, routes::TaskListEvents,
             worktrees::ManagedWorktrees,
         },
-        codex_app_server::{self, CodexThreadClient, MockCodexResponse},
         codex_thread_sessions::CodexThreadSessions,
         fs::RootedFs,
         task_store::{ManagedThread, PushSubscriptionInput, TaskStore},
@@ -587,7 +587,7 @@ mod tests {
             .unwrap();
 
         runtime.handle_notification(
-            codex_app_server::decode_notification(
+            codex::decode_notification(
                 "turn/completed",
                 json!({
                     "threadId": "thread_1",
@@ -620,7 +620,7 @@ mod tests {
             .unwrap();
 
         runtime.handle_notification(
-            codex_app_server::decode_notification(
+            codex::decode_notification(
                 "turn/started",
                 json!({
                     "threadId": "thread_1",
@@ -668,7 +668,7 @@ mod tests {
             ("failed", "failed"),
             ("interrupted", "interrupted"),
         ] {
-            let notification = codex_app_server::decode_notification(
+            let notification = codex::decode_notification(
                 "turn/completed",
                 json!({
                     "threadId": "managed",
@@ -685,7 +685,7 @@ mod tests {
             assert_eq!(payload["tag"], delivery.topic);
         }
 
-        let outside = codex_app_server::decode_notification(
+        let outside = codex::decode_notification(
             "turn/completed",
             json!({
                 "threadId": "outside-caffold",
@@ -695,7 +695,7 @@ mod tests {
         .unwrap();
         runtime.handle_terminal_push(&outside, Some("Outside task"), true);
 
-        let nonterminal = codex_app_server::decode_notification(
+        let nonterminal = codex::decode_notification(
             "turn/completed",
             json!({
                 "threadId": "managed",
@@ -705,7 +705,7 @@ mod tests {
         .unwrap();
         runtime.handle_terminal_push(&nonterminal, Some("Current task name"), true);
 
-        let unsafe_turn = codex_app_server::decode_notification(
+        let unsafe_turn = codex::decode_notification(
             "turn/completed",
             json!({
                 "threadId": "managed",
@@ -715,7 +715,7 @@ mod tests {
         .unwrap();
         runtime.handle_terminal_push(&unsafe_turn, Some("Current task name"), true);
 
-        let stale_completion = codex_app_server::decode_notification(
+        let stale_completion = codex::decode_notification(
             "turn/completed",
             json!({
                 "threadId": "managed",
@@ -735,7 +735,7 @@ mod tests {
         );
 
         runtime.handle_notification(
-            codex_app_server::decode_notification(
+            codex::decode_notification(
                 "thread/tokenUsage/updated",
                 json!({
                     "threadId": "thread_usage",
@@ -839,7 +839,7 @@ mod tests {
         );
 
         runtime.handle_notification(
-            codex_app_server::decode_notification(
+            codex::decode_notification(
                 "turn/started",
                 json!({
                     "threadId": "thread_1",
@@ -859,7 +859,7 @@ mod tests {
         assert_eq!(started.payload.unwrap()["turn"]["id"], "turn_1");
 
         runtime.handle_notification(
-            codex_app_server::decode_notification(
+            codex::decode_notification(
                 "item/started",
                 json!({
                     "threadId": "thread_1",
@@ -891,7 +891,7 @@ mod tests {
         assert_eq!(cached_command.event_type, "command_execution");
 
         runtime.handle_notification(
-            codex_app_server::decode_notification(
+            codex::decode_notification(
                 "item/started",
                 json!({
                     "threadId": "thread_1",
@@ -916,7 +916,7 @@ mod tests {
         );
 
         runtime.handle_notification(
-            codex_app_server::decode_notification(
+            codex::decode_notification(
                 "item/completed",
                 json!({
                     "threadId": "thread_1",
@@ -943,7 +943,7 @@ mod tests {
         );
 
         runtime.handle_notification(
-            codex_app_server::decode_notification(
+            codex::decode_notification(
                 "thread/status/changed",
                 json!({
                     "threadId": "thread_1",
@@ -958,7 +958,7 @@ mod tests {
         assert_eq!(status.payload.unwrap()["status"], "running");
 
         runtime.handle_notification(
-            codex_app_server::decode_notification(
+            codex::decode_notification(
                 "turn/completed",
                 json!({
                     "threadId": "thread_1",

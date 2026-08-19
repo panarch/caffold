@@ -222,8 +222,8 @@ mod tests {
     use super::super::test_support::*;
     use super::*;
     use crate::{
+        agent::codex::ThreadStatus,
         app::tasks::{projection::*, test_support::*},
-        codex_app_server::ThreadStatus,
         fs::RootedFs,
         task_store::{ComposerSettings, ManagedSection},
     };
@@ -328,7 +328,7 @@ mod tests {
         let mut thread = task_thread_list(thread_id, root.path())["data"][0].clone();
         thread["name"] = json!("Stale Codex name");
         thread["updatedAt"] = json!(99.0);
-        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
             "thread/read",
             json!({ "thread": thread }),
         )]);
@@ -371,11 +371,11 @@ mod tests {
         let mut good_thread = task_thread_list(good_id, root.path())["data"][0].clone();
         good_thread["updatedAt"] = json!(99.0);
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/read",
                 json!({ "thread": good_thread }),
             ),
-            crate::codex_app_server::MockCodexResponse::error(
+            crate::agent::codex::MockCodexResponse::error(
                 "thread/read",
                 CodexThreadError::ProcessUnavailable,
             ),
@@ -499,7 +499,7 @@ mod tests {
         second["name"] = json!("Another stale list name");
         let unmanaged = task_thread_list("unmanaged-thread", root.path())["data"][0].clone();
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok_for(
+            crate::agent::codex::MockCodexResponse::ok_for(
                 "thread/list",
                 json!({
                     "limit": 100,
@@ -514,7 +514,7 @@ mod tests {
                     "backwardsCursor": null,
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok_for(
+            crate::agent::codex::MockCodexResponse::ok_for(
                 "thread/list",
                 json!({
                     "cursor": "page-2",
@@ -588,8 +588,8 @@ mod tests {
         assert_eq!(payload["tasks"][1]["title"], "Persisted second name");
         assert!(!second.contains("unmanaged-thread"));
         assert!(!second.contains("managed-but-missing"));
-        client.mock_publish_event(crate::codex_app_server::CodexRuntimeEvent::Notification(
-            crate::codex_app_server::CodexNotification::ThreadStatusChanged {
+        client.mock_publish_event(crate::agent::codex::CodexRuntimeEvent::Notification(
+            crate::agent::codex::CodexNotification::ThreadStatusChanged {
                 thread_id: first_id.to_string(),
                 status: ThreadStatus::Idle,
             },
@@ -639,7 +639,7 @@ mod tests {
         let thread_id = "thread-list-repeated-cursor";
         let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/list",
                 json!({
                     "data": [thread],
@@ -647,7 +647,7 @@ mod tests {
                     "backwardsCursor": null,
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/list",
                 json!({
                     "data": [],
@@ -681,8 +681,8 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-list-snapshot-race";
         let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
-        let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::delayed_ok(
+        let client =
+            CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::delayed_ok(
                 "thread/list",
                 json!({
                     "data": [thread.clone()],
@@ -690,8 +690,7 @@ mod tests {
                     "backwardsCursor": null,
                 }),
                 std::time::Duration::from_millis(50),
-            ),
-        ]);
+            )]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         claim_cached_active(

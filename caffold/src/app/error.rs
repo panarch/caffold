@@ -6,7 +6,7 @@ use axum::{
 use serde::Serialize;
 
 use crate::{
-    codex_app_server::CodexThreadError,
+    agent::codex::CodexThreadError,
     fs::FsError,
     watch::{WatchError, WatchError::Unavailable},
 };
@@ -332,9 +332,9 @@ mod tests {
     #[test]
     fn blocking_readiness_has_a_stable_task_api_error() {
         let error = ApiError::from(CodexThreadError::Readiness(Box::new(
-            crate::codex_app_server::CodexReadiness::blocking(
-                crate::codex_app_server::CodexReadinessState::UpdateRequired,
-                crate::codex_app_server::CodexReadinessReason::VersionBelowMinimum,
+            crate::agent::codex::CodexReadiness::blocking(
+                crate::agent::codex::CodexReadinessState::UpdateRequired,
+                crate::agent::codex::CodexReadinessReason::VersionBelowMinimum,
                 "Codex must be updated.",
                 None,
             ),

@@ -1,6 +1,6 @@
 use futures_util::{StreamExt, stream};
 
-use crate::codex_app_server::{CodexThreadClient, CodexThreadError, ThreadStatus};
+use crate::agent::codex::{CodexThreadClient, CodexThreadError, ThreadStatus};
 
 use super::{CodexThreadSessions, ThreadSessionLifecycle, ThreadSessionSnapshot};
 

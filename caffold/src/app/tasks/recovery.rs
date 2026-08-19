@@ -3,7 +3,7 @@ use std::{collections::HashSet, ops::Deref};
 use serde::Serialize;
 
 use crate::{
-    codex_app_server::{CodexThread, CodexThreadClient, CodexThreadError},
+    agent::codex::{CodexThread, CodexThreadClient, CodexThreadError},
     task_store::ManagedThread,
 };
 

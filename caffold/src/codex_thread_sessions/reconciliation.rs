@@ -1,4 +1,4 @@
-use crate::codex_app_server::{
+use crate::agent::codex::{
     CodexPermissionMode, CodexThread, CodexThreadClient, CodexTurn, ThreadResumeResponse,
     ThreadStatus, TurnStatus, TurnsPage, is_fast_service_tier,
 };

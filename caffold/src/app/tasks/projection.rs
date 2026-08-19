@@ -6,8 +6,8 @@ use super::events::{
     TaskEventRecord, non_empty_string, seconds_to_ms, seconds_to_ms_value, thread_cwd, thread_id,
 };
 use crate::{
+    agent::codex::{ThreadStatus, TurnStatus},
     app::error::ApiError,
-    codex_app_server::{ThreadStatus, TurnStatus},
     fs::RootedFs,
     git,
 };
@@ -298,8 +298,8 @@ mod tests {
 
     use super::*;
     use crate::{
+        agent::codex::{ThreadStatus, TurnStatus},
         app::tasks::events::*,
-        codex_app_server::{ThreadStatus, TurnStatus},
         fs::RootedFs,
     };
 

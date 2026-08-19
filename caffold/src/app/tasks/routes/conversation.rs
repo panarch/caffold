@@ -130,13 +130,12 @@ mod tests {
         let policy = task.join("docs/review/policy.md");
         std::fs::create_dir_all(policy.parent().unwrap()).unwrap();
         std::fs::write(&policy, "# Review Policy\n").unwrap();
-        let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::delayed_ok(
+        let client =
+            CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::delayed_ok(
                 "thread/resume",
                 resumed_task(thread_id, &task),
                 std::time::Duration::from_secs(1),
-            ),
-        ]);
+            )]);
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         cache_and_manage_test_thread(&state, thread_id, &task).await;
         state.task_events.publish(task_event_record(
@@ -208,13 +207,12 @@ mod tests {
         let task = root.path().join("task");
         std::fs::create_dir(&task).unwrap();
         std::fs::write(task.join("live.rs"), "pub fn live() {}\n").unwrap();
-        let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::delayed_ok(
+        let client =
+            CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::delayed_ok(
                 "thread/resume",
                 resumed_task(thread_id, &task),
                 std::time::Duration::from_secs(1),
-            ),
-        ]);
+            )]);
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         cache_and_manage_test_thread(&state, thread_id, &task).await;
 
@@ -303,7 +301,7 @@ mod tests {
         let thread_id = "thread-seen";
         let mut thread = task_thread_list(thread_id, root.path())["data"][0].clone();
         thread["updatedAt"] = json!(10.0);
-        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
             "thread/read",
             json!({ "thread": thread }),
         )]);

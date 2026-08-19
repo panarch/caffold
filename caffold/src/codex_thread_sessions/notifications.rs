@@ -1,4 +1,4 @@
-use crate::codex_app_server::{CodexNotification, CodexTurn, ThreadStatus, TurnStatus};
+use crate::agent::codex::{CodexNotification, CodexTurn, ThreadStatus, TurnStatus};
 
 use super::{
     CodexThreadSessions, NotificationApplyOutcome, TerminalTurnApplyOutcome,

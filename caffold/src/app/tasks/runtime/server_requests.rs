@@ -2,13 +2,13 @@ use serde::Deserialize;
 use serde_json::{Value as JsonValue, json};
 
 use super::{ApprovalResolution, ApprovalResolveError, CodexConnection, CodexRuntime};
+use crate::agent::codex::{
+    CodexNotification, CodexServerRequest, CodexThreadClient, ISOLATE_CURRENT_TASK_TOOL_NAME,
+    RENAME_CURRENT_THREAD_TOOL_NAME, ThreadStatus, TurnStatus,
+};
 use crate::app::tasks::{
     events::{TaskEventRecord, now_ms, task_event_record},
     worktrees::IsolateOutcome,
-};
-use crate::codex_app_server::{
-    CodexNotification, CodexServerRequest, CodexThreadClient, ISOLATE_CURRENT_TASK_TOOL_NAME,
-    RENAME_CURRENT_THREAD_TOOL_NAME, ThreadStatus, TurnStatus,
 };
 
 #[derive(Debug, Clone)]
@@ -605,11 +605,11 @@ mod tests {
 
     use super::*;
     use crate::{
+        agent::codex::{self, CodexThreadError, MockCodexResponse},
         app::tasks::{
             events::TaskEvents, lifecycle::TaskLifecycle, routes::TaskListEvents,
             worktrees::ManagedWorktrees,
         },
-        codex_app_server::{self, CodexThreadError, MockCodexResponse},
         codex_thread_sessions::CodexThreadSessions,
         fs::RootedFs,
         task_store::{ManagedThread, TaskStore},
@@ -647,7 +647,7 @@ mod tests {
         tool: &str,
         arguments: JsonValue,
     ) -> CodexServerRequest {
-        codex_app_server::decode_server_request(
+        codex::decode_server_request(
             json!(31),
             "item/tool/call",
             json!({
@@ -662,7 +662,7 @@ mod tests {
     }
 
     fn permission_approval_request(request_id: i64) -> CodexServerRequest {
-        codex_app_server::decode_server_request(
+        codex::decode_server_request(
             json!(request_id),
             "item/permissions/requestApproval",
             json!({
@@ -687,7 +687,7 @@ mod tests {
     }
 
     fn command_approval_request(request_id: i64) -> CodexServerRequest {
-        codex_app_server::decode_server_request(
+        codex::decode_server_request(
             json!(request_id),
             "item/commandExecution/requestApproval",
             json!({
@@ -728,7 +728,7 @@ mod tests {
             .handle_server_request(
                 &CodexThreadClient::mock(Vec::new()),
                 1,
-                codex_app_server::decode_server_request(
+                codex::decode_server_request(
                     json!(11),
                     "item/commandExecution/requestApproval",
                     json!({
@@ -948,7 +948,7 @@ mod tests {
                 permission_approval_request(45),
             )
             .await;
-        let resolved = codex_app_server::decode_notification(
+        let resolved = codex::decode_notification(
             "serverRequest/resolved",
             json!({ "threadId": "thread_1", "requestId": 45 }),
         )
@@ -1217,7 +1217,7 @@ mod tests {
             .handle_server_request(
                 &CodexThreadClient::mock(Vec::new()),
                 1,
-                codex_app_server::decode_server_request(
+                codex::decode_server_request(
                     json!(11),
                     "item/commandExecution/requestApproval",
                     json!({
@@ -1233,7 +1233,7 @@ mod tests {
         let requested = receiver.recv().await.unwrap();
         assert_eq!(requested.event_type, "approval_requested");
 
-        let completed = codex_app_server::decode_notification(
+        let completed = codex::decode_notification(
             "turn/completed",
             json!({
                 "threadId": "thread_1",

@@ -515,7 +515,7 @@ mod tests {
     ) {
         let mut task_events = state.task_events.subscribe();
         state.codex_runtime.spawn_test_bridge(client.clone(), 1);
-        let request = crate::codex_app_server::decode_server_request(
+        let request = crate::agent::codex::decode_server_request(
             json!(request_id),
             "item/permissions/requestApproval",
             json!({
@@ -529,7 +529,7 @@ mod tests {
             }),
         )
         .unwrap();
-        client.mock_publish_event(crate::codex_app_server::CodexRuntimeEvent::ServerRequest(
+        client.mock_publish_event(crate::agent::codex::CodexRuntimeEvent::ServerRequest(
             request,
         ));
 
@@ -549,7 +549,7 @@ mod tests {
     async fn permission_approval_http_route_grants_only_the_server_requested_profile() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-permission-approval";
-        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
             "thread/resume",
             resumed_task(thread_id, root.path()),
         )]);
@@ -629,9 +629,9 @@ mod tests {
         let client = CodexThreadClient::mock(Vec::new());
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        let readiness = crate::codex_app_server::CodexReadiness::blocking(
-            crate::codex_app_server::CodexReadinessState::UpdateRequired,
-            crate::codex_app_server::CodexReadinessReason::VersionBelowMinimum,
+        let readiness = crate::agent::codex::CodexReadiness::blocking(
+            crate::agent::codex::CodexReadinessState::UpdateRequired,
+            crate::agent::codex::CodexReadinessReason::VersionBelowMinimum,
             "Codex CLI 0.146.0 is older than the minimum supported version 0.147.0.",
             None,
         );
@@ -666,11 +666,11 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-explicit-permission";
         let mut responses = vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "config/read",
                 json!({ "config": { "developer_instructions": "Keep custom guidance." } }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/start",
                 json!({
                 "thread": {
@@ -690,7 +690,7 @@ mod tests {
                 }),
             ),
         ];
-        responses.push(crate::codex_app_server::MockCodexResponse::ok_for(
+        responses.push(crate::agent::codex::MockCodexResponse::ok_for(
             "thread/name/set",
             json!({
                 "threadId": thread_id,
@@ -698,7 +698,7 @@ mod tests {
             }),
             json!({}),
         ));
-        responses.push(crate::codex_app_server::MockCodexResponse::ok(
+        responses.push(crate::agent::codex::MockCodexResponse::ok(
             "turn/start",
             json!({
                 "turn": {
@@ -774,15 +774,12 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-model-settings";
         let mut responses = vec![
-            crate::codex_app_server::MockCodexResponse::ok(
-                "model/list",
-                current_model_list_response(),
-            ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok("model/list", current_model_list_response()),
+            crate::agent::codex::MockCodexResponse::ok(
                 "config/read",
                 json!({ "config": { "developer_instructions": null } }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/start",
                 json!({
                     "thread": {
@@ -799,12 +796,12 @@ mod tests {
                 }),
             ),
         ];
-        responses.push(crate::codex_app_server::MockCodexResponse::ok_for(
+        responses.push(crate::agent::codex::MockCodexResponse::ok_for(
             "thread/name/set",
             json!({ "threadId": thread_id, "name": "[REQ] Use xhigh" }),
             json!({}),
         ));
-        responses.push(crate::codex_app_server::MockCodexResponse::ok(
+        responses.push(crate::agent::codex::MockCodexResponse::ok(
             "turn/start",
             json!({
                 "turn": {
@@ -911,11 +908,11 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-section-setup-failure";
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "config/read",
                 json!({ "config": { "developer_instructions": null } }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/start",
                 json!({
                     "thread": {
@@ -929,7 +926,7 @@ mod tests {
                     }
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok_for(
+            crate::agent::codex::MockCodexResponse::ok_for(
                 "thread/name/set",
                 json!({
                     "threadId": thread_id,
@@ -937,7 +934,7 @@ mod tests {
                 }),
                 json!({}),
             ),
-            crate::codex_app_server::MockCodexResponse::ok("thread/archive", json!({})),
+            crate::agent::codex::MockCodexResponse::ok("thread/archive", json!({})),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -990,15 +987,12 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-follow-up-model-settings";
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/resume",
                 resumed_task(thread_id, root.path()),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
-                "model/list",
-                current_model_list_response(),
-            ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok("model/list", current_model_list_response()),
+            crate::agent::codex::MockCodexResponse::ok(
                 "turn/start",
                 json!({
                     "turn": {
@@ -1108,15 +1102,12 @@ mod tests {
             crate::git::create_attached_worktree(root.path(), &managed_cwd, "caffold/review", None)
                 .unwrap();
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/resume",
                 resumed_task(thread_id, root.path()),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
-                "model/list",
-                current_model_list_response(),
-            ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok("model/list", current_model_list_response()),
+            crate::agent::codex::MockCodexResponse::ok(
                 "turn/start",
                 json!({
                     "turn": {
@@ -1126,7 +1117,7 @@ mod tests {
                     }
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "turn/steer",
                 json!({ "turnId": "turn-managed-follow-up" }),
             ),
@@ -1379,7 +1370,7 @@ mod tests {
         let checkout =
             crate::git::create_attached_worktree(root.path(), &managed_cwd, "caffold/review", None)
                 .unwrap();
-        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
             "thread/resume",
             json!({
                 "thread": {
@@ -1466,7 +1457,7 @@ mod tests {
             crate::git::create_attached_worktree(root.path(), &managed_cwd, "caffold/review", None)
                 .unwrap();
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/resume",
                 json!({
                     "thread": {
@@ -1491,10 +1482,7 @@ mod tests {
                     }
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
-                "turn/steer",
-                json!({ "turnId": turn_id }),
-            ),
+            crate::agent::codex::MockCodexResponse::ok("turn/steer", json!({ "turnId": turn_id })),
         ]);
         // A fresh TaskState models the empty in-memory session state after the
         // Caffold server restarts. The canonical thread cwd remains the source
@@ -1557,7 +1545,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-system-error-recovery";
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/resume",
                 json!({
                     "thread": {
@@ -1585,7 +1573,7 @@ mod tests {
                     }
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "turn/start",
                 json!({
                     "turn": {
@@ -1664,9 +1652,9 @@ mod tests {
             })
         };
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok("thread/resume", resume("notLoaded")),
-            crate::codex_app_server::MockCodexResponse::ok("thread/resume", resume("idle")),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok("thread/resume", resume("notLoaded")),
+            crate::agent::codex::MockCodexResponse::ok("thread/resume", resume("idle")),
+            crate::agent::codex::MockCodexResponse::ok(
                 "turn/start",
                 json!({
                     "turn": {
@@ -1718,7 +1706,7 @@ mod tests {
         let turn_id = "turn-active";
         let prompt = "Keep this accepted steer visible after reload";
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/resume",
                 json!({
                     "thread": {
@@ -1737,10 +1725,7 @@ mod tests {
                     "cwd": root.path().display().to_string()
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
-                "turn/steer",
-                json!({ "turnId": turn_id }),
-            ),
+            crate::agent::codex::MockCodexResponse::ok("turn/steer", json!({ "turnId": turn_id })),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -1830,7 +1815,7 @@ mod tests {
         let thread_id = "thread-stale-steer-follow-up";
         let stale_turn_id = "turn-completed-before-steer";
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/resume",
                 json!({
                     "thread": {
@@ -1858,13 +1843,13 @@ mod tests {
                     }
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::error(
+            crate::agent::codex::MockCodexResponse::error(
                 "turn/steer",
-                crate::codex_app_server::CodexThreadError::TurnUnavailable(
+                crate::agent::codex::CodexThreadError::TurnUnavailable(
                     "no active turn to steer".to_string(),
                 ),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/resume",
                 json!({
                     "thread": {
@@ -1892,7 +1877,7 @@ mod tests {
                     }
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "turn/start",
                 json!({
                     "turn": {

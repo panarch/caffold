@@ -41,11 +41,11 @@ use super::{
 use super::generated_images::GeneratedImageError;
 
 use crate::{
-    app::error::ApiError,
-    codex_app_server::{
+    agent::codex::{
         CodexDaemonInfo, CodexPermissionMode, CodexStatusResponse, CodexThreadClient,
         CodexThreadError, CodexTurnOptions, NORMAL_SERVICE_TIER_ID, ThreadStatus,
     },
+    app::error::ApiError,
     codex_thread_sessions::{PromptTarget, ThreadSessionSnapshot, ThreadSessionsDiagnostics},
     fs::MAX_IMAGE_BYTES,
     task_store::{ManagedThread, ManagedWorktree, ManagedWorktreeState, TaskStoreError},
@@ -147,7 +147,7 @@ struct TaskPromptResponse {
 struct TaskPromptOutcome {
     turn_id: String,
     steered: bool,
-    started_turn: Option<(crate::codex_app_server::CodexTurn, CodexTurnOptions)>,
+    started_turn: Option<(crate::agent::codex::CodexTurn, CodexTurnOptions)>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -451,9 +451,9 @@ pub(super) mod test_support {
 
     pub(super) fn recovery_location_responses(
         archived_threads: Vec<JsonValue>,
-    ) -> Vec<crate::codex_app_server::MockCodexResponse> {
+    ) -> Vec<crate::agent::codex::MockCodexResponse> {
         vec![
-            crate::codex_app_server::MockCodexResponse::ok_for(
+            crate::agent::codex::MockCodexResponse::ok_for(
                 "thread/list",
                 json!({
                     "limit": 100,
@@ -468,7 +468,7 @@ pub(super) mod test_support {
                     "backwardsCursor": null,
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok_for(
+            crate::agent::codex::MockCodexResponse::ok_for(
                 "thread/list",
                 json!({
                     "limit": 100,
@@ -488,8 +488,8 @@ pub(super) mod test_support {
 
     pub(super) fn active_recovery_location_responses(
         active_threads: Vec<JsonValue>,
-    ) -> Vec<crate::codex_app_server::MockCodexResponse> {
-        vec![crate::codex_app_server::MockCodexResponse::ok_for(
+    ) -> Vec<crate::agent::codex::MockCodexResponse> {
+        vec![crate::agent::codex::MockCodexResponse::ok_for(
             "thread/list",
             json!({
                 "limit": 100,

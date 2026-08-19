@@ -6,8 +6,8 @@ use std::{
 use serde::Serialize;
 
 use crate::{
+    agent::codex::{CodexThread, CodexThreadClient, ThreadStatus},
     app::error::ApiError,
-    codex_app_server::{CodexThread, CodexThreadClient, ThreadStatus},
     codex_thread_sessions::CodexThreadSessions,
     fs::RootedFs,
     task_store::{ComposerSettings, ManagedSection, ManagedThread, TaskStore},

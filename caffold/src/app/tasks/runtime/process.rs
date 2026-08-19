@@ -3,7 +3,7 @@ use std::future::Future;
 use tokio::sync::Mutex;
 
 use super::{CodexConnection, CodexRuntime, CodexRuntimeSignal};
-use crate::codex_app_server::{
+use crate::agent::codex::{
     CodexInstallation, CodexReadiness, CodexStatusResponse, CodexThreadClient, CodexThreadError,
     inspect_codex_installation,
 };
@@ -51,8 +51,8 @@ impl CodexRuntime {
 
         self.classified_connection().await?.ok_or_else(|| {
             CodexThreadError::Readiness(Box::new(CodexReadiness::blocking(
-                crate::codex_app_server::CodexReadinessState::Error,
-                crate::codex_app_server::CodexReadinessReason::ReadyRuntimeUnavailable,
+                crate::agent::codex::CodexReadinessState::Error,
+                crate::agent::codex::CodexReadinessReason::ReadyRuntimeUnavailable,
                 "Codex readiness passed without an available app-server connection.",
                 None,
             )))
@@ -172,7 +172,7 @@ impl CodexRuntime {
 
     pub(in crate::app) async fn restart_daemon(
         &self,
-    ) -> Result<crate::codex_app_server::CodexDaemonInfo, CodexThreadError> {
+    ) -> Result<crate::agent::codex::CodexDaemonInfo, CodexThreadError> {
         self.restart_daemon_with(CodexThreadClient::restart_daemon)
             .await
     }
@@ -180,11 +180,11 @@ impl CodexRuntime {
     pub(super) async fn restart_daemon_with<Restart, RestartFuture>(
         &self,
         restart: Restart,
-    ) -> Result<crate::codex_app_server::CodexDaemonInfo, CodexThreadError>
+    ) -> Result<crate::agent::codex::CodexDaemonInfo, CodexThreadError>
     where
         Restart: FnOnce() -> RestartFuture,
         RestartFuture:
-            Future<Output = Result<crate::codex_app_server::CodexDaemonInfo, CodexThreadError>>,
+            Future<Output = Result<crate::agent::codex::CodexDaemonInfo, CodexThreadError>>,
     {
         let _readiness_check = self.process.readiness_check.lock().await;
         let _lifecycle_change = self.process.lifecycle_change.lock().await;
@@ -254,16 +254,16 @@ impl CodexRuntime {
         process.generation = generation;
         process.client = Some(client);
         process.readiness = Some(CodexReadiness {
-            state: crate::codex_app_server::CodexReadinessState::Ready,
+            state: crate::agent::codex::CodexReadinessState::Ready,
             blocks_task_operations: false,
-            reason_code: crate::codex_app_server::CodexReadinessReason::Ready,
+            reason_code: crate::agent::codex::CodexReadinessReason::Ready,
             diagnostic_message: "Codex is ready for Task operations.".to_string(),
-            minimum_supported_version: crate::codex_app_server::MINIMUM_SUPPORTED_CODEX_CLI_VERSION
+            minimum_supported_version: crate::agent::codex::MINIMUM_SUPPORTED_CODEX_CLI_VERSION
                 .to_string(),
             detected_executable: None,
             managed_executable: None,
             running_app_server_version: Some(
-                crate::codex_app_server::MINIMUM_SUPPORTED_CODEX_CLI_VERSION.to_string(),
+                crate::agent::codex::MINIMUM_SUPPORTED_CODEX_CLI_VERSION.to_string(),
             ),
         });
         process.test_client = true;

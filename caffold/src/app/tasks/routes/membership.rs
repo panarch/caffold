@@ -495,9 +495,9 @@ mod tests {
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         state
             .codex_runtime
-            .set_test_readiness(crate::codex_app_server::CodexReadiness::blocking(
-                crate::codex_app_server::CodexReadinessState::Error,
-                crate::codex_app_server::CodexReadinessReason::AppServerUnavailable,
+            .set_test_readiness(crate::agent::codex::CodexReadiness::blocking(
+                crate::agent::codex::CodexReadinessState::Error,
+                crate::agent::codex::CodexReadinessReason::AppServerUnavailable,
                 "Codex is unavailable for this test.",
                 None,
             ))
@@ -740,11 +740,11 @@ mod tests {
         let mut thread = task_thread_list(thread_id, root.path())["data"][0].clone();
         thread["cwd"] = json!(root.path().join("missing").display().to_string());
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/unarchive",
                 json!({ "thread": thread }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok("thread/archive", json!({})),
+            crate::agent::codex::MockCodexResponse::ok("thread/archive", json!({})),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -793,12 +793,12 @@ mod tests {
             })
         };
         let responses = vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/read",
                 json!({ "thread": thread() }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok("thread/archive", json!({})),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok("thread/archive", json!({})),
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/unarchive",
                 json!({ "thread": thread() }),
             ),
@@ -875,12 +875,12 @@ mod tests {
             })
         };
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/read",
                 json!({ "thread": thread() }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok("thread/archive", json!({})),
-            crate::codex_app_server::MockCodexResponse::ok("thread/delete", json!({})),
+            crate::agent::codex::MockCodexResponse::ok("thread/archive", json!({})),
+            crate::agent::codex::MockCodexResponse::ok("thread/delete", json!({})),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -951,7 +951,7 @@ mod tests {
                 "turns": []
             })
         };
-        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
             "thread/read",
             json!({ "thread": thread() }),
         )]);
@@ -1030,11 +1030,11 @@ mod tests {
             })
         };
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/read",
                 json!({ "thread": thread() }),
             ),
-            crate::codex_app_server::MockCodexResponse::error(
+            crate::agent::codex::MockCodexResponse::error(
                 "thread/archive",
                 CodexThreadError::ProcessUnavailable,
             ),
@@ -1096,12 +1096,12 @@ mod tests {
             })
         };
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/read",
                 json!({ "thread": thread() }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok("thread/archive", json!({})),
-            crate::codex_app_server::MockCodexResponse::error(
+            crate::agent::codex::MockCodexResponse::ok("thread/archive", json!({})),
+            crate::agent::codex::MockCodexResponse::error(
                 "thread/unarchive",
                 CodexThreadError::ProcessUnavailable,
             ),
@@ -1154,16 +1154,16 @@ mod tests {
         let thread_id = "thread-archive-round-trip";
         let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
         let responses = vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/read",
                 json!({ "thread": thread.clone() }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok("thread/archive", json!({})),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok("thread/archive", json!({})),
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/read",
                 json!({ "thread": thread.clone() }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/unarchive",
                 json!({ "thread": thread.clone() }),
             ),
@@ -1240,7 +1240,7 @@ mod tests {
         let thread_id = "thread-recovery-restore";
         let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
         let mut responses = recovery_location_responses(vec![thread.clone()]);
-        responses.push(crate::codex_app_server::MockCodexResponse::ok(
+        responses.push(crate::agent::codex::MockCodexResponse::ok(
             "thread/unarchive",
             json!({ "thread": thread }),
         ));
@@ -1426,11 +1426,11 @@ mod tests {
         thread["cwd"] = json!(root.path().join("missing").display().to_string());
         let mut responses = recovery_location_responses(vec![thread.clone()]);
         responses.extend([
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/unarchive",
                 json!({ "thread": thread }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok("thread/archive", json!({})),
+            crate::agent::codex::MockCodexResponse::ok("thread/archive", json!({})),
         ]);
         let client = CodexThreadClient::mock(responses);
         let state =
@@ -1532,18 +1532,17 @@ mod tests {
     async fn recovery_remove_rejects_a_thread_that_reappeared_without_changing_membership() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-recovery-reappeared";
-        let client =
-            CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok_for(
-                "thread/list",
-                json!({
-                    "limit": 100,
-                    "sortKey": "recency_at",
-                    "sortDirection": "desc",
-                    "archived": false,
-                    "useStateDbOnly": true,
-                }),
-                task_thread_list(thread_id, root.path()),
-            )]);
+        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok_for(
+            "thread/list",
+            json!({
+                "limit": 100,
+                "sortKey": "recency_at",
+                "sortDirection": "desc",
+                "archived": false,
+                "useStateDbOnly": true,
+            }),
+            task_thread_list(thread_id, root.path()),
+        )]);
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         manage_test_thread(&state, thread_id, root.path()).await;
 
@@ -1563,7 +1562,7 @@ mod tests {
         let thread_id = "thread-active-archive";
         let mut thread = task_thread_list(thread_id, root.path())["data"][0].clone();
         thread["status"] = json!({ "type": "active", "activeFlags": [] });
-        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
             "thread/read",
             json!({ "thread": thread }),
         )]);
@@ -1604,11 +1603,8 @@ mod tests {
         let thread_id = "thread-archive-failure";
         let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
-                "thread/read",
-                json!({ "thread": thread }),
-            ),
-            crate::codex_app_server::MockCodexResponse::error(
+            crate::agent::codex::MockCodexResponse::ok("thread/read", json!({ "thread": thread })),
+            crate::agent::codex::MockCodexResponse::error(
                 "thread/archive",
                 CodexThreadError::ProcessUnavailable,
             ),
@@ -1632,11 +1628,10 @@ mod tests {
     async fn restore_failure_keeps_the_task_in_the_archived_membership() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-restore-failure";
-        let client =
-            CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::error(
-                "thread/unarchive",
-                CodexThreadError::ProcessUnavailable,
-            )]);
+        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::error(
+            "thread/unarchive",
+            CodexThreadError::ProcessUnavailable,
+        )]);
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         manage_test_thread(&state, thread_id, root.path()).await;
         task_store_archive(&state, thread_id)
@@ -1683,13 +1678,13 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-unavailable-delete";
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::error(
+            crate::agent::codex::MockCodexResponse::error(
                 "thread/read",
                 CodexThreadError::ThreadUnavailable(
                     "no rollout found for thread id thread-unavailable-delete".to_string(),
                 ),
             ),
-            crate::codex_app_server::MockCodexResponse::ok("thread/delete", json!({})),
+            crate::agent::codex::MockCodexResponse::ok("thread/delete", json!({})),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -1758,11 +1753,10 @@ mod tests {
     async fn failed_codex_delete_keeps_the_archived_membership_for_retry() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-delete-failure";
-        let client =
-            CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::error(
-                "thread/delete",
-                CodexThreadError::ProcessUnavailable,
-            )]);
+        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::error(
+            "thread/delete",
+            CodexThreadError::ProcessUnavailable,
+        )]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;

@@ -40,7 +40,7 @@ The adapter owns:
 
 The rest of Caffold should not depend directly on app-server protocol details.
 
-`caffold/src/codex_app_server/protocol.rs` is the maintained protocol boundary.
+`caffold/src/agent/codex/protocol.rs` is the maintained protocol boundary.
 It owns the method names, request and response DTOs, notification decoding, and
 JSON-RPC error shape used by Caffold. The modules under
 `caffold/src/app/tasks/runtime/` consume the typed adapter operations and
@@ -48,8 +48,8 @@ bridge notifications and server requests into the Tasks application. Neither
 the application composition root nor the browser projection modules inspect raw
 method names or protocol JSON paths.
 
-`caffold/src/codex_app_server/readiness.rs` owns executable eligibility before
-daemon startup. `caffold/src/codex_app_server/status.rs` owns the
+`caffold/src/agent/codex/readiness.rs` owns executable eligibility before
+daemon startup. `caffold/src/agent/codex/status.rs` owns the
 post-connection projection of account, managed runtime, and initialization
 results into the canonical Codex status response. Its classification tests live
 with that ownership rather than in the client transport module.
@@ -372,7 +372,7 @@ through another Codex connection.
 
 ### Daemon/proxy reconnect verification
 
-The opt-in live tests in `codex_app_server::reconnect_spike` exercise the
+The opt-in live tests in `agent::codex::reconnect_spike` exercise the
 daemon-compatible transport boundary used by the product runtime.
 They keep an isolated `codex app-server --listen unix://...` process alive,
 connect through disposable `codex app-server proxy --sock ...` children, and
