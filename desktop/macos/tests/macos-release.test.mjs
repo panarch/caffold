@@ -39,7 +39,7 @@ test(
   { skip: macosArm64Only },
   () => {
     const metadata = parseMetadata(run(packageApp, ["metadata"]));
-    const cargoVersion = readFileSync(resolve(repoRoot, "Cargo.toml"), "utf8").match(
+    const cargoVersion = readFileSync(resolve(repoRoot, "caffold/Cargo.toml"), "utf8").match(
       /^version = "([^"]+)"$/m,
     )?.[1];
     const webVersion = JSON.parse(readFileSync(resolve(repoRoot, "frontend/package.json"), "utf8")).version;
@@ -105,7 +105,7 @@ test("Homebrew cask installs the app and bundled CLI without a user quarantine f
 
 test("manual release workflow isolates versioning, verification, and publication", () => {
   const source = readFileSync(releaseWorkflow, "utf8");
-  const rustVersion = readFileSync(resolve(repoRoot, "Cargo.toml"), "utf8").match(
+  const rustVersion = readFileSync(resolve(repoRoot, "caffold/Cargo.toml"), "utf8").match(
     /^rust-version = "([^"]+)"$/m,
   )?.[1];
   const macosStart = source.indexOf("  macos:");
@@ -159,7 +159,7 @@ test("manual release workflow isolates versioning, verification, and publication
   assert.match(macosJob, /git bundle create/);
   assert.match(macosJob, /git bundle verify/);
   assert.match(macosJob, /caffold-release-candidate-v/);
-  for (const canonicalFile of ["Cargo.lock", "Cargo.toml", "frontend/package.json"]) {
+  for (const canonicalFile of ["Cargo.lock", "caffold/Cargo.toml", "frontend/package.json"]) {
     assert.match(macosJob, new RegExp(canonicalFile.replace(".", "\\.")));
   }
   assert.match(macosJob, new RegExp(`rustup toolchain install ${rustVersion}(?:\\.0)?`));

@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 const fakeCodexBin = fileURLToPath(
-  new URL("../../tests/fixtures/fake-codex", import.meta.url),
+  new URL("../../caffold/tests/fixtures/fake-codex", import.meta.url),
 );
 
 async function selectInvocationPort({
@@ -41,7 +41,7 @@ export async function createRegularPlaywrightServer(
   return {
     baseURL,
     webServer: {
-      command: `cargo run -- serve --host ${PLAYWRIGHT_SERVER_HOST} --port ${port} --root frontend/tests/e2e/fixtures/home --data-dir frontend/tests/e2e/fixtures/.caffold-data --worktree-root frontend/tests/e2e/fixtures/home/.caffold-worktrees`,
+      command: `cargo run -p caffold -- serve --host ${PLAYWRIGHT_SERVER_HOST} --port ${port} --root frontend/tests/e2e/fixtures/home --data-dir frontend/tests/e2e/fixtures/.caffold-data --worktree-root frontend/tests/e2e/fixtures/home/.caffold-worktrees`,
       cwd: repositoryRoot,
       url: `${baseURL}/api/health`,
       env: {

@@ -1,0 +1,43 @@
+[package]
+name = "caffold"
+version = "0.7.2"
+edition = "2024"
+rust-version = "1.96"
+license = "Apache-2.0"
+
+[dependencies]
+anyhow = "1.0.98"
+axum = "0.8.4"
+base64 = "0.22.1"
+chrono = "0.4.45"
+clap = { version = "4.5.40", features = ["derive"] }
+futures-util = "0.3.32"
+gluesql = { git = "https://github.com/gluesql/gluesql.git", branch = "main", default-features = false, features = ["gluesql_memory_storage", "gluesql-redb-storage"] }
+hound = "3.5.1"
+notify = "8.2.0"
+percent-encoding = "2.3.2"
+pulldown-cmark = { version = "0.13.4", default-features = false }
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
+reqwest = { version = "0.12.23", default-features = false, features = ["rustls-tls", "stream"] }
+semver = "1.0.28"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+sha2 = "0.10.9"
+thiserror = "2.0.12"
+tokio = { version = "1.45.1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-tungstenite = "0.30.0"
+tower = "0.5.3"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+unicode-segmentation = "1.13.3"
+uuid = { version = "1.23.4", features = ["v4"] }
+url = "2.5.8"
+web-push-native = { version = "0.5.0", default-features = false, features = ["vapid"] }
+whisper-rs = { version = "0.16.0", features = ["tracing_backend"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+whisper-rs = { version = "0.16.0", features = ["metal"] }
+
+[dev-dependencies]
+tempfile = "3.20.0"
+tokio = { version = "1.45.1", features = ["test-util"] }

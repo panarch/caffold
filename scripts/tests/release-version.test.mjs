@@ -30,7 +30,8 @@ function withReleaseFixture(
     lock: `version = 4\n\n[[package]]\nname = "caffold"\nversion = "${lock}"\ndependencies = []\n\n[[package]]\nname = "dependency"\nversion = "9.8.7"\n`,
   };
 
-  writeFileSync(join(root, "Cargo.toml"), files.cargo);
+  mkdirSync(join(root, "caffold"), { recursive: true });
+  writeFileSync(join(root, "caffold", "Cargo.toml"), files.cargo);
   mkdirSync(join(root, "frontend"), { recursive: true });
   writeFileSync(join(root, "frontend", "package.json"), files.web);
   writeFileSync(join(root, "Cargo.lock"), files.lock);
@@ -57,7 +58,7 @@ test("a release bump updates only the three canonical version fields", () => {
       version: "1.3.0",
     });
 
-    assert.match(readFileSync(join(root, "Cargo.toml"), "utf8"), /version = "1\.3\.0"/);
+    assert.match(readFileSync(join(root, "caffold", "Cargo.toml"), "utf8"), /version = "1\.3\.0"/);
     assert.equal(
       JSON.parse(readFileSync(join(root, "frontend", "package.json"), "utf8")).version,
       "1.3.0",
@@ -72,7 +73,7 @@ test("a mismatched source version fails before changing any file", () => {
   withReleaseFixture(
     (root, original) => {
       assert.throws(() => bumpReleaseVersion(root, "patch"), /must match/);
-      assert.equal(readFileSync(join(root, "Cargo.toml"), "utf8"), original.cargo);
+      assert.equal(readFileSync(join(root, "caffold", "Cargo.toml"), "utf8"), original.cargo);
       assert.equal(readFileSync(join(root, "frontend", "package.json"), "utf8"), original.web);
       assert.equal(readFileSync(join(root, "Cargo.lock"), "utf8"), original.lock);
     },
@@ -83,7 +84,7 @@ test("a mismatched source version fails before changing any file", () => {
 test("the committed release files can be bumped together", () => {
   const root = mkdtempSync(join(tmpdir(), "caffold-current-release-version-"));
   try {
-    for (const file of ["Cargo.toml", "frontend/package.json", "Cargo.lock"]) {
+    for (const file of ["caffold/Cargo.toml", "frontend/package.json", "Cargo.lock"]) {
       const destination = join(root, file);
       mkdirSync(dirname(destination), { recursive: true });
       copyFileSync(resolve(repoRoot, file), destination);
@@ -93,7 +94,7 @@ test("the committed release files can be bumped together", () => {
 
     assert.equal(bumpReleaseVersion(root, "patch").version, expected);
     assert.match(
-      readFileSync(join(root, "Cargo.toml"), "utf8"),
+      readFileSync(join(root, "caffold", "Cargo.toml"), "utf8"),
       new RegExp(`^version = "${expected.replaceAll(".", "\\.")}"$`, "m"),
     );
     assert.match(
