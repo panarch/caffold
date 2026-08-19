@@ -44,6 +44,9 @@ jobs:
         run: npm run test:contract
         working-directory: frontend
 
+      - name: Test documentation contracts
+        run: node --test docs/tests/*.test.mjs
+
       - name: Test macOS packaging contracts
         run: desktop/macos/test-contracts
 

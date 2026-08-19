@@ -179,6 +179,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Test documentation contracts
+        run: node --test docs/tests/*.test.mjs
+
       - name: Test macOS packaging contracts
         run: desktop/macos/test-contracts
 

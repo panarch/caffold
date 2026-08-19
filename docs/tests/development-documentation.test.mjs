@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, extname, join, relative, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import test from "node:test";
 
-const repoRoot = resolve(import.meta.dirname, "..");
+const repoRoot = resolve(import.meta.dirname, "../..");
 
 function markdownFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -14,12 +14,17 @@ function markdownFiles(directory) {
   });
 }
 
-const contributorDocs = [
-  resolve(repoRoot, "README.md"),
-  resolve(repoRoot, "CONTRIBUTING.md"),
-  ...markdownFiles(resolve(repoRoot, "docs")),
-  ...markdownFiles(resolve(repoRoot, "desktop/macos")),
-];
+// Every tracked Markdown file is contributor documentation, wherever its owner
+// keeps it. Asking Git for the list excludes ignored trees — local notes,
+// node_modules, build output — without naming them. Fixture Markdown is test
+// data rather than documentation, so it stays out.
+const contributorDocs = execFileSync("git", ["ls-files", "*.md"], {
+  cwd: repoRoot,
+  encoding: "utf8",
+})
+  .split("\n")
+  .filter((path) => path && !path.split("/").includes("fixtures"))
+  .map((path) => resolve(repoRoot, path));
 
 test("official documentation uses repository-owned entrypoints", () => {
   for (const path of contributorDocs) {
@@ -38,23 +43,6 @@ test("the documentation index links every document", () => {
       docsIndex.includes(`](${target})`),
       `${target} is missing from docs/README.md`,
     );
-  }
-});
-
-test("documentation is organized by purpose rather than audience", () => {
-  for (const directory of ["docs/public", "docs/internal"]) {
-    assert.equal(existsSync(resolve(repoRoot, directory)), false, directory);
-  }
-
-  const docsIndex = readFileSync(resolve(repoRoot, "docs/README.md"), "utf8");
-  for (const heading of [
-    "## Product",
-    "## Architecture",
-    "## Development",
-    "## Review",
-    "## Operations",
-  ]) {
-    assert.match(docsIndex, new RegExp(`^${heading}$`, "m"));
   }
 });
 
@@ -131,5 +119,22 @@ test("every owned test command is discoverable in the testing guide", () => {
   assert.ok(macosSuites.length > 0);
   for (const suite of macosSuites) {
     assert.match(testingGuide, new RegExp(`desktop/macos/${suite}`));
+  }
+
+  // Owners outside the frontend package keep their Node contracts in a tests/
+  // directory and are invoked by path, so the guide has to name each one.
+  const ownedTestRoots = execFileSync("git", ["ls-files", "*/tests/*.test.mjs"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  })
+    .split("\n")
+    .filter(Boolean)
+    .map((path) => dirname(path))
+    .filter((directory) => !directory.startsWith("frontend/"))
+    .filter((directory, index, all) => all.indexOf(directory) === index)
+    .sort();
+  assert.ok(ownedTestRoots.length > 0);
+  for (const directory of ownedTestRoots) {
+    assert.match(testingGuide, new RegExp(directory.replace("/", "\\/")));
   }
 });

@@ -58,7 +58,8 @@ one records where it runs from and what it needs:
 | `npm run test:e2e` | `frontend/` | Node, Chromium, a built server | deterministic fixture-backed Playwright coverage |
 | `npm run test:codex-compat` | `frontend/` | installed Codex CLI | Codex CLI schema compatibility without authentication or model usage |
 | `npm run test:codex-live` | `frontend/` | authenticated Codex CLI | authenticated Codex browser coverage with model usage |
-| `desktop/macos/test-contracts` | repository root | Node | macOS packaging, release, and installer contracts |
+| `node --test docs/tests/*.test.mjs` | repository root | Node | documentation index, links, entrypoints, and this command index |
+| `desktop/macos/test-contracts` | repository root | Node | macOS packaging, release, and installer contracts, from `desktop/macos/tests/` |
 | `desktop/macos/test-runtime` | repository root | macOS, Xcode tools | Swift wrapper process lifecycle |
 | `desktop/macos/test-system-status` | repository root | macOS, Xcode tools | Swift system-status behavior |
 | `desktop/macos/test-updater` | repository root | macOS, Xcode tools | Swift updater behavior |
@@ -67,6 +68,11 @@ The macOS contracts verify shell scripts, workflow definitions, and
 documentation, so they run on any platform and belong in the ordinary pull
 request checks. Only the Swift programs and the one packaging-metadata check
 need a macOS host; that check skips itself elsewhere.
+
+Owners outside the frontend package keep their Node contracts in a `tests/`
+directory of their own and are invoked by path: `docs/tests/` verifies the
+documentation, and `desktop/macos/tests/` verifies the macOS application. The
+frontend package keeps its own under `frontend/tests/contracts/`.
 
 Focused Node unit tests live beside their owning frontend module as
 `name.test.js`. They may import that module directly, but must not require
