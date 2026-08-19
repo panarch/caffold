@@ -39,6 +39,8 @@ caffold-diff-viewer {
     font-family: var(--font-code);
     font-size: var(--code-font-size);
     line-height: var(--code-line-height);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   & .diff-gutter-backdrop {

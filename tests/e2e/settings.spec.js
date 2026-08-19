@@ -711,12 +711,14 @@ test("updates independent ranges live without replacing their DOM", { tag: "@all
     coarse: matchMedia("(pointer: coarse)").matches,
     narrow: matchMedia("(max-width: 520px)").matches,
     rootFontSize: getComputedStyle(document.documentElement).fontSize,
+    touchAction: getComputedStyle(document.documentElement).touchAction,
     targetFloor: getComputedStyle(document.documentElement)
       .getPropertyValue("--interface-target-floor")
       .trim(),
   }));
   const touchInterface = responsiveDefaults.coarse || responsiveDefaults.narrow;
   expect(responsiveDefaults.rootFontSize).toBe(touchInterface ? "17px" : "16px");
+  expect(responsiveDefaults.touchAction).toBe("manipulation");
   expect(responsiveDefaults.targetFloor).toBe(touchInterface ? "40px" : "0px");
   await setRange(interfaceRange, 105);
   const settingsControlTiers = await settingsPage.evaluate((element) => {
@@ -983,6 +985,10 @@ test("applies extreme values to the retained Review code viewer", { tag: "@all-v
     "font-size",
     "20px",
   );
+  await expect(page.locator("caffold-code-viewer .code-lines")).toHaveCSS(
+    "text-size-adjust",
+    "100%",
+  );
   const fileToolbarTiers = await page.evaluate(() => {
     const tokenProbe = document.createElement("div");
     tokenProbe.style.cssText =
@@ -1011,6 +1017,10 @@ test("applies extreme values to the retained Review code viewer", { tag: "@all-v
   await expect(page.locator("caffold-diff-viewer .diff-lines")).toHaveCSS(
     "font-size",
     "20px",
+  );
+  await expect(page.locator("caffold-diff-viewer .diff-lines")).toHaveCSS(
+    "text-size-adjust",
+    "100%",
   );
   await expect
     .poll(() =>
