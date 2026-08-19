@@ -110,6 +110,28 @@ test("UI and code typeface roles stay within semantic owners", () => {
   );
 });
 
+test("mobile interaction policies preserve pinch zoom and own viewer text sizing narrowly", () => {
+  const root = readFrontend("styles.css");
+  const index = readFrontend("index.html");
+  const codeViewer = readFrontend("components/code-viewer.css");
+  const diffViewer = readFrontend("components/diff-viewer.css");
+
+  assert.match(cssBlock(root, "html {"), /touch-action: manipulation/);
+  assert.doesNotMatch(
+    index,
+    /(?:user-scalable|maximum-scale|minimum-scale)/,
+    "The viewport must retain user-controlled pinch zoom",
+  );
+  for (const [path, source, selector] of [
+    ["components/code-viewer.css", codeViewer, "& .code-lines {"],
+    ["components/diff-viewer.css", diffViewer, "& .diff-lines {"],
+  ]) {
+    const block = cssBlock(source, selector);
+    assert.match(block, /-webkit-text-size-adjust: 100%/i, path);
+    assert.match(block, /(?:^|\n)\s*text-size-adjust: 100%/i, path);
+  }
+});
+
 test("color roles keep neutral chrome, interactions, and semantic feedback separate", () => {
   const root = readFrontend("styles.css");
   for (const token of [
