@@ -73,7 +73,7 @@ test("colocated tests stay outside production imports and runtime assets", () =>
     "utf8",
   );
   const staticAssets = readFileSync(
-    join(repositoryRoot, "src/static_assets.rs"),
+    join(repositoryRoot, "caffold/src/static_assets.rs"),
     "utf8",
   );
   for (const testPath of unitTestPaths) {
@@ -83,7 +83,7 @@ test("colocated tests stay outside production imports and runtime assets", () =>
       `${testPath} is precached`,
     );
     assert.equal(
-      staticAssets.includes(`../frontend/${testPath}`),
+      staticAssets.includes(`../../frontend/${testPath}`),
       false,
       `${testPath} is served as a Rust static asset`,
     );

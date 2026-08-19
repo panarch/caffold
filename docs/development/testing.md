@@ -77,12 +77,12 @@ verifies the repository tooling, and `desktop/macos/tests/` verifies the macOS
 application. The frontend package keeps its own under
 `frontend/tests/contracts/`.
 
-The repository-level `tests/` directory belongs to the Rust server, which is the
-root Cargo package. It holds Cargo integration tests and the fixtures the
-backend shares — today the Codex protocol contract and the stub Codex CLI that
-the readiness tests and the browser server both use. A test written in Node does
-not make it frontend material, and a contract on the backend's own boundary
-belongs to the backend even when a different harness would be easier.
+The Rust server is a workspace member at `caffold/`, and its tests live
+with it in `caffold/tests/` — Cargo integration tests and the fixtures the
+backend shares, today the Codex protocol contract and the stub Codex CLI that the
+readiness tests and the browser server both use. A test written in Node does not
+make it frontend material, and a contract on the backend's own boundary belongs
+to the backend even when a different harness would be easier.
 
 Continuous integration follows the same ownership. Pull-request checks run one
 job per owner, and each job name says both whose it is and what kind of
@@ -121,11 +121,7 @@ live in `frontend/tests/contracts/`, beside the Playwright configuration, its
 Node support modules, and the browser suites under `frontend/tests/e2e/` and
 `frontend/tests/live/`.
 
-The repository-level `tests/` directory still holds the repository, release,
-packaging, and Codex protocol contracts that have not been given an owner yet,
-so `test:contract` currently discovers both locations. Reserving that directory
-for Cargo integration tests is tracked separately. Run an individual contract
-directly with `node --test` while iterating. A
+Run an individual contract directly with `node --test` while iterating. A
 cross-cutting frontend or release change should run every affected boundary
 rather than relying on `test:e2e` alone.
 

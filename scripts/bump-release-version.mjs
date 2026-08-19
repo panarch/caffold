@@ -77,7 +77,7 @@ function packageVersion(source, header, packageName = null) {
 }
 
 export function bumpReleaseVersion(root, bump) {
-  const cargoPath = resolve(root, "Cargo.toml");
+  const cargoPath = resolve(root, "caffold", "Cargo.toml");
   const webPath = resolve(root, "frontend", "package.json");
   const lockPath = resolve(root, "Cargo.lock");
   const cargoSource = readFileSync(cargoPath, "utf8");
@@ -89,7 +89,7 @@ export function bumpReleaseVersion(root, bump) {
 
   if (cargo.version !== web.version || cargo.version !== lock.version) {
     throw new Error(
-      `Cargo.toml (${cargo.version}), frontend/package.json (${web.version}), and Cargo.lock (${lock.version}) versions must match`,
+      `caffold/Cargo.toml (${cargo.version}), frontend/package.json (${web.version}), and Cargo.lock (${lock.version}) versions must match`,
     );
   }
 

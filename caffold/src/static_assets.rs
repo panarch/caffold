@@ -1,4 +1,4 @@
-pub const INDEX: &str = include_str!("../frontend/index.html");
+pub const INDEX: &str = include_str!("../../frontend/index.html");
 
 pub struct StaticAsset {
     pub content_type: &'static str,
@@ -7,787 +7,797 @@ pub struct StaticAsset {
 
 pub fn get(path: &str) -> Option<StaticAsset> {
     match path {
-        "manifest.webmanifest" => Some(manifest(include_str!("../frontend/manifest.webmanifest"))),
-        "service-worker.js" => Some(js(include_str!("../frontend/service-worker.js"))),
+        "manifest.webmanifest" => Some(manifest(include_str!(
+            "../../frontend/manifest.webmanifest"
+        ))),
+        "service-worker.js" => Some(js(include_str!("../../frontend/service-worker.js"))),
         "build-info.js" => Some(js_bytes(include_bytes!(concat!(
             env!("OUT_DIR"),
             "/build-info.js"
         )))),
-        "styles.css" => Some(css(include_str!("../frontend/styles.css"))),
-        "app.js" => Some(js(include_str!("../frontend/app.js"))),
-        "api.js" => Some(js(include_str!("../frontend/api.js"))),
-        "origin-reachability.js" => Some(js(include_str!("../frontend/origin-reachability.js"))),
-        "file-status.js" => Some(js(include_str!("../frontend/file-status.js"))),
-        "fonts.js" => Some(js(include_str!("../frontend/fonts.js"))),
-        "navigation-routes.js" => Some(js(include_str!("../frontend/navigation-routes.js"))),
-        "settings.js" => Some(js(include_str!("../frontend/settings.js"))),
-        "theme.js" => Some(js(include_str!("../frontend/theme.js"))),
+        "styles.css" => Some(css(include_str!("../../frontend/styles.css"))),
+        "app.js" => Some(js(include_str!("../../frontend/app.js"))),
+        "api.js" => Some(js(include_str!("../../frontend/api.js"))),
+        "origin-reachability.js" => Some(js(include_str!("../../frontend/origin-reachability.js"))),
+        "file-status.js" => Some(js(include_str!("../../frontend/file-status.js"))),
+        "fonts.js" => Some(js(include_str!("../../frontend/fonts.js"))),
+        "navigation-routes.js" => Some(js(include_str!("../../frontend/navigation-routes.js"))),
+        "settings.js" => Some(js(include_str!("../../frontend/settings.js"))),
+        "theme.js" => Some(js(include_str!("../../frontend/theme.js"))),
         "fonts/D2Coding-Regular.woff2" => Some(woff2(include_bytes!(
-            "../frontend/assets/fonts/D2Coding-Regular.woff2"
+            "../../frontend/assets/fonts/D2Coding-Regular.woff2"
         ))),
         "fonts/D2Coding-Bold.woff2" => Some(woff2(include_bytes!(
-            "../frontend/assets/fonts/D2Coding-Bold.woff2"
+            "../../frontend/assets/fonts/D2Coding-Bold.woff2"
         ))),
         "fonts/D2Coding-OFL.txt" => Some(plain_text(include_str!(
-            "../frontend/assets/fonts/D2Coding-OFL.txt"
+            "../../frontend/assets/fonts/D2Coding-OFL.txt"
         ))),
-        "icons/caffold.png" => Some(png(include_bytes!("../frontend/assets/icons/caffold.png"))),
+        "icons/caffold.png" => Some(png(include_bytes!(
+            "../../frontend/assets/icons/caffold.png"
+        ))),
         "icons/favicon-32.png" => Some(png(include_bytes!(
-            "../frontend/assets/icons/favicon-32.png"
+            "../../frontend/assets/icons/favicon-32.png"
         ))),
-        "icons/icon-192.png" => Some(png(include_bytes!("../frontend/assets/icons/icon-192.png"))),
-        "icons/icon-512.png" => Some(png(include_bytes!("../frontend/assets/icons/icon-512.png"))),
+        "icons/icon-192.png" => Some(png(include_bytes!(
+            "../../frontend/assets/icons/icon-192.png"
+        ))),
+        "icons/icon-512.png" => Some(png(include_bytes!(
+            "../../frontend/assets/icons/icon-512.png"
+        ))),
         "icons/maskable-192.png" => Some(png(include_bytes!(
-            "../frontend/assets/icons/maskable-192.png"
+            "../../frontend/assets/icons/maskable-192.png"
         ))),
         "icons/maskable-512.png" => Some(png(include_bytes!(
-            "../frontend/assets/icons/maskable-512.png"
+            "../../frontend/assets/icons/maskable-512.png"
         ))),
         "icons/apple-touch-icon.png" => Some(png(include_bytes!(
-            "../frontend/assets/icons/apple-touch-icon.png"
+            "../../frontend/assets/icons/apple-touch-icon.png"
         ))),
         "brand/git-logomark-light.svg" => Some(svg(include_str!(
-            "../frontend/assets/brand/git-logomark-light.svg"
+            "../../frontend/assets/brand/git-logomark-light.svg"
         ))),
         "brand/git-logomark-dark.svg" => Some(svg(include_str!(
-            "../frontend/assets/brand/git-logomark-dark.svg"
+            "../../frontend/assets/brand/git-logomark-dark.svg"
         ))),
         "brand/github-invertocat-light.svg" => Some(svg(include_str!(
-            "../frontend/assets/brand/github-invertocat-light.svg"
+            "../../frontend/assets/brand/github-invertocat-light.svg"
         ))),
         "brand/github-invertocat-dark.svg" => Some(svg(include_str!(
-            "../frontend/assets/brand/github-invertocat-dark.svg"
+            "../../frontend/assets/brand/github-invertocat-dark.svg"
         ))),
         "brand/codex-template.png" => Some(png(include_bytes!(
-            "../frontend/assets/brand/codex-template.png"
+            "../../frontend/assets/brand/codex-template.png"
         ))),
         "brand/codex-template@2x.png" => Some(png(include_bytes!(
-            "../frontend/assets/brand/codex-template@2x.png"
+            "../../frontend/assets/brand/codex-template@2x.png"
         ))),
-        "pages/layout.css" => Some(css(include_str!("../frontend/pages/layout.css"))),
-        "pages/layout.js" => Some(js(include_str!("../frontend/pages/layout.js"))),
-        "pages/foreground-recovery.js" => {
-            Some(js(include_str!("../frontend/pages/foreground-recovery.js")))
-        }
+        "pages/layout.css" => Some(css(include_str!("../../frontend/pages/layout.css"))),
+        "pages/layout.js" => Some(js(include_str!("../../frontend/pages/layout.js"))),
+        "pages/foreground-recovery.js" => Some(js(include_str!(
+            "../../frontend/pages/foreground-recovery.js"
+        ))),
         "pages/foreground-recovery/browser-signals.js" => Some(js(include_str!(
-            "../frontend/pages/foreground-recovery/browser-signals.js"
+            "../../frontend/pages/foreground-recovery/browser-signals.js"
         ))),
         "pages/foreground-recovery/lifecycle.js" => Some(js(include_str!(
-            "../frontend/pages/foreground-recovery/lifecycle.js"
+            "../../frontend/pages/foreground-recovery/lifecycle.js"
         ))),
         "pages/foreground-recovery/machine.js" => Some(js(include_str!(
-            "../frontend/pages/foreground-recovery/machine.js"
+            "../../frontend/pages/foreground-recovery/machine.js"
         ))),
         "pages/pwa-update-lifecycle.js" => Some(js(include_str!(
-            "../frontend/pages/pwa-update-lifecycle.js"
+            "../../frontend/pages/pwa-update-lifecycle.js"
         ))),
         "pages/pwa-update-lifecycle/machine.js" => Some(js(include_str!(
-            "../frontend/pages/pwa-update-lifecycle/machine.js"
+            "../../frontend/pages/pwa-update-lifecycle/machine.js"
         ))),
         "pages/pwa-update-lifecycle/runtime.js" => Some(js(include_str!(
-            "../frontend/pages/pwa-update-lifecycle/runtime.js"
+            "../../frontend/pages/pwa-update-lifecycle/runtime.js"
         ))),
         "pages/components/build-mismatch-alert.css" => Some(css(include_str!(
-            "../frontend/pages/components/build-mismatch-alert.css"
+            "../../frontend/pages/components/build-mismatch-alert.css"
         ))),
         "pages/components/build-mismatch-alert.js" => Some(js(include_str!(
-            "../frontend/pages/components/build-mismatch-alert.js"
+            "../../frontend/pages/components/build-mismatch-alert.js"
         ))),
         "pages/components/update-dialog.css" => Some(css(include_str!(
-            "../frontend/pages/components/update-dialog.css"
+            "../../frontend/pages/components/update-dialog.css"
         ))),
         "pages/components/update-dialog.js" => Some(js(include_str!(
-            "../frontend/pages/components/update-dialog.js"
+            "../../frontend/pages/components/update-dialog.js"
         ))),
         "components/file-tree.css" => {
-            Some(css(include_str!("../frontend/components/file-tree.css")))
+            Some(css(include_str!("../../frontend/components/file-tree.css")))
         }
-        "components/file-tree.js" => Some(js(include_str!("../frontend/components/file-tree.js"))),
+        "components/file-tree.js" => {
+            Some(js(include_str!("../../frontend/components/file-tree.js")))
+        }
         "components/file-navigator.css" => Some(css(include_str!(
-            "../frontend/components/file-navigator.css"
+            "../../frontend/components/file-navigator.css"
         ))),
-        "components/file-navigator.js" => {
-            Some(js(include_str!("../frontend/components/file-navigator.js")))
-        }
+        "components/file-navigator.js" => Some(js(include_str!(
+            "../../frontend/components/file-navigator.js"
+        ))),
         "components/file-navigator/list.css" => Some(css(include_str!(
-            "../frontend/components/file-navigator/list.css"
+            "../../frontend/components/file-navigator/list.css"
         ))),
         "components/file-navigator/list.js" => Some(js(include_str!(
-            "../frontend/components/file-navigator/list.js"
+            "../../frontend/components/file-navigator/list.js"
         ))),
         "components/review-panel-resizer.css" => Some(css(include_str!(
-            "../frontend/components/review-panel-resizer.css"
+            "../../frontend/components/review-panel-resizer.css"
         ))),
         "components/review-panel-resizer.js" => Some(js(include_str!(
-            "../frontend/components/review-panel-resizer.js"
+            "../../frontend/components/review-panel-resizer.js"
         ))),
         "components/review-responsive.js" => Some(js(include_str!(
-            "../frontend/components/review-responsive.js"
+            "../../frontend/components/review-responsive.js"
         ))),
-        "watch.js" => Some(js(include_str!("../frontend/watch.js"))),
+        "watch.js" => Some(js(include_str!("../../frontend/watch.js"))),
         "pages/(task-workspace)/settings/appearance/page.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/settings/appearance/page.css"
+            "../../frontend/pages/(task-workspace)/settings/appearance/page.css"
         ))),
         "pages/(task-workspace)/settings/appearance/page.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/settings/appearance/page.js"
+            "../../frontend/pages/(task-workspace)/settings/appearance/page.js"
         ))),
         "pages/(task-workspace)/settings/files/page.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/settings/files/page.css"
+            "../../frontend/pages/(task-workspace)/settings/files/page.css"
         ))),
         "pages/(task-workspace)/settings/files/page.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/settings/files/page.js"
+            "../../frontend/pages/(task-workspace)/settings/files/page.js"
         ))),
         "pages/(task-workspace)/settings/notifications/page.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/settings/notifications/page.css"
+            "../../frontend/pages/(task-workspace)/settings/notifications/page.css"
         ))),
         "pages/(task-workspace)/settings/notifications/page.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/settings/notifications/page.js"
+            "../../frontend/pages/(task-workspace)/settings/notifications/page.js"
         ))),
         "pages/(task-workspace)/settings/notifications/lifecycle.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/settings/notifications/lifecycle.js"
+            "../../frontend/pages/(task-workspace)/settings/notifications/lifecycle.js"
         ))),
         "pages/(task-workspace)/settings/remote-access/page.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/settings/remote-access/page.css"
+            "../../frontend/pages/(task-workspace)/settings/remote-access/page.css"
         ))),
         "pages/(task-workspace)/settings/remote-access/page.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/settings/remote-access/page.js"
+            "../../frontend/pages/(task-workspace)/settings/remote-access/page.js"
         ))),
         "pages/(task-workspace)/settings/remote-access/tailscale.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/settings/remote-access/tailscale.js"
+            "../../frontend/pages/(task-workspace)/settings/remote-access/tailscale.js"
         ))),
         "pages/(task-workspace)/settings/layout.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/settings/layout.css"
+            "../../frontend/pages/(task-workspace)/settings/layout.css"
         ))),
         "pages/(task-workspace)/settings/layout.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/settings/layout.js"
+            "../../frontend/pages/(task-workspace)/settings/layout.js"
         ))),
         "pages/(task-workspace)/settings/navigator.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/settings/navigator.css"
+            "../../frontend/pages/(task-workspace)/settings/navigator.css"
         ))),
         "pages/(task-workspace)/settings/navigator.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/settings/navigator.js"
+            "../../frontend/pages/(task-workspace)/settings/navigator.js"
         ))),
         "pages/(task-workspace)/settings/codex/page.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/settings/codex/page.css"
+            "../../frontend/pages/(task-workspace)/settings/codex/page.css"
         ))),
         "pages/(task-workspace)/settings/codex/page.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/settings/codex/page.js"
+            "../../frontend/pages/(task-workspace)/settings/codex/page.js"
         ))),
         "pages/(task-workspace)/settings/about/page.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/settings/about/page.css"
+            "../../frontend/pages/(task-workspace)/settings/about/page.css"
         ))),
         "pages/(task-workspace)/settings/about/page.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/settings/about/page.js"
+            "../../frontend/pages/(task-workspace)/settings/about/page.js"
         ))),
         "pages/(task-workspace)/layout.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/layout.css"
+            "../../frontend/pages/(task-workspace)/layout.css"
         ))),
         "pages/(task-workspace)/layout.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/layout.js"
+            "../../frontend/pages/(task-workspace)/layout.js"
         ))),
         "pages/(task-workspace)/components/navigation.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/components/navigation.css"
+            "../../frontend/pages/(task-workspace)/components/navigation.css"
         ))),
         "pages/(task-workspace)/components/navigation.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/components/navigation.js"
+            "../../frontend/pages/(task-workspace)/components/navigation.js"
         ))),
         "pages/(task-workspace)/components/workspace-brand.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/components/workspace-brand.css"
+            "../../frontend/pages/(task-workspace)/components/workspace-brand.css"
         ))),
         "pages/(task-workspace)/components/workspace-brand.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/components/workspace-brand.js"
+            "../../frontend/pages/(task-workspace)/components/workspace-brand.js"
         ))),
         "pages/(task-workspace)/codex-status.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/codex-status.js"
+            "../../frontend/pages/(task-workspace)/codex-status.js"
         ))),
         "pages/(task-workspace)/codex-status/model.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/codex-status/model.js"
+            "../../frontend/pages/(task-workspace)/codex-status/model.js"
         ))),
         "pages/(task-workspace)/codex-status/lifecycle.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/codex-status/lifecycle.js"
+            "../../frontend/pages/(task-workspace)/codex-status/lifecycle.js"
         ))),
         "pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js"
+                "../../frontend/pages/(task-workspace)/codex-status/runtime-restart-lifecycle.js"
             )))
         }
         "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css"
+                "../../frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css"
             )))
         }
         "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js"
+                "../../frontend/pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js"
             )))
         }
         "pages/(task-workspace)/tasks/layout.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/layout.css"
+            "../../frontend/pages/(task-workspace)/tasks/layout.css"
         ))),
         "pages/(task-workspace)/tasks/controls.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/controls.css"
+            "../../frontend/pages/(task-workspace)/tasks/controls.css"
         ))),
         "pages/(task-workspace)/tasks/layout.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/layout.js"
+            "../../frontend/pages/(task-workspace)/tasks/layout.js"
         ))),
         "pages/(task-workspace)/tasks/(detail)/layout.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/layout.css"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/layout.css"
         ))),
         "pages/(task-workspace)/tasks/(detail)/layout.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/layout.js"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/layout.js"
         ))),
         "pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(section)/layout.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/(section)/layout.css"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/layout.css"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(section)/layout.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/(section)/layout.js"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/layout.js"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(section)/components/summary.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/summary.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/summary.js"
             )))
         }
         "pages/(task-workspace)/tasks/runtime-state.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/runtime-state.js"
+            "../../frontend/pages/(task-workspace)/tasks/runtime-state.js"
         ))),
         "pages/(task-workspace)/tasks/stream.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/stream.js"
+            "../../frontend/pages/(task-workspace)/tasks/stream.js"
         ))),
         "pages/(task-workspace)/tasks/task-events.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/task-events.js"
+            "../../frontend/pages/(task-workspace)/tasks/task-events.js"
         ))),
         "pages/(task-workspace)/tasks/task-format.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/task-format.js"
+            "../../frontend/pages/(task-workspace)/tasks/task-format.js"
         ))),
         "pages/(task-workspace)/tasks/task-list-model.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/task-list-model.js"
+            "../../frontend/pages/(task-workspace)/tasks/task-list-model.js"
         ))),
         "pages/(task-workspace)/tasks/components/composer.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/composer.css"
+            "../../frontend/pages/(task-workspace)/tasks/components/composer.css"
         ))),
         "pages/(task-workspace)/tasks/components/composer.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/composer.js"
+            "../../frontend/pages/(task-workspace)/tasks/components/composer.js"
         ))),
         "pages/(task-workspace)/tasks/components/task-turn-options.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/task-turn-options.css"
+            "../../frontend/pages/(task-workspace)/tasks/components/task-turn-options.css"
         ))),
         "pages/(task-workspace)/tasks/components/task-turn-options.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/task-turn-options.js"
+            "../../frontend/pages/(task-workspace)/tasks/components/task-turn-options.js"
         ))),
         "pages/(task-workspace)/tasks/new/components/directory-picker.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/new/components/directory-picker.css"
+                "../../frontend/pages/(task-workspace)/tasks/new/components/directory-picker.css"
             )))
         }
         "pages/(task-workspace)/tasks/new/components/directory-picker.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/new/components/directory-picker.js"
+                "../../frontend/pages/(task-workspace)/tasks/new/components/directory-picker.js"
             )))
         }
         "pages/(task-workspace)/tasks/components/archived-delete-dialog.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/archived-delete-dialog.css"
+                "../../frontend/pages/(task-workspace)/tasks/components/archived-delete-dialog.css"
             )))
         }
         "pages/(task-workspace)/tasks/components/archived-delete-dialog.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/archived-delete-dialog.js"
+                "../../frontend/pages/(task-workspace)/tasks/components/archived-delete-dialog.js"
             )))
         }
         "pages/(task-workspace)/tasks/components/image-preview-dialog.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/image-preview-dialog.css"
+                "../../frontend/pages/(task-workspace)/tasks/components/image-preview-dialog.css"
             )))
         }
         "pages/(task-workspace)/tasks/components/image-preview-dialog.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/image-preview-dialog.js"
+                "../../frontend/pages/(task-workspace)/tasks/components/image-preview-dialog.js"
             )))
         }
         "pages/(task-workspace)/tasks/components/voice-level-meter.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/voice-level-meter.css"
+            "../../frontend/pages/(task-workspace)/tasks/components/voice-level-meter.css"
         ))),
         "pages/(task-workspace)/tasks/components/voice-level-meter.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/voice-level-meter.js"
+            "../../frontend/pages/(task-workspace)/tasks/components/voice-level-meter.js"
         ))),
         "pages/(task-workspace)/tasks/components/voice-recorder.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/voice-recorder.js"
+            "../../frontend/pages/(task-workspace)/tasks/components/voice-recorder.js"
         ))),
         "pages/(task-workspace)/tasks/components/voice-worklet.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/voice-worklet.js"
+            "../../frontend/pages/(task-workspace)/tasks/components/voice-worklet.js"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(task)/layout.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout.css"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout.css"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(task)/layout.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout.js"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout.js"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(task)/session.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/session.js"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/session.js"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/components/git-menu.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/components/git-menu.css"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/components/git-menu.css"
         ))),
         "pages/(task-workspace)/tasks/(detail)/components/git-menu.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/components/git-menu.js"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/components/git-menu.js"
         ))),
         "pages/(task-workspace)/tasks/(detail)/components/github-menu.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/components/github-menu.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/components/github-menu.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/components/github-menu.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/components/github-menu.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/components/github-menu.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn/model.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn/model.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn/model.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command/model.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command/model.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command/model.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/render.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/render.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/render.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(review)/layout.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout.css"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout.css"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(review)/layout.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout.js"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/layout.js"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.js"
             )))
         }
         "pages/(task-workspace)/tasks/components/active-task-list.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/active-task-list.css"
+            "../../frontend/pages/(task-workspace)/tasks/components/active-task-list.css"
         ))),
         "pages/(task-workspace)/tasks/components/active-task-list.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/active-task-list.js"
+            "../../frontend/pages/(task-workspace)/tasks/components/active-task-list.js"
         ))),
         "pages/(task-workspace)/tasks/components/active-task-list/components/section.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section.css"
+                "../../frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section.css"
             )))
         }
         "pages/(task-workspace)/tasks/components/active-task-list/components/section.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section.js"
+                "../../frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section.js"
             )))
         }
         "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css"
+                "../../frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.css"
             )))
         }
         "pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js"
+                "../../frontend/pages/(task-workspace)/tasks/components/active-task-list/components/section/components/row.js"
             )))
         }
         "pages/(task-workspace)/tasks/components/archived-task-list.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/archived-task-list.css"
+                "../../frontend/pages/(task-workspace)/tasks/components/archived-task-list.css"
             )))
         }
         "pages/(task-workspace)/tasks/components/archived-task-list.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/archived-task-list.js"
+            "../../frontend/pages/(task-workspace)/tasks/components/archived-task-list.js"
         ))),
         "pages/(task-workspace)/tasks/recovery/page.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/recovery/page.css"
+            "../../frontend/pages/(task-workspace)/tasks/recovery/page.css"
         ))),
         "pages/(task-workspace)/tasks/recovery/page.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/recovery/page.js"
+            "../../frontend/pages/(task-workspace)/tasks/recovery/page.js"
         ))),
         "pages/(task-workspace)/tasks/components/codex-readiness-recovery.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/codex-readiness-recovery.css"
+                "../../frontend/pages/(task-workspace)/tasks/components/codex-readiness-recovery.css"
             )))
         }
         "pages/(task-workspace)/tasks/components/codex-readiness-recovery.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/components/codex-readiness-recovery.js"
+                "../../frontend/pages/(task-workspace)/tasks/components/codex-readiness-recovery.js"
             )))
         }
         "pages/(task-workspace)/tasks/components/navigator.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/navigator.css"
+            "../../frontend/pages/(task-workspace)/tasks/components/navigator.css"
         ))),
         "pages/(task-workspace)/tasks/components/navigator.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/navigator.js"
+            "../../frontend/pages/(task-workspace)/tasks/components/navigator.js"
         ))),
         "pages/(task-workspace)/tasks/components/task-create.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/task-create.css"
+            "../../frontend/pages/(task-workspace)/tasks/components/task-create.css"
         ))),
         "pages/(task-workspace)/tasks/components/task-create.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/task-create.js"
+            "../../frontend/pages/(task-workspace)/tasks/components/task-create.js"
         ))),
         "pages/(task-workspace)/tasks/new/page.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/new/page.css"
+            "../../frontend/pages/(task-workspace)/tasks/new/page.css"
         ))),
         "pages/(task-workspace)/tasks/new/page.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/new/page.js"
+            "../../frontend/pages/(task-workspace)/tasks/new/page.js"
         ))),
         "pages/(task-workspace)/tasks/components/task-status.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/task-status.css"
+            "../../frontend/pages/(task-workspace)/tasks/components/task-status.css"
         ))),
         "pages/(task-workspace)/tasks/components/task-status.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/components/task-status.js"
+            "../../frontend/pages/(task-workspace)/tasks/components/task-status.js"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(git)/layout.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/layout.css"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/layout.css"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(git)/layout.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/layout.js"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/layout.js"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/components/controls.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(git)/components/controls.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/components/controls.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/components/controls.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(git)/compare/page.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/compare/page.css"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/compare/page.css"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(git)/compare/page.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/compare/page.js"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/compare/page.js"
         ))),
         "components/git-compare-browser.css" => Some(css(include_str!(
-            "../frontend/components/git-compare-browser.css"
+            "../../frontend/components/git-compare-browser.css"
         ))),
         "components/git-compare-browser.js" => Some(js(include_str!(
-            "../frontend/components/git-compare-browser.js"
+            "../../frontend/components/git-compare-browser.js"
         ))),
         "components/git-compare-browser/compare-tree.css" => Some(css(include_str!(
-            "../frontend/components/git-compare-browser/compare-tree.css"
+            "../../frontend/components/git-compare-browser/compare-tree.css"
         ))),
         "components/git-compare-browser/compare-tree.js" => Some(js(include_str!(
-            "../frontend/components/git-compare-browser/compare-tree.js"
+            "../../frontend/components/git-compare-browser/compare-tree.js"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.css"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.css"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.js"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/layout.js"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.js"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/list/page.js"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/page.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(git)/(log)/commit/components/changes-tree.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/layout.css" => Some(css(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/layout.css"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/layout.css"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(github)/layout.js" => Some(js(include_str!(
-            "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/layout.js"
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/layout.js"
         ))),
         "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-issue.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog/components/github-pull.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/layout.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/list/page.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/layout.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/list/page.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/page.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.css" => {
             Some(css(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.css"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.css"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.js" => {
             Some(js(include_str!(
-                "../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.js"
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/files/components/tree.js"
             )))
         }
-        "components/code-viewer.css" => {
-            Some(css(include_str!("../frontend/components/code-viewer.css")))
-        }
+        "components/code-viewer.css" => Some(css(include_str!(
+            "../../frontend/components/code-viewer.css"
+        ))),
         "components/code-viewer.js" => {
-            Some(js(include_str!("../frontend/components/code-viewer.js")))
+            Some(js(include_str!("../../frontend/components/code-viewer.js")))
         }
-        "components/diff-viewer.css" => {
-            Some(css(include_str!("../frontend/components/diff-viewer.css")))
-        }
+        "components/diff-viewer.css" => Some(css(include_str!(
+            "../../frontend/components/diff-viewer.css"
+        ))),
         "components/diff-viewer.js" => {
-            Some(js(include_str!("../frontend/components/diff-viewer.js")))
+            Some(js(include_str!("../../frontend/components/diff-viewer.js")))
         }
-        "components/dom.js" => Some(js(include_str!("../frontend/components/dom.js"))),
-        "components/file-viewer.css" => {
-            Some(css(include_str!("../frontend/components/file-viewer.css")))
-        }
+        "components/dom.js" => Some(js(include_str!("../../frontend/components/dom.js"))),
+        "components/file-viewer.css" => Some(css(include_str!(
+            "../../frontend/components/file-viewer.css"
+        ))),
         "components/file-viewer.js" => {
-            Some(js(include_str!("../frontend/components/file-viewer.js")))
+            Some(js(include_str!("../../frontend/components/file-viewer.js")))
         }
         "components/file-viewer-presentation.js" => Some(js(include_str!(
-            "../frontend/components/file-viewer-presentation.js"
+            "../../frontend/components/file-viewer-presentation.js"
         ))),
-        "components/icons.js" => Some(js(include_str!("../frontend/components/icons.js"))),
-        "components/pagination.css" => {
-            Some(css(include_str!("../frontend/components/pagination.css")))
-        }
+        "components/icons.js" => Some(js(include_str!("../../frontend/components/icons.js"))),
+        "components/pagination.css" => Some(css(include_str!(
+            "../../frontend/components/pagination.css"
+        ))),
         "components/pagination.js" => {
-            Some(js(include_str!("../frontend/components/pagination.js")))
+            Some(js(include_str!("../../frontend/components/pagination.js")))
         }
         _ => None,
     }
