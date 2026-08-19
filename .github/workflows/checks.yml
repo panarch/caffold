@@ -58,6 +58,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
+      # A viewport failure is usually specific to that viewport, so let the
+      # others finish and report. Cancelling them hides whether the change broke
+      # one layout or all of them.
       fail-fast: false
       matrix:
         project: [desktop, foldable, phone]

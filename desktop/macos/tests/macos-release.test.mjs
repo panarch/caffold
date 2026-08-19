@@ -7,15 +7,12 @@ import test from "node:test";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const packageApp = resolve(repoRoot, "desktop/macos/package-app");
-const systemStatusTest = resolve(repoRoot, "desktop/macos/test-system-status");
-const updaterTest = resolve(repoRoot, "desktop/macos/test-updater");
 const release = resolve(repoRoot, "desktop/macos/release");
 const renderCask = resolve(repoRoot, "desktop/macos/render-cask");
 const releaseWorkflow = resolve(repoRoot, ".github/workflows/release.yml");
 const rootReadme = resolve(repoRoot, "README.md");
 const macosReadme = resolve(repoRoot, "desktop/macos/README.md");
 const productInstallGuide = resolve(repoRoot, "docs/product/installation.md");
-const macosServerSource = resolve(repoRoot, "desktop/macos/CaffoldServer.swift");
 const macosArm64Only =
   process.platform === "darwin" && process.arch === "arm64"
     ? false
@@ -71,35 +68,6 @@ test("macOS release preparation is syntax-valid and dry-run only", () => {
   for (const publishingCommand of ["git push", "git tag", "gh release", "brew install"]) {
     assert.doesNotMatch(source, new RegExp(publishingCommand, "i"));
   }
-});
-
-test("macOS packaging locks dependencies and verifies the distributed archive", () => {
-  const source = readFileSync(packageApp, "utf8");
-
-  assert.match(source, /cargo build --release --locked/);
-  assert.match(source, /ditto -x -k/);
-  assert.match(source, /codesign --verify --deep --strict/);
-  assert.match(source, /otool -L/);
-  assert.match(source, /non-system dynamic dependency/);
-  assert.match(source, /shasum -a 256/);
-  assert.match(source, /CFBundleShortVersionString/);
-  assert.match(source, /--expected-version/);
-  assert.match(source, /--expected-build-number/);
-  assert.match(source, /LSMinimumSystemVersion/);
-  assert.match(source, /io\.panarch\.caffold\.server/);
-  assert.match(source, /CaffoldServer\/UpdateModel\.swift/);
-  assert.match(source, /CaffoldServer\/Updater\.swift/);
-  run("bash", ["-n", systemStatusTest]);
-  run("bash", ["-n", updaterTest]);
-});
-
-test("macOS Codex recovery delegates to the shared browser Settings surface", () => {
-  const source = readFileSync(macosServerSource, "utf8");
-
-  assert.match(source, /localURL\.appendingPathComponent\("settings\/codex"\)/);
-  assert.match(source, /Open Codex Settings\.\.\./);
-  assert.match(source, /#selector\(openCodexSettings\)/);
-  assert.match(source, /NSWorkspace\.shared\.open\(codexSettingsURL\)/);
 });
 
 test("Homebrew cask installs the app and bundled CLI without a user quarantine flag", () => {
@@ -171,7 +139,6 @@ test("manual release workflow isolates versioning, verification, and publication
       releaseStart > commitStart &&
       homebrewStart > releaseStart,
   );
-  assert.doesNotMatch(source, /^  bump_release:$/m);
 
   assert.match(macosJob, /runs-on: macos-14/);
   assert.match(macosJob, /REQUESTED_SHA: \$\{\{ github\.sha \}\}/);

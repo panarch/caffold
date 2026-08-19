@@ -15,6 +15,11 @@ export default defineConfig({
   globalSetup: "./tests/e2e/global-setup.mjs",
   globalTeardown: "./tests/e2e/global-teardown.mjs",
   timeout: 30_000,
+  // The suite drives one server against one fixture workspace, and that
+  // workspace is mutable shared state: a Git repository the global setup
+  // initializes, a Redb data directory, and managed worktrees. Running specs in
+  // parallel races on all three and produces intermittent failures that look
+  // unrelated to the change that caused them.
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: 0,

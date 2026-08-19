@@ -18,7 +18,8 @@ test("bundled D2 Coding files remain explicit shell assets", () => {
   assert.equal(regular.subarray(0, 4).toString(), "wOF2");
   assert.equal(bold.subarray(0, 4).toString(), "wOF2");
   assert.match(license, /SIL OPEN FONT LICENSE Version 1\.1/i);
-  assert.match(serviceWorker, /"\/assets\/fonts\/D2Coding-Regular\.woff2"/);
-  assert.match(serviceWorker, /"\/assets\/fonts\/D2Coding-Bold\.woff2"/);
+  // Precaching is covered by the service-worker asset inventory; what is only
+  // checked here is that these stay ordinary shell assets rather than moving to
+  // a separate font cache with its own strategy.
   assert.doesNotMatch(serviceWorker, /caffold-fonts|OPTIONAL_FONT|cacheFirst/);
 });

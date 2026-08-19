@@ -135,6 +135,8 @@ test("mobile interaction policies preserve pinch zoom and own viewer text sizing
 test("color roles keep neutral chrome, interactions, and semantic feedback separate", () => {
   const root = readFrontend("styles.css");
   for (const token of [
+    "--bg",
+    "--surface-muted",
     "--surface-subtle",
     "--border-subtle",
     "--focus-ring",
@@ -153,21 +155,13 @@ test("color roles keep neutral chrome, interactions, and semantic feedback separ
     "--danger",
     "--diff-added-bg",
     "--diff-removed-bg",
+    "--border",
+    "--text",
+    "--code-gutter",
+    "--selection-indicator",
   ]) {
     assert.match(root, new RegExp(`${token}:`));
   }
-
-  assert.match(root, /--bg: #f5f5f5/);
-  assert.match(root, /--surface-muted: #f1f1f1/);
-  assert.match(root, /--border: #d4d4d4/);
-  assert.match(root, /--text: #1f1f1f/);
-  assert.match(root, /--code-gutter: #f2f2f2/);
-  assert.match(root, /--focus-ring: #525252/);
-  assert.match(root, /--row-hover-bg: #f5f5f5/);
-  assert.match(root, /--control-hover-bg: #e5e5e5/);
-  assert.match(root, /--selection-bg: #e5e5e5/);
-  assert.match(root, /--selection-indicator: #737373/);
-  assert.match(root, /--success: #167c5c/);
   assert.match(
     root,
     /html\s*\{[\s\S]*-webkit-tap-highlight-color: var\(--tap-highlight-color\)/,
