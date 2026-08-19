@@ -13,6 +13,6 @@ xcrun swiftc \
   -o "${WORK_DIR}/caffold-system-status-tests" \
   "${SCRIPT_DIR}/CaffoldServer/Runtime.swift" \
   "${SCRIPT_DIR}/CaffoldServer/SystemStatus.swift" \
-  "${REPO_DIR}/tests/macos-system-status/main.swift"
+  "${SCRIPT_DIR}/tests/macos-system-status/main.swift"
 
 "${WORK_DIR}/caffold-system-status-tests"

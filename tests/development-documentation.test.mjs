@@ -102,19 +102,34 @@ test("development entrypoints and diagnostic probe remain discoverable", () => {
   assert.match(probe.stdout, /THREAD_ID/);
 });
 
-test("package test commands are discoverable in the testing guide", () => {
-  const packageJson = JSON.parse(
-    readFileSync(resolve(repoRoot, "frontend/package.json"), "utf8"),
-  );
-  const testCommands = Object.keys(packageJson.scripts).filter((name) =>
-    name.startsWith("test:"),
-  );
-
+// Test commands used to be discoverable from one package manifest. They are now
+// owned by the thing they verify, so the testing guide is the only index and
+// this contract keeps it complete.
+test("every owned test command is discoverable in the testing guide", () => {
   const testingGuide = readFileSync(
     resolve(repoRoot, "docs/development/testing.md"),
     "utf8",
   );
-  for (const command of testCommands) {
+
+  const packageJson = JSON.parse(
+    readFileSync(resolve(repoRoot, "frontend/package.json"), "utf8"),
+  );
+  const packageCommands = Object.keys(packageJson.scripts).filter((name) =>
+    name.startsWith("test:"),
+  );
+  assert.ok(packageCommands.length > 0);
+  for (const command of packageCommands) {
     assert.match(testingGuide, new RegExp(`npm run ${command}`));
+  }
+
+  const macosSuites = readdirSync(resolve(repoRoot, "desktop/macos"), {
+    withFileTypes: true,
+  })
+    .filter((entry) => entry.isFile() && entry.name.startsWith("test-"))
+    .map((entry) => entry.name)
+    .sort();
+  assert.ok(macosSuites.length > 0);
+  for (const suite of macosSuites) {
+    assert.match(testingGuide, new RegExp(`desktop/macos/${suite}`));
   }
 });

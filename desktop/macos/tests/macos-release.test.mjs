@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const packageApp = resolve(repoRoot, "desktop/macos/package-app");
 const systemStatusTest = resolve(repoRoot, "desktop/macos/test-system-status");
 const updaterTest = resolve(repoRoot, "desktop/macos/test-updater");
@@ -213,8 +213,16 @@ test("manual release workflow isolates versioning, verification, and publication
       browserTestIndex > browserBuildIndex &&
       candidateBundleIndex > browserTestIndex,
   );
-  for (const command of ["test:unit", "test:contract", "test:e2e", "test:macos"]) {
+  for (const command of ["test:unit", "test:contract", "test:e2e"]) {
     assert.match(macosJob, new RegExp(`npm run ${command}`));
+  }
+  for (const suite of [
+    "test-contracts",
+    "test-runtime",
+    "test-system-status",
+    "test-updater",
+  ]) {
+    assert.match(macosJob, new RegExp(`desktop/macos/${suite}`));
   }
   assert.match(macosJob, /name: Upload browser failure artifacts/);
   assert.match(macosJob, /name: playwright-release-results-v/);

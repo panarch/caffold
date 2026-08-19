@@ -11,6 +11,6 @@ xcrun swiftc \
   -module-cache-path "${WORK_DIR}/swift-module-cache" \
   -o "${WORK_DIR}/caffold-runtime-tests" \
   "${SCRIPT_DIR}/CaffoldServer/Runtime.swift" \
-  "${REPO_DIR}/tests/macos-runtime/main.swift"
+  "${SCRIPT_DIR}/tests/macos-runtime/main.swift"
 
 "${WORK_DIR}/caffold-runtime-tests"

@@ -14,6 +14,6 @@ xcrun swiftc \
   "${SCRIPT_DIR}/CaffoldServer/Runtime.swift" \
   "${SCRIPT_DIR}/CaffoldServer/UpdateModel.swift" \
   "${SCRIPT_DIR}/CaffoldServer/Updater.swift" \
-  "${REPO_DIR}/tests/macos-updater/main.swift"
+  "${SCRIPT_DIR}/tests/macos-updater/main.swift"
 
 "${WORK_DIR}/caffold-updater-tests"

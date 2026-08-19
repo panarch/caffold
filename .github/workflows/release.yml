@@ -179,9 +179,14 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Test macOS packaging contracts
+        run: desktop/macos/test-contracts
+
       - name: Test macOS application behavior
-        run: npm run test:macos
-        working-directory: frontend
+        run: |
+          desktop/macos/test-runtime
+          desktop/macos/test-system-status
+          desktop/macos/test-updater
 
       - name: Check Rust formatting
         run: cargo fmt --check

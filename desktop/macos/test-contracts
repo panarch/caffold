@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Packaging, installer, and release contracts for the macOS application.
+# These verify shell scripts, workflow definitions, and documentation, so they
+# run anywhere Node is available. The one test that inspects real packaging
+# metadata skips itself off macOS arm64.
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+exec node --test "${SCRIPT_DIR}/tests"/*.test.mjs

@@ -44,6 +44,9 @@ jobs:
         run: npm run test:contract
         working-directory: frontend
 
+      - name: Test macOS packaging contracts
+        run: desktop/macos/test-contracts
+
   browser:
     name: Browser Tests / ${{ matrix.project }}
     runs-on: ubuntu-latest

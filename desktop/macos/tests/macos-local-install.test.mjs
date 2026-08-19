@@ -12,7 +12,7 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
-const repoRoot = resolve(import.meta.dirname, "..");
+const repoRoot = resolve(import.meta.dirname, "../../..");
 const installer = resolve(repoRoot, "desktop/macos/install-local");
 
 function withFakeProcessTools(psOutput, listenerOutput, operation) {

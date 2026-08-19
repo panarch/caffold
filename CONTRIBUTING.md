@@ -82,9 +82,11 @@ cargo clippy --all-targets -- -D warnings
 ```
 
 Frontend and protocol changes have additional Node and Playwright suites.
-macOS code has Swift and installer lifecycle checks. See the complete
-[testing guide](docs/development/testing.md) for the test matrix, live-test
-boundary, and coverage workflow.
+macOS code has Swift and installer lifecycle checks under `desktop/macos/`.
+Each suite is owned by the thing it verifies rather than by a single package
+manifest, so the [testing guide](docs/development/testing.md) is the index of
+what to run, where to run it from, and what it needs. It also covers the
+live-test boundary and the coverage workflow.
 
 ## Documentation ownership
 

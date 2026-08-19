@@ -18,12 +18,12 @@ npx playwright install chromium
 | `npm run test:unit` | colocated frontend unit tests |
 | `npm run test:contract` | frontend contracts in `tests/contracts/`, plus the repository-level contracts still in `../tests/` |
 | `npm run test:e2e` | deterministic fixture-backed browser coverage |
-| `npm run test:macos` | compiled Swift application behavior on macOS |
 | `npm run test:codex-compat` | installed Codex CLI schema compatibility |
 | `npm run test:codex-live` | authenticated Codex browser coverage |
 
-[Testing](../docs/development/testing.md) documents what each boundary proves
-and when to run it.
+[Testing](../docs/development/testing.md) documents what each boundary proves,
+and indexes the suites other owners run — the macOS application tests under
+`desktop/macos/` and the Rust checks at the repository root.
 
 ## Paths outside the package
 

@@ -48,16 +48,25 @@ run did not exercise.
 
 ## JavaScript and browser tests
 
-Package commands expose execution boundaries rather than individual test files:
+Commands are owned by the thing they verify rather than by one package, so each
+one records where it runs from and what it needs:
 
-| Command | Boundary |
-| --- | --- |
-| `npm run test:unit` | all focused frontend Node unit tests |
-| `npm run test:contract` | frontend policy and browser-infrastructure contracts, plus the repository, build, release, and protocol contracts that have not yet moved to an owner |
-| `npm run test:e2e` | deterministic fixture-backed Playwright coverage |
-| `npm run test:macos` | compiled Swift application behavior on macOS |
-| `npm run test:codex-compat` | installed Codex CLI schema compatibility without authentication or model usage |
-| `npm run test:codex-live` | authenticated Codex browser coverage with model usage |
+| Command | Run from | Requires | Boundary |
+| --- | --- | --- | --- |
+| `npm run test:unit` | `frontend/` | Node | all focused frontend Node unit tests |
+| `npm run test:contract` | `frontend/` | Node | frontend policy and browser-infrastructure contracts, plus the repository, release, and protocol contracts that have not yet moved to an owner |
+| `npm run test:e2e` | `frontend/` | Node, Chromium, a built server | deterministic fixture-backed Playwright coverage |
+| `npm run test:codex-compat` | `frontend/` | installed Codex CLI | Codex CLI schema compatibility without authentication or model usage |
+| `npm run test:codex-live` | `frontend/` | authenticated Codex CLI | authenticated Codex browser coverage with model usage |
+| `desktop/macos/test-contracts` | repository root | Node | macOS packaging, release, and installer contracts |
+| `desktop/macos/test-runtime` | repository root | macOS, Xcode tools | Swift wrapper process lifecycle |
+| `desktop/macos/test-system-status` | repository root | macOS, Xcode tools | Swift system-status behavior |
+| `desktop/macos/test-updater` | repository root | macOS, Xcode tools | Swift updater behavior |
+
+The macOS contracts verify shell scripts, workflow definitions, and
+documentation, so they run on any platform and belong in the ordinary pull
+request checks. Only the Swift programs and the one packaging-metadata check
+need a macOS host; that check skips itself elsewhere.
 
 Focused Node unit tests live beside their owning frontend module as
 `name.test.js`. They may import that module directly, but must not require
@@ -210,26 +219,36 @@ app-server connection.
 
 ## macOS application tests
 
-These checks require macOS and Xcode command-line tools:
+`desktop/macos/` owns its own tests. Their sources live in
+`desktop/macos/tests/`, beside the production Swift they compile against.
+
+The Swift programs require macOS and the Xcode command-line tools:
 
 ```sh
-npm run test:macos
+desktop/macos/test-runtime
+desktop/macos/test-system-status
+desktop/macos/test-updater
 ```
 
-The command compiles and runs the Swift runtime, system-status, and updater test
-programs. The runtime test launches owned child processes and verifies both
-graceful termination and the exact-PID forced fallback.
+Each compiles the production wrapper source together with its test program. The
+runtime test launches owned child processes and verifies both graceful
+termination and the exact-PID forced fallback.
 
-The Node-hosted macOS packaging, release, and local-install contracts remain
-part of `test:contract`. The local-install contract uses controlled fake system
-tools to verify that an orphaned bundled server blocks replacement and that
-rollback stops a failed runtime before restoring the backup.
+The packaging, release, and local-install contracts need only Node:
+
+```sh
+desktop/macos/test-contracts
+```
+
+The local-install contract uses controlled fake system tools to verify that an
+orphaned bundled server blocks replacement and that rollback stops a failed
+runtime before restoring the backup. The one check that reads real packaging
+metadata skips itself off macOS arm64.
 
 When changing the application wrapper, process lifecycle, packaging, updater,
 or installer, also run:
 
 ```sh
-npm run test:contract
 desktop/macos/package-app build
 ```
 
