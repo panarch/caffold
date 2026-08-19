@@ -84,6 +84,31 @@ the readiness tests and the browser server both use. A test written in Node does
 not make it frontend material, and a contract on the backend's own boundary
 belongs to the backend even when a different harness would be easier.
 
+Continuous integration follows the same ownership. Pull-request checks run one
+job per owner, and each job name says both whose it is and what kind of
+verification it performs:
+
+| Job | Verifies |
+| --- | --- |
+| Frontend Tests | colocated units and frontend contracts |
+| Documentation Contracts | the documentation index, links, and command index |
+| Repository Tooling Tests | the release version tooling, by calling it |
+| macOS Packaging Contracts | packaging, release, and installer definitions |
+| Browser Tests / _viewport_ | browser behavior, one job per viewport |
+| Rust Checks | formatting, lints, and the Rust suites |
+
+A failing check therefore names its owner without being opened. The contract
+jobs read shell scripts, workflow definitions, and documentation rather than
+running a macOS application, so `macOS Packaging Contracts` needs no macOS host
+and runs on the ordinary Ubuntu runner.
+
+The release workflow keeps all of this in one linear job on the macOS host,
+because it is a gate in front of an artifact rather than feedback on a change.
+It re-runs every pull-request suite and adds what needs that host: the Swift
+programs and the packaging verification. A contract keeps the split honest —
+every suite must run where it can run, and the release gate must not be weaker
+than the pull-request checks.
+
 Focused Node unit tests live beside their owning frontend module as
 `name.test.js`. They may import that module directly, but must not require
 test-only exports from a public entry point. Production ownership scans, the

@@ -159,7 +159,7 @@ jobs:
         run: npm run test:unit
         working-directory: frontend
 
-      - name: Test repository contracts
+      - name: Test frontend contracts
         run: npm run test:contract
         working-directory: frontend
 
