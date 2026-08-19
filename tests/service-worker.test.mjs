@@ -75,6 +75,9 @@ function appShellAssetCount(serviceWorkerSource) {
 function runtimeFrontendFiles(root) {
   const files = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (entry.name === "node_modules" || entry.name === "tests") {
+      continue;
+    }
     const fullPath = path.join(root, entry.name);
     if (entry.isDirectory()) {
       files.push(...runtimeFrontendFiles(fullPath));

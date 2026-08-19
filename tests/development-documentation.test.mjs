@@ -104,7 +104,7 @@ test("development entrypoints and diagnostic probe remain discoverable", () => {
 
 test("package test commands are discoverable in the testing guide", () => {
   const packageJson = JSON.parse(
-    readFileSync(resolve(repoRoot, "package.json"), "utf8"),
+    readFileSync(resolve(repoRoot, "frontend/package.json"), "utf8"),
   );
   const testCommands = Object.keys(packageJson.scripts).filter((name) =>
     name.startsWith("test:"),

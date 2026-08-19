@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { rm, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { repositoryPath } from "../../repository-paths.mjs";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { openCompletedTaskForReview } from "../support/task-review-test.js";
 import {
@@ -69,7 +69,7 @@ test("browses source through the shared Files navigator and one root watch", { t
     .toBe(1);
 
   const liveName = `task-live-${testInfo.project.name}.txt`;
-  const livePath = resolve("tests/fixtures/home/src", liveName);
+  const livePath = repositoryPath("tests/fixtures/home/src", liveName);
   try {
     await writeFile(livePath, "Caffold Review live update\n");
     await page.evaluate((logicalPath) => {

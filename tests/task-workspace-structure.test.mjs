@@ -11,6 +11,9 @@ function readFrontend(path) {
 
 function frontendJavascriptFiles(directory = frontendRoot, prefix = "") {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.name === "node_modules" || entry.name === "tests") {
+      return [];
+    }
     const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
     const absolutePath = `${directory}/${entry.name}`;
     if (entry.isDirectory()) {

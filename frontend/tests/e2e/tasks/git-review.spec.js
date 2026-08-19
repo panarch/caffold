@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
+import { repositoryPath } from "../../repository-paths.mjs";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
 import {
@@ -18,7 +19,7 @@ test.beforeEach(async ({ page }) => {
 
 const THREAD_ID = "thread_task_git_review";
 const ROOT_PATH = "src";
-const FIXTURE_HOME = resolve("tests/fixtures/home");
+const FIXTURE_HOME = repositoryPath("tests/fixtures/home");
 const COMMIT = {
   sha: "abcdef1234567890abcdef1234567890abcdef12",
   shortSha: "abcdef1",

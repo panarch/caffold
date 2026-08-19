@@ -5,7 +5,7 @@ import { installBrowserDefaults } from "./support/browser-defaults.js";
 import { captureReviewScreenshot } from "./support/task-fixtures.js";
 
 const serviceWorkerSource = readFileSync(
-  new URL("../../frontend/service-worker.js", import.meta.url),
+  new URL("../../service-worker.js", import.meta.url),
   "utf8",
 );
 const TEST_ACTIVATION_GATE_MESSAGE = "caffold:test-activation-gate";

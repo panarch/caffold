@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import test from "node:test";
 
-import { resolveCodexBin } from "./live/codex-bin.mjs";
+import { resolveCodexBin } from "../frontend/tests/live/codex-bin.mjs";
 
 const MINIMUM_SUPPORTED_VERSION = "0.147.0";
 

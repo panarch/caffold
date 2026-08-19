@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { rmSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
+import { repositoryRoot } from "../repository-paths.mjs";
 import { pathToFileURL } from "node:url";
 
 import { parsePlaywrightServerPort } from "../playwright-server-port.mjs";
@@ -23,7 +24,7 @@ export function caffoldLiveServerArguments({ port, runtimeRoot }) {
 }
 
 export function runCaffoldLiveServer({
-  cwd = process.cwd(),
+  cwd = repositoryRoot,
   environment = process.env,
 } = {}) {
   const runtimeRoot = resolve(environment.CAFFOLD_LIVE_RUNTIME_ROOT ?? "");

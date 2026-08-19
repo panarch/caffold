@@ -19,12 +19,15 @@ On macOS:
 ```sh
 brew install cmake
 xcode-select --install
-npm ci
 ```
 
-The ordinary browser suite also needs Playwright's Chromium build:
+The npm package lives in `frontend/`, so JavaScript and browser commands run
+from that directory while Rust commands stay at the repository root. The
+ordinary browser suite also needs Playwright's Chromium build:
 
 ```sh
+cd frontend
+npm ci
 npx playwright install chromium
 ```
 

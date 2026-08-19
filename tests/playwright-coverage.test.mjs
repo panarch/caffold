@@ -8,9 +8,9 @@ import {
   VIEWPORT_COVERAGE_TAGS,
   VIEWPORT_PROJECTS,
   viewportCoveragePattern,
-} from "./e2e/support/project-coverage.js";
+} from "../frontend/tests/e2e/support/project-coverage.js";
 
-const e2eRoot = resolve(import.meta.dirname, "e2e");
+const e2eRoot = resolve(import.meta.dirname, "../frontend/tests/e2e");
 const allowedTags = new Set(VIEWPORT_COVERAGE_TAGS);
 
 async function specFiles(directory) {

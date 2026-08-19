@@ -7,9 +7,13 @@ different evidence and must be reported separately.
 
 ## Setup
 
+The npm package lives in `frontend/`. Run every JavaScript and browser command
+from that directory; Rust and release commands stay at the repository root.
+
 Use Node.js 22 and the committed npm lockfile:
 
 ```sh
+cd frontend
 npm ci
 npx playwright install chromium
 ```
@@ -61,11 +65,14 @@ test-only exports from a public entry point. Production ownership scans, the
 static import graph, the Rust asset table, and the service-worker shell
 inventory exclude colocated `*.test.js` files.
 
-Keep tests under `tests/` when they compare multiple production owners or
-validate repository policy, inventories, build/release behavior, protocols, or
-browser-test infrastructure. `test:contract` discovers every top-level
-`tests/*.test.mjs` file, while Playwright specs remain under `tests/e2e/`. Run
-an individual top-level test directly with `node --test` while iterating. A
+Keep tests under the repository-level `tests/` directory when they compare
+multiple production owners or validate repository policy, inventories,
+build/release behavior, protocols, or browser-test infrastructure.
+`test:contract` discovers every `tests/*.test.mjs` file there. The npm package
+lives in `frontend/`, so Playwright configuration, its Node support modules, and
+the browser suites under `frontend/tests/e2e/` and `frontend/tests/live/` sit
+inside that package. Run an individual repository-level test directly with
+`node --test` while iterating. A
 cross-cutting frontend or release change should run every affected boundary
 rather than relying on `test:e2e` alone.
 
@@ -105,7 +112,7 @@ For layout changes, inspect the generated screenshots under `test-results` and
 exercise the relevant desktop, foldable, and phone projects. For fixture or
 shared-state changes, compare normal parallel execution with `--workers=1`.
 
-`tests/e2e/showcase.spec.js` owns a small documentation-oriented desktop
+`frontend/tests/e2e/showcase.spec.js` owns a small documentation-oriented desktop
 scenario. Its dedicated fixture presents a completed review-first Task and a
 representative Working Tree diff without an authenticated Codex session. Run it
 with:
@@ -129,7 +136,7 @@ unit, browser-integration, and platform evidence.
 
 PWA build-handoff changes require the adjacent unit tests,
 `tests/service-worker.test.mjs`, and
-`tests/e2e/app-shell-update.spec.js`. The loopback lifecycle server provides
+`frontend/tests/e2e/app-shell-update.spec.js`. The loopback lifecycle server provides
 real Chromium service-worker replacement coverage. Its core recovery case keeps
 an old document alive after the target controller takes over, drops the first
 navigation, verifies that page resume does not repeat it automatically, and

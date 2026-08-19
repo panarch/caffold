@@ -8,9 +8,9 @@ upgrade; it does not download or replace executable content itself.
 
 ## Version ownership
 
-`Cargo.toml` is the application version source; `package.json` and the Caffold package entry in `Cargo.lock` must contain the same value. `scripts/bump-release-version.mjs` validates all three values before changing them and supports stable `major`, `minor`, and `patch` increments.
+`Cargo.toml` is the application version source; `frontend/package.json` and the Caffold package entry in `Cargo.lock` must contain the same value. `scripts/bump-release-version.mjs` validates all three values before changing them and supports stable `major`, `minor`, and `patch` increments.
 
-The manual Release workflow creates a local `Release v<version>` candidate commit when a `release-patch`, `release-minor`, or `release-major` action is selected. The candidate may change only `Cargo.toml`, `package.json`, and `Cargo.lock`. Its resulting commit SHA, rather than the workflow dispatch SHA, becomes the source for every build and publication job. The workflow does not push that commit to `main` until its tests and macOS artifact have passed.
+The manual Release workflow creates a local `Release v<version>` candidate commit when a `release-patch`, `release-minor`, or `release-major` action is selected. The candidate may change only `Cargo.toml`, `frontend/package.json`, and `Cargo.lock`. Its resulting commit SHA, rather than the workflow dispatch SHA, becomes the source for every build and publication job. The workflow does not push that commit to `main` until its tests and macOS artifact have passed.
 
 The app bundle uses:
 

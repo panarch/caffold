@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { dirname, join, sep } from "node:path";
 
+import { repositoryRoot } from "../repository-paths.mjs";
 import { CodexDaemonClient } from "./codex-daemon-client.mjs";
 import {
   assertLiveModelPolicy,
@@ -68,7 +69,7 @@ function liveCwd() {
     return process.env.CAFFOLD_LIVE_CWD;
   }
 
-  return process.cwd().split(sep).filter(Boolean).join("/");
+  return repositoryRoot.split(sep).filter(Boolean).join("/");
 }
 
 async function chooseModel(taskForm, scenario) {
@@ -141,7 +142,7 @@ async function restoreLiveThread(request, threadId) {
 
 function initializeLiveRepository(marker) {
   const relativePath = join("target", "caffold-live-fixtures", marker);
-  const repository = join(process.cwd(), relativePath);
+  const repository = join(repositoryRoot, relativePath);
   mkdirSync(repository, { recursive: true });
   for (const args of [
     ["init"],
@@ -164,7 +165,7 @@ function initializeLiveRepository(marker) {
 
 function initializePersistentLiveRepository(marker) {
   const relativePath = join("target", "caffold-live-fixtures", marker);
-  const repository = join(process.cwd(), relativePath);
+  const repository = join(repositoryRoot, relativePath);
   mkdirSync(repository, { recursive: true });
   if (!existsSync(join(repository, ".git"))) {
     execFileSync("git", ["-C", repository, "init"]);
@@ -273,7 +274,7 @@ test.afterAll(async ({ request }) => {
     afterStatus,
     tests: liveUsageTests,
   });
-  const artifactPath = join(process.cwd(), "test-results", "codex-live-usage.json");
+  const artifactPath = join(repositoryRoot, "test-results", "codex-live-usage.json");
   let report = currentReport;
   if (existsSync(artifactPath)) {
     try {

@@ -1,8 +1,8 @@
 /target
-/node_modules
+/frontend/node_modules
 /playwright-report
 /test-results
-/tests/e2e/*-snapshots
+/frontend/tests/e2e/*-snapshots
 /tests/fixtures/.caffold-data
 /tests/fixtures/home/.caffold-worktrees
 /tests/fixtures/**/.git

@@ -1,11 +1,16 @@
 import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const fixtureRepo = resolve("tests/fixtures/home/src");
+const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
+const fixtureRepo = resolve(repositoryRoot, "tests/fixtures/home/src");
 const fixtureGitDir = resolve(fixtureRepo, ".git");
-const fixtureDataDir = resolve("tests/fixtures/.caffold-data");
-const fixtureWorktreeDir = resolve("tests/fixtures/home/.caffold-worktrees");
+const fixtureDataDir = resolve(repositoryRoot, "tests/fixtures/.caffold-data");
+const fixtureWorktreeDir = resolve(
+  repositoryRoot,
+  "tests/fixtures/home/.caffold-worktrees",
+);
 
 export default function globalSetup() {
   rmSync(fixtureGitDir, { recursive: true, force: true });

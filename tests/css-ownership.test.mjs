@@ -699,6 +699,9 @@ test("workspace navigation uses in-flow pane ownership without padding compensat
 function discoverCssFiles(directory, prefix = "") {
   const paths = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (entry.name === "node_modules" || entry.name === "tests") {
+      continue;
+    }
     const relativePath = `${prefix}${entry.name}`;
     if (entry.isDirectory()) {
       paths.push(...discoverCssFiles(`${directory}${entry.name}/`, `${relativePath}/`));

@@ -142,6 +142,9 @@ function relativeLuminance(hex) {
 
 function frontendSourcePaths(directory = frontendRoot) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.name === "node_modules" || entry.name === "tests") {
+      return [];
+    }
     const absolute = join(directory, entry.name);
     if (entry.isDirectory()) {
       return frontendSourcePaths(absolute);

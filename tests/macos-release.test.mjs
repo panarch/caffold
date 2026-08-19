@@ -45,7 +45,7 @@ test(
     const cargoVersion = readFileSync(resolve(repoRoot, "Cargo.toml"), "utf8").match(
       /^version = "([^"]+)"$/m,
     )?.[1];
-    const webVersion = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8")).version;
+    const webVersion = JSON.parse(readFileSync(resolve(repoRoot, "frontend/package.json"), "utf8")).version;
 
     assert.equal(metadata.version, cargoVersion);
     assert.equal(metadata.version, webVersion);
@@ -192,7 +192,7 @@ test("manual release workflow isolates versioning, verification, and publication
   assert.match(macosJob, /git bundle create/);
   assert.match(macosJob, /git bundle verify/);
   assert.match(macosJob, /caffold-release-candidate-v/);
-  for (const canonicalFile of ["Cargo.lock", "Cargo.toml", "package.json"]) {
+  for (const canonicalFile of ["Cargo.lock", "Cargo.toml", "frontend/package.json"]) {
     assert.match(macosJob, new RegExp(canonicalFile.replace(".", "\\.")));
   }
   assert.match(macosJob, new RegExp(`rustup toolchain install ${rustVersion}(?:\\.0)?`));

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   copyFileSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -30,7 +31,8 @@ function withReleaseFixture(
   };
 
   writeFileSync(join(root, "Cargo.toml"), files.cargo);
-  writeFileSync(join(root, "package.json"), files.web);
+  mkdirSync(join(root, "frontend"), { recursive: true });
+  writeFileSync(join(root, "frontend", "package.json"), files.web);
   writeFileSync(join(root, "Cargo.lock"), files.lock);
 
   try {
@@ -57,7 +59,7 @@ test("a release bump updates only the three canonical version fields", () => {
 
     assert.match(readFileSync(join(root, "Cargo.toml"), "utf8"), /version = "1\.3\.0"/);
     assert.equal(
-      JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version,
+      JSON.parse(readFileSync(join(root, "frontend", "package.json"), "utf8")).version,
       "1.3.0",
     );
     const lock = readFileSync(join(root, "Cargo.lock"), "utf8");
@@ -71,7 +73,7 @@ test("a mismatched source version fails before changing any file", () => {
     (root, original) => {
       assert.throws(() => bumpReleaseVersion(root, "patch"), /must match/);
       assert.equal(readFileSync(join(root, "Cargo.toml"), "utf8"), original.cargo);
-      assert.equal(readFileSync(join(root, "package.json"), "utf8"), original.web);
+      assert.equal(readFileSync(join(root, "frontend", "package.json"), "utf8"), original.web);
       assert.equal(readFileSync(join(root, "Cargo.lock"), "utf8"), original.lock);
     },
     { cargo: "1.2.3", web: "1.2.4", lock: "1.2.3" },
@@ -81,10 +83,12 @@ test("a mismatched source version fails before changing any file", () => {
 test("the committed release files can be bumped together", () => {
   const root = mkdtempSync(join(tmpdir(), "caffold-current-release-version-"));
   try {
-    for (const file of ["Cargo.toml", "package.json", "Cargo.lock"]) {
-      copyFileSync(resolve(repoRoot, file), join(root, file));
+    for (const file of ["Cargo.toml", "frontend/package.json", "Cargo.lock"]) {
+      const destination = join(root, file);
+      mkdirSync(dirname(destination), { recursive: true });
+      copyFileSync(resolve(repoRoot, file), destination);
     }
-    const current = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
+    const current = JSON.parse(readFileSync(join(root, "frontend", "package.json"), "utf8")).version;
     const expected = nextReleaseVersion(current, "patch");
 
     assert.equal(bumpReleaseVersion(root, "patch").version, expected);

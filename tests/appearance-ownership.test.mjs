@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const frontendRoot = fileURLToPath(new URL("../frontend/", import.meta.url));
-const e2eSupportRoot = fileURLToPath(new URL("./e2e/support/", import.meta.url));
+const e2eSupportRoot = fileURLToPath(new URL("../frontend/tests/e2e/support/", import.meta.url));
 
 const conversationOwners = new Set([
   "pages/(task-workspace)/tasks/components/composer.css",
@@ -1355,6 +1355,9 @@ function cssBlockMatching(source, selector, patterns) {
 
 function walk(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.name === "node_modules" || entry.name === "tests") {
+      return [];
+    }
     const path = resolve(directory, entry.name);
     if (entry.isDirectory()) {
       return walk(path);

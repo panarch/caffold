@@ -8,7 +8,7 @@ const workflow = readFileSync(
   "utf8",
 );
 const playwrightConfig = readFileSync(
-  resolve(import.meta.dirname, "../playwright.config.mjs"),
+  resolve(import.meta.dirname, "../frontend/playwright.config.mjs"),
   "utf8",
 );
 

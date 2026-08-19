@@ -3,6 +3,7 @@ import { Duplex } from "node:stream";
 import { promisify } from "node:util";
 import { ws as WebSocket } from "playwright-core/lib/utilsBundle";
 
+import { repositoryRoot } from "../repository-paths.mjs";
 import { resolveCodexBin } from "./codex-bin.mjs";
 
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -52,7 +53,7 @@ export class CodexDaemonClient {
       resolveCodexBin(),
       ["app-server", "proxy", "--sock", socketPath],
       {
-        cwd: process.cwd(),
+        cwd: repositoryRoot,
         stdio: ["pipe", "pipe", "pipe"],
       },
     );

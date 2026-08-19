@@ -1,12 +1,17 @@
 import { defineConfig } from "@playwright/test";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { viewportCoveragePattern } from "./tests/e2e/support/project-coverage.js";
 import { createRegularPlaywrightServer } from "./tests/playwright-local-server.mjs";
+
+const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 
 const localServer = await createRegularPlaywrightServer();
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  outputDir: join(repositoryRoot, "test-results"),
   globalSetup: "./tests/e2e/global-setup.mjs",
   globalTeardown: "./tests/e2e/global-teardown.mjs",
   timeout: 30_000,

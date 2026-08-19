@@ -6,8 +6,9 @@ import {
 } from "./playwright-server-port.mjs";
 import { fileURLToPath } from "node:url";
 
+const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 const fakeCodexBin = fileURLToPath(
-  new URL("./fixtures/fake-codex", import.meta.url),
+  new URL("../../tests/fixtures/fake-codex", import.meta.url),
 );
 
 async function selectInvocationPort({
@@ -41,6 +42,7 @@ export async function createRegularPlaywrightServer(
     baseURL,
     webServer: {
       command: `cargo run -- serve --host ${PLAYWRIGHT_SERVER_HOST} --port ${port} --root tests/fixtures/home --data-dir tests/fixtures/.caffold-data --worktree-root tests/fixtures/home/.caffold-worktrees`,
+      cwd: repositoryRoot,
       url: `${baseURL}/api/health`,
       env: {
         ...environment,
@@ -69,6 +71,7 @@ export async function createLivePlaywrightServer({
     baseURL,
     webServer: {
       command: `${JSON.stringify(execPath)} ${JSON.stringify(serverScript)}`,
+      cwd: repositoryRoot,
       url: `${baseURL}/api/health`,
       env: {
         ...environment,

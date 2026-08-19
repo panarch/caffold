@@ -3,16 +3,16 @@ import { createServer } from "node:net";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { caffoldLiveServerArguments } from "./live/caffold-live-server.mjs";
+import { caffoldLiveServerArguments } from "../frontend/tests/live/caffold-live-server.mjs";
 import {
   createLivePlaywrightServer,
   createRegularPlaywrightServer,
-} from "./playwright-local-server.mjs";
+} from "../frontend/tests/playwright-local-server.mjs";
 import {
   PLAYWRIGHT_SERVER_HOST,
   playwrightServerOrigin,
   selectPlaywrightServerPort,
-} from "./playwright-server-port.mjs";
+} from "../frontend/tests/playwright-server-port.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "..");
 

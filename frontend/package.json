@@ -1,0 +1,17 @@
+{
+  "name": "caffold",
+  "version": "0.7.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:unit": "node --test \"*.test.js\" \"components/**/*.test.js\" \"pages/**/*.test.js\"",
+    "test:contract": "node --test \"../tests/*.test.mjs\"",
+    "test:e2e": "playwright test",
+    "test:macos": "../desktop/macos/test-runtime && ../desktop/macos/test-system-status && ../desktop/macos/test-updater",
+    "test:codex-compat": "CAFFOLD_CODEX_COMPAT=1 node --test ../tests/codex-protocol.test.mjs",
+    "test:codex-live": "playwright test --config=playwright.live.config.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.53.0"
+  }
+}
