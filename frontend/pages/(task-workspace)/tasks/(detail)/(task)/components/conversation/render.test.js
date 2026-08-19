@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { renderConversation } from "./render.js";
+import {
+  renderConversation,
+  renderConversationEvent,
+} from "./render.js";
 
 test("delegates active-turn presentation to its component snapshot", () => {
   const task = activeTask();
@@ -52,6 +55,29 @@ test("delegates active-turn presentation to its component snapshot", () => {
   });
 });
 
+test("opts only stable user and final assistant messages into code controls", () => {
+  const stableUser = renderConversationEvent(messageEvent("user_message"), {});
+  const pendingUser = renderConversationEvent(
+    messageEvent("user_message", { optimistic: true }),
+    {},
+  );
+  const finalAssistant = renderConversationEvent(
+    messageEvent("assistant_message", { phase: "final" }),
+    {},
+    { messagePhase: "final" },
+  );
+  const progressAssistant = renderConversationEvent(
+    messageEvent("assistant_message", { phase: "commentary" }),
+    {},
+    { messagePhase: "progress" },
+  );
+
+  assert.equal(hasCodeBlockControls(stableUser), true);
+  assert.equal(hasCodeBlockControls(pendingUser), false);
+  assert.equal(hasCodeBlockControls(finalAssistant), true);
+  assert.equal(hasCodeBlockControls(progressAssistant), false);
+});
+
 function activeTask() {
   return {
     id: "thread-1",
@@ -70,4 +96,21 @@ function turnEvent(id, type, createdMs, payload) {
     payload: { turnId: "turn-1", ...payload },
     createdMs,
   };
+}
+
+function messageEvent(type, payload = {}) {
+  return {
+    id: `${type}-1`,
+    type,
+    summary: type,
+    payload: {
+      text: "```example\nvalue\n```",
+      ...payload,
+    },
+    createdMs: 1,
+  };
+}
+
+function hasCodeBlockControls(html) {
+  return /<caffold-task-markdown[^>]* code-block-controls>/.test(html);
 }

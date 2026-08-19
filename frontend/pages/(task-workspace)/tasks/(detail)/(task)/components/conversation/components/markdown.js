@@ -1,4 +1,5 @@
 import { routeUrl } from "../../../../../../../../navigation-routes.js";
+import "./markdown/components/code-block.js";
 
 const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
 
@@ -51,189 +52,24 @@ const VALID_INTEGER = /^-?[0-9]+$/;
 let parserPromise;
 
 class CaffoldTaskMarkdown extends HTMLElement {
-  constructor() {
-    super();
-    this.attachShadow({ mode: "open" });
-    this.shadowRoot.innerHTML = `
-      <style>
-        :host {
-          display: block;
-          min-width: 0;
-          color: inherit;
-          font: inherit;
-          line-height: inherit;
-        }
-
-        .markdown-body {
-          min-width: 0;
-          overflow-wrap: anywhere;
-        }
-
-        .markdown-body > :first-child {
-          margin-top: 0;
-        }
-
-        .markdown-body > :last-child {
-          margin-bottom: 0;
-        }
-
-        p,
-        ul,
-        ol,
-        blockquote,
-        pre,
-        .markdown-table-scroll {
-          margin: 0 0 10px;
-        }
-
-        h1,
-        h2,
-        h3,
-        h4,
-        h5,
-        h6 {
-          margin: 20px 0 8px;
-          font-weight: 600;
-          line-height: var(--conversation-line-height);
-        }
-
-        h1 {
-          font-size: calc(var(--conversation-font-size) + 4px);
-        }
-
-        h2 {
-          font-size: calc(var(--conversation-font-size) + 3px);
-        }
-
-        h3 {
-          font-size: calc(var(--conversation-font-size) + 2px);
-        }
-
-        h4,
-        h5,
-        h6 {
-          font-size: calc(var(--conversation-font-size) + 1px);
-        }
-
-        a {
-          color: var(--link-fg);
-          text-underline-offset: 2px;
-        }
-
-        code {
-          padding: 1px 4px;
-          border: 1px solid var(--border);
-          border-radius: 4px;
-          background: var(--code-gutter);
-          color: var(--code-text);
-          font-family: var(--font-code);
-          font-size: var(--code-font-size);
-          line-height: var(--code-line-height);
-        }
-
-        pre {
-          max-width: 100%;
-          overflow: auto;
-          padding: 11px 12px;
-          border: 1px solid var(--border);
-          border-radius: 6px;
-          background: var(--code-bg);
-          font-size: var(--code-font-size);
-          line-height: var(--code-line-height);
-          white-space: pre;
-          overscroll-behavior-x: contain;
-        }
-
-        pre code {
-          padding: 0;
-          border: 0;
-          background: transparent;
-          font-size: inherit;
-        }
-
-        blockquote {
-          padding-left: 12px;
-          border-left: 3px solid var(--border);
-          color: var(--muted);
-        }
-
-        ul,
-        ol {
-          padding-left: 24px;
-        }
-
-        li + li {
-          margin-top: 3px;
-        }
-
-        .markdown-table-scroll {
-          max-width: 100%;
-          overflow-x: auto;
-          overflow-y: hidden;
-          overscroll-behavior-x: contain;
-        }
-
-        table {
-          width: max-content;
-          min-width: 100%;
-          border-collapse: collapse;
-        }
-
-        th,
-        td {
-          padding: 4px 7px;
-          border: 1px solid var(--border);
-          overflow-wrap: normal;
-          text-align: left;
-          vertical-align: top;
-          white-space: nowrap;
-        }
-
-        hr {
-          height: 1px;
-          margin: 16px 0;
-          border: 0;
-          background: var(--border);
-        }
-
-        input[type="checkbox"] {
-          margin: 0 5px 0 0;
-          vertical-align: middle;
-        }
-
-        .markdown-fallback {
-          margin: 0;
-          padding: 0;
-          border: 0;
-          background: transparent;
-          overflow-wrap: anywhere;
-          font: inherit;
-          line-height: inherit;
-          white-space: pre-wrap;
-        }
-
-        .markdown-loading {
-          min-height: var(--conversation-line-height);
-          color: var(--muted);
-        }
-      </style>
-      <article class="markdown-body"></article>
-    `;
-  }
-
   connectedCallback() {
     if (this.initialized) {
       return;
     }
 
+    const markdown = this.markdown ?? this.textContent ?? "";
+    const body = document.createElement("article");
+    body.className = "markdown-body";
+    this.replaceChildren(body);
     this.initialized = true;
-    const markdown = this.textContent ?? "";
-    this.replaceChildren();
     this.setMarkdown(markdown);
   }
 
   setMarkdown(markdown) {
     this.markdown = `${markdown ?? ""}`;
+    if (!this.initialized) {
+      return;
+    }
     const renderToken = Symbol("task-markdown");
     this.renderToken = renderToken;
     this.renderPending();
@@ -275,15 +111,24 @@ class CaffoldTaskMarkdown extends HTMLElement {
 
       const template = document.createElement("template");
       template.innerHTML = `${html ?? ""}`;
+      const codeBlocks = this.hasAttribute("code-block-controls")
+        ? collectCodeBlocks(template.content)
+        : [];
       const internalLinks = applyLocalFileLinks(
         template.content,
         this.getAttribute("thread-id") ?? "",
         parsedFileLinks(this.getAttribute("file-links")),
       );
       sanitizeChildren(template.content, internalLinks);
+      decorateCodeElements(template.content);
       wrapTables(template.content);
+      mountCodeBlocks(
+        template.content,
+        codeBlocks,
+        (mutation) => this.mutateLayout(mutation),
+      );
       const scrollContext = captureScrollContext(this);
-      this.body().replaceChildren(template.content.cloneNode(true));
+      this.body().replaceChildren(template.content);
       this.dataset.renderState = "markdown";
       dispatchRendered(this, scrollContext);
     } catch {
@@ -295,7 +140,13 @@ class CaffoldTaskMarkdown extends HTMLElement {
   }
 
   body() {
-    return this.shadowRoot.querySelector(".markdown-body");
+    return this.querySelector(":scope > .markdown-body");
+  }
+
+  mutateLayout(mutation) {
+    const scrollContext = captureScrollContext(this);
+    mutation();
+    dispatchRendered(this, scrollContext);
   }
 }
 
@@ -490,6 +341,51 @@ function wrapTables(parent) {
     wrapper.className = "markdown-table-scroll";
     table.parentNode.insertBefore(wrapper, table);
     wrapper.append(table);
+  }
+}
+
+function decorateCodeElements(parent) {
+  for (const pre of parent.querySelectorAll("pre")) {
+    pre.classList.add("markdown-pre");
+  }
+  for (const code of parent.querySelectorAll("code")) {
+    code.classList.add(
+      code.parentElement?.localName === "pre"
+        ? "markdown-block-code"
+        : "markdown-inline-code",
+    );
+  }
+}
+
+function collectCodeBlocks(parent) {
+  return [...parent.querySelectorAll("pre > code")].map((code) => {
+    // Marked carries the fence label in a language-* class that sanitization removes.
+    const fenceClass = [...code.classList].find((value) =>
+      value.startsWith("language-"),
+    );
+    return {
+      code,
+      label: fenceClass?.slice("language-".length) || "Plain text",
+    };
+  });
+}
+
+function mountCodeBlocks(parent, candidates, preserveLayout) {
+  for (const { code, label } of candidates) {
+    const pre = code.parentElement;
+    if (
+      code.getRootNode() !== parent ||
+      pre?.localName !== "pre" ||
+      !pre.parentNode
+    ) {
+      continue;
+    }
+
+    pre.classList.remove("markdown-pre");
+    code.classList.remove("markdown-block-code");
+    const block = document.createElement("caffold-task-markdown-code-block");
+    pre.parentNode.insertBefore(block, pre);
+    block.setContent(pre, { label, preserveLayout });
   }
 }
 

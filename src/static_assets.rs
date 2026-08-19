@@ -451,6 +451,21 @@ pub fn get(path: &str) -> Option<StaticAsset> {
                 "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.js"
             )))
         }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.js" => {
+            Some(js(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css" => {
+            Some(css(include_str!(
+                "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css"
+            )))
+        }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/render.js" => {
             Some(js(include_str!(
                 "../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/render.js"
@@ -1249,6 +1264,34 @@ mod tests {
                 .body
                 .windows(b"caffold-task-markdown".len())
                 .any(|window| window == b"caffold-task-markdown")
+        );
+        let tasks_markdown_css =
+            get("pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css")
+                .expect("tasks markdown component css");
+        assert_eq!(tasks_markdown_css.content_type, "text/css; charset=utf-8");
+        assert!(
+            tasks_markdown_css
+                .body
+                .starts_with(b"caffold-task-markdown")
+        );
+        let code_block =
+            get("pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.js")
+                .expect("tasks Markdown code-block component js");
+        assert_eq!(code_block.content_type, "text/javascript; charset=utf-8");
+        assert!(
+            code_block
+                .body
+                .windows(b"navigator.clipboard".len())
+                .any(|window| window == b"navigator.clipboard")
+        );
+        let code_block_css =
+            get("pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css")
+                .expect("tasks Markdown code-block component css");
+        assert_eq!(code_block_css.content_type, "text/css; charset=utf-8");
+        assert!(
+            code_block_css
+                .body
+                .starts_with(b"caffold-task-markdown-code-block")
         );
         let tasks_navigator = get("pages/(task-workspace)/tasks/components/navigator.js")
             .expect("tasks navigator component js");

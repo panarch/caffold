@@ -70,6 +70,14 @@ const ownership = new Map([
     ["caffold-task-command"],
   ],
   [
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
+    ["caffold-task-markdown"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css",
+    ["caffold-task-markdown-code-block"],
+  ],
+  [
     "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
     ["caffold-task-command-dialog"],
   ],
@@ -385,9 +393,11 @@ const componentChildren = new Map([
     [
       "caffold-task-changed-files",
       "caffold-task-command",
+      "caffold-task-markdown",
       "caffold-task-work-details",
     ],
   ],
+  ["caffold-task-markdown", ["caffold-task-markdown-code-block"]],
   [
     "caffold-task-work-details",
     ["caffold-task-changed-files", "caffold-task-command"],

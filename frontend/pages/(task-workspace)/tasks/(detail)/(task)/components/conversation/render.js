@@ -473,6 +473,12 @@ function renderMessageEvent(event, role, text, options = {}) {
     : "";
   const attachmentsAttribute = attachments.length ? " data-has-attachments" : "";
   const submissionState = promptSubmissionState(event);
+  const codeBlockControls =
+    (role === "user" && !submissionState) ||
+    (role === "assistant" && options.phase === "final");
+  const codeBlockControlsAttribute = codeBlockControls
+    ? " code-block-controls"
+    : "";
   const deliveryAttribute = submissionState
     ? ` data-delivery-state="${escapeHtml(submissionState)}"`
     : "";
@@ -491,7 +497,7 @@ function renderMessageEvent(event, role, text, options = {}) {
       ${renderMessageAttachments(attachments)}
       ${value ? `
         <div class="task-message-content">
-          <caffold-task-markdown${markdownContextAttributes(event)}>${escapeHtml(value)}</caffold-task-markdown>
+          <caffold-task-markdown${markdownContextAttributes(event)}${codeBlockControlsAttribute}>${escapeHtml(value)}</caffold-task-markdown>
         </div>
       ` : ""}
     </li>
