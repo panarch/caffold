@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const frontendUrl = new URL("../frontend/", import.meta.url);
+const frontendUrl = new URL("../../", import.meta.url);
 
 test("bundled D2 Coding files remain explicit shell assets", () => {
   const regular = readFileSync(

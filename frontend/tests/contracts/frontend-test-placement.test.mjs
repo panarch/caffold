@@ -2,9 +2,8 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { repositoryRoot } from "../repository-paths.mjs";
 
-const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const frontendRoot = join(repositoryRoot, "frontend");
 
 function filesBelow(directory) {

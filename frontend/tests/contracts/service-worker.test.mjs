@@ -3,9 +3,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import vm from "node:vm";
-import { fileURLToPath } from "node:url";
+import { repositoryRoot } from "../repository-paths.mjs";
 
-const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 const frontendRoot = path.join(repositoryRoot, "frontend");
 const source = readFileSync(
   path.join(frontendRoot, "service-worker.js"),

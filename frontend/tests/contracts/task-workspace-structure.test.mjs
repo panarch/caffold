@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const frontendRoot = fileURLToPath(new URL("../frontend/", import.meta.url));
+const frontendRoot = fileURLToPath(new URL("../../", import.meta.url));
 
 function readFrontend(path) {
   return readFileSync(new URL(path, `file://${frontendRoot}/`), "utf8");

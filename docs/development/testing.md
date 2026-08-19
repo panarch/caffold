@@ -53,7 +53,7 @@ Package commands expose execution boundaries rather than individual test files:
 | Command | Boundary |
 | --- | --- |
 | `npm run test:unit` | all focused frontend Node unit tests |
-| `npm run test:contract` | top-level repository, policy, build, release, protocol, and browser-infrastructure contracts |
+| `npm run test:contract` | frontend policy and browser-infrastructure contracts, plus the repository, build, release, and protocol contracts that have not yet moved to an owner |
 | `npm run test:e2e` | deterministic fixture-backed Playwright coverage |
 | `npm run test:macos` | compiled Swift application behavior on macOS |
 | `npm run test:codex-compat` | installed Codex CLI schema compatibility without authentication or model usage |
@@ -65,14 +65,17 @@ test-only exports from a public entry point. Production ownership scans, the
 static import graph, the Rust asset table, and the service-worker shell
 inventory exclude colocated `*.test.js` files.
 
-Keep tests under the repository-level `tests/` directory when they compare
-multiple production owners or validate repository policy, inventories,
-build/release behavior, protocols, or browser-test infrastructure.
-`test:contract` discovers every `tests/*.test.mjs` file there. The npm package
-lives in `frontend/`, so Playwright configuration, its Node support modules, and
-the browser suites under `frontend/tests/e2e/` and `frontend/tests/live/` sit
-inside that package. Run an individual repository-level test directly with
-`node --test` while iterating. A
+Contracts that compare multiple production owners belong to the owner they
+verify. Frontend policy, asset, layout, and browser-infrastructure contracts
+live in `frontend/tests/contracts/`, beside the Playwright configuration, its
+Node support modules, and the browser suites under `frontend/tests/e2e/` and
+`frontend/tests/live/`.
+
+The repository-level `tests/` directory still holds the repository, release,
+packaging, and Codex protocol contracts that have not been given an owner yet,
+so `test:contract` currently discovers both locations. Reserving that directory
+for Cargo integration tests is tracked separately. Run an individual contract
+directly with `node --test` while iterating. A
 cross-cutting frontend or release change should run every affected boundary
 rather than relying on `test:e2e` alone.
 

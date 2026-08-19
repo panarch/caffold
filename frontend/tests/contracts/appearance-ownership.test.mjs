@@ -4,8 +4,8 @@ import { relative, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const frontendRoot = fileURLToPath(new URL("../frontend/", import.meta.url));
-const e2eSupportRoot = fileURLToPath(new URL("../frontend/tests/e2e/support/", import.meta.url));
+const frontendRoot = fileURLToPath(new URL("../../", import.meta.url));
+const e2eSupportRoot = fileURLToPath(new URL("../e2e/support/", import.meta.url));
 
 const conversationOwners = new Set([
   "pages/(task-workspace)/tasks/components/composer.css",

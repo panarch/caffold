@@ -4,7 +4,7 @@ import { extname, join, relative } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const frontendRoot = fileURLToPath(new URL("../frontend/", import.meta.url));
+const frontendRoot = fileURLToPath(new URL("../../", import.meta.url));
 
 test("the pre-paint bootstrap applies stored or System theme before CSS", () => {
   const html = readFrontend("index.html");

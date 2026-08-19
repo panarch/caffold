@@ -7,7 +7,7 @@ import {
   ownershipViolations,
 } from "./css-ownership.mjs";
 
-const frontendRoot = fileURLToPath(new URL("../frontend/", import.meta.url));
+const frontendRoot = fileURLToPath(new URL("../../", import.meta.url));
 const ownership = new Map([
   ["components/code-viewer.css", ["caffold-code-viewer"]],
   ["components/diff-viewer.css", ["caffold-diff-viewer"]],

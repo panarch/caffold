@@ -3,18 +3,18 @@ import { createServer } from "node:net";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { caffoldLiveServerArguments } from "../frontend/tests/live/caffold-live-server.mjs";
+import { caffoldLiveServerArguments } from "../live/caffold-live-server.mjs";
 import {
   createLivePlaywrightServer,
   createRegularPlaywrightServer,
-} from "../frontend/tests/playwright-local-server.mjs";
+} from "../playwright-local-server.mjs";
 import {
   PLAYWRIGHT_SERVER_HOST,
   playwrightServerOrigin,
   selectPlaywrightServerPort,
-} from "../frontend/tests/playwright-server-port.mjs";
+} from "../playwright-server-port.mjs";
 
-const repoRoot = resolve(import.meta.dirname, "..");
+const repoRoot = resolve(import.meta.dirname, "../../..");
 
 function listen(server, port) {
   return new Promise((resolveListen, reject) => {
