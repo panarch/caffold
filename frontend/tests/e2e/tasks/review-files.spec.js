@@ -69,7 +69,7 @@ test("browses source through the shared Files navigator and one root watch", { t
     .toBe(1);
 
   const liveName = `task-live-${testInfo.project.name}.txt`;
-  const livePath = repositoryPath("tests/fixtures/home/src", liveName);
+  const livePath = repositoryPath("frontend/tests/e2e/fixtures/home/src", liveName);
   try {
     await writeFile(livePath, "Caffold Review live update\n");
     await page.evaluate((logicalPath) => {

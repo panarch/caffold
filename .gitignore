@@ -3,9 +3,9 @@
 /playwright-report
 /test-results
 /frontend/tests/e2e/*-snapshots
-/tests/fixtures/.caffold-data
-/tests/fixtures/home/.caffold-worktrees
-/tests/fixtures/**/.git
+/frontend/tests/e2e/fixtures/.caffold-data
+/frontend/tests/e2e/fixtures/home/.caffold-worktrees
+/frontend/tests/e2e/fixtures/**/.git
 .caffold-dev/
 .notes/
 .DS_Store

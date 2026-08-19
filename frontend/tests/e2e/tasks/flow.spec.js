@@ -28,9 +28,9 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
     ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title: "Global task",
     preview: "Hello from a cwd-backed task",
-    cwd: "tests/fixtures/home",
-    cwdPath: "tests/fixtures/home",
-    relativeCwd: "tests/fixtures/home",
+    cwd: "frontend/tests/e2e/fixtures/home",
+    cwdPath: "frontend/tests/e2e/fixtures/home",
+    relativeCwd: "frontend/tests/e2e/fixtures/home",
     worktree: null,
     createdMs: 1_767_200_000_000,
     updatedMs: 1_767_200_000_000,
@@ -109,7 +109,7 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        root: "tests/fixtures/home",
+        root: "frontend/tests/e2e/fixtures/home",
         path: ".",
         git: { rootPath: ".", branch: "main", dirty: true },
         entries: [

@@ -19,7 +19,7 @@ test.beforeEach(async ({ page }) => {
 
 const THREAD_ID = "thread_task_git_review";
 const ROOT_PATH = "src";
-const FIXTURE_HOME = repositoryPath("tests/fixtures/home");
+const FIXTURE_HOME = repositoryPath("frontend/tests/e2e/fixtures/home");
 const COMMIT = {
   sha: "abcdef1234567890abcdef1234567890abcdef12",
   shortSha: "abcdef1",

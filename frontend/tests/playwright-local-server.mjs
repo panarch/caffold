@@ -41,7 +41,7 @@ export async function createRegularPlaywrightServer(
   return {
     baseURL,
     webServer: {
-      command: `cargo run -- serve --host ${PLAYWRIGHT_SERVER_HOST} --port ${port} --root tests/fixtures/home --data-dir tests/fixtures/.caffold-data --worktree-root tests/fixtures/home/.caffold-worktrees`,
+      command: `cargo run -- serve --host ${PLAYWRIGHT_SERVER_HOST} --port ${port} --root frontend/tests/e2e/fixtures/home --data-dir frontend/tests/e2e/fixtures/.caffold-data --worktree-root frontend/tests/e2e/fixtures/home/.caffold-worktrees`,
       cwd: repositoryRoot,
       url: `${baseURL}/api/health`,
       env: {

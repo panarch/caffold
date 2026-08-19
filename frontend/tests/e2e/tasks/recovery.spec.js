@@ -26,8 +26,8 @@ function task(threadId, title, conversationAvailable = true) {
     ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title,
     preview: `${title} preview`,
-    cwd: "tests/fixtures/home",
-    cwdPath: "tests/fixtures/home",
+    cwd: "frontend/tests/e2e/fixtures/home",
+    cwdPath: "frontend/tests/e2e/fixtures/home",
     relativeCwd: "",
     worktree: null,
     createdMs: now,
@@ -131,7 +131,7 @@ test("opens archived-in-Codex recovery without opening ordinary Task detail and 
         activeTopPlacement: {
           section: {
             id: "fixture-restored-section",
-            name: "tests/fixtures/home",
+            name: "frontend/tests/e2e/fixtures/home",
             repository: false,
           },
         },

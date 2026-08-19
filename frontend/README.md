@@ -27,10 +27,13 @@ and when to run it.
 
 ## Paths outside the package
 
-A test run's working directory is this package, not the repository root, so
-anything reaching a repository-owned path — fixtures under `../tests/fixtures/`,
-the Cargo `target/` directory, the server binary itself — must anchor through
-[`tests/repository-paths.mjs`](tests/repository-paths.mjs) rather than the
+The browser suite's workspace fixture lives with the suite in
+`tests/e2e/fixtures/`, and the server is pointed at it by path. A test run's
+working directory is this package rather than the repository root, so anything
+reaching a repository-owned path — the Cargo `target/` directory, the server
+binary, the shared `../tests/fixtures/fake-codex` stub that the Rust readiness
+tests also use — must anchor through
+[`tests/repository-paths.mjs`](tests/repository-paths.mjs) instead of the
 working directory.
 
 ## Production sources

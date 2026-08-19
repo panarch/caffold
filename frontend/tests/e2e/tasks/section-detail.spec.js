@@ -20,8 +20,8 @@ test("selects a Section and opens fixed-directory Task creation", { tag: "@all-v
     threadId: "thread_section_entry",
     ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title: "Section entry Task",
-    cwd: "tests/fixtures/home",
-    cwdPath: "tests/fixtures/home",
+    cwd: "frontend/tests/e2e/fixtures/home",
+    cwdPath: "frontend/tests/e2e/fixtures/home",
     relativeCwd: "",
     worktree: null,
     createdMs: Date.now(),
@@ -84,11 +84,11 @@ test("selects a Section and opens fixed-directory Task creation", { tag: "@all-v
   expect(selectionPresentation.borderLeftWidth).toBe("0px");
   const detail = page.locator("caffold-detail-layout");
   await expect(detail.locator("caffold-section-detail-summary h2")).toHaveText(
-    "tests/fixtures/home",
+    "frontend/tests/e2e/fixtures/home",
   );
   await expect(detail.locator("caffold-section-detail textarea[name=prompt]")).toBeVisible();
   await expect(detail.locator("caffold-section-detail")).toContainText(
-    "tests/fixtures/home",
+    "frontend/tests/e2e/fixtures/home",
   );
   await expect(
     detail.locator('caffold-section-detail [data-composer-action="browse-cwd"]'),
@@ -104,7 +104,7 @@ test("offers GitHub work shortcuts from repository Task creation", { tag: "@all-
 }) => {
   await installEventSourceMock(page);
   await mockCodexModels(page);
-  const rootPath = "tests/fixtures/home";
+  const rootPath = "frontend/tests/e2e/fixtures/home";
   const repository = { rootPath, branch: "main", dirty: false };
   const github = {
     owner: "panarch",
@@ -250,12 +250,12 @@ test("keeps a repository Section draft while switching shared surfaces", { tag: 
     threadId: "thread_repository_section",
     ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title: "Repository Section Task",
-    cwd: "tests/fixtures/home",
-    cwdPath: "tests/fixtures/home",
+    cwd: "frontend/tests/e2e/fixtures/home",
+    cwdPath: "frontend/tests/e2e/fixtures/home",
     relativeCwd: "",
     worktree: {
-      rootPath: "tests/fixtures/home/.caffold-worktrees/repository-section",
-      repositoryRootPath: "tests/fixtures/home",
+      rootPath: "frontend/tests/e2e/fixtures/home/.caffold-worktrees/repository-section",
+      repositoryRootPath: "frontend/tests/e2e/fixtures/home",
       branch: "feature/section-detail",
       headSha: "0123456789abcdef0123456789abcdef01234567",
     },
@@ -337,8 +337,8 @@ test("replaces the New Task context when a selected Section path changes", { tag
     threadId: "thread_section_path_rebind",
     ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title: "Section path rebind",
-    cwd: "tests/fixtures/home",
-    cwdPath: "tests/fixtures/home",
+    cwd: "frontend/tests/e2e/fixtures/home",
+    cwdPath: "frontend/tests/e2e/fixtures/home",
     relativeCwd: "",
     worktree: null,
     createdMs: Date.now(),
@@ -348,7 +348,7 @@ test("replaces the New Task context when a selected Section path changes", { tag
   let projection = {
     sections: [{
       id: sectionId,
-      name: "tests/fixtures/home",
+      name: "frontend/tests/e2e/fixtures/home",
       repository: true,
       tasks: [task],
     }],
@@ -363,11 +363,11 @@ test("replaces the New Task context when a selected Section path changes", { tag
   let staleStatusRoute = null;
   await page.route(/\/api\/github\/status(?:\?|$)/, (route) => {
     const path = new URL(route.request().url()).searchParams.get("path");
-    if (path === "tests/fixtures/home") {
+    if (path === "frontend/tests/e2e/fixtures/home") {
       staleStatusRoute = route;
       return;
     }
-    expect(path).toBe("tests/fixtures/other");
+    expect(path).toBe("frontend/tests/e2e/fixtures/other");
     return route.fulfill({
       json: {
         repository: { rootPath: path, branch: "main", dirty: false },
@@ -392,7 +392,7 @@ test("replaces the New Task context when a selected Section path changes", { tag
     "caffold-section-github-shortcuts",
   );
   const prompt = sectionDetail.locator("textarea[name=prompt]");
-  await expect(sectionDetail).toContainText("tests/fixtures/home");
+  await expect(sectionDetail).toContainText("frontend/tests/e2e/fixtures/home");
   await expect.poll(() => Boolean(staleStatusRoute)).toBe(true);
   await expect(shortcuts).toBeHidden();
   await prompt.fill("Discard this stale Section draft");
@@ -400,7 +400,7 @@ test("replaces the New Task context when a selected Section path changes", { tag
   projection = {
     sections: [{
       id: sectionId,
-      name: "tests/fixtures/other",
+      name: "frontend/tests/e2e/fixtures/other",
       repository: true,
       tasks: [task],
     }],
@@ -411,11 +411,11 @@ test("replaces the New Task context when a selected Section path changes", { tag
   });
 
   await expect(page).toHaveURL(`/?section=${sectionId}`);
-  await expect(sectionDetail).toContainText("tests/fixtures/other");
+  await expect(sectionDetail).toContainText("frontend/tests/e2e/fixtures/other");
   await expect(sectionDetail.locator("textarea[name=prompt]")).toHaveValue("");
   await expect.poll(() =>
     sectionDetail.locator("caffold-task-create").evaluate((taskCreate) => taskCreate.cwd)
-  ).toBe("tests/fixtures/other");
+  ).toBe("frontend/tests/e2e/fixtures/other");
   await expect(shortcuts.locator(".section-github-name")).toHaveText(
     "fixture/other",
   );
@@ -423,7 +423,7 @@ test("replaces the New Task context when a selected Section path changes", { tag
   await staleStatusRoute.fulfill({
     json: {
       repository: {
-        rootPath: "tests/fixtures/home",
+        rootPath: "frontend/tests/e2e/fixtures/home",
         branch: "main",
         dirty: false,
       },
@@ -449,7 +449,7 @@ test("uses the Section's last composer settings for its next Task request", { ta
   await installEventSourceMock(page);
   await mockCodexModels(page);
   const sectionId = "section-composer-seed";
-  const rootPath = "tests/fixtures/home";
+  const rootPath = "frontend/tests/e2e/fixtures/home";
   const task = {
     id: "thread_section_composer_seed",
     threadId: "thread_section_composer_seed",
@@ -520,7 +520,7 @@ test("falls back stale Section settings and applies targeted updates without rel
   await installEventSourceMock(page, { registryKey: "__sectionComposerSources" });
   await mockCodexModels(page);
   const sectionId = "section-composer-update";
-  const rootPath = "tests/fixtures/home";
+  const rootPath = "frontend/tests/e2e/fixtures/home";
   const task = {
     id: "thread_section_composer_update",
     threadId: "thread_section_composer_update",
@@ -595,7 +595,7 @@ test("clears shared repository context when the selected Section loses capabilit
   await installEventSourceMock(page, { registryKey: "__sectionDetailWatchSources" });
   await mockCodexModels(page);
   const sectionId = "section-context-rebind";
-  const rootPath = "tests/fixtures/home";
+  const rootPath = "frontend/tests/e2e/fixtures/home";
   const repository = { rootPath, branch: "main", dirty: false };
   const task = {
     id: "thread_section_context_rebind",
