@@ -18,7 +18,6 @@ npx playwright install chromium
 | `npm run test:unit` | colocated frontend unit tests |
 | `npm run test:contract` | frontend contracts in `tests/contracts/`, plus the repository-level contracts still in `../tests/` |
 | `npm run test:e2e` | deterministic fixture-backed browser coverage |
-| `npm run test:codex-compat` | installed Codex CLI schema compatibility |
 | `npm run test:codex-live` | authenticated Codex browser coverage |
 
 [Testing](../docs/development/testing.md) documents what each boundary proves,

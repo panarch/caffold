@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
+import { repositoryRoot } from "../repository-paths.mjs";
 
 const workflow = readFileSync(
-  resolve(import.meta.dirname, "../.github/workflows/checks.yml"),
+  resolve(repositoryRoot, ".github/workflows/checks.yml"),
   "utf8",
 );
 const playwrightConfig = readFileSync(
-  resolve(import.meta.dirname, "../frontend/playwright.config.mjs"),
+  resolve(import.meta.dirname, "../../playwright.config.mjs"),
   "utf8",
 );
 

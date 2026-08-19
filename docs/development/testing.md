@@ -56,7 +56,7 @@ one records where it runs from and what it needs:
 | `npm run test:unit` | `frontend/` | Node | all focused frontend Node unit tests |
 | `npm run test:contract` | `frontend/` | Node | frontend policy and browser-infrastructure contracts, plus the repository, release, and protocol contracts that have not yet moved to an owner |
 | `npm run test:e2e` | `frontend/` | Node, Chromium, a built server | deterministic fixture-backed Playwright coverage |
-| `npm run test:codex-compat` | `frontend/` | installed Codex CLI | Codex CLI schema compatibility without authentication or model usage |
+| `cargo test --test codex_protocol -- --ignored` | repository root | installed Codex CLI | Codex CLI schema compatibility without authentication or model usage |
 | `npm run test:codex-live` | `frontend/` | authenticated Codex CLI | authenticated Codex browser coverage with model usage |
 | `node --test docs/tests/*.test.mjs` | repository root | Node | documentation index, links, entrypoints, and this command index |
 | `node --test scripts/tests/*.test.mjs` | repository root | Node | repository tooling behavior, such as the release version bump |
@@ -70,11 +70,19 @@ documentation, so they run on any platform and belong in the ordinary pull
 request checks. Only the Swift programs and the one packaging-metadata check
 need a macOS host; that check skips itself elsewhere.
 
-Owners outside the frontend package keep their Node contracts in a `tests/`
-directory of their own and are invoked by path: `docs/tests/` verifies the
-documentation, `scripts/tests/` verifies the repository tooling, and
-`desktop/macos/tests/` verifies the macOS application. The frontend package
-keeps its own under `frontend/tests/contracts/`.
+Every test belongs to the thing it verifies. Owners outside the frontend
+package keep their Node contracts in a `tests/` directory of their own and are
+invoked by path: `docs/tests/` verifies the documentation, `scripts/tests/`
+verifies the repository tooling, and `desktop/macos/tests/` verifies the macOS
+application. The frontend package keeps its own under
+`frontend/tests/contracts/`.
+
+The repository-level `tests/` directory belongs to the Rust server, which is the
+root Cargo package. It holds Cargo integration tests and the fixtures the
+backend shares — today the Codex protocol contract and the stub Codex CLI that
+the readiness tests and the browser server both use. A test written in Node does
+not make it frontend material, and a contract on the backend's own boundary
+belongs to the backend even when a different harness would be easier.
 
 Focused Node unit tests live beside their owning frontend module as
 `name.test.js`. They may import that module directly, but must not require
@@ -184,7 +192,7 @@ The installed CLI compatibility check does not authenticate or start a Codex
 session and does not consume model usage:
 
 ```sh
-npm run test:codex-compat
+cargo test --test codex_protocol -- --ignored
 ```
 
 It runs `codex app-server generate-ts --experimental` and verifies the schema

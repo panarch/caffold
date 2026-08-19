@@ -45,10 +45,10 @@ use protocol::{
 };
 #[cfg(test)]
 pub(crate) use protocol::{TurnItemsView, decode_notification, decode_server_request};
-#[cfg(test)]
-pub(crate) use readiness::MINIMUM_SUPPORTED_CODEX_CLI_VERSION;
 pub(crate) use readiness::{CodexInstallation, inspect_codex_installation};
-pub use readiness::{CodexReadiness, CodexReadinessReason, CodexReadinessState};
+pub use readiness::{
+    CodexReadiness, CodexReadinessReason, CodexReadinessState, MINIMUM_SUPPORTED_CODEX_CLI_VERSION,
+};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 pub use status::{CodexDaemonInfo, CodexStatusResponse};
