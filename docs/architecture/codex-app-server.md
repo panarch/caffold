@@ -40,18 +40,19 @@ The adapter owns:
 
 The rest of Caffold should not depend directly on app-server protocol details.
 
-`src/codex_app_server/protocol.rs` is the maintained protocol boundary. It owns
-the method names, request and response DTOs, notification decoding, and JSON-RPC
-error shape used by Caffold. The modules under `src/app/tasks/runtime/` consume
-the typed adapter operations and bridge notifications and server requests into
-the Tasks application. Neither the application composition root nor the
-browser projection modules inspect raw method names or protocol JSON paths.
+`caffold/src/codex_app_server/protocol.rs` is the maintained protocol boundary.
+It owns the method names, request and response DTOs, notification decoding, and
+JSON-RPC error shape used by Caffold. The modules under
+`caffold/src/app/tasks/runtime/` consume the typed adapter operations and
+bridge notifications and server requests into the Tasks application. Neither
+the application composition root nor the browser projection modules inspect raw
+method names or protocol JSON paths.
 
-`src/codex_app_server/readiness.rs` owns executable eligibility before daemon
-startup. `src/codex_app_server/status.rs` owns the post-connection projection
-of account, managed runtime, and initialization results into the canonical
-Codex status response. Its classification tests live with that ownership
-rather than in the client transport module.
+`caffold/src/codex_app_server/readiness.rs` owns executable eligibility before
+daemon startup. `caffold/src/codex_app_server/status.rs` owns the
+post-connection projection of account, managed runtime, and initialization
+results into the canonical Codex status response. Its classification tests live
+with that ownership rather than in the client transport module.
 
 Unsupported item payloads and new notifications are preserved or logged as
 unknown protocol values rather than crashing the process. Missing required
@@ -88,9 +89,9 @@ routes.rs
   -> events.rs
 ```
 
-`src/app/tasks.rs` is the feature root. Its private `TaskState` assembles the
-owner types, while `TasksApp` exposes only a completed router and runtime
-shutdown lifecycle to `src/app.rs`.
+`caffold/src/app/tasks.rs` is the feature root. Its private `TaskState`
+assembles the owner types, while `TasksApp` exposes only a completed router and
+runtime shutdown lifecycle to `caffold/src/app.rs`.
 
 - `routes.rs` is the only Tasks module that imports Axum or receives
   `TaskState`. It owns browser request/response DTOs, validation, route

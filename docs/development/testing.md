@@ -184,7 +184,7 @@ installed-Android checks in `mobile-pwa-testing.md`. These are separate
 unit, browser-integration, and platform evidence.
 
 PWA build-handoff changes require the adjacent unit tests,
-`tests/service-worker.test.mjs`, and
+`frontend/tests/contracts/service-worker.test.mjs`, and
 `frontend/tests/e2e/app-shell-update.spec.js`. The loopback lifecycle server provides
 real Chromium service-worker replacement coverage. Its core recovery case keeps
 an old document alive after the target controller takes over, drops the first

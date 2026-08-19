@@ -16,7 +16,7 @@ npx playwright install chromium
 | Command | Boundary |
 | --- | --- |
 | `npm run test:unit` | colocated frontend unit tests |
-| `npm run test:contract` | frontend contracts in `tests/contracts/`, plus the repository-level contracts still in `../tests/` |
+| `npm run test:contract` | frontend contracts in `tests/contracts/` |
 | `npm run test:e2e` | deterministic fixture-backed browser coverage |
 | `npm run test:codex-live` | authenticated Codex browser coverage |
 
@@ -30,13 +30,14 @@ The browser suite's workspace fixture lives with the suite in
 `tests/e2e/fixtures/`, and the server is pointed at it by path. A test run's
 working directory is this package rather than the repository root, so anything
 reaching a repository-owned path — the Cargo `target/` directory, the server
-binary, the shared `../tests/fixtures/fake-codex` stub that the Rust readiness
-tests also use — must anchor through
+binary, the shared `../caffold/tests/fixtures/fake-codex` stub that the Rust
+readiness tests also use — must anchor through
 [`tests/repository-paths.mjs`](tests/repository-paths.mjs) instead of the
 working directory.
 
 ## Production sources
 
-Browser sources are embedded by `src/static_assets.rs` at build time, so a new
-runtime asset must be added there and precached by `service-worker.js`. Nothing
-in `tests/` or `node_modules/` is part of that inventory.
+Browser sources are embedded by `caffold/src/static_assets.rs` at build time,
+so a new runtime asset must be added there and precached by
+`service-worker.js`. Nothing in `tests/` or `node_modules/` is part of that
+inventory.

@@ -52,20 +52,21 @@ coverage in one place.
   paths in an inline `#[cfg(test)] mod tests` in the implementation file that
   owns that behavior.
 - Do not use file-backed unit-test modules: no `#[cfg(test)] mod tests;`
-  declarations, `src/**/tests.rs` files, or `src/**/tests/` hierarchies.
+  declarations, `caffold/src/**/tests.rs` files, or `caffold/src/**/tests/`
+  hierarchies.
 - If an inline test module makes its production file expose unrelated
   responsibilities, split the production implementation into coherent owners
   before colocating their tests. Do not use an external unit-test hierarchy to
   hide an oversized production owner.
 - Do not widen a production API solely for test access.
 
-If Rust integration tests are introduced, place them under the repository-level
-`tests/` directory only when they exercise a real public crate, HTTP, process,
-storage-backend, restart, or application boundary. Keep each behavior scenario
-and its assertions visible in the owning test crate so the public contract reads
-as executable documentation. Shared support may provide reusable setup,
-fixtures, or transport helpers, but must not own behavior or assertions. Size,
-asynchronous execution, or helper count alone does not make a test an
+If Rust integration tests are introduced, place them under the crate's own
+`caffold/tests/` directory only when they exercise a real public crate, HTTP,
+process, storage-backend, restart, or application boundary. Keep each behavior
+scenario and its assertions visible in the owning test crate so the public
+contract reads as executable documentation. Shared support may provide reusable
+setup, fixtures, or transport helpers, but must not own behavior or assertions.
+Size, asynchronous execution, or helper count alone does not make a test an
 integration test.
 
 Coverage is review evidence, not an ownership model or a reason to obscure a

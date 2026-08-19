@@ -76,36 +76,36 @@ The backend owns:
 The application layer is split by the state and transport boundary it owns:
 
 ```text
-src/app.rs                     dependency construction and router composition
-src/app/error.rs               shared JSON HTTP error contract
-src/app/shell.rs               shell, health, settings, manifest, static assets
-src/app/workspace.rs           Files, images, watches, Git, and GitHub HTTP adapters
-src/app/tasks.rs               private Tasks state assembly and runtime shutdown
-src/app/tasks/routes.rs        Tasks/Codex HTTP DTOs, validation, handlers, REST/SSE routes
-src/app/tasks/push.rs          Push subscription HTTP API, persistence adapter, and delivery runtime
-src/app/tasks/detail.rs        canonical task detail, session, history, and sync application
-src/app/tasks/runtime.rs       Codex runtime composition and cross-role orchestration
-src/app/tasks/runtime/
-  process.rs                   readiness, connection, generation, restart, and shutdown
-  bridge.rs                    app-server event bridging and managed session recovery
-  server_requests.rs           approvals and Caffold-owned dynamic tool requests
-src/app/tasks/sync.rs          rollout invalidation scheduling and retry timing
-src/app/tasks/projection.rs    pure thread/turn to browser task projection
-src/app/tasks/events.rs        event normalization, merge, cache, and publication
-src/app/voice.rs               model lifecycle, WAV validation, and local transcription
-src/app/tailscale.rs           Tailscale HTTP routes, service orchestration, and fixed Serve control
-src/app/tailscale/status.rs    canonical status model, Serve classification, and private URL validation
-src/app/tailscale/cli.rs       bounded Tailscale CLI discovery and process execution
+caffold/src/app.rs                     dependency construction and router composition
+caffold/src/app/error.rs               shared JSON HTTP error contract
+caffold/src/app/shell.rs               shell, health, settings, manifest, static assets
+caffold/src/app/workspace.rs           Files, images, watches, Git, and GitHub HTTP adapters
+caffold/src/app/tasks.rs               private Tasks state assembly and runtime shutdown
+caffold/src/app/tasks/routes.rs        Tasks/Codex HTTP DTOs, validation, handlers, REST/SSE routes
+caffold/src/app/tasks/push.rs          Push subscription HTTP API, persistence adapter, and delivery runtime
+caffold/src/app/tasks/detail.rs        canonical task detail, session, history, and sync application
+caffold/src/app/tasks/runtime.rs       Codex runtime composition and cross-role orchestration
+caffold/src/app/tasks/runtime/
+  process.rs                           readiness, connection, generation, restart, and shutdown
+  bridge.rs                            app-server event bridging and managed session recovery
+  server_requests.rs                   approvals and Caffold-owned dynamic tool requests
+caffold/src/app/tasks/sync.rs          rollout invalidation scheduling and retry timing
+caffold/src/app/tasks/projection.rs    pure thread/turn to browser task projection
+caffold/src/app/tasks/events.rs        event normalization, merge, cache, and publication
+caffold/src/app/voice.rs               model lifecycle, WAV validation, and local transcription
+caffold/src/app/tailscale.rs           Tailscale HTTP routes, service orchestration, and fixed Serve control
+caffold/src/app/tailscale/status.rs    canonical status model, Serve classification, and private URL validation
+caffold/src/app/tailscale/cli.rs       bounded Tailscale CLI discovery and process execution
 ```
 
-`src/app.rs` does not own feature state. It constructs the Shell, Workspace,
-Tasks, Voice, and Tailscale applications and merges their completed routers.
-Each HTTP owner keeps its route state and DTOs private. Tasks lower modules
-receive only the capabilities they use; they do not depend on Axum extractors
-or the full Tasks route state. Within Tasks, Projection and Events are the
-stateless or bounded-memory base, Runtime owns app-server transport, Sync owns
-scheduling, Detail applies canonical reads, and Routes adapts those owners to
-HTTP.
+`caffold/src/app.rs` does not own feature state. It constructs the Shell,
+Workspace, Tasks, Voice, and Tailscale applications and merges their completed
+routers. Each HTTP owner keeps its route state and DTOs private. Tasks lower
+modules receive only the capabilities they use; they do not depend on Axum
+extractors or the full Tasks route state. Within Tasks, Projection and Events
+are the stateless or bounded-memory base, Runtime owns app-server transport,
+Sync owns scheduling, Detail applies canonical reads, and Routes adapts those
+owners to HTTP.
 
 ### Codex App Server
 

@@ -534,7 +534,7 @@ Every production JavaScript/CSS asset must be registered consistently in:
 - module imports;
 - `frontend/styles.css`;
 - `frontend/service-worker.js`;
-- `src/static_assets.rs`;
+- `caffold/src/static_assets.rs`;
 - static asset and CSS ownership tests.
 
 The service-worker cache and Rust static-asset table are exact manifests of the
@@ -547,9 +547,10 @@ behavior, using the same stem and a `.test.js` suffix. Internal tests import
 their owning module directly; public feature entry points do not expose private
 APIs for tests.
 
-Top-level `tests/` contains cross-owner contracts, repository policy and
-complete inventories, build/release and protocol boundaries, and browser-test
-infrastructure. Playwright regression tests live under `frontend/tests/e2e/`.
+Frontend contracts — policy, complete inventories, and browser-test
+infrastructure — live in `frontend/tests/contracts/`. Playwright regression
+tests live under `frontend/tests/e2e/`. Contracts on another owner's boundary
+belong to that owner, not here.
 
 Colocated tests are source files for Node only. Production JavaScript scans,
 the production static import graph, the service-worker asset inventory, and the
