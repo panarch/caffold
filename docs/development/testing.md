@@ -59,6 +59,7 @@ one records where it runs from and what it needs:
 | `npm run test:codex-compat` | `frontend/` | installed Codex CLI | Codex CLI schema compatibility without authentication or model usage |
 | `npm run test:codex-live` | `frontend/` | authenticated Codex CLI | authenticated Codex browser coverage with model usage |
 | `node --test docs/tests/*.test.mjs` | repository root | Node | documentation index, links, entrypoints, and this command index |
+| `node --test scripts/tests/*.test.mjs` | repository root | Node | repository tooling behavior, such as the release version bump |
 | `desktop/macos/test-contracts` | repository root | Node | macOS packaging, release, and installer contracts, from `desktop/macos/tests/` |
 | `desktop/macos/test-runtime` | repository root | macOS, Xcode tools | Swift wrapper process lifecycle |
 | `desktop/macos/test-system-status` | repository root | macOS, Xcode tools | Swift system-status behavior |
@@ -71,8 +72,9 @@ need a macOS host; that check skips itself elsewhere.
 
 Owners outside the frontend package keep their Node contracts in a `tests/`
 directory of their own and are invoked by path: `docs/tests/` verifies the
-documentation, and `desktop/macos/tests/` verifies the macOS application. The
-frontend package keeps its own under `frontend/tests/contracts/`.
+documentation, `scripts/tests/` verifies the repository tooling, and
+`desktop/macos/tests/` verifies the macOS application. The frontend package
+keeps its own under `frontend/tests/contracts/`.
 
 Focused Node unit tests live beside their owning frontend module as
 `name.test.js`. They may import that module directly, but must not require

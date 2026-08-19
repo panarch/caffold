@@ -8,7 +8,7 @@ import {
   formatLiveUsageReport,
   LIVE_MODEL_POLICY,
   mergeLiveUsageReports,
-} from "../frontend/tests/live/codex-live-usage.mjs";
+} from "../live/codex-live-usage.mjs";
 
 function tokens(totalTokens, overrides = {}) {
   return {

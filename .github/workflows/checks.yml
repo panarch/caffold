@@ -47,6 +47,9 @@ jobs:
       - name: Test documentation contracts
         run: node --test docs/tests/*.test.mjs
 
+      - name: Test repository tooling
+        run: node --test scripts/tests/*.test.mjs
+
       - name: Test macOS packaging contracts
         run: desktop/macos/test-contracts
 

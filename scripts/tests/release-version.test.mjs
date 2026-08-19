@@ -15,9 +15,9 @@ import { fileURLToPath } from "node:url";
 import {
   bumpReleaseVersion,
   nextReleaseVersion,
-} from "../scripts/bump-release-version.mjs";
+} from "../bump-release-version.mjs";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 function withReleaseFixture(
   callback,
