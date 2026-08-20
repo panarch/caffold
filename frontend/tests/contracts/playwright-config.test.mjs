@@ -120,4 +120,7 @@ test("live config passes one selected port into its server helper", async () => 
     runtimeRoot: resolve(repoRoot, "target", "test-runtime"),
   });
   assert.equal(args[args.indexOf("--port") + 1], String(port));
+  // The workspace builds more than one binary, so `cargo run` alone is
+  // ambiguous and the live server never starts.
+  assert.equal(args[args.indexOf("--package") + 1], "caffold");
 });

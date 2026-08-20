@@ -10,6 +10,9 @@ export function caffoldLiveServerArguments({ port, runtimeRoot }) {
   return [
     "run",
     "--quiet",
+    // The workspace has more than one binary, so the server has to be named.
+    "--package",
+    "caffold",
     "--",
     "serve",
     "--host",
