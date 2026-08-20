@@ -359,7 +359,7 @@ mod tests {
         let active = ThreadStatus::Active {
             active_flags: Vec::new(),
         };
-        let current_turn = turn("turn-managed", TurnStatus::InProgress);
+        let current_turn = wire_turn("turn-managed", TurnStatus::InProgress);
         let mut response = resume_response(active, vec![current_turn.clone()], vec![current_turn]);
         response.thread.cwd = "/workspace/source".to_string();
         response.cwd = "/workspace/managed".to_string();
@@ -383,14 +383,9 @@ mod tests {
         });
         wait_for_method_count(&client, "thread/resume", 1).await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ItemStarted {
-                    thread_id: "thread-1".to_string(),
-                    turn_id: "turn-managed".to_string(),
-                    item: json!({ "id": "item-replayed", "type": "agentMessage" }),
-                    started_at_ms: 2,
-                },
+                &session_event("thread-1", item_changed("turn-managed", "item-replayed", 2)),
             )
             .await;
 
@@ -414,8 +409,8 @@ mod tests {
         let active = ThreadStatus::Active {
             active_flags: Vec::new(),
         };
-        let old_completed = turn("turn-old", TurnStatus::Completed);
-        let current_in_progress = turn_at("turn-current", TurnStatus::InProgress, 2.0);
+        let old_completed = wire_turn("turn-old", TurnStatus::Completed);
+        let current_in_progress = wire_turn_at("turn-current", TurnStatus::InProgress, 2.0);
         let mut response = resume_response(
             active.clone(),
             Vec::new(),
@@ -438,41 +433,46 @@ mod tests {
         });
         wait_for_method_count(&client, "thread/resume", 1).await;
 
-        let mut replayed_thread = thread(active, vec![turn("turn-old", TurnStatus::InProgress)]);
+        let mut replayed_thread =
+            thread(active, vec![wire_turn("turn-old", TurnStatus::InProgress)]);
         replayed_thread.name = Some("Old task name".to_string());
         sessions
-            .apply_notification_with_outcome(
+            .apply_session_event_with_outcome(
                 1,
-                &CodexNotification::ThreadStarted {
-                    thread: replayed_thread,
-                },
+                &session_event("thread-1", conversation_started(&replayed_thread)),
             )
             .await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::TurnStarted {
-                    thread_id: "thread-1".to_string(),
-                    turn: turn("turn-old", TurnStatus::InProgress),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnStarted {
+                        turn: turn("turn-old", TurnStatus::InProgress),
+                    },
+                ),
             )
             .await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ThreadStatusChanged {
-                    thread_id: "thread-1".to_string(),
-                    status: WireThreadStatus::Idle,
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::StatusChanged {
+                        status: ThreadStatus::Idle,
+                    },
+                ),
             )
             .await;
         sessions
-            .apply_notification_with_outcome(
+            .apply_session_event_with_outcome(
                 1,
-                &CodexNotification::TurnCompleted {
-                    thread_id: "thread-1".to_string(),
-                    turn: old_completed,
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnEnded {
+                        turn: Turn::from(&old_completed),
+                    },
+                ),
             )
             .await;
 
@@ -517,12 +517,14 @@ mod tests {
         let syncing = sessions.begin_external_sync("thread-1").await;
 
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ThreadNameUpdated {
-                    thread_id: "thread-1".to_string(),
-                    thread_name: Some("Newer name".to_string()),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TitleChanged {
+                        title: Some("Newer name".to_string()),
+                    },
+                ),
             )
             .await;
         let snapshot = sessions
@@ -603,7 +605,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stale_metadata_load_does_not_overwrite_a_newer_status_notification() {
+    async fn stale_metadata_load_does_not_overwrite_a_newer_status_report() {
         let client = CodexThreadClient::mock(vec![MockCodexResponse::delayed_ok(
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
@@ -626,23 +628,27 @@ mod tests {
         }
 
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::TurnStarted {
-                    thread_id: "thread-1".to_string(),
-                    turn: turn("turn-live", TurnStatus::InProgress),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnStarted {
+                        turn: turn("turn-live", TurnStatus::InProgress),
+                    },
+                ),
             )
             .await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ThreadStatusChanged {
-                    thread_id: "thread-1".to_string(),
-                    status: WireThreadStatus::Active {
-                        active_flags: Vec::new(),
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::StatusChanged {
+                        status: ThreadStatus::Active {
+                            active_flags: Vec::new(),
+                        },
                     },
-                },
+                ),
             )
             .await;
 
@@ -662,7 +668,7 @@ mod tests {
 
     #[tokio::test]
     async fn external_invalidation_rejoins_thread_and_restores_running_state() {
-        let external_turn = turn("turn-external", TurnStatus::InProgress);
+        let external_turn = wire_turn("turn-external", TurnStatus::InProgress);
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok(
                 "thread/resume",
@@ -704,8 +710,8 @@ mod tests {
 
     #[tokio::test]
     async fn external_invalidation_reopens_the_same_completed_turn() {
-        let completed_turn = turn("turn-external", TurnStatus::Completed);
-        let running_turn = turn("turn-external", TurnStatus::InProgress);
+        let completed_turn = wire_turn("turn-external", TurnStatus::Completed);
+        let running_turn = wire_turn("turn-external", TurnStatus::InProgress);
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), vec![completed_turn]),
@@ -740,8 +746,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn external_running_refresh_survives_concurrent_item_notification() {
-        let external_turn = turn("turn-external", TurnStatus::InProgress);
+    async fn external_running_refresh_survives_a_concurrent_item_report() {
+        let external_turn = wire_turn("turn-external", TurnStatus::InProgress);
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
@@ -754,14 +760,12 @@ mod tests {
 
         let syncing = sessions.begin_external_sync("thread-1").await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ItemStarted {
-                    thread_id: "thread-1".to_string(),
-                    turn_id: "turn-external".to_string(),
-                    item: json!({ "id": "item-external", "type": "agentMessage" }),
-                    started_at_ms: 2,
-                },
+                &session_event(
+                    "thread-1",
+                    item_changed("turn-external", "item-external", 2),
+                ),
             )
             .await;
 
@@ -788,7 +792,7 @@ mod tests {
 
     #[tokio::test]
     async fn stale_turn_page_does_not_overwrite_a_concurrent_completion() {
-        let external_turn = turn("turn-external", TurnStatus::InProgress);
+        let external_turn = wire_turn("turn-external", TurnStatus::InProgress);
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
@@ -801,12 +805,14 @@ mod tests {
 
         let syncing = sessions.begin_external_sync("thread-1").await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::TurnCompleted {
-                    thread_id: "thread-1".to_string(),
-                    turn: turn("turn-external", TurnStatus::Completed),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnEnded {
+                        turn: turn("turn-external", TurnStatus::Completed),
+                    },
+                ),
             )
             .await;
 
@@ -838,8 +844,8 @@ mod tests {
 
     #[tokio::test]
     async fn external_completion_clears_running_state_without_losing_history() {
-        let active_turn = turn("turn-external", TurnStatus::InProgress);
-        let completed_turn = turn("turn-external", TurnStatus::Completed);
+        let active_turn = wire_turn("turn-external", TurnStatus::InProgress);
+        let completed_turn = wire_turn("turn-external", TurnStatus::Completed);
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok(
                 "thread/resume",
@@ -899,7 +905,7 @@ mod tests {
             resume_response(
                 ThreadStatus::Idle,
                 Vec::new(),
-                vec![turn("turn-stale", TurnStatus::InProgress)],
+                vec![wire_turn("turn-stale", TurnStatus::InProgress)],
             ),
         )
         .await;
@@ -931,12 +937,14 @@ mod tests {
 
         let syncing = sessions.begin_external_sync("thread-1").await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 7,
-                &CodexNotification::TurnStarted {
-                    thread_id: "thread-1".to_string(),
-                    turn: turn("turn-live", TurnStatus::InProgress),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnStarted {
+                        turn: turn("turn-live", TurnStatus::InProgress),
+                    },
+                ),
             )
             .await;
 
@@ -947,8 +955,8 @@ mod tests {
                 ThreadStatus::Idle,
                 Vec::new(),
                 vec![
-                    turn("turn-live", TurnStatus::Completed),
-                    turn("turn-older", TurnStatus::Completed),
+                    wire_turn("turn-live", TurnStatus::Completed),
+                    wire_turn("turn-older", TurnStatus::Completed),
                 ],
             ),
         )
@@ -983,12 +991,14 @@ mod tests {
 
         let syncing = sessions.begin_external_sync("thread-1").await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 7,
-                &CodexNotification::TurnStarted {
-                    thread_id: "thread-1".to_string(),
-                    turn: turn("turn-new", TurnStatus::InProgress),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnStarted {
+                        turn: turn("turn-new", TurnStatus::InProgress),
+                    },
+                ),
             )
             .await;
 
@@ -998,7 +1008,7 @@ mod tests {
             resume_response(
                 ThreadStatus::Idle,
                 Vec::new(),
-                vec![turn("turn-old", TurnStatus::Completed)],
+                vec![wire_turn("turn-old", TurnStatus::Completed)],
             ),
         )
         .await;
@@ -1066,7 +1076,7 @@ mod tests {
                 1,
                 "thread-1",
                 Some("/managed/worktree"),
-                Turn::from(&turn("turn-new", TurnStatus::InProgress)),
+                turn("turn-new", TurnStatus::InProgress),
                 CodexTurnOptions::default(),
             )
             .await;
@@ -1108,7 +1118,7 @@ mod tests {
                 resume_response(
                     active_status.clone(),
                     Vec::new(),
-                    vec![turn("turn-stale", TurnStatus::InProgress)],
+                    vec![wire_turn("turn-stale", TurnStatus::InProgress)],
                 ),
             ),
             MockCodexResponse::delayed_ok(
@@ -1116,7 +1126,7 @@ mod tests {
                 resume_response(
                     active_status,
                     Vec::new(),
-                    vec![turn("turn-stale", TurnStatus::InProgress)],
+                    vec![wire_turn("turn-stale", TurnStatus::InProgress)],
                 ),
                 Duration::from_millis(150),
             ),
@@ -1142,12 +1152,14 @@ mod tests {
         }
 
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ThreadStatusChanged {
-                    thread_id: "thread-1".to_string(),
-                    status: WireThreadStatus::Idle,
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::StatusChanged {
+                        status: ThreadStatus::Idle,
+                    },
+                ),
             )
             .await;
         refresh
@@ -1178,7 +1190,7 @@ mod tests {
                     active_flags: Vec::new(),
                 },
                 Vec::new(),
-                vec![turn("turn-live", TurnStatus::InProgress)],
+                vec![wire_turn("turn-live", TurnStatus::InProgress)],
             ),
         )]);
         let sessions = CodexThreadSessions::default();
@@ -1189,12 +1201,14 @@ mod tests {
         ));
         assert_eq!(
             sessions
-                .apply_notification_with_outcome(
+                .apply_session_event_with_outcome(
                     1,
-                    &CodexNotification::TurnCompleted {
-                        thread_id: "thread-1".to_string(),
-                        turn: turn("turn-live", TurnStatus::Completed),
-                    },
+                    &session_event(
+                        "thread-1",
+                        SessionEventKind::TurnEnded {
+                            turn: turn("turn-live", TurnStatus::Completed)
+                        }
+                    ),
                 )
                 .await
                 .terminal,

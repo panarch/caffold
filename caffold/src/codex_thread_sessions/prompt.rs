@@ -286,7 +286,7 @@ mod tests {
 
     #[tokio::test]
     async fn active_subscribed_prompt_steers_without_another_resume() {
-        let canonical = turn("turn-canonical", TurnStatus::InProgress);
+        let canonical = wire_turn("turn-canonical", TurnStatus::InProgress);
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(
@@ -490,7 +490,7 @@ mod tests {
                 1,
                 "thread-1",
                 Some("/managed/worktree"),
-                Turn::from(&turn("turn-new", TurnStatus::InProgress)),
+                turn("turn-new", TurnStatus::InProgress),
                 CodexTurnOptions::default(),
             )
             .await;
@@ -522,7 +522,7 @@ mod tests {
 
     #[tokio::test]
     async fn prompt_uses_an_external_turn_discovered_during_refresh() {
-        let external = turn("turn-external", TurnStatus::InProgress);
+        let external = wire_turn("turn-external", TurnStatus::InProgress);
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok(
                 "thread/resume",
@@ -562,8 +562,8 @@ mod tests {
 
     #[tokio::test]
     async fn completed_external_turn_switches_follow_up_back_to_start() {
-        let active = turn("turn-external", TurnStatus::InProgress);
-        let completed = turn("turn-external", TurnStatus::Completed);
+        let active = wire_turn("turn-external", TurnStatus::InProgress);
+        let completed = wire_turn("turn-external", TurnStatus::Completed);
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok(
                 "thread/resume",
@@ -603,7 +603,7 @@ mod tests {
 
     #[tokio::test]
     async fn active_status_without_turn_falls_back_to_latest_turn_page() {
-        let canonical = turn("turn-canonical", TurnStatus::InProgress);
+        let canonical = wire_turn("turn-canonical", TurnStatus::InProgress);
         let active_status = ThreadStatus::Active {
             active_flags: Vec::new(),
         };

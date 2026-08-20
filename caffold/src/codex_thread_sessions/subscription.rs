@@ -301,7 +301,7 @@ mod tests {
     async fn initial_subscription_bootstraps_only_from_resume() {
         let initial_turns = (0..INITIAL_TURNS_PAGE_SIZE)
             .map(|index| {
-                turn_at(
+                wire_turn_at(
                     &format!("turn-{index}"),
                     TurnStatus::Completed,
                     index as f64,
@@ -376,7 +376,7 @@ mod tests {
             resume_response(
                 ThreadStatus::Idle,
                 Vec::new(),
-                vec![turn("turn-latest", TurnStatus::Completed)],
+                vec![wire_turn("turn-latest", TurnStatus::Completed)],
             ),
         )]);
         let sessions = CodexThreadSessions::default();
@@ -538,7 +538,7 @@ mod tests {
 
     #[tokio::test]
     async fn refresh_failure_keeps_canonical_state_and_can_recover() {
-        let recovered = turn("turn-recovered", TurnStatus::InProgress);
+        let recovered = wire_turn("turn-recovered", TurnStatus::InProgress);
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok(
                 "thread/resume",
@@ -598,7 +598,7 @@ mod tests {
                     ThreadStatus::Active {
                         active_flags: Vec::new(),
                     },
-                    vec![turn("turn-new", TurnStatus::InProgress)],
+                    vec![wire_turn("turn-new", TurnStatus::InProgress)],
                 )),
                 StartedThreadSettings {
                     permission_mode: Some(CodexPermissionMode::AskForApproval),

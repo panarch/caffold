@@ -186,8 +186,8 @@ mod tests {
             "thread/resume",
             resume_response(
                 ThreadStatus::Idle,
-                vec![turn("turn-duplicate", TurnStatus::InProgress)],
-                vec![turn("turn-duplicate", TurnStatus::Completed)],
+                vec![wire_turn("turn-duplicate", TurnStatus::InProgress)],
+                vec![wire_turn("turn-duplicate", TurnStatus::Completed)],
             ),
         )]);
         let sessions = CodexThreadSessions::default();
@@ -213,7 +213,7 @@ mod tests {
             resume_response(
                 ThreadStatus::Idle,
                 Vec::new(),
-                vec![turn("turn-stale", TurnStatus::InProgress)],
+                vec![wire_turn("turn-stale", TurnStatus::InProgress)],
             ),
         )]);
         let sessions = CodexThreadSessions::default();
@@ -247,8 +247,8 @@ mod tests {
                     thread: thread(ThreadStatus::Idle, Vec::new()),
                     initial_turns_page: Some(decoded(wire_page(
                         vec![
-                            turn_at("turn-2", TurnStatus::InProgress, 2.0),
-                            turn_at("turn-1", TurnStatus::Completed, 1.0),
+                            wire_turn_at("turn-2", TurnStatus::InProgress, 2.0),
+                            wire_turn_at("turn-1", TurnStatus::Completed, 1.0),
                         ],
                         Some("older"),
                         Some("anchor-1"),
@@ -263,8 +263,8 @@ mod tests {
                     thread: thread(ThreadStatus::Idle, Vec::new()),
                     initial_turns_page: Some(decoded(wire_page(
                         vec![
-                            turn_at("turn-3", TurnStatus::Completed, 3.0),
-                            turn_at("turn-2", TurnStatus::Completed, 2.0),
+                            wire_turn_at("turn-3", TurnStatus::Completed, 3.0),
+                            wire_turn_at("turn-2", TurnStatus::Completed, 2.0),
                         ],
                         None,
                         Some("anchor-2"),
@@ -302,7 +302,7 @@ mod tests {
         let initial_turns = (1..=INITIAL_TURNS_PAGE_SIZE)
             .rev()
             .map(|index| {
-                turn_at(
+                wire_turn_at(
                     &format!("turn-{index}"),
                     TurnStatus::Completed,
                     index as f64,
@@ -312,7 +312,7 @@ mod tests {
         let refreshed_turns = (2..=INITIAL_TURNS_PAGE_SIZE + 1)
             .rev()
             .map(|index| {
-                turn_at(
+                wire_turn_at(
                     &format!("turn-{index}"),
                     TurnStatus::Completed,
                     index as f64,
@@ -381,7 +381,7 @@ mod tests {
                     cwd: "/tmp".to_string(),
                     thread: thread(ThreadStatus::Idle, Vec::new()),
                     initial_turns_page: Some(decoded(wire_page(
-                        vec![turn_at("turn-2", TurnStatus::Completed, 2.0)],
+                        vec![wire_turn_at("turn-2", TurnStatus::Completed, 2.0)],
                         Some("older-1"),
                         Some("latest-anchor"),
                     ))),
@@ -391,7 +391,7 @@ mod tests {
             MockCodexResponse::ok(
                 "thread/turns/list",
                 wire_page(
-                    vec![turn_at("turn-1", TurnStatus::Completed, 1.0)],
+                    vec![wire_turn_at("turn-1", TurnStatus::Completed, 1.0)],
                     Some("older-2"),
                     None,
                 ),
@@ -420,7 +420,7 @@ mod tests {
         let latest_turns = (3..=10)
             .rev()
             .map(|index| {
-                turn_at(
+                wire_turn_at(
                     &format!("turn-{index}"),
                     TurnStatus::Completed,
                     index as f64,
@@ -445,8 +445,8 @@ mod tests {
                 "thread/turns/list",
                 wire_page(
                     vec![
-                        turn_at("turn-2", TurnStatus::Completed, 2.0),
-                        turn_at("turn-1", TurnStatus::Completed, 1.0),
+                        wire_turn_at("turn-2", TurnStatus::Completed, 2.0),
+                        wire_turn_at("turn-1", TurnStatus::Completed, 1.0),
                     ],
                     None,
                     None,
@@ -479,7 +479,7 @@ mod tests {
 
     #[tokio::test]
     async fn older_history_timeout_preserves_the_canonical_session_snapshot() {
-        let latest_turn = turn_at("turn-latest", TurnStatus::Completed, 2.0);
+        let latest_turn = wire_turn_at("turn-latest", TurnStatus::Completed, 2.0);
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok(
                 "thread/resume",

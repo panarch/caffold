@@ -44,18 +44,26 @@ The rest of Caffold should not depend directly on app-server protocol details.
 It owns the method names, request and response DTOs, notification decoding, and
 JSON-RPC error shape used by Caffold. The modules under
 `caffold/src/app/tasks/runtime/` consume the typed adapter operations and
-bridge notifications and server requests into the Tasks application. Neither
+bridge session events and server requests into the Tasks application. Neither
 the application composition root nor the browser projection modules inspect raw
 method names or protocol JSON paths.
 
 `caffold/src/agent/codex/contract.rs` is where Codex stops. It reads a thread,
-its turns, and its items into the vocabulary in `caffold/src/agent/`, and it
-turns a Caffold approval decision back into the response the asking method
-expects. Both directions live in one file so that what this driver carries is
-readable in one place. Above it, the Tasks application works in Caffold's
-conversation and approval types; what still crosses from `agent::codex` is the
-client handle, its errors, turn options, and readiness — the control surface
-rather than the conversation.
+its turns, and its items into the vocabulary in `caffold/src/agent/`; it says
+what each notification from a subscribed thread means as a `SessionEvent` in
+that same vocabulary; and it turns a Caffold approval decision back into the
+response the asking method expects. All of it lives in one file so that what
+this driver carries is readable in one place. Above it, the Tasks application
+works in Caffold's conversation, session-event, and approval types; what still
+crosses from `agent::codex` is the client handle, its errors, turn options, and
+readiness — the control surface rather than the conversation.
+
+The live stream is translated once, at the connection, and every part of
+Caffold that reacts to it reads the same report: the canonical session, the
+Task event stream, the Task list's recency, Web Push, and pending approvals.
+A notification this Caffold has no use for — including one from a newer
+app-server — becomes no report at all rather than an unread branch in each
+consumer.
 
 Codex reports eighteen kinds of thread item. Caffold draws seven of them with a
 surface of its own and shows the rest as tool calls named after whatever Codex
@@ -111,7 +119,7 @@ runtime shutdown lifecycle to `caffold/src/app.rs`.
   `TaskState`. It owns browser request/response DTOs, validation, route
   registration, and REST/SSE adaptation.
 - `runtime.rs` owns the app-server proxy generation, connection recovery,
-  notification/server-request bridge, and pending approval lifecycle. Pending
+  session-event/server-request bridge, and pending approval lifecycle. Pending
   approvals remain JSON-RPC/card state and never become a thread-status writer.
 - `sync.rs` owns subscription counts, rollout invalidation, debounce,
   maximum-latency, and retry scheduling. It does not read Codex threads or
@@ -200,7 +208,10 @@ the original request with either `turn` or `session` scope. A denial returns an
 empty granted profile. The browser cannot construct a broader permission
 profile than app-server requested. A matching `serverRequest/resolved`
 notification removes the pending card without rewriting canonical thread or
-turn state.
+turn state. Which approval that notification resolved is the client's to
+answer: it holds the pairing between a Caffold approval id and the JSON-RPC
+request the approval arrived on, and it names each pairing exactly once, so an
+approval is never withdrawn twice.
 
 ## Incremental History
 
@@ -320,8 +331,8 @@ List and header badges use only `threadStatus`. Within active flags,
 `waitingOnApproval` takes display precedence over `waitingOnUserInput`, while
 the original flag array remains unchanged. Turn completion, failure, and
 interruption are rendered inside that conversation turn rather than replacing
-the thread badge. Item lifecycle, raw response item, and diff notifications
-advance the in-memory session revision. Their live projections use `task-event`
+the thread badge. Item changes and diff reports advance the in-memory session
+revision. Their live projections use `task-event`
 without materializing or broadcasting a full Task Detail snapshot. A later
 canonical Thread or Turn change may therefore publish a `task-sync` revision
 that skips those event-only revisions. Task lifecycle changes arrive through

@@ -1,9 +1,8 @@
-use crate::agent::codex::CodexNotification;
-use crate::agent::{Conversation, ThreadStatus, Turn, TurnStatus};
+use crate::agent::{SessionEvent, SessionEventKind, ThreadStatus, TurnStatus};
 
 use super::{
-    CodexThreadSessions, NotificationApplyOutcome, TerminalTurnApplyOutcome,
-    ThreadSessionLifecycle, ThreadSessionState,
+    CodexThreadSessions, SessionEventOutcome, TerminalTurnApplyOutcome, ThreadSessionLifecycle,
+    ThreadSessionState,
 };
 use super::{
     reconciliation::apply_thread_settings,
@@ -12,51 +11,42 @@ use super::{
 
 impl CodexThreadSessions {
     #[cfg(test)]
-    pub(super) async fn apply_notification(
-        &self,
-        generation: u64,
-        notification: &CodexNotification,
-    ) {
-        self.apply_notification_with_outcome(generation, notification)
+    pub(super) async fn apply_session_event(&self, generation: u64, event: &SessionEvent) {
+        self.apply_session_event_with_outcome(generation, event)
             .await;
     }
 
-    pub(crate) async fn apply_notification_with_outcome(
+    /// Take one report from the live stream into the canonical session.
+    ///
+    /// A report that arrives for a generation this session has moved past is
+    /// dropped: the connection it came from is no longer the one being read.
+    pub(crate) async fn apply_session_event_with_outcome(
         &self,
         generation: u64,
-        notification: &CodexNotification,
-    ) -> NotificationApplyOutcome {
-        let Some(thread_id) = notification_thread_id(notification) else {
-            return NotificationApplyOutcome::default();
-        };
-        let Some(entry) = self.existing_entry(thread_id).await else {
-            return NotificationApplyOutcome::default();
+        event: &SessionEvent,
+    ) -> SessionEventOutcome {
+        let Some(entry) = self.existing_entry(&event.thread_id).await else {
+            return SessionEventOutcome::default();
         };
         let (effect, should_unsubscribe, terminal) = {
             let mut state = entry.state.lock().await;
             if state.generation != generation {
-                return NotificationApplyOutcome::default();
+                return SessionEventOutcome::default();
             }
-            let terminal = match notification {
-                CodexNotification::TurnCompleted { turn, .. } => Some(TerminalTurnApplyOutcome {
+            let terminal = match &event.kind {
+                SessionEventKind::TurnEnded { turn } => Some(TerminalTurnApplyOutcome {
                     first_current_transition: is_first_current_terminal_transition(
                         &state,
                         &turn.id,
-                        turn.status.into(),
+                        turn.status,
                     ),
                 }),
                 _ => None,
             };
-            let effect = apply_notification_state(&mut state, notification);
-            let advances_revision = effect != NotificationEffect::Ignored;
-            if advances_revision {
+            let effect = apply_session_event_state(&mut state, &event.kind);
+            if effect != SessionEventEffect::Ignored {
                 state.revision = state.revision.saturating_add(1);
-                if notification_changes_status(notification) {
-                    state.status_revision = state.revision;
-                }
-                if notification_changes_name(notification) {
-                    state.name_revision = state.revision;
-                }
+                mark_what_changed(&mut state, &event.kind);
             }
             (
                 effect,
@@ -64,54 +54,38 @@ impl CodexThreadSessions {
                 terminal,
             )
         };
-        let advances_revision = effect != NotificationEffect::Ignored;
+        let advances_revision = effect != SessionEventEffect::Ignored;
         if advances_revision && should_unsubscribe {
-            self.unsubscribe_if_unused(thread_id, &entry).await;
+            self.unsubscribe_if_unused(&event.thread_id, &entry).await;
         }
-        NotificationApplyOutcome {
-            canonical_state_changed: effect == NotificationEffect::CanonicalStateChanged,
+        SessionEventOutcome {
+            canonical_state_changed: effect == SessionEventEffect::CanonicalStateChanged,
             terminal,
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum NotificationEffect {
+enum SessionEventEffect {
     Ignored,
     RevisionOnly,
     CanonicalStateChanged,
 }
 
-fn notification_thread_id(notification: &CodexNotification) -> Option<&str> {
-    match notification {
-        CodexNotification::ThreadStarted { thread } => Some(&thread.id),
-        CodexNotification::ThreadStatusChanged { thread_id, .. }
-        | CodexNotification::ThreadNameUpdated { thread_id, .. }
-        | CodexNotification::ThreadSettingsUpdated { thread_id, .. }
-        | CodexNotification::ThreadTokenUsageUpdated { thread_id, .. }
-        | CodexNotification::TurnStarted { thread_id, .. }
-        | CodexNotification::TurnCompleted { thread_id, .. }
-        | CodexNotification::ItemStarted { thread_id, .. }
-        | CodexNotification::ItemCompleted { thread_id, .. }
-        | CodexNotification::RawResponseItemCompleted { thread_id, .. }
-        | CodexNotification::TurnDiffUpdated { thread_id, .. }
-        | CodexNotification::ServerRequestResolved { thread_id, .. } => Some(thread_id),
-        CodexNotification::Unknown { .. } => None,
+/// Record which of the two separately watched fields this event moved.
+///
+/// A reader that only wants the status, or only the name, compares its own
+/// revision against these rather than against every change to the session.
+fn mark_what_changed(state: &mut ThreadSessionState, kind: &SessionEventKind) {
+    match kind {
+        SessionEventKind::ConversationStarted { .. } => {
+            state.status_revision = state.revision;
+            state.name_revision = state.revision;
+        }
+        SessionEventKind::StatusChanged { .. } => state.status_revision = state.revision,
+        SessionEventKind::TitleChanged { .. } => state.name_revision = state.revision,
+        _ => {}
     }
-}
-
-fn notification_changes_status(notification: &CodexNotification) -> bool {
-    matches!(
-        notification,
-        CodexNotification::ThreadStarted { .. } | CodexNotification::ThreadStatusChanged { .. }
-    )
-}
-
-fn notification_changes_name(notification: &CodexNotification) -> bool {
-    matches!(
-        notification,
-        CodexNotification::ThreadStarted { .. } | CodexNotification::ThreadNameUpdated { .. }
-    )
 }
 
 fn is_first_current_terminal_transition(
@@ -127,19 +101,18 @@ fn is_first_current_terminal_transition(
     !turn_is_terminal(state, turn_id)
 }
 
-fn apply_notification_state(
+fn apply_session_event_state(
     state: &mut ThreadSessionState,
-    notification: &CodexNotification,
-) -> NotificationEffect {
-    match notification {
-        CodexNotification::ThreadStarted { thread } => {
+    kind: &SessionEventKind,
+) -> SessionEventEffect {
+    match kind {
+        SessionEventKind::ConversationStarted { conversation } => {
             if state.lifecycle == ThreadSessionLifecycle::Subscribing
                 || state.conversation.is_some()
             {
-                return NotificationEffect::Ignored;
+                return SessionEventEffect::Ignored;
             }
-            let conversation = Conversation::from(thread);
-            let next_active_turn_id = active_turn_id(&conversation, state.turns_page.as_ref())
+            let next_active_turn_id = active_turn_id(conversation, state.turns_page.as_ref())
                 .filter(|turn_id| !turn_is_terminal(state, turn_id));
             update_active_turn(
                 state,
@@ -147,17 +120,16 @@ fn apply_notification_state(
                 Some(conversation.cwd.clone()),
             );
             state.terminal_candidate_turn_id = next_active_turn_id;
-            state.conversation = Some(conversation);
+            state.conversation = Some(conversation.clone());
             state.pending_thread_status = None;
-            NotificationEffect::CanonicalStateChanged
+            SessionEventEffect::CanonicalStateChanged
         }
-        CodexNotification::ThreadStatusChanged { status, .. } => {
-            let status = ThreadStatus::from(status.clone());
+        SessionEventKind::StatusChanged { status } => {
             let terminal = !matches!(status, ThreadStatus::Active { .. });
             if let Some(conversation) = state.conversation.as_mut() {
-                conversation.status = status;
+                conversation.status = status.clone();
             } else {
-                state.pending_thread_status = Some(status);
+                state.pending_thread_status = Some(status.clone());
             }
             if terminal {
                 state.active_turn_id = None;
@@ -166,40 +138,41 @@ fn apply_notification_state(
                     state.runtime_lease = false;
                 }
             }
-            NotificationEffect::CanonicalStateChanged
+            SessionEventEffect::CanonicalStateChanged
         }
-        CodexNotification::ThreadNameUpdated { thread_name, .. } => {
-            let Some(thread) = state.conversation.as_mut() else {
-                return NotificationEffect::Ignored;
+        SessionEventKind::TitleChanged { title } => {
+            let Some(conversation) = state.conversation.as_mut() else {
+                return SessionEventEffect::Ignored;
             };
-            if thread.title == *thread_name {
-                return NotificationEffect::Ignored;
+            if conversation.title == *title {
+                return SessionEventEffect::Ignored;
             }
-            thread.title = thread_name.clone();
-            NotificationEffect::CanonicalStateChanged
+            conversation.title = title.clone();
+            SessionEventEffect::CanonicalStateChanged
         }
-        CodexNotification::ThreadSettingsUpdated {
-            thread_settings, ..
-        } => {
-            apply_thread_settings(state, thread_settings);
-            NotificationEffect::CanonicalStateChanged
+        SessionEventKind::SettingsChanged { settings } => {
+            apply_thread_settings(state, settings);
+            SessionEventEffect::CanonicalStateChanged
         }
-        CodexNotification::TurnStarted { turn, .. } => {
+        SessionEventKind::TurnStarted { turn } => {
             if turn_is_terminal(state, &turn.id) {
-                return NotificationEffect::Ignored;
+                return SessionEventEffect::Ignored;
             }
-            let inferred_cwd = state.conversation.as_ref().map(|thread| thread.cwd.clone());
+            let inferred_cwd = state
+                .conversation
+                .as_ref()
+                .map(|conversation| conversation.cwd.clone());
             update_active_turn(state, Some(turn.id.clone()), inferred_cwd);
             if state.lifecycle == ThreadSessionLifecycle::Subscribed {
                 state.terminal_candidate_turn_id = Some(turn.id.clone());
             }
             state.runtime_lease = true;
-            upsert_turn(&mut state.turns_page, Turn::from(turn));
-            NotificationEffect::CanonicalStateChanged
+            upsert_turn(&mut state.turns_page, turn.clone());
+            SessionEventEffect::CanonicalStateChanged
         }
-        CodexNotification::TurnCompleted { turn, .. } => {
-            if TurnStatus::from(turn.status) == TurnStatus::InProgress {
-                return NotificationEffect::Ignored;
+        SessionEventKind::TurnEnded { turn } => {
+            if turn.status == TurnStatus::InProgress {
+                return SessionEventEffect::Ignored;
             }
             if state.active_turn_id.as_deref() == Some(turn.id.as_str()) {
                 state.active_turn_id = None;
@@ -210,16 +183,19 @@ fn apply_notification_state(
                 state.terminal_candidate_turn_id = None;
                 state.runtime_lease = false;
             }
-            upsert_turn(&mut state.turns_page, Turn::from(turn));
-            NotificationEffect::CanonicalStateChanged
+            upsert_turn(&mut state.turns_page, turn.clone());
+            SessionEventEffect::CanonicalStateChanged
         }
-        CodexNotification::ItemStarted { .. }
-        | CodexNotification::ItemCompleted { .. }
-        | CodexNotification::RawResponseItemCompleted { .. }
-        | CodexNotification::TurnDiffUpdated { .. } => NotificationEffect::RevisionOnly,
-        CodexNotification::ThreadTokenUsageUpdated { .. }
-        | CodexNotification::ServerRequestResolved { .. } => NotificationEffect::Ignored,
-        CodexNotification::Unknown { .. } => NotificationEffect::Ignored,
+        // The session does not hold the conversation's items or its diff; a
+        // reader waiting on either has something new to fetch, and that is all
+        // this says.
+        SessionEventKind::ItemChanged { .. } | SessionEventKind::DiffChanged => {
+            SessionEventEffect::RevisionOnly
+        }
+        // Neither belongs to the session: usage is a diagnostic, and an approval
+        // answered elsewhere is the runtime's to withdraw.
+        SessionEventKind::UsageReported { .. }
+        | SessionEventKind::ApprovalAnsweredElsewhere { .. } => SessionEventEffect::Ignored,
     }
 }
 
@@ -229,7 +205,7 @@ mod tests {
     use crate::codex_thread_sessions::test_support::*;
 
     #[tokio::test]
-    async fn event_notifications_advance_revision_without_changing_canonical_state() {
+    async fn item_and_diff_reports_advance_revision_without_changing_canonical_state() {
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
@@ -244,34 +220,15 @@ mod tests {
             .await
             .expect("initial snapshot")
             .revision;
-        let notifications = [
-            CodexNotification::ItemStarted {
-                thread_id: "thread-1".to_string(),
-                turn_id: "turn-1".to_string(),
-                item: json!({ "id": "item-1", "type": "reasoning" }),
-                started_at_ms: 10,
-            },
-            CodexNotification::ItemCompleted {
-                thread_id: "thread-1".to_string(),
-                turn_id: "turn-1".to_string(),
-                item: json!({ "id": "item-1", "type": "reasoning" }),
-                completed_at_ms: 20,
-            },
-            CodexNotification::RawResponseItemCompleted {
-                thread_id: "thread-1".to_string(),
-                turn_id: "turn-1".to_string(),
-                item: json!({ "type": "message", "role": "assistant" }),
-            },
-            CodexNotification::TurnDiffUpdated {
-                thread_id: "thread-1".to_string(),
-                params: json!({ "threadId": "thread-1", "turnId": "turn-1" }),
-            },
+        let events = [
+            session_event("thread-1", item_changed("turn-1", "item-1", 10)),
+            session_event("thread-1", item_changed("turn-1", "item-2", 20)),
+            session_event("thread-1", item_changed("turn-1", "item-3", 30)),
+            session_event("thread-1", SessionEventKind::DiffChanged),
         ];
 
-        for (index, notification) in notifications.iter().enumerate() {
-            let outcome = sessions
-                .apply_notification_with_outcome(1, notification)
-                .await;
+        for (index, event) in events.iter().enumerate() {
+            let outcome = sessions.apply_session_event_with_outcome(1, event).await;
             assert!(!outcome.canonical_state_changed);
             assert_eq!(
                 sessions
@@ -284,12 +241,14 @@ mod tests {
         }
 
         let canonical = sessions
-            .apply_notification_with_outcome(
+            .apply_session_event_with_outcome(
                 1,
-                &CodexNotification::ThreadStatusChanged {
-                    thread_id: "thread-1".to_string(),
-                    status: WireThreadStatus::SystemError,
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::StatusChanged {
+                        status: ThreadStatus::SystemError,
+                    },
+                ),
             )
             .await;
         assert!(canonical.canonical_state_changed);
@@ -304,7 +263,45 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn turn_started_notification_does_not_change_canonical_thread_status() {
+    async fn a_session_with_no_baseline_adopts_the_conversation_codex_announces() {
+        // A subscription that could not read the thread leaves the session
+        // holding a lease and nothing to show. Codex announcing the thread is
+        // then the first baseline this session has, rather than a replay
+        // competing with one.
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::error(
+            "thread/resume",
+            CodexThreadError::ThreadUnavailable("thread-1".to_string()),
+        )]);
+        let sessions = CodexThreadSessions::default();
+        sessions
+            .ensure_subscribed(&client, 1, "thread-1")
+            .await
+            .expect_err("the thread could not be read");
+
+        let started = thread(
+            ThreadStatus::Active {
+                active_flags: Vec::new(),
+            },
+            vec![wire_turn("turn-1", TurnStatus::InProgress)],
+        );
+        let outcome = sessions
+            .apply_session_event_with_outcome(
+                1,
+                &session_event("thread-1", conversation_started(&started)),
+            )
+            .await;
+
+        assert!(outcome.canonical_state_changed);
+        let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
+        assert_eq!(
+            snapshot.conversation.expect("adopted conversation").id,
+            "thread-1"
+        );
+        assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-1"));
+    }
+
+    #[tokio::test]
+    async fn a_started_turn_does_not_change_canonical_thread_status() {
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
@@ -316,12 +313,14 @@ mod tests {
             .expect("subscribe");
 
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::TurnStarted {
-                    thread_id: "thread-1".to_string(),
-                    turn: turn("turn-1", TurnStatus::InProgress),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnStarted {
+                        turn: turn("turn-1", TurnStatus::InProgress),
+                    },
+                ),
             )
             .await;
 
@@ -329,13 +328,13 @@ mod tests {
         assert_eq!(
             snapshot.conversation.expect("canonical thread").status,
             ThreadStatus::Idle,
-            "turn notifications must not synthesize thread status"
+            "a turn report must not synthesize thread status"
         );
         assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-1"));
     }
 
     #[tokio::test]
-    async fn turn_completed_notification_does_not_change_canonical_thread_status() {
+    async fn an_ended_turn_does_not_change_canonical_thread_status() {
         let active = ThreadStatus::Active {
             active_flags: Vec::new(),
         };
@@ -344,7 +343,7 @@ mod tests {
             resume_response(
                 active.clone(),
                 Vec::new(),
-                vec![turn("turn-1", TurnStatus::InProgress)],
+                vec![wire_turn("turn-1", TurnStatus::InProgress)],
             ),
         )]);
         let sessions = CodexThreadSessions::default();
@@ -354,12 +353,14 @@ mod tests {
             .expect("subscribe");
 
         let outcome = sessions
-            .apply_notification_with_outcome(
+            .apply_session_event_with_outcome(
                 1,
-                &CodexNotification::TurnCompleted {
-                    thread_id: "thread-1".to_string(),
-                    turn: turn("turn-1", TurnStatus::Completed),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnEnded {
+                        turn: turn("turn-1", TurnStatus::Completed),
+                    },
+                ),
             )
             .await;
         assert_eq!(
@@ -373,7 +374,7 @@ mod tests {
         assert_eq!(
             snapshot.conversation.expect("canonical thread").status,
             active,
-            "turn notifications must not synthesize thread status"
+            "a turn report must not synthesize thread status"
         );
         assert_eq!(snapshot.active_turn_id, None);
     }
@@ -388,7 +389,7 @@ mod tests {
             resume_response(
                 active,
                 Vec::new(),
-                vec![turn("turn-1", TurnStatus::InProgress)],
+                vec![wire_turn("turn-1", TurnStatus::InProgress)],
             ),
         )]);
         let sessions = CodexThreadSessions::default();
@@ -397,21 +398,25 @@ mod tests {
             .await
             .expect("subscribe");
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ThreadStatusChanged {
-                    thread_id: "thread-1".to_string(),
-                    status: WireThreadStatus::Idle,
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::StatusChanged {
+                        status: ThreadStatus::Idle,
+                    },
+                ),
             )
             .await;
-        let completion = CodexNotification::TurnCompleted {
-            thread_id: "thread-1".to_string(),
-            turn: turn("turn-1", TurnStatus::Completed),
-        };
+        let completion = session_event(
+            "thread-1",
+            SessionEventKind::TurnEnded {
+                turn: turn("turn-1", TurnStatus::Completed),
+            },
+        );
 
         let first = sessions
-            .apply_notification_with_outcome(1, &completion)
+            .apply_session_event_with_outcome(1, &completion)
             .await;
         assert!(first.canonical_state_changed);
         assert_eq!(
@@ -422,7 +427,7 @@ mod tests {
         );
 
         let replay = sessions
-            .apply_notification_with_outcome(1, &completion)
+            .apply_session_event_with_outcome(1, &completion)
             .await;
         assert_eq!(
             replay.terminal,
@@ -432,16 +437,18 @@ mod tests {
         );
 
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::TurnStarted {
-                    thread_id: "thread-1".to_string(),
-                    turn: turn("turn-newer", TurnStatus::InProgress),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnStarted {
+                        turn: turn("turn-newer", TurnStatus::InProgress),
+                    },
+                ),
             )
             .await;
         let stale = sessions
-            .apply_notification_with_outcome(1, &completion)
+            .apply_session_event_with_outcome(1, &completion)
             .await;
         assert_eq!(
             stale.terminal,
@@ -461,7 +468,7 @@ mod tests {
             resume_response(
                 active,
                 Vec::new(),
-                vec![turn("turn-1", TurnStatus::InProgress)],
+                vec![wire_turn("turn-1", TurnStatus::InProgress)],
             ),
         )]);
         let sessions = CodexThreadSessions::default();
@@ -469,19 +476,21 @@ mod tests {
             .ensure_subscribed(&client, 1, "thread-1")
             .await
             .expect("subscribe");
-        let in_progress_completion = CodexNotification::TurnCompleted {
-            thread_id: "thread-1".to_string(),
-            turn: turn("turn-1", TurnStatus::InProgress),
-        };
+        let in_progress_completion = session_event(
+            "thread-1",
+            SessionEventKind::TurnEnded {
+                turn: turn("turn-1", TurnStatus::InProgress),
+            },
+        );
 
         assert_eq!(
             sessions
-                .apply_notification_with_outcome(2, &in_progress_completion)
+                .apply_session_event_with_outcome(2, &in_progress_completion)
                 .await,
-            NotificationApplyOutcome::default()
+            SessionEventOutcome::default()
         );
         let nonterminal = sessions
-            .apply_notification_with_outcome(1, &in_progress_completion)
+            .apply_session_event_with_outcome(1, &in_progress_completion)
             .await;
         assert!(!nonterminal.canonical_state_changed);
         assert_eq!(
@@ -492,12 +501,14 @@ mod tests {
         );
         assert_eq!(
             sessions
-                .apply_notification_with_outcome(
+                .apply_session_event_with_outcome(
                     1,
-                    &CodexNotification::TurnCompleted {
-                        thread_id: "thread-1".to_string(),
-                        turn: turn("turn-1", TurnStatus::Completed),
-                    },
+                    &session_event(
+                        "thread-1",
+                        SessionEventKind::TurnEnded {
+                            turn: turn("turn-1", TurnStatus::Completed)
+                        }
+                    ),
                 )
                 .await
                 .terminal,
@@ -509,12 +520,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn subscription_notifications_reject_bootstrap_and_terminal_replays() {
+    async fn a_subscribing_session_rejects_bootstrap_and_terminal_replays() {
         let active = ThreadStatus::Active {
             active_flags: Vec::new(),
         };
-        let old_completed = turn("turn-old", TurnStatus::Completed);
-        let current_in_progress = turn_at("turn-current", TurnStatus::InProgress, 2.0);
+        let old_completed = wire_turn("turn-old", TurnStatus::Completed);
+        let current_in_progress = wire_turn_at("turn-current", TurnStatus::InProgress, 2.0);
         let mut response = resume_response(
             active.clone(),
             Vec::new(),
@@ -536,18 +547,17 @@ mod tests {
         });
         wait_for_method_count(&client, "thread/resume", 1).await;
 
-        let mut replayed_thread = thread(active, vec![turn("turn-old", TurnStatus::InProgress)]);
+        let mut replayed_thread =
+            thread(active, vec![wire_turn("turn-old", TurnStatus::InProgress)]);
         replayed_thread.name = Some("Old task name".to_string());
         assert_eq!(
             sessions
-                .apply_notification_with_outcome(
+                .apply_session_event_with_outcome(
                     1,
-                    &CodexNotification::ThreadStarted {
-                        thread: replayed_thread,
-                    },
+                    &session_event("thread-1", conversation_started(&replayed_thread)),
                 )
                 .await,
-            NotificationApplyOutcome::default(),
+            SessionEventOutcome::default(),
             "a bootstrap thread snapshot must not compete with the resume baseline"
         );
 
@@ -558,24 +568,28 @@ mod tests {
 
         assert!(
             !sessions
-                .apply_notification_with_outcome(
+                .apply_session_event_with_outcome(
                     1,
-                    &CodexNotification::TurnStarted {
-                        thread_id: "thread-1".to_string(),
-                        turn: turn("turn-old", TurnStatus::InProgress),
-                    },
+                    &session_event(
+                        "thread-1",
+                        SessionEventKind::TurnStarted {
+                            turn: turn("turn-old", TurnStatus::InProgress)
+                        }
+                    ),
                 )
                 .await
                 .canonical_state_changed,
             "a terminal turn in the baseline cannot regress to in-progress"
         );
-        let bootstrap_completion = CodexNotification::TurnCompleted {
-            thread_id: "thread-1".to_string(),
-            turn: old_completed,
-        };
+        let bootstrap_completion = session_event(
+            "thread-1",
+            SessionEventKind::TurnEnded {
+                turn: Turn::from(&old_completed),
+            },
+        );
         assert_eq!(
             sessions
-                .apply_notification_with_outcome(1, &bootstrap_completion)
+                .apply_session_event_with_outcome(1, &bootstrap_completion)
                 .await
                 .terminal,
             Some(TerminalTurnApplyOutcome {
@@ -583,13 +597,15 @@ mod tests {
             }),
             "a terminal turn in the baseline remains a replay"
         );
-        let current_completion = CodexNotification::TurnCompleted {
-            thread_id: "thread-1".to_string(),
-            turn: turn_at("turn-current", TurnStatus::Completed, 2.0),
-        };
+        let current_completion = session_event(
+            "thread-1",
+            SessionEventKind::TurnEnded {
+                turn: Turn::from(&wire_turn_at("turn-current", TurnStatus::Completed, 2.0)),
+            },
+        );
         assert_eq!(
             sessions
-                .apply_notification_with_outcome(1, &current_completion)
+                .apply_session_event_with_outcome(1, &current_completion)
                 .await
                 .terminal,
             Some(TerminalTurnApplyOutcome {
@@ -598,7 +614,7 @@ mod tests {
         );
         assert_eq!(
             sessions
-                .apply_notification_with_outcome(1, &current_completion)
+                .apply_session_event_with_outcome(1, &current_completion)
                 .await
                 .terminal,
             Some(TerminalTurnApplyOutcome {
@@ -608,7 +624,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn thread_name_notification_updates_the_canonical_session_metadata() {
+    async fn a_title_change_updates_the_canonical_session_metadata() {
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
@@ -620,12 +636,14 @@ mod tests {
             .expect("subscribe");
 
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ThreadNameUpdated {
-                    thread_id: "thread-1".to_string(),
-                    thread_name: Some("Whisper voice input".to_string()),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TitleChanged {
+                        title: Some("Whisper voice input".to_string()),
+                    },
+                ),
             )
             .await;
 
@@ -642,7 +660,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn thread_settings_notification_updates_fast_mode() {
+    async fn a_settings_change_updates_fast_mode() {
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
@@ -654,16 +672,18 @@ mod tests {
             .expect("subscribe");
 
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ThreadSettingsUpdated {
-                    thread_id: "thread-1".to_string(),
-                    thread_settings: std::collections::BTreeMap::from([
-                        ("model".to_string(), json!("gpt-5.6-sol")),
-                        ("reasoningEffort".to_string(), json!("low")),
-                        ("serviceTier".to_string(), json!("priority")),
-                    ]),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::SettingsChanged {
+                        settings: std::collections::BTreeMap::from([
+                            ("model".to_string(), json!("gpt-5.6-sol")),
+                            ("reasoningEffort".to_string(), json!("low")),
+                            ("serviceTier".to_string(), json!("priority")),
+                        ]),
+                    },
+                ),
             )
             .await;
 
@@ -674,7 +694,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn idle_notification_overrides_stale_in_progress_turn_page() {
+    async fn an_idle_status_overrides_a_stale_in_progress_turn_page() {
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(
@@ -682,7 +702,7 @@ mod tests {
                     active_flags: Vec::new(),
                 },
                 Vec::new(),
-                vec![turn("turn-stale", TurnStatus::InProgress)],
+                vec![wire_turn("turn-stale", TurnStatus::InProgress)],
             ),
         )]);
         let sessions = CodexThreadSessions::default();
@@ -692,12 +712,14 @@ mod tests {
             .expect("viewer");
 
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ThreadStatusChanged {
-                    thread_id: "thread-1".to_string(),
-                    status: WireThreadStatus::Idle,
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::StatusChanged {
+                        status: ThreadStatus::Idle,
+                    },
+                ),
             )
             .await;
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
@@ -717,7 +739,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn turn_started_notification_updates_only_the_turn_session_state() {
+    async fn a_started_turn_updates_only_the_turn_session_state() {
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
@@ -734,12 +756,14 @@ mod tests {
             .revision;
 
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::TurnStarted {
-                    thread_id: "thread-1".to_string(),
-                    turn: turn("turn-live", TurnStatus::InProgress),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnStarted {
+                        turn: turn("turn-live", TurnStatus::InProgress),
+                    },
+                ),
             )
             .await;
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
@@ -751,13 +775,13 @@ mod tests {
             snapshot
                 .conversation
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle),
-            "turn notifications must not synthesize thread status"
+            "a turn report must not synthesize thread status"
         );
     }
 
     #[tokio::test]
-    async fn terminal_notifications_clear_running_state_and_keep_viewer_subscription() {
-        let active = turn("turn-live", TurnStatus::InProgress);
+    async fn an_ended_turn_clears_running_state_and_keeps_the_viewer_subscription() {
+        let active = wire_turn("turn-live", TurnStatus::InProgress);
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(
@@ -775,21 +799,25 @@ mod tests {
             .expect("viewer");
 
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::TurnCompleted {
-                    thread_id: "thread-1".to_string(),
-                    turn: turn("turn-live", TurnStatus::Completed),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnEnded {
+                        turn: turn("turn-live", TurnStatus::Completed),
+                    },
+                ),
             )
             .await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ThreadStatusChanged {
-                    thread_id: "thread-1".to_string(),
-                    status: WireThreadStatus::Idle,
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::StatusChanged {
+                        status: ThreadStatus::Idle,
+                    },
+                ),
             )
             .await;
 
@@ -815,7 +843,7 @@ mod tests {
                         active_flags: Vec::new(),
                     },
                     Vec::new(),
-                    vec![turn("turn-live", TurnStatus::InProgress)],
+                    vec![wire_turn("turn-live", TurnStatus::InProgress)],
                 ),
             ),
             MockCodexResponse::ok(
@@ -823,7 +851,7 @@ mod tests {
                 resume_response(
                     ThreadStatus::Idle,
                     Vec::new(),
-                    vec![turn("turn-live", TurnStatus::InProgress)],
+                    vec![wire_turn("turn-live", TurnStatus::InProgress)],
                 ),
             ),
             MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
@@ -836,12 +864,14 @@ mod tests {
             .expect("active thread remains subscribed");
 
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ThreadStatusChanged {
-                    thread_id: "thread-1".to_string(),
-                    status: WireThreadStatus::Idle,
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::StatusChanged {
+                        status: ThreadStatus::Idle,
+                    },
+                ),
             )
             .await;
         let idle = sessions.snapshot("thread-1").await.expect("idle snapshot");
@@ -859,12 +889,14 @@ mod tests {
         assert_eq!(refreshed.active_turn_id, None);
 
         let completion = sessions
-            .apply_notification_with_outcome(
+            .apply_session_event_with_outcome(
                 1,
-                &CodexNotification::TurnCompleted {
-                    thread_id: "thread-1".to_string(),
-                    turn: turn("turn-live", TurnStatus::Completed),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnEnded {
+                        turn: turn("turn-live", TurnStatus::Completed),
+                    },
+                ),
             )
             .await;
         assert_eq!(

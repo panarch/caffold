@@ -1,8 +1,8 @@
 mod metadata;
-mod notifications;
 mod prompt;
 mod reconciliation;
 mod recovery;
+mod session_events;
 mod subscription;
 mod turns;
 
@@ -54,14 +54,14 @@ pub struct ThreadSessionSnapshot {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct NotificationApplyOutcome {
+pub(crate) struct SessionEventOutcome {
     pub(crate) canonical_state_changed: bool,
     pub(crate) terminal: Option<TerminalTurnApplyOutcome>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TerminalTurnApplyOutcome {
-    /// True only when this notification first terminates the current in-progress turn.
+    /// True only when this event first terminates the current in-progress turn.
     pub(crate) first_current_transition: bool,
 }
 
@@ -295,12 +295,14 @@ pub(super) mod test_support {
         CodexThreadSessions, INITIAL_TURNS_PAGE_SIZE, PromptTarget, TerminalTurnApplyOutcome,
         ThreadSessionLifecycle, ThreadSessionSnapshot,
     };
-    pub(super) use crate::agent::codex::ThreadStatus as WireThreadStatus;
     pub(super) use crate::agent::codex::{
-        CodexNotification, CodexPermissionMode, CodexThread, CodexThreadClient, CodexTurn,
+        CodexPermissionMode, CodexThread, CodexThreadClient, CodexThreadError, CodexTurn,
         CodexTurnOptions, MockCodexResponse, ThreadResumeResponse,
     };
-    pub(super) use crate::agent::{Conversation, ThreadStatus, Turn, TurnPage, TurnStatus};
+    pub(super) use crate::agent::{
+        ActivityStatus, Conversation, ConversationItem, ItemKind, SessionEvent, SessionEventKind,
+        ThreadStatus, Turn, TurnPage, TurnStatus,
+    };
 
     /// A fixture written in Caffold's vocabulary and read back as Codex's.
     ///
@@ -312,11 +314,49 @@ pub(super) mod test_support {
         serde_json::from_value(value).expect("the fixture decodes as Codex sends it")
     }
 
-    pub(super) fn turn(id: &str, status: TurnStatus) -> CodexTurn {
-        turn_at(id, status, 1.0)
+    /// One report from the live stream, the way every reader of it sees it.
+    pub(super) fn session_event(thread_id: &str, kind: SessionEventKind) -> SessionEvent {
+        SessionEvent {
+            thread_id: thread_id.to_string(),
+            kind,
+        }
     }
 
-    pub(super) fn turn_at(id: &str, status: TurnStatus, started_at: f64) -> CodexTurn {
+    /// The bootstrap snapshot a subscription replays, as the session reads it.
+    pub(super) fn conversation_started(thread: &CodexThread) -> SessionEventKind {
+        SessionEventKind::ConversationStarted {
+            conversation: Conversation::from(thread),
+        }
+    }
+
+    /// An item arriving mid-turn. The session does not read what is in one, so
+    /// these say only which turn it belongs to and when it arrived.
+    pub(super) fn item_changed(turn_id: &str, item_id: &str, at_ms: u64) -> SessionEventKind {
+        SessionEventKind::ItemChanged {
+            turn_id: turn_id.to_string(),
+            item: ConversationItem {
+                id: item_id.to_string(),
+                status: ActivityStatus::Completed,
+                kind: ItemKind::Reasoning {
+                    summary: vec!["Read the current behavior.".to_string()],
+                    content: Vec::new(),
+                },
+            },
+            at_ms,
+        }
+    }
+
+    /// A turn the way the session keeps it, for what the live stream reports.
+    pub(super) fn turn(id: &str, status: TurnStatus) -> Turn {
+        Turn::from(&wire_turn(id, status))
+    }
+
+    /// A turn the way Codex sends it, for what a mocked call returns.
+    pub(super) fn wire_turn(id: &str, status: TurnStatus) -> CodexTurn {
+        wire_turn_at(id, status, 1.0)
+    }
+
+    pub(super) fn wire_turn_at(id: &str, status: TurnStatus, started_at: f64) -> CodexTurn {
         decoded(json!({
             "id": id,
             "items": [],

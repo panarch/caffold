@@ -167,7 +167,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stale_active_metadata_does_not_revive_turn_after_idle_notification() {
+    async fn stale_active_metadata_does_not_revive_a_turn_after_an_idle_report() {
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(
@@ -175,7 +175,7 @@ mod tests {
                     active_flags: Vec::new(),
                 },
                 Vec::new(),
-                vec![turn("turn-stale", TurnStatus::InProgress)],
+                vec![wire_turn("turn-stale", TurnStatus::InProgress)],
             ),
         )]);
         let sessions = CodexThreadSessions::default();
@@ -185,12 +185,14 @@ mod tests {
             .expect("viewer");
 
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ThreadStatusChanged {
-                    thread_id: "thread-1".to_string(),
-                    status: WireThreadStatus::Idle,
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::StatusChanged {
+                        status: ThreadStatus::Idle,
+                    },
+                ),
             )
             .await;
         let mut updated_metadata = thread(
@@ -247,7 +249,7 @@ mod tests {
         let response = resume_response(
             ThreadStatus::Idle,
             Vec::new(),
-            vec![turn("external", TurnStatus::Completed)],
+            vec![wire_turn("external", TurnStatus::Completed)],
         );
         let snapshot = sessions
             .apply_external_read_sync(
@@ -278,14 +280,6 @@ mod tests {
         }
     }
 
-    fn wire_active_status() -> WireThreadStatus {
-        serde_json::from_value(serde_json::json!({
-            "type": "active",
-            "activeFlags": [],
-        }))
-        .expect("active thread status")
-    }
-
     fn active_status() -> ThreadStatus {
         serde_json::from_value(serde_json::json!({
             "type": "active",
@@ -313,16 +307,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn current_generation_notification_wins_over_an_older_list_page() {
+    async fn a_current_generation_report_wins_over_an_older_list_page() {
         let sessions = CodexThreadSessions::default();
         sessions.track_listed_thread(3, "thread-1").await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 3,
-                &CodexNotification::ThreadStatusChanged {
-                    thread_id: "thread-1".to_string(),
-                    status: wire_active_status(),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::StatusChanged {
+                        status: active_status(),
+                    },
+                ),
             )
             .await;
         sessions

@@ -21,13 +21,13 @@
 use serde_json::{Value, json};
 
 use super::protocol::{
-    CodexThread, CodexTurn, ThreadActiveFlag, ThreadStatus, TurnStatus, TurnsPage, seconds_to_ms,
-    seconds_to_ms_value,
+    CodexNotification, CodexThread, CodexTurn, ThreadActiveFlag, ThreadStatus, ThreadTokenUsage,
+    TokenUsageBreakdown, TurnStatus, TurnsPage, seconds_to_ms, seconds_to_ms_value,
 };
 use crate::agent::{
     ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, CommandExecution,
     Conversation, ConversationItem, GeneratedImage, ItemKind, MessageContent, MessagePhase,
-    PermissionRow, Turn, TurnPage,
+    PermissionRow, SessionEvent, SessionEventKind, TokenCount, TokenUsage, Turn, TurnPage,
 };
 
 impl From<&CodexThread> for Conversation {
@@ -74,6 +74,165 @@ impl From<&CodexTurn> for Turn {
                 // running say so themselves through their own status.
                 .filter_map(|item| conversation_item(item, ActivityStatus::Completed))
                 .collect(),
+        }
+    }
+}
+
+/// What one app-server notification means.
+///
+/// Codex pushes twelve kinds of notification while a thread is subscribed;
+/// this says what each one is in Caffold's vocabulary, so that the parts of
+/// Caffold reacting to it — the conversation, the Task list, Web Push, pending
+/// approvals — read one report rather than each interpreting Codex's own.
+///
+/// `None` is a notification Caffold does nothing with, including one from a
+/// version of app-server that knows more than this does.
+///
+/// Approvals are the one kind that needs the connection: which approval a
+/// self-resolved request belonged to is a routing question, and routing is the
+/// driver's.
+pub(crate) async fn session_event(
+    notification: &CodexNotification,
+    client: &super::CodexThreadClient,
+) -> Option<SessionEvent> {
+    let (thread_id, kind) = match notification {
+        CodexNotification::ThreadStarted { thread } => (
+            thread.id.clone(),
+            SessionEventKind::ConversationStarted {
+                conversation: Conversation::from(thread),
+            },
+        ),
+        CodexNotification::ThreadStatusChanged { thread_id, status } => (
+            thread_id.clone(),
+            SessionEventKind::StatusChanged {
+                status: status.clone().into(),
+            },
+        ),
+        CodexNotification::ThreadNameUpdated {
+            thread_id,
+            thread_name,
+        } => (
+            thread_id.clone(),
+            SessionEventKind::TitleChanged {
+                title: thread_name.clone(),
+            },
+        ),
+        CodexNotification::ThreadSettingsUpdated {
+            thread_id,
+            thread_settings,
+        } => (
+            thread_id.clone(),
+            SessionEventKind::SettingsChanged {
+                settings: thread_settings.clone(),
+            },
+        ),
+        CodexNotification::ThreadTokenUsageUpdated {
+            thread_id,
+            turn_id,
+            token_usage,
+        } => (
+            thread_id.clone(),
+            SessionEventKind::UsageReported {
+                turn_id: turn_id.clone(),
+                usage: token_usage.into(),
+            },
+        ),
+        CodexNotification::TurnStarted { thread_id, turn } => (
+            thread_id.clone(),
+            SessionEventKind::TurnStarted {
+                turn: Turn::from(turn),
+            },
+        ),
+        CodexNotification::TurnCompleted { thread_id, turn } => (
+            thread_id.clone(),
+            SessionEventKind::TurnEnded {
+                turn: Turn::from(turn),
+            },
+        ),
+        // An item is announced when it starts and again when it finishes. Codex
+        // reports work status only for the kinds that have work to report, so
+        // which announcement this is stands in for the rest.
+        CodexNotification::ItemStarted {
+            thread_id,
+            turn_id,
+            item,
+            started_at_ms,
+        } => (
+            thread_id.clone(),
+            item_changed(
+                turn_id,
+                conversation_item(item, ActivityStatus::InProgress)?,
+                *started_at_ms,
+            ),
+        ),
+        CodexNotification::ItemCompleted {
+            thread_id,
+            turn_id,
+            item,
+            completed_at_ms,
+        } => (
+            thread_id.clone(),
+            item_changed(
+                turn_id,
+                conversation_item(item, ActivityStatus::Completed)?,
+                *completed_at_ms,
+            ),
+        ),
+        // Codex mirrors some finished items a second time in the shape the
+        // model returned them. Both announcements are the same item, so both
+        // arrive as the same report — this one without a time of its own.
+        CodexNotification::RawResponseItemCompleted {
+            thread_id,
+            turn_id,
+            item,
+        } => (
+            thread_id.clone(),
+            item_changed(turn_id, response_item(item)?, 0),
+        ),
+        CodexNotification::TurnDiffUpdated { thread_id, .. } => {
+            (thread_id.clone(), SessionEventKind::DiffChanged)
+        }
+        CodexNotification::ServerRequestResolved {
+            thread_id,
+            request_id,
+        } => (
+            thread_id.clone(),
+            SessionEventKind::ApprovalAnsweredElsewhere {
+                approval_id: client.approval_answered_elsewhere(request_id).await?,
+            },
+        ),
+        CodexNotification::Unknown { .. } => return None,
+    };
+    Some(SessionEvent { thread_id, kind })
+}
+
+fn item_changed(turn_id: &str, item: ConversationItem, at_ms: u64) -> SessionEventKind {
+    SessionEventKind::ItemChanged {
+        turn_id: turn_id.to_string(),
+        item,
+        at_ms,
+    }
+}
+
+impl From<&ThreadTokenUsage> for TokenUsage {
+    fn from(usage: &ThreadTokenUsage) -> Self {
+        Self {
+            total: (&usage.total).into(),
+            last: (&usage.last).into(),
+            model_context_window: usage.model_context_window,
+        }
+    }
+}
+
+impl From<&TokenUsageBreakdown> for TokenCount {
+    fn from(count: &TokenUsageBreakdown) -> Self {
+        Self {
+            total_tokens: count.total_tokens,
+            input_tokens: count.input_tokens,
+            cached_input_tokens: count.cached_input_tokens,
+            cache_write_input_tokens: count.cache_write_input_tokens,
+            output_tokens: count.output_tokens,
+            reasoning_output_tokens: count.reasoning_output_tokens,
         }
     }
 }
@@ -914,5 +1073,228 @@ mod tests {
 
             assert_eq!(converted, expected, "{status:?} changed on the wire");
         }
+    }
+
+    /// Every notification app-server pushes while a thread is subscribed.
+    ///
+    /// Adding a surface for one is then a deliberate change here rather than a
+    /// notification quietly going unread.
+    fn every_notification() -> [(&'static str, serde_json::Value); 12] {
+        let turn = json!({ "id": "turn_1", "status": "completed", "completedAt": 2.0 });
+        let item = json!({ "id": "item_1", "type": "agentMessage", "text": "Done." });
+        [
+            (
+                "thread/started",
+                json!({ "thread": {
+                    "id": "thread_1",
+                    "preview": "Task",
+                    "status": { "type": "idle" },
+                    "cwd": "/Users/example/project",
+                    "createdAt": 1.0,
+                    "updatedAt": 2.0,
+                    "turns": []
+                } }),
+            ),
+            (
+                "thread/status/changed",
+                json!({ "threadId": "thread_1", "status": { "type": "idle" } }),
+            ),
+            (
+                "thread/name/updated",
+                json!({ "threadId": "thread_1", "threadName": "Named" }),
+            ),
+            (
+                "thread/settings/updated",
+                json!({ "threadId": "thread_1", "threadSettings": { "model": "gpt-5.3-spark" } }),
+            ),
+            (
+                "thread/tokenUsage/updated",
+                json!({
+                    "threadId": "thread_1",
+                    "turnId": "turn_1",
+                    "tokenUsage": {
+                        "total": token_count(1234),
+                        "last": token_count(345),
+                        "modelContextWindow": 128_000
+                    }
+                }),
+            ),
+            (
+                "turn/started",
+                json!({ "threadId": "thread_1", "turn": turn }),
+            ),
+            (
+                "turn/completed",
+                json!({ "threadId": "thread_1", "turn": turn }),
+            ),
+            (
+                "item/started",
+                json!({
+                    "threadId": "thread_1",
+                    "turnId": "turn_1",
+                    "startedAtMs": 10,
+                    "item": item
+                }),
+            ),
+            (
+                "item/completed",
+                json!({
+                    "threadId": "thread_1",
+                    "turnId": "turn_1",
+                    "completedAtMs": 20,
+                    "item": item
+                }),
+            ),
+            (
+                "rawResponseItem/completed",
+                json!({
+                    "threadId": "thread_1",
+                    "turnId": "turn_1",
+                    "item": {
+                        "id": "item_1",
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{ "type": "output_text", "text": "Done." }]
+                    }
+                }),
+            ),
+            (
+                "turn/diff/updated",
+                json!({ "threadId": "thread_1", "turnId": "turn_1" }),
+            ),
+            (
+                "serverRequest/resolved",
+                json!({ "threadId": "thread_1", "requestId": 45 }),
+            ),
+        ]
+    }
+
+    fn token_count(total: u64) -> serde_json::Value {
+        json!({
+            "totalTokens": total,
+            "inputTokens": total,
+            "cachedInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 0,
+            "reasoningOutputTokens": 0
+        })
+    }
+
+    /// One notification, translated the way a subscribed thread translates it.
+    async fn reported(method: &str, params: serde_json::Value) -> Option<SessionEvent> {
+        let client = super::super::CodexThreadClient::mock(Vec::new());
+        client.track_approval("approval-45", json!(45)).await;
+        let notification =
+            super::super::protocol::decode_notification(method, params).expect("Codex sends this");
+        session_event(&notification, &client).await
+    }
+
+    #[tokio::test]
+    async fn every_notification_codex_sends_arrives_in_caffolds_words() {
+        for (method, params) in every_notification() {
+            let event = reported(method, params)
+                .await
+                .unwrap_or_else(|| panic!("{method} said nothing Caffold could act on"));
+
+            assert_eq!(event.thread_id, "thread_1", "{method} lost its thread");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_notification_a_newer_app_server_adds_says_nothing() {
+        // An app-server that knows more than this Caffold does is not an error;
+        // it is a notification with nothing in it for us.
+        let notification = super::super::protocol::decode_notification(
+            "thread/somethingNew",
+            json!({ "threadId": "thread_1" }),
+        )
+        .expect("an unknown method still decodes");
+
+        assert!(
+            session_event(
+                &notification,
+                &super::super::CodexThreadClient::mock(Vec::new())
+            )
+            .await
+            .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn an_item_is_as_far_along_as_the_notification_that_carried_it() {
+        let message = json!({ "id": "item_1", "type": "agentMessage", "text": "Working." });
+
+        let SessionEventKind::ItemChanged { item, at_ms, .. } = reported(
+            "item/started",
+            json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "startedAtMs": 10,
+                "item": message
+            }),
+        )
+        .await
+        .expect("a started item")
+        .kind
+        else {
+            panic!("a started item is an item change");
+        };
+        assert_eq!(item.status, ActivityStatus::InProgress);
+        assert_eq!(at_ms, 10);
+
+        let SessionEventKind::ItemChanged { item, at_ms, .. } = reported(
+            "item/completed",
+            json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "completedAtMs": 20,
+                "item": message
+            }),
+        )
+        .await
+        .expect("a completed item")
+        .kind
+        else {
+            panic!("a completed item is an item change");
+        };
+        assert_eq!(item.status, ActivityStatus::Completed);
+        assert_eq!(at_ms, 20);
+    }
+
+    #[tokio::test]
+    async fn only_the_first_resolution_names_the_approval_it_answered() {
+        let client = super::super::CodexThreadClient::mock(Vec::new());
+        client.track_approval("approval-45", json!(45)).await;
+        let resolved = super::super::protocol::decode_notification(
+            "serverRequest/resolved",
+            json!({ "threadId": "thread_1", "requestId": 45 }),
+        )
+        .expect("Codex sends this");
+
+        let Some(SessionEventKind::ApprovalAnsweredElsewhere { approval_id }) =
+            session_event(&resolved, &client)
+                .await
+                .map(|event| event.kind)
+        else {
+            panic!("the resolution names the approval it answered");
+        };
+        assert_eq!(approval_id, "approval-45");
+
+        // Nothing is left on that request, so a repeat says nothing and the
+        // approval is not withdrawn twice.
+        assert!(session_event(&resolved, &client).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_resolution_for_something_else_leaves_the_approval_alone() {
+        let client = super::super::CodexThreadClient::mock(Vec::new());
+        client.track_approval("approval-45", json!(45)).await;
+        let other = super::super::protocol::decode_notification(
+            "serverRequest/resolved",
+            json!({ "threadId": "thread_1", "requestId": 46 }),
+        )
+        .expect("Codex sends this");
+
+        assert!(session_event(&other, &client).await.is_none());
     }
 }

@@ -18,9 +18,15 @@ mod reconnect_spike;
 mod status;
 mod transport;
 
-pub(crate) use contract::{
-    ApprovalKind, approval_request, approval_response, conversation_item, response_item,
-};
+pub(crate) use contract::{ApprovalKind, approval_request, approval_response, session_event};
+/// Item translation on its own, for the tests that write an item the way Codex
+/// sends it and assert on what Caffold makes of it.
+#[cfg(test)]
+pub(crate) use contract::{conversation_item, response_item};
+/// Codex's own turn status, for the tests that read a turn straight off the
+/// wire rather than through the conversation.
+#[cfg(test)]
+pub use protocol::TurnStatus;
 use protocol::{
     ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse,
     CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS, CONFIG_READ, ConfigReadResponse, EmptyResponse,
@@ -40,8 +46,8 @@ use protocol::{
 pub use protocol::{
     CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest, CodexThread,
     CodexTurn, ModelListResponse, PermissionProfileSummary, SortDirection, ThreadResumeResponse,
-    ThreadSection, ThreadSectionFilter, ThreadSectionListResponse, ThreadStatus, ThreadTokenUsage,
-    ThreadUnsubscribeResponse, TurnStatus, TurnsPage,
+    ThreadSection, ThreadSectionFilter, ThreadSectionListResponse, ThreadStatus,
+    ThreadUnsubscribeResponse, TurnsPage,
 };
 pub(crate) use protocol::{ISOLATE_CURRENT_TASK_TOOL_NAME, RENAME_CURRENT_THREAD_TOOL_NAME};
 use protocol::{
@@ -91,6 +97,7 @@ struct MockCodexThreadClient {
     responses: AsyncMutex<VecDeque<MockCodexResponse>>,
     requests: AsyncMutex<Vec<(String, Value)>>,
     server_responses: AsyncMutex<Vec<(Value, Value)>>,
+    approvals: AsyncMutex<HashMap<String, Value>>,
     events: broadcast::Sender<CodexRuntimeEvent>,
 }
 
@@ -169,6 +176,13 @@ struct CodexThreadClientInner {
     writer: AsyncMutex<SplitSink<WebSocketStream<ProxyStream>, Message>>,
     _child: AsyncMutex<Child>,
     pending: AsyncMutex<HashMap<u64, PendingRequest>>,
+    /// Which app-server request each pending approval came in on.
+    ///
+    /// An approval's identity above this boundary is Caffold's; the JSON-RPC id
+    /// it must be answered on is app-server's. Holding the pair here is the
+    /// mirror of `pending`, which already correlates the requests this client
+    /// sends.
+    approvals: AsyncMutex<HashMap<String, Value>>,
     next_id: AtomicU64,
     events: broadcast::Sender<CodexRuntimeEvent>,
     app_server: AsyncMutex<Option<CodexAppServerInfo>>,
@@ -304,6 +318,7 @@ impl CodexThreadClient {
                 writer: AsyncMutex::new(writer),
                 _child: AsyncMutex::new(child),
                 pending: AsyncMutex::new(HashMap::new()),
+                approvals: AsyncMutex::new(HashMap::new()),
                 next_id: AtomicU64::new(100),
                 events,
                 app_server: AsyncMutex::new(None),
@@ -381,6 +396,7 @@ impl CodexThreadClient {
                 responses: AsyncMutex::new(responses.into()),
                 requests: AsyncMutex::new(Vec::new()),
                 server_responses: AsyncMutex::new(Vec::new()),
+                approvals: AsyncMutex::new(HashMap::new()),
                 events,
             })),
         }
@@ -727,6 +743,24 @@ impl CodexThreadClient {
         Ok(())
     }
 
+    /// Remember how to answer one approval, and under what name.
+    pub async fn track_approval(&self, approval_id: &str, request_id: Value) {
+        self.approvals()
+            .await
+            .insert(approval_id.to_string(), request_id);
+    }
+
+    /// The app-server request one approval must be answered on.
+    ///
+    /// Taking it is the claim on answering: the request is held once, so two
+    /// answers cannot both reach app-server, and an approval from a connection
+    /// that has since been replaced is not answerable at all. `None` is an
+    /// approval this connection no longer holds — already answered here, or
+    /// answered elsewhere first.
+    pub async fn take_approval_request(&self, approval_id: &str) -> Option<Value> {
+        self.approvals().await.remove(approval_id)
+    }
+
     pub async fn respond_to_server_request(
         &self,
         request_id: Value,
@@ -742,6 +776,27 @@ impl CodexThreadClient {
         }
         self.write_message(server_response_message(request_id, result))
             .await
+    }
+
+    /// Which approval app-server answered on its own, if Caffold was tracking
+    /// one on that request.
+    pub async fn approval_answered_elsewhere(&self, request_id: &Value) -> Option<String> {
+        let mut approvals = self.approvals().await;
+        let approval_id = approvals
+            .iter()
+            .find(|(_, tracked)| *tracked == request_id)
+            .map(|(approval_id, _)| approval_id.clone())?;
+        approvals.remove(&approval_id);
+        Some(approval_id)
+    }
+
+    /// The approvals waiting on this connection.
+    async fn approvals(&self) -> tokio::sync::MutexGuard<'_, HashMap<String, Value>> {
+        #[cfg(test)]
+        if let Some(mock) = &self.mock {
+            return mock.approvals.lock().await;
+        }
+        self.inner().approvals.lock().await
     }
 
     pub async fn list_models(&self, limit: usize) -> Result<ModelListResponse, CodexThreadError> {

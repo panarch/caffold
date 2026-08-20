@@ -3,11 +3,13 @@ use serde_json::{Value as JsonValue, json};
 
 use super::{ApprovalResolveError, CodexConnection, CodexRuntime};
 use crate::agent::codex::{
-    ApprovalKind, CodexNotification, CodexServerRequest, CodexThreadClient,
-    ISOLATE_CURRENT_TASK_TOOL_NAME, RENAME_CURRENT_THREAD_TOOL_NAME, ThreadStatus, TurnStatus,
-    approval_request, approval_response,
+    ApprovalKind, CodexServerRequest, CodexThreadClient, ISOLATE_CURRENT_TASK_TOOL_NAME,
+    RENAME_CURRENT_THREAD_TOOL_NAME, approval_request, approval_response,
 };
-use crate::agent::{ApprovalDecision, ApprovalOutcome, ApprovalRequest};
+use crate::agent::{
+    ApprovalDecision, ApprovalOutcome, ApprovalRequest, SessionEvent, SessionEventKind,
+    ThreadStatus, TurnStatus,
+};
 use crate::app::tasks::{
     events::{TaskEventRecord, approval_requested_event, approval_resolved_event, now_ms},
     worktrees::IsolateOutcome,
@@ -17,13 +19,13 @@ use crate::app::tasks::{
 ///
 /// The request is Caffold's, because that is what the interface shows and what
 /// a person answers. What sits beside it is only what answering Codex needs:
-/// which request to reply to, which of its three methods asked, and the
-/// parameters to hand back when the answer is to allow what was proposed.
+/// which of its three methods asked, and the parameters to hand back when the
+/// answer is to allow what was proposed. Which app-server request to reply on
+/// is the driver's, and it is the driver that remembers it.
 #[derive(Debug, Clone)]
 pub(super) struct PendingApproval {
     thread_id: String,
     request: ApprovalRequest,
-    request_id: JsonValue,
     kind: ApprovalKind,
     /// The request Codex sent, kept only so that allowing something hands back
     /// the permission profile Codex itself proposed.
@@ -97,22 +99,14 @@ impl CodexRuntime {
         }
         let response = approval_response(pending.kind, &pending.params, decision)
             .ok_or(ApprovalResolveError::ResolutionMismatch)?;
+        let Some(request_id) = connection.client.take_approval_request(approval_id).await else {
+            return Err(ApprovalResolveError::NotFound);
+        };
         connection
             .client
-            .respond_to_server_request(pending.request_id.clone(), response)
+            .respond_to_server_request(request_id, response)
             .await?;
-        let removed = {
-            let mut approvals = self.approvals.lock().await;
-            if approvals
-                .get(approval_id)
-                .is_some_and(|current| current.request_id == pending.request_id)
-            {
-                approvals.remove(approval_id)
-            } else {
-                None
-            }
-        };
-        let Some(pending) = removed else {
+        let Some(pending) = self.approvals.lock().await.remove(approval_id) else {
             return Ok(());
         };
 
@@ -171,6 +165,7 @@ impl CodexRuntime {
             CodexServerRequest::Unknown { .. } => return,
         };
         let approval_id = approval_id_from_request(&request_id, &params);
+        client.track_approval(&approval_id, request_id).await;
         let created_ms = params
             .get("startedAtMs")
             .and_then(JsonValue::as_u64)
@@ -185,7 +180,6 @@ impl CodexRuntime {
             PendingApproval {
                 thread_id,
                 request,
-                request_id,
                 kind,
                 params,
                 created_ms: event.created_ms,
@@ -415,16 +409,14 @@ impl CodexRuntime {
             .map_err(|error| format!("Caffold could not verify the current task: {error}"))
     }
 
-    pub(super) async fn reconcile_pending_approvals_for_notification(
-        &self,
-        notification: &CodexNotification,
-    ) {
+    /// Retire the approvals this event left unanswerable.
+    pub(super) async fn withdraw_unanswerable_approvals(&self, event: &SessionEvent) {
         let withdrawn = {
             let mut approvals = self.approvals.lock().await;
             let withdrawn = approvals
                 .iter()
                 .filter_map(|(approval_id, pending)| {
-                    withdrawn_approval_outcome(pending, notification)
+                    withdrawn_approval_outcome(pending, event)
                         .map(|outcome| (approval_id.clone(), outcome))
                 })
                 .collect::<Vec<_>>();
@@ -450,34 +442,34 @@ impl CodexRuntime {
 
 /// Why an approval stopped being answerable, when nobody answered it here.
 ///
-/// Codex resolving the request itself and the turn moving on are different
+/// The agent answering the request itself and the turn moving on are different
 /// things to say: one means somebody else decided, the other means the question
 /// no longer applies.
 fn withdrawn_approval_outcome(
     pending: &PendingApproval,
-    notification: &CodexNotification,
+    event: &SessionEvent,
 ) -> Option<ApprovalOutcome> {
+    if pending.thread_id != event.thread_id {
+        return None;
+    }
     let expired = Some(ApprovalOutcome::Expired);
-    match notification {
-        CodexNotification::ServerRequestResolved {
-            thread_id,
-            request_id,
-        } if pending.thread_id == *thread_id && pending.request_id == *request_id => {
+    match &event.kind {
+        SessionEventKind::ApprovalAnsweredElsewhere { approval_id }
+            if pending.request.id == *approval_id =>
+        {
             Some(ApprovalOutcome::AnsweredElsewhere)
         }
-        CodexNotification::TurnStarted { thread_id, turn }
-            if pending.thread_id == *thread_id
-                && pending
-                    .request
-                    .turn_id
-                    .as_ref()
-                    .is_some_and(|turn_id| *turn_id != turn.id) =>
+        SessionEventKind::TurnStarted { turn }
+            if pending
+                .request
+                .turn_id
+                .as_ref()
+                .is_some_and(|turn_id| *turn_id != turn.id) =>
         {
             expired
         }
-        CodexNotification::TurnCompleted { thread_id, turn }
-            if pending.thread_id == *thread_id
-                && turn.status != TurnStatus::InProgress
+        SessionEventKind::TurnEnded { turn }
+            if turn.status != TurnStatus::InProgress
                 && pending
                     .request
                     .turn_id
@@ -486,12 +478,9 @@ fn withdrawn_approval_outcome(
         {
             expired
         }
-        CodexNotification::ThreadStatusChanged { thread_id, status }
-            if pending.thread_id == *thread_id
-                && matches!(status, ThreadStatus::Idle | ThreadStatus::SystemError) =>
-        {
-            expired
-        }
+        SessionEventKind::StatusChanged {
+            status: ThreadStatus::Idle | ThreadStatus::SystemError,
+        } => expired,
         _ => None,
     }
 }
@@ -517,7 +506,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        agent::codex::{self, CodexThreadError, MockCodexResponse},
+        agent::codex::{self, CodexThreadError, MockCodexResponse, session_event},
         app::tasks::{
             events::TaskEvents, lifecycle::TaskLifecycle, routes::TaskListEvents,
             worktrees::ManagedWorktrees,
@@ -838,15 +827,43 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn server_resolution_notification_clears_the_matching_pending_request_once() {
+    async fn answering_an_approval_the_connection_no_longer_holds_is_not_found() {
+        // Codex resolving a request and a person answering it can race. The
+        // connection holds each request once, so whichever arrives second finds
+        // nothing to answer rather than replying twice.
+        let runtime = runtime_with_events(TaskEvents::default());
+        let client = CodexThreadClient::mock(Vec::new());
+        runtime
+            .handle_server_request(&client, 1, permission_approval_request(47))
+            .await;
+        client
+            .take_approval_request("47")
+            .await
+            .expect("the request was tracked");
+
+        let result = runtime
+            .resolve_approval(
+                &CodexConnection {
+                    client: client.clone(),
+                    generation: 1,
+                },
+                "thread_1",
+                "47",
+                ApprovalDecision::Allow,
+            )
+            .await;
+
+        assert!(matches!(result, Err(ApprovalResolveError::NotFound)));
+        assert!(client.mock_server_responses().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_approval_codex_answered_itself_is_withdrawn_once() {
         let events = TaskEvents::default();
         let runtime = runtime_with_events(events.clone());
+        let client = CodexThreadClient::mock(Vec::new());
         runtime
-            .handle_server_request(
-                &CodexThreadClient::mock(Vec::new()),
-                1,
-                permission_approval_request(45),
-            )
+            .handle_server_request(&client, 1, permission_approval_request(45))
             .await;
         let resolved = codex::decode_notification(
             "serverRequest/resolved",
@@ -854,12 +871,17 @@ mod tests {
         )
         .unwrap();
 
-        runtime
-            .reconcile_pending_approvals_for_notification(&resolved)
-            .await;
-        runtime
-            .reconcile_pending_approvals_for_notification(&resolved)
-            .await;
+        // Only the first says which approval was answered; after that the
+        // driver has nothing left on that request to name.
+        let Some(answered) = session_event(&resolved, &client).await else {
+            panic!("the first resolution names the approval it answered");
+        };
+        assert!(
+            session_event(&resolved, &client).await.is_none(),
+            "the same resolution has nothing left to withdraw"
+        );
+        runtime.withdraw_unanswerable_approvals(&answered).await;
+        runtime.withdraw_unanswerable_approvals(&answered).await;
 
         assert!(runtime.approval_events("thread_1").await.is_empty());
         let task_events = events.for_thread("thread_1");
@@ -1142,7 +1164,11 @@ mod tests {
         )
         .unwrap();
         runtime
-            .reconcile_pending_approvals_for_notification(&completed)
+            .withdraw_unanswerable_approvals(
+                &session_event(&completed, &CodexThreadClient::mock(Vec::new()))
+                    .await
+                    .expect("a completed turn is something Caffold acts on"),
+            )
             .await;
 
         assert!(runtime.approval_events("thread_1").await.is_empty());

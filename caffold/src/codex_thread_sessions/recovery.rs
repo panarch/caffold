@@ -194,7 +194,7 @@ mod tests {
                 ThreadStatus::Active {
                     active_flags: Vec::new(),
                 },
-                vec![turn("turn-active", TurnStatus::InProgress)],
+                vec![wire_turn("turn-active", TurnStatus::InProgress)],
                 Vec::new(),
             ),
         )]);

@@ -3,11 +3,8 @@ use serde_json::json;
 use tokio::sync::broadcast;
 
 use super::{CodexConnection, CodexRuntime, CodexRuntimeSignal};
-use crate::agent::codex::{
-    CodexNotification, CodexRuntimeEvent, CodexThreadClient, ThreadStatus, conversation_item,
-    response_item,
-};
-use crate::agent::{ActivityStatus, ConversationItem, Turn, TurnStatus};
+use crate::agent::codex::{CodexRuntimeEvent, CodexThreadClient, session_event};
+use crate::agent::{SessionEvent, SessionEventKind, ThreadStatus, TurnStatus};
 use crate::app::tasks::events::{
     now_ms, task_event_from_item, task_event_record, turn_completed_event, turn_started_event,
 };
@@ -34,52 +31,10 @@ impl CodexRuntime {
                         };
                         match event {
                             CodexRuntimeEvent::Notification(notification) => {
-                                let thread_id =
-                                    notification_thread_id(&notification).map(str::to_string);
-                                let apply_outcome = runtime
-                                    .sessions
-                                    .apply_notification_with_outcome(generation, &notification)
-                                    .await;
-                                let canonical_state_changed =
-                                    apply_outcome.canonical_state_changed;
-                                let terminal_turn_is_first_current = apply_outcome
-                                    .terminal
-                                    .is_some_and(|terminal| terminal.first_current_transition);
-                                let terminal_notification = matches!(
-                                    &notification,
-                                    CodexNotification::TurnCompleted { .. }
-                                );
-                                let snapshot = if (canonical_state_changed
-                                    || terminal_notification)
-                                    && let Some(thread_id) = thread_id.as_deref()
+                                if let Some(reported) =
+                                    session_event(&notification, &client).await
                                 {
-                                    runtime.sessions.snapshot(thread_id).await
-                                } else {
-                                    None
-                                };
-                                let task_name = snapshot
-                                    .as_ref()
-                                    .and_then(|snapshot| snapshot.conversation.as_ref())
-                                    .and_then(|conversation| conversation.title.as_deref());
-                                runtime.handle_terminal_push(
-                                    &notification,
-                                    task_name,
-                                    terminal_turn_is_first_current,
-                                );
-                                runtime
-                                    .reconcile_pending_approvals_for_notification(&notification)
-                                    .await;
-                                runtime.handle_notification(notification);
-                                if canonical_state_changed
-                                    && let Some(thread_id) = thread_id
-                                    && let Some(snapshot) = snapshot
-                                {
-                                    let _ = runtime.signals.send(
-                                        CodexRuntimeSignal::SessionChanged {
-                                            thread_id,
-                                            snapshot: Box::new(snapshot),
-                                        },
-                                    );
+                                    runtime.handle_session_event(generation, reported).await;
                                 }
                             }
                             CodexRuntimeEvent::ServerRequest(request) => {
@@ -192,14 +147,56 @@ impl CodexRuntime {
             .await;
     }
 
-    fn handle_notification(&self, notification: CodexNotification) {
-        match notification {
-            CodexNotification::TurnStarted { thread_id, turn } => {
-                let turn = Turn::from(&turn);
+    /// Everything Caffold does about one report from the live stream.
+    ///
+    /// The canonical session takes it first, because the rest depends on what it
+    /// did: whether the session actually moved decides whether readers are told,
+    /// and whether this is the first time a turn ended decides whether a phone
+    /// is notified.
+    async fn handle_session_event(&self, generation: u64, event: SessionEvent) {
+        let outcome = self
+            .sessions
+            .apply_session_event_with_outcome(generation, &event)
+            .await;
+        let turn_ended = matches!(event.kind, SessionEventKind::TurnEnded { .. });
+        let snapshot = if outcome.canonical_state_changed || turn_ended {
+            self.sessions.snapshot(&event.thread_id).await
+        } else {
+            None
+        };
+        let task_name = snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.conversation.as_ref())
+            .and_then(|conversation| conversation.title.as_deref());
+        self.handle_terminal_push(
+            &event,
+            task_name,
+            outcome
+                .terminal
+                .is_some_and(|terminal| terminal.first_current_transition),
+        );
+        self.withdraw_unanswerable_approvals(&event).await;
+        self.record_reported_usage(&event);
+        self.publish_session_event(&event);
+        if outcome.canonical_state_changed
+            && let Some(snapshot) = snapshot
+        {
+            let _ = self.signals.send(CodexRuntimeSignal::SessionChanged {
+                thread_id: event.thread_id,
+                snapshot: Box::new(snapshot),
+            });
+        }
+    }
+
+    /// Say what the agent did, in the Task's own stream of events.
+    fn publish_session_event(&self, event: &SessionEvent) {
+        let thread_id = event.thread_id.as_str();
+        match &event.kind {
+            SessionEventKind::TurnStarted { turn } => {
                 let started_ms = turn.started_at_ms.unwrap_or_else(now_ms);
                 match self
                     .task_store
-                    .update_observed_recency(&thread_id, started_ms)
+                    .update_observed_recency(thread_id, started_ms)
                 {
                     Ok(Some(_)) => self.refresh_persisted_task_list(),
                     Ok(None) => {}
@@ -210,9 +207,9 @@ impl CodexRuntime {
                     }
                 }
                 self.events
-                    .publish(turn_started_event(&thread_id, &turn.id, started_ms));
+                    .publish(turn_started_event(thread_id, &turn.id, started_ms));
             }
-            CodexNotification::ThreadStatusChanged { thread_id, status } => {
+            SessionEventKind::StatusChanged { status } => {
                 let task_status = match status {
                     ThreadStatus::Active { .. } => "running",
                     ThreadStatus::Idle | ThreadStatus::NotLoaded => "idle",
@@ -224,7 +221,7 @@ impl CodexRuntime {
                     _ => "Thread idle",
                 };
                 self.events.publish(task_event_record(
-                    &thread_id,
+                    thread_id,
                     "thread_status_changed",
                     "thread_status_changed",
                     summary,
@@ -235,46 +232,22 @@ impl CodexRuntime {
                     now_ms(),
                 ));
             }
-            CodexNotification::ThreadNameUpdated { .. }
-            | CodexNotification::ThreadSettingsUpdated { .. } => {}
-            CodexNotification::ThreadTokenUsageUpdated {
-                thread_id,
-                turn_id,
-                token_usage,
-            } => self.record_token_usage(thread_id, turn_id, token_usage),
-            CodexNotification::ItemStarted {
-                thread_id,
+            SessionEventKind::ItemChanged {
                 turn_id,
                 item,
-                started_at_ms,
-            } => self.publish_item(
-                &thread_id,
-                &turn_id,
-                at_or_now(started_at_ms),
-                conversation_item(&item, ActivityStatus::InProgress),
-            ),
-            CodexNotification::ItemCompleted {
-                thread_id,
-                turn_id,
-                item,
-                completed_at_ms,
-            } => self.publish_item(
-                &thread_id,
-                &turn_id,
-                at_or_now(completed_at_ms),
-                conversation_item(&item, ActivityStatus::Completed),
-            ),
-            CodexNotification::RawResponseItemCompleted {
-                thread_id,
-                turn_id,
-                item,
-            } => self.publish_item(&thread_id, &turn_id, now_ms(), response_item(&item)),
-            CodexNotification::TurnCompleted { thread_id, turn } => {
-                let turn = Turn::from(&turn);
+                at_ms,
+            } => {
+                if let Some(record) =
+                    task_event_from_item(thread_id, turn_id, at_or_now(*at_ms), item)
+                {
+                    self.events.publish(record);
+                }
+            }
+            SessionEventKind::TurnEnded { turn } => {
                 let completed_ms = turn.completed_at_ms.unwrap_or_else(now_ms);
                 match self
                     .task_store
-                    .record_completed_turn(&thread_id, completed_ms)
+                    .record_completed_turn(thread_id, completed_ms)
                 {
                     Ok(Some(_)) => self.refresh_persisted_task_list(),
                     Ok(None) => {}
@@ -283,14 +256,14 @@ impl CodexRuntime {
                     }
                 }
                 self.events
-                    .publish(turn_completed_event(&thread_id, &turn, completed_ms));
+                    .publish(turn_completed_event(thread_id, turn, completed_ms));
             }
             // The diff itself is not carried: Caffold reviews changes from git,
             // which owns the working tree the agent wrote to. What this says is
             // that there is something new to review.
-            CodexNotification::TurnDiffUpdated { thread_id, .. } => {
+            SessionEventKind::DiffChanged => {
                 self.events.publish(task_event_record(
-                    &thread_id,
+                    thread_id,
                     "diff_updated",
                     "diff_updated",
                     "Diff updated",
@@ -298,53 +271,48 @@ impl CodexRuntime {
                     now_ms(),
                 ));
             }
-            CodexNotification::ThreadStarted { .. }
-            | CodexNotification::ServerRequestResolved { .. }
-            | CodexNotification::Unknown { .. } => {}
+            SessionEventKind::ConversationStarted { .. }
+            | SessionEventKind::TitleChanged { .. }
+            | SessionEventKind::SettingsChanged { .. }
+            | SessionEventKind::UsageReported { .. }
+            | SessionEventKind::ApprovalAnsweredElsewhere { .. } => {}
         }
     }
 
-    /// Publish one item, when the notification carried something to show.
-    fn publish_item(
-        &self,
-        thread_id: &str,
-        turn_id: &str,
-        created_ms: u64,
-        item: Option<ConversationItem>,
-    ) {
-        if let Some(event) =
-            item.and_then(|item| task_event_from_item(thread_id, turn_id, created_ms, &item))
-        {
-            self.events.publish(event);
-        }
+    /// Keep what the agent says the conversation has cost, for diagnostics.
+    fn record_reported_usage(&self, event: &SessionEvent) {
+        let SessionEventKind::UsageReported { turn_id, usage } = &event.kind else {
+            return;
+        };
+        self.record_token_usage(&event.thread_id, turn_id, usage);
     }
 
+    /// Tell a phone that a turn ended, the once.
     fn handle_terminal_push(
         &self,
-        notification: &CodexNotification,
+        event: &SessionEvent,
         task_name: Option<&str>,
         terminal_turn_is_first_current: bool,
     ) {
+        let SessionEventKind::TurnEnded { turn } = &event.kind else {
+            return;
+        };
         if !terminal_turn_is_first_current {
-            if matches!(notification, CodexNotification::TurnCompleted { .. }) {
-                eprintln!(
-                    "Web Push terminal delivery skipped because the turn was not current or was already terminal"
-                );
-            }
+            eprintln!(
+                "Web Push terminal delivery skipped because the turn was not current or was already terminal"
+            );
             return;
         }
         let Some(push) = self.push.as_ref() else {
             return;
         };
-        let CodexNotification::TurnCompleted { thread_id, turn } = notification else {
-            return;
-        };
-        let status = match TurnStatus::from(turn.status) {
+        let status = match turn.status {
             TurnStatus::Completed => super::super::push::TerminalPushStatus::Completed,
             TurnStatus::Failed => super::super::push::TerminalPushStatus::Failed,
             TurnStatus::Interrupted => super::super::push::TerminalPushStatus::Interrupted,
             TurnStatus::InProgress => return,
         };
+        let thread_id = event.thread_id.as_str();
         match self.task_store.get(thread_id) {
             Ok(Some(_)) => {
                 let queued = push.notify_terminal(thread_id, &turn.id, status, task_name);
@@ -376,25 +344,7 @@ impl CodexRuntime {
     }
 }
 
-fn notification_thread_id(notification: &CodexNotification) -> Option<&str> {
-    match notification {
-        CodexNotification::ThreadStarted { thread } => Some(&thread.id),
-        CodexNotification::ThreadStatusChanged { thread_id, .. }
-        | CodexNotification::ThreadNameUpdated { thread_id, .. }
-        | CodexNotification::ThreadSettingsUpdated { thread_id, .. }
-        | CodexNotification::TurnStarted { thread_id, .. }
-        | CodexNotification::TurnCompleted { thread_id, .. }
-        | CodexNotification::ItemStarted { thread_id, .. }
-        | CodexNotification::ItemCompleted { thread_id, .. }
-        | CodexNotification::RawResponseItemCompleted { thread_id, .. }
-        | CodexNotification::TurnDiffUpdated { thread_id, .. }
-        | CodexNotification::ThreadTokenUsageUpdated { thread_id, .. }
-        | CodexNotification::ServerRequestResolved { thread_id, .. } => Some(thread_id),
-        CodexNotification::Unknown { .. } => None,
-    }
-}
-
-/// The time a notification reported, or now when it reported none.
+/// The time the agent reported, or now when it reported none.
 fn at_or_now(reported_ms: u64) -> u64 {
     if reported_ms > 0 {
         reported_ms
@@ -411,7 +361,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        agent::codex::{self, CodexThreadClient, MockCodexResponse},
+        agent::codex::{self, CodexNotification, CodexThreadClient, MockCodexResponse},
         app::tasks::{
             events::TaskEvents, lifecycle::TaskLifecycle, routes::TaskListEvents,
             worktrees::ManagedWorktrees,
@@ -450,6 +400,17 @@ mod tests {
             CodexRuntime::new(sessions, events, store, shutdown).with_lifecycle(lifecycle),
             list_events,
         )
+    }
+
+    /// One notification, translated the way the bridge translates it.
+    ///
+    /// A client with no connection is enough: only an approval Codex answered
+    /// itself needs one, and no test here sends that.
+    async fn reported(method: &str, params: JsonValue) -> SessionEvent {
+        let notification = codex::decode_notification(method, params).expect("Codex sends this");
+        session_event(&notification, &CodexThreadClient::mock(Vec::new()))
+            .await
+            .expect("the notification says something Caffold acts on")
     }
 
     fn active_resume(thread_id: &str) -> JsonValue {
@@ -520,7 +481,7 @@ mod tests {
         client.mock_publish_event(CodexRuntimeEvent::Notification(
             CodexNotification::ThreadStatusChanged {
                 thread_id: thread_id.to_string(),
-                status: ThreadStatus::Idle,
+                status: codex::ThreadStatus::Idle,
             },
         ));
 
@@ -550,8 +511,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn completed_turn_notification_persists_projection_and_refreshes_the_list() {
+    #[tokio::test]
+    async fn completed_turn_notification_persists_projection_and_refreshes_the_list() {
         let store = TaskStore::memory().unwrap();
         let (runtime, list_events) = runtime_with_list_events(TaskEvents::default(), store.clone());
         store
@@ -561,8 +522,8 @@ mod tests {
             )
             .unwrap();
 
-        runtime.handle_notification(
-            codex::decode_notification(
+        runtime.publish_session_event(
+            &reported(
                 "turn/completed",
                 json!({
                     "threadId": "thread_1",
@@ -573,7 +534,7 @@ mod tests {
                     }
                 }),
             )
-            .unwrap(),
+            .await,
         );
 
         let stored = store.get("thread_1").unwrap().unwrap();
@@ -583,8 +544,8 @@ mod tests {
         assert_eq!(list_events.refresh_count(), 1);
     }
 
-    #[test]
-    fn started_turn_notification_persists_recency_and_refreshes_the_list() {
+    #[tokio::test]
+    async fn started_turn_notification_persists_recency_and_refreshes_the_list() {
         let store = TaskStore::memory().unwrap();
         let (runtime, list_events) = runtime_with_list_events(TaskEvents::default(), store.clone());
         store
@@ -594,8 +555,8 @@ mod tests {
             )
             .unwrap();
 
-        runtime.handle_notification(
-            codex::decode_notification(
+        runtime.publish_session_event(
+            &reported(
                 "turn/started",
                 json!({
                     "threadId": "thread_1",
@@ -606,7 +567,7 @@ mod tests {
                     }
                 }),
             )
-            .unwrap(),
+            .await,
         );
 
         let stored = store.get("thread_1").unwrap().unwrap();
@@ -614,8 +575,8 @@ mod tests {
         assert_eq!(list_events.refresh_count(), 1);
     }
 
-    #[test]
-    fn terminal_push_selects_only_managed_canonical_terminal_turns() {
+    #[tokio::test]
+    async fn terminal_push_selects_only_managed_canonical_terminal_turns() {
         let store = TaskStore::memory().unwrap();
         store
             .claim(ManagedThread::new("managed", None, None, None), 1_000)
@@ -643,15 +604,15 @@ mod tests {
             ("failed", "failed"),
             ("interrupted", "interrupted"),
         ] {
-            let notification = codex::decode_notification(
+            let ended = reported(
                 "turn/completed",
                 json!({
                     "threadId": "managed",
                     "turn": { "id": format!("turn-{status}"), "status": status }
                 }),
             )
-            .unwrap();
-            runtime.handle_terminal_push(&notification, Some("Current task name"), true);
+            .await;
+            runtime.handle_terminal_push(&ended, Some("Current task name"), true);
             let delivery = deliveries.try_recv().unwrap();
             let payload: JsonValue = serde_json::from_slice(&delivery.payload).unwrap();
             assert_eq!(payload["threadId"], "managed");
@@ -660,57 +621,57 @@ mod tests {
             assert_eq!(payload["tag"], delivery.topic);
         }
 
-        let outside = codex::decode_notification(
+        let outside = reported(
             "turn/completed",
             json!({
                 "threadId": "outside-caffold",
                 "turn": { "id": "turn-outside", "status": "completed" }
             }),
         )
-        .unwrap();
+        .await;
         runtime.handle_terminal_push(&outside, Some("Outside task"), true);
 
-        let nonterminal = codex::decode_notification(
+        let nonterminal = reported(
             "turn/completed",
             json!({
                 "threadId": "managed",
                 "turn": { "id": "turn-running", "status": "inProgress" }
             }),
         )
-        .unwrap();
+        .await;
         runtime.handle_terminal_push(&nonterminal, Some("Current task name"), true);
 
-        let unsafe_turn = codex::decode_notification(
+        let unsafe_turn = reported(
             "turn/completed",
             json!({
                 "threadId": "managed",
                 "turn": { "id": "../unsafe", "status": "completed" }
             }),
         )
-        .unwrap();
+        .await;
         runtime.handle_terminal_push(&unsafe_turn, Some("Current task name"), true);
 
-        let stale_completion = codex::decode_notification(
+        let stale_completion = reported(
             "turn/completed",
             json!({
                 "threadId": "managed",
                 "turn": { "id": "turn-stale", "status": "completed" }
             }),
         )
-        .unwrap();
+        .await;
         runtime.handle_terminal_push(&stale_completion, Some("Current task name"), false);
         assert!(deliveries.try_recv().is_err());
     }
 
-    #[test]
-    fn token_usage_notifications_are_retained_for_live_diagnostics() {
+    #[tokio::test]
+    async fn token_usage_notifications_are_retained_for_live_diagnostics() {
         let runtime = runtime_with_events_and_store(
             TaskEvents::default(),
             TaskStore::memory().expect("in-memory task store"),
         );
 
-        runtime.handle_notification(
-            codex::decode_notification(
+        runtime.record_reported_usage(
+            &reported(
                 "thread/tokenUsage/updated",
                 json!({
                     "threadId": "thread_usage",
@@ -736,7 +697,7 @@ mod tests {
                     }
                 }),
             )
-            .unwrap(),
+            .await,
         );
 
         let diagnostics = runtime.usage_diagnostics();
@@ -804,8 +765,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn codex_notifications_publish_live_task_status() {
+    #[tokio::test]
+    async fn codex_notifications_publish_live_task_status() {
         let events = TaskEvents::default();
         let mut receiver = events.subscribe();
         let runtime = runtime_with_events_and_store(
@@ -813,8 +774,8 @@ mod tests {
             TaskStore::memory().expect("in-memory task store"),
         );
 
-        runtime.handle_notification(
-            codex::decode_notification(
+        runtime.publish_session_event(
+            &reported(
                 "turn/started",
                 json!({
                     "threadId": "thread_1",
@@ -825,7 +786,7 @@ mod tests {
                     }
                 }),
             )
-            .unwrap(),
+            .await,
         );
         let started = receiver.try_recv().unwrap();
         assert_eq!(started.thread_id, "thread_1");
@@ -833,8 +794,8 @@ mod tests {
         assert_eq!(started.created_ms, 1_750_000_000_250);
         assert_eq!(started.payload.unwrap()["turnId"], "turn_1");
 
-        runtime.handle_notification(
-            codex::decode_notification(
+        runtime.publish_session_event(
+            &reported(
                 "item/started",
                 json!({
                     "threadId": "thread_1",
@@ -849,7 +810,7 @@ mod tests {
                     }
                 }),
             )
-            .unwrap(),
+            .await,
         );
         let command_started = receiver.try_recv().unwrap();
         assert_eq!(command_started.event_type, "command_execution");
@@ -865,8 +826,8 @@ mod tests {
             .expect("notification bridge should cache commands without an SSE consumer");
         assert_eq!(cached_command.event_type, "command_execution");
 
-        runtime.handle_notification(
-            codex::decode_notification(
+        runtime.publish_session_event(
+            &reported(
                 "item/started",
                 json!({
                     "threadId": "thread_1",
@@ -880,14 +841,14 @@ mod tests {
                     }
                 }),
             )
-            .unwrap(),
+            .await,
         );
         // Codex announces reasoning before writing any of it, and an empty
         // bubble is worse than waiting for the words.
         assert!(receiver.try_recv().is_err());
 
-        runtime.handle_notification(
-            codex::decode_notification(
+        runtime.publish_session_event(
+            &reported(
                 "item/completed",
                 json!({
                     "threadId": "thread_1",
@@ -901,7 +862,7 @@ mod tests {
                     }
                 }),
             )
-            .unwrap(),
+            .await,
         );
         let reasoning_completed = receiver.try_recv().unwrap();
         assert_eq!(reasoning_completed.event_type, "reasoning");
@@ -912,23 +873,23 @@ mod tests {
             "completed"
         );
 
-        runtime.handle_notification(
-            codex::decode_notification(
+        runtime.publish_session_event(
+            &reported(
                 "thread/status/changed",
                 json!({
                     "threadId": "thread_1",
                     "status": { "type": "active", "activeFlags": [] }
                 }),
             )
-            .unwrap(),
+            .await,
         );
         let status = receiver.try_recv().unwrap();
         assert_eq!(status.thread_id, "thread_1");
         assert_eq!(status.event_type, "thread_status_changed");
         assert_eq!(status.payload.unwrap()["status"], "running");
 
-        runtime.handle_notification(
-            codex::decode_notification(
+        runtime.publish_session_event(
+            &reported(
                 "turn/completed",
                 json!({
                     "threadId": "thread_1",
@@ -939,7 +900,7 @@ mod tests {
                     }
                 }),
             )
-            .unwrap(),
+            .await,
         );
         let completed = receiver.try_recv().unwrap();
         assert_eq!(completed.event_type, "turn_completed");

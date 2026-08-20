@@ -14,8 +14,102 @@
 //! That fallback is what makes the vocabulary safe to hold still. Agents grow
 //! new kinds of work constantly; each one arrives here as a tool call rather
 //! than as a parse failure or a silently dropped item.
+//!
+//! A conversation is also read live. An agent Caffold is watching reports what
+//! it is doing as it does it, and [`SessionEvent`] is that report in the same
+//! vocabulary — so what appears on screen while a turn runs and what is read
+//! back afterwards are the same thing said twice.
+
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+/// Something an agent reported while Caffold was watching.
+///
+/// Several parts of Caffold act on one of these: the conversation appears on
+/// screen, the Task list learns when work last happened, a finished turn
+/// notifies a phone, and an approval nobody can answer any more goes away. They
+/// read one report rather than each interpreting the agent's own.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SessionEvent {
+    pub(crate) thread_id: String,
+    pub(crate) kind: SessionEventKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum SessionEventKind {
+    /// The agent opened a conversation Caffold had not seen loaded.
+    ConversationStarted {
+        conversation: Conversation,
+    },
+    StatusChanged {
+        status: ThreadStatus,
+    },
+    /// The agent renamed the conversation, or cleared its name.
+    TitleChanged {
+        title: Option<String>,
+    },
+    /// What the agent says its own settings now are.
+    ///
+    /// These stay in the agent's words. A permission mode is the one piece of
+    /// this vocabulary Caffold has not decided across agents — Codex resolves
+    /// three modes from five configuration values and names a sandbox profile,
+    /// Claude offers six modes and no profile at all — and inventing a shared
+    /// meaning before a second agent is running would be guessing.
+    SettingsChanged {
+        settings: BTreeMap<String, Value>,
+    },
+    TurnStarted {
+        turn: Turn,
+    },
+    TurnEnded {
+        turn: Turn,
+    },
+    /// One item appeared or moved on. The same item arrives more than once as
+    /// it progresses, under one identity.
+    ItemChanged {
+        turn_id: String,
+        item: ConversationItem,
+        /// When the agent says this happened, or zero when it does not say.
+        at_ms: u64,
+    },
+    /// The agent changed the working tree. What changed is read from git, so
+    /// this only says that there is something new to review.
+    DiffChanged,
+    UsageReported {
+        turn_id: String,
+        usage: TokenUsage,
+    },
+    /// An approval was answered somewhere other than Caffold, so the request is
+    /// no longer waiting on anyone here.
+    ApprovalAnsweredElsewhere {
+        approval_id: String,
+    },
+}
+
+/// What a conversation has spent, as its agent counts it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TokenUsage {
+    /// Everything the conversation has spent so far.
+    pub(crate) total: TokenCount,
+    /// What the most recent turn spent.
+    pub(crate) last: TokenCount,
+    /// How much the model can hold at once, when the agent says.
+    pub(crate) model_context_window: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TokenCount {
+    pub(crate) total_tokens: u64,
+    pub(crate) input_tokens: u64,
+    pub(crate) cached_input_tokens: u64,
+    pub(crate) cache_write_input_tokens: u64,
+    pub(crate) output_tokens: u64,
+    pub(crate) reasoning_output_tokens: u64,
+}
 
 /// A conversation as its agent currently reports it.
 ///

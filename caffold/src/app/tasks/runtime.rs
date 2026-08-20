@@ -8,7 +8,8 @@ use tokio::sync::{Mutex, broadcast};
 
 use super::{events::TaskEvents, lifecycle::TaskLifecycle, push::PushService};
 use crate::{
-    agent::codex::{CodexThreadClient, CodexThreadError, ThreadTokenUsage},
+    agent::TokenUsage,
+    agent::codex::{CodexThreadClient, CodexThreadError},
     codex_thread_sessions::{CodexThreadSessions, ThreadSessionSnapshot},
     task_store::TaskStore,
 };
@@ -44,7 +45,7 @@ pub(in crate::app) struct CodexUsageDiagnostics {
 #[serde(rename_all = "camelCase")]
 pub(in crate::app) struct ThreadUsageDiagnostics {
     pub(in crate::app) turn_id: String,
-    pub(in crate::app) token_usage: ThreadTokenUsage,
+    pub(in crate::app) token_usage: TokenUsage,
 }
 
 #[derive(Clone)]
@@ -124,20 +125,15 @@ impl CodexRuntime {
         CodexUsageDiagnostics { threads }
     }
 
-    fn record_token_usage(
-        &self,
-        thread_id: String,
-        turn_id: String,
-        token_usage: ThreadTokenUsage,
-    ) {
+    fn record_token_usage(&self, thread_id: &str, turn_id: &str, token_usage: &TokenUsage) {
         self.usage
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .insert(
-                thread_id,
+                thread_id.to_string(),
                 ThreadUsageDiagnostics {
-                    turn_id,
-                    token_usage,
+                    turn_id: turn_id.to_string(),
+                    token_usage: token_usage.clone(),
                 },
             );
     }

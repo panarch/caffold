@@ -48,6 +48,12 @@ the network destination, the requested access as labelled rows. The driver
 writes those, because reading a permission profile means understanding it, and
 the driver is what understands its own agent.
 
+An approval's identity is Caffold's; the request it must be answered on is the
+agent's. The driver holds the pairing between the two, so nothing above it
+carries a protocol id, and taking that pairing is what retires the approval —
+whether a person answered it here or the agent resolved it first. Each pairing
+is taken once, so an approval is never answered or withdrawn twice.
+
 ## Codex Execution Approvals
 
 Codex app-server owns command execution and permission requests. Caffold
