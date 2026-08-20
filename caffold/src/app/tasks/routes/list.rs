@@ -25,7 +25,7 @@ pub(super) async fn list_archived_tasks(
                     Ok(thread) => {
                         state
                             .codex_sessions
-                            .observe_thread_metadata(thread.clone())
+                            .observe_thread_metadata(Conversation::from(&thread))
                             .await;
                         let mut task = state
                             .detail
@@ -119,7 +119,7 @@ pub(super) async fn task_list_stream_initial_frames(
     for thread in projection.observed_threads {
         state
             .codex_sessions
-            .observe_listed_thread_metadata(connection.generation, thread)
+            .observe_listed_thread_metadata(connection.generation, Conversation::from(&thread))
             .await;
     }
     let payload = serde_json::to_string(&projection.snapshot).map_err(|error| {

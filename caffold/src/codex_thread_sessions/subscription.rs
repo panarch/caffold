@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use crate::agent::codex::{
-    CodexThread, CodexThreadClient, CodexThreadError, service_tier_for_fast_mode,
-};
+use crate::agent::Conversation;
+use crate::agent::codex::{CodexThreadClient, CodexThreadError, service_tier_for_fast_mode};
 
 use super::{
     CodexThreadSessions, StartedThreadSettings, ThreadSessionEntry, ThreadSessionLifecycle,
@@ -189,7 +188,7 @@ impl CodexThreadSessions {
         &self,
         client: &CodexThreadClient,
         generation: u64,
-        thread: CodexThread,
+        thread: Conversation,
         settings: StartedThreadSettings,
     ) {
         let entry = self.entry(&thread.id).await;
@@ -204,7 +203,7 @@ impl CodexThreadSessions {
             Some(thread.cwd.clone()),
         );
         state.terminal_candidate_turn_id = next_active_turn_id;
-        state.thread = Some(thread);
+        state.conversation = Some(thread);
         state.pending_thread_status = None;
         state.permission_mode = settings.permission_mode;
         state.model = settings.model;
@@ -325,7 +324,7 @@ mod tests {
         assert_eq!(methods(&client).await, vec!["thread/resume"]);
         assert_eq!(requests[0].1["serviceTier"], "default");
         assert_eq!(snapshot.lifecycle, ThreadSessionLifecycle::Subscribed);
-        assert_eq!(snapshot.turns_page.expect("initial page").data.len(), 8);
+        assert_eq!(snapshot.turns_page.expect("initial page").turns.len(), 8);
     }
 
     #[tokio::test]
@@ -359,7 +358,10 @@ mod tests {
         .expect("metadata request shares the subscription bootstrap")
         .expect("metadata request succeeds");
 
-        assert_eq!(snapshot.thread.expect("thread metadata").id, "thread-1");
+        assert_eq!(
+            snapshot.conversation.expect("thread metadata").id,
+            "thread-1"
+        );
         assert_eq!(methods(&client).await, vec!["thread/resume"]);
         subscription
             .await
@@ -390,7 +392,7 @@ mod tests {
             snapshot
                 .turns_page
                 .expect("initial turns page")
-                .data
+                .turns
                 .first()
                 .map(|turn| turn.id.as_str()),
             Some("turn-latest")
@@ -572,7 +574,7 @@ mod tests {
             .expect("failed snapshot");
         assert!(
             failed
-                .thread
+                .conversation
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle)
         );
 
@@ -592,12 +594,12 @@ mod tests {
             .register_started_thread(
                 &client,
                 1,
-                thread(
+                Conversation::from(&thread(
                     ThreadStatus::Active {
                         active_flags: Vec::new(),
                     },
                     vec![turn("turn-new", TurnStatus::InProgress)],
-                ),
+                )),
                 StartedThreadSettings {
                     permission_mode: Some(CodexPermissionMode::AskForApproval),
                     model: Some("gpt-test".to_string()),

@@ -23,8 +23,8 @@ use super::{
 };
 use crate::{
     agent::{
-        Conversation, Turn,
-        codex::{CodexPermissionMode, CodexThreadClient, CodexThreadError, TurnsPage},
+        Conversation, TurnPage,
+        codex::{CodexPermissionMode, CodexThreadClient, CodexThreadError},
     },
     app::error::ApiError,
     codex_thread_sessions::{CodexThreadSessions, ThreadSessionSnapshot},
@@ -191,8 +191,8 @@ impl DetailContext {
         let snapshot = self.sessions.snapshot(thread_id).await;
         let rollout_path = snapshot
             .as_ref()
-            .and_then(|snapshot| snapshot.thread.as_ref())
-            .and_then(|thread| thread.path.clone());
+            .and_then(|snapshot| snapshot.conversation.as_ref())
+            .and_then(|conversation| conversation.transcript_path.clone());
         let (detail, baseline_revision) = self.cached(thread_id).await?;
         let file_link_task_root = detail.task.as_ref().map(file_links::task_root);
         let initial_frames = task_stream_initial_frames(&TaskDetailSync {
@@ -221,8 +221,8 @@ impl DetailContext {
                 .sessions
                 .snapshot(&bootstrap_thread_id)
                 .await
-                .and_then(|snapshot| snapshot.thread)
-                .and_then(|thread| thread.path);
+                .and_then(|snapshot| snapshot.conversation)
+                .and_then(|conversation| conversation.transcript_path);
             bootstrap_rollout_subscription.install_with(|| {
                 bootstrap_context
                     .sync
@@ -415,7 +415,7 @@ impl DetailContext {
             )));
         }
         let revision = snapshot.revision;
-        if snapshot.thread.is_none() {
+        if snapshot.conversation.is_none() {
             return Ok((
                 loading_detail(thread_id, revision, stored.as_ref()),
                 revision,
@@ -466,7 +466,7 @@ impl DetailContext {
     pub(in crate::app) async fn assemble_snapshot(
         &self,
         snapshot: ThreadSessionSnapshot,
-        response_page: Option<TurnsPage>,
+        response_page: Option<TurnPage>,
     ) -> Result<TaskDetailResponse, ApiError> {
         let revision = snapshot.revision;
         let permission_mode = snapshot.permission_mode;
@@ -474,7 +474,7 @@ impl DetailContext {
         let session_reasoning_effort = snapshot.reasoning_effort.clone();
         let session_fast_mode = snapshot.fast_mode;
         let thread_id = snapshot
-            .thread
+            .conversation
             .as_ref()
             .map(|thread| thread.id.clone())
             .ok_or_else(|| {
@@ -484,13 +484,16 @@ impl DetailContext {
         let history_loading = page.is_none();
         let mut turns = page
             .as_ref()
-            .map(|page| page.data.iter().map(Turn::from).collect::<Vec<_>>())
+            .map(|page| page.turns.clone())
             .unwrap_or_default();
-        // Codex pages turns newest first; the conversation reads oldest first.
+        // An agent reports its history newest first; a conversation reads
+        // oldest first.
         turns.reverse();
         let next_cursor = page.and_then(|page| page.next_cursor);
-        let thread = snapshot.thread.expect("thread metadata was checked above");
-        let conversation = self.project_managed_worktree_cwd(Conversation::from(&thread))?;
+        let conversation = snapshot
+            .conversation
+            .expect("conversation metadata was checked above");
+        let conversation = self.project_managed_worktree_cwd(conversation)?;
         let conversation = conversation_with_turns(&conversation, turns);
         let mut events = thread_events(&conversation);
         self.events.observe(&events);
@@ -648,7 +651,12 @@ impl DetailContext {
         };
         let snapshot = self
             .sessions
-            .apply_external_read_sync(&thread_id, syncing.revision, thread, latest_turns)
+            .apply_external_read_sync(
+                &thread_id,
+                syncing.revision,
+                Conversation::from(&thread),
+                TurnPage::from(&latest_turns),
+            )
             .await;
         if let Ok(detail) = self.assemble_snapshot(snapshot, None).await {
             self.sync.publish(TaskDetailSync {
@@ -1208,7 +1216,7 @@ mod request_tests {
         )
         .await;
         manage_test_thread(&state, thread_id, root.path()).await;
-        let thread = serde_json::from_value(json!({
+        let thread: crate::agent::codex::CodexThread = serde_json::from_value(json!({
             "id": thread_id,
             "preview": "Recovered completion",
             "status": { "type": "idle" },
@@ -1219,7 +1227,7 @@ mod request_tests {
             "turns": []
         }))
         .unwrap();
-        let turns_page = serde_json::from_value(json!({
+        let turns_page: crate::agent::codex::TurnsPage = serde_json::from_value(json!({
             "data": [
                 {
                     "id": "turn-newest",
@@ -1240,8 +1248,8 @@ mod request_tests {
         .unwrap();
         let mut snapshot = crate::codex_thread_sessions::ThreadSessionSnapshot {
             lifecycle: ThreadSessionLifecycle::Subscribed,
-            thread: Some(thread),
-            turns_page: Some(turns_page),
+            conversation: Some(Conversation::from(&thread)),
+            turns_page: Some(TurnPage::from(&turns_page)),
             active_turn_id: None,
             active_turn_cwd: None,
             viewer_leases: 0,
@@ -1290,11 +1298,14 @@ mod request_tests {
             CodexThreadClient::mock(Vec::new()),
         )
         .await;
-        let thread = serde_json::from_value(
+        let thread: crate::agent::codex::CodexThread = serde_json::from_value(
             task_thread_list("thread-unmanaged", root.path())["data"][0].clone(),
         )
         .expect("canonical thread");
-        state.codex_sessions.observe_thread_metadata(thread).await;
+        state
+            .codex_sessions
+            .observe_thread_metadata(Conversation::from(&thread))
+            .await;
         let snapshot = state
             .codex_sessions
             .snapshot("thread-unmanaged")
@@ -1489,10 +1500,13 @@ mod request_tests {
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;
-        let thread =
+        let thread: crate::agent::codex::CodexThread =
             serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
                 .expect("cached thread metadata");
-        state.codex_sessions.observe_thread_metadata(thread).await;
+        state
+            .codex_sessions
+            .observe_thread_metadata(Conversation::from(&thread))
+            .await;
 
         let runtime = state.codex_runtime.clone();
         let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
@@ -1564,10 +1578,13 @@ mod request_tests {
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;
-        let thread =
+        let thread: crate::agent::codex::CodexThread =
             serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
                 .expect("cached thread metadata");
-        state.codex_sessions.observe_thread_metadata(thread).await;
+        state
+            .codex_sessions
+            .observe_thread_metadata(Conversation::from(&thread))
+            .await;
 
         let runtime = state.codex_runtime.clone();
         let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
@@ -1704,7 +1721,7 @@ mod request_tests {
             .snapshot(thread_id)
             .await
             .expect("cached session remains tracked");
-        assert!(snapshot.thread.is_some());
+        assert!(snapshot.conversation.is_some());
         assert!(snapshot.last_error.is_some());
         let error = test_task_detail(state, thread_id.to_string(), None)
             .await
@@ -1788,7 +1805,7 @@ mod request_tests {
             .snapshot(thread_id)
             .await
             .expect("cached session remains tracked");
-        assert!(snapshot.thread.is_some());
+        assert!(snapshot.conversation.is_some());
         assert!(snapshot.last_error.is_some());
         assert_eq!(state.codex_runtime.diagnostics().await, (1, true));
     }
@@ -2260,8 +2277,8 @@ mod sync_tests {
 
         drop(response);
         assert_eq!(
-            snapshot.thread.expect("canonical thread").status,
-            codex::ThreadStatus::Idle,
+            snapshot.conversation.expect("canonical thread").status,
+            crate::agent::ThreadStatus::Idle,
             "rollout contents only invalidate the canonical app-server snapshot"
         );
         assert_eq!(snapshot.active_turn_id, None);
@@ -2282,10 +2299,13 @@ mod sync_tests {
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;
-        let thread =
+        let thread: crate::agent::codex::CodexThread =
             serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
                 .expect("cached thread metadata");
-        state.codex_sessions.observe_thread_metadata(thread).await;
+        state
+            .codex_sessions
+            .observe_thread_metadata(Conversation::from(&thread))
+            .await;
 
         let _subscription = state.task_sync.subscribe(thread_id);
         let mut sync_events = state.task_sync.subscribe_updates();
@@ -2316,7 +2336,7 @@ mod sync_tests {
             .snapshot(thread_id)
             .await
             .expect("cached session remains tracked");
-        assert!(snapshot.thread.is_some());
+        assert!(snapshot.conversation.is_some());
         assert!(snapshot.last_error.is_some());
         assert_eq!(state.codex_runtime.diagnostics().await, (1, true));
     }

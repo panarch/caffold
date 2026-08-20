@@ -59,8 +59,8 @@ impl CodexRuntime {
                                 };
                                 let task_name = snapshot
                                     .as_ref()
-                                    .and_then(|snapshot| snapshot.thread.as_ref())
-                                    .and_then(|thread| thread.name.as_deref());
+                                    .and_then(|snapshot| snapshot.conversation.as_ref())
+                                    .and_then(|conversation| conversation.title.as_deref());
                                 runtime.handle_terminal_push(
                                     &notification,
                                     task_name,
@@ -545,8 +545,8 @@ mod tests {
         assert_eq!(signal_thread_id, thread_id);
         assert_eq!(snapshot.revision, initial_revision + 2);
         assert_eq!(
-            snapshot.thread.expect("canonical thread").status,
-            ThreadStatus::Idle
+            snapshot.conversation.expect("canonical thread").status,
+            crate::agent::ThreadStatus::Idle
         );
     }
 

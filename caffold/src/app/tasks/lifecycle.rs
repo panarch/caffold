@@ -23,7 +23,7 @@ use super::{
         ArchiveOutcome, IsolateOutcome, ManagedWorktreeError, ManagedWorktrees, RestoreOutcome,
     },
 };
-use crate::agent::Conversation;
+use crate::agent::{Conversation, Turn};
 
 mod initial_request_name;
 
@@ -180,7 +180,7 @@ impl TaskLifecycle {
             .register_started_thread(
                 client,
                 connection.generation,
-                thread.thread.clone(),
+                Conversation::from(&thread.thread),
                 StartedThreadSettings {
                     permission_mode: thread_permission_mode,
                     model: thread.model.clone(),
@@ -204,7 +204,7 @@ impl TaskLifecycle {
                 connection.generation,
                 &thread.thread_id,
                 Some(&cwd),
-                turn.turn,
+                Turn::from(&turn.turn),
                 CodexTurnOptions {
                     permission_mode: thread_permission_mode,
                     model: effective_model.clone(),

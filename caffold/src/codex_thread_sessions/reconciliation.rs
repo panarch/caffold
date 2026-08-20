@@ -1,7 +1,7 @@
 use crate::agent::codex::{
-    CodexPermissionMode, CodexThread, CodexThreadClient, CodexTurn, ThreadResumeResponse,
-    ThreadStatus, TurnStatus, TurnsPage, is_fast_service_tier,
+    CodexPermissionMode, CodexThreadClient, ThreadResumeResponse, is_fast_service_tier,
 };
+use crate::agent::{Conversation, ThreadStatus, Turn, TurnPage, TurnStatus};
 
 use super::turns::{
     active_turn_id, bound_latest_turns_page, merge_canonical_turns, merge_latest_turns_page,
@@ -28,25 +28,39 @@ pub(super) fn apply_thread_settings(
     );
 }
 
+/// What a resume answer says, in the shape the session keeps it.
+///
+/// Codex reports the conversation and a page of its turns as two parts of one
+/// answer, and both are read here so that nothing below this point handles a
+/// Codex type.
+fn read_resume(response: ThreadResumeResponse) -> (Conversation, Option<TurnPage>, String) {
+    (
+        Conversation::from(&response.thread),
+        response.initial_turns_page.as_ref().map(TurnPage::from),
+        response.cwd,
+    )
+}
+
 fn merge_external_resume_response(
     state: &mut ThreadSessionState,
     response: ThreadResumeResponse,
     base_revision: u64,
 ) -> MetadataMergeOutcome {
     apply_thread_settings(state, &response.extra);
+    let (conversation, turns_page, cwd) = read_resume(response);
     merge_external_snapshot_with_active_cwd(
         state,
-        response.thread,
-        response.initial_turns_page,
+        conversation,
+        turns_page,
         base_revision,
-        Some(response.cwd),
+        Some(cwd),
     )
 }
 
 pub(super) fn merge_external_snapshot(
     state: &mut ThreadSessionState,
-    incoming_thread: CodexThread,
-    latest_turns: Option<TurnsPage>,
+    incoming_thread: Conversation,
+    latest_turns: Option<TurnPage>,
     base_revision: u64,
 ) -> MetadataMergeOutcome {
     merge_external_snapshot_with_active_cwd(
@@ -60,8 +74,8 @@ pub(super) fn merge_external_snapshot(
 
 fn merge_external_snapshot_with_active_cwd(
     state: &mut ThreadSessionState,
-    mut incoming_thread: CodexThread,
-    latest_turns: Option<TurnsPage>,
+    mut incoming_thread: Conversation,
+    latest_turns: Option<TurnPage>,
     base_revision: u64,
     resumed_active_turn_cwd: Option<String>,
 ) -> MetadataMergeOutcome {
@@ -75,7 +89,7 @@ fn merge_external_snapshot_with_active_cwd(
     let newer_active_turn_id = preserve_newer_turns
         .then(|| state.active_turn_id.clone())
         .flatten();
-    if let Some(current) = state.thread.take() {
+    if let Some(current) = state.conversation.take() {
         let mut turns = current.turns;
         merge_external_turns(&mut turns, incoming_thread.turns, preserve_newer_turns);
         incoming_thread.turns = turns;
@@ -84,7 +98,7 @@ fn merge_external_snapshot_with_active_cwd(
         incoming_thread.status = status;
     }
     if let Some(name) = newer_name {
-        incoming_thread.name = name;
+        incoming_thread.title = name;
     }
     if let Some(page) = latest_turns {
         merge_external_turns_page(&mut state.turns_page, page, preserve_newer_turns);
@@ -102,7 +116,7 @@ fn merge_external_snapshot_with_active_cwd(
     if !matches!(incoming_thread.status, ThreadStatus::Active { .. }) {
         state.runtime_lease = false;
     }
-    state.thread = Some(incoming_thread);
+    state.conversation = Some(incoming_thread);
     state.pending_thread_status = None;
     MetadataMergeOutcome {
         status: !preserve_newer_status,
@@ -117,8 +131,8 @@ pub(super) struct MetadataMergeOutcome {
 }
 
 fn merge_external_turns(
-    target: &mut Vec<CodexTurn>,
-    incoming: impl IntoIterator<Item = CodexTurn>,
+    target: &mut Vec<Turn>,
+    incoming: impl IntoIterator<Item = Turn>,
     preserve_existing_status: bool,
 ) {
     for turn in incoming {
@@ -137,16 +151,16 @@ fn merge_external_turns(
 }
 
 fn merge_external_turns_page(
-    target: &mut Option<TurnsPage>,
-    incoming: TurnsPage,
+    target: &mut Option<TurnPage>,
+    incoming: TurnPage,
     preserve_existing_status: bool,
 ) {
-    let page = target.get_or_insert_with(|| TurnsPage {
-        data: Vec::new(),
+    let page = target.get_or_insert_with(|| TurnPage {
+        turns: Vec::new(),
         next_cursor: None,
         backwards_cursor: None,
     });
-    merge_external_turns(&mut page.data, incoming.data, preserve_existing_status);
+    merge_external_turns(&mut page.turns, incoming.turns, preserve_existing_status);
     if page.next_cursor.is_none() {
         page.next_cursor = incoming.next_cursor;
     }
@@ -167,23 +181,22 @@ pub(super) fn apply_resume_response(
         .then(|| state.terminal_candidate_turn_id.clone())
         .flatten();
     apply_thread_settings(state, &response.extra);
-    let active_turn_cwd = response.cwd;
-    let thread = response.thread;
-    let active_turn_id = active_turn_id(&thread, response.initial_turns_page.as_ref());
+    let (thread, incoming_page, active_turn_cwd) = read_resume(response);
+    let active_turn_id = active_turn_id(&thread, incoming_page.as_ref());
     let thread_is_active = matches!(thread.status, ThreadStatus::Active { .. });
 
     state.lifecycle = ThreadSessionLifecycle::Subscribed;
     state.client = Some(client.clone());
     state.generation = generation;
     replace_active_turn(state, active_turn_id.clone(), active_turn_cwd);
-    state.thread = Some(thread);
+    state.conversation = Some(thread);
     state.pending_thread_status = None;
     if merge_history {
-        if let Some(page) = response.initial_turns_page {
+        if let Some(page) = incoming_page {
             merge_latest_turns_page(&mut state.turns_page, page);
         }
     } else {
-        state.turns_page = response.initial_turns_page;
+        state.turns_page = incoming_page;
         if let Some(page) = state.turns_page.as_mut() {
             bound_latest_turns_page(page);
         }
@@ -212,9 +225,8 @@ pub(super) fn apply_stale_refresh_response(
 ) {
     let preserved_terminal_candidate = state.terminal_candidate_turn_id.clone();
     apply_thread_settings(state, &response.extra);
-    let active_turn_cwd = response.cwd;
-    let baseline_active_turn_id =
-        active_turn_id(&response.thread, response.initial_turns_page.as_ref());
+    let (incoming_thread, incoming_page, active_turn_cwd) = read_resume(response);
+    let baseline_active_turn_id = active_turn_id(&incoming_thread, incoming_page.as_ref());
     let newer_status = newer_thread_status(state, base_revision);
     let status_applied = newer_status.is_none();
     let newer_name = newer_thread_name(state, base_revision);
@@ -223,8 +235,8 @@ pub(super) fn apply_stale_refresh_response(
     let newer_active_turn_id = preserve_newer_turns
         .then(|| state.active_turn_id.clone())
         .flatten();
-    let mut thread = response.thread;
-    if let Some(current) = state.thread.take() {
+    let mut thread = incoming_thread;
+    if let Some(current) = state.conversation.take() {
         let mut turns = current.turns;
         merge_canonical_turns(&mut turns, thread.turns);
         thread.turns = turns;
@@ -233,9 +245,9 @@ pub(super) fn apply_stale_refresh_response(
         thread.status = status;
     }
     if let Some(name) = newer_name {
-        thread.name = name;
+        thread.title = name;
     }
-    if let Some(incoming) = response.initial_turns_page {
+    if let Some(incoming) = incoming_page {
         merge_stale_turns_page(&mut state.turns_page, incoming);
     }
 
@@ -253,7 +265,7 @@ pub(super) fn apply_stale_refresh_response(
     state.lifecycle = ThreadSessionLifecycle::Subscribed;
     state.client = Some(client.clone());
     state.generation = generation;
-    state.thread = Some(thread);
+    state.conversation = Some(thread);
     state.terminal_candidate_turn_id = newer_active_turn_id
         .filter(|turn_id| turn_is_in_progress(state, turn_id))
         .or_else(|| {
@@ -303,7 +315,7 @@ fn newer_thread_status(state: &ThreadSessionState, base_revision: u64) -> Option
     (state.status_revision > base_revision)
         .then(|| {
             state
-                .thread
+                .conversation
                 .as_ref()
                 .map(|thread| thread.status.clone())
                 .or_else(|| state.pending_thread_status.clone())
@@ -313,7 +325,12 @@ fn newer_thread_status(state: &ThreadSessionState, base_revision: u64) -> Option
 
 fn newer_thread_name(state: &ThreadSessionState, base_revision: u64) -> Option<Option<String>> {
     (state.name_revision > base_revision)
-        .then(|| state.thread.as_ref().map(|thread| thread.name.clone()))
+        .then(|| {
+            state
+                .conversation
+                .as_ref()
+                .map(|conversation| conversation.title.clone())
+        })
         .flatten()
 }
 
@@ -331,8 +348,8 @@ mod tests {
             .apply_external_read_sync(
                 "thread-1",
                 base_revision,
-                response.thread,
-                response.initial_turns_page.expect("latest turns page"),
+                Conversation::from(&response.thread),
+                TurnPage::from(&response.initial_turns_page.expect("latest turns page")),
             )
             .await
     }
@@ -353,7 +370,9 @@ mod tests {
             Duration::from_millis(100),
         )]);
         let sessions = CodexThreadSessions::default();
-        sessions.observe_thread_metadata(listed_thread).await;
+        sessions
+            .observe_thread_metadata(Conversation::from(&listed_thread))
+            .await;
 
         let subscribing_sessions = sessions.clone();
         let subscribing_client = client.clone();
@@ -381,7 +400,7 @@ mod tests {
             .expect("resume active managed turn");
 
         assert_eq!(
-            snapshot.thread.expect("canonical thread").cwd,
+            snapshot.conversation.expect("canonical thread").cwd,
             "/workspace/source"
         );
         assert_eq!(
@@ -443,7 +462,7 @@ mod tests {
                 1,
                 &CodexNotification::ThreadStatusChanged {
                     thread_id: "thread-1".to_string(),
-                    status: ThreadStatus::Idle,
+                    status: WireThreadStatus::Idle,
                 },
             )
             .await;
@@ -463,9 +482,9 @@ mod tests {
             .expect("subscription baseline succeeds");
         assert_eq!(
             snapshot
-                .thread
+                .conversation
                 .as_ref()
-                .and_then(|thread| thread.name.as_deref()),
+                .and_then(|conversation| conversation.title.as_deref()),
             Some("Current task name")
         );
         let entry = sessions
@@ -510,13 +529,17 @@ mod tests {
             .apply_external_read_sync(
                 "thread-1",
                 syncing.revision,
-                thread(ThreadStatus::Idle, Vec::new()),
-                page(Vec::new(), None, None),
+                Conversation::from(&thread(ThreadStatus::Idle, Vec::new())),
+                turn_page(Vec::new(), None, None),
             )
             .await;
 
         assert_eq!(
-            snapshot.thread.expect("canonical thread").name.as_deref(),
+            snapshot
+                .conversation
+                .expect("canonical thread")
+                .title
+                .as_deref(),
             Some("Newer name")
         );
     }
@@ -616,7 +639,7 @@ mod tests {
                 1,
                 &CodexNotification::ThreadStatusChanged {
                     thread_id: "thread-1".to_string(),
-                    status: ThreadStatus::Active {
+                    status: WireThreadStatus::Active {
                         active_flags: Vec::new(),
                     },
                 },
@@ -632,7 +655,7 @@ mod tests {
         assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-live"));
         assert!(
             snapshot
-                .thread
+                .conversation
                 .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
         );
     }
@@ -670,7 +693,7 @@ mod tests {
         assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-external"));
         assert!(
             snapshot
-                .thread
+                .conversation
                 .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
         );
         assert_eq!(
@@ -708,10 +731,10 @@ mod tests {
         .await;
 
         assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-external"));
-        let thread = snapshot.thread.as_ref().expect("canonical thread");
+        let thread = snapshot.conversation.as_ref().expect("canonical thread");
         assert!(matches!(thread.status, ThreadStatus::Active { .. }));
         assert_eq!(
-            snapshot.turns_page.expect("history").data[0].status,
+            snapshot.turns_page.expect("history").turns[0].status,
             TurnStatus::InProgress
         );
     }
@@ -758,7 +781,7 @@ mod tests {
         assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-external"));
         assert!(
             snapshot
-                .thread
+                .conversation
                 .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
         );
     }
@@ -803,12 +826,12 @@ mod tests {
         assert_eq!(snapshot.active_turn_id, None);
         assert!(
             snapshot
-                .thread
+                .conversation
                 .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. })),
             "the app-server snapshot remains the canonical thread status"
         );
         assert_eq!(
-            snapshot.turns_page.expect("history").data[0].status,
+            snapshot.turns_page.expect("history").turns[0].status,
             TurnStatus::Completed
         );
     }
@@ -848,11 +871,11 @@ mod tests {
         assert!(!snapshot.runtime_lease);
         assert!(
             snapshot
-                .thread
+                .conversation
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle)
         );
         assert_eq!(
-            snapshot.turns_page.expect("history").data[0].status,
+            snapshot.turns_page.expect("history").turns[0].status,
             TurnStatus::Completed
         );
     }
@@ -884,12 +907,12 @@ mod tests {
         assert_eq!(snapshot.active_turn_id, None);
         assert!(
             snapshot
-                .thread
+                .conversation
                 .as_ref()
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle)
         );
         assert_eq!(
-            snapshot.turns_page.as_ref().expect("history").data[0].status,
+            snapshot.turns_page.as_ref().expect("history").turns[0].status,
             TurnStatus::InProgress
         );
     }
@@ -934,15 +957,15 @@ mod tests {
         assert_eq!(snapshot.active_turn_id, None);
         assert!(
             snapshot
-                .thread
+                .conversation
                 .as_ref()
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle)
         );
         assert!(snapshot.turns_page.is_some_and(|page| {
-            page.data
+            page.turns
                 .iter()
                 .any(|turn| turn.id == "turn-live" && turn.status == TurnStatus::Completed)
-                && page.data.iter().any(|turn| turn.id == "turn-older")
+                && page.turns.iter().any(|turn| turn.id == "turn-older")
         }));
     }
 
@@ -983,16 +1006,16 @@ mod tests {
         assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-new"));
         assert!(
             snapshot
-                .thread
+                .conversation
                 .as_ref()
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle),
             "a newer turn pointer must not synthesize thread status"
         );
         assert!(snapshot.turns_page.is_some_and(|page| {
-            page.data
+            page.turns
                 .iter()
                 .any(|turn| turn.id == "turn-new" && turn.status == TurnStatus::InProgress)
-                && page.data.iter().any(|turn| turn.id == "turn-old")
+                && page.turns.iter().any(|turn| turn.id == "turn-old")
         }));
     }
 
@@ -1043,7 +1066,7 @@ mod tests {
                 1,
                 "thread-1",
                 Some("/managed/worktree"),
-                turn("turn-new", TurnStatus::InProgress),
+                Turn::from(&turn("turn-new", TurnStatus::InProgress)),
                 CodexTurnOptions::default(),
             )
             .await;
@@ -1059,13 +1082,16 @@ mod tests {
             Some("/managed/worktree")
         );
         assert_eq!(
-            snapshot.thread.as_ref().map(|thread| thread.cwd.as_str()),
+            snapshot
+                .conversation
+                .as_ref()
+                .map(|thread| thread.cwd.as_str()),
             Some("Workspace/rust/codger"),
             "canonical thread metadata may retain the original checkout cwd"
         );
         assert!(
             snapshot
-                .thread
+                .conversation
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle),
             "turn state must not be projected onto canonical thread status"
         );
@@ -1120,7 +1146,7 @@ mod tests {
                 1,
                 &CodexNotification::ThreadStatusChanged {
                     thread_id: "thread-1".to_string(),
-                    status: ThreadStatus::Idle,
+                    status: WireThreadStatus::Idle,
                 },
             )
             .await;
@@ -1133,12 +1159,12 @@ mod tests {
         assert_eq!(snapshot.active_turn_id, None);
         assert!(
             snapshot
-                .thread
+                .conversation
                 .as_ref()
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle)
         );
         assert_eq!(
-            snapshot.turns_page.as_ref().expect("history").data[0].status,
+            snapshot.turns_page.as_ref().expect("history").turns[0].status,
             TurnStatus::InProgress
         );
     }

@@ -310,9 +310,13 @@ pub(in crate::app::tasks) mod test_support {
         thread_id: &str,
         cwd: &Path,
     ) {
-        let thread = serde_json::from_value(task_thread_list(thread_id, cwd)["data"][0].clone())
-            .expect("canonical test thread");
-        state.codex_sessions.observe_thread_metadata(thread).await;
+        let thread: crate::agent::codex::CodexThread =
+            serde_json::from_value(task_thread_list(thread_id, cwd)["data"][0].clone())
+                .expect("canonical test thread");
+        state
+            .codex_sessions
+            .observe_thread_metadata(Conversation::from(&thread))
+            .await;
         manage_test_thread(state, thread_id, cwd).await;
     }
 

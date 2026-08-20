@@ -66,7 +66,7 @@ pub(super) async fn mark_task_seen(
     let thread = client.read_thread(&thread_id).await?;
     state
         .codex_sessions
-        .observe_thread_metadata(thread.clone())
+        .observe_thread_metadata(Conversation::from(&thread))
         .await;
     let mut task = state
         .detail

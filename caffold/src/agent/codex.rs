@@ -48,7 +48,7 @@ use protocol::{
     THREAD_LOADED_LIST, ThreadListResponse, ThreadLoadedListResponse, thread_loaded_list_params,
 };
 #[cfg(test)]
-pub(crate) use protocol::{TurnItemsView, decode_notification, decode_server_request};
+pub(crate) use protocol::{decode_notification, decode_server_request};
 pub(crate) use readiness::{CodexInstallation, inspect_codex_installation};
 pub use readiness::{
     CodexReadiness, CodexReadinessReason, CodexReadinessState, MINIMUM_SUPPORTED_CODEX_CLI_VERSION,

@@ -1,6 +1,7 @@
 use futures_util::{StreamExt, stream};
 
-use crate::agent::codex::{CodexThreadClient, CodexThreadError, ThreadStatus};
+use crate::agent::ThreadStatus;
+use crate::agent::codex::{CodexThreadClient, CodexThreadError};
 
 use super::{CodexThreadSessions, ThreadSessionLifecycle, ThreadSessionSnapshot};
 
@@ -81,7 +82,7 @@ impl CodexThreadSessions {
         match self.ensure_subscribed(client, generation, thread_id).await {
             Ok(snapshot)
                 if snapshot
-                    .thread
+                    .conversation
                     .as_ref()
                     .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. })) =>
             {

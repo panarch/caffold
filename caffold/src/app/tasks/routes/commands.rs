@@ -173,7 +173,7 @@ pub(super) async fn task_prompt(
                 connection.generation,
                 &thread_id,
                 managed_cwd.as_deref(),
-                turn,
+                Turn::from(&turn),
                 applied_options.clone(),
             )
             .await;
@@ -498,6 +498,15 @@ pub(super) fn validate_task_image_data_url(image: &str) -> Result<(), ApiError> 
 mod tests {
     use serde_json::{Value as JsonValue, json};
     use tower::ServiceExt;
+
+    /// Decode a fixture the way the adapter decodes a real answer.
+    fn decoded_thread(thread: JsonValue) -> crate::agent::codex::CodexThread {
+        serde_json::from_value(thread).expect("the fixture decodes as a Codex thread")
+    }
+
+    fn decoded_page(page: JsonValue) -> crate::agent::codex::TurnsPage {
+        serde_json::from_value(page).expect("the fixture decodes as a Codex turns page")
+    }
 
     use super::super::test_support::*;
     use super::*;
@@ -1180,7 +1189,7 @@ mod tests {
                 .snapshot(thread_id)
                 .await
                 .unwrap()
-                .thread
+                .conversation
                 .unwrap()
                 .cwd,
             managed_cwd.display().to_string()
@@ -1192,7 +1201,7 @@ mod tests {
             .apply_external_read_sync(
                 thread_id,
                 syncing.revision,
-                serde_json::from_value(json!({
+                crate::agent::Conversation::from(&decoded_thread(json!({
                     "id": thread_id,
                     "preview": "Managed follow-up",
                     "status": { "type": "active", "activeFlags": [] },
@@ -1200,9 +1209,8 @@ mod tests {
                     "createdAt": 1.0,
                     "updatedAt": 2.0,
                     "turns": []
-                }))
-                .unwrap(),
-                serde_json::from_value(json!({
+                }))),
+                crate::agent::TurnPage::from(&decoded_page(json!({
                     "data": [{
                         "id": "turn-managed-follow-up",
                         "items": [],
@@ -1210,13 +1218,12 @@ mod tests {
                     }],
                     "nextCursor": null,
                     "backwardsCursor": null
-                }))
-                .unwrap(),
+                }))),
             )
             .await;
         let snapshot = state.codex_sessions.snapshot(thread_id).await.unwrap();
         assert_eq!(
-            snapshot.thread.unwrap().cwd,
+            snapshot.conversation.unwrap().cwd,
             root.path().display().to_string()
         );
         assert_eq!(

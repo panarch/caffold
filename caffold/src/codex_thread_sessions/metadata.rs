@@ -1,4 +1,5 @@
-use crate::agent::codex::{CodexThread, CodexThreadError, TurnsPage};
+use crate::agent::codex::CodexThreadError;
+use crate::agent::{Conversation, TurnPage};
 
 use super::{
     CodexThreadSessions, ThreadSessionLifecycle, ThreadSessionSnapshot, now_unix_ms, snapshot,
@@ -18,7 +19,7 @@ impl CodexThreadSessions {
                 return;
             }
             state.lifecycle = ThreadSessionLifecycle::Unloaded;
-            state.thread = None;
+            state.conversation = None;
             state.turns_page = None;
             state.active_turn_id = None;
             state.active_turn_cwd = None;
@@ -44,18 +45,18 @@ impl CodexThreadSessions {
         }
     }
 
-    pub async fn observe_thread_metadata(&self, mut thread: CodexThread) {
+    pub async fn observe_thread_metadata(&self, mut thread: Conversation) {
         self.observe_thread_metadata_inner(&mut thread, None).await;
     }
 
-    pub async fn observe_listed_thread_metadata(&self, generation: u64, mut thread: CodexThread) {
+    pub async fn observe_listed_thread_metadata(&self, generation: u64, mut thread: Conversation) {
         self.observe_thread_metadata_inner(&mut thread, Some(generation))
             .await;
     }
 
     async fn observe_thread_metadata_inner(
         &self,
-        thread: &mut CodexThread,
+        thread: &mut Conversation,
         generation: Option<u64>,
     ) {
         let entry = self.entry(&thread.id).await;
@@ -66,25 +67,25 @@ impl CodexThreadSessions {
             }
             state.last_error = None;
         }
-        let status_changed = state.thread.is_none() && state.pending_thread_status.is_none();
-        if let Some(current) = state.thread.as_ref() {
-            *thread = CodexThread {
+        let status_changed = state.conversation.is_none() && state.pending_thread_status.is_none();
+        if let Some(current) = state.conversation.as_ref() {
+            *thread = Conversation {
                 status: current.status.clone(),
                 turns: current.turns.clone(),
                 ..thread.clone()
             };
         } else if let Some(status) = state.pending_thread_status.clone() {
-            *thread = CodexThread {
+            *thread = Conversation {
                 status,
                 ..thread.clone()
             };
         }
-        if state.thread.as_ref() == Some(thread) {
+        if state.conversation.as_ref() == Some(thread) {
             return;
         }
         let next_active_turn_id = active_turn_id(thread, state.turns_page.as_ref());
         update_active_turn(&mut state, next_active_turn_id, Some(thread.cwd.clone()));
-        state.thread = Some(thread.clone());
+        state.conversation = Some(thread.clone());
         state.pending_thread_status = None;
         state.revision = state.revision.saturating_add(1);
         state.name_revision = state.revision;
@@ -108,8 +109,8 @@ impl CodexThreadSessions {
         &self,
         thread_id: &str,
         base_revision: u64,
-        thread: CodexThread,
-        latest_turns: TurnsPage,
+        thread: Conversation,
+        latest_turns: TurnPage,
     ) -> ThreadSessionSnapshot {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
@@ -188,7 +189,7 @@ mod tests {
                 1,
                 &CodexNotification::ThreadStatusChanged {
                     thread_id: "thread-1".to_string(),
-                    status: ThreadStatus::Idle,
+                    status: WireThreadStatus::Idle,
                 },
             )
             .await;
@@ -199,19 +200,21 @@ mod tests {
             Vec::new(),
         );
         updated_metadata.updated_at = 2.0;
-        sessions.observe_thread_metadata(updated_metadata).await;
+        sessions
+            .observe_thread_metadata(Conversation::from(&updated_metadata))
+            .await;
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
 
         assert_eq!(snapshot.active_turn_id, None);
         assert!(!snapshot.runtime_lease);
         assert!(
             snapshot
-                .thread
+                .conversation
                 .as_ref()
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle)
         );
         assert_eq!(
-            snapshot.turns_page.as_ref().expect("history").data[0].status,
+            snapshot.turns_page.as_ref().expect("history").turns[0].status,
             TurnStatus::InProgress
         );
     }
@@ -250,8 +253,8 @@ mod tests {
             .apply_external_read_sync(
                 "thread-1",
                 syncing.revision,
-                response.thread,
-                response.initial_turns_page.expect("latest turns page"),
+                Conversation::from(&response.thread),
+                TurnPage::from(&response.initial_turns_page.expect("latest turns page")),
             )
             .await;
         assert_eq!(snapshot.generation, 7);
@@ -260,20 +263,27 @@ mod tests {
         assert_eq!(methods(&primary).await, vec!["thread/resume"]);
     }
 
-    fn listed_thread(id: &str, status: ThreadStatus) -> CodexThread {
-        CodexThread {
+    fn listed_thread(id: &str, status: ThreadStatus) -> Conversation {
+        Conversation {
             id: id.to_string(),
+            title: None,
             preview: id.to_string(),
             status,
             cwd: "/tmp".to_string(),
-            path: None,
-            name: None,
-            created_at: 1.0,
-            updated_at: 2.0,
-            recency_at: None,
+            transcript_path: None,
+            created_at_ms: 1_000,
+            updated_at_ms: 2_000,
+            recency_at_ms: None,
             turns: Vec::new(),
-            extra: Default::default(),
         }
+    }
+
+    fn wire_active_status() -> WireThreadStatus {
+        serde_json::from_value(serde_json::json!({
+            "type": "active",
+            "activeFlags": [],
+        }))
+        .expect("active thread status")
     }
 
     fn active_status() -> ThreadStatus {
@@ -299,7 +309,7 @@ mod tests {
 
         let snapshot = sessions.snapshot("thread-1").await.unwrap();
         assert_eq!(snapshot.generation, 2);
-        assert_eq!(snapshot.thread.unwrap().status, ThreadStatus::Idle);
+        assert_eq!(snapshot.conversation.unwrap().status, ThreadStatus::Idle);
     }
 
     #[tokio::test]
@@ -311,7 +321,7 @@ mod tests {
                 3,
                 &CodexNotification::ThreadStatusChanged {
                     thread_id: "thread-1".to_string(),
-                    status: active_status(),
+                    status: wire_active_status(),
                 },
             )
             .await;
@@ -324,7 +334,7 @@ mod tests {
                 .snapshot("thread-1")
                 .await
                 .unwrap()
-                .thread
+                .conversation
                 .unwrap()
                 .status,
             ThreadStatus::Active { .. }

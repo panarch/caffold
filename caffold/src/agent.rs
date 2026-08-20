@@ -28,5 +28,5 @@ pub(crate) use approval::{
 };
 pub(crate) use conversation::{
     ActivityStatus, CommandExecution, Conversation, ConversationItem, GeneratedImage, ItemKind,
-    MessageContent, MessagePhase, ThreadActiveFlag, ThreadStatus, Turn, TurnStatus,
+    MessageContent, MessagePhase, ThreadActiveFlag, ThreadStatus, Turn, TurnPage, TurnStatus,
 };

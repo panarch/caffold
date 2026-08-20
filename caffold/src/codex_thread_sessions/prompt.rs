@@ -1,7 +1,8 @@
 use crate::agent::codex::{
-    CodexThreadClient, CodexThreadError, CodexTurn, CodexTurnOptions, ThreadStatus, TurnStatus,
-    is_fast_service_tier, service_tier_for_fast_mode,
+    CodexThreadClient, CodexThreadError, CodexTurnOptions, is_fast_service_tier,
+    service_tier_for_fast_mode,
 };
+use crate::agent::{ThreadStatus, Turn, TurnPage, TurnStatus};
 
 use super::{
     CodexThreadSessions, INITIAL_TURNS_PAGE_SIZE, PromptTarget, ThreadSessionLifecycle,
@@ -25,7 +26,7 @@ impl CodexThreadSessions {
             state.runtime_lease = true;
             if state.generation == generation
                 && state.lifecycle == ThreadSessionLifecycle::Subscribed
-                && state.thread.is_some()
+                && state.conversation.is_some()
             {
                 Some(snapshot(&state))
             } else {
@@ -43,7 +44,7 @@ impl CodexThreadSessions {
             },
         };
         let current = if current
-            .thread
+            .conversation
             .as_ref()
             .is_some_and(|thread| thread.status == ThreadStatus::NotLoaded)
         {
@@ -68,7 +69,7 @@ impl CodexThreadSessions {
             )));
         }
 
-        let thread = current.thread.ok_or_else(|| {
+        let thread = current.conversation.ok_or_else(|| {
             CodexThreadError::SubscriptionLost(format!(
                 "Codex thread {thread_id} did not return canonical metadata while preparing a prompt"
             ))
@@ -89,8 +90,9 @@ impl CodexThreadSessions {
                         return Err(error);
                     }
                 };
+                let page = TurnPage::from(&page);
                 let Some(turn_id) = page
-                    .data
+                    .turns
                     .iter()
                     .find(|turn| turn.status == TurnStatus::InProgress)
                     .map(|turn| turn.id.clone())
@@ -136,7 +138,7 @@ impl CodexThreadSessions {
             let state = entry.state.lock().await;
             if state.generation == generation
                 && state.lifecycle == ThreadSessionLifecycle::Subscribed
-                && state.thread.is_some()
+                && state.conversation.is_some()
             {
                 return Ok(snapshot(&state));
             }
@@ -172,7 +174,7 @@ impl CodexThreadSessions {
         generation: u64,
         thread_id: &str,
         cwd: Option<&str>,
-        turn: CodexTurn,
+        turn: Turn,
         options: CodexTurnOptions,
     ) {
         let entry = self.entry(thread_id).await;
@@ -182,9 +184,9 @@ impl CodexThreadSessions {
         }
         let active_turn_cwd = cwd
             .map(str::to_string)
-            .or_else(|| state.thread.as_ref().map(|thread| thread.cwd.clone()));
+            .or_else(|| state.conversation.as_ref().map(|thread| thread.cwd.clone()));
         if let Some(cwd) = cwd
-            && let Some(thread) = state.thread.as_mut()
+            && let Some(thread) = state.conversation.as_mut()
         {
             thread.cwd = cwd.to_string();
         }
@@ -228,24 +230,27 @@ impl CodexThreadSessions {
             return Ok(snapshot.active_turn_id);
         }
         if !snapshot
-            .thread
+            .conversation
             .as_ref()
             .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
         {
             return Ok(None);
         }
-        let page = client.list_thread_turns(thread_id, None, 8).await?;
+        let page = TurnPage::from(&client.list_thread_turns(thread_id, None, 8).await?);
         let turn_id = page
-            .data
+            .turns
             .iter()
             .find(|turn| turn.status == TurnStatus::InProgress)
             .map(|turn| turn.id.clone());
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
         state.active_turn_id = turn_id.clone();
-        state.active_turn_cwd = turn_id
-            .as_ref()
-            .and_then(|_| snapshot.thread.as_ref().map(|thread| thread.cwd.clone()));
+        state.active_turn_cwd = turn_id.as_ref().and_then(|_| {
+            snapshot
+                .conversation
+                .as_ref()
+                .map(|thread| thread.cwd.clone())
+        });
         state.terminal_candidate_turn_id = turn_id.clone();
         merge_latest_turns_page(&mut state.turns_page, page);
         state.revision = state.revision.saturating_add(1);
@@ -485,7 +490,7 @@ mod tests {
                 1,
                 "thread-1",
                 Some("/managed/worktree"),
-                turn("turn-new", TurnStatus::InProgress),
+                Turn::from(&turn("turn-new", TurnStatus::InProgress)),
                 CodexTurnOptions::default(),
             )
             .await;
@@ -501,12 +506,15 @@ mod tests {
             Some("/managed/worktree")
         );
         assert_eq!(
-            snapshot.thread.as_ref().map(|thread| thread.cwd.as_str()),
+            snapshot
+                .conversation
+                .as_ref()
+                .map(|thread| thread.cwd.as_str()),
             Some("/managed/worktree")
         );
         assert!(
             snapshot
-                .thread
+                .conversation
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle),
             "starting a turn must not synthesize thread status"
         );
@@ -606,7 +614,7 @@ mod tests {
             ),
             MockCodexResponse::ok(
                 "thread/turns/list",
-                page(vec![canonical], None, Some("active-anchor")),
+                wire_page(vec![canonical], None, Some("active-anchor")),
             ),
         ]);
         let sessions = CodexThreadSessions::default();
@@ -644,7 +652,7 @@ mod tests {
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
         assert!(!snapshot.runtime_lease);
         assert_eq!(snapshot.lifecycle, ThreadSessionLifecycle::Error);
-        assert!(snapshot.thread.is_none());
+        assert!(snapshot.conversation.is_none());
         assert!(snapshot.last_error.is_some());
     }
 }

@@ -41,7 +41,7 @@ use super::generated_images::GeneratedImageError;
 
 use crate::{
     agent::{
-        ApprovalDecision, Conversation,
+        ApprovalDecision, Conversation, Turn,
         codex::{
             CodexDaemonInfo, CodexPermissionMode, CodexStatusResponse, CodexThreadClient,
             CodexThreadError, CodexTurnOptions, NORMAL_SERVICE_TIER_ID, ThreadStatus,

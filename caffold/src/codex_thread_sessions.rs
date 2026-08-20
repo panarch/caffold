@@ -15,9 +15,8 @@ use std::{
 use serde::Serialize;
 use tokio::sync::Mutex as AsyncMutex;
 
-use crate::agent::codex::{
-    CodexPermissionMode, CodexThread, CodexThreadClient, ThreadStatus, TurnsPage,
-};
+use crate::agent::codex::{CodexPermissionMode, CodexThreadClient};
+use crate::agent::{Conversation, ThreadStatus, TurnPage};
 
 const INITIAL_TURNS_PAGE_SIZE: usize = 8;
 const VIEWER_HANDOFF_GRACE: Duration = Duration::from_millis(250);
@@ -36,8 +35,8 @@ pub enum ThreadSessionLifecycle {
 #[allow(dead_code)]
 pub struct ThreadSessionSnapshot {
     pub lifecycle: ThreadSessionLifecycle,
-    pub thread: Option<CodexThread>,
-    pub turns_page: Option<TurnsPage>,
+    pub conversation: Option<Conversation>,
+    pub turns_page: Option<TurnPage>,
     pub active_turn_id: Option<String>,
     pub active_turn_cwd: Option<String>,
     pub viewer_leases: usize,
@@ -115,8 +114,12 @@ struct ThreadSessionEntry {
 
 struct ThreadSessionState {
     lifecycle: ThreadSessionLifecycle,
-    thread: Option<CodexThread>,
-    turns_page: Option<TurnsPage>,
+    /// What the agent last said this conversation is, in Caffold's shape.
+    ///
+    /// Its turns are not the history: the agent reports the conversation and a
+    /// page of its turns as two answers, and `turns_page` is the second.
+    conversation: Option<Conversation>,
+    turns_page: Option<TurnPage>,
     active_turn_id: Option<String>,
     active_turn_cwd: Option<String>,
     terminal_candidate_turn_id: Option<String>,
@@ -143,7 +146,7 @@ impl Default for ThreadSessionState {
     fn default() -> Self {
         Self {
             lifecycle: ThreadSessionLifecycle::Unloaded,
-            thread: None,
+            conversation: None,
             turns_page: None,
             active_turn_id: None,
             active_turn_cwd: None,
@@ -257,7 +260,7 @@ impl CodexThreadSessions {
 fn snapshot(state: &ThreadSessionState) -> ThreadSessionSnapshot {
     ThreadSessionSnapshot {
         lifecycle: state.lifecycle,
-        thread: state.thread.clone(),
+        conversation: state.conversation.clone(),
         turns_page: state.turns_page.clone(),
         active_turn_id: state.active_turn_id.clone(),
         active_turn_cwd: state.active_turn_cwd.clone(),
@@ -292,56 +295,73 @@ pub(super) mod test_support {
         CodexThreadSessions, INITIAL_TURNS_PAGE_SIZE, PromptTarget, TerminalTurnApplyOutcome,
         ThreadSessionLifecycle, ThreadSessionSnapshot,
     };
+    pub(super) use crate::agent::codex::ThreadStatus as WireThreadStatus;
     pub(super) use crate::agent::codex::{
         CodexNotification, CodexPermissionMode, CodexThread, CodexThreadClient, CodexTurn,
-        CodexTurnOptions, MockCodexResponse, ThreadResumeResponse, ThreadStatus, TurnItemsView,
-        TurnStatus, TurnsPage,
+        CodexTurnOptions, MockCodexResponse, ThreadResumeResponse,
     };
+    pub(super) use crate::agent::{Conversation, ThreadStatus, Turn, TurnPage, TurnStatus};
+
+    /// A fixture written in Caffold's vocabulary and read back as Codex's.
+    ///
+    /// The two serialize identically today, which the driver's contract test
+    /// asserts directly. Going through the wire form is what keeps these tests
+    /// exercising the adapter rather than asserting against a shape it would
+    /// have rejected.
+    pub(super) fn decoded<T: serde::de::DeserializeOwned>(value: serde_json::Value) -> T {
+        serde_json::from_value(value).expect("the fixture decodes as Codex sends it")
+    }
 
     pub(super) fn turn(id: &str, status: TurnStatus) -> CodexTurn {
         turn_at(id, status, 1.0)
     }
 
     pub(super) fn turn_at(id: &str, status: TurnStatus, started_at: f64) -> CodexTurn {
-        CodexTurn {
-            id: id.to_string(),
-            items: Vec::new(),
-            items_view: TurnItemsView::Full,
-            status,
-            error: None,
-            started_at: Some(started_at),
-            completed_at: None,
-            duration_ms: None,
-            extra: BTreeMap::new(),
-        }
+        decoded(json!({
+            "id": id,
+            "items": [],
+            "itemsView": "full",
+            "status": status,
+            "startedAt": started_at,
+        }))
     }
 
     pub(super) fn thread(status: ThreadStatus, turns: Vec<CodexTurn>) -> CodexThread {
-        CodexThread {
-            id: "thread-1".to_string(),
-            preview: "Task".to_string(),
-            status,
-            cwd: "Workspace/rust/codger".to_string(),
-            path: None,
-            name: None,
-            created_at: 1.0,
-            updated_at: 1.0,
-            recency_at: None,
-            turns,
-            extra: BTreeMap::new(),
-        }
+        decoded(json!({
+            "id": "thread-1",
+            "preview": "Task",
+            "status": status,
+            "cwd": "Workspace/rust/codger",
+            "createdAt": 1.0,
+            "updatedAt": 1.0,
+            "turns": turns,
+        }))
     }
 
-    pub(super) fn page(
+    /// A page the way the session keeps it, for what the app hands over.
+    pub(super) fn turn_page(
         turns: Vec<CodexTurn>,
         next_cursor: Option<&str>,
         backwards_cursor: Option<&str>,
-    ) -> TurnsPage {
-        TurnsPage {
-            data: turns,
+    ) -> TurnPage {
+        TurnPage {
+            turns: turns.iter().map(Turn::from).collect(),
             next_cursor: next_cursor.map(str::to_string),
             backwards_cursor: backwards_cursor.map(str::to_string),
         }
+    }
+
+    /// A page the way Codex answers with it, for what a mocked call returns.
+    pub(super) fn wire_page(
+        turns: Vec<CodexTurn>,
+        next_cursor: Option<&str>,
+        backwards_cursor: Option<&str>,
+    ) -> serde_json::Value {
+        json!({
+            "data": turns,
+            "nextCursor": next_cursor,
+            "backwardsCursor": backwards_cursor,
+        })
     }
 
     pub(super) fn resume_response(
@@ -353,7 +373,7 @@ pub(super) mod test_support {
         ThreadResumeResponse {
             cwd: thread.cwd.clone(),
             thread,
-            initial_turns_page: Some(page(page_turns, None, Some("latest-anchor"))),
+            initial_turns_page: Some(decoded(wire_page(page_turns, None, Some("latest-anchor")))),
             extra: BTreeMap::new(),
         }
     }
@@ -425,7 +445,7 @@ mod tests {
     async fn forgotten_thread_releases_its_ephemeral_session_entry() {
         let sessions = CodexThreadSessions::default();
         sessions
-            .observe_thread_metadata(thread(ThreadStatus::Idle, Vec::new()))
+            .observe_thread_metadata(Conversation::from(&thread(ThreadStatus::Idle, Vec::new())))
             .await;
         assert!(sessions.snapshot("thread-1").await.is_some());
 

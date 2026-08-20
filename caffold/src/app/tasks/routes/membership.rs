@@ -144,7 +144,7 @@ pub(super) async fn task_recovery_restore(
     state.codex_sessions.forget_thread(&thread_id).await;
     state
         .codex_sessions
-        .observe_thread_metadata(thread.clone())
+        .observe_thread_metadata(Conversation::from(&thread))
         .await;
     let mut task = state
         .detail
@@ -349,7 +349,7 @@ pub(super) async fn task_restore(
     };
     state
         .codex_sessions
-        .observe_thread_metadata(thread.clone())
+        .observe_thread_metadata(Conversation::from(&thread))
         .await;
     let mut task = state
         .detail

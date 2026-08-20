@@ -1,4 +1,5 @@
-use crate::agent::codex::{CodexNotification, CodexTurn, ThreadStatus, TurnStatus};
+use crate::agent::codex::CodexNotification;
+use crate::agent::{Conversation, ThreadStatus, Turn, TurnStatus};
 
 use super::{
     CodexThreadSessions, NotificationApplyOutcome, TerminalTurnApplyOutcome,
@@ -38,7 +39,11 @@ impl CodexThreadSessions {
             }
             let terminal = match notification {
                 CodexNotification::TurnCompleted { turn, .. } => Some(TerminalTurnApplyOutcome {
-                    first_current_transition: is_first_current_terminal_transition(&state, turn),
+                    first_current_transition: is_first_current_terminal_transition(
+                        &state,
+                        &turn.id,
+                        turn.status.into(),
+                    ),
                 }),
                 _ => None,
             };
@@ -109,13 +114,17 @@ fn notification_changes_name(notification: &CodexNotification) -> bool {
     )
 }
 
-fn is_first_current_terminal_transition(state: &ThreadSessionState, turn: &CodexTurn) -> bool {
-    if turn.status == TurnStatus::InProgress
-        || state.terminal_candidate_turn_id.as_deref() != Some(turn.id.as_str())
+fn is_first_current_terminal_transition(
+    state: &ThreadSessionState,
+    turn_id: &str,
+    status: TurnStatus,
+) -> bool {
+    if status == TurnStatus::InProgress
+        || state.terminal_candidate_turn_id.as_deref() != Some(turn_id)
     {
         return false;
     }
-    !turn_is_terminal(state, &turn.id)
+    !turn_is_terminal(state, turn_id)
 }
 
 fn apply_notification_state(
@@ -124,24 +133,32 @@ fn apply_notification_state(
 ) -> NotificationEffect {
     match notification {
         CodexNotification::ThreadStarted { thread } => {
-            if state.lifecycle == ThreadSessionLifecycle::Subscribing || state.thread.is_some() {
+            if state.lifecycle == ThreadSessionLifecycle::Subscribing
+                || state.conversation.is_some()
+            {
                 return NotificationEffect::Ignored;
             }
-            let next_active_turn_id = active_turn_id(thread, state.turns_page.as_ref())
+            let conversation = Conversation::from(thread);
+            let next_active_turn_id = active_turn_id(&conversation, state.turns_page.as_ref())
                 .filter(|turn_id| !turn_is_terminal(state, turn_id));
-            update_active_turn(state, next_active_turn_id.clone(), Some(thread.cwd.clone()));
+            update_active_turn(
+                state,
+                next_active_turn_id.clone(),
+                Some(conversation.cwd.clone()),
+            );
             state.terminal_candidate_turn_id = next_active_turn_id;
-            state.thread = Some(thread.clone());
+            state.conversation = Some(conversation);
             state.pending_thread_status = None;
             NotificationEffect::CanonicalStateChanged
         }
         CodexNotification::ThreadStatusChanged { status, .. } => {
-            if let Some(thread) = state.thread.as_mut() {
-                thread.status = status.clone();
-            } else {
-                state.pending_thread_status = Some(status.clone());
-            }
+            let status = ThreadStatus::from(status.clone());
             let terminal = !matches!(status, ThreadStatus::Active { .. });
+            if let Some(conversation) = state.conversation.as_mut() {
+                conversation.status = status;
+            } else {
+                state.pending_thread_status = Some(status);
+            }
             if terminal {
                 state.active_turn_id = None;
                 state.active_turn_cwd = None;
@@ -152,13 +169,13 @@ fn apply_notification_state(
             NotificationEffect::CanonicalStateChanged
         }
         CodexNotification::ThreadNameUpdated { thread_name, .. } => {
-            let Some(thread) = state.thread.as_mut() else {
+            let Some(thread) = state.conversation.as_mut() else {
                 return NotificationEffect::Ignored;
             };
-            if thread.name == *thread_name {
+            if thread.title == *thread_name {
                 return NotificationEffect::Ignored;
             }
-            thread.name = thread_name.clone();
+            thread.title = thread_name.clone();
             NotificationEffect::CanonicalStateChanged
         }
         CodexNotification::ThreadSettingsUpdated {
@@ -171,17 +188,17 @@ fn apply_notification_state(
             if turn_is_terminal(state, &turn.id) {
                 return NotificationEffect::Ignored;
             }
-            let inferred_cwd = state.thread.as_ref().map(|thread| thread.cwd.clone());
+            let inferred_cwd = state.conversation.as_ref().map(|thread| thread.cwd.clone());
             update_active_turn(state, Some(turn.id.clone()), inferred_cwd);
             if state.lifecycle == ThreadSessionLifecycle::Subscribed {
                 state.terminal_candidate_turn_id = Some(turn.id.clone());
             }
             state.runtime_lease = true;
-            upsert_turn(&mut state.turns_page, turn.clone());
+            upsert_turn(&mut state.turns_page, Turn::from(turn));
             NotificationEffect::CanonicalStateChanged
         }
         CodexNotification::TurnCompleted { turn, .. } => {
-            if turn.status == TurnStatus::InProgress {
+            if TurnStatus::from(turn.status) == TurnStatus::InProgress {
                 return NotificationEffect::Ignored;
             }
             if state.active_turn_id.as_deref() == Some(turn.id.as_str()) {
@@ -193,7 +210,7 @@ fn apply_notification_state(
                 state.terminal_candidate_turn_id = None;
                 state.runtime_lease = false;
             }
-            upsert_turn(&mut state.turns_page, turn.clone());
+            upsert_turn(&mut state.turns_page, Turn::from(turn));
             NotificationEffect::CanonicalStateChanged
         }
         CodexNotification::ItemStarted { .. }
@@ -271,7 +288,7 @@ mod tests {
                 1,
                 &CodexNotification::ThreadStatusChanged {
                     thread_id: "thread-1".to_string(),
-                    status: ThreadStatus::SystemError,
+                    status: WireThreadStatus::SystemError,
                 },
             )
             .await;
@@ -310,7 +327,7 @@ mod tests {
 
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
         assert_eq!(
-            snapshot.thread.expect("canonical thread").status,
+            snapshot.conversation.expect("canonical thread").status,
             ThreadStatus::Idle,
             "turn notifications must not synthesize thread status"
         );
@@ -354,7 +371,7 @@ mod tests {
 
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
         assert_eq!(
-            snapshot.thread.expect("canonical thread").status,
+            snapshot.conversation.expect("canonical thread").status,
             active,
             "turn notifications must not synthesize thread status"
         );
@@ -384,7 +401,7 @@ mod tests {
                 1,
                 &CodexNotification::ThreadStatusChanged {
                     thread_id: "thread-1".to_string(),
-                    status: ThreadStatus::Idle,
+                    status: WireThreadStatus::Idle,
                 },
             )
             .await;
@@ -615,7 +632,11 @@ mod tests {
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
         assert_eq!(snapshot.revision, initial.revision + 1);
         assert_eq!(
-            snapshot.thread.expect("canonical thread").name.as_deref(),
+            snapshot
+                .conversation
+                .expect("canonical thread")
+                .title
+                .as_deref(),
             Some("Whisper voice input")
         );
     }
@@ -675,7 +696,7 @@ mod tests {
                 1,
                 &CodexNotification::ThreadStatusChanged {
                     thread_id: "thread-1".to_string(),
-                    status: ThreadStatus::Idle,
+                    status: WireThreadStatus::Idle,
                 },
             )
             .await;
@@ -685,12 +706,12 @@ mod tests {
         assert!(!snapshot.runtime_lease);
         assert!(
             snapshot
-                .thread
+                .conversation
                 .as_ref()
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle)
         );
         assert_eq!(
-            snapshot.turns_page.as_ref().expect("history").data[0].status,
+            snapshot.turns_page.as_ref().expect("history").turns[0].status,
             TurnStatus::InProgress
         );
     }
@@ -728,7 +749,7 @@ mod tests {
         assert!(snapshot.runtime_lease);
         assert!(
             snapshot
-                .thread
+                .conversation
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle),
             "turn notifications must not synthesize thread status"
         );
@@ -767,7 +788,7 @@ mod tests {
                 1,
                 &CodexNotification::ThreadStatusChanged {
                     thread_id: "thread-1".to_string(),
-                    status: ThreadStatus::Idle,
+                    status: WireThreadStatus::Idle,
                 },
             )
             .await;
@@ -779,7 +800,7 @@ mod tests {
         assert_eq!(snapshot.active_turn_id, None);
         assert!(
             snapshot
-                .thread
+                .conversation
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle)
         );
     }
@@ -819,7 +840,7 @@ mod tests {
                 1,
                 &CodexNotification::ThreadStatusChanged {
                     thread_id: "thread-1".to_string(),
-                    status: ThreadStatus::Idle,
+                    status: WireThreadStatus::Idle,
                 },
             )
             .await;

@@ -21,13 +21,13 @@
 use serde_json::{Value, json};
 
 use super::protocol::{
-    CodexThread, CodexTurn, ThreadActiveFlag, ThreadStatus, TurnStatus, seconds_to_ms,
+    CodexThread, CodexTurn, ThreadActiveFlag, ThreadStatus, TurnStatus, TurnsPage, seconds_to_ms,
     seconds_to_ms_value,
 };
 use crate::agent::{
     ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, CommandExecution,
     Conversation, ConversationItem, GeneratedImage, ItemKind, MessageContent, MessagePhase,
-    PermissionRow, Turn,
+    PermissionRow, Turn, TurnPage,
 };
 
 impl From<&CodexThread> for Conversation {
@@ -46,6 +46,16 @@ impl From<&CodexThread> for Conversation {
             updated_at_ms: seconds_to_ms(Some(thread.updated_at)),
             recency_at_ms: thread.recency_at.map(seconds_to_ms_value),
             turns: thread.turns.iter().map(Turn::from).collect(),
+        }
+    }
+}
+
+impl From<&TurnsPage> for TurnPage {
+    fn from(page: &TurnsPage) -> Self {
+        Self {
+            turns: page.data.iter().map(Turn::from).collect(),
+            next_cursor: page.next_cursor.clone(),
+            backwards_cursor: page.backwards_cursor.clone(),
         }
     }
 }

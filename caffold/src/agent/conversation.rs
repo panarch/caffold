@@ -39,6 +39,22 @@ pub(crate) struct Conversation {
     pub(crate) turns: Vec<Turn>,
 }
 
+/// The turns Caffold has read, and where the rest would be.
+///
+/// An agent that pages its history hands back a window and a cursor into what
+/// lies beyond it. One that does not page hands back what it has and no cursor,
+/// which reads as "there is nothing further to ask for" rather than as a
+/// missing capability.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct TurnPage {
+    /// Newest first, which is the order history is read in.
+    pub(crate) turns: Vec<Turn>,
+    /// Where to continue reading older turns.
+    pub(crate) next_cursor: Option<String>,
+    /// Where to continue reading turns newer than this window.
+    pub(crate) backwards_cursor: Option<String>,
+}
+
 /// One exchange: a prompt and everything the agent did in response.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Turn {
