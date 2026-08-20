@@ -9,14 +9,6 @@ caffold-task-markdown {
     min-width: 0;
     overflow-wrap: anywhere;
 
-    & > :first-child {
-      margin-top: 0;
-    }
-
-    & > :last-child {
-      margin-bottom: 0;
-    }
-
     & :is(
       p,
       ul,
@@ -148,6 +140,18 @@ caffold-task-markdown {
     & > .markdown-loading {
       min-height: var(--conversation-line-height);
       color: var(--muted);
+    }
+
+    /* A message ends where its text ends, and starts where its text starts.
+       These weigh the same as the block margins above — `:is()` carries the
+       weight of its heaviest argument, and that list holds class selectors — so
+       they have to be written after the margins they take back. */
+    & > :first-child {
+      margin-top: 0;
+    }
+
+    & > :last-child {
+      margin-bottom: 0;
     }
   }
 }

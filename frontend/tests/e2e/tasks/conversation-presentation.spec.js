@@ -753,6 +753,41 @@ test("names the work an agent did that Caffold draws no surface for", { tag: "@a
   await expect(probed).toHaveAttribute("data-tool-tone", "danger");
 });
 
+test("renders a message that ends where its text ends", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  // Every block inside a rendered message carries a margin so the blocks stand
+  // apart. The outermost two must give theirs back, or the bubble reads as
+  // though the writer left a blank line at the end that they never typed.
+  const scenario = await installTaskLoopFixture(page, {
+    threadId: "019fd747-1247-7bb0-998b-9aec53bdf7f4",
+  });
+  await scenario.seedCompletedTask();
+  await page.goto(`/tasks/${scenario.threadId}`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(
+    tasksPage.locator('.task-message[data-message-role="assistant"] caffold-task-markdown'),
+  ).toHaveAttribute("data-render-state", "markdown");
+
+  const edges = await tasksPage.evaluate((root) =>
+    ["user", "assistant"].map((role) => {
+      const body = root.querySelector(
+        `.task-message[data-message-role="${role}"] .markdown-body`,
+      );
+      return {
+        role,
+        marginTop: getComputedStyle(body.firstElementChild).marginTop,
+        marginBottom: getComputedStyle(body.lastElementChild).marginBottom,
+      };
+    }),
+  );
+
+  expect(edges).toEqual([
+    { role: "user", marginTop: "0px", marginBottom: "0px" },
+    { role: "assistant", marginTop: "0px", marginBottom: "0px" },
+  ]);
+});
+
 test("presents a completed canonical turn without duplicate or unsafe content", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
