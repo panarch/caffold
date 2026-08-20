@@ -17,7 +17,7 @@ use super::{
         TaskRecord, apply_canonical_turn_projection, conversation_with_turns,
         resolve_conversation_cwd, task_record_from_conversation,
     },
-    runtime::{CodexConnection, CodexRuntime, CodexRuntimeSignal},
+    runtime::{CodexConnection, CodexRuntime, CodexRuntimeSignal, TaskAgent},
     sync::{DeferredTaskRolloutSubscription, TaskSync, TaskSyncJob, TaskSyncOutcome},
     worktrees::inspect_ready_worktree,
 };
@@ -29,7 +29,7 @@ use crate::{
     app::error::ApiError,
     app::tasks::sessions::{SessionSnapshot, TaskSessions},
     fs::RootedFs,
-    task_store::{ManagedThread, ManagedWorktreeState, TaskStore, TaskStoreError},
+    task_store::{ManagedThread, ManagedWorktreeState, TaskProvider, TaskStore, TaskStoreError},
 };
 
 pub(super) const TASK_DETAIL_TURNS_PAGE_SIZE: usize = 8;
@@ -63,6 +63,15 @@ pub(in crate::app) struct TaskDetailResponse {
     pub(in crate::app) events_page: TaskEventsPage,
     pub(in crate::app) pending_approvals: Vec<TaskEventRecord>,
     pub(in crate::app) history_loading: bool,
+    /// Which agent runs this Task, when this answer knows.
+    ///
+    /// The composer reads it to offer that agent's models and permission modes
+    /// and not another's. An error broadcast does not read the store, so it says
+    /// nothing here rather than naming an agent it did not look up. Such an
+    /// answer carries no Task either, and a Task nobody can read is one nobody
+    /// can prompt — so no surface reads this while it is absent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(in crate::app) provider: Option<TaskProvider>,
     pub(in crate::app) permission_mode: Option<String>,
     pub(in crate::app) model: Option<String>,
     pub(in crate::app) reasoning_effort: Option<String>,
@@ -153,6 +162,15 @@ impl DetailContext {
         self.runtime.connection().await
     }
 
+    /// The agent that owns this Task, ready to be asked about it.
+    pub(in crate::app) async fn agent(
+        &self,
+        thread_id: &str,
+    ) -> Result<TaskAgent, CodexThreadError> {
+        self.ensure_runtime_signal_driver().await;
+        self.runtime.task_agent(thread_id).await
+    }
+
     pub(in crate::app) async fn get(
         &self,
         thread_id: &str,
@@ -161,12 +179,12 @@ impl DetailContext {
         let cursor = cursor.map(str::trim).filter(|cursor| !cursor.is_empty());
         self.restore_managed_fast_mode(thread_id).await?;
         if let Some(cursor) = cursor {
-            let connection = self.connection().await?;
+            let agent = self.agent(thread_id).await?;
             let _viewer = self
                 .sessions
-                .acquire_viewer(&connection.driver(), connection.generation, thread_id)
+                .acquire_viewer(&agent.driver(), agent.generation(), thread_id)
                 .await?;
-            return self.read(&connection, thread_id, Some(cursor)).await;
+            return self.read(&agent, thread_id, Some(cursor)).await;
         }
 
         let viewer = self.sessions.reserve_viewer(thread_id).await;
@@ -373,7 +391,7 @@ impl DetailContext {
 
     pub(in crate::app) async fn read(
         &self,
-        connection: &CodexConnection,
+        agent: &TaskAgent,
         thread_id: &str,
         cursor: Option<&str>,
     ) -> Result<TaskDetailResponse, ApiError> {
@@ -382,8 +400,8 @@ impl DetailContext {
             let (snapshot, page) = self
                 .sessions
                 .load_older_turns(
-                    &connection.driver(),
-                    connection.generation,
+                    &agent.driver(),
+                    agent.generation(),
                     thread_id,
                     cursor,
                     TASK_DETAIL_TURNS_PAGE_SIZE,
@@ -393,7 +411,7 @@ impl DetailContext {
         } else {
             (
                 self.sessions
-                    .load_metadata(&connection.driver(), connection.generation, thread_id)
+                    .load_metadata(&agent.driver(), agent.generation(), thread_id)
                     .await?,
                 None,
             )
@@ -430,8 +448,8 @@ impl DetailContext {
             self.broadcast_error(thread_id, error.to_string()).await;
             return;
         }
-        let connection = match self.connection().await {
-            Ok(connection) => connection,
+        let agent = match self.agent(thread_id).await {
+            Ok(agent) => agent,
             Err(error) => {
                 self.sessions.fail_external_sync(thread_id, &error).await;
                 self.broadcast_error(thread_id, error.to_string()).await;
@@ -443,7 +461,7 @@ impl DetailContext {
         };
         let snapshot = match self
             .sessions
-            .ensure_subscribed(&connection.driver(), connection.generation, thread_id)
+            .ensure_subscribed(&agent.driver(), agent.generation(), thread_id)
             .await
         {
             Ok(snapshot) => snapshot,
@@ -515,6 +533,7 @@ impl DetailContext {
             });
             let (projected_events, file_links) = self.file_links.project_task(&task, &events).await;
             events = projected_events;
+            let provider = Some(current.run_by.provider());
             let model = session_model.or(current.model);
             let reasoning_effort = session_reasoning_effort.or(current.reasoning_effort);
             return Ok(TaskDetailResponse {
@@ -527,6 +546,7 @@ impl DetailContext {
                 events_page: TaskEventsPage { next_cursor },
                 pending_approvals,
                 history_loading,
+                provider,
                 permission_mode,
                 model,
                 reasoning_effort,
@@ -768,6 +788,7 @@ pub(in crate::app) fn loading_detail(
         events_page: TaskEventsPage { next_cursor: None },
         pending_approvals: Vec::new(),
         history_loading: true,
+        provider: managed.map(|thread| thread.run_by.provider()),
         permission_mode: None,
         model: managed.and_then(|thread| thread.model.clone()),
         reasoning_effort: managed.and_then(|thread| thread.reasoning_effort.clone()),
@@ -1184,10 +1205,10 @@ mod request_tests {
         let detail = state
             .detail
             .read(
-                &CodexConnection {
+                &TaskAgent::Codex(CodexConnection {
                     client: client.clone(),
                     generation: 1,
-                },
+                }),
                 thread_id,
                 None,
             )
@@ -1869,7 +1890,9 @@ mod request_tests {
             generation: 2,
         };
         let (shutdown, _) = broadcast::channel(1);
+        let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
         let runtime = CodexRuntime::new(
+            claude,
             sessions.clone(),
             TaskEvents::default(),
             TaskStore::memory().unwrap(),
@@ -2128,6 +2151,7 @@ mod request_tests {
             thread_id: thread_id.to_string(),
             revision: 7,
             detail: TaskDetailResponse {
+                provider: Some(TaskProvider::Codex),
                 thread_id: thread_id.to_string(),
                 sync_state: TaskSyncState::Ready,
                 revision: 7,

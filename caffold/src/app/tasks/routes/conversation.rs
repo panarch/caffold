@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::tasks::active_list::unavailable_active_task;
 
 pub(super) async fn task_detail(
     State(state): State<TaskState>,
@@ -55,22 +56,42 @@ pub(super) fn generated_image_api_error(
     }
 }
 
+/// Record that a person has looked at a Task.
+///
+/// What is written is Caffold's own — when this Task was last seen — so the
+/// answer describes the Task as well as it can be described without waking
+/// anything. Codex is asked, because asking it is cheap and refreshes what the
+/// session store knows; Claude is not, because reaching a Claude Task that
+/// nobody is watching means starting a process, and a person clicking a row did
+/// not ask for that.
 pub(super) async fn mark_task_seen(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskRecord>, ApiError> {
-    if task_store_get(&state, &thread_id).await?.is_none() {
+    let Some(managed) = task_store_get(&state, &thread_id).await? else {
         return Err(task_not_managed_error());
-    }
-    let client = require_codex_thread_client(&state).await?;
-    let thread = client.read_thread(&thread_id).await?;
-    state
-        .codex_sessions
-        .observe_thread_metadata(Conversation::from(&thread))
-        .await;
-    let mut task = state
-        .detail
-        .record_from_conversation(&Conversation::from(&thread))?;
+    };
+    let agent = state.codex_runtime.task_agent(&thread_id).await?;
+    let mut task = match agent.codex() {
+        Some(connection) => {
+            let conversation =
+                Conversation::from(&connection.client.read_thread(&thread_id).await?);
+            state
+                .codex_sessions
+                .observe_thread_metadata(conversation.clone())
+                .await;
+            state.detail.record_from_conversation(&conversation)?
+        }
+        None => match state
+            .codex_sessions
+            .snapshot(&thread_id)
+            .await
+            .and_then(|snapshot| snapshot.conversation)
+        {
+            Some(conversation) => state.detail.record_from_conversation(&conversation)?,
+            None => unavailable_active_task(&managed),
+        },
+    };
     let activity_ms = task_activity_ms(&task);
     let Some(managed) = task_store_mark_seen(&state, &thread_id, activity_ms).await? else {
         return Err(task_not_managed_error());
@@ -120,7 +141,54 @@ mod tests {
             test_support::*,
         },
         fs::RootedFs,
+        task_store::{ManagedThread, RunBy},
     };
+
+    #[tokio::test]
+    async fn a_claude_task_is_marked_seen_without_asking_codex_about_it() {
+        // Codex has never heard of a Claude conversation. Asking it made the
+        // request fail, so nothing was written and the Task came back unseen on
+        // the next read.
+        let root = tempfile::tempdir().unwrap();
+        let client = CodexThreadClient::mock(Vec::new());
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        let thread_id = "claude-thread";
+        state
+            .task_store
+            .claim(
+                ManagedThread {
+                    run_by: RunBy::Claude {
+                        cwd: root.path().display().to_string(),
+                    },
+                    ..ManagedThread::new(thread_id, RunBy::Codex, Some(1_000), None, None)
+                },
+                1,
+            )
+            .unwrap();
+        // A turn that finished while nobody was looking is what makes it unseen.
+        state
+            .task_store
+            .record_completed_turn(thread_id, 4_000)
+            .unwrap();
+        assert!(
+            state.task_store.get(thread_id).unwrap().unwrap().unseen(),
+            "a Task whose turn finished unwatched starts unseen"
+        );
+
+        let Json(task) = mark_task_seen(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .expect("a Claude Task can be marked seen");
+
+        assert!(!task.unseen);
+        assert!(
+            !state.task_store.get(thread_id).unwrap().unwrap().unseen(),
+            "and it stays seen when the Task is read again"
+        );
+        assert!(
+            state.codex_runtime.usage_diagnostics().threads.is_empty(),
+            "nothing woke an agent to answer a click"
+        );
+    }
 
     #[tokio::test]
     async fn task_detail_http_projects_the_canonical_file_link_contract() {

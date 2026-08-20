@@ -14,8 +14,9 @@
 //! them and would be guessing at the shared shape.
 //!
 //! This module holds the vocabulary and the choosing. What a choice means to an
-//! agent belongs to that agent — `codex::contract` for Codex — so that a second
-//! agent adds a match arm here rather than a second pile of internals.
+//! agent belongs to that agent — `codex::contract` for Codex, `claude` for
+//! Claude — so that a third agent adds a match arm here rather than a third
+//! pile of internals.
 //!
 //! The failures are still Codex's, for a reason of the same kind: sixty places
 //! across the application read a `CodexThreadError` by variant, and giving the
@@ -27,9 +28,11 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use serde_json::Value;
 
+use super::claude::{ClaudeClient, ClaudeTurnOptions, claude_turn_options};
 use super::codex::{
-    CodexThreadClient, CodexThreadError, CodexTurnOptions, codex_mode_id, codex_permission_modes,
-    codex_turn_options, is_fast_service_tier, service_tier_for_fast_mode,
+    CodexThreadClient, CodexThreadError, CodexTurnOptions, codex_mode_id, codex_models,
+    codex_permission_mode_name, codex_permission_modes, codex_turn_options, is_fast_service_tier,
+    service_tier_for_fast_mode,
 };
 use super::{Conversation, Turn, TurnPage};
 
@@ -37,6 +40,19 @@ use super::{Conversation, Turn, TurnPage};
 #[derive(Clone)]
 pub(crate) enum Driver {
     Codex(CodexThreadClient),
+    Claude(ClaudeConversation),
+}
+
+/// Claude, and where the Task being asked about works.
+///
+/// Codex holds a thread's working directory and answers for it. Claude does
+/// not: a session is a process, resuming one starts a new process, and the new
+/// process works wherever it was started. So a driver for a Claude Task carries
+/// where that Task works, which is why the store keeps it.
+#[derive(Clone)]
+pub(crate) struct ClaudeConversation {
+    pub(crate) client: ClaudeClient,
+    pub(crate) cwd: String,
 }
 
 /// A conversation as it stands, and the most recent of its turns.
@@ -53,6 +69,36 @@ pub(crate) struct OpenedConversation {
     /// words. Caffold has not decided what a setting means across agents, so
     /// this crosses unread and the agent's own reader takes it from here.
     pub(crate) settings: BTreeMap<String, Value>,
+}
+
+/// One model an agent offers, in Caffold's words.
+///
+/// Both agents describe a model the same way once each one's own parts are set
+/// aside: something to send back, something to show, whether it is the one
+/// chosen by default, the depths it works at, and whether it has a faster tier.
+/// Everything else — service tiers by name, modalities, adaptive thinking — is
+/// the agent's own and stays there.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ModelOption {
+    /// What to send back when this one is chosen. The agent's own name for it.
+    pub(crate) model: String,
+    pub(crate) display_name: String,
+    pub(crate) description: Option<String>,
+    /// True for the one the agent would choose if nobody did.
+    pub(crate) is_default: bool,
+    pub(crate) default_effort: Option<String>,
+    /// The depths this model works at, in the agent's own words. Empty when it
+    /// offers no choice.
+    pub(crate) efforts: Vec<String>,
+    pub(crate) supports_fast_mode: bool,
+    /// Whether this model can decide permissions for itself.
+    ///
+    /// A capability of the model rather than of the agent: Claude offers a mode
+    /// where the model classifies each request, and only some models can. It is
+    /// carried here because the ways a person can let an agent work then depend
+    /// on which model they chose.
+    pub(crate) supports_auto_mode: bool,
 }
 
 /// The ways a person can let an agent work, as that agent offers them.
@@ -84,6 +130,11 @@ pub(crate) struct PermissionModeOption {
     /// forbids, say. The choice is still shown, so that it reads as withheld
     /// rather than missing.
     pub(crate) allowed: bool,
+    /// Why it is withheld, when it is. Written by the driver, because the
+    /// reason belongs to the agent: a profile a workspace forbids and a model
+    /// that cannot manage its own permissions are not the same sentence.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) unavailable_reason: Option<String>,
     /// True when choosing it gives up a protection.
     pub(crate) dangerous: bool,
 }
@@ -103,6 +154,24 @@ pub(crate) struct TurnOptions {
     pub(crate) permission_mode: Option<String>,
 }
 
+/// A value a person typed, or nothing when they typed nothing.
+///
+/// `None` from an absent or blank choice means "whatever the agent prefers".
+/// A value too long or carrying control characters never came from the choices
+/// the agent offered, and is refused before it reaches one.
+pub(super) fn bounded(value: Option<&str>, limit: usize) -> Option<Option<String>> {
+    let Some(value) = value.map(str::trim) else {
+        return Some(None);
+    };
+    if value.is_empty() {
+        return Some(None);
+    }
+    if value.len() > limit || value.chars().any(char::is_control) {
+        return None;
+    }
+    Some(Some(value.to_string()))
+}
+
 /// Options an agent has agreed to.
 ///
 /// Agreeing is a question asked of the agent — which model answers to that
@@ -113,7 +182,41 @@ pub(crate) struct TurnOptions {
 pub(crate) struct AcceptedTurnOptions {
     /// What the agent settled on, which is what the interface should report.
     pub(crate) applied: TurnOptions,
-    codex: CodexTurnOptions,
+    agreed: AgreedTurnOptions,
+}
+
+/// The same agreement, in the agent's own terms.
+enum AgreedTurnOptions {
+    Codex(CodexTurnOptions),
+    Claude(ClaudeTurnOptions),
+}
+
+impl AcceptedTurnOptions {
+    fn codex(&self) -> Result<&CodexTurnOptions, CodexThreadError> {
+        match &self.agreed {
+            AgreedTurnOptions::Codex(codex) => Ok(codex),
+            AgreedTurnOptions::Claude(_) => Err(mismatched_agent()),
+        }
+    }
+
+    fn claude(&self) -> Result<&ClaudeTurnOptions, CodexThreadError> {
+        match &self.agreed {
+            AgreedTurnOptions::Claude(claude) => Ok(claude),
+            AgreedTurnOptions::Codex(_) => Err(mismatched_agent()),
+        }
+    }
+}
+
+/// Options one agent agreed to, carried to another.
+///
+/// Nothing in the application can produce this: options are agreed and used
+/// within one request, against one Task, whose agent does not change. It is a
+/// programming error rather than something a person can cause, so it is
+/// reported rather than guessed past.
+fn mismatched_agent() -> CodexThreadError {
+    CodexThreadError::Agent(
+        "Caffold offered one agent's turn options to another. This is a defect.".to_string(),
+    )
 }
 
 /// A conversation the agent has just begun, and what it begins under.
@@ -167,9 +270,73 @@ impl Driver {
                         fast_mode: is_fast_service_tier(codex.service_tier.as_deref()),
                         permission_mode: options.permission_mode.clone(),
                     },
-                    codex,
+                    agreed: AgreedTurnOptions::Codex(codex),
                 })
             }
+            Self::Claude(claude) => {
+                let accepted = claude_turn_options(&claude.client, options).await?;
+                Ok(AcceptedTurnOptions {
+                    applied: TurnOptions {
+                        model: accepted.model.clone(),
+                        effort: accepted.effort.clone(),
+                        fast_mode: accepted.fast_mode,
+                        permission_mode: accepted.permission_mode.clone(),
+                    },
+                    agreed: AgreedTurnOptions::Claude(accepted),
+                })
+            }
+        }
+    }
+
+    /// Read back what the agent said its settings are.
+    ///
+    /// The settings crossed the boundary unread, in the agent's own keys, so
+    /// the agent is what reads them: Codex resolves a permission mode from five
+    /// configuration values and names a service tier, Claude names its mode
+    /// outright and says whether fast mode is on. Only the four values the
+    /// composer shows come back.
+    pub(crate) fn read_settings(&self, settings: &BTreeMap<String, Value>) -> TurnOptions {
+        match self {
+            Self::Codex(_) => TurnOptions {
+                model: settings
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                effort: settings
+                    .get("reasoningEffort")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                fast_mode: is_fast_service_tier(
+                    settings.get("serviceTier").and_then(Value::as_str),
+                ),
+                permission_mode: codex_permission_mode_name(settings),
+            },
+            Self::Claude(_) => TurnOptions {
+                model: settings
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                effort: settings
+                    .get("reasoningEffort")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                fast_mode: settings
+                    .get("fastMode")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                permission_mode: settings
+                    .get("permissionMode")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            },
+        }
+    }
+
+    /// The models this agent offers, in the order to show them.
+    pub(crate) async fn models(&self) -> Result<Vec<ModelOption>, CodexThreadError> {
+        match self {
+            Self::Codex(client) => codex_models(client).await,
+            Self::Claude(claude) => Ok(claude.client.models().await?),
         }
     }
 
@@ -181,12 +348,12 @@ impl Driver {
     ) -> Result<StartedConversation, CodexThreadError> {
         match self {
             Self::Codex(client) => {
+                let codex = options.codex()?;
                 let started = client
                     .start_thread(
                         cwd,
-                        options.codex.permission_mode,
-                        options
-                            .codex
+                        codex.permission_mode,
+                        codex
                             .service_tier
                             .as_deref()
                             .unwrap_or_else(|| service_tier_for_fast_mode(false)),
@@ -200,6 +367,14 @@ impl Driver {
                         permission_mode: started.permission_mode.map(codex_mode_id),
                     },
                     conversation: Conversation::from(&started.thread),
+                })
+            }
+            Self::Claude(claude) => {
+                let agreed = options.claude()?;
+                let conversation = claude.client.start_conversation(cwd, agreed).await?;
+                Ok(StartedConversation {
+                    conversation,
+                    settings: options.applied.clone(),
                 })
             }
         }
@@ -217,10 +392,26 @@ impl Driver {
         match self {
             Self::Codex(client) => {
                 let started = client
-                    .start_turn(conversation_id, cwd, prompt, images, options.codex.clone())
+                    .start_turn(
+                        conversation_id,
+                        cwd,
+                        prompt,
+                        images,
+                        options.codex()?.clone(),
+                    )
                     .await?;
                 Ok(StartedTurn {
                     turn: Turn::from(&started.turn),
+                    applied: options.applied.clone(),
+                })
+            }
+            Self::Claude(claude) => {
+                let turn = claude
+                    .client
+                    .start_turn(conversation_id, prompt, images, options.claude()?)
+                    .await?;
+                Ok(StartedTurn {
+                    turn,
                     applied: options.applied.clone(),
                 })
             }
@@ -240,6 +431,10 @@ impl Driver {
                 .steer_turn(conversation_id, turn_id, prompt, images)
                 .await
                 .map(|_| ()),
+            Self::Claude(claude) => Ok(claude
+                .client
+                .steer_turn(conversation_id, turn_id, prompt, images)
+                .await?),
         }
     }
 
@@ -251,13 +446,19 @@ impl Driver {
     ) -> Result<(), CodexThreadError> {
         match self {
             Self::Codex(client) => client.interrupt_turn(conversation_id, turn_id).await,
+            Self::Claude(claude) => Ok(claude.client.interrupt_turn(conversation_id).await?),
         }
     }
 
-    /// How this agent can be allowed to work, here.
+    /// The ways a person can let this agent work, here, with this model.
+    ///
+    /// The model matters to one agent and not the other. Codex resolves the
+    /// modes from the profiles a workspace allows and who reviews; Claude has
+    /// one mode — the model deciding for itself — that only some models can do.
     pub(crate) async fn permission_modes(
         &self,
         cwd: &str,
+        model: Option<&str>,
     ) -> Result<PermissionModes, CodexThreadError> {
         match self {
             Self::Codex(client) => {
@@ -267,6 +468,7 @@ impl Driver {
                     options,
                 })
             }
+            Self::Claude(claude) => Ok(claude.client.permission_modes(model).await),
         }
     }
 
@@ -302,6 +504,30 @@ impl Driver {
                     settings: response.extra,
                 })
             }
+            Self::Claude(claude) => {
+                let options = ClaudeTurnOptions {
+                    fast_mode,
+                    ..ClaudeTurnOptions::default()
+                };
+                let conversation = claude
+                    .client
+                    .open_conversation(conversation_id, &claude.cwd, &options)
+                    .await?;
+                let turns_page = with_turns.then(|| TurnPage {
+                    // Newest first, which is the order history is read in.
+                    turns: conversation.turns.iter().rev().cloned().collect(),
+                    // Everything this session has said is here. Older turns
+                    // live in the agent's transcript, which nothing reads yet.
+                    next_cursor: None,
+                    backwards_cursor: None,
+                });
+                Ok(OpenedConversation {
+                    settings: claude.client.settings_of(conversation_id).await,
+                    cwd: conversation.cwd.clone(),
+                    conversation,
+                    turns_page,
+                })
+            }
         }
     }
 
@@ -318,6 +544,9 @@ impl Driver {
                     .list_thread_turns(conversation_id, cursor, limit)
                     .await?,
             )),
+            // A cursor is only ever one this agent gave out, and it gives out
+            // none, so there is nothing further to read.
+            Self::Claude(_) => Ok(TurnPage::default()),
         }
     }
 
@@ -328,6 +557,7 @@ impl Driver {
     ) -> Result<(), CodexThreadError> {
         match self {
             Self::Codex(client) => client.unsubscribe_thread(conversation_id).await.map(|_| ()),
+            Self::Claude(claude) => Ok(claude.client.stop_watching(conversation_id).await?),
         }
     }
 }

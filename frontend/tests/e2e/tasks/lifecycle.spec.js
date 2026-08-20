@@ -10,7 +10,7 @@ import {
   captureReviewScreenshot,
   emitTaskDetailBootstrap,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
   pasteImage,
   scrollTop,
 } from "../support/task-fixtures.js";
@@ -99,7 +99,7 @@ async function installTransportOverlayFixture(page, threadId, registryKey) {
   await page.exposeFunction(bootstrapFunctionKey, (requestedThreadId) =>
     requestedThreadId === threadId ? detail : null,
   );
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -153,7 +153,7 @@ test("background Task tabs release list and detail streams", { tag: "@desktop" }
     registryKey: "__taskLifecycleEventSources",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_background_stream_lifecycle";
   const now = 1_767_190_400_000;
@@ -260,7 +260,7 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
     autoOpen: true,
     bootstrapFunctionKey: "__foregroundRecoveryBootstrap",
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_foreground_recovery";
   const now = 1_767_190_450_000;
@@ -442,7 +442,7 @@ test("BFCache pageshow and top-level focus use the shared foreground recovery", 
     registryKey: "__foregroundSignalSources",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const threadId = "thread_foreground_signals";
   const task = {
     id: threadId,
@@ -510,7 +510,7 @@ test("notification activation refreshes stale readiness and opens its pending Ta
     autoOpen: true,
     bootstrapFunctionKey: "__notificationRecoveryBootstrap",
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const threadId = "thread_notification_pending_route";
   const now = 1_767_190_470_000;
   const task = {
@@ -623,7 +623,7 @@ test("foreground recovery retries a blocking readiness snapshot with bounded bac
     registryKey: "__foregroundRetrySources",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const blockedStatus = mockCodexStatus({
     readiness: {
       ...mockCodexStatus().readiness,
@@ -679,7 +679,7 @@ test("fresh origin reachability recovers a foreground offline pause without an o
     autoOpen: true,
     bootstrapFunctionKey: "__foregroundOfflineBootstrap",
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const threadId = "thread_foreground_offline";
   const task = transportOverlayTask(threadId);
   let recovered = false;
@@ -808,7 +808,7 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
     autoOpen: true,
     bootstrapFunctionKey: "__connectionChangeBootstrap",
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const threadId = "thread_connection_change";
   const task = transportOverlayTask(threadId);
   let disconnected = false;
@@ -931,7 +931,7 @@ test("a late failed disconnect probe yields to a newer reconnect signal", { tag:
     autoOpen: true,
     bootstrapFunctionKey: "__lateDisconnectProbeBootstrap",
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const threadId = "thread_late_disconnect_probe";
   const task = transportOverlayTask(threadId);
   let recovered = false;
@@ -1055,7 +1055,7 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
     autoOpen: true,
     bootstrapFunctionKey: "__offlineForegroundBootstrap",
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const threadId = "thread_offline_foreground";
   const task = transportOverlayTask(threadId);
   let unavailable = false;
@@ -1189,7 +1189,7 @@ test("reopened Task detail waits for a readable stream bootstrap", { tag: "@desk
 }) => {
   const registryKey = "__taskDetailReconnectSources";
   await installEventSourceMock(page, { registryKey, autoOpen: true });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_detail_stream_reconnect";
   const task = {
@@ -1316,7 +1316,7 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
       }
     };
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_terminal_stream_recovery";
   const now = 1_767_190_450_000;
@@ -1697,7 +1697,7 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
   page,
 }, testInfo) => {
   await installEventSourceMock(page, { autoOpen: true });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -1778,7 +1778,7 @@ test("keeps task list and detail revisions independent", { tag: "@desktop" }, as
       close() {}
     };
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_independent_stream_revisions";
   const now = 1_767_190_500_000;
@@ -1976,7 +1976,7 @@ test("isolates task detail responses and conversation scroll by thread", { tag: 
     registryKey: "__isolatedTaskDetailSources",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const now = 1_767_191_000_000;
   const makeTask = (threadId, title, offset) => ({

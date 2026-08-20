@@ -19,8 +19,8 @@ mod status;
 mod transport;
 
 pub(crate) use contract::{
-    ApprovalKind, approval_request, approval_response, codex_mode_id, codex_permission_modes,
-    codex_turn_options, session_event,
+    ApprovalKind, approval_request, approval_response, codex_mode_id, codex_models,
+    codex_permission_modes, codex_turn_options, session_event,
 };
 /// Item translation on its own, for the tests that write an item the way Codex
 /// sends it and assert on what Caffold makes of it.
@@ -239,7 +239,7 @@ pub(crate) fn service_tier_for_fast_mode(fast_mode: bool) -> &'static str {
 ///
 /// Caffold carries a mode under the agent's own name for it, so reading four
 /// Codex settings into one is where that name is minted.
-pub(crate) fn permission_mode_name(
+pub(crate) fn codex_permission_mode_name(
     settings: &std::collections::BTreeMap<String, Value>,
 ) -> Option<String> {
     serde_json::to_value(CodexPermissionMode::from_settings(settings))
@@ -293,6 +293,18 @@ pub enum CodexThreadError {
     },
     #[error("Codex app-server is unavailable.")]
     ProcessUnavailable,
+    /// A failure an agent other than Codex reported, in that agent's own
+    /// words.
+    ///
+    /// The failure vocabulary is still Codex's — sixty places across the
+    /// application read it by variant — so a second agent's failures arrive
+    /// under one variant that writes its own message rather than wearing
+    /// Codex's. Giving the failures a shared vocabulary is its own change.
+    #[error("{0}")]
+    Agent(String),
+    /// The agent could not be reached at all, in that agent's own words.
+    #[error("{0}")]
+    AgentUnavailable(String),
 }
 
 impl CodexThreadError {
@@ -302,7 +314,7 @@ impl CodexThreadError {
     }
 
     pub fn is_connection_failure(&self) -> bool {
-        matches!(self, Self::ProcessUnavailable)
+        matches!(self, Self::ProcessUnavailable | Self::AgentUnavailable(_))
     }
 
     pub fn is_turn_unavailable(&self) -> bool {

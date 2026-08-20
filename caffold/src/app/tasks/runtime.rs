@@ -8,13 +8,15 @@ use tokio::sync::{Mutex, broadcast};
 
 use super::{events::TaskEvents, lifecycle::TaskLifecycle, push::PushService};
 use crate::{
+    agent::claude::ClaudeClient,
     agent::codex::{CodexThreadClient, CodexThreadError},
     agent::{Driver, TokenUsage},
     app::tasks::sessions::{SessionSnapshot, TaskSessions},
-    task_store::TaskStore,
+    task_store::{RunBy, TaskStore},
 };
 
 mod bridge;
+mod claude_bridge;
 mod process;
 mod server_requests;
 
@@ -24,6 +26,7 @@ use server_requests::PendingApproval;
 #[derive(Clone)]
 pub(in crate::app) struct CodexRuntime {
     process: Arc<CodexProcess>,
+    claude: ClaudeClient,
     sessions: TaskSessions,
     events: TaskEvents,
     task_store: TaskStore,
@@ -61,6 +64,66 @@ impl CodexConnection {
     }
 }
 
+/// The agent that owns one Task, ready to be asked about it.
+///
+/// Which agent that is comes from the Task itself, so nothing above this has to
+/// carry it: a Codex Task is reached through the app-server connection, and a
+/// Claude Task through the runner, and neither one needs the other to be
+/// working.
+#[derive(Clone)]
+pub(in crate::app) enum TaskAgent {
+    Codex(CodexConnection),
+    Claude { driver: Driver },
+}
+
+/// Which connection a Claude answer came from.
+///
+/// Codex counts connections because one process serves every thread and is
+/// replaced whole. A Claude session is its own process, reached on its own
+/// connection, so there is nothing for a generation to tell apart.
+const CLAUDE_GENERATION: u64 = 1;
+
+impl TaskAgent {
+    pub(in crate::app) fn driver(&self) -> Driver {
+        match self {
+            Self::Codex(connection) => connection.driver(),
+            Self::Claude { driver } => driver.clone(),
+        }
+    }
+
+    pub(in crate::app) fn generation(&self) -> u64 {
+        match self {
+            Self::Codex(connection) => connection.generation,
+            Self::Claude { .. } => CLAUDE_GENERATION,
+        }
+    }
+
+    /// How a Task started under this agent will be run.
+    ///
+    /// Codex holds a thread's working directory and answers for it, so a second
+    /// copy in the store would only go stale. Claude has nobody else to ask.
+    pub(in crate::app) fn run_by(&self, cwd: &str) -> RunBy {
+        match self {
+            Self::Codex(_) => RunBy::Codex,
+            Self::Claude { .. } => RunBy::Claude {
+                cwd: cwd.to_string(),
+            },
+        }
+    }
+
+    /// The app-server connection, when this Task is Codex's.
+    ///
+    /// Reading a rollout file, renaming a thread, and recovering a lost
+    /// connection are all Codex's own, and a Claude Task simply has none of
+    /// them.
+    pub(in crate::app) fn codex(&self) -> Option<&CodexConnection> {
+        match self {
+            Self::Codex(connection) => Some(connection),
+            Self::Claude { .. } => None,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(in crate::app) enum CodexRuntimeSignal {
     SessionChanged {
@@ -89,6 +152,7 @@ impl From<CodexThreadError> for ApprovalResolveError {
 
 impl CodexRuntime {
     pub(in crate::app) fn new(
+        claude: ClaudeClient,
         sessions: TaskSessions,
         events: TaskEvents,
         task_store: TaskStore,
@@ -97,6 +161,7 @@ impl CodexRuntime {
         let (signals, _) = broadcast::channel(64);
         Self {
             process: Arc::new(CodexProcess::default()),
+            claude,
             sessions,
             events,
             task_store,
@@ -107,6 +172,17 @@ impl CodexRuntime {
             signals,
             shutdown,
         }
+    }
+
+    /// Begin carrying what Claude sessions say into the Task application.
+    ///
+    /// Claude has no connection to wait for — sessions are started one at a
+    /// time and report from the moment the client exists — so this is armed at
+    /// startup rather than when a connection appears. It is separate from
+    /// construction because constructing a runtime is not by itself proof of a
+    /// running executor.
+    pub(in crate::app) fn watch_claude(&self) {
+        self.spawn_claude_bridge(self.shutdown.subscribe());
     }
 
     pub(in crate::app) fn with_lifecycle(mut self, lifecycle: TaskLifecycle) -> Self {
@@ -121,6 +197,36 @@ impl CodexRuntime {
 
     pub(in crate::app) fn subscribe(&self) -> broadcast::Receiver<CodexRuntimeSignal> {
         self.signals.subscribe()
+    }
+
+    /// Claude, however it is being reached.
+    pub(in crate::app) fn claude(&self) -> &ClaudeClient {
+        &self.claude
+    }
+
+    /// The agent that owns this Task.
+    ///
+    /// The Task says which one, so a Claude Task is never held up by Codex
+    /// being unready and a Codex Task never waits on a runner.
+    pub(in crate::app) async fn task_agent(
+        &self,
+        thread_id: &str,
+    ) -> Result<TaskAgent, CodexThreadError> {
+        let store = self.task_store.clone();
+        let wanted = thread_id.to_string();
+        let managed = tokio::task::spawn_blocking(move || store.get(&wanted))
+            .await
+            .map_err(|error| CodexThreadError::Agent(format!("task store worker failed: {error}")))?
+            .map_err(|error| CodexThreadError::Agent(error.to_string()))?;
+        match managed.map(|managed| managed.run_by) {
+            Some(RunBy::Claude { cwd }) => Ok(TaskAgent::Claude {
+                driver: self.claude.driver(cwd),
+            }),
+            // A Task Caffold does not have a row for is not one it can route,
+            // and every Task it does have a row for predating a second agent is
+            // Codex's.
+            Some(RunBy::Codex) | None => Ok(TaskAgent::Codex(self.connection().await?)),
+        }
     }
 
     pub(in crate::app) fn usage_diagnostics(&self) -> CodexUsageDiagnostics {
@@ -156,6 +262,7 @@ mod tests {
     fn test_runtime(store: TaskStore) -> CodexRuntime {
         let (shutdown, _) = broadcast::channel(1);
         CodexRuntime::new(
+            crate::agent::claude::ClaudeClient::mock().0,
             TaskSessions::default(),
             TaskEvents::default(),
             store,
@@ -242,7 +349,13 @@ mod tests {
         let events = TaskEvents::default();
         let store = TaskStore::memory().expect("in-memory task store");
         let (shutdown, _) = broadcast::channel(1);
-        let runtime = CodexRuntime::new(sessions.clone(), events, store, shutdown);
+        let runtime = CodexRuntime::new(
+            crate::agent::claude::ClaudeClient::mock().0,
+            sessions.clone(),
+            events,
+            store,
+            shutdown,
+        );
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             json!({

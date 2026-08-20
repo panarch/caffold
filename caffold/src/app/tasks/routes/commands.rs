@@ -6,7 +6,7 @@ pub(super) async fn create_task(
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
     let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
     let cwd = task_cwd(&state, request.cwd.as_deref())?;
-    let connection = require_codex_thread_connection(&state).await?;
+    let agent = new_task_agent(&state, request.provider.as_deref(), &cwd).await?;
     let turn_options = TurnOptions {
         model: request.model,
         effort: request.effort,
@@ -17,7 +17,7 @@ pub(super) async fn create_task(
     let started = state
         .lifecycle
         .start_task(
-            &connection,
+            &agent,
             StartTask {
                 cwd,
                 prompt,
@@ -29,7 +29,7 @@ pub(super) async fn create_task(
         .await?;
     let mut detail = state
         .detail
-        .read(&connection, &started.task.thread_id, None)
+        .read(&agent, &started.task.thread_id, None)
         .await?;
     detail.active_top_placement = Some(started.placement);
     Ok(Json(detail))
@@ -48,7 +48,7 @@ pub(super) async fn task_prompt(
     let managed_cwd = managed_prompt_cwd(managed_worktree.as_ref())?;
     let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
     let _requested_active_turn_id = request.active_turn_id;
-    let connection = require_codex_thread_connection(&state).await?;
+    let agent = state.codex_runtime.task_agent(&thread_id).await?;
     let requested_model = request.model;
     let requested_effort = request.effort;
     let requested_fast_mode = request.fast_mode;
@@ -59,14 +59,14 @@ pub(super) async fn task_prompt(
         .await;
     let mut target = match state
         .codex_sessions
-        .prepare_prompt(&connection.driver(), connection.generation, &thread_id)
+        .prepare_prompt(&agent.driver(), agent.generation(), &thread_id)
         .await
     {
         Ok(target) => target,
         Err(error) => {
             state
                 .codex_runtime
-                .recover_connection_error(&connection, &error)
+                .recover_connection_error_for(&agent, &error)
                 .await;
             return Err(error.into());
         }
@@ -82,7 +82,7 @@ pub(super) async fn task_prompt(
     let outcome = loop {
         let attempted_steer = matches!(&target, PromptTarget::Steer { .. });
         let result: Result<TaskPromptOutcome, _> = match target {
-            PromptTarget::Steer { turn_id } => connection
+            PromptTarget::Steer { turn_id } => agent
                 .driver()
                 .steer_turn(&thread_id, &turn_id, &prompt, &images)
                 .await
@@ -98,7 +98,7 @@ pub(super) async fn task_prompt(
                     fast_mode: requested_fast_mode,
                     permission_mode: requested_permission_mode.clone(),
                 };
-                let driver = connection.driver();
+                let driver = agent.driver();
                 let accepted = match driver.accept_turn_options(&chosen).await {
                     Ok(accepted) => accepted,
                     Err(TurnRejected::Unavailable(error)) => {
@@ -124,19 +124,16 @@ pub(super) async fn task_prompt(
                 refreshed_stale_turn = true;
                 if let Err(refresh_error) = state
                     .codex_sessions
-                    .refresh_subscription(&connection.driver(), connection.generation, &thread_id)
+                    .refresh_subscription(&agent.driver(), agent.generation(), &thread_id)
                     .await
                 {
                     state.codex_sessions.cancel_runtime(&thread_id).await;
-                    state
-                        .codex_runtime
-                        .recover_connection_error(&connection, &refresh_error)
-                        .await;
+                    recover_agent_connection(&state, &agent, &refresh_error).await;
                     return Err(refresh_error.into());
                 }
                 target = match state
                     .codex_sessions
-                    .prepare_prompt(&connection.driver(), connection.generation, &thread_id)
+                    .prepare_prompt(&agent.driver(), agent.generation(), &thread_id)
                     .await
                 {
                     Ok(target) => target,
@@ -144,7 +141,7 @@ pub(super) async fn task_prompt(
                         state.codex_sessions.cancel_runtime(&thread_id).await;
                         state
                             .codex_runtime
-                            .recover_connection_error(&connection, &refresh_error)
+                            .recover_connection_error_for(&agent, &refresh_error)
                             .await;
                         return Err(refresh_error.into());
                     }
@@ -161,7 +158,7 @@ pub(super) async fn task_prompt(
                 state.codex_sessions.cancel_runtime(&thread_id).await;
                 state
                     .codex_runtime
-                    .recover_connection_error(&connection, &error)
+                    .recover_connection_error_for(&agent, &error)
                     .await;
                 return Err(error.into());
             }
@@ -171,7 +168,7 @@ pub(super) async fn task_prompt(
         state
             .codex_sessions
             .record_turn_started(
-                connection.generation,
+                agent.generation(),
                 &thread_id,
                 managed_cwd.as_deref(),
                 turn.clone(),
@@ -297,10 +294,10 @@ pub(super) async fn task_interrupt(
         .codex_sessions
         .restore_managed_fast_mode(&thread_id, managed.fast_mode)
         .await;
-    let connection = require_codex_thread_connection(&state).await?;
+    let agent = state.codex_runtime.task_agent(&thread_id).await?;
     let Some(turn_id) = state
         .codex_sessions
-        .active_turn_id(&connection.driver(), connection.generation, &thread_id)
+        .active_turn_id(&agent.driver(), agent.generation(), &thread_id)
         .await?
     else {
         return Err(ApiError::BadRequest {
@@ -308,20 +305,11 @@ pub(super) async fn task_interrupt(
             message: "thread does not have an active turn to interrupt".to_string(),
         });
     };
-    if let Err(error) = connection
-        .driver()
-        .interrupt_turn(&thread_id, &turn_id)
-        .await
-    {
-        state
-            .codex_runtime
-            .recover_connection_error(&connection, &error)
-            .await;
+    if let Err(error) = agent.driver().interrupt_turn(&thread_id, &turn_id).await {
+        recover_agent_connection(&state, &agent, &error).await;
         return Err(error.into());
     }
-    Ok(Json(
-        state.detail.read(&connection, &thread_id, None).await?,
-    ))
+    Ok(Json(state.detail.read(&agent, &thread_id, None).await?))
 }
 
 pub(super) async fn task_approval(
@@ -333,11 +321,11 @@ pub(super) async fn task_approval(
     if task_store_get(&state, &thread_id).await?.is_none() {
         return Err(task_not_managed_error());
     }
-    let connection = require_codex_thread_connection(&state).await?;
+    let agent = state.codex_runtime.task_agent(&thread_id).await?;
     let decision = normalize_approval_decision(&request.decision)?;
     match state
         .codex_runtime
-        .resolve_approval(&connection, &thread_id, &approval_id, decision)
+        .resolve_approval(&agent, &thread_id, &approval_id, decision)
         .await
     {
         Ok(()) => {}
@@ -362,9 +350,7 @@ pub(super) async fn task_approval(
         Err(ApprovalResolveError::Codex(error)) => return Err(error.into()),
     }
 
-    Ok(Json(
-        state.detail.read(&connection, &thread_id, None).await?,
-    ))
+    Ok(Json(state.detail.read(&agent, &thread_id, None).await?))
 }
 
 pub(super) async fn require_codex_thread_client(
@@ -379,6 +365,39 @@ pub(super) async fn require_codex_thread_connection(
     state.detail.connection().await
 }
 
+/// The agent a Task about to be created will belong to.
+///
+/// Every other route reads the agent off the Task. This one has no Task yet, so
+/// the choice comes from the model that was picked: the list a person chose
+/// from said which agent each model belongs to, and that choice is carried back
+/// here rather than guessed at from the model's name.
+async fn new_task_agent(
+    state: &TaskState,
+    provider: Option<&str>,
+    cwd: &str,
+) -> Result<TaskAgent, ApiError> {
+    match provider.map(str::trim).filter(|value| !value.is_empty()) {
+        None | Some("codex") => Ok(TaskAgent::Codex(
+            require_codex_thread_connection(state).await?,
+        )),
+        Some("claude") => Ok(TaskAgent::Claude {
+            driver: state.codex_runtime.claude().driver(cwd),
+        }),
+        Some(_) => Err(ApiError::BadRequest {
+            code: "unsupported_provider",
+            message: "Caffold does not drive that agent.".to_string(),
+        }),
+    }
+}
+
+/// Tell the runtime a connection failed, when the agent has one to lose.
+async fn recover_agent_connection(state: &TaskState, agent: &TaskAgent, error: &CodexThreadError) {
+    state
+        .codex_runtime
+        .recover_connection_error_for(agent, error)
+        .await;
+}
+
 #[cfg(test)]
 pub(super) fn managed_thread_from_task_record(
     task: &TaskRecord,
@@ -388,6 +407,7 @@ pub(super) fn managed_thread_from_task_record(
 ) -> ManagedThread {
     let mut managed = ManagedThread::new(
         task.thread_id.clone(),
+        RunBy::Codex,
         Some(task_activity_ms(task)),
         model,
         reasoning_effort,
@@ -518,7 +538,7 @@ mod tests {
     use crate::{
         app::tasks::test_support::*,
         fs::RootedFs,
-        task_store::{CheckoutAnchor, ManagedThread},
+        task_store::{CheckoutAnchor, ManagedThread, RunBy},
     };
 
     async fn publish_permission_approval(
@@ -729,6 +749,7 @@ mod tests {
         let response = create_task(
             State(state),
             Json(CreateTaskRequest {
+                provider: None,
                 prompt: "Use the selected approval mode".to_string(),
                 images: Vec::new(),
                 cwd: None,
@@ -831,6 +852,7 @@ mod tests {
         let response = create_task(
             State(state.clone()),
             Json(CreateTaskRequest {
+                provider: None,
                 prompt: "Use xhigh".to_string(),
                 images: Vec::new(),
                 cwd: None,
@@ -951,13 +973,17 @@ mod tests {
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         state
             .task_store
-            .claim(ManagedThread::new(thread_id, Some(1), None, None), 1)
+            .claim(
+                ManagedThread::new(thread_id, RunBy::Codex, Some(1), None, None),
+                1,
+            )
             .unwrap();
         state.task_store.archive(thread_id, 2).unwrap().unwrap();
 
         let result = create_task(
             State(state.clone()),
             Json(CreateTaskRequest {
+                provider: None,
                 prompt: "Must not become managed".to_string(),
                 images: Vec::new(),
                 cwd: None,
@@ -1994,12 +2020,14 @@ mod state_tests {
         let project = root.path().join("project");
         std::fs::create_dir(&project).unwrap();
         let (shutdown, _) = broadcast::channel(1);
+        let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
         let state = TaskState::new(
             Arc::new(RootedFs::new(root.path()).unwrap()),
             "project".to_string(),
             shutdown,
             TaskStore::memory().unwrap(),
             root.path().join("managed-worktrees"),
+            claude,
         )
         .expect("task state");
 

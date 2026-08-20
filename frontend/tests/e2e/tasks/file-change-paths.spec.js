@@ -6,7 +6,7 @@ import {
   captureReviewScreenshot,
   emitTaskDetailBootstrap,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -20,7 +20,7 @@ test("renders managed Task file changes relative in live cards and Work details"
     registryKey: "__fileChangePathSources",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_file_change_paths";
   const turnId = "turn_file_change_paths";

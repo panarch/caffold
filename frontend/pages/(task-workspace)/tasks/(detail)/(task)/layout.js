@@ -1255,6 +1255,7 @@ class CaffoldTaskDetail extends HTMLElement {
         this.interruptStateValue.error ??
         ""
       }`,
+      provider: `${this.taskDetail?.provider ?? ""}`.trim(),
       model: `${this.taskDetail?.model ?? ""}`.trim(),
       effort: `${this.taskDetail?.reasoningEffort ?? ""}`.trim(),
       fastMode: Boolean(this.taskDetail?.fastMode),

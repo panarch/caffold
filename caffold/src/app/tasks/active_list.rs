@@ -258,6 +258,7 @@ pub(super) fn unavailable_active_task(managed: &ManagedThread) -> TaskRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::task_store::RunBy;
 
     fn fixture() -> (tempfile::TempDir, Arc<RootedFs>, TaskStore) {
         let root = tempfile::tempdir().unwrap();
@@ -285,7 +286,7 @@ mod tests {
                 };
                 tables.upsert_managed_section(&section)?;
                 tables.claim_managed_thread_at_top(
-                    ManagedThread::new(thread_id, Some(recency_ms), None, None),
+                    ManagedThread::new(thread_id, RunBy::Codex, Some(recency_ms), None, None),
                     display_name,
                     &section.section_id,
                     recency_ms,
@@ -387,7 +388,10 @@ mod tests {
     async fn cached_projection_keeps_unplaced_rows_visible_for_explicit_recovery() {
         let (_root, fs, store) = fixture();
         store
-            .claim(ManagedThread::new("unplaced", Some(500), None, None), 500)
+            .claim(
+                ManagedThread::new("unplaced", RunBy::Codex, Some(500), None, None),
+                500,
+            )
             .unwrap();
 
         let projection = load_cached(fs, store).await.unwrap();

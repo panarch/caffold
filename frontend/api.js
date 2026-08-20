@@ -18,12 +18,22 @@ export async function retryTaskStoreMigration() {
   });
 }
 
-export async function getCodexModels() {
-  return requestJson("/api/codex/models");
+export async function getAgentModels() {
+  return requestJson("/api/agent/models");
 }
 
-export async function getCodexPermissions(cwd = "") {
-  return requestJson("/api/codex/permissions", cwd ? { cwd } : {});
+export async function getAgentPermissions(cwd = "", provider = "", model = "") {
+  const query = {};
+  if (cwd) {
+    query.cwd = cwd;
+  }
+  if (provider) {
+    query.provider = provider;
+  }
+  if (model) {
+    query.model = model;
+  }
+  return requestJson("/api/agent/permissions", query);
 }
 
 export async function getVoiceStatus() {

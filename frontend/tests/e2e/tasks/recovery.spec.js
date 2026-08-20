@@ -5,7 +5,7 @@ import {
   canonicalTaskState,
   emitTaskDetailBootstrap,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
     registryKey: "__recoveryEventSources",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 });
 
 function task(threadId, title, conversationAvailable = true) {

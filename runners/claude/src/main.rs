@@ -6,11 +6,6 @@
 //! whole surface can be exercised, and a later failure can be reproduced,
 //! without a backend in the picture.
 
-mod client;
-mod daemon;
-mod protocol;
-mod session;
-
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -19,16 +14,9 @@ use clap::{Args, Parser, Subcommand};
 use serde_json::value::RawValue;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use client::Client;
+use caffold_claude_runner::client::{self, Client};
+use caffold_claude_runner::{SOCKET_NAME, daemon, protocol};
 use protocol::{Request, SpawnRequest};
-
-/// Name of the socket inside the data directory.
-///
-/// The socket lives with the data rather than at a fixed per-user path so that
-/// an installed application, a development server, and a test run each get
-/// their own runner for free — the same way they already get their own
-/// database.
-const SOCKET_NAME: &str = "claude-runner.sock";
 
 #[derive(Debug, Parser)]
 #[command(

@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use serde_json::{Value as JsonValue, json};
 
-use super::{ApprovalResolveError, CodexConnection, CodexRuntime};
+use super::{ApprovalResolveError, CodexRuntime, TaskAgent};
 use crate::agent::codex::{
     ApprovalKind, CodexServerRequest, CodexThreadClient, ISOLATE_CURRENT_TASK_TOOL_NAME,
     RENAME_CURRENT_THREAD_TOOL_NAME, approval_request, approval_response,
@@ -18,20 +18,48 @@ use crate::app::tasks::{
 /// An approval waiting for an answer.
 ///
 /// The request is Caffold's, because that is what the interface shows and what
-/// a person answers. What sits beside it is only what answering Codex needs:
-/// which of its three methods asked, and the parameters to hand back when the
-/// answer is to allow what was proposed. Which app-server request to reply on
-/// is the driver's, and it is the driver that remembers it.
+/// a person answers. Which agent asked sits beside it, because answering is
+/// still each agent's own: Codex replies on the app-server request that asked,
+/// and Claude on the control request it is blocked on. Both drivers remember
+/// how to reply; what is kept here is only enough to know which one to ask.
 #[derive(Debug, Clone)]
 pub(super) struct PendingApproval {
     thread_id: String,
     request: ApprovalRequest,
-    kind: ApprovalKind,
-    /// The request Codex sent, kept only so that allowing something hands back
-    /// the permission profile Codex itself proposed.
-    params: JsonValue,
+    asked_by: AskedBy,
     created_ms: u64,
     sort_index: Option<u32>,
+}
+
+/// Which agent is blocked on this answer.
+#[derive(Debug, Clone)]
+enum AskedBy {
+    Codex {
+        /// Which of the three methods asked.
+        kind: ApprovalKind,
+        /// The request Codex sent, kept only so that allowing something hands
+        /// back the permission profile Codex itself proposed.
+        params: JsonValue,
+    },
+    /// Claude keeps what it proposed itself, so nothing is needed here.
+    Claude,
+}
+
+impl PendingApproval {
+    /// One Claude asked, recorded beside the ones Codex asked.
+    pub(super) fn claude(
+        thread_id: String,
+        request: ApprovalRequest,
+        event: &TaskEventRecord,
+    ) -> Self {
+        Self {
+            thread_id,
+            request,
+            asked_by: AskedBy::Claude,
+            created_ms: event.created_ms,
+            sort_index: event.sort_index,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -78,7 +106,7 @@ impl CodexRuntime {
 
     pub(in crate::app) async fn resolve_approval(
         &self,
-        connection: &CodexConnection,
+        agent: &TaskAgent,
         thread_id: &str,
         approval_id: &str,
         decision: ApprovalDecision,
@@ -97,15 +125,29 @@ impl CodexRuntime {
         if !pending.request.decisions.contains(&decision) {
             return Err(ApprovalResolveError::ResolutionMismatch);
         }
-        let response = approval_response(pending.kind, &pending.params, decision)
-            .ok_or(ApprovalResolveError::ResolutionMismatch)?;
-        let Some(request_id) = connection.client.take_approval_request(approval_id).await else {
-            return Err(ApprovalResolveError::NotFound);
-        };
-        connection
-            .client
-            .respond_to_server_request(request_id, response)
-            .await?;
+        match (&pending.asked_by, agent) {
+            (AskedBy::Codex { kind, params }, TaskAgent::Codex(connection)) => {
+                let response = approval_response(*kind, params, decision)
+                    .ok_or(ApprovalResolveError::ResolutionMismatch)?;
+                let Some(request_id) = connection.client.take_approval_request(approval_id).await
+                else {
+                    return Err(ApprovalResolveError::NotFound);
+                };
+                connection
+                    .client
+                    .respond_to_server_request(request_id, response)
+                    .await?;
+            }
+            (AskedBy::Claude, TaskAgent::Claude { .. }) => {
+                self.claude()
+                    .resolve_approval(thread_id, approval_id, decision)
+                    .await
+                    .map_err(|error| ApprovalResolveError::Codex(error.into()))?;
+            }
+            // The Task's agent changed under an answer in flight, which means
+            // the request being answered is not the one that was asked.
+            _ => return Err(ApprovalResolveError::ResolutionMismatch),
+        }
         let Some(pending) = self.approvals.lock().await.remove(approval_id) else {
             return Ok(());
         };
@@ -166,12 +208,16 @@ impl CodexRuntime {
         };
         let approval_id = approval_id_from_request(&request_id, &params);
         client.track_approval(&approval_id, request_id).await;
+        let asked_by = AskedBy::Codex { kind, params };
+        let AskedBy::Codex { params, .. } = &asked_by else {
+            unreachable!("a Codex server request is asked by Codex");
+        };
         let created_ms = params
             .get("startedAtMs")
             .and_then(JsonValue::as_u64)
             .filter(|started_at_ms| *started_at_ms > 0)
             .unwrap_or_else(now_ms);
-        let request = approval_request(approval_id.clone(), kind, &params);
+        let request = approval_request(approval_id.clone(), kind, params);
         let event = self
             .events
             .record(approval_requested_event(&thread_id, &request, created_ms));
@@ -180,8 +226,7 @@ impl CodexRuntime {
             PendingApproval {
                 thread_id,
                 request,
-                kind,
-                params,
+                asked_by,
                 created_ms: event.created_ms,
                 sort_index: event.sort_index,
             },
@@ -507,13 +552,14 @@ mod tests {
     use super::*;
     use crate::{
         agent::codex::{self, CodexThreadError, MockCodexResponse, session_event},
+        app::tasks::CodexConnection,
         app::tasks::sessions::TaskSessions,
         app::tasks::{
             events::TaskEvents, lifecycle::TaskLifecycle, routes::TaskListEvents,
             worktrees::ManagedWorktrees,
         },
         fs::RootedFs,
-        task_store::{ManagedThread, TaskStore},
+        task_store::{ManagedThread, RunBy, TaskStore},
     };
 
     fn initialize_repository(path: &Path) {
@@ -613,7 +659,13 @@ mod tests {
 
     fn test_runtime_with_store(events: TaskEvents, store: TaskStore) -> CodexRuntime {
         let (shutdown, _) = broadcast::channel(1);
-        CodexRuntime::new(TaskSessions::default(), events, store, shutdown)
+        CodexRuntime::new(
+            crate::agent::claude::ClaudeClient::mock().0,
+            TaskSessions::default(),
+            events,
+            store,
+            shutdown,
+        )
     }
 
     #[tokio::test]
@@ -676,10 +728,10 @@ mod tests {
 
         runtime
             .resolve_approval(
-                &CodexConnection {
+                &TaskAgent::Codex(CodexConnection {
                     client: client.clone(),
                     generation: 1,
-                },
+                }),
                 "thread_1",
                 "41",
                 ApprovalDecision::AllowAlways,
@@ -710,10 +762,10 @@ mod tests {
 
         runtime
             .resolve_approval(
-                &CodexConnection {
+                &TaskAgent::Codex(CodexConnection {
                     client: client.clone(),
                     generation: 1,
-                },
+                }),
                 "thread_1",
                 "42",
                 ApprovalDecision::AllowAlways,
@@ -755,10 +807,10 @@ mod tests {
 
         runtime
             .resolve_approval(
-                &CodexConnection {
+                &TaskAgent::Codex(CodexConnection {
                     client: client.clone(),
                     generation: 1,
-                },
+                }),
                 "thread_1",
                 "46",
                 ApprovalDecision::Allow,
@@ -779,10 +831,10 @@ mod tests {
 
         runtime
             .resolve_approval(
-                &CodexConnection {
+                &TaskAgent::Codex(CodexConnection {
                     client: client.clone(),
                     generation: 1,
-                },
+                }),
                 "thread_1",
                 "43",
                 ApprovalDecision::Deny,
@@ -806,10 +858,10 @@ mod tests {
 
         let result = runtime
             .resolve_approval(
-                &CodexConnection {
+                &TaskAgent::Codex(CodexConnection {
                     client: client.clone(),
                     generation: 1,
-                },
+                }),
                 "thread_1",
                 "44",
                 // Codex's permission response has no way to end a turn, so a
@@ -843,10 +895,10 @@ mod tests {
 
         let result = runtime
             .resolve_approval(
-                &CodexConnection {
+                &TaskAgent::Codex(CodexConnection {
                     client: client.clone(),
                     generation: 1,
-                },
+                }),
                 "thread_1",
                 "47",
                 ApprovalDecision::Allow,
@@ -898,7 +950,7 @@ mod tests {
         let store = TaskStore::memory().unwrap();
         store
             .claim(
-                ManagedThread::new("thread_1", None, None, None),
+                ManagedThread::new("thread_1", RunBy::Codex, None, None, None),
                 1_750_000_000_000,
             )
             .unwrap();
@@ -986,7 +1038,10 @@ mod tests {
     async fn rename_dynamic_tool_rolls_codex_back_when_the_local_row_disappears() {
         let store = TaskStore::memory().unwrap();
         store
-            .claim(ManagedThread::new("thread_1", None, None, None), 1)
+            .claim(
+                ManagedThread::new("thread_1", RunBy::Codex, None, None, None),
+                1,
+            )
             .unwrap();
         store
             .update_display_name("thread_1", "Previous stable name")
@@ -1053,7 +1108,10 @@ mod tests {
     async fn rename_dynamic_tool_rejects_invalid_names_and_unknown_tools() {
         let store = TaskStore::memory().unwrap();
         store
-            .claim(ManagedThread::new("thread_1", None, None, None), 1)
+            .claim(
+                ManagedThread::new("thread_1", RunBy::Codex, None, None, None),
+                1,
+            )
             .unwrap();
         let runtime = test_runtime(store);
         let client = CodexThreadClient::mock(Vec::new());
@@ -1096,7 +1154,10 @@ mod tests {
     async fn rename_dynamic_tool_returns_a_failed_result_when_app_server_rejects_the_name() {
         let store = TaskStore::memory().unwrap();
         store
-            .claim(ManagedThread::new("thread_1", None, None, None), 1)
+            .claim(
+                ManagedThread::new("thread_1", RunBy::Codex, None, None, None),
+                1,
+            )
             .unwrap();
         let runtime = test_runtime(store);
         let client = CodexThreadClient::mock(vec![MockCodexResponse::error(
@@ -1198,6 +1259,7 @@ mod tests {
             .claim(
                 ManagedThread::new(
                     "thread_source",
+                    RunBy::Codex,
                     None,
                     Some("gpt-test".to_string()),
                     Some("high".to_string()),
@@ -1213,6 +1275,7 @@ mod tests {
             root.path().join("managed-worktrees"),
         )
         .unwrap();
+        let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
         let lifecycle = TaskLifecycle::new(
             fs.clone(),
             sessions.clone(),
@@ -1220,10 +1283,11 @@ mod tests {
             TaskListEvents::new(),
             store.clone(),
             worktrees,
+            claude.clone(),
         );
         let (shutdown, _) = broadcast::channel(1);
-        let runtime =
-            CodexRuntime::new(sessions, events, store.clone(), shutdown).with_lifecycle(lifecycle);
+        let runtime = CodexRuntime::new(claude, sessions, events, store.clone(), shutdown)
+            .with_lifecycle(lifecycle);
         let thread_read = json!({
             "thread": {
                 "id": "thread_source",
@@ -1353,7 +1417,10 @@ mod tests {
     async fn isolate_tool_rejects_invalid_arguments_before_reading_the_thread() {
         let store = TaskStore::memory().unwrap();
         store
-            .claim(ManagedThread::new("thread_1", None, None, None), 1)
+            .claim(
+                ManagedThread::new("thread_1", RunBy::Codex, None, None, None),
+                1,
+            )
             .unwrap();
         let runtime = test_runtime(store);
         let client = CodexThreadClient::mock(Vec::new());

@@ -6,7 +6,7 @@ import {
   captureReviewScreenshot,
   emitTaskDetailBootstrap,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -20,7 +20,7 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
     registryKey: "__commandOutputActivationSources",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_command_output_activation";
   const completedTurnId = "turn_completed";

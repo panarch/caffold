@@ -4,7 +4,7 @@ import {
   captureReviewScreenshot,
   canonicalTaskState,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -154,7 +154,7 @@ async function installSectionReorderFixture(page) {
 test("reorders by keyboard, preserves row geometry, and persists across reloads", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   let order = [
     task("thread-a", "Alpha"),
     task("thread-b", "Bravo"),

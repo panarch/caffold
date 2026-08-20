@@ -6,7 +6,7 @@ import {
   captureReviewScreenshot,
   emitTaskDetailBootstrap,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -15,7 +15,7 @@ test.beforeEach(async ({ page }) => {
     registryKey: "__commandEventSources",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 });
 
 test("owns active disclosure state and terminal presentation across canonical updates", { tag: "@all-viewports" }, async ({

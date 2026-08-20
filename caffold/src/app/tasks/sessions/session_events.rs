@@ -148,7 +148,12 @@ fn apply_session_event_state(
             SessionEventEffect::CanonicalStateChanged
         }
         SessionEventKind::SettingsChanged { settings } => {
-            apply_thread_settings(state, settings);
+            // The agent that reported these is the one watching this
+            // conversation, and only that agent can read its own keys back.
+            let Some(driver) = state.driver.clone() else {
+                return SessionEventEffect::Ignored;
+            };
+            apply_thread_settings(state, &driver, settings);
             SessionEventEffect::CanonicalStateChanged
         }
         SessionEventKind::TurnStarted { turn } => {

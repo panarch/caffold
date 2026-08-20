@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 import {
   captureReviewScreenshot,
-  mockCodexModels,
+  mockAgentModels,
 } from "./support/task-fixtures.js";
 
 const TAILNET_URL = "https://caffold-review-host.long-tailnet-name.ts.net/";
@@ -20,7 +20,7 @@ function tailscaleStatus(state, overrides = {}) {
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 });
 
 test("presents every canonical Tailscale state with only its available action", { tag: "@all-viewports" }, async ({

@@ -2,7 +2,7 @@ import { expect } from "@playwright/test";
 import {
   activeTaskProjection,
   canonicalTaskState,
-  mockCodexModels,
+  mockAgentModels,
 } from "./task-fixtures.js";
 
 export async function installTaskLoopFixture(
@@ -74,7 +74,7 @@ export async function installTaskLoopFixture(
     };
   });
 
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const now = 1_767_000_000_000;
   let task = null;
   let events = [];

@@ -2,7 +2,7 @@ import {
   activeTaskProjection,
   canonicalTaskState,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "./task-fixtures.js";
 
 const THREAD_ID = "thread_showcase_readme";
@@ -195,7 +195,7 @@ export async function installShowcaseFixture(page) {
     "__caffoldShowcaseDetailBootstrap",
     (requestedThreadId) => requestedThreadId === THREAD_ID ? detail : null,
   );
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({ json: activeTaskProjection(tasks) }),

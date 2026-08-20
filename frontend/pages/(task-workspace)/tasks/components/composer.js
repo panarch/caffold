@@ -1046,6 +1046,9 @@ class CaffoldTaskComposer extends HTMLElement {
   turnOptionsContext(locked = null) {
     return {
       cwd: this.context.cwd,
+      // A follow-up belongs to a Task that already has an agent; a new Task
+      // does not, and every agent's models are on offer.
+      provider: `${this.context.provider ?? ""}`,
       initialSelection: {
         model: `${this.context.model ?? ""}`,
         effort: `${this.context.effort ?? ""}`,

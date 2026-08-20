@@ -437,6 +437,7 @@ dependencies = [
  "anyhow",
  "axum",
  "base64",
+ "caffold-claude-runner",
  "chrono",
  "clap",
  "futures-util",

@@ -11,7 +11,7 @@ import {
   emitTaskDetailBootstrap,
   installEventSourceMock,
   isScrolledToBottom,
-  mockCodexModels,
+  mockAgentModels,
   openTaskWithBootstrap,
   pasteImage,
   scrollTop,
@@ -482,7 +482,7 @@ test("recovers task detail and prompt submission across bootstrap races", { tag:
       }
     };
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const now = 1_767_300_100_000;
   const taskRecord = (threadId, title) => ({
@@ -690,7 +690,7 @@ test("keeps task context and retries after an initial detail timeout", { tag: "@
       }
     };
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const threadId = "thread_detail_timeout_fixture";
   const now = 1_767_200_000_000;
   const task = {
@@ -1587,7 +1587,7 @@ test("accepts canonical task detail after stream revisions restart", { tag: "@al
       }
     };
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_stream_bootstrap_after_completion";
   const now = 1_767_190_450_000;
@@ -1725,7 +1725,7 @@ test("reconciles a canonical final answer over a retained transient item after r
 }) => {
   const registryKey = "__canonicalItemRecoverySources";
   await installEventSourceMock(page, { registryKey, autoOpen: true });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_canonical_item_recovery";
   const turnId = "turn_canonical_item_recovery";
@@ -1906,7 +1906,7 @@ test("accepts canonical task sync after stream revisions restart", { tag: "@all-
       }
     };
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_list_revision_restart";
   const now = 1_767_190_475_000;
@@ -2024,7 +2024,7 @@ test("opens a running conversation at the latest message from the stream bootstr
     };
   });
   await page.route("https://esm.sh/**", (route) => route.abort());
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_reload_scroll_race";
   const now = 1_767_191_500_000;
@@ -2135,7 +2135,7 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
       }
     };
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_self_host_restart";
   const now = 1_767_210_000_000;

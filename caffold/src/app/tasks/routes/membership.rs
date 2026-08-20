@@ -499,6 +499,7 @@ mod tests {
             events::TaskEventRecord, recovery::ActiveTaskRecoveryAction, test_support::*,
         },
         fs::RootedFs,
+        task_store::RunBy,
     };
 
     #[tokio::test]
@@ -1299,7 +1300,10 @@ mod tests {
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         state
             .task_store
-            .claim(ManagedThread::new(thread_id, Some(1), None, None), 1)
+            .claim(
+                ManagedThread::new(thread_id, RunBy::Codex, Some(1), None, None),
+                1,
+            )
             .unwrap();
         seed_section(&state, "section-root", "");
 
@@ -1335,7 +1339,10 @@ mod tests {
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         state
             .task_store
-            .claim(ManagedThread::new(thread_id, Some(1), None, None), 1)
+            .claim(
+                ManagedThread::new(thread_id, RunBy::Codex, Some(1), None, None),
+                1,
+            )
             .unwrap();
 
         let restored = task_recovery_restore(State(state.clone()), AxumPath(thread_id.to_string()))

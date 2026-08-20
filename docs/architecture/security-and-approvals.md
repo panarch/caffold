@@ -17,7 +17,7 @@ Expected deployment:
 - personal host machines
 - private network access such as Tailscale
 - no public unauthenticated exposure
-- browser access to the local filesystem and Codex command execution only
+- browser access to the local filesystem and agent command execution only
   through the Caffold backend
 
 Caffold should still assume that remote command execution is sensitive.
@@ -82,6 +82,36 @@ Current rules:
 
 Allowlists, deny lists, or command classes require a separate policy before they
 can change the approval flow.
+
+## Claude Execution Approvals
+
+Claude asks on the same channel it speaks on, as a `can_use_tool` control
+request that blocks the turn until it is answered. It asks only because the
+session is started with `--permission-prompt-tool stdio`; without that flag the
+agent never asks and Caffold would show a conversation that appeared to need no
+permission at all.
+
+Current rules:
+
+- command cwd follows the Task's working directory, which is the directory the
+  session's process was started in;
+- an approval card shows the tool the agent named and, for a shell command, the
+  command itself;
+- a tool call does not imply an approval card — the agent's own classifier
+  settles obviously safe calls without asking, so an unasked call is a call that
+  did not need asking rather than one that slipped past;
+- allowing always hands back the permission suggestion the agent itself
+  proposed, unread;
+- denying and stopping is offered, and is carried out as a denial followed by an
+  interrupt, because the agent's permission answer has no way to say "and stop";
+- a call a person refused reads as declined rather than failed, which Caffold
+  can say because Caffold is what refused — the agent reports a refusal as a
+  failed tool result, which is what it is from where the agent stands;
+- the approval modes offered are named by the Claude driver rather than asked
+  for, because the agent publishes no list and what each mode gives up is
+  knowledge about the agent;
+- a control request Caffold did not register for — a hook callback, an
+  in-process tool — is answered rather than left to block the turn.
 
 ## Git Mutations
 

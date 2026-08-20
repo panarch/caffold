@@ -6,7 +6,7 @@ import {
   captureReviewScreenshot,
   emitTaskDetailBootstrap,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -99,7 +99,7 @@ async function installSummaryFixture(page, tasks) {
     registryKey: "__taskSummaryEventSources",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       json: activeTaskProjection(tasks),

@@ -6,7 +6,7 @@ import {
   canonicalTaskState,
   emitTaskDetailBootstrap,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -89,7 +89,7 @@ test("uses one SSE snapshot for initial detail, reconnect, and cursor history", 
   page,
 }) => {
   await installEventSourceMock(page, { autoOpen: true });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const threadId = "thread_single_sse_bootstrap";
   const now = 1_767_400_000_000;
   const task = taskRecord(threadId, "Single SSE bootstrap", now);
@@ -225,7 +225,7 @@ test("preserves readable detail and buffers events through a loading reconnect b
   page,
 }) => {
   await installEventSourceMock(page, { autoOpen: true });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const threadId = "thread_loading_reconnect_bootstrap";
   const now = 1_767_400_050_000;
   const task = taskRecord(threadId, "Loading reconnect bootstrap", now);
@@ -327,7 +327,7 @@ test("uses one REST fallback per unsupported-EventSource attempt", { tag: "@all-
   await page.addInitScript(() => {
     delete window.EventSource;
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const threadId = "thread_rest_bootstrap_fallback";
   const now = 1_767_400_100_000;
   const task = taskRecord(threadId, "REST bootstrap fallback", now);
@@ -360,7 +360,7 @@ test("bounds a detail stream that never opens and falls back once", { tag: "@all
 }) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const threadId = "thread_never_open_fallback";
   const now = 1_767_400_150_000;
   const task = taskRecord(threadId, "Never-open fallback", now);
@@ -391,7 +391,7 @@ test("uses one REST reconciliation when reconnect bootstrap retries exhaust", { 
 }) => {
   await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
   await installEventSourceMock(page, { autoOpen: true });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const threadId = "thread_exhausted_reconnect_fallback";
   const now = 1_767_400_175_000;
   const task = taskRecord(threadId, "Exhausted reconnect fallback", now);
@@ -442,7 +442,7 @@ test("rejects a late REST fallback after the session switches Tasks", { tag: "@a
   await page.addInitScript(() => {
     delete window.EventSource;
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const now = 1_767_400_200_000;
   const taskA = taskRecord("thread_late_fallback_a", "Late fallback A", now);
   const taskB = taskRecord("thread_late_fallback_b", "Current fallback B", now + 10);
@@ -496,7 +496,7 @@ test("does not let a pending REST fallback overwrite an explicit stream recovery
     autoOpen: true,
     detailAvailabilityKey: "__allowRecoveredDetailStream",
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const threadId = "thread_pending_fallback_recovery";
   const now = 1_767_400_300_000;
   const task = taskRecord(threadId, "Pending fallback recovery", now);

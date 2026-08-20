@@ -6,7 +6,7 @@ import {
   canonicalTaskState,
   captureReviewScreenshot,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -70,7 +70,7 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
     registryKey: "__taskGithubEventSources",
     bootstrapFunctionKey: "__taskGithubDetailBootstrap",
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const task = linkedWorktreeTask();
   const repository = {

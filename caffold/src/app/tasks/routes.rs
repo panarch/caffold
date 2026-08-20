@@ -1,3 +1,7 @@
+#[cfg(test)]
+use crate::task_store::RunBy;
+
+mod agent;
 mod codex;
 mod commands;
 mod conversation;
@@ -5,6 +9,7 @@ mod list;
 mod membership;
 mod store;
 
+use agent::*;
 use codex::*;
 use commands::*;
 use conversation::*;
@@ -24,12 +29,11 @@ use axum::{
 };
 use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
-use serde_json::Value as JsonValue;
 use tokio::sync::broadcast;
 
 use super::{
-    ApprovalResolveError, CodexConnection, DetailFrameStream, TaskDetailResponse, TaskDetailSync,
-    TaskRecord, TaskState, accepted_user_message_event, now_ms, task_activity_ms,
+    ApprovalResolveError, CodexConnection, DetailFrameStream, TaskAgent, TaskDetailResponse,
+    TaskDetailSync, TaskRecord, TaskState, accepted_user_message_event, now_ms, task_activity_ms,
 };
 use super::{
     lifecycle::{ActiveTaskTopPlacement, StartTask},
@@ -88,17 +92,15 @@ struct TaskDetailQuery {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CodexPermissionsQuery {
-    cwd: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct CreateTaskRequest {
     prompt: String,
     #[serde(default)]
     images: Vec<String>,
     cwd: Option<String>,
+    /// Which agent should run this Task, named as the model list named it.
+    /// Absent means Codex, which is what every Task was before there was a
+    /// second agent.
+    provider: Option<String>,
     model: Option<String>,
     effort: Option<String>,
     #[serde(default)]
@@ -315,8 +317,8 @@ pub(super) fn router(state: TaskState) -> Router {
         .merge(super::push::router())
         .route("/api/codex/status", get(codex_status))
         .route("/api/codex/restart", post(codex_restart))
-        .route("/api/codex/models", get(codex_models))
-        .route("/api/codex/permissions", get(codex_permissions))
+        .route("/api/agent/models", get(agent_models))
+        .route("/api/agent/permissions", get(agent_permissions))
         .route(
             "/api/tasks",
             get(list_managed_tasks)
@@ -431,7 +433,7 @@ pub(super) async fn test_store_update_composer_settings(
 
 #[cfg(test)]
 pub(super) mod test_support {
-    use serde_json::json;
+    use serde_json::{Value as JsonValue, json};
 
     use super::*;
     use crate::task_store::ManagedSection;
@@ -523,7 +525,7 @@ pub(super) mod test_support {
                 };
                 tables.upsert_managed_section(&section)?;
                 tables.claim_managed_thread_at_top(
-                    ManagedThread::new(thread_id, Some(recency_ms), None, None),
+                    ManagedThread::new(thread_id, RunBy::Codex, Some(recency_ms), None, None),
                     display_name,
                     &section.section_id,
                     recency_ms,

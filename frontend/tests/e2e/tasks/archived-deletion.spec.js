@@ -5,13 +5,13 @@ import {
   canonicalTaskState,
   captureReviewScreenshot,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 });
 
 function archivedTask(threadId, title, conversationAvailable = true) {

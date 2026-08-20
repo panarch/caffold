@@ -10,7 +10,7 @@ import {
   captureReviewScreenshot,
   canonicalTaskState,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -98,7 +98,7 @@ async function installTaskGitFixture(
     registryKey: "__taskGitWatchSources",
     bootstrapFunctionKey: "__taskGitDetailBootstrap",
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const repository = { rootPath, branch, dirty: false };
   const counts = {
     repository,

@@ -26,7 +26,7 @@ use super::protocol::{
     seconds_to_ms_value,
 };
 use super::{CodexThreadClient, CodexThreadError, CodexTurnOptions, NORMAL_SERVICE_TIER_ID};
-use crate::agent::driver::{PermissionModeOption, TurnOptions, TurnRejected};
+use crate::agent::driver::{ModelOption, PermissionModeOption, TurnOptions, TurnRejected, bounded};
 use crate::agent::{
     ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, CommandExecution,
     Conversation, ConversationItem, GeneratedImage, ItemKind, MessageContent, MessagePhase,
@@ -818,6 +818,42 @@ pub(crate) async fn codex_permission_modes(
     ))
 }
 
+/// The models Codex offers, in Caffold's words.
+///
+/// A model reaches the interface as something to send back, something to show,
+/// and what it can do. Codex says all of that and more — modalities,
+/// personality, service tiers by name — and the parts that are Codex's own stay
+/// with Codex rather than becoming a shape a second agent has to imitate.
+pub(crate) async fn codex_models(
+    client: &CodexThreadClient,
+) -> Result<Vec<ModelOption>, CodexThreadError> {
+    Ok(client
+        .list_models(100)
+        .await?
+        .data
+        .into_iter()
+        .filter(|model| !model.hidden)
+        .map(|model| ModelOption {
+            model: model.model.clone(),
+            display_name: model.display_name.clone(),
+            description: (!model.description.is_empty()).then(|| model.description.clone()),
+            is_default: model.is_default,
+            default_effort: codex_reasoning_effort(&model.default_reasoning_effort)
+                .map(str::to_string),
+            efforts: model
+                .supported_reasoning_efforts
+                .iter()
+                .filter_map(codex_reasoning_effort)
+                .map(str::to_string)
+                .collect(),
+            supports_fast_mode: model.fast_service_tier_id().is_some(),
+            // Codex resolves permissions from profiles and a reviewer setting,
+            // which no model takes part in.
+            supports_auto_mode: false,
+        })
+        .collect())
+}
+
 /// What Codex will accept for a turn.
 ///
 /// Caffold names a model, a depth, and a speed; what each of those means to
@@ -886,24 +922,6 @@ pub(crate) async fn codex_turn_options(
     })
 }
 
-/// A value a person typed, or nothing when they typed nothing.
-///
-/// `None` from an absent or blank choice means "whatever the agent prefers".
-/// A value too long or carrying control characters never came from the choices
-/// the agent offered, and is refused before it reaches one.
-fn bounded(value: Option<&str>, limit: usize) -> Option<Option<String>> {
-    let Some(value) = value.map(str::trim) else {
-        return Some(None);
-    };
-    if value.is_empty() {
-        return Some(None);
-    }
-    if value.len() > limit || value.chars().any(char::is_control) {
-        return None;
-    }
-    Some(Some(value.to_string()))
-}
-
 /// A permission mode Codex offered, read back.
 ///
 /// An unreadable one falls to Codex's own default rather than being refused:
@@ -916,8 +934,8 @@ fn codex_permission_mode(mode: Option<&str>) -> Option<CodexPermissionMode> {
 
 fn codex_reasoning_effort(effort: &Value) -> Option<&str> {
     effort
-        .get("value")
-        .and_then(Value::as_str)
+        .as_str()
+        .or_else(|| effort.get("value").and_then(Value::as_str))
         .or_else(|| effort.get("reasoningEffort").and_then(Value::as_str))
 }
 
@@ -933,6 +951,8 @@ fn codex_option(
         label: label.to_string(),
         description: description.to_string(),
         allowed,
+        unavailable_reason: (!allowed)
+            .then(|| "The permission profile this needs is not allowed here.".to_string()),
         dangerous,
     }
 }

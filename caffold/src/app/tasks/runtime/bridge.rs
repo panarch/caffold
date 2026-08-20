@@ -153,7 +153,7 @@ impl CodexRuntime {
     /// did: whether the session actually moved decides whether readers are told,
     /// and whether this is the first time a turn ended decides whether a phone
     /// is notified.
-    async fn handle_session_event(&self, generation: u64, event: SessionEvent) {
+    pub(super) async fn handle_session_event(&self, generation: u64, event: SessionEvent) {
         let outcome = self
             .sessions
             .apply_session_event_with_outcome(generation, &event)
@@ -368,12 +368,13 @@ mod tests {
             worktrees::ManagedWorktrees,
         },
         fs::RootedFs,
-        task_store::{ManagedThread, PushSubscriptionInput, TaskStore},
+        task_store::{ManagedThread, PushSubscriptionInput, RunBy, TaskStore},
     };
 
     fn runtime_with_events_and_store(events: TaskEvents, store: TaskStore) -> CodexRuntime {
         let (shutdown, _) = broadcast::channel(1);
-        CodexRuntime::new(TaskSessions::default(), events, store, shutdown)
+        let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
+        CodexRuntime::new(claude, TaskSessions::default(), events, store, shutdown)
     }
 
     fn runtime_with_list_events(
@@ -387,6 +388,7 @@ mod tests {
         let worktrees =
             ManagedWorktrees::new(fs.clone(), store.clone(), root.path().join("worktrees"))
                 .unwrap();
+        let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
         let lifecycle = TaskLifecycle::new(
             fs,
             sessions.clone(),
@@ -394,10 +396,11 @@ mod tests {
             list_events.clone(),
             store.clone(),
             worktrees,
+            claude.clone(),
         );
         let (shutdown, _) = broadcast::channel(1);
         (
-            CodexRuntime::new(sessions, events, store, shutdown).with_lifecycle(lifecycle),
+            CodexRuntime::new(claude, sessions, events, store, shutdown).with_lifecycle(lifecycle),
             list_events,
         )
     }
@@ -517,7 +520,7 @@ mod tests {
         let (runtime, list_events) = runtime_with_list_events(TaskEvents::default(), store.clone());
         store
             .claim(
-                ManagedThread::new("thread_1", Some(1_000), None, None),
+                ManagedThread::new("thread_1", RunBy::Codex, Some(1_000), None, None),
                 1_000,
             )
             .unwrap();
@@ -550,7 +553,7 @@ mod tests {
         let (runtime, list_events) = runtime_with_list_events(TaskEvents::default(), store.clone());
         store
             .claim(
-                ManagedThread::new("thread_1", Some(1_000), None, None),
+                ManagedThread::new("thread_1", RunBy::Codex, Some(1_000), None, None),
                 1_000,
             )
             .unwrap();
@@ -579,7 +582,10 @@ mod tests {
     async fn terminal_push_selects_only_managed_canonical_terminal_turns() {
         let store = TaskStore::memory().unwrap();
         store
-            .claim(ManagedThread::new("managed", None, None, None), 1_000)
+            .claim(
+                ManagedThread::new("managed", RunBy::Codex, None, None, None),
+                1_000,
+            )
             .unwrap();
         store
             .upsert_push_installation(
@@ -715,7 +721,10 @@ mod tests {
     async fn startup_recovery_resumes_only_loaded_threads_managed_by_caffold() {
         let store = TaskStore::memory().unwrap();
         store
-            .claim(ManagedThread::new("managed", None, None, None), 10)
+            .claim(
+                ManagedThread::new("managed", RunBy::Codex, None, None, None),
+                10,
+            )
             .unwrap();
         let runtime = runtime_with_events_and_store(TaskEvents::default(), store);
         let client = CodexThreadClient::mock(vec![

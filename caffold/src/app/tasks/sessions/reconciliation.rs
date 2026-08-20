@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-use crate::agent::codex::{is_fast_service_tier, permission_mode_name};
 use crate::agent::{
     Conversation, Driver, OpenedConversation, ThreadStatus, Turn, TurnPage, TurnStatus,
 };
@@ -16,31 +15,34 @@ use super::{SessionLifecycle, SessionState, now_unix_ms};
 
 /// What the agent says this conversation's settings are.
 ///
-/// Still read in Codex's own keys. A permission mode is the one part of this
-/// vocabulary Caffold has not decided across agents, and inventing a shared
-/// meaning with one agent in hand would be guessing — so this moves when
-/// readiness and settings do.
-pub(super) fn apply_thread_settings(state: &mut SessionState, settings: &BTreeMap<String, Value>) {
-    state.permission_mode = permission_mode_name(settings);
-    if let Some(model) = settings.get("model").and_then(serde_json::Value::as_str) {
-        state.model = Some(model.to_string());
+/// The settings arrived in the agent's own keys and are read back by that
+/// agent, because what a permission mode or a speed means is the one part of
+/// this vocabulary Caffold has not decided across agents. Nothing is applied
+/// when the agent is unknown, which happens only before a conversation has been
+/// opened at all.
+pub(super) fn apply_thread_settings(
+    state: &mut SessionState,
+    driver: &Driver,
+    settings: &BTreeMap<String, Value>,
+) {
+    let read = driver.read_settings(settings);
+    state.permission_mode = read.permission_mode;
+    if read.model.is_some() {
+        state.model = read.model;
     }
-    if let Some(reasoning_effort) = settings.get("reasoningEffort") {
-        state.reasoning_effort = reasoning_effort.as_str().map(str::to_string);
+    if read.effort.is_some() {
+        state.reasoning_effort = read.effort;
     }
-    state.fast_mode = is_fast_service_tier(
-        settings
-            .get("serviceTier")
-            .and_then(serde_json::Value::as_str),
-    );
+    state.fast_mode = read.fast_mode;
 }
 
 fn merge_external_resume_response(
     state: &mut SessionState,
+    driver: &Driver,
     response: OpenedConversation,
     base_revision: u64,
 ) -> MetadataMergeOutcome {
-    apply_thread_settings(state, &response.settings);
+    apply_thread_settings(state, driver, &response.settings);
     let OpenedConversation {
         conversation,
         turns_page,
@@ -179,7 +181,7 @@ pub(super) fn apply_opened_conversation(
     let preserved_terminal_candidate = merge_history
         .then(|| state.terminal_candidate_turn_id.clone())
         .flatten();
-    apply_thread_settings(state, &opened.settings);
+    apply_thread_settings(state, driver, &opened.settings);
     let OpenedConversation {
         conversation: thread,
         turns_page: incoming_page,
@@ -228,7 +230,7 @@ pub(super) fn apply_stale_refresh(
     base_revision: u64,
 ) {
     let preserved_terminal_candidate = state.terminal_candidate_turn_id.clone();
-    apply_thread_settings(state, &opened.settings);
+    apply_thread_settings(state, driver, &opened.settings);
     let OpenedConversation {
         conversation: incoming_thread,
         turns_page: incoming_page,
@@ -303,7 +305,7 @@ pub(super) fn apply_prompt_resume(
     opened: OpenedConversation,
     base_revision: u64,
 ) {
-    let applied = merge_external_resume_response(state, opened, base_revision);
+    let applied = merge_external_resume_response(state, driver, opened, base_revision);
     state.lifecycle = SessionLifecycle::Subscribed;
     state.driver = Some(driver.clone());
     state.generation = generation;

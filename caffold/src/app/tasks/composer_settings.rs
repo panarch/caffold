@@ -40,6 +40,7 @@ pub(super) async fn persist_started_turn_composer_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::task_store::RunBy;
 
     fn settings(model: &str, effort: &str, fast_mode: bool) -> ComposerSettings {
         ComposerSettings {
@@ -59,7 +60,7 @@ mod tests {
                     last_composer_settings: None,
                 })?;
                 tables.claim_managed_thread_at_top(
-                    ManagedThread::new(thread_id, Some(1), None, None),
+                    ManagedThread::new(thread_id, RunBy::Codex, Some(1), None, None),
                     thread_id,
                     section_id,
                     1,
@@ -118,7 +119,7 @@ mod tests {
         store
             .transaction(|tables| {
                 tables.claim_managed_thread_at_top(
-                    ManagedThread::new("thread-orphan", Some(1), None, None),
+                    ManagedThread::new("thread-orphan", RunBy::Codex, Some(1), None, None),
                     "Orphan",
                     "missing-section",
                     1,
@@ -149,7 +150,7 @@ mod tests {
         let store = TaskStore::memory().unwrap();
         store
             .claim(
-                ManagedThread::new("thread-unsectioned", Some(1), None, None),
+                ManagedThread::new("thread-unsectioned", RunBy::Codex, Some(1), None, None),
                 1,
             )
             .unwrap();

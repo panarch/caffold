@@ -5,13 +5,13 @@ import {
   canonicalTaskState,
   captureReviewScreenshot,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "./support/task-fixtures.js";
 import { openCompletedTaskForReview } from "./support/task-review-test.js";
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 });
 
 test("navigates Settings as responsive master-detail pages with browser history", { tag: "@all-viewports" }, async ({

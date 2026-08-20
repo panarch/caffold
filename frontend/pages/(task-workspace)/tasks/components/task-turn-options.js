@@ -1,4 +1,4 @@
-import { getCodexModels, getCodexPermissions } from "../../../../api.js";
+import { getAgentModels, getAgentPermissions } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import { cleanLogicalPath } from "../task-format.js";
@@ -7,6 +7,7 @@ let turnOptionsInstanceSequence = 0;
 
 function createSelection() {
   return {
+    provider: "",
     model: "",
     effort: "",
     fastMode: false,
@@ -30,7 +31,12 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.ensureRendered();
     this.render();
     void this.loadModels();
-    void this.loadPermissions(this.context.cwd);
+    // Which permission modes to offer depends on which agent will run the
+    // Task. A Task that exists already says; a new one is decided by the model
+    // that is chosen, so its modes are asked for once the list arrives.
+    if (this.context.provider) {
+      void this.loadPermissions(this.context.cwd);
+    }
   }
 
   disconnectedCallback() {
@@ -63,6 +69,10 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       initialSelection: {},
       locked: false,
       placement: "below",
+      // A Task already belongs to an agent, and its conversation cannot move
+      // to another. Empty means a Task that does not exist yet, where every
+      // agent's models are on offer.
+      provider: "",
     };
     this.selection = createSelection();
     this.modelOptions = [];
@@ -143,10 +153,12 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       },
       locked: Boolean(context.locked),
       placement: context.placement === "above" ? "above" : "below",
+      provider: `${context.provider ?? this.context.provider ?? ""}`.trim(),
     };
     const cwdChanged = next.cwd !== this.context.cwd;
     const lockedChanged = next.locked !== this.context.locked;
     const placementChanged = next.placement !== this.context.placement;
+    const providerChanged = next.provider !== this.context.provider;
     this.context = next;
     const selectionChanged = this.applyInitialSelection(next.initialSelection);
     if (next.locked) {
@@ -155,10 +167,20 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     if (this.isConnected && (selectionChanged || lockedChanged || placementChanged)) {
       this.render();
     }
-    if (this.isConnected && cwdChanged) {
+    if (this.isConnected && (cwdChanged || providerChanged)) {
       void this.loadPermissions(next.cwd);
     }
-    return cwdChanged || selectionChanged || lockedChanged || placementChanged;
+    if (this.isConnected && providerChanged) {
+      this.applyDefaultModelSelection();
+      this.render();
+    }
+    return (
+      cwdChanged ||
+      selectionChanged ||
+      lockedChanged ||
+      placementChanged ||
+      providerChanged
+    );
   }
 
   reset(context = {}) {
@@ -170,6 +192,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       initialSelection: { ...(context.initialSelection ?? {}) },
       locked: Boolean(context.locked),
       placement: context.placement === "above" ? "above" : "below",
+      provider: `${context.provider ?? ""}`.trim(),
     };
     this.applyInitialSelection(this.context.initialSelection);
     this.applyDefaultModelSelection();
@@ -217,6 +240,10 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     const model = this.selectedModel();
     if (model?.model) {
       options.model = model.model;
+      // Which agent runs the Task comes from the model that was chosen. The
+      // list said which agent offers each one, so nothing has to be inferred
+      // from the name.
+      options.provider = model.provider;
     }
     const effort = this.selectedEffort();
     if (effort) {
@@ -270,7 +297,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.modelError = null;
     this.render();
     try {
-      const response = await getCodexModels();
+      const response = await getAgentModels();
       if (requestId !== this.modelRequestId) {
         return;
       }
@@ -288,26 +315,41 @@ class CaffoldTaskTurnOptions extends HTMLElement {
         this.modelLoading = false;
         this.render();
         this.emitChange();
+        void this.loadPermissions(this.context.cwd);
       }
     }
   }
 
   async loadPermissions(cwd) {
     const targetCwd = cleanLogicalPath(cwd || ".");
+    const chosen = this.selectedModel();
+    const targetProvider = chosen?.provider ?? this.context.provider ?? "";
+    // One agent's modes depend on the model: only some models can decide
+    // permissions for themselves, so the list is asked for again when the
+    // choice changes.
+    const targetModel = chosen?.model ?? "";
     if (
       this.permissionCwd === targetCwd &&
+      this.permissionProvider === targetProvider &&
+      this.permissionModel === targetModel &&
       (this.permissionLoaded || this.permissionLoading)
     ) {
       return;
     }
     const requestId = ++this.permissionRequestId;
     this.permissionCwd = targetCwd;
+    this.permissionProvider = targetProvider;
+    this.permissionModel = targetModel;
     this.permissionLoading = true;
     this.permissionLoaded = false;
     this.permissionError = null;
     this.render();
     try {
-      const response = await getCodexPermissions(targetCwd);
+      const response = await getAgentPermissions(
+        targetCwd,
+        targetProvider,
+        targetModel,
+      );
       if (
         requestId !== this.permissionRequestId ||
         targetCwd !== this.permissionCwd
@@ -341,16 +383,30 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     }
   }
 
+  // The models on offer here: one agent's for an existing Task, every agent's
+  // for one that does not exist yet.
+  offeredModels() {
+    const provider = `${this.context.provider ?? ""}`.trim();
+    if (!provider) {
+      return this.modelOptions;
+    }
+    // An agent that could not be asked leaves its Task with no models rather
+    // than with another agent's, which the conversation could not continue in.
+    return this.modelOptions.filter((option) => option.provider === provider);
+  }
+
   applyDefaultModelSelection() {
-    if (!this.modelOptions.length) {
+    const offered = this.offeredModels();
+    if (!offered.length) {
       return;
     }
     const selection = this.selection;
     const model =
-      this.modelOptions.find((option) => option.model === selection.model) ??
-      this.modelOptions.find((option) => option.isDefault) ??
-      this.modelOptions[0];
+      offered.find((option) => option.model === selection.model) ??
+      offered.find((option) => option.isDefault) ??
+      offered[0];
     selection.model ||= model.model;
+    selection.provider = model.provider;
     selection.effort ||=
       model.defaultReasoningEffort ||
       model.supportedReasoningEfforts[0]?.value ||
@@ -377,11 +433,12 @@ class CaffoldTaskTurnOptions extends HTMLElement {
   }
 
   selectedModel() {
+    const offered = this.offeredModels();
     const selectedModel = this.selection.model;
     return (
-      this.modelOptions.find((option) => option.model === selectedModel) ??
-      this.modelOptions.find((option) => option.isDefault) ??
-      this.modelOptions[0] ??
+      offered.find((option) => option.model === selectedModel) ??
+      offered.find((option) => option.isDefault) ??
+      offered[0] ??
       null
     );
   }
@@ -493,9 +550,14 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       selection.fastMode = false;
       selection.fastModeExplicit = true;
     }
+    selection.provider = model?.provider ?? selection.provider;
     this.hidePopover(this.modelPopover());
     this.render();
     this.emitChange();
+    // Choosing a model can choose an agent, and the ways an agent can be
+    // allowed to work are its own. Leaving the old list up would offer modes
+    // the chosen agent has never heard of.
+    void this.loadPermissions(this.context.cwd);
   }
 
   selectEffort(effort) {
@@ -562,6 +624,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
 
   render() {
     this.ensureRendered();
+    const offered = this.offeredModels();
     const model = this.selectedModel();
     const effort = this.selectedEffort();
     const fastMode = this.selectedFastMode();
@@ -575,15 +638,23 @@ class CaffoldTaskTurnOptions extends HTMLElement {
 
     const modelLabel =
       model?.displayName ?? (this.modelLoading ? "Loading model" : "Model");
-    const effortValue = effort || "Reasoning";
-    const summaryLabel = `${modelLabel} · ${effortValue}${fastMode ? " · Fast" : ""}`;
+    // Not every model works at more than one depth. One that does not has
+    // nothing to choose, and a placeholder in the summary would read as a
+    // depth it was set to.
+    const efforts = model?.supportedReasoningEfforts ?? [];
+    const effortValue = efforts.length ? effort || "Reasoning" : "";
+    const summaryLabel = [modelLabel, effortValue, fastMode ? "Fast" : ""]
+      .filter(Boolean)
+      .join(" · ");
     const compactModel = compactModelLabel(modelLabel);
     const supportsFast = Boolean(model?.supportsFast);
-    const pickerLabel = supportsFast
-      ? "Choose model, reasoning, and speed"
-      : "Choose model and reasoning";
+    const chosen = ["model", efforts.length ? "reasoning" : "", supportsFast ? "speed" : ""].filter(
+      Boolean,
+    );
+    const pickerLabel = `Choose ${listPhrase(chosen)}`;
     const modelButton = this.modelButton();
     modelButton.classList.toggle("is-fast", fastMode);
+    modelButton.classList.toggle("has-effort", Boolean(effortValue));
     modelButton.disabled = locked;
     modelButton.setAttribute("aria-label", pickerLabel);
     modelButton.title = locked
@@ -591,7 +662,11 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       : summaryLabel;
     modelButton.innerHTML = `
       <span class="task-model-name">${escapeHtml(compactModel)}</span>
-      <span class="task-model-effort"> · ${escapeHtml(effortValue)}</span>
+      ${
+        effortValue
+          ? `<span class="task-model-effort"> · ${escapeHtml(effortValue)}</span>`
+          : ""
+      }
       ${
         fastMode
           ? `<span class="task-model-fast" title="Fast mode">${renderInlineIcon("Zap", "Fast mode", "task-model-fast-icon")}</span>`
@@ -600,19 +675,18 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     `;
 
     const modelPopover = this.modelPopover();
+    const popoverLabel = listPhrase(chosen);
     modelPopover.setAttribute(
       "aria-label",
-      supportsFast
-        ? "Model, reasoning, and speed options"
-        : "Model and reasoning options",
+      `${popoverLabel.charAt(0).toUpperCase()}${popoverLabel.slice(1)} options`,
     );
     this.patchPopover(
       modelPopover,
       `<section>
         <p>Model</p>
         ${
-          this.modelOptions.length
-            ? this.modelOptions
+          offered.length
+            ? offered
                 .map((option) =>
                   renderModelOption(option, model?.model ?? ""),
                 )
@@ -620,13 +694,17 @@ class CaffoldTaskTurnOptions extends HTMLElement {
             : renderModelFallback(this.modelLoading, this.modelError)
         }
       </section>
-      <hr>
-      <section>
-        <p>Reasoning level</p>
-        ${this.selectedModel()?.supportedReasoningEfforts
-          ?.map((option) => renderReasoningOption(option, effort))
-          .join("") ?? ""}
-      </section>
+      ${
+        efforts.length
+          ? `<hr>
+            <section>
+              <p>Reasoning level</p>
+              ${efforts
+                .map((option) => renderReasoningOption(option, effort))
+                .join("")}
+            </section>`
+          : ""
+      }
       ${
         supportsFast
           ? `<hr>
@@ -728,39 +806,25 @@ function optionForFocusKey(popover, focus) {
 }
 
 function normalizeModelOptions(response) {
-  const models = Array.isArray(response?.data) ? response.data : [];
+  const models = Array.isArray(response?.models) ? response.models : [];
   return models
     .map((model) => {
-      const modelValue = `${model?.model ?? model?.id ?? ""}`.trim();
-      if (!modelValue) {
+      const modelValue = `${model?.model ?? ""}`.trim();
+      const provider = `${model?.provider ?? ""}`.trim();
+      if (!modelValue || !provider) {
         return null;
       }
       return {
+        provider,
         model: modelValue,
         displayName: `${model?.displayName ?? modelValue}`.trim(),
         isDefault: Boolean(model?.isDefault),
-        defaultReasoningEffort: `${model?.defaultReasoningEffort ?? ""}`.trim(),
-        supportedReasoningEfforts: normalizeReasoningOptions(
-          model?.supportedReasoningEfforts,
-        ),
-        supportsFast: normalizeServiceTiers(model?.serviceTiers).some(
-          (tier) => tier.name.toLowerCase() === "fast",
-        ),
+        defaultReasoningEffort: `${model?.defaultEffort ?? ""}`.trim(),
+        supportedReasoningEfforts: normalizeReasoningOptions(model?.efforts),
+        supportsFast: Boolean(model?.supportsFastMode),
       };
     })
     .filter(Boolean);
-}
-
-function normalizeServiceTiers(tiers) {
-  if (!Array.isArray(tiers)) {
-    return [];
-  }
-  return tiers
-    .map((tier) => ({
-      id: `${tier?.id ?? ""}`.trim(),
-      name: `${tier?.name ?? ""}`.trim(),
-    }))
-    .filter((tier) => tier.id && tier.name);
 }
 
 function compactModelLabel(label) {
@@ -798,10 +862,24 @@ function normalizePermissionOptions(response) {
         label: `${option?.label ?? permissionModeLabel(mode)}`.trim(),
         description: `${option?.description ?? ""}`.trim(),
         allowed: Boolean(option?.allowed),
+        unavailableReason: `${
+          option?.unavailableReason ?? "This is not available here."
+        }`.trim(),
         dangerous: Boolean(option?.dangerous),
       };
     })
     .filter(Boolean);
+}
+
+// "model", "model and reasoning", "model, reasoning, and speed".
+function listPhrase(parts) {
+  if (parts.length < 2) {
+    return parts[0] ?? "";
+  }
+  if (parts.length === 2) {
+    return `${parts[0]} and ${parts[1]}`;
+  }
+  return `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}`;
 }
 
 function renderModelOption(option, selectedModel) {
@@ -855,9 +933,8 @@ function renderFastModeOption(fastMode, selectedFastMode) {
 
 function renderPermissionOption(option, selectedMode) {
   const selected = option.mode === selectedMode;
-  const unavailable = option.allowed
-    ? ""
-    : " Not allowed by Codex requirements.";
+  // Why a mode is withheld is the agent's to say; the interface only shows it.
+  const unavailable = option.allowed ? "" : ` ${option.unavailableReason}`;
   return `
     <button
       type="button"

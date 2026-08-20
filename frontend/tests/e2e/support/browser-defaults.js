@@ -82,7 +82,7 @@ export async function installBrowserDefaults(page) {
     }),
   );
 
-  await page.route(/\/api\/codex\/permissions(?:\?|$)/, (route) =>
+  await page.route(/\/api\/agent\/permissions(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({

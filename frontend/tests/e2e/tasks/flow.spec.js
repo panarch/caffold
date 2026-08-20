@@ -7,7 +7,7 @@ import {
   captureReviewScreenshot,
   emitTaskDetailBootstrap,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
   pasteImage,
 } from "../support/task-fixtures.js";
 
@@ -17,7 +17,7 @@ test.beforeEach(async ({ page }) => {
 
 test("opens global Tasks without local registry state", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_global_fixture";
   let createdTaskRequest = null;

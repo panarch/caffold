@@ -7,14 +7,14 @@ import {
   activeTaskProjection,
   captureReviewScreenshot,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "./support/task-fixtures.js";
 
 const SETTINGS_KEY = "caffold:settings";
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 });
 
 test("shows Codex versions and explicitly restarts an outdated runtime", { tag: "@all-viewports" }, async ({

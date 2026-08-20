@@ -26,6 +26,7 @@ struct CodexProcessState {
 
 impl CodexRuntime {
     pub(in crate::app) fn startup(&self) {
+        self.watch_claude();
         let runtime = self.clone();
         tokio::spawn(async move {
             let status = runtime.status().await;
@@ -220,6 +221,22 @@ impl CodexRuntime {
         }
     }
 
+    /// Tell the runtime a connection failed, when the agent has one to lose.
+    ///
+    /// Codex serves every thread from one process, so losing it means losing
+    /// every conversation at once and the runtime has to say so. A Claude
+    /// session is its own process, and a failure reaching one says nothing
+    /// about the rest.
+    pub(in crate::app) async fn recover_connection_error_for(
+        &self,
+        agent: &super::TaskAgent,
+        error: &CodexThreadError,
+    ) {
+        if let Some(connection) = agent.codex() {
+            self.recover_connection_error(connection, error).await;
+        }
+    }
+
     pub(in crate::app) async fn recover_connection_error(
         &self,
         connection: &CodexConnection,
@@ -334,6 +351,7 @@ mod tests {
     fn test_runtime() -> CodexRuntime {
         let (shutdown, _) = broadcast::channel(1);
         CodexRuntime::new(
+            crate::agent::claude::ClaudeClient::mock().0,
             TaskSessions::default(),
             TaskEvents::default(),
             TaskStore::memory().unwrap(),

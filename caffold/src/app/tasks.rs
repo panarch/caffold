@@ -14,12 +14,15 @@ mod startup;
 mod sync;
 mod worktrees;
 
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use axum::Router;
 use tokio::sync::broadcast;
 
-use crate::{fs::RootedFs, task_store::TaskStore};
+use crate::{agent::claude::ClaudeClient, fs::RootedFs, task_store::TaskStore};
 
 use detail::{DetailContext, TaskDetailSync};
 use events::TaskEvents;
@@ -56,6 +59,7 @@ impl TaskState {
         shutdown: broadcast::Sender<()>,
         task_store: TaskStore,
         worktree_root: PathBuf,
+        claude: ClaudeClient,
     ) -> anyhow::Result<Self> {
         let (push, _receiver) = PushService::test_channel(task_store.clone());
         Self::new_with_push(
@@ -65,6 +69,7 @@ impl TaskState {
             task_store,
             worktree_root,
             push,
+            claude,
         )
     }
 
@@ -75,6 +80,7 @@ impl TaskState {
         task_store: TaskStore,
         worktree_root: PathBuf,
         push: PushService,
+        claude: ClaudeClient,
     ) -> anyhow::Result<Self> {
         let task_events = TaskEvents::default();
         let codex_sessions = crate::app::tasks::sessions::TaskSessions::default();
@@ -88,8 +94,10 @@ impl TaskState {
             task_list_events.clone(),
             task_store.clone(),
             managed_worktrees,
+            claude.clone(),
         );
         let codex_runtime = CodexRuntime::new(
+            claude,
             codex_sessions.clone(),
             task_events.clone(),
             task_store.clone(),
@@ -141,6 +149,7 @@ impl TasksApp {
         shutdown: broadcast::Sender<()>,
         task_store: TaskStore,
         worktree_root: PathBuf,
+        claude: ClaudeClient,
     ) -> anyhow::Result<Self> {
         let push = PushRuntime::new(task_store.clone())?;
         let state = TaskState::new_with_push(
@@ -150,6 +159,7 @@ impl TasksApp {
             task_store,
             worktree_root,
             push.service(),
+            claude,
         )?;
         let runtime = state.codex_runtime.clone();
         Ok(Self {
@@ -166,12 +176,19 @@ impl TasksApp {
         database_path: PathBuf,
         worktree_root: PathBuf,
     ) -> anyhow::Result<Self> {
+        // The runner's socket lives beside the database, so an installed
+        // application and a development server each drive their own.
+        let data_dir = database_path
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| anyhow::anyhow!("the Task database has no directory"))?;
         let app = Self::new(
             fs,
             default_cwd_path,
             shutdown,
             TaskStore::redb(database_path)?,
             worktree_root,
+            ClaudeClient::in_data_dir(&data_dir),
         )?;
         app.runtime.startup();
         Ok(app)
@@ -183,12 +200,14 @@ impl TasksApp {
         shutdown: broadcast::Sender<()>,
         worktree_root: PathBuf,
     ) -> anyhow::Result<Self> {
+        let data_dir = worktree_root.clone();
         Self::new(
             fs,
             default_cwd_path,
             shutdown,
             TaskStore::memory()?,
             worktree_root,
+            ClaudeClient::in_data_dir(&data_dir),
         )
     }
 
@@ -204,7 +223,7 @@ impl TasksApp {
 pub(super) use detail::{DetailFrameStream, TaskDetailResponse};
 pub(super) use events::{TaskEventRecord, accepted_user_message_event, now_ms};
 pub(super) use projection::task_activity_ms;
-pub(super) use runtime::{ApprovalResolveError, CodexConnection};
+pub(super) use runtime::{ApprovalResolveError, CodexConnection, TaskAgent};
 
 #[cfg(test)]
 pub(in crate::app::tasks) mod test_support {
@@ -215,7 +234,7 @@ pub(in crate::app::tasks) mod test_support {
 
     use super::{TaskState, projection::*, routes::test_claim_task};
     use crate::{
-        agent::{Conversation, codex::CodexThreadClient},
+        agent::{Conversation, claude::ClaudeClient, codex::CodexThreadClient},
         fs::RootedFs,
         task_store::TaskStore,
     };
@@ -229,12 +248,14 @@ pub(in crate::app::tasks) mod test_support {
     ) -> TaskState {
         let (shutdown, _) = broadcast::channel(16);
         let worktree_root = fs.root().join(".caffold-test/worktrees");
+        let (claude, _runner) = ClaudeClient::mock();
         let state = TaskState::new(
             Arc::new(fs),
             String::new(),
             shutdown,
             TaskStore::memory().expect("in-memory task store"),
             worktree_root,
+            claude,
         )
         .expect("task state");
         state.codex_runtime.install_test_client(1, client).await;

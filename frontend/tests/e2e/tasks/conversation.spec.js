@@ -8,7 +8,7 @@ import {
   emitTaskDetailBootstrap,
   installEventSourceMock,
   isScrolledToBottom,
-  mockCodexModels,
+  mockAgentModels,
   scrollTop,
 } from "../support/task-fixtures.js";
 
@@ -44,7 +44,7 @@ test("keeps a large task usable while conversation history is loading", { tag: "
       close() {}
     };
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_large_history";
   const now = 1_767_300_000_000;
@@ -177,7 +177,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
       close() {}
     };
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const threadId = "thread_cursor_fixture";
   const detailCursors = [];
   const now = 1_767_100_000_000;
@@ -471,7 +471,7 @@ test("keeps the latest conversation when older history times out", { tag: "@all-
   page,
 }) => {
   await installEventSourceMock(page, { autoOpen: true });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const threadId = "thread_history_timeout_fixture";
   const now = 1_767_300_000_000;
   const task = {
@@ -581,7 +581,7 @@ test("renders normalized Codex user messages instead of raw ambient context", { 
   page,
 }, testInfo) => {
   await installEventSourceMock(page, { autoOpen: true });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_normalized_user_message";
   const now = 1_767_190_400_000;
@@ -655,7 +655,7 @@ test("orders separate turns by message chronology when a newer start marker is s
   page,
 }, testInfo) => {
   await installEventSourceMock(page, { autoOpen: true });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_cross_turn_chronology";
   const oldMs = 1_767_192_000_000;
@@ -757,7 +757,7 @@ test("keeps cross-turn work chronological and the active status at the timeline 
     registryKey: "__crossTurnChronologySources",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_cross_turn_work_chronology";
   const activeTurnId = "turn-A";
@@ -1005,7 +1005,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
       close() {}
     };
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_event_chronology";
   const turnId = "turn_event_chronology";
@@ -1442,7 +1442,7 @@ test("keeps task conversation scroll anchored during live updates", { tag: "@all
     };
   });
 
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const threadId = "thread_scroll_fixture";
   const now = 1_767_200_000_000;
   const task = {

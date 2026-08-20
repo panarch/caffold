@@ -196,8 +196,8 @@ test("untouched approval mode preserves the effective Codex default", { tag: "@a
 
 test("explicit approval mode is sent with a new task prompt", { tag: "@all-viewports" }, async ({ page }) => {
   await installTaskApiFixture(page);
-  await page.unroute("**/api/codex/permissions*");
-  await page.route("**/api/codex/permissions*", (route) =>
+  await page.unroute("**/api/agent/permissions*");
+  await page.route("**/api/agent/permissions*", (route) =>
     route.fulfill({
       json: {
         ...TASK_PERMISSION_FIXTURE,
@@ -508,41 +508,261 @@ test("reconciles an option-only follow-up to canonical Normal after Task switchi
   await expect(form.locator(".task-model-fast")).toHaveCount(0);
 });
 
+test("approval modes follow the agent the chosen model belongs to", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  // The ways an agent can be allowed to work are its own. A list left over
+  // from the previous choice offers modes the chosen agent never heard of.
+  await installTaskApiFixture(page);
+  await page.unroute("**/api/agent/models");
+  await page.route("**/api/agent/models", (route) =>
+    route.fulfill({
+      json: {
+        models: [
+          {
+            provider: "codex",
+            model: "gpt-test",
+            displayName: "GPT Test",
+            description: "A Codex model",
+            isDefault: true,
+            defaultEffort: "medium",
+            efforts: ["medium"],
+            supportsFastMode: false,
+          },
+          {
+            provider: "claude",
+            model: "opus",
+            displayName: "Opus",
+            description: "A Claude model",
+            isDefault: false,
+            defaultEffort: "high",
+            efforts: ["high"],
+            supportsFastMode: false,
+          },
+        ],
+        unavailable: [],
+      },
+    }),
+  );
+  await page.unroute("**/api/agent/permissions*");
+  await page.route("**/api/agent/permissions*", (route) => {
+    const provider = new URL(route.request().url()).searchParams.get("provider");
+    return route.fulfill({
+      json:
+        provider === "claude"
+          ? {
+              defaultMode: "default",
+              options: [
+                {
+                  mode: "default",
+                  label: "Ask each time",
+                  description: "Stops for permission.",
+                  allowed: true,
+                  dangerous: false,
+                },
+                {
+                  mode: "acceptEdits",
+                  label: "Accept edits",
+                  description: "Edits files without asking.",
+                  allowed: true,
+                  dangerous: false,
+                },
+              ],
+            }
+          : TASK_PERMISSION_FIXTURE,
+    });
+  });
+
+  await page.goto("/tasks/new?cwd=src");
+  const form = page.locator('.task-new-form[data-task-form="create"]');
+  const permissionButton = form.getByRole("button", { name: "Choose approval mode" });
+  await expect(permissionButton).toContainText("Auto review");
+
+  const modelButton = form.locator(".task-model-button");
+  await modelButton.click();
+  await form.locator('.task-model-popover [data-model="opus"]').click();
+
+  await expect(
+    permissionButton,
+    "a Claude model brings Claude's modes",
+  ).toContainText("Ask each time");
+  await permissionButton.click();
+  const permissionPopover = form.locator(".task-permission-popover");
+  await expect(
+    permissionPopover.locator('[data-permission-mode="acceptEdits"]'),
+  ).toBeVisible();
+  await expect(
+    permissionPopover.locator('[data-permission-mode="approveForMe"]'),
+    "and leaves none of Codex's behind",
+  ).toHaveCount(0);
+});
+
+test("a model that works at one depth offers no depth to choose", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  // Haiku carries no effort levels. An empty "Reasoning level" section and a
+  // summary reading "Haiku · Reasoning" both present a choice that is not one.
+  await installTaskApiFixture(page);
+  await page.unroute("**/api/agent/models");
+  await page.route("**/api/agent/models", (route) =>
+    route.fulfill({
+      json: {
+        models: [
+          {
+            provider: "claude",
+            model: "haiku",
+            displayName: "Haiku",
+            description: "Fastest for quick answers",
+            isDefault: true,
+            defaultEffort: null,
+            efforts: [],
+            supportsFastMode: false,
+          },
+        ],
+        unavailable: [],
+      },
+    }),
+  );
+
+  await page.goto("/tasks/new?cwd=src");
+  const form = page.locator('.task-new-form[data-task-form="create"]');
+  const modelPicker = form.getByRole("button", { name: /Choose model/ });
+  await expect(modelPicker).toContainText("Haiku");
+  await expect(modelPicker, "no depth is not a depth named Reasoning").not.toContainText(
+    "Reasoning",
+  );
+  await expect(modelPicker).toHaveAttribute("aria-label", "Choose model");
+
+  const columns = await modelPicker.evaluate(
+    (button) => getComputedStyle(button).gridTemplateColumns.split(" ").length,
+  );
+  expect(columns, "a column held open for a depth that is not shown reads as padding").toBe(1);
+
+  await modelPicker.click();
+  const modelMenu = form.getByRole("menu", { name: "Model options" });
+  await expect(modelMenu.getByText("Haiku", { exact: true })).toBeVisible();
+  await expect(
+    modelMenu.getByText("Reasoning level", { exact: true }),
+    "an empty section is a choice that is not one",
+  ).toHaveCount(0);
+});
+
+test("approval modes follow the model, not only the agent", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  // Only some models can decide permissions for themselves, and the agent
+  // refuses the mode at the moment a turn starts. The list has to change with
+  // the choice rather than offer something that will fail later.
+  await installTaskApiFixture(page);
+  await page.unroute("**/api/agent/models");
+  await page.route("**/api/agent/models", (route) =>
+    route.fulfill({
+      json: {
+        models: [
+          {
+            provider: "claude",
+            model: "sonnet",
+            displayName: "Sonnet",
+            description: "Decides for itself",
+            isDefault: true,
+            defaultEffort: "high",
+            efforts: ["high"],
+            supportsFastMode: false,
+          },
+          {
+            provider: "claude",
+            model: "haiku",
+            displayName: "Haiku",
+            description: "Does not",
+            isDefault: false,
+            defaultEffort: null,
+            efforts: [],
+            supportsFastMode: false,
+          },
+        ],
+        unavailable: [],
+      },
+    }),
+  );
+  await page.unroute("**/api/agent/permissions*");
+  await page.route("**/api/agent/permissions*", (route) => {
+    const model = new URL(route.request().url()).searchParams.get("model");
+    return route.fulfill({
+      json: {
+        defaultMode: "default",
+        options: [
+          {
+            mode: "auto",
+            label: "Automatic",
+            description: "The model decides what needs asking about.",
+            allowed: model === "sonnet",
+            dangerous: false,
+          },
+          {
+            mode: "default",
+            label: "Ask each time",
+            description: "Stops for permission.",
+            allowed: true,
+            dangerous: false,
+          },
+        ],
+      },
+    });
+  });
+
+  await page.goto("/tasks/new?cwd=src");
+  const form = page.locator('.task-new-form[data-task-form="create"]');
+  const permissionPicker = form.getByRole("button", { name: "Choose approval mode" });
+  await permissionPicker.click();
+  const permissionPopover = form.locator(".task-permission-popover");
+  const auto = permissionPopover.locator('[data-permission-mode="auto"]');
+  await expect(auto).toBeVisible();
+  await expect(auto, "a model that can decide offers it").toBeEnabled();
+  await page.keyboard.press("Escape");
+
+  const modelPicker = form.getByRole("button", { name: /Choose model/ });
+  await modelPicker.click();
+  await form.locator('.task-model-popover [data-model="haiku"]').click();
+
+  await permissionPicker.click();
+  await expect(
+    auto,
+    "a model that cannot shows it withheld rather than missing",
+  ).toBeVisible();
+  await expect(auto).toBeDisabled();
+});
+
 test("switching to a model without Fast support normalizes to Normal and hides Speed", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
-  await page.unroute("**/api/codex/models");
-  await page.route("**/api/codex/models", (route) =>
+  await page.unroute("**/api/agent/models");
+  await page.route("**/api/agent/models", (route) =>
     route.fulfill({
       json: {
-        data: [
+        models: [
           {
-            id: "gpt-fast",
+            provider: "codex",
             model: "gpt-fast",
             displayName: "GPT Fast",
             description: "Fast-capable model",
-            hidden: false,
-            supportedReasoningEfforts: [{ reasoningEffort: "low" }],
-            defaultReasoningEffort: "low",
-            serviceTiers: [{ id: "priority", name: "Fast", description: "Fast" }],
-            supportsPersonality: false,
             isDefault: true,
+            defaultEffort: "low",
+            efforts: ["low"],
+            supportsFastMode: true,
           },
           {
-            id: "gpt-normal-only",
+            provider: "codex",
             model: "gpt-normal-only",
             displayName: "GPT Normal Only",
             description: "Normal-only model",
-            hidden: false,
-            supportedReasoningEfforts: [{ reasoningEffort: "low" }],
-            defaultReasoningEffort: "low",
-            serviceTiers: [],
-            supportsPersonality: false,
             isDefault: false,
+            defaultEffort: "low",
+            efforts: ["low"],
+            supportsFastMode: false,
           },
         ],
-        nextCursor: null,
+        unavailable: [],
       },
     }),
   );
@@ -998,26 +1218,21 @@ test("keeps a tall follow-up model menu inside the conversation pane", { tag: "@
 }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 360 });
   await installTaskApiFixture(page);
-  await page.unroute("**/api/codex/models");
-  await page.route("**/api/codex/models", (route) =>
+  await page.unroute("**/api/agent/models");
+  await page.route("**/api/agent/models", (route) =>
     route.fulfill({
       json: {
-        data: Array.from({ length: 12 }, (_, index) => ({
-          id: `gpt-test-${index}`,
+        models: Array.from({ length: 12 }, (_, index) => ({
+          provider: "codex",
           model: `gpt-test-${index}`,
           displayName: `GPT Test ${index}`,
           description: `Test model ${index} with enough detail to make the menu tall`,
-          hidden: false,
-          supportedReasoningEfforts: [
-            { reasoningEffort: "medium", description: "Balanced depth" },
-            { reasoningEffort: "xhigh", description: "Extra depth" },
-          ],
-          defaultReasoningEffort: "medium",
-          inputModalities: ["text"],
-          supportsPersonality: false,
           isDefault: index === 0,
+          defaultEffort: "medium",
+          efforts: ["medium", "xhigh"],
+          supportsFastMode: false,
         })),
-        nextCursor: null,
+        unavailable: [],
       },
     }),
   );
