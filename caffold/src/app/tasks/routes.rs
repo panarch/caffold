@@ -28,9 +28,8 @@ use serde_json::Value as JsonValue;
 use tokio::sync::broadcast;
 
 use super::{
-    ApprovalResolution, ApprovalResolveError, CodexConnection, DetailFrameStream,
-    PermissionGrantScope, TaskDetailResponse, TaskDetailSync, TaskRecord, TaskState,
-    accepted_user_message_event, now_ms, task_activity_ms,
+    ApprovalResolveError, CodexConnection, DetailFrameStream, TaskDetailResponse, TaskDetailSync,
+    TaskRecord, TaskState, accepted_user_message_event, now_ms, task_activity_ms,
 };
 use super::{
     lifecycle::{ActiveTaskTopPlacement, StartTask},
@@ -41,9 +40,12 @@ use super::{
 use super::generated_images::GeneratedImageError;
 
 use crate::{
-    agent::codex::{
-        CodexDaemonInfo, CodexPermissionMode, CodexStatusResponse, CodexThreadClient,
-        CodexThreadError, CodexTurnOptions, NORMAL_SERVICE_TIER_ID, ThreadStatus,
+    agent::{
+        ApprovalDecision, Conversation,
+        codex::{
+            CodexDaemonInfo, CodexPermissionMode, CodexStatusResponse, CodexThreadClient,
+            CodexThreadError, CodexTurnOptions, NORMAL_SERVICE_TIER_ID, ThreadStatus,
+        },
     },
     app::error::ApiError,
     codex_thread_sessions::{PromptTarget, ThreadSessionSnapshot, ThreadSessionsDiagnostics},
@@ -153,9 +155,12 @@ struct TaskPromptOutcome {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TaskApprovalRequest {
+    /// One of the decisions the approval request offered.
+    ///
+    /// How far a grant reaches is part of the decision rather than a separate
+    /// field, because each agent decides for itself what allowing something
+    /// always covers.
     decision: String,
-    #[serde(default)]
-    scope: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

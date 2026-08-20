@@ -26,10 +26,27 @@ Caffold should still assume that remote command execution is sensitive.
 
 - Show the cwd and exact command when a command approval supplies them.
 - Show the complete requested capability profile before permission approval.
-- Distinguish one-time approval from accept-for-session.
+- Distinguish allowing once from allowing always.
 - Keep every approval decision visible in the canonical conversation.
-- Make decline and cancel first-class outcomes.
+- Make refusal a first-class outcome, both when the turn continues and when it
+  stops.
 - Avoid silent destructive operations.
+
+## The Approval Vocabulary
+
+Caffold offers four answers to any approval: allow, allow always, deny, and deny
+and stop. A request advertises which of them it accepts, and answering with one
+it did not offer is refused before anything reaches the agent.
+
+Caffold owns the answer, not the permission. Allowing something always tells the
+agent to apply the grant the agent itself proposed, so the permission model
+stays the agent's and Caffold never composes one.
+
+A request reaches the interface already written for a person to read: a title, a
+reason, and whichever specifics it carries — the command, the working directory,
+the network destination, the requested access as labelled rows. The driver
+writes those, because reading a permission profile means understanding it, and
+the driver is what understands its own agent.
 
 ## Codex Execution Approvals
 
@@ -45,10 +62,13 @@ Current rules:
   additional permissions even when no command text is present;
 - permission approval cards show the reason, cwd, and complete requested
   network and filesystem profile;
-- a one-turn or session grant returns the original server-requested permission
-  profile, while denial returns an empty profile;
+- allowing a permission request returns the original server-requested profile,
+  scoped to the turn or the session, while denial returns an empty profile;
+- a permission request cannot stop a turn, because Codex's permission response
+  has no way to say so, and it therefore does not offer that answer;
 - command output and exit status remain attached to the canonical turn;
 - long-running commands expose visible running state;
+- a command a person refused reads as declined rather than failed;
 - approval outcomes are sent back through the original app-server request.
 
 Allowlists, deny lists, or command classes require a separate policy before they

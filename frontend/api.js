@@ -198,13 +198,13 @@ export async function interruptTask(threadId) {
   );
 }
 
-export async function resolveTaskApproval(threadId, approvalId, decision, scope = null) {
+export async function resolveTaskApproval(threadId, approvalId, decision) {
   return requestJson(
     `/api/tasks/${encodeURIComponent(threadId)}/approvals/${encodeURIComponent(approvalId)}`,
     {},
     {
       method: "POST",
-      body: scope ? { decision, scope } : { decision },
+      body: { decision },
     },
   );
 }

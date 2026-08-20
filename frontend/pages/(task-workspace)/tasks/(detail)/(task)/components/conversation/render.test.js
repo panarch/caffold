@@ -13,20 +13,20 @@ test("delegates active-turn presentation to its component snapshot", () => {
   });
   const compactionStarted = turnEvent(
     "turn-1:context-compaction-1",
-    "work_status",
+    "tool_call",
     2,
     {
       itemId: "context-compaction-1",
-      itemType: "contextCompaction",
-      lifecycle: "started",
+      name: "Compacting context",
+      status: "inProgress",
     },
   );
   const compactionCompleted = {
     ...compactionStarted,
-    summary: "Context compacted",
+    summary: "Compacting context: completed",
     payload: {
       ...compactionStarted.payload,
-      lifecycle: "completed",
+      status: "completed",
     },
     updatedMs: 3,
   };
@@ -67,7 +67,7 @@ test("opts only stable user and final assistant messages into code controls", ()
     { messagePhase: "final" },
   );
   const progressAssistant = renderConversationEvent(
-    messageEvent("assistant_message", { phase: "commentary" }),
+    messageEvent("assistant_message", { phase: "progress" }),
     {},
     { messagePhase: "progress" },
   );

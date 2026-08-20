@@ -1,12 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-use super::events::{TaskEventRecord, non_empty_string, seconds_to_ms, seconds_to_ms_value};
+use super::events::{TaskEventRecord, non_empty_string};
 use crate::{
-    agent::{
-        ThreadStatus, TurnStatus,
-        codex::{CodexThread, CodexTurn},
-    },
+    agent::{Conversation, ThreadStatus, Turn, TurnStatus},
     fs::RootedFs,
     git,
 };
@@ -61,32 +58,32 @@ pub(in crate::app) struct ResolvedTaskCwd {
     pub(in crate::app) repository_common_dir: Option<PathBuf>,
 }
 
-/// A thread carrying the turns that were read separately.
+/// A conversation carrying the turns that were read separately.
 ///
-/// A thread read without its turns and a page of turns arrive as two responses,
-/// and everything below here wants one subject.
-pub(in crate::app) fn thread_with_turns(
-    thread: &CodexThread,
-    turns: Vec<CodexTurn>,
-) -> CodexThread {
-    CodexThread {
+/// A conversation read without its turns and a page of turns arrive as two
+/// responses, and everything below here wants one subject.
+pub(in crate::app) fn conversation_with_turns(
+    conversation: &Conversation,
+    turns: Vec<Turn>,
+) -> Conversation {
+    Conversation {
         turns,
-        ..thread.clone()
+        ..conversation.clone()
     }
 }
 
-pub(in crate::app) fn task_record_from_thread(
-    thread: &CodexThread,
+pub(in crate::app) fn task_record_from_conversation(
+    conversation: &Conversation,
     events: &[TaskEventRecord],
     resolved_cwd: Option<&ResolvedTaskCwd>,
 ) -> TaskRecord {
-    let thread_id = thread.id.as_str();
-    let cwd = thread.cwd.clone();
-    let title = non_empty_string(thread.name.as_deref())
-        .or_else(|| non_empty_string(Some(thread.preview.as_str())))
+    let thread_id = conversation.id.as_str();
+    let cwd = conversation.cwd.clone();
+    let title = non_empty_string(conversation.title.as_deref())
+        .or_else(|| non_empty_string(Some(conversation.preview.as_str())))
         .unwrap_or_else(|| format!("Thread {}", short_thread_id(thread_id)));
-    let preview = thread.preview.clone();
-    let thread_status = thread.status.clone().into();
+    let preview = conversation.preview.clone();
+    let thread_status = conversation.status.clone();
     let last_event_summary = events
         .last()
         .map(|event| event.summary.clone())
@@ -106,38 +103,31 @@ pub(in crate::app) fn task_record_from_thread(
             .unwrap_or_else(|| cwd.clone()),
         worktree: resolved_cwd.and_then(|resolved| resolved.worktree.clone()),
         cwd,
-        created_ms: seconds_to_ms(Some(thread.created_at)),
-        updated_ms: seconds_to_ms(Some(thread.updated_at)),
-        recency_ms: thread.recency_at.map(seconds_to_ms_value),
+        created_ms: conversation.created_at_ms,
+        updated_ms: conversation.updated_at_ms,
+        recency_ms: conversation.recency_at_ms,
         last_completed_ms: None,
         last_event_summary,
         unseen: false,
     }
 }
 
-pub(in crate::app) fn apply_canonical_turn_projection(task: &mut TaskRecord, thread: &CodexThread) {
-    let turns = thread.turns.as_slice();
-    task.latest_turn_status = turns.last().map(|turn| turn.status.into());
-    task.last_completed_ms = turns
-        .iter()
-        .filter_map(|turn| turn.completed_at)
-        .map(seconds_to_ms_value)
-        .filter(|value| *value > 0)
-        .max();
+pub(in crate::app) fn apply_canonical_turn_projection(
+    task: &mut TaskRecord,
+    conversation: &Conversation,
+) {
+    let turns = conversation.turns.as_slice();
+    task.latest_turn_status = turns.last().map(|turn| turn.status);
+    task.last_completed_ms = turns.iter().filter_map(|turn| turn.completed_at_ms).max();
     // The active turn is a control pointer rather than a second source of
     // status: it is offered only while the thread itself says it is active.
     task.active_turn = if matches!(task.thread_status, ThreadStatus::Active { .. }) {
         turns
             .last()
-            .filter(|turn| {
-                TurnStatus::from(turn.status) == TurnStatus::InProgress && !turn.id.is_empty()
-            })
+            .filter(|turn| turn.status == TurnStatus::InProgress && !turn.id.is_empty())
             .map(|turn| TaskActiveTurn {
                 id: turn.id.clone(),
-                started_at_ms: turn
-                    .started_at
-                    .map(seconds_to_ms_value)
-                    .filter(|value| *value > 0),
+                started_at_ms: turn.started_at_ms,
             })
     } else {
         None
@@ -149,11 +139,11 @@ pub(in crate::app) fn task_activity_ms(task: &TaskRecord) -> u64 {
         .unwrap_or_else(|| task.updated_ms.max(task.created_ms))
 }
 
-pub(in crate::app) fn resolve_thread_cwd(
+pub(in crate::app) fn resolve_conversation_cwd(
     fs: &RootedFs,
-    thread: &CodexThread,
+    conversation: &Conversation,
 ) -> Option<ResolvedTaskCwd> {
-    resolve_task_cwd(fs, &thread.cwd)
+    resolve_task_cwd(fs, &conversation.cwd)
 }
 
 pub(in crate::app) fn resolve_task_cwd(fs: &RootedFs, cwd: &str) -> Option<ResolvedTaskCwd> {
@@ -252,16 +242,19 @@ mod tests {
 
     use super::*;
 
-    /// Decode a fixture the way the adapter decodes a real response, so a test
-    /// cannot assert against a shape the adapter would have rejected.
-    fn decoded_thread(thread: serde_json::Value) -> CodexThread {
-        serde_json::from_value(thread).expect("the fixture decodes as a Codex thread")
-    }
     use crate::{
-        agent::{ThreadStatus, TurnStatus},
+        agent::{ThreadStatus, TurnStatus, codex::CodexThread},
         app::tasks::events::*,
         fs::RootedFs,
     };
+
+    /// Decode a fixture the way the adapter decodes a real response, so a test
+    /// cannot assert against a shape the adapter would have rejected.
+    fn decoded_thread(thread: JsonValue) -> Conversation {
+        let thread: CodexThread =
+            serde_json::from_value(thread).expect("the fixture decodes as a Codex thread");
+        Conversation::from(&thread)
+    }
 
     fn git_is_available() -> bool {
         std::process::Command::new("git")
@@ -324,14 +317,14 @@ mod tests {
         });
 
         let mut completed =
-            task_record_from_thread(&decoded_thread(completed_thread.clone()), &[], None);
+            task_record_from_conversation(&decoded_thread(completed_thread.clone()), &[], None);
         apply_canonical_turn_projection(&mut completed, &decoded_thread(completed_thread.clone()));
         assert_eq!(completed.latest_turn_status, Some(TurnStatus::Completed));
         assert_eq!(completed.active_turn, None);
         assert_eq!(completed.last_completed_ms, Some(4_000));
 
         let mut running =
-            task_record_from_thread(&decoded_thread(running_thread.clone()), &[], None);
+            task_record_from_conversation(&decoded_thread(running_thread.clone()), &[], None);
         apply_canonical_turn_projection(&mut running, &decoded_thread(running_thread.clone()));
         assert_eq!(running.latest_turn_status, Some(TurnStatus::InProgress));
         assert_eq!(running.active_turn.unwrap().id, "latest");
@@ -355,7 +348,7 @@ mod tests {
                 "items": []
             }]
         });
-        let mut task = task_record_from_thread(&decoded_thread(thread.clone()), &[], None);
+        let mut task = task_record_from_conversation(&decoded_thread(thread.clone()), &[], None);
         assert_eq!(task.latest_turn_status, None);
         assert_eq!(task.active_turn, None);
         apply_canonical_turn_projection(&mut task, &decoded_thread(thread.clone()));
@@ -387,7 +380,7 @@ mod tests {
                 "startedAt": null
             }]
         });
-        let mut task = task_record_from_thread(&decoded_thread(thread.clone()), &[], None);
+        let mut task = task_record_from_conversation(&decoded_thread(thread.clone()), &[], None);
         let list_value = serde_json::to_value(&task).unwrap();
         assert_eq!(
             list_value["threadStatus"],
@@ -428,7 +421,7 @@ mod tests {
             }]
         });
 
-        let mut task = task_record_from_thread(&decoded_thread(thread.clone()), &[], None);
+        let mut task = task_record_from_conversation(&decoded_thread(thread.clone()), &[], None);
         apply_canonical_turn_projection(&mut task, &decoded_thread(thread.clone()));
 
         assert_eq!(task.thread_status, ThreadStatus::Idle);
@@ -448,7 +441,7 @@ mod tests {
             "status": { "type": "active", "activeFlags": [] },
             "turns": []
         });
-        let mut task = task_record_from_thread(&decoded_thread(thread.clone()), &[], None);
+        let mut task = task_record_from_conversation(&decoded_thread(thread.clone()), &[], None);
         apply_canonical_turn_projection(&mut task, &decoded_thread(thread.clone()));
 
         assert!(matches!(task.thread_status, ThreadStatus::Active { .. }));
@@ -555,7 +548,7 @@ mod tests {
             1,
         )];
 
-        let task = task_record_from_thread(&decoded_thread(thread.clone()), &events, None);
+        let task = task_record_from_conversation(&decoded_thread(thread.clone()), &events, None);
         assert!(matches!(task.thread_status, ThreadStatus::Active { .. }));
     }
 
@@ -609,7 +602,7 @@ mod tests {
             ),
         ];
 
-        let task = task_record_from_thread(&decoded_thread(thread.clone()), &events, None);
+        let task = task_record_from_conversation(&decoded_thread(thread.clone()), &events, None);
         assert_eq!(task.thread_status, ThreadStatus::Idle);
     }
 
@@ -658,7 +651,7 @@ mod tests {
             ),
         ];
 
-        let task = task_record_from_thread(&decoded_thread(thread.clone()), &events, None);
+        let task = task_record_from_conversation(&decoded_thread(thread.clone()), &events, None);
         assert_eq!(task.thread_status, ThreadStatus::Idle);
     }
 
@@ -675,7 +668,7 @@ mod tests {
             "turns": []
         });
 
-        let mut task = task_record_from_thread(&decoded_thread(thread.clone()), &[], None);
+        let mut task = task_record_from_conversation(&decoded_thread(thread.clone()), &[], None);
         apply_canonical_turn_projection(&mut task, &decoded_thread(thread.clone()));
 
         assert_eq!(task.thread_status, ThreadStatus::Idle);

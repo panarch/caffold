@@ -264,24 +264,22 @@ export async function installTaskLoopFixture(
               body.prompt,
             ].join("\n"),
             turnId: "turn_1",
-            item: {
-              content: [
-                {
-                  type: "text",
-                  text: body.prompt,
-                },
-                {
-                  type: "image",
-                  url: body.images[0],
-                  name: "planner-layout.png",
-                },
-                {
-                  type: "localImage",
-                  path: "/tmp/planner-layout.png",
-                  name: "server-reference.png",
-                },
-              ],
-            },
+            content: [
+              {
+                type: "text",
+                text: body.prompt,
+              },
+              {
+                type: "image",
+                url: body.images[0],
+                name: "planner-layout.png",
+              },
+              {
+                type: "localImage",
+                path: "/tmp/planner-layout.png",
+                name: "server-reference.png",
+              },
+            ],
           },
           2,
         ),
@@ -299,14 +297,11 @@ export async function installTaskLoopFixture(
           "Command approval requested",
           {
             approvalId: "approval_1",
-            kind: "command",
-            method: "item/commandExecution/requestApproval",
-            params: {
-              command: "cargo test",
-              cwd: "src",
-              reason: "Run the test suite",
-              availableDecisions: ["accept", "acceptForSession", "decline", "cancel"],
-            },
+            title: "Command approval requested",
+            reason: "Run the test suite",
+            command: "cargo test",
+            cwd: "src",
+            decisions: ["allow", "allowAlways", "deny", "denyAndStop"],
           },
           5,
         ),
@@ -413,12 +408,10 @@ export async function installTaskLoopFixture(
           {
             text: body.prompt,
             turnId: "turn_2",
-            item: {
-              content: [
-                { type: "text", text: body.prompt },
-                { type: "image", url: body.images[0], name: "follow-up.png" },
-              ],
-            },
+            content: [
+              { type: "text", text: body.prompt },
+              { type: "image", url: body.images[0], name: "follow-up.png" },
+            ],
           },
           14,
         ),
@@ -436,7 +429,6 @@ export async function installTaskLoopFixture(
           {
             turnId: "turn_2",
             itemId: "command_follow_up",
-            lifecycle: "started",
             command: "cargo test --workspace",
             cwd: "src",
             status: "inProgress",
@@ -490,14 +482,14 @@ export async function installTaskLoopFixture(
     ) {
       approvalRequests += 1;
       const body = request.postDataJSON();
-      expect(body.decision).toBe("accept");
+      expect(body.decision).toBe("allow");
       events = [
         ...events,
         eventRecord(
           "event_5",
           "approval_resolved",
           "Approval resolved: accept",
-          { approvalId: "approval_1", decision: "accept", turnId: "turn_1" },
+          { approvalId: "approval_1", outcome: "allow", turnId: "turn_1" },
           5,
         ),
         eventRecord(
@@ -505,7 +497,7 @@ export async function installTaskLoopFixture(
           "assistant_message",
           "Assistant response",
           {
-            phase: "commentary",
+            phase: "progress",
             text: "I am checking the planner diff before the final answer.",
           },
           11,
@@ -553,7 +545,7 @@ export async function installTaskLoopFixture(
             status: "completed",
             exitCode: 0,
             durationMs: 1_250,
-            aggregatedOutput:
+            output:
               "test result: ok. 12 passed.\n" +
               Array.from(
                 { length: 80 },
@@ -576,7 +568,7 @@ export async function installTaskLoopFixture(
             status: "failed",
             exitCode: 101,
             durationMs: 2_400,
-            aggregatedOutput: "error: package `missing` was not found",
+            output: "error: package `missing` was not found",
           },
           9,
         ),
@@ -586,8 +578,7 @@ export async function installTaskLoopFixture(
           "File changes: 2",
           {
             status: "completed",
-            changeCount: 2,
-            changes: [{ path: "src/planner.rs" }, { path: "tests/planner.rs" }],
+            paths: ["src/planner.rs", "tests/planner.rs"],
           },
           10,
         ),
@@ -610,8 +601,7 @@ export async function installTaskLoopFixture(
           "File changes: 1",
           {
             status: "completed",
-            changeCount: 1,
-            changes: [{ path: "src/lib.rs" }],
+            paths: ["src/lib.rs"],
           },
           10,
         ),
@@ -688,7 +678,7 @@ export async function installTaskLoopFixture(
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ decision: "accept" }),
+          body: JSON.stringify({ decision: "allow" }),
         },
       );
       if (!approved.ok) {

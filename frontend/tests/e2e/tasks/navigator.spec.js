@@ -3147,7 +3147,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
       threadId: "thread_gluesql_feature",
       type: "reasoning",
       summary: "Reasoning",
-      payload: { lifecycle: "started", summary: [], content: [] },
+      payload: { summary: [], content: [] },
       createdMs: now + 750,
     },
   );

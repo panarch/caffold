@@ -21,7 +21,7 @@ const event = (status, payload = {}) => ({
 
 test("presents an active command as an open disclosure", () => {
   const presentation = commandPresentation(
-    event("inProgress", { aggregatedOutput: "Compiling caffold" }),
+    event("inProgress", { output: "Compiling caffold" }),
   );
 
   assert.equal(presentation.commandKey, "item:thread_command::command_item");
@@ -72,7 +72,7 @@ test("compares only the derived Command snapshot", () => {
     summary: "a transport-only summary changed",
   });
   const updated = commandPresentation(
-    event("inProgress", { aggregatedOutput: "new output" }),
+    event("inProgress", { output: "new output" }),
   );
 
   assert.equal(sameCommandPresentation(first, equivalent), true);

@@ -623,11 +623,9 @@ test("renders normalized Codex user messages instead of raw ambient context", { 
         summary: "User prompt",
         payload: {
           turnId: "turn_initial",
-          item: {
-            id: "item_normalized_user_prompt",
-            type: "userMessage",
-            content: [{ type: "input_text", text: rawAmbientPrompt }],
-          },
+          id: "item_normalized_user_prompt",
+          type: "userMessage",
+          content: [{ type: "input_text", text: rawAmbientPrompt }],
         },
         createdMs: now,
       },
@@ -801,7 +799,6 @@ test("keeps cross-turn work chronological and the active status at the timeline 
     activeTurnId,
     {
       itemId: "reasoning_a",
-      lifecycle: "completed",
       summary: ["Inspect the active timeline."],
     },
   );
@@ -812,11 +809,10 @@ test("keeps cross-turn work chronological and the active status at the timeline 
     foreignTurnId,
     {
       itemId: "command_b",
-      lifecycle: "completed",
       command: "cargo test",
       status: "completed",
       exitCode: 0,
-      aggregatedOutput: "test result: ok",
+      output: "test result: ok",
     },
   );
   const fileChange = event(
@@ -826,10 +822,8 @@ test("keeps cross-turn work chronological and the active status at the timeline 
     activeTurnId,
     {
       itemId: "file_a",
-      lifecycle: "completed",
       status: "completed",
-      changes: [{ path: "src/app.rs" }],
-      changeCount: 1,
+      paths: ["src/app.rs"],
     },
   );
   const activeDetail = {
@@ -917,7 +911,6 @@ test("keeps cross-turn work chronological and the active status at the timeline 
 
   const plan = event("event_plan_a", "plan", now + 3_000, activeTurnId, {
     itemId: "plan_a",
-    lifecycle: "completed",
     text: "Keep the active status after every completed event.",
   });
   await emitTaskEvent(plan, 3);
@@ -1048,12 +1041,11 @@ test("keeps task event chronology stable through approval, completion, and reloa
   });
   const reasoning = event("event_reasoning", "reasoning", now + 100, {
     itemId: "reasoning_1",
-    lifecycle: "completed",
     summary: ["Inspected the current event sequence."],
   });
   const commentary = event("event_commentary", "assistant_message", now + 200, {
     itemId: "commentary_1",
-    phase: "commentary",
+    phase: "progress",
     text: "I found the ordering boundary.",
   });
   const matchingCommentary = event(
@@ -1062,7 +1054,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
     now + 250,
     {
       itemId: "commentary_2",
-      phase: "commentary",
+      phase: "progress",
       text: "The event order is stable.",
     },
   );
@@ -1072,13 +1064,12 @@ test("keeps task event chronology stable through approval, completion, and reloa
     now + 300,
     {
       approvalId: "approval_chronology",
-      kind: "command",
-      params: {
-        turnId,
-        command: "cargo test",
-        cwd: "src",
-        reason: "Run the regression test",
-      },
+      turnId,
+      title: "Command approval requested",
+      reason: "Run the regression test",
+      command: "cargo test",
+      cwd: "src",
+      decisions: ["allow", "deny"],
     },
   );
   const approvalResolved = event(
@@ -1088,7 +1079,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
     {
       approvalId: "approval_chronology",
       kind: "command",
-      decision: "accept",
+      outcome: "allow",
     },
   );
   const commandStarted = event(
@@ -1097,7 +1088,6 @@ test("keeps task event chronology stable through approval, completion, and reloa
     now + 400,
     {
       itemId: "command_1",
-      lifecycle: "started",
       command: "cargo test",
       cwd: "src",
       status: "inProgress",
@@ -1105,7 +1095,6 @@ test("keeps task event chronology stable through approval, completion, and reloa
   );
   const plan = event("event_plan", "plan", now + 500, {
     itemId: "plan_1",
-    lifecycle: "completed",
     text: "Record the stable ordering contract.",
   });
   const commandCompleted = event(
@@ -1114,13 +1103,12 @@ test("keeps task event chronology stable through approval, completion, and reloa
     now + 600,
     {
       itemId: "command_1",
-      lifecycle: "completed",
       command: "cargo test",
       cwd: "src",
       status: "completed",
       exitCode: 0,
       durationMs: 1_600,
-      aggregatedOutput: "test result: ok",
+      output: "test result: ok",
     },
   );
   const finalAnswer = event("event_final", "assistant_message", now + 700, {
@@ -1250,7 +1238,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
     payload: {
       ...finalAnswer.payload,
       itemId: "summary_final",
-      phase: "final_answer",
+      phase: "final",
     },
   };
   detailEvents = [
@@ -1328,7 +1316,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
     now + 900,
     {
       turnId: "turn_2",
-      phase: "commentary",
+      phase: "progress",
       text: "New work arrived while older logs are open.",
     },
   );
@@ -1378,7 +1366,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
           .events.find(
           (entry) =>
             entry.type === "assistant_message" &&
-            ["final", "final_answer"].includes(entry.payload?.phase),
+            entry.payload?.phase === "final",
         );
         return final?.createdMs;
       }),

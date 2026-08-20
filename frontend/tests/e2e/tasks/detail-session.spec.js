@@ -1210,13 +1210,11 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
       payload: {
         turnId: detail.task.activeTurn.id,
         approvalId: "approval-request-error",
-        kind: "command",
-        params: {
-          command: ["cargo", "test"],
-          cwd: "src",
-          reason: "Run the regression tests",
-          availableDecisions: ["accept", "decline"],
-        },
+        title: "Command approval requested",
+        reason: "Run the regression tests",
+        command: "cargo test",
+        cwd: "src",
+        decisions: ["allow", "deny"],
       },
       createdMs: Date.now(),
     },
@@ -1278,7 +1276,7 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
   await expect(composerError).toHaveCount(0);
 
   await approvalCard
-    .locator('[data-task-action="approval"][data-decision="accept"]')
+    .locator('[data-task-action="approval"][data-decision="allow"]')
     .click();
   await expect(approvalError).toHaveText("Approval failed by fixture.");
   await expect(interruptError).toHaveText("Interrupt failed by fixture.");
@@ -1623,11 +1621,9 @@ test("accepts canonical task detail after stream revisions restart", { tag: "@al
     summary: "User prompt",
     payload: {
       turnId: "turn_initial",
-      item: {
-        id: "item_bootstrap_user_prompt",
-        type: "userMessage",
-        content: [{ type: "input_text", text: rawAmbientPrompt }],
-      },
+      id: "item_bootstrap_user_prompt",
+      type: "userMessage",
+      content: [{ type: "input_text", text: rawAmbientPrompt }],
     },
     createdMs: now,
   };
@@ -1757,14 +1753,13 @@ test("reconciles a canonical final answer over a retained transient item after r
   const transient = {
     id: eventId,
     threadId,
-    type: "work_status",
+    type: "assistant_message",
     summary: "Preparing response",
     payload: {
       threadId,
       turnId,
       itemId,
-      itemType: "agentMessage",
-      lifecycle: "started",
+      status: "inProgress",
     },
     createdMs: now + 200,
   };
@@ -1822,7 +1817,7 @@ test("reconciles a canonical final answer over a retained transient item after r
         )?.type;
       }),
     )
-    .toBe("work_status");
+    .toBe("assistant_message");
 
   await expect
     .poll(() =>
@@ -2234,7 +2229,7 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
         summary: "Assistant response",
         payload: {
           turnId: "turn_after_restart",
-          phase: "commentary",
+          phase: "progress",
           text: "The host stopped after accepting the prompt.",
         },
         createdMs: now + 2,

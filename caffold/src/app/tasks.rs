@@ -203,9 +203,7 @@ impl TasksApp {
 pub(super) use detail::{DetailFrameStream, TaskDetailResponse};
 pub(super) use events::{TaskEventRecord, accepted_user_message_event, now_ms};
 pub(super) use projection::task_activity_ms;
-pub(super) use runtime::{
-    ApprovalResolution, ApprovalResolveError, CodexConnection, PermissionGrantScope,
-};
+pub(super) use runtime::{ApprovalResolveError, CodexConnection};
 
 #[cfg(test)]
 pub(in crate::app::tasks) mod test_support {
@@ -216,7 +214,7 @@ pub(in crate::app::tasks) mod test_support {
 
     use super::{TaskState, projection::*, routes::test_claim_task};
     use crate::{
-        agent::codex::{CodexThread, CodexThreadClient},
+        agent::{Conversation, codex::CodexThreadClient},
         fs::RootedFs,
         task_store::TaskStore,
     };
@@ -296,11 +294,12 @@ pub(in crate::app::tasks) mod test_support {
         thread_id: &str,
         cwd: &Path,
     ) {
-        let thread: CodexThread =
+        let thread: crate::agent::codex::CodexThread =
             serde_json::from_value(task_thread_list(thread_id, cwd)["data"][0].clone())
                 .expect("the fixture decodes as a Codex thread");
-        let resolved = resolve_thread_cwd(&state.fs, &thread);
-        let task = task_record_from_thread(&thread, &[], resolved.as_ref());
+        let conversation = Conversation::from(&thread);
+        let resolved = resolve_conversation_cwd(&state.fs, &conversation);
+        let task = task_record_from_conversation(&conversation, &[], resolved.as_ref());
         test_claim_task(state, &task)
             .await
             .expect("test thread is managed");

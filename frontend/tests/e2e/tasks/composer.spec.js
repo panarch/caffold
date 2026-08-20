@@ -618,11 +618,9 @@ test("unlocks a completed task when canonical item content arrives before the pr
       summary: "User prompt",
       payload: {
         turnId: "turn_1",
-        item: {
-          id: "item_canonical_item_prompt",
-          type: "userMessage",
-          content: [{ type: "input_text", text: "Canonical item prompt" }],
-        },
+        id: "item_canonical_item_prompt",
+        type: "userMessage",
+        content: [{ type: "input_text", text: "Canonical item prompt" }],
       },
       createdMs: now + 1,
     },

@@ -4,11 +4,12 @@ use tokio::sync::broadcast;
 
 use super::{CodexConnection, CodexRuntime, CodexRuntimeSignal};
 use crate::agent::codex::{
-    CodexNotification, CodexRuntimeEvent, CodexThreadClient, ThreadStatus, TurnStatus,
+    CodexNotification, CodexRuntimeEvent, CodexThreadClient, ThreadStatus, conversation_item,
+    response_item,
 };
+use crate::agent::{ActivityStatus, ConversationItem, Turn, TurnStatus};
 use crate::app::tasks::events::{
-    event_id_from_params, now_ms, seconds_to_ms_value, task_event_from_item_lifecycle,
-    task_event_from_raw_response_item, task_event_record,
+    now_ms, task_event_from_item, task_event_record, turn_completed_event, turn_started_event,
 };
 
 impl CodexRuntime {
@@ -194,11 +195,8 @@ impl CodexRuntime {
     fn handle_notification(&self, notification: CodexNotification) {
         match notification {
             CodexNotification::TurnStarted { thread_id, turn } => {
-                let started_ms = turn
-                    .started_at
-                    .map(seconds_to_ms_value)
-                    .filter(|value| *value > 0)
-                    .unwrap_or_else(now_ms);
+                let turn = Turn::from(&turn);
+                let started_ms = turn.started_at_ms.unwrap_or_else(now_ms);
                 match self
                     .task_store
                     .update_observed_recency(&thread_id, started_ms)
@@ -211,15 +209,8 @@ impl CodexRuntime {
                         );
                     }
                 }
-                let params = json!({ "threadId": thread_id, "turn": turn });
-                self.events.publish(task_event_record(
-                    &thread_id,
-                    &event_id_from_params("turn_started", &params),
-                    "turn_started",
-                    "Turn started",
-                    Some(params),
-                    started_ms,
-                ));
+                self.events
+                    .publish(turn_started_event(&thread_id, &turn.id, started_ms));
             }
             CodexNotification::ThreadStatusChanged { thread_id, status } => {
                 let task_status = match status {
@@ -256,67 +247,31 @@ impl CodexRuntime {
                 turn_id,
                 item,
                 started_at_ms,
-            } => {
-                let created_ms = if started_at_ms > 0 {
-                    started_at_ms
-                } else {
-                    now_ms()
-                };
-                let params = json!({ "threadId": thread_id, "turnId": turn_id, "item": item });
-                if let Some(event) =
-                    task_event_from_item_lifecycle(&thread_id, created_ms, &params, "started")
-                {
-                    self.events.publish(event);
-                }
-            }
+            } => self.publish_item(
+                &thread_id,
+                &turn_id,
+                at_or_now(started_at_ms),
+                conversation_item(&item, ActivityStatus::InProgress),
+            ),
             CodexNotification::ItemCompleted {
                 thread_id,
                 turn_id,
                 item,
                 completed_at_ms,
-            } => {
-                let created_ms = if completed_at_ms > 0 {
-                    completed_at_ms
-                } else {
-                    now_ms()
-                };
-                let params = json!({ "threadId": thread_id, "turnId": turn_id, "item": item });
-                if let Some(event) =
-                    task_event_from_item_lifecycle(&thread_id, created_ms, &params, "completed")
-                {
-                    self.events.publish(event);
-                }
-            }
+            } => self.publish_item(
+                &thread_id,
+                &turn_id,
+                at_or_now(completed_at_ms),
+                conversation_item(&item, ActivityStatus::Completed),
+            ),
             CodexNotification::RawResponseItemCompleted {
                 thread_id,
                 turn_id,
                 item,
-            } => {
-                let params = json!({ "threadId": thread_id, "turnId": turn_id, "item": item });
-                if let Some(event) =
-                    task_event_from_raw_response_item(&thread_id, now_ms(), &params)
-                {
-                    self.events.publish(event);
-                }
-            }
+            } => self.publish_item(&thread_id, &turn_id, now_ms(), response_item(&item)),
             CodexNotification::TurnCompleted { thread_id, turn } => {
-                let task_status = match turn.status {
-                    TurnStatus::Failed => "failed",
-                    TurnStatus::Interrupted => "interrupted",
-                    TurnStatus::Completed => "completed",
-                    TurnStatus::InProgress => "running",
-                };
-                let summary = match task_status {
-                    "failed" => "Turn failed",
-                    "interrupted" => "Turn interrupted",
-                    "completed" => "Turn completed",
-                    _ => "Turn updated",
-                };
-                let completed_ms = turn
-                    .completed_at
-                    .map(seconds_to_ms_value)
-                    .filter(|value| *value > 0)
-                    .unwrap_or_else(now_ms);
+                let turn = Turn::from(&turn);
+                let completed_ms = turn.completed_at_ms.unwrap_or_else(now_ms);
                 match self
                     .task_store
                     .record_completed_turn(&thread_id, completed_ms)
@@ -327,29 +282,40 @@ impl CodexRuntime {
                         eprintln!("failed to persist completed turn for {thread_id}: {error}");
                     }
                 }
-                let params = json!({ "threadId": thread_id, "turn": turn });
-                self.events.publish(task_event_record(
-                    &thread_id,
-                    &event_id_from_params("turn_completed", &params),
-                    "turn_completed",
-                    summary,
-                    Some(params),
-                    completed_ms,
-                ));
+                self.events
+                    .publish(turn_completed_event(&thread_id, &turn, completed_ms));
             }
-            CodexNotification::TurnDiffUpdated { thread_id, params } => {
+            // The diff itself is not carried: Caffold reviews changes from git,
+            // which owns the working tree the agent wrote to. What this says is
+            // that there is something new to review.
+            CodexNotification::TurnDiffUpdated { thread_id, .. } => {
                 self.events.publish(task_event_record(
                     &thread_id,
                     "diff_updated",
                     "diff_updated",
                     "Diff updated",
-                    Some(params),
+                    Some(json!({ "threadId": thread_id })),
                     now_ms(),
                 ));
             }
             CodexNotification::ThreadStarted { .. }
             | CodexNotification::ServerRequestResolved { .. }
             | CodexNotification::Unknown { .. } => {}
+        }
+    }
+
+    /// Publish one item, when the notification carried something to show.
+    fn publish_item(
+        &self,
+        thread_id: &str,
+        turn_id: &str,
+        created_ms: u64,
+        item: Option<ConversationItem>,
+    ) {
+        if let Some(event) =
+            item.and_then(|item| task_event_from_item(thread_id, turn_id, created_ms, &item))
+        {
+            self.events.publish(event);
         }
     }
 
@@ -373,7 +339,7 @@ impl CodexRuntime {
         let CodexNotification::TurnCompleted { thread_id, turn } = notification else {
             return;
         };
-        let status = match turn.status {
+        let status = match TurnStatus::from(turn.status) {
             TurnStatus::Completed => super::super::push::TerminalPushStatus::Completed,
             TurnStatus::Failed => super::super::push::TerminalPushStatus::Failed,
             TurnStatus::Interrupted => super::super::push::TerminalPushStatus::Interrupted,
@@ -425,6 +391,15 @@ fn notification_thread_id(notification: &CodexNotification) -> Option<&str> {
         | CodexNotification::ThreadTokenUsageUpdated { thread_id, .. }
         | CodexNotification::ServerRequestResolved { thread_id, .. } => Some(thread_id),
         CodexNotification::Unknown { .. } => None,
+    }
+}
+
+/// The time a notification reported, or now when it reported none.
+fn at_or_now(reported_ms: u64) -> u64 {
+    if reported_ms > 0 {
+        reported_ms
+    } else {
+        now_ms()
     }
 }
 
@@ -536,7 +511,7 @@ mod tests {
                 item: json!({
                     "id": "reasoning-1",
                     "type": "reasoning",
-                    "summary": [],
+                    "summary": ["Read the current behavior."],
                     "content": []
                 }),
                 started_at_ms: 10,
@@ -554,7 +529,7 @@ mod tests {
             .expect("item notification publishes a Task event")
             .expect("Task event channel remains open");
         assert_eq!(event.thread_id, thread_id);
-        assert_eq!(event.event_type, "work_status");
+        assert_eq!(event.event_type, "reasoning");
 
         let signal = tokio::time::timeout(Duration::from_secs(1), signals.recv())
             .await
@@ -856,7 +831,7 @@ mod tests {
         assert_eq!(started.thread_id, "thread_1");
         assert_eq!(started.event_type, "turn_started");
         assert_eq!(started.created_ms, 1_750_000_000_250);
-        assert_eq!(started.payload.unwrap()["turn"]["id"], "turn_1");
+        assert_eq!(started.payload.unwrap()["turnId"], "turn_1");
 
         runtime.handle_notification(
             codex::decode_notification(
@@ -880,8 +855,8 @@ mod tests {
         assert_eq!(command_started.event_type, "command_execution");
         assert_eq!(command_started.created_ms, 1_750_000_001_000);
         assert_eq!(
-            command_started.payload.as_ref().unwrap()["lifecycle"],
-            "started"
+            command_started.payload.as_ref().unwrap()["status"],
+            "inProgress"
         );
         let cached_command = events
             .for_thread("thread_1")
@@ -907,13 +882,9 @@ mod tests {
             )
             .unwrap(),
         );
-        let reasoning_started = receiver.try_recv().unwrap();
-        assert_eq!(reasoning_started.event_type, "work_status");
-        assert_eq!(reasoning_started.summary, "Thinking");
-        assert_eq!(
-            reasoning_started.payload.as_ref().unwrap()["lifecycle"],
-            "started"
-        );
+        // Codex announces reasoning before writing any of it, and an empty
+        // bubble is worse than waiting for the words.
+        assert!(receiver.try_recv().is_err());
 
         runtime.handle_notification(
             codex::decode_notification(
@@ -933,12 +904,11 @@ mod tests {
             .unwrap(),
         );
         let reasoning_completed = receiver.try_recv().unwrap();
-        assert_eq!(reasoning_started.id, reasoning_completed.id);
         assert_eq!(reasoning_completed.event_type, "reasoning");
-        assert_eq!(reasoning_completed.created_ms, 1_750_000_002_000);
-        assert_eq!(reasoning_completed.updated_ms, Some(1_750_000_003_000));
+        // The entry still belongs where the item started, not where it ended.
+        assert_eq!(reasoning_completed.created_ms, 1_750_000_003_000);
         assert_eq!(
-            reasoning_completed.payload.as_ref().unwrap()["lifecycle"],
+            reasoning_completed.payload.as_ref().unwrap()["status"],
             "completed"
         );
 

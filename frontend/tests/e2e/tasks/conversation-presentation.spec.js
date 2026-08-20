@@ -62,36 +62,26 @@ test("renders permission and network approvals without clipping at appearance ex
         "Permission approval requested",
         {
           approvalId: "permission_1",
-          kind: "permission",
-          method: "item/permissions/requestApproval",
-          params: {
-            turnId: "turn_1",
-            itemId: "permission_item_1",
-            cwd: longRoot,
-            reason:
-              "Download release metadata, inspect the generated cache, and update the shared fixture used by the complete review workflow.",
-            permissions: {
-              network: { enabled: true },
-              fileSystem: {
-                entries: [
-                  {
-                    access: "write",
-                    path: {
-                      type: "path",
-                      path: `${longRoot}/nested/path/with-a-deliberately-long-directory-name/cache.json`,
-                    },
-                  },
-                  {
-                    access: "read",
-                    path: {
-                      type: "glob_pattern",
-                      pattern: `${longRoot}/**/release-*.json`,
-                    },
-                  },
-                ],
-              },
+          turnId: "turn_1",
+          itemId: "permission_item_1",
+          title: "Permission requested",
+          reason:
+            "Download release metadata, inspect the generated cache, and update the shared fixture used by the complete review workflow.",
+          cwd: longRoot,
+          permissions: [
+            { label: "Network", value: "Outbound access", verbatim: false },
+            {
+              label: "File system · Write",
+              value: `${longRoot}/nested/path/with-a-deliberately-long-directory-name/cache.json`,
+              verbatim: true,
             },
-          },
+            {
+              label: "File system · Read",
+              value: `${longRoot}/**/release-*.json`,
+              verbatim: true,
+            },
+          ],
+          decisions: ["allow", "allowAlways", "deny"],
         },
         5,
       ),
@@ -101,19 +91,14 @@ test("renders permission and network approvals without clipping at appearance ex
         "Network approval requested",
         {
           approvalId: "network_1",
-          kind: "command",
-          method: "item/commandExecution/requestApproval",
-          params: {
-            command: null,
-            cwd: longRoot,
-            reason: "Connect to the release API to verify the current artifact metadata.",
-            networkApprovalContext: {
-              protocol: "https",
-              host: "api.github.com",
-            },
-            additionalPermissions: { network: { enabled: true } },
-            availableDecisions: ["accept", "acceptForSession", "decline"],
-          },
+          title: "Network access requested",
+          reason: "Connect to the release API to verify the current artifact metadata.",
+          cwd: longRoot,
+          networkEndpoint: "https://api.github.com",
+          permissions: [
+            { label: "Network", value: "Outbound access", verbatim: false },
+          ],
+          decisions: ["allow", "allowAlways", "deny"],
         },
         6,
       ),
@@ -123,14 +108,11 @@ test("renders permission and network approvals without clipping at appearance ex
         "Command approval requested",
         {
           approvalId: "command_1",
-          kind: "command",
-          method: "item/commandExecution/requestApproval",
-          params: {
-            command: `cargo test --manifest-path ${longRoot}/workspace/Cargo.toml --package permission-contract-with-an-intentionally-long-unbroken-package-name`,
-            cwd: longRoot,
-            reason: "Run the complete permission regression suite.",
-            availableDecisions: ["accept", "decline"],
-          },
+          title: "Command approval requested",
+          reason: "Run the complete permission regression suite.",
+          command: `cargo test --manifest-path ${longRoot}/workspace/Cargo.toml --package permission-contract-with-an-intentionally-long-unbroken-package-name`,
+          cwd: longRoot,
+          decisions: ["allow", "deny"],
         },
         7,
       ),
@@ -151,8 +133,7 @@ test("renders permission and network approvals without clipping at appearance ex
           "Approval resolved: allow",
           {
             approvalId: "permission_1",
-            decision: "allow",
-            scope: "session",
+            outcome: "allowAlways",
             turnId: "turn_1",
           },
           8,
@@ -168,20 +149,18 @@ test("renders permission and network approvals without clipping at appearance ex
   await page.goto(`/tasks/${scenario.threadId}`);
   const tasksPage = page.locator("caffold-tasks-page");
   const permissionCard = tasksPage.locator(
-    '.task-approval-card[data-approval-kind="permission"]',
+    '.task-approval-card:has-text("Permission requested")',
   );
   const networkCard = tasksPage.locator(
-    '.task-approval-card:has-text("Network Access Approval")',
+    '.task-approval-card:has-text("Network access requested")',
   );
-  const commandCard = tasksPage.locator(
-    '.task-approval-card[data-approval-kind="command"]:has(pre)',
-  );
+  const commandCard = tasksPage.locator(".task-approval-card:has(pre)");
   await expect(permissionCard).toBeVisible();
   await expect(networkCard).toContainText("https://api.github.com");
   await expect(networkCard).not.toContainText("command unavailable");
   await expect(permissionCard.getByRole("button")).toHaveText([
-    "Allow this turn",
-    "Allow for session",
+    "Allow",
+    "Allow Always",
     "Deny",
   ]);
   const interfaceFontSize = await page.evaluate(
@@ -202,14 +181,10 @@ test("renders permission and network approvals without clipping at appearance ex
 
   const layout = await tasksPage.evaluate((tasks) => {
     const flow = tasks.querySelector(".task-approval-flow");
-    const permission = tasks.querySelector(
-      '.task-approval-card[data-approval-kind="permission"]',
-    );
+    const permission = tasks.querySelector(".task-approval-card");
     const actions = permission.querySelector(".task-approval-actions");
     const scroller = tasks.querySelector(".task-conversation-scroll");
-    const command = tasks.querySelector(
-      '.task-approval-card[data-approval-kind="command"] pre',
-    );
+    const command = tasks.querySelector(".task-approval-card pre");
     const contained = (child, parent) => {
       const childBox = child.getBoundingClientRect();
       const parentBox = parent.getBoundingClientRect();
@@ -257,9 +232,9 @@ test("renders permission and network approvals without clipping at appearance ex
     testInfo,
     "tasks-permission-approval-responsive",
   );
-  await permissionCard.getByRole("button", { name: "Allow for session" }).click();
+  await permissionCard.getByRole("button", { name: "Allow Always" }).click();
   await expect(permissionCard).toHaveCount(0);
-  expect(permissionBody).toEqual({ decision: "allow", scope: "session" });
+  expect(permissionBody).toEqual({ decision: "allowAlways" });
   expect(scenario.pageErrors).toEqual([]);
 });
 

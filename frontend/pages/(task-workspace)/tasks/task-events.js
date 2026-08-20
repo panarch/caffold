@@ -75,8 +75,7 @@ function conversationGroupCreatedMs(group) {
 }
 
 export function eventTurnId(event) {
-  const payload = event?.payload ?? {};
-  return payload.turnId ?? payload.turn?.id ?? payload.params?.turnId ?? null;
+  return event?.payload?.turnId ?? null;
 }
 
 export function isWorkEvent(event) {
@@ -85,13 +84,14 @@ export function isWorkEvent(event) {
     "plan",
     "command_execution",
     "file_change",
+    "tool_call",
     "task_failed",
     "approval_resolved",
   ].includes(event.type);
 }
 
 export function isTurnContinuationEvent(event) {
-  return event.type === "work_status" || isWorkEvent(event) || isTurnStatusEvent(event);
+  return isWorkEvent(event) || isTurnStatusEvent(event);
 }
 
 export function isImplicitTurnEvent(event) {
@@ -132,17 +132,11 @@ export function isTerminalTurnEvent(event) {
 }
 
 export function assistantMessagePhase(phase) {
-  if (["final", "final_answer"].includes(phase)) {
-    return "final";
-  }
-  if (phase === "commentary") {
-    return "progress";
-  }
-  return null;
+  return ["final", "progress"].includes(phase) ? phase : null;
 }
 
 export function isFinalAssistantEvent(event) {
-  return assistantMessagePhase(event?.payload?.phase ?? event?.payload?.item?.phase) === "final";
+  return assistantMessagePhase(event?.payload?.phase) === "final";
 }
 
 export function pendingApprovals(events) {
@@ -164,17 +158,11 @@ export function pendingApprovals(events) {
 export function fileChangePathPresentations(events, rootPath = "") {
   const presentationsByFileIdentity = new Map();
   for (const event of events) {
-    if (
-      event?.type !== "file_change" ||
-      !Array.isArray(event.payload?.changes)
-    ) {
+    if (event?.type !== "file_change" || !Array.isArray(event.payload?.paths)) {
       continue;
     }
-    for (const change of event.payload.changes) {
-      const presentation = presentTaskFilePath(
-        typeof change === "string" ? change : change?.path,
-        rootPath,
-      );
+    for (const path of event.payload.paths) {
+      const presentation = presentTaskFilePath(path, rootPath);
       if (
         presentation.displayPath &&
         !presentationsByFileIdentity.has(presentation.fileIdentity)
@@ -223,7 +211,7 @@ export function reconcileCanonicalEvents(currentEvents, canonicalEvents) {
   for (const event of canonicalEvents) {
     const key = eventIdentityKey(event);
     if (key) {
-      byId.set(key, reconcileCanonicalEventRecord(byId.get(key), event));
+      byId.set(key, mergeEventRecord(byId.get(key), event));
     }
   }
   return sortEventsChronologically(
@@ -263,12 +251,6 @@ function mergeEventRecord(existing, incoming) {
   const earlierPayload = earlier.payload ?? {};
   const latestPayload = latest.payload ?? {};
   const payload = { ...earlierPayload, ...latestPayload };
-  if (existingPayload.item || incomingPayload.item) {
-    payload.item = {
-      ...(earlierPayload.item ?? {}),
-      ...(latestPayload.item ?? {}),
-    };
-  }
   const updatedMs = Math.max(existingUpdatedMs, incomingUpdatedMs);
   return {
     ...earlier,
@@ -278,20 +260,6 @@ function mergeEventRecord(existing, incoming) {
     ...(sortIndex === undefined ? {} : { sortIndex }),
     ...(updatedMs > (createdMs ?? 0) ? { updatedMs } : {}),
   };
-}
-
-function reconcileCanonicalEventRecord(current, canonical) {
-  if (!current) {
-    return canonical;
-  }
-  const currentIsTransient = current.type === "work_status";
-  const canonicalIsTransient = canonical.type === "work_status";
-  if (currentIsTransient !== canonicalIsTransient) {
-    // A lifecycle placeholder may be newer by wall-clock time, but it cannot
-    // replace the useful projection for the same canonical item.
-    return currentIsTransient ? canonical : current;
-  }
-  return mergeEventRecord(current, canonical);
 }
 
 export function optimisticUserMessageEvent(threadId, prompt, images, requestId) {
@@ -311,7 +279,7 @@ export function optimisticUserMessageEvent(threadId, prompt, images, requestId) 
     summary: "User prompt",
     payload: {
       text: prompt,
-      item: { content },
+      content,
       optimistic: true,
       submissionState: PROMPT_SUBMISSION_STATE.SENDING,
     },
@@ -326,7 +294,7 @@ export function eventIdentityKey(event) {
 
   const payload = event.payload ?? {};
   const threadId = event.threadId ?? payload.threadId ?? "";
-  const itemId = payload.itemId ?? payload.item?.id ?? "";
+  const itemId = payload.itemId ?? "";
   if (itemId) {
     return ["item", threadId, eventTurnId(event) ?? "", itemId].join(":");
   }
@@ -434,7 +402,7 @@ function canonicalEventKey(event) {
   if (turnId) {
     const phase =
       event.type === "assistant_message"
-        ? assistantMessagePhase(payload.phase ?? payload.item?.phase) ?? ""
+        ? (assistantMessagePhase(payload.phase) ?? "")
         : "";
     return [
       "message",
@@ -466,13 +434,8 @@ function preferStructuredEvent(existing, next) {
 function eventStructureScore(event) {
   const payload = event?.payload ?? {};
   return (
-    [
-      payload.itemId,
-      payload.item?.id,
-      payload.turnId,
-      payload.threadId,
-    ].filter(Boolean).length +
-    (payload.lifecycle ? 2 : 0) +
+    [payload.itemId, payload.turnId, payload.threadId].filter(Boolean).length +
+    (payload.status ? 2 : 0) +
     (event?.sortIndex === 0 ? 1 : 0)
   );
 }
@@ -490,10 +453,7 @@ function userMessageText(payload) {
 }
 
 function userMessageContent(payload) {
-  if (Array.isArray(payload?.content)) {
-    return payload.content;
-  }
-  return Array.isArray(payload?.item?.content) ? payload.item.content : [];
+  return Array.isArray(payload?.content) ? payload.content : [];
 }
 
 function normalizedUserMessageText(text) {

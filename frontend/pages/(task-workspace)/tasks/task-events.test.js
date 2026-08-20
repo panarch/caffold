@@ -27,13 +27,10 @@ test("file change presentation deduplicates equivalent Task-local references", (
   const absolutePath = `${rootPath}/src/./lib.rs`;
   const fileChanges = [
     event("file-1", "file_change", 1, {
-      changes: [{ path: absolutePath }, { path: "src/lib.rs" }],
+      paths: [absolutePath, "src/lib.rs"],
     }),
     event("file-2", "file_change", 2, {
-      changes: [
-        "src\\lib.rs",
-        { path: "/managed/worktrees/task-1-copy/src/lib.rs" },
-      ],
+      paths: ["src\\lib.rs", "/managed/worktrees/task-1-copy/src/lib.rs"],
     }),
   ];
   const canonicalEvents = structuredClone(fileChanges);
@@ -60,7 +57,8 @@ test("event merge keeps causal order while a newer canonical record wins", () =>
     100,
     {
       itemId: "item-1",
-      item: { id: "item-1", status: "inProgress" },
+      status: "inProgress",
+      command: "cargo test",
     },
     { sortIndex: 2 },
   );
@@ -70,7 +68,8 @@ test("event merge keeps causal order while a newer canonical record wins", () =>
     120,
     {
       itemId: "item-1",
-      item: { id: "item-1", status: "completed", output: "done" },
+      status: "completed",
+      output: "done",
     },
     { updatedMs: 140, sortIndex: 9 },
   );
@@ -85,9 +84,12 @@ test("event merge keeps causal order while a newer canonical record wins", () =>
   assert.equal(merged[1].createdMs, 100);
   assert.equal(merged[1].sortIndex, 2);
   assert.equal(merged[1].updatedMs, 140);
-  assert.deepEqual(merged[1].payload.item, {
-    id: "item-1",
+  // The newer record wins where the two disagree, and what only the earlier
+  // one carried survives.
+  assert.deepEqual(merged[1].payload, {
+    itemId: "item-1",
     status: "completed",
+    command: "cargo test",
     output: "done",
   });
 });
@@ -111,14 +113,12 @@ test("canonical user message replaces only its matching optimistic event", () =>
 
   const canonical = event("canonical-1", "user_message", 120, {
     turnId: "turn-1",
+    itemId: "item-user-1",
     text: "Ship it",
-    item: {
-      id: "item-user-1",
-      content: [
-        { type: "text", text: "Ship it" },
-        { type: "image", name: "plan.png", url: "data:image/png;base64,AAAA" },
-      ],
-    },
+    content: [
+      { type: "text", text: "Ship it" },
+      { type: "image", name: "plan.png", url: "data:image/png;base64,AAAA" },
+    ],
   });
 
   const merged = mergeEvents([matching, unrelated], [canonical]);
@@ -149,68 +149,31 @@ test("structured canonical duplicates beat sparse notifications", () => {
   assert.deepEqual(dedupeCanonicalEvents([sparse, canonical]), [canonical]);
 });
 
-test("canonical item projection replaces a newer transient lifecycle placeholder", () => {
-  const transient = event(
-    "thread-1:turn-1:item-1",
-    "work_status",
-    200,
-    {
-      threadId: "thread-1",
-      turnId: "turn-1",
-      itemId: "item-1",
-      itemType: "agentMessage",
-      lifecycle: "started",
-    },
-  );
-  const canonical = event(
-    "thread-1:turn-1:item-1",
-    "assistant_message",
+test("an item's start and its finish stay one conversation entry", () => {
+  const identity = { threadId: "thread-1", turnId: "turn-1", itemId: "item-1" };
+  const started = event("thread-1:turn-1:item-1", "command_execution", 100, {
+    ...identity,
+    status: "inProgress",
+    command: "cargo test",
+  });
+  const finished = event("thread-1:turn-1:item-1", "command_execution", 100, {
+    ...identity,
+    status: "completed",
+    command: "cargo test",
+    exitCode: 0,
+  });
+
+  const reconciled = reconcileCanonicalEvents([started], [
+    { ...finished, updatedMs: 200 },
+  ]);
+
+  assert.equal(reconciled.length, 1);
+  assert.equal(reconciled[0].payload.status, "completed");
+  assert.equal(
+    reconciled[0].createdMs,
     100,
-    {
-      threadId: "thread-1",
-      turnId: "turn-1",
-      itemId: "item-1",
-      phase: "final",
-      text: "Canonical response after reconnect.",
-    },
-    { sortIndex: 2 },
+    "finishing an item must not move it from its place in the turn",
   );
-
-  const reconciled = reconcileCanonicalEvents([transient], [canonical]);
-
-  assert.deepEqual(reconciled, [canonical]);
-});
-
-test("canonical reconciliation does not regress a useful item to a transient placeholder", () => {
-  const current = event(
-    "thread-1:turn-1:item-1",
-    "assistant_message",
-    100,
-    {
-      threadId: "thread-1",
-      turnId: "turn-1",
-      itemId: "item-1",
-      phase: "final",
-      text: "Keep the last useful response.",
-    },
-    { sortIndex: 2 },
-  );
-  const transient = event(
-    "thread-1:turn-1:item-1",
-    "work_status",
-    200,
-    {
-      threadId: "thread-1",
-      turnId: "turn-1",
-      itemId: "item-1",
-      itemType: "agentMessage",
-      lifecycle: "started",
-    },
-  );
-
-  const reconciled = reconcileCanonicalEvents([current], [transient]);
-
-  assert.deepEqual(reconciled, [current]);
 });
 
 test("canonical reconciliation retains unrelated current and canonical events", () => {
@@ -238,7 +201,7 @@ test("canonical reconciliation preserves ordinary merge semantics for matching p
       turnId: "turn-1",
       itemId: "command-1",
       status: "inProgress",
-      aggregatedOutput: "Preserve this output.",
+      output: "Preserve this output.",
     },
   );
   const canonical = event(

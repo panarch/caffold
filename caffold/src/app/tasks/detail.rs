@@ -14,16 +14,17 @@ use super::{
     },
     lifecycle::ActiveTaskTopPlacement,
     projection::{
-        TaskRecord, apply_canonical_turn_projection, resolve_thread_cwd, task_record_from_thread,
-        thread_with_turns,
+        TaskRecord, apply_canonical_turn_projection, conversation_with_turns,
+        resolve_conversation_cwd, task_record_from_conversation,
     },
     runtime::{CodexConnection, CodexRuntime, CodexRuntimeSignal},
     sync::{DeferredTaskRolloutSubscription, TaskSync, TaskSyncJob, TaskSyncOutcome},
     worktrees::inspect_ready_worktree,
 };
 use crate::{
-    agent::codex::{
-        CodexPermissionMode, CodexThread, CodexThreadClient, CodexThreadError, TurnsPage,
+    agent::{
+        Conversation, Turn,
+        codex::{CodexPermissionMode, CodexThreadClient, CodexThreadError, TurnsPage},
     },
     app::error::ApiError,
     codex_thread_sessions::{CodexThreadSessions, ThreadSessionSnapshot},
@@ -483,22 +484,23 @@ impl DetailContext {
         let history_loading = page.is_none();
         let mut turns = page
             .as_ref()
-            .map(|page| page.data.clone())
+            .map(|page| page.data.iter().map(Turn::from).collect::<Vec<_>>())
             .unwrap_or_default();
+        // Codex pages turns newest first; the conversation reads oldest first.
         turns.reverse();
         let next_cursor = page.and_then(|page| page.next_cursor);
         let thread = snapshot.thread.expect("thread metadata was checked above");
-        let thread = self.project_managed_worktree_cwd(thread)?;
-        let thread = thread_with_turns(&thread, turns);
-        let mut events = thread_events(&thread);
+        let conversation = self.project_managed_worktree_cwd(Conversation::from(&thread))?;
+        let conversation = conversation_with_turns(&conversation, turns);
+        let mut events = thread_events(&conversation);
         self.events.observe(&events);
         events = merge_task_event_records(events, self.events.for_thread(&thread_id));
         let pending_approvals = self.runtime.approval_events(&thread_id).await;
         events = merge_task_event_records(events, pending_approvals.clone());
         sort_task_events(&mut events);
-        let resolved_cwd = resolve_thread_cwd(&self.fs, &thread);
-        let mut task = task_record_from_thread(&thread, &events, resolved_cwd.as_ref());
-        apply_canonical_turn_projection(&mut task, &thread);
+        let resolved_cwd = resolve_conversation_cwd(&self.fs, &conversation);
+        let mut task = task_record_from_conversation(&conversation, &events, resolved_cwd.as_ref());
+        apply_canonical_turn_projection(&mut task, &conversation);
         let managed = self.store_get(&thread_id).await?;
         if let Some(current) = managed {
             task.title = current.display_name.clone();
@@ -532,17 +534,24 @@ impl DetailContext {
         Err(not_managed_error())
     }
 
-    pub(in crate::app) fn record_from_codex_thread(
+    pub(in crate::app) fn record_from_conversation(
         &self,
-        thread: &CodexThread,
+        conversation: &Conversation,
     ) -> Result<TaskRecord, ApiError> {
-        let thread = self.project_managed_worktree_cwd(thread.clone())?;
-        let resolved = resolve_thread_cwd(&self.fs, &thread);
-        Ok(task_record_from_thread(&thread, &[], resolved.as_ref()))
+        let conversation = self.project_managed_worktree_cwd(conversation.clone())?;
+        let resolved = resolve_conversation_cwd(&self.fs, &conversation);
+        Ok(task_record_from_conversation(
+            &conversation,
+            &[],
+            resolved.as_ref(),
+        ))
     }
 
-    fn project_managed_worktree_cwd(&self, thread: CodexThread) -> Result<CodexThread, ApiError> {
-        project_managed_worktree_cwd(&self.store, thread)
+    fn project_managed_worktree_cwd(
+        &self,
+        conversation: Conversation,
+    ) -> Result<Conversation, ApiError> {
+        project_managed_worktree_cwd(&self.store, conversation)
     }
 
     async fn ensure_runtime_signal_driver(&self) {
@@ -709,17 +718,17 @@ impl DetailContext {
     }
 }
 
-/// Point a thread at the worktree Caffold moved it into.
+/// Point a conversation at the worktree Caffold moved it into.
 ///
-/// Codex reports the directory it was started in, which is no longer where the
-/// work happens once a Task has been isolated. Everything downstream — Git,
+/// An agent reports the directory it was started in, which is no longer where
+/// the work happens once a Task has been isolated. Everything downstream — Git,
 /// review, file links — resolves from this one field.
 pub(in crate::app) fn project_managed_worktree_cwd(
     store: &TaskStore,
-    mut thread: CodexThread,
-) -> Result<CodexThread, ApiError> {
+    mut conversation: Conversation,
+) -> Result<Conversation, ApiError> {
     let worktree = store
-        .worktree_for_thread(&thread.id)
+        .worktree_for_thread(&conversation.id)
         .map_err(|error| ApiError::Internal(error.to_string()))?;
     if let Some(worktree) = worktree
         && worktree.state == ManagedWorktreeState::Ready
@@ -731,9 +740,9 @@ pub(in crate::app) fn project_managed_worktree_cwd(
                 worktree.worktree_path
             ),
         })?;
-        thread.cwd = worktree.worktree_path;
+        conversation.cwd = worktree.worktree_path;
     }
-    Ok(thread)
+    Ok(conversation)
 }
 
 pub(in crate::app) fn loading_detail(
@@ -781,15 +790,16 @@ mod inline_tests {
     use super::*;
     use crate::task_store::{CheckoutAnchor, ManagedWorktree};
 
-    /// A Codex thread whose only interesting field is where it says it is
+    /// A conversation whose only interesting field is where it says it is
     /// running, which is what the managed-worktree projection replaces.
-    fn codex_thread(cwd: &str) -> CodexThread {
-        serde_json::from_value(json!({
+    fn codex_thread(cwd: &str) -> Conversation {
+        let thread: crate::agent::codex::CodexThread = serde_json::from_value(json!({
             "id": "thread-1",
             "cwd": cwd,
             "status": { "type": "idle" },
         }))
-        .expect("the fixture decodes as a Codex thread")
+        .expect("the fixture decodes as a Codex thread");
+        Conversation::from(&thread)
     }
 
     #[test]
@@ -826,7 +836,7 @@ mod inline_tests {
 
         assert_eq!(projected.cwd, managed.display().to_string());
         let fs = RootedFs::new(temp.path()).unwrap();
-        let context = resolve_thread_cwd(&fs, &projected)
+        let context = resolve_conversation_cwd(&fs, &projected)
             .unwrap()
             .worktree
             .unwrap();
@@ -1006,7 +1016,7 @@ mod request_tests {
                 item: json!({
                     "id": "reasoning-1",
                     "type": "reasoning",
-                    "summary": [],
+                    "summary": ["Read the current behavior."],
                     "content": []
                 }),
                 started_at_ms: 10,
@@ -1024,7 +1034,7 @@ mod request_tests {
             .expect("item notification publishes a Task event")
             .expect("Task event channel remains open");
         assert_eq!(event.thread_id, thread_id);
-        assert_eq!(event.event_type, "work_status");
+        assert_eq!(event.event_type, "reasoning");
 
         let sync = tokio::time::timeout(Duration::from_secs(1), detail_syncs.recv())
             .await

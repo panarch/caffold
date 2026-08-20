@@ -601,7 +601,7 @@ test("runs a minimal task from creation through follow-up", { tag: "@all-viewpor
     "Waiting for approval",
   );
   await tasksPage
-    .locator('.task-approval-card button[data-decision="accept"]')
+    .locator('.task-approval-card button[data-decision="allow"]')
     .click();
   await expect.poll(() => scenario.approvalRequests).toBe(1);
   await expect(

@@ -17,12 +17,13 @@ use super::{
     CodexConnection, TaskRecord,
     composer_settings::persist_started_turn_composer_settings,
     events::{TaskEvents, accepted_user_message_event, now_ms},
-    projection::{resolve_thread_cwd, task_activity_ms, task_record_from_thread},
+    projection::{resolve_conversation_cwd, task_activity_ms, task_record_from_conversation},
     routes::TaskListEvents,
     worktrees::{
         ArchiveOutcome, IsolateOutcome, ManagedWorktreeError, ManagedWorktrees, RestoreOutcome,
     },
 };
+use crate::agent::Conversation;
 
 mod initial_request_name;
 
@@ -145,7 +146,7 @@ impl TaskLifecycle {
         let effective_model = requested_model.or_else(|| thread.model.clone());
         let effective_reasoning_effort =
             requested_reasoning_effort.or_else(|| thread.reasoning_effort.clone());
-        let task = match self.record_from_codex_thread(&thread.thread) {
+        let task = match self.record_from_conversation(&Conversation::from(&thread.thread)) {
             Ok(task) => task,
             Err(error) => {
                 self.rollback_unclaimed_thread(client, &thread.thread_id)
@@ -339,12 +340,16 @@ impl TaskLifecycle {
         self.events.remove_thread(thread_id);
     }
 
-    fn record_from_codex_thread(
+    fn record_from_conversation(
         &self,
-        thread: &crate::agent::codex::CodexThread,
+        conversation: &crate::agent::Conversation,
     ) -> Result<TaskRecord, ApiError> {
-        let resolved = resolve_thread_cwd(&self.fs, thread);
-        Ok(task_record_from_thread(thread, &[], resolved.as_ref()))
+        let resolved = resolve_conversation_cwd(&self.fs, conversation);
+        Ok(task_record_from_conversation(
+            conversation,
+            &[],
+            resolved.as_ref(),
+        ))
     }
 
     async fn claim_at_top(
@@ -599,8 +604,9 @@ mod tests {
         });
         let thread: crate::agent::codex::CodexThread =
             serde_json::from_value(thread).expect("the fixture decodes as a Codex thread");
-        let resolved = resolve_thread_cwd(&lifecycle.fs, &thread);
-        task_record_from_thread(&thread, &[], resolved.as_ref())
+        let conversation = crate::agent::Conversation::from(&thread);
+        let resolved = resolve_conversation_cwd(&lifecycle.fs, &conversation);
+        task_record_from_conversation(&conversation, &[], resolved.as_ref())
     }
 
     #[tokio::test]

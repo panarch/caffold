@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   cleanRelativeTaskPath,
   effectiveTaskFileRoot,
-  formatCommand,
+  formatDecision,
   formatDuration,
   formatRelativeAge,
   formatRelativeAgePresentation,
@@ -171,9 +171,9 @@ test("short IDs use the first eight characters", () => {
   assert.equal(shortId("1234567890"), "12345678");
 });
 
-test("command formatter handles argv, shell text, objects, and missing values", () => {
-  assert.equal(formatCommand(["cargo", "test"]), "cargo test");
-  assert.equal(formatCommand("cargo test"), "cargo test");
-  assert.equal(formatCommand({ command: "cargo test" }), '{"command":"cargo test"}');
-  assert.equal(formatCommand(null), "(command unavailable)");
+test("every decision Caffold offers has a label", () => {
+  assert.equal(formatDecision("allow"), "Allow");
+  assert.equal(formatDecision("allowAlways"), "Allow Always");
+  assert.equal(formatDecision("deny"), "Deny");
+  assert.equal(formatDecision("denyAndStop"), "Deny and Stop");
 });

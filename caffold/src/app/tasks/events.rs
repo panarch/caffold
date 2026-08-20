@@ -7,7 +7,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 use tokio::sync::broadcast;
 
-use crate::agent::codex::{CodexThread, TurnStatus};
+use crate::agent::{
+    ActivityStatus, ApprovalOutcome, ApprovalRequest, Conversation, ConversationItem, ItemKind,
+    MessageContent, Turn, TurnStatus,
+};
 
 use super::generated_images::{GeneratedImageObservation, GeneratedImageStore};
 
@@ -259,84 +262,54 @@ pub(in crate::app) fn sort_task_events(events: &mut [TaskEventRecord]) {
     });
 }
 
-pub(in crate::app) fn thread_events(thread: &CodexThread) -> Vec<TaskEventRecord> {
-    let thread_id = thread.id.as_str();
+/// Every event a conversation's own history implies.
+///
+/// This is the canonical read: what the agent says happened, rendered as the
+/// records the interface shows. Live events carry the same identities, so a
+/// turn watched as it ran and the same turn read back later are one timeline
+/// rather than two.
+pub(in crate::app) fn thread_events(conversation: &Conversation) -> Vec<TaskEventRecord> {
+    let thread_id = conversation.id.as_str();
     let mut events = Vec::new();
-    let thread_created_ms = seconds_to_ms(Some(thread.created_at));
-    let thread_activity_ms = thread
-        .recency_at
-        .or(Some(thread.updated_at))
-        .map(seconds_to_ms_value)
-        .unwrap_or(thread_created_ms)
-        .max(thread_created_ms);
-    let turns = thread.turns.as_slice();
-    let mut previous_turn_ms = thread_created_ms.saturating_sub(1);
+    let conversation_activity_ms = conversation
+        .recency_at_ms
+        .unwrap_or(conversation.updated_at_ms)
+        .max(conversation.created_at_ms);
+    let turns = conversation.turns.as_slice();
+    let mut previous_turn_ms = conversation.created_at_ms.saturating_sub(1);
     for (turn_index, turn) in turns.iter().enumerate() {
         let turn_id = turn.id.as_str();
-        let canonical_started_ms = turn
-            .started_at
-            .map(seconds_to_ms_value)
-            .filter(|value| *value > 0);
-        let canonical_completed_ms = turn
-            .completed_at
-            .map(seconds_to_ms_value)
-            .filter(|value| *value > 0);
+        // A turn with no time of its own still has to land after the turn
+        // before it, or the conversation reorders itself on reload.
         let minimum_turn_ms = if turn_index == 0 {
-            thread_created_ms
+            conversation.created_at_ms
         } else {
             previous_turn_ms.saturating_add(1)
         };
-        let fallback_ms = canonical_completed_ms.unwrap_or_else(|| {
+        let fallback_ms = turn.completed_at_ms.unwrap_or_else(|| {
             if turn_index + 1 == turns.len() {
-                thread_activity_ms
+                conversation_activity_ms
             } else {
                 minimum_turn_ms
             }
         });
-        let timeline_ms = canonical_started_ms
+        let timeline_ms = turn
+            .started_at_ms
             .unwrap_or(fallback_ms)
             .max(minimum_turn_ms);
-        if canonical_started_ms.is_some() {
-            let mut started = task_event_record(
-                thread_id,
-                &format!("{turn_id}:started"),
-                "turn_started",
-                "Turn started",
-                Some(json!({ "threadId": thread_id, "turnId": turn_id })),
-                timeline_ms,
-            );
-            started.sort_index = Some(0);
-            events.push(started);
+        if turn.started_at_ms.is_some() {
+            events.push(turn_started_event(thread_id, turn_id, timeline_ms));
         }
-        // A turn's items stay provider JSON: what they mean is the item
-        // vocabulary, which the browser still reads directly.
         for (index, item) in turn.items.iter().enumerate() {
-            let params = json!({
-                "threadId": thread_id,
-                "turnId": turn_id,
-                "item": item
-            });
-            if let Some(mut event) = task_event_from_thread_item(thread_id, timeline_ms, &params) {
+            if let Some(mut event) = task_event_from_item(thread_id, turn_id, timeline_ms, item) {
                 event.sort_index = Some(u32::try_from(index).unwrap_or(u32::MAX).saturating_add(1));
                 events.push(event);
             }
         }
-        if let Some(completed_ms) = canonical_completed_ms {
-            let (summary, status) = match turn.status {
-                TurnStatus::Failed => ("Turn failed", "failed"),
-                TurnStatus::Interrupted => ("Turn interrupted", "interrupted"),
-                TurnStatus::Completed => ("Turn completed", "completed"),
-                TurnStatus::InProgress => ("Turn updated", "inProgress"),
-            };
-            events.push(task_event_record(
-                thread_id,
-                &format!("{turn_id}:completed"),
-                "turn_completed",
-                summary,
-                Some(json!({ "threadId": thread_id, "turnId": turn_id, "status": status })),
-                completed_ms.max(timeline_ms),
-            ));
-            previous_turn_ms = completed_ms.max(timeline_ms);
+        if let Some(completed_ms) = turn.completed_at_ms {
+            let completed_ms = completed_ms.max(timeline_ms);
+            events.push(turn_completed_event(thread_id, turn, completed_ms));
+            previous_turn_ms = completed_ms;
         } else {
             previous_turn_ms = timeline_ms;
         }
@@ -344,27 +317,251 @@ pub(in crate::app) fn thread_events(thread: &CodexThread) -> Vec<TaskEventRecord
     events
 }
 
-pub(in crate::app) fn task_event_record(
+/// A turn beginning, from history or from the agent saying so live.
+///
+/// Both paths build the same identity and the same payload, so the two records
+/// are one record however the turn was observed.
+pub(in crate::app) fn turn_started_event(
     thread_id: &str,
-    event_id: &str,
-    event_type: &str,
-    summary: &str,
-    payload: Option<JsonValue>,
-    created_ms: u64,
+    turn_id: &str,
+    started_ms: u64,
 ) -> TaskEventRecord {
-    TaskEventRecord {
-        id: format!("{thread_id}:{event_id}"),
-        thread_id: thread_id.to_string(),
-        event_type: event_type.to_string(),
-        summary: summary.to_string(),
-        payload,
-        created_ms,
-        updated_ms: None,
-        sort_index: None,
-        generated_image: None,
-    }
+    let mut event = task_event_record(
+        thread_id,
+        &format!("{turn_id}:started"),
+        "turn_started",
+        "Turn started",
+        Some(json!({ "threadId": thread_id, "turnId": turn_id })),
+        started_ms,
+    );
+    // A turn's own start opens the group the turn's items sort into.
+    event.sort_index = Some(0);
+    event
 }
 
+pub(in crate::app) fn turn_completed_event(
+    thread_id: &str,
+    turn: &Turn,
+    completed_ms: u64,
+) -> TaskEventRecord {
+    let summary = match turn.status {
+        TurnStatus::Failed => "Turn failed",
+        TurnStatus::Interrupted => "Turn interrupted",
+        TurnStatus::Completed => "Turn completed",
+        TurnStatus::InProgress => "Turn updated",
+    };
+    task_event_record(
+        thread_id,
+        &format!("{}:completed", turn.id),
+        "turn_completed",
+        summary,
+        Some(json!({
+            "threadId": thread_id,
+            "turnId": turn.id,
+            "status": turn.status,
+        })),
+        completed_ms,
+    )
+}
+
+/// One conversation item, as the interface receives it.
+///
+/// Every item event carries the same identity and the same status, so a surface
+/// can say that something is happening without first knowing which kind of item
+/// it is looking at. What each kind adds is what its own surface draws.
+///
+/// `None` means there is nothing to show: an agent announces a message or a
+/// piece of reasoning before writing any of it, and an empty bubble is worse
+/// than waiting for the words.
+pub(in crate::app) fn task_event_from_item(
+    thread_id: &str,
+    turn_id: &str,
+    created_ms: u64,
+    item: &ConversationItem,
+) -> Option<TaskEventRecord> {
+    let identity = json!({
+        "threadId": thread_id,
+        "turnId": turn_id,
+        "itemId": item.id,
+        "status": item.status,
+    });
+    let (event_type, summary, extra, generated_image) = match &item.kind {
+        ItemKind::UserMessage { text, content } => {
+            // A prompt Caffold sent carries the ambient browser state Caffold
+            // wrapped around it. Unwrapping here keeps the conversation showing
+            // what the person actually typed.
+            let text = strip_ambient_browser_context(text).to_string();
+            let images = content.iter().any(|entry| {
+                matches!(
+                    entry,
+                    MessageContent::Image { .. } | MessageContent::LocalImage { .. }
+                )
+            });
+            if text.trim().is_empty() && !images {
+                return None;
+            }
+            (
+                "user_message",
+                "User prompt".to_string(),
+                json!({ "text": text, "content": message_content_payload(content) }),
+                None,
+            )
+        }
+        ItemKind::AssistantMessage { text, phase } => {
+            if text.trim().is_empty() {
+                return None;
+            }
+            (
+                "assistant_message",
+                "Assistant response".to_string(),
+                json!({ "text": text, "phase": phase }),
+                None,
+            )
+        }
+        ItemKind::Reasoning { summary, content } => {
+            if summary.is_empty() && content.is_empty() {
+                return None;
+            }
+            let label = if summary.is_empty() && !content.is_empty() {
+                "Reasoning"
+            } else {
+                "Reasoning summary"
+            };
+            (
+                "reasoning",
+                label.to_string(),
+                json!({ "summary": summary, "content": content }),
+                None,
+            )
+        }
+        ItemKind::Plan { text } => {
+            if text.trim().is_empty() {
+                return None;
+            }
+            (
+                "plan",
+                "Plan updated".to_string(),
+                json!({ "text": text }),
+                None,
+            )
+        }
+        ItemKind::CommandExecution(command) => (
+            "command_execution",
+            format!("Command {}", activity_word(item.status)),
+            json!({
+                "command": command.command,
+                "cwd": command.cwd,
+                "output": command.output,
+                "exitCode": command.exit_code,
+                "durationMs": command.duration_ms,
+            }),
+            None,
+        ),
+        ItemKind::FileChange { paths } => (
+            "file_change",
+            format!("File changes: {}", paths.len()),
+            json!({ "paths": paths }),
+            None,
+        ),
+        ItemKind::GeneratedImage(image) => (
+            "generated_image",
+            if image.is_available() {
+                "Image generated".to_string()
+            } else {
+                "Generating image".to_string()
+            },
+            json!({
+                "revisedPrompt": image.revised_prompt,
+                "available": image.is_available(),
+                "name": GENERATED_IMAGE_NAME,
+            }),
+            GeneratedImageObservation::for_item(&item.id, image),
+        ),
+        ItemKind::ToolCall { name } => (
+            "tool_call",
+            format!("{name}: {}", activity_word(item.status)),
+            json!({ "name": name }),
+            None,
+        ),
+    };
+    let mut event = task_event_record(
+        thread_id,
+        &format!("{turn_id}:{}", item.id),
+        event_type,
+        &summary,
+        Some(merged_payload(identity, extra)),
+        created_ms,
+    );
+    event.generated_image = generated_image;
+    Some(event)
+}
+
+/// An approval the agent is waiting on, as the interface asks it.
+///
+/// The driver has already written this for a person to read, so the payload is
+/// the request itself: what is being asked, the specifics worth checking, and
+/// the answers this request accepts.
+pub(in crate::app) fn approval_requested_event(
+    thread_id: &str,
+    request: &ApprovalRequest,
+    created_ms: u64,
+) -> TaskEventRecord {
+    let detail = &request.detail;
+    task_event_record(
+        thread_id,
+        &format!("approval_requested:{}", request.id),
+        "approval_requested",
+        &request.title,
+        Some(json!({
+            "threadId": thread_id,
+            "turnId": request.turn_id,
+            "itemId": request.item_id,
+            "approvalId": request.id,
+            "title": request.title,
+            "reason": request.reason,
+            "command": detail.command,
+            "cwd": detail.cwd,
+            "networkEndpoint": detail.network_endpoint,
+            "permissions": detail.permissions,
+            "grantRoot": detail.grant_root,
+            "environment": detail.environment,
+            "decisions": request.decisions,
+        })),
+        created_ms,
+    )
+}
+
+/// An approval that is no longer pending, however it ended.
+pub(in crate::app) fn approval_resolved_event(
+    thread_id: &str,
+    request: &ApprovalRequest,
+    outcome: ApprovalOutcome,
+) -> TaskEventRecord {
+    let summary = match outcome {
+        ApprovalOutcome::Decided(_) => "Approval answered",
+        ApprovalOutcome::AnsweredElsewhere => "Approval answered elsewhere",
+        ApprovalOutcome::Expired => "Approval expired",
+    };
+    task_event_record(
+        thread_id,
+        &format!("approval_resolved:{}", request.id),
+        "approval_resolved",
+        summary,
+        Some(json!({
+            "threadId": thread_id,
+            "turnId": request.turn_id,
+            "approvalId": request.id,
+            "outcome": outcome.as_str(),
+        })),
+        now_ms(),
+    )
+}
+
+/// A prompt Caffold has accepted but the agent has not reported back yet.
+///
+/// It stands in for the canonical message so the conversation shows the prompt
+/// immediately, and steps aside once the real one arrives — which is what the
+/// matching below is for.
 pub(in crate::app) fn accepted_user_message_event(
     thread_id: &str,
     turn_id: &str,
@@ -459,379 +656,67 @@ pub(in crate::app) fn user_message_event_images(payload: &JsonValue) -> Vec<Stri
         .collect()
 }
 
-pub(in crate::app) fn turn_item_event_id(
-    turn_id: Option<&str>,
-    item_id: Option<&str>,
-    fallback: &str,
-) -> String {
-    match (turn_id, item_id) {
-        (Some(turn_id), Some(item_id)) => format!("{turn_id}:{item_id}"),
-        (Some(turn_id), None) => format!("{turn_id}:{fallback}"),
-        (None, Some(item_id)) => item_id.to_string(),
-        (None, None) => fallback.to_string(),
-    }
-}
-
-pub(in crate::app) fn task_event_from_item_lifecycle(
+/// One record, in the shape the interface reads every event in.
+///
+/// The identifier is scoped to its thread so that events from two Tasks cannot
+/// collide in a cache or a merge.
+pub(in crate::app) fn task_event_record(
     thread_id: &str,
+    event_id: &str,
+    event_type: &str,
+    summary: &str,
+    payload: Option<JsonValue>,
     created_ms: u64,
-    params: &JsonValue,
-    lifecycle: &str,
-) -> Option<TaskEventRecord> {
-    let event = task_event_from_thread_item(thread_id, created_ms, params)
-        .or_else(|| task_event_from_item_activity(thread_id, created_ms, params, lifecycle))?;
-    Some(with_item_lifecycle(event, lifecycle))
-}
-
-pub(in crate::app) fn with_item_lifecycle(
-    mut event: TaskEventRecord,
-    lifecycle: &str,
 ) -> TaskEventRecord {
-    if let Some(JsonValue::Object(payload)) = event.payload.as_mut() {
-        payload.insert("lifecycle".to_string(), json!(lifecycle));
+    TaskEventRecord {
+        id: format!("{thread_id}:{event_id}"),
+        thread_id: thread_id.to_string(),
+        event_type: event_type.to_string(),
+        summary: summary.to_string(),
+        payload,
+        created_ms,
+        updated_ms: None,
+        sort_index: None,
+        generated_image: None,
     }
-    event
 }
 
-pub(in crate::app) fn task_event_from_item_activity(
-    thread_id: &str,
-    created_ms: u64,
-    params: &JsonValue,
-    lifecycle: &str,
-) -> Option<TaskEventRecord> {
-    let item = params.get("item")?;
-    let item_type = item.get("type").and_then(JsonValue::as_str)?;
-    let item_id = item.get("id").and_then(JsonValue::as_str)?;
-    let turn_id = params.get("turnId").and_then(JsonValue::as_str);
-    let started = lifecycle == "started";
-    let summary = match item_type {
-        "reasoning" => {
-            if started {
-                "Thinking"
-            } else {
-                "Thought"
-            }
-        }
-        "agentMessage" => {
-            if started {
-                "Preparing response"
-            } else {
-                "Response ready"
-            }
-        }
-        "plan" => {
-            if started {
-                "Updating plan"
-            } else {
-                "Plan updated"
-            }
-        }
-        "mcpToolCall" | "dynamicToolCall" => {
-            if started {
-                "Calling tool"
-            } else {
-                "Tool completed"
-            }
-        }
-        "collabAgentToolCall" => {
-            if started {
-                "Working with agent"
-            } else {
-                "Agent work completed"
-            }
-        }
-        "webSearch" => {
-            if started {
-                "Searching the web"
-            } else {
-                "Web search completed"
-            }
-        }
-        "imageView" => {
-            if started {
-                "Viewing image"
-            } else {
-                "Image viewed"
-            }
-        }
-        "imageGeneration" => {
-            if started {
-                "Generating image"
-            } else {
-                "Image generated"
-            }
-        }
-        "sleep" => {
-            if started {
-                "Waiting"
-            } else {
-                "Wait completed"
-            }
-        }
-        _ => {
-            if started {
-                "Working"
-            } else {
-                "Work completed"
-            }
-        }
-    };
-    let event_id = turn_item_event_id(turn_id, Some(item_id), "work_status");
-    Some(task_event_record(
-        thread_id,
-        &event_id,
-        "work_status",
-        summary,
-        Some(json!({
-            "threadId": thread_id,
-            "turnId": turn_id,
-            "itemId": item_id,
-            "itemType": item_type,
-            "lifecycle": lifecycle,
-        })),
-        created_ms,
-    ))
+/// The filename the browser saves a generated image under.
+const GENERATED_IMAGE_NAME: &str = "Generated image.png";
+
+fn activity_word(status: ActivityStatus) -> &'static str {
+    match status {
+        ActivityStatus::InProgress => "running",
+        ActivityStatus::Completed => "completed",
+        ActivityStatus::Failed => "failed",
+        ActivityStatus::Declined => "declined",
+    }
 }
 
-pub(in crate::app) fn task_event_from_thread_item(
-    thread_id: &str,
-    created_ms: u64,
-    params: &JsonValue,
-) -> Option<TaskEventRecord> {
-    let item = params.get("item")?;
-    let item_type = item.get("type").and_then(JsonValue::as_str)?;
-    let turn_id = params.get("turnId").and_then(JsonValue::as_str);
-    let item_id = item.get("id").and_then(JsonValue::as_str);
-
-    let (event_type, summary, payload, generated_image) = match item_type {
-        "userMessage" => {
-            let text = user_message_text(item).unwrap_or_default();
-            if text.is_empty() && !user_message_has_images(item) {
-                return None;
-            }
-            (
-                "user_message",
-                "User prompt".to_string(),
-                json!({
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "itemId": item_id,
-                    "text": text,
-                    "content": item.get("content"),
-                }),
-                None,
-            )
-        }
-        "agentMessage" => {
-            let text = non_empty_string(item.get("text").and_then(JsonValue::as_str))?;
-            (
-                "assistant_message",
-                "Assistant response".to_string(),
-                json!({
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "itemId": item_id,
-                    "phase": item.get("phase").and_then(JsonValue::as_str),
-                    "text": text,
-                }),
-                None,
-            )
-        }
-        "reasoning" => {
-            let summary = string_array(item.get("summary"));
-            let content = string_array(item.get("content"));
-            if summary.is_empty() && content.is_empty() {
-                return None;
-            }
-            (
-                "reasoning",
-                reasoning_event_summary(&summary, &content),
-                json!({
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "itemId": item_id,
-                    "summary": summary,
-                    "content": content,
-                }),
-                None,
-            )
-        }
-        "plan" => {
-            let text = non_empty_string(item.get("text").and_then(JsonValue::as_str))?;
-            (
-                "plan",
-                "Plan updated".to_string(),
-                json!({
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "itemId": item_id,
-                    "text": text,
-                }),
-                None,
-            )
-        }
-        "commandExecution" => (
-            "command_execution",
-            command_execution_summary(item),
-            json!({
-                "threadId": thread_id,
-                "turnId": turn_id,
-                "itemId": item_id,
-                "command": item.get("command").and_then(JsonValue::as_str),
-                "cwd": item.get("cwd").and_then(JsonValue::as_str),
-                "status": item.get("status").and_then(JsonValue::as_str),
-                "aggregatedOutput": item.get("aggregatedOutput").and_then(JsonValue::as_str),
-                "exitCode": item.get("exitCode"),
-                "durationMs": item.get("durationMs"),
-            }),
-            None,
-        ),
-        "fileChange" => {
-            let change_count = item
-                .get("changes")
-                .and_then(JsonValue::as_array)
-                .map(Vec::len)
-                .unwrap_or(0);
-            (
-                "file_change",
-                format!("File changes: {change_count}"),
-                json!({
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "itemId": item_id,
-                    "changeCount": change_count,
-                    "status": item.get("status").and_then(JsonValue::as_str),
-                    "changes": item.get("changes"),
-                }),
-                None,
-            )
-        }
-        "imageGeneration" => {
-            let generated_image = GeneratedImageObservation::from_item(item)?;
-            (
-                "generated_image",
-                "Image generated".to_string(),
-                json!({
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "itemId": item_id,
-                    "status": item.get("status").and_then(JsonValue::as_str),
-                    "revisedPrompt": item.get("revisedPrompt").and_then(JsonValue::as_str),
-                    "name": "Generated image.png",
-                }),
-                Some(generated_image),
-            )
-        }
-        _ => return None,
-    };
-    let event_id = turn_item_event_id(turn_id, item_id, event_type);
-    let mut event = task_event_record(
-        thread_id,
-        &event_id,
-        event_type,
-        &summary,
-        Some(payload),
-        created_ms,
-    );
-    event.generated_image = generated_image;
-    Some(event)
-}
-
-pub(in crate::app) fn task_event_from_raw_response_item(
-    thread_id: &str,
-    created_ms: u64,
-    params: &JsonValue,
-) -> Option<TaskEventRecord> {
-    let item = params.get("item")?;
-    let item_type = item.get("type").and_then(JsonValue::as_str)?;
-    let turn_id = params.get("turnId").and_then(JsonValue::as_str);
-    let item_id = item.get("id").and_then(JsonValue::as_str);
-
-    let (event_type, summary, payload, generated_image) = match item_type {
-        "message" => {
-            let role = item.get("role").and_then(JsonValue::as_str).unwrap_or("");
-            if role != "assistant" {
-                return None;
-            }
-            let text = response_content_text(item.get("content"))?;
-            (
-                "assistant_message",
-                "Assistant response".to_string(),
-                json!({
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "itemId": item_id,
-                    "phase": item.get("phase").and_then(JsonValue::as_str),
-                    "text": text,
-                }),
-                None,
-            )
-        }
-        "reasoning" => {
-            let summary = reasoning_response_summary(item.get("summary"));
-            let content = reasoning_response_content(item.get("content"));
-            if summary.is_empty() && content.is_empty() {
-                return None;
-            }
-            (
-                "reasoning",
-                reasoning_event_summary(&summary, &content),
-                json!({
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "itemId": item_id,
-                    "summary": summary,
-                    "content": content,
-                }),
-                None,
-            )
-        }
-        "image_generation_call" => {
-            let generated_image = GeneratedImageObservation::from_item(item)?;
-            (
-                "generated_image",
-                "Image generated".to_string(),
-                json!({
-                    "threadId": thread_id,
-                    "turnId": turn_id,
-                    "itemId": item_id,
-                    "status": item.get("status").and_then(JsonValue::as_str),
-                    "revisedPrompt": item.get("revised_prompt").and_then(JsonValue::as_str),
-                    "name": "Generated image.png",
-                }),
-                Some(generated_image),
-            )
-        }
-        _ => return None,
-    };
-    let event_id = turn_item_event_id(turn_id, item_id, event_type);
-    let mut event = task_event_record(
-        thread_id,
-        &event_id,
-        event_type,
-        &summary,
-        Some(payload),
-        created_ms,
-    );
-    event.generated_image = generated_image;
-    Some(event)
-}
-
-pub(in crate::app) fn user_message_text(item: &JsonValue) -> Option<String> {
-    let content = item.get("content")?.as_array()?;
-    let text = content
+fn message_content_payload(content: &[MessageContent]) -> Vec<JsonValue> {
+    content
         .iter()
-        .filter_map(
-            |entry| match entry.get("type").and_then(JsonValue::as_str) {
-                Some("text" | "input_text") => entry.get("text").and_then(JsonValue::as_str),
-                _ => None,
-            },
-        )
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    non_empty_string(Some(strip_ambient_browser_context(&text)))
+        .map(|entry| match entry {
+            MessageContent::Text { text } => json!({ "type": "text", "text": text }),
+            MessageContent::Image { url } => json!({ "type": "image", "url": url }),
+            MessageContent::LocalImage { path } => json!({ "type": "localImage", "path": path }),
+        })
+        .collect()
 }
 
+/// The identity every item event carries, plus what its own kind adds.
+fn merged_payload(mut identity: JsonValue, extra: JsonValue) -> JsonValue {
+    if let (Some(identity), JsonValue::Object(extra)) = (identity.as_object_mut(), extra) {
+        identity.extend(extra);
+    }
+    identity
+}
+
+/// The prompt a person typed, with the ambient state Caffold wrapped around it.
+///
+/// Caffold sends in-app browser context along with a prompt so the agent can
+/// see what the person was looking at. That block is Caffold's own addition, so
+/// Caffold takes it back off before showing the prompt.
 pub(in crate::app) fn strip_ambient_browser_context(text: &str) -> &str {
     const LEGACY_PREFIX: &str =
         "This block is automatically supplied ambient UI state, not part of the user's request.";
@@ -856,120 +741,11 @@ pub(in crate::app) fn strip_ambient_browser_context(text: &str) -> &str {
     text
 }
 
-pub(in crate::app) fn user_message_has_images(item: &JsonValue) -> bool {
-    item.get("content")
-        .and_then(JsonValue::as_array)
-        .is_some_and(|content| {
-            content.iter().any(|entry| {
-                matches!(
-                    entry.get("type").and_then(JsonValue::as_str),
-                    Some("image" | "localImage")
-                )
-            })
-        })
-}
-
-pub(in crate::app) fn response_content_text(content: Option<&JsonValue>) -> Option<String> {
-    let content = content?.as_array()?;
-    let text = content
-        .iter()
-        .filter_map(
-            |entry| match entry.get("type").and_then(JsonValue::as_str) {
-                Some("output_text") => entry.get("text").and_then(JsonValue::as_str),
-                _ => None,
-            },
-        )
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    non_empty_string(Some(&text))
-}
-
-pub(in crate::app) fn reasoning_response_summary(summary: Option<&JsonValue>) -> Vec<String> {
-    let Some(summary) = summary.and_then(JsonValue::as_array) else {
-        return Vec::new();
-    };
-    summary
-        .iter()
-        .filter_map(
-            |entry| match entry.get("type").and_then(JsonValue::as_str) {
-                Some("summary_text") => entry.get("text").and_then(JsonValue::as_str),
-                _ => None,
-            },
-        )
-        .filter_map(|text| non_empty_string(Some(text)))
-        .collect()
-}
-
-pub(in crate::app) fn reasoning_response_content(content: Option<&JsonValue>) -> Vec<String> {
-    let Some(content) = content.and_then(JsonValue::as_array) else {
-        return Vec::new();
-    };
-    content
-        .iter()
-        .filter_map(|entry| {
-            entry.as_str().or_else(|| {
-                entry
-                    .get("text")
-                    .and_then(JsonValue::as_str)
-                    .or_else(|| entry.get("content").and_then(JsonValue::as_str))
-            })
-        })
-        .filter_map(|text| non_empty_string(Some(text)))
-        .collect()
-}
-
-pub(in crate::app) fn reasoning_event_summary(summary: &[String], content: &[String]) -> String {
-    if summary.is_empty() && !content.is_empty() {
-        "Reasoning".to_string()
-    } else {
-        "Reasoning summary".to_string()
-    }
-}
-
-pub(in crate::app) fn string_array(value: Option<&JsonValue>) -> Vec<String> {
-    value
-        .and_then(JsonValue::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(JsonValue::as_str)
-        .filter_map(|text| non_empty_string(Some(text)))
-        .collect()
-}
-
 pub(in crate::app) fn non_empty_string(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
-}
-
-pub(in crate::app) fn command_execution_summary(item: &JsonValue) -> String {
-    let status = item
-        .get("status")
-        .and_then(JsonValue::as_str)
-        .unwrap_or("updated");
-    format!("Command {status}")
-}
-
-pub(in crate::app) fn seconds_to_ms(value: Option<f64>) -> u64 {
-    value.map(seconds_to_ms_value).unwrap_or(0)
-}
-
-pub(in crate::app) fn seconds_to_ms_value(value: f64) -> u64 {
-    if value.is_finite() && value > 0.0 {
-        (value * 1000.0) as u64
-    } else {
-        0
-    }
-}
-
-pub(in crate::app) fn event_id_from_params(prefix: &str, params: &JsonValue) -> String {
-    let turn_id = params
-        .get("turnId")
-        .or_else(|| params.pointer("/turn/id"))
-        .and_then(JsonValue::as_str)
-        .unwrap_or("turn");
-    format!("{prefix}:{turn_id}")
 }
 
 pub(in crate::app) fn now_ms() -> u64 {
@@ -983,22 +759,67 @@ pub(in crate::app) fn now_ms() -> u64 {
 mod tests {
     use super::*;
 
+    /// A conversation decoded the way the adapter decodes a real response, so a
+    /// test cannot assert against a shape the adapter would have rejected.
+    fn conversation(thread: JsonValue) -> Conversation {
+        let thread: crate::agent::codex::CodexThread =
+            serde_json::from_value(thread).expect("the fixture decodes as a Codex thread");
+        Conversation::from(&thread)
+    }
+
+    /// The prompt text a user message reaches the conversation with.
+    ///
+    /// Caffold wraps ambient browser state around a prompt before sending it,
+    /// so what a person sees back is what survives unwrapping.
+    fn prompt_text(item: JsonValue) -> String {
+        let item = json!({
+            "type": "userMessage",
+            "id": "item_prompt",
+            "content": item["content"],
+        });
+        let event = codex_item_event("turn_1", 1, ActivityStatus::Completed, item)
+            .expect("a prompt reaches the conversation");
+        event.payload.expect("a user message payload")["text"]
+            .as_str()
+            .expect("prompt text")
+            .to_string()
+    }
+
+    /// One Codex item, rendered the way a live notification renders it.
+    fn codex_item_event(
+        turn_id: &str,
+        created_ms: u64,
+        reported: ActivityStatus,
+        item: JsonValue,
+    ) -> Option<TaskEventRecord> {
+        let item = crate::agent::codex::conversation_item(&item, reported)?;
+        task_event_from_item("thread_1", turn_id, created_ms, &item)
+    }
+
+    /// One item from Codex's raw model-output stream, which reports work that
+    /// has already happened.
+    fn codex_response_event(
+        turn_id: &str,
+        created_ms: u64,
+        item: JsonValue,
+    ) -> Option<TaskEventRecord> {
+        let item = crate::agent::codex::response_item(&item)?;
+        task_event_from_item("thread_1", turn_id, created_ms, &item)
+    }
+
     #[test]
     fn generated_images_normalize_without_exposing_raw_assets() {
-        let event = task_event_from_thread_item(
-            "thread_1",
+        let event = codex_item_event(
+            "turn_1",
             1,
-            &json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "item": {
-                    "type": "imageGeneration",
-                    "id": "image_1",
-                    "status": "completed",
-                    "result": "iVBORw0KGgo=",
-                    "revisedPrompt": "A clearer diagram",
-                    "savedPath": "/tmp/generated_images/thread_1/image_1.png"
-                }
+            ActivityStatus::Completed,
+            json!({
+                "type": "imageGeneration",
+                "id": "image_1",
+                "status": "completed",
+                "result": "iVBORw0KGgo=",
+                "revisedPrompt": "A clearer diagram",
+                "savedPath": "/tmp/generated_images/thread_1/image_1.png"
             }),
         )
         .expect("generated image event");
@@ -1018,35 +839,28 @@ mod tests {
 
     #[test]
     fn raw_and_canonical_generated_images_share_the_same_event_identity() {
-        let raw = task_event_from_raw_response_item(
-            "thread_1",
+        let raw = codex_response_event(
+            "turn_1",
             1,
-            &json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "item": {
-                    "type": "image_generation_call",
-                    "id": "image_1",
-                    "status": "completed",
-                    "result": "iVBORw0KGgo=",
-                    "revised_prompt": "A clearer diagram"
-                }
+            json!({
+                "type": "image_generation_call",
+                "id": "image_1",
+                "status": "completed",
+                "result": "iVBORw0KGgo=",
+                "revised_prompt": "A clearer diagram"
             }),
         )
         .expect("raw generated image event");
-        let canonical = task_event_from_thread_item(
-            "thread_1",
+        let canonical = codex_item_event(
+            "turn_1",
             2,
-            &json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "item": {
-                    "type": "imageGeneration",
-                    "id": "image_1",
-                    "status": "completed",
-                    "result": "iVBORw0KGgo=",
-                    "savedPath": "/tmp/generated_images/thread_1/image_1.png"
-                }
+            ActivityStatus::Completed,
+            json!({
+                "type": "imageGeneration",
+                "id": "image_1",
+                "status": "completed",
+                "result": "iVBORw0KGgo=",
+                "savedPath": "/tmp/generated_images/thread_1/image_1.png"
             }),
         )
         .expect("canonical generated image event");
@@ -1058,67 +872,34 @@ mod tests {
             1
         );
     }
-}
-
-#[cfg(test)]
-mod normalization_tests {
-    use serde_json::{Value as JsonValue, json};
-
-    use super::*;
-
-    /// Decode a fixture the way the adapter decodes a real response, so a test
-    /// cannot assert against a shape the adapter would have rejected.
-    fn decoded_thread(thread: JsonValue) -> CodexThread {
-        serde_json::from_value(thread).expect("the fixture decodes as a Codex thread")
-    }
 
     #[test]
-    fn context_compaction_lifecycle_is_preserved_in_work_status_events() {
-        let started = task_event_from_item_lifecycle(
-            "thread_1",
-            10,
-            &json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "item": {
-                    "type": "contextCompaction",
-                    "id": "context_compaction_1"
-                }
-            }),
-            "started",
-        )
-        .expect("context compaction started event");
-        let completed = task_event_from_item_lifecycle(
-            "thread_1",
-            20,
-            &json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "item": {
-                    "type": "contextCompaction",
-                    "id": "context_compaction_1"
-                }
-            }),
-            "completed",
-        )
-        .expect("context compaction completed event");
+    fn work_caffold_has_no_surface_for_still_reaches_the_conversation() {
+        // Compacting context is not a tool call, and Codex's name for it would
+        // mean nothing to a reader. It still has to appear, and it still has to
+        // be one entry that finishes rather than two.
+        let compaction = json!({
+            "type": "contextCompaction",
+            "id": "context_compaction_1"
+        });
+        let started =
+            codex_item_event("turn_1", 10, ActivityStatus::InProgress, compaction.clone())
+                .expect("context compaction started event");
+        let completed = codex_item_event("turn_1", 20, ActivityStatus::Completed, compaction)
+            .expect("context compaction completed event");
 
         assert_eq!(started.id, completed.id);
-        assert_eq!(started.event_type, "work_status");
+        assert_eq!(started.event_type, "tool_call");
         assert_eq!(
-            started.payload.as_ref().unwrap()["itemType"],
-            "contextCompaction"
+            started.payload.as_ref().unwrap()["name"],
+            "Compacting context"
         );
-        assert_eq!(started.payload.as_ref().unwrap()["lifecycle"], "started");
+        assert_eq!(started.payload.as_ref().unwrap()["status"], "inProgress");
 
         let merged = merge_task_event_record(started, completed);
         assert_eq!(merged.created_ms, 10);
         assert_eq!(merged.updated_ms, Some(20));
-        assert_eq!(
-            merged.payload.as_ref().unwrap()["itemType"],
-            "contextCompaction"
-        );
-        assert_eq!(merged.payload.as_ref().unwrap()["lifecycle"], "completed");
+        assert_eq!(merged.payload.as_ref().unwrap()["status"], "completed");
     }
 
     #[test]
@@ -1138,10 +919,7 @@ mod normalization_tests {
             }]
         });
 
-        assert_eq!(
-            user_message_text(&item).as_deref(),
-            Some("실제 요청만 보여줘")
-        );
+        assert_eq!(prompt_text(item), "실제 요청만 보여줘");
     }
 
     #[test]
@@ -1161,10 +939,7 @@ mod normalization_tests {
             }]
         });
 
-        assert_eq!(
-            user_message_text(&item).as_deref(),
-            Some("Show only this request.")
-        );
+        assert_eq!(prompt_text(item), "Show only this request.");
     }
 
     #[test]
@@ -1186,10 +961,7 @@ mod normalization_tests {
             }]
         });
 
-        assert_eq!(
-            user_message_text(&item).as_deref(),
-            Some("실제 요청만 보여줘")
-        );
+        assert_eq!(prompt_text(item), "실제 요청만 보여줘");
     }
 
     #[test]
@@ -1208,10 +980,7 @@ mod normalization_tests {
             }]
         });
 
-        assert_eq!(
-            user_message_text(&item).as_deref(),
-            Some("실제 요청만 보여줘")
-        );
+        assert_eq!(prompt_text(item), "실제 요청만 보여줘");
     }
 
     #[test]
@@ -1229,10 +998,7 @@ mod normalization_tests {
             }]
         });
 
-        assert_eq!(
-            user_message_text(&item).as_deref(),
-            Some("실제 요청만 보여줘")
-        );
+        assert_eq!(prompt_text(item), "실제 요청만 보여줘");
     }
 
     #[test]
@@ -1261,10 +1027,7 @@ mod normalization_tests {
             ]
         });
 
-        assert_eq!(
-            user_message_text(&item).as_deref(),
-            Some("실제 요청만 보여줘")
-        );
+        assert_eq!(prompt_text(item), "실제 요청만 보여줘");
     }
 
     #[test]
@@ -1326,7 +1089,7 @@ mod normalization_tests {
             ]
         });
 
-        let events = thread_events(&decoded_thread(thread));
+        let events = thread_events(&conversation(thread));
         let event_types = events
             .iter()
             .map(|event| event.event_type.as_str())
@@ -1357,7 +1120,7 @@ mod normalization_tests {
             .find(|event| event.event_type == "command_execution")
             .unwrap();
         assert_eq!(
-            command.payload.as_ref().unwrap()["aggregatedOutput"],
+            command.payload.as_ref().unwrap()["output"],
             "test result: ok"
         );
         let assistant = events
@@ -1421,7 +1184,7 @@ mod normalization_tests {
             ]
         });
 
-        let mut events = thread_events(&decoded_thread(thread.clone()));
+        let mut events = thread_events(&conversation(thread.clone()));
         sort_task_events(&mut events);
 
         assert!(
@@ -1464,21 +1227,18 @@ mod normalization_tests {
     }
 
     #[test]
-    fn normalized_task_events_do_not_duplicate_raw_items() {
-        let user = task_event_from_thread_item(
-            "thread_1",
+    fn an_event_carries_what_it_shows_and_not_the_item_it_came_from() {
+        let user = codex_item_event(
+            "turn_1",
             1,
-            &json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "item": {
-                    "type": "userMessage",
-                    "id": "item_prompt",
-                    "content": [
-                        { "type": "text", "text": "Inspect the diff" },
-                        { "type": "image", "url": "data:image/png;base64,aGVsbG8=" }
-                    ]
-                }
+            ActivityStatus::Completed,
+            json!({
+                "type": "userMessage",
+                "id": "item_prompt",
+                "content": [
+                    { "type": "text", "text": "Inspect the diff" },
+                    { "type": "image", "url": "data:image/png;base64,aGVsbG8=" }
+                ]
             }),
         )
         .expect("user message event");
@@ -1486,33 +1246,32 @@ mod normalization_tests {
         assert!(user_payload.get("item").is_none());
         assert_eq!(user_payload["content"][0]["text"], "Inspect the diff");
 
-        let file_change = task_event_from_thread_item(
-            "thread_1",
+        let file_change = codex_item_event(
+            "turn_1",
             2,
-            &json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "item": {
-                    "type": "fileChange",
-                    "id": "item_file_change",
-                    "status": "completed",
-                    "changes": [{
-                        "path": "src/lib.rs",
-                        "diff": "UNIQUE_LARGE_DIFF_PAYLOAD"
-                    }]
-                }
+            ActivityStatus::Completed,
+            json!({
+                "type": "fileChange",
+                "id": "item_file_change",
+                "status": "completed",
+                "changes": [{
+                    "path": "src/lib.rs",
+                    "diff": "UNIQUE_LARGE_DIFF_PAYLOAD"
+                }]
             }),
         )
         .expect("file change event");
         let file_payload = file_change.payload.as_ref().expect("file payload");
         assert!(file_payload.get("item").is_none());
-        assert_eq!(file_payload["changes"][0]["path"], "src/lib.rs");
-        assert_eq!(
-            serde_json::to_string(&file_change)
+        assert_eq!(file_payload["paths"][0], "src/lib.rs");
+        // The agent's diff does not travel at all. Caffold reviews changes from
+        // git, which owns the working tree the agent actually wrote to, so
+        // carrying the agent's copy would ship a second and staler source of
+        // the same thing.
+        assert!(
+            !serde_json::to_string(&file_change)
                 .expect("serialize event")
-                .matches("UNIQUE_LARGE_DIFF_PAYLOAD")
-                .count(),
-            1
+                .contains("UNIQUE_LARGE_DIFF_PAYLOAD")
         );
     }
 
@@ -1539,7 +1298,7 @@ mod normalization_tests {
             }]
         });
 
-        let user_message = thread_events(&decoded_thread(thread.clone()))
+        let user_message = thread_events(&conversation(thread.clone()))
             .into_iter()
             .find(|event| event.event_type == "user_message")
             .expect("image-only user message");
@@ -1581,7 +1340,7 @@ mod normalization_tests {
             ]
         });
 
-        let answer_ids = thread_events(&decoded_thread(thread.clone()))
+        let answer_ids = thread_events(&conversation(thread.clone()))
             .into_iter()
             .filter(|event| event.event_type == "assistant_message")
             .map(|event| event.id)
@@ -1626,7 +1385,7 @@ mod normalization_tests {
             }]
         });
 
-        let mut events = thread_events(&decoded_thread(thread.clone()));
+        let mut events = thread_events(&conversation(thread.clone()));
         sort_task_events(&mut events);
         let item_events = events
             .into_iter()
@@ -1667,7 +1426,7 @@ mod normalization_tests {
             "Command started",
             Some(json!({
                 "status": "inProgress",
-                "aggregatedOutput": "test result: ok"
+                "output": "test result: ok"
             })),
             10,
         );
@@ -1700,7 +1459,7 @@ mod normalization_tests {
             "completing an item must not move it from its original timeline position"
         );
         assert_eq!(
-            merged[0].payload.as_ref().unwrap()["aggregatedOutput"],
+            merged[0].payload.as_ref().unwrap()["output"],
             "test result: ok"
         );
 
@@ -1744,20 +1503,17 @@ mod normalization_tests {
             "Inspect this image",
             std::slice::from_ref(&image),
         ));
-        let canonical = task_event_from_thread_item(
-            "thread_1",
+        let canonical = codex_item_event(
+            "turn_1",
             20,
-            &json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "item": {
-                    "type": "userMessage",
-                    "id": "item_prompt",
-                    "content": [
-                        { "type": "text", "text": "Inspect this image" },
-                        { "type": "image", "url": image }
-                    ]
-                }
+            ActivityStatus::Completed,
+            json!({
+                "type": "userMessage",
+                "id": "item_prompt",
+                "content": [
+                    { "type": "text", "text": "Inspect this image" },
+                    { "type": "image", "url": image }
+                ]
             }),
         )
         .expect("canonical user message");
@@ -1770,17 +1526,14 @@ mod normalization_tests {
     #[test]
     fn late_local_acceptance_does_not_duplicate_an_existing_canonical_prompt() {
         let cache = LiveTaskEventCache::default();
-        let canonical = task_event_from_thread_item(
-            "thread_1",
+        let canonical = codex_item_event(
+            "turn_1",
             20,
-            &json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "item": {
-                    "type": "userMessage",
-                    "id": "item_prompt",
-                    "content": [{ "type": "text", "text": "Already canonical" }]
-                }
+            ActivityStatus::Completed,
+            json!({
+                "type": "userMessage",
+                "id": "item_prompt",
+                "content": [{ "type": "text", "text": "Already canonical" }]
             }),
         )
         .expect("canonical user message");
@@ -1846,7 +1599,7 @@ mod normalization_tests {
             ]
         });
 
-        let events = thread_events(&decoded_thread(thread));
+        let events = thread_events(&conversation(thread));
         let reasoning = events
             .iter()
             .find(|event| event.event_type == "reasoning")
@@ -1861,19 +1614,15 @@ mod normalization_tests {
 
     #[test]
     fn raw_response_items_normalize_assistant_messages() {
-        let event = task_event_from_raw_response_item(
-            "thread_1",
+        let event = codex_response_event(
+            "turn_1",
             1,
-            &json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "item": {
-                    "type": "message",
-                    "id": "raw_answer",
-                    "role": "assistant",
-                    "content": [{ "type": "output_text", "text": "Raw response fallback." }],
-                    "phase": "final"
-                }
+            json!({
+                "type": "message",
+                "id": "raw_answer",
+                "role": "assistant",
+                "content": [{ "type": "output_text", "text": "Raw response fallback." }],
+                "phase": "final"
             }),
         )
         .unwrap();
@@ -1887,19 +1636,15 @@ mod normalization_tests {
 
     #[test]
     fn raw_response_reasoning_content_without_summary_is_preserved() {
-        let event = task_event_from_raw_response_item(
-            "thread_1",
+        let event = codex_response_event(
+            "turn_1",
             1,
-            &json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "item": {
-                    "type": "reasoning",
-                    "id": "raw_reasoning",
-                    "content": [
-                        { "type": "reasoning_text", "text": "Raw reasoning content" }
-                    ]
-                }
+            json!({
+                "type": "reasoning",
+                "id": "raw_reasoning",
+                "content": [
+                    { "type": "reasoning_text", "text": "Raw reasoning content" }
+                ]
             }),
         )
         .unwrap();

@@ -20,11 +20,12 @@ use super::{
     TaskRecord,
     detail::project_managed_worktree_cwd,
     projection::{
-        apply_canonical_turn_projection, resolve_thread_cwd, task_activity_ms,
-        task_record_from_thread,
+        apply_canonical_turn_projection, resolve_conversation_cwd, task_activity_ms,
+        task_record_from_conversation,
     },
     recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason},
 };
+use crate::agent::Conversation;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -183,9 +184,9 @@ pub(in crate::app) async fn load_runtime_snapshot(
         let Some(managed) = managed.get(&thread.id) else {
             continue;
         };
-        let projected = project_managed_worktree_cwd(&store, thread.clone())?;
-        let resolved = resolve_thread_cwd(&fs, &projected);
-        let mut task = task_record_from_thread(&projected, &[], resolved.as_ref());
+        let projected = project_managed_worktree_cwd(&store, Conversation::from(&thread))?;
+        let resolved = resolve_conversation_cwd(&fs, &projected);
+        let mut task = task_record_from_conversation(&projected, &[], resolved.as_ref());
         apply_canonical_turn_projection(&mut task, &projected);
         apply_managed_runtime_metadata(&mut task, managed);
         observed_threads.push(thread);

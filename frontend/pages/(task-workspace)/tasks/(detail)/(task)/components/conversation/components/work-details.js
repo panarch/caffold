@@ -321,12 +321,7 @@ function renderCombinedFileChangeWorkItem(
   }
   const latest = latestEvent(events);
   const payload = latest.payload ?? {};
-  const latestCount =
-    typeof payload.changeCount === "number"
-      ? payload.changeCount
-      : Array.isArray(payload.changes)
-        ? payload.changes.length
-        : null;
+  const latestCount = Array.isArray(payload.paths) ? payload.paths.length : null;
   const latestSummary =
     typeof latestCount === "number"
       ? latestCount === 1
@@ -388,11 +383,7 @@ function renderWorkItem(
   }
   if (event.type === "file_change") {
     const count =
-      typeof payload.changeCount === "number"
-        ? payload.changeCount
-        : Array.isArray(payload.changes)
-          ? payload.changes.length
-          : 0;
+      Array.isArray(payload.paths) ? payload.paths.length : 0;
     const status = payload.status
       ? `Status: ${formatStatus(payload.status)}`
       : "";

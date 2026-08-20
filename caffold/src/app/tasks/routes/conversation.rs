@@ -68,7 +68,9 @@ pub(super) async fn mark_task_seen(
         .codex_sessions
         .observe_thread_metadata(thread.clone())
         .await;
-    let mut task = state.detail.record_from_codex_thread(&thread)?;
+    let mut task = state
+        .detail
+        .record_from_conversation(&Conversation::from(&thread))?;
     let activity_ms = task_activity_ms(&task);
     let Some(managed) = task_store_mark_seen(&state, &thread_id, activity_ms).await? else {
         return Err(task_not_managed_error());
@@ -114,7 +116,7 @@ mod tests {
     use super::*;
     use crate::{
         app::tasks::{
-            events::{task_event_from_thread_item, task_event_record},
+            events::{task_event_from_item, task_event_record},
             test_support::*,
         },
         fs::RootedFs,
@@ -363,23 +365,19 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let client = CodexThreadClient::mock(Vec::new());
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        let item = crate::agent::codex::conversation_item(
+            &json!({
+                "type": "imageGeneration",
+                "id": "image_1",
+                "status": "completed",
+                "result": ONE_PIXEL_PNG,
+                "savedPath": null
+            }),
+            crate::agent::ActivityStatus::Completed,
+        )
+        .expect("a generated image item");
         state.task_events.publish(
-            task_event_from_thread_item(
-                "thread_1",
-                1,
-                &json!({
-                    "threadId": "thread_1",
-                    "turnId": "turn_1",
-                    "item": {
-                        "type": "imageGeneration",
-                        "id": "image_1",
-                        "status": "completed",
-                        "result": ONE_PIXEL_PNG,
-                        "savedPath": null
-                    }
-                }),
-            )
-            .expect("generated image event"),
+            task_event_from_item("thread_1", "turn_1", 1, &item).expect("generated image event"),
         );
 
         let response = router(state.clone())

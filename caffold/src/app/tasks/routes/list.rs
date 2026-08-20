@@ -27,7 +27,9 @@ pub(super) async fn list_archived_tasks(
                             .codex_sessions
                             .observe_thread_metadata(thread.clone())
                             .await;
-                        let mut task = state.detail.record_from_codex_thread(&thread)?;
+                        let mut task = state
+                            .detail
+                            .record_from_conversation(&Conversation::from(&thread))?;
                         let activity_ms = task_activity_ms(&task);
                         apply_managed_thread_metadata(&mut task, &managed);
                         Ok::<_, ApiError>((task, activity_ms))
@@ -300,8 +302,9 @@ mod tests {
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         let thread: crate::agent::codex::CodexThread =
             serde_json::from_value(thread).expect("the fixture decodes as a Codex thread");
-        let resolved = resolve_thread_cwd(&state.fs, &thread);
-        let task = task_record_from_thread(&thread, &[], resolved.as_ref());
+        let conversation = Conversation::from(&thread);
+        let resolved = resolve_conversation_cwd(&state.fs, &conversation);
+        let task = task_record_from_conversation(&conversation, &[], resolved.as_ref());
         task_store_claim(
             &state,
             managed_thread_from_task_record(&task, None, None, false),
@@ -713,8 +716,9 @@ mod tests {
         wait_for_mock_method(&client, "thread/list").await;
         let thread: crate::agent::codex::CodexThread =
             serde_json::from_value(thread).expect("the fixture decodes as a Codex thread");
-        let resolved = resolve_thread_cwd(&state.fs, &thread);
-        let mut queued = task_record_from_thread(&thread, &[], resolved.as_ref());
+        let conversation = Conversation::from(&thread);
+        let resolved = resolve_conversation_cwd(&state.fs, &conversation);
+        let mut queued = task_record_from_conversation(&conversation, &[], resolved.as_ref());
         queued.title = "Queued after subscription".to_string();
         state.task_list_events.update(queued);
 

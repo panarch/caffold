@@ -499,7 +499,7 @@ async function seedCodeBlockTask(page, threadId, { activeThinking = false } = {}
         "Interim output",
         {
           turnId: "turn_2",
-          phase: "commentary",
+          phase: "progress",
           text: "Interim output\n\n```text\ninterim-only\n```",
         },
         22,

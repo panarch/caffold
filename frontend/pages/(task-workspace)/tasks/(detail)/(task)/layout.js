@@ -124,7 +124,6 @@ class CaffoldTaskDetail extends HTMLElement {
         void this.resolveApproval(
           event.detail.approvalId,
           event.detail.decision,
-          event.detail.scope,
         );
       } else if (event.detail?.type === "command-output") {
         this.commandDialog()?.openCommand(event.detail.command);
@@ -694,11 +693,7 @@ class CaffoldTaskDetail extends HTMLElement {
       return;
     }
     if (action === "approval") {
-      this.resolveApproval(
-        element.dataset.approvalId,
-        element.dataset.decision,
-        element.dataset.scope,
-      );
+      this.resolveApproval(element.dataset.approvalId, element.dataset.decision);
     }
   }
 
@@ -965,7 +960,7 @@ class CaffoldTaskDetail extends HTMLElement {
     }
   }
 
-  async resolveApproval(approvalId, decision, scope = null) {
+  async resolveApproval(approvalId, decision) {
     if (
       !this.selectedThreadId ||
       !approvalId ||
@@ -979,12 +974,7 @@ class CaffoldTaskDetail extends HTMLElement {
     const threadId = this.selectedThreadId;
     this.conversationComponent()?.setApprovalError(approvalId, null);
     try {
-      const detail = await resolveTaskApproval(
-        threadId,
-        approvalId,
-        decision,
-        scope,
-      );
+      const detail = await resolveTaskApproval(threadId, approvalId, decision);
       if (
         actionToken !== this.approvalActionToken ||
         threadId !== this.selectedThreadId

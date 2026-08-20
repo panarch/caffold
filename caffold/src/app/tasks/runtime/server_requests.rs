@@ -1,21 +1,32 @@
 use serde::Deserialize;
 use serde_json::{Value as JsonValue, json};
 
-use super::{ApprovalResolution, ApprovalResolveError, CodexConnection, CodexRuntime};
+use super::{ApprovalResolveError, CodexConnection, CodexRuntime};
 use crate::agent::codex::{
-    CodexNotification, CodexServerRequest, CodexThreadClient, ISOLATE_CURRENT_TASK_TOOL_NAME,
-    RENAME_CURRENT_THREAD_TOOL_NAME, ThreadStatus, TurnStatus,
+    ApprovalKind, CodexNotification, CodexServerRequest, CodexThreadClient,
+    ISOLATE_CURRENT_TASK_TOOL_NAME, RENAME_CURRENT_THREAD_TOOL_NAME, ThreadStatus, TurnStatus,
+    approval_request, approval_response,
 };
+use crate::agent::{ApprovalDecision, ApprovalOutcome, ApprovalRequest};
 use crate::app::tasks::{
-    events::{TaskEventRecord, now_ms, task_event_record},
+    events::{TaskEventRecord, approval_requested_event, approval_resolved_event, now_ms},
     worktrees::IsolateOutcome,
 };
 
+/// An approval waiting for an answer.
+///
+/// The request is Caffold's, because that is what the interface shows and what
+/// a person answers. What sits beside it is only what answering Codex needs:
+/// which request to reply to, which of its three methods asked, and the
+/// parameters to hand back when the answer is to allow what was proposed.
 #[derive(Debug, Clone)]
 pub(super) struct PendingApproval {
     thread_id: String,
+    request: ApprovalRequest,
     request_id: JsonValue,
     kind: ApprovalKind,
+    /// The request Codex sent, kept only so that allowing something hands back
+    /// the permission profile Codex itself proposed.
     params: JsonValue,
     created_ms: u64,
     sort_index: Option<u32>,
@@ -44,31 +55,6 @@ struct DynamicToolInvocation {
     arguments: JsonValue,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ApprovalKind {
-    Command,
-    FileChange,
-    Permission,
-}
-
-impl ApprovalKind {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Command => "command",
-            Self::FileChange => "file_change",
-            Self::Permission => "permission",
-        }
-    }
-
-    fn summary(self) -> &'static str {
-        match self {
-            Self::Command => "Command approval requested",
-            Self::FileChange => "File change approval requested",
-            Self::Permission => "Permission approval requested",
-        }
-    }
-}
-
 impl CodexRuntime {
     pub(in crate::app) async fn approval_events(&self, thread_id: &str) -> Vec<TaskEventRecord> {
         self.approvals
@@ -76,18 +62,10 @@ impl CodexRuntime {
             .await
             .iter()
             .filter(|(_, pending)| pending.thread_id == thread_id)
-            .map(|(approval_id, pending)| {
-                let mut event = task_event_record(
+            .map(|(_, pending)| {
+                let mut event = approval_requested_event(
                     &pending.thread_id,
-                    &format!("approval_requested:{approval_id}"),
-                    "approval_requested",
-                    pending.kind.summary(),
-                    Some(json!({
-                        "approvalId": approval_id,
-                        "kind": pending.kind.as_str(),
-                        "turnId": pending.params.get("turnId"),
-                        "params": pending.params
-                    })),
+                    &pending.request,
                     pending.created_ms,
                 );
                 event.sort_index = pending.sort_index;
@@ -101,7 +79,7 @@ impl CodexRuntime {
         connection: &CodexConnection,
         thread_id: &str,
         approval_id: &str,
-        resolution: ApprovalResolution,
+        decision: ApprovalDecision,
     ) -> Result<(), ApprovalResolveError> {
         let pending = self
             .approvals
@@ -114,7 +92,11 @@ impl CodexRuntime {
             return Err(ApprovalResolveError::ThreadMismatch);
         }
 
-        let (response, decision, scope) = approval_response(&pending, resolution)?;
+        if !pending.request.decisions.contains(&decision) {
+            return Err(ApprovalResolveError::ResolutionMismatch);
+        }
+        let response = approval_response(pending.kind, &pending.params, decision)
+            .ok_or(ApprovalResolveError::ResolutionMismatch)?;
         connection
             .client
             .respond_to_server_request(pending.request_id.clone(), response)
@@ -134,19 +116,10 @@ impl CodexRuntime {
             return Ok(());
         };
 
-        self.events.publish(task_event_record(
+        self.events.publish(approval_resolved_event(
             &pending.thread_id,
-            &format!("approval_resolved:{approval_id}"),
-            "approval_resolved",
-            &format!("Approval resolved: {decision}"),
-            Some(json!({
-                "approvalId": approval_id,
-                "kind": pending.kind.as_str(),
-                "turnId": pending.params.get("turnId"),
-                "decision": decision,
-                "scope": scope
-            })),
-            now_ms(),
+            &pending.request,
+            ApprovalOutcome::Decided(decision),
         ));
         Ok(())
     }
@@ -203,24 +176,15 @@ impl CodexRuntime {
             .and_then(JsonValue::as_u64)
             .filter(|started_at_ms| *started_at_ms > 0)
             .unwrap_or_else(now_ms);
-        let event = self.events.record(task_event_record(
-            &thread_id,
-            &format!("approval_requested:{approval_id}"),
-            "approval_requested",
-            kind.summary(),
-            Some(json!({
-                "approvalId": approval_id,
-                "kind": kind.as_str(),
-                "turnId": params.get("turnId"),
-                "requestId": request_id,
-                "params": params
-            })),
-            created_ms,
-        ));
+        let request = approval_request(approval_id.clone(), kind, &params);
+        let event = self
+            .events
+            .record(approval_requested_event(&thread_id, &request, created_ms));
         self.approvals.lock().await.insert(
             approval_id,
             PendingApproval {
                 thread_id,
+                request,
                 request_id,
                 kind,
                 params,
@@ -455,130 +419,78 @@ impl CodexRuntime {
         &self,
         notification: &CodexNotification,
     ) {
-        let expired = {
+        let withdrawn = {
             let mut approvals = self.approvals.lock().await;
-            let expired_ids = approvals
+            let withdrawn = approvals
                 .iter()
                 .filter_map(|(approval_id, pending)| {
-                    pending_approval_resolution(pending, notification)
-                        .map(|resolution| (approval_id.clone(), resolution))
+                    withdrawn_approval_outcome(pending, notification)
+                        .map(|outcome| (approval_id.clone(), outcome))
                 })
                 .collect::<Vec<_>>();
-            expired_ids
+            withdrawn
                 .into_iter()
-                .filter_map(|(approval_id, resolution)| {
+                .filter_map(|(approval_id, outcome)| {
                     approvals
                         .remove(&approval_id)
-                        .map(|pending| (approval_id, pending, resolution))
+                        .map(|pending| (pending, outcome))
                 })
                 .collect::<Vec<_>>()
         };
 
-        for (approval_id, pending, resolution) in expired {
-            self.events.publish(task_event_record(
+        for (pending, outcome) in withdrawn {
+            self.events.publish(approval_resolved_event(
                 &pending.thread_id,
-                &format!("approval_resolved:{approval_id}"),
-                "approval_resolved",
-                resolution.summary,
-                Some(json!({
-                    "approvalId": approval_id,
-                    "kind": pending.kind.as_str(),
-                    "turnId": pending.params.get("turnId"),
-                    "decision": resolution.decision,
-                    "reason": resolution.reason
-                })),
-                now_ms(),
+                &pending.request,
+                outcome,
             ));
         }
     }
 }
 
-fn approval_response(
-    pending: &PendingApproval,
-    resolution: ApprovalResolution,
-) -> Result<(JsonValue, String, Option<&'static str>), ApprovalResolveError> {
-    match (pending.kind, resolution) {
-        (ApprovalKind::Permission, ApprovalResolution::Permissions { granted, scope }) => {
-            if granted {
-                let permissions = pending
-                    .params
-                    .get("permissions")
-                    .filter(|permissions| permissions.is_object())
-                    .cloned()
-                    .ok_or(ApprovalResolveError::ResolutionMismatch)?;
-                Ok((
-                    json!({
-                        "permissions": permissions,
-                        "scope": scope.as_str()
-                    }),
-                    "allow".to_string(),
-                    Some(scope.as_str()),
-                ))
-            } else {
-                Ok((json!({ "permissions": {} }), "deny".to_string(), None))
-            }
-        }
-        (
-            ApprovalKind::Command | ApprovalKind::FileChange,
-            ApprovalResolution::Standard(decision),
-        ) => Ok((json!({ "decision": &decision }), decision, None)),
-        _ => Err(ApprovalResolveError::ResolutionMismatch),
-    }
-}
-
-#[derive(Clone, Copy)]
-struct PendingApprovalResolution {
-    summary: &'static str,
-    decision: &'static str,
-    reason: &'static str,
-}
-
-fn pending_approval_resolution(
+/// Why an approval stopped being answerable, when nobody answered it here.
+///
+/// Codex resolving the request itself and the turn moving on are different
+/// things to say: one means somebody else decided, the other means the question
+/// no longer applies.
+fn withdrawn_approval_outcome(
     pending: &PendingApproval,
     notification: &CodexNotification,
-) -> Option<PendingApprovalResolution> {
-    let expired = |reason| PendingApprovalResolution {
-        summary: "Approval expired",
-        decision: "expired",
-        reason,
-    };
+) -> Option<ApprovalOutcome> {
+    let expired = Some(ApprovalOutcome::Expired);
     match notification {
         CodexNotification::ServerRequestResolved {
             thread_id,
             request_id,
         } if pending.thread_id == *thread_id && pending.request_id == *request_id => {
-            Some(PendingApprovalResolution {
-                summary: "Approval resolved",
-                decision: "external",
-                reason: "request resolved by Codex",
-            })
+            Some(ApprovalOutcome::AnsweredElsewhere)
         }
         CodexNotification::TurnStarted { thread_id, turn }
             if pending.thread_id == *thread_id
                 && pending
-                    .params
-                    .get("turnId")
-                    .and_then(JsonValue::as_str)
-                    .is_some_and(|turn_id| turn_id != turn.id) =>
+                    .request
+                    .turn_id
+                    .as_ref()
+                    .is_some_and(|turn_id| *turn_id != turn.id) =>
         {
-            Some(expired("another turn started"))
+            expired
         }
         CodexNotification::TurnCompleted { thread_id, turn }
             if pending.thread_id == *thread_id
                 && turn.status != TurnStatus::InProgress
                 && pending
-                    .params
-                    .get("turnId")
-                    .and_then(JsonValue::as_str)
-                    .is_none_or(|turn_id| turn_id == turn.id) =>
+                    .request
+                    .turn_id
+                    .as_ref()
+                    .is_none_or(|turn_id| *turn_id == turn.id) =>
         {
-            Some(expired("turn completed"))
+            expired
         }
         CodexNotification::ThreadStatusChanged { thread_id, status }
             if pending.thread_id == *thread_id
                 && matches!(status, ThreadStatus::Idle | ThreadStatus::SystemError) =>
         {
-            Some(expired("thread became inactive"))
+            expired
         }
         _ => None,
     }
@@ -752,17 +664,14 @@ mod tests {
             "turn_1",
             "approval events must remain attached to their causal turn"
         );
-        assert_eq!(
-            event.payload.as_ref().unwrap()["params"]["command"],
-            "cargo test"
-        );
+        assert_eq!(event.payload.as_ref().unwrap()["command"], "cargo test");
         let approvals = runtime.approval_events("thread_1").await;
         assert_eq!(approvals.len(), 1);
         assert_eq!(approvals[0].id, event.id);
         assert_eq!(approvals[0].created_ms, event.created_ms);
         assert_eq!(approvals[0].sort_index, event.sort_index);
         assert_eq!(
-            approvals[0].payload.as_ref().unwrap()["params"]["command"],
+            approvals[0].payload.as_ref().unwrap()["command"],
             "cargo test"
         );
         assert_eq!(events.for_thread("thread_1"), vec![event]);
@@ -784,7 +693,7 @@ mod tests {
                 },
                 "thread_1",
                 "41",
-                ApprovalResolution::Standard("acceptForSession".to_string()),
+                ApprovalDecision::AllowAlways,
             )
             .await
             .unwrap();
@@ -807,9 +716,8 @@ mod tests {
 
         let requested = runtime.approval_events("thread_1").await;
         assert_eq!(requested.len(), 1);
-        assert_eq!(requested[0].summary, "Permission approval requested");
+        assert_eq!(requested[0].summary, "Permission requested");
         assert_eq!(requested[0].created_ms, 1_750_000_000_000);
-        assert_eq!(requested[0].payload.as_ref().unwrap()["kind"], "permission");
 
         runtime
             .resolve_approval(
@@ -819,10 +727,7 @@ mod tests {
                 },
                 "thread_1",
                 "42",
-                ApprovalResolution::Permissions {
-                    granted: true,
-                    scope: super::super::PermissionGrantScope::Session,
-                },
+                ApprovalDecision::AllowAlways,
             )
             .await
             .unwrap();
@@ -848,8 +753,7 @@ mod tests {
         assert!(runtime.approval_events("thread_1").await.is_empty());
         let event = events.for_thread("thread_1").pop().unwrap();
         assert_eq!(event.event_type, "approval_resolved");
-        assert_eq!(event.payload.as_ref().unwrap()["decision"], "allow");
-        assert_eq!(event.payload.as_ref().unwrap()["scope"], "session");
+        assert_eq!(event.payload.as_ref().unwrap()["outcome"], "allowAlways");
     }
 
     #[tokio::test]
@@ -868,10 +772,7 @@ mod tests {
                 },
                 "thread_1",
                 "46",
-                ApprovalResolution::Permissions {
-                    granted: true,
-                    scope: super::super::PermissionGrantScope::Turn,
-                },
+                ApprovalDecision::Allow,
             )
             .await
             .unwrap();
@@ -895,10 +796,7 @@ mod tests {
                 },
                 "thread_1",
                 "43",
-                ApprovalResolution::Permissions {
-                    granted: false,
-                    scope: super::super::PermissionGrantScope::Turn,
-                },
+                ApprovalDecision::Deny,
             )
             .await
             .unwrap();
@@ -910,7 +808,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn approval_resolution_kind_must_match_the_pending_server_request() {
+    async fn an_approval_refuses_a_decision_it_did_not_offer() {
         let runtime = runtime_with_events(TaskEvents::default());
         let client = CodexThreadClient::mock(Vec::new());
         runtime
@@ -925,7 +823,9 @@ mod tests {
                 },
                 "thread_1",
                 "44",
-                ApprovalResolution::Standard("accept".to_string()),
+                // Codex's permission response has no way to end a turn, so a
+                // permission request never offers this.
+                ApprovalDecision::DenyAndStop,
             )
             .await;
 
@@ -966,12 +866,8 @@ mod tests {
         assert_eq!(task_events.len(), 2);
         assert_eq!(task_events[1].event_type, "approval_resolved");
         assert_eq!(
-            task_events[1].payload.as_ref().unwrap()["decision"],
-            "external"
-        );
-        assert_eq!(
-            task_events[1].payload.as_ref().unwrap()["reason"],
-            "request resolved by Codex"
+            task_events[1].payload.as_ref().unwrap()["outcome"],
+            "answeredElsewhere"
         );
     }
 
@@ -1253,7 +1149,7 @@ mod tests {
         let resolved = receiver.recv().await.unwrap();
         assert_eq!(resolved.event_type, "approval_resolved");
         assert_eq!(resolved.payload.as_ref().unwrap()["approvalId"], "11");
-        assert_eq!(resolved.payload.as_ref().unwrap()["decision"], "expired");
+        assert_eq!(resolved.payload.as_ref().unwrap()["outcome"], "expired");
         assert_eq!(
             events
                 .for_thread("thread_1")

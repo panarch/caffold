@@ -10,14 +10,18 @@ export function commandPresentation(event = {}) {
   const command = `${payload.command ?? ""}`.trim();
   const cwd = `${payload.cwd ?? ""}`.trim();
   const rawStatus = `${payload.status ?? ""}`.trim();
-  const output = `${payload.aggregatedOutput ?? ""}`.trim();
+  const output = `${payload.output ?? ""}`.trim();
   const exitCode = finiteNumber(payload.exitCode);
   const duration = finiteNumber(payload.durationMs);
-  const terminal = ["completed", "failed"].includes(rawStatus);
+  const terminal = ["completed", "failed", "declined"].includes(rawStatus);
+  // A declined command did not fail; nobody let it run. An exit code decides
+  // only for a command that actually ran.
   const result =
-    rawStatus === "failed" || (exitCode !== null && exitCode !== 0)
-      ? "failed"
-      : "completed";
+    rawStatus === "declined"
+      ? "declined"
+      : rawStatus === "failed" || (exitCode !== null && exitCode !== 0)
+        ? "failed"
+        : "completed";
   const metadata = terminal
     ? [
         duration !== null ? formatDuration(duration) : "",
@@ -36,9 +40,7 @@ export function commandPresentation(event = {}) {
     result,
     status: terminal ? result : rawStatus || "unknown",
     statusLabel: terminal
-      ? result === "failed"
-        ? "Failed"
-        : "Completed"
+      ? { failed: "Failed", declined: "Declined", completed: "Completed" }[result]
       : rawStatus
         ? formatStatus(rawStatus)
         : "",

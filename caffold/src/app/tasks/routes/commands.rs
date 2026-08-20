@@ -329,10 +329,10 @@ pub(super) async fn task_approval(
         return Err(task_not_managed_error());
     }
     let connection = require_codex_thread_connection(&state).await?;
-    let resolution = normalize_approval_resolution(request.decision, request.scope)?;
+    let decision = normalize_approval_decision(&request.decision)?;
     match state
         .codex_runtime
-        .resolve_approval(&connection, &thread_id, &approval_id, resolution)
+        .resolve_approval(&connection, &thread_id, &approval_id, decision)
         .await
     {
         Ok(()) => {}
@@ -564,7 +564,7 @@ mod tests {
                     .method("POST")
                     .uri(format!("/api/tasks/{thread_id}/approvals/71"))
                     .header(axum::http::header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(r#"{"decision":"allow","scope":"session"}"#))
+                    .body(Body::from(r#"{"decision":"allowAlways"}"#))
                     .unwrap(),
             )
             .await
@@ -589,7 +589,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn permission_approval_http_route_rejects_command_decisions_without_responding() {
+    async fn an_approval_refuses_a_decision_it_did_not_offer() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-permission-mismatch";
         let client = CodexThreadClient::mock(Vec::new());
@@ -604,7 +604,7 @@ mod tests {
                     .method("POST")
                     .uri(format!("/api/tasks/{thread_id}/approvals/72"))
                     .header(axum::http::header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(r#"{"decision":"accept"}"#))
+                    .body(Body::from(r#"{"decision":"denyAndStop"}"#))
                     .unwrap(),
             )
             .await

@@ -48,6 +48,20 @@ bridge notifications and server requests into the Tasks application. Neither
 the application composition root nor the browser projection modules inspect raw
 method names or protocol JSON paths.
 
+`caffold/src/agent/codex/contract.rs` is where Codex stops. It reads a thread,
+its turns, and its items into the vocabulary in `caffold/src/agent/`, and it
+turns a Caffold approval decision back into the response the asking method
+expects. Both directions live in one file so that what this driver carries is
+readable in one place. Above it, the Tasks application works in Caffold's
+conversation and approval types; what still crosses from `agent::codex` is the
+client handle, its errors, turn options, and readiness — the control surface
+rather than the conversation.
+
+Codex reports eighteen kinds of thread item. Caffold draws seven of them with a
+surface of its own and shows the rest as tool calls named after whatever Codex
+called them, so an item kind added to app-server appears as work rather than
+disappearing from the conversation.
+
 `caffold/src/agent/codex/readiness.rs` owns executable eligibility before
 daemon startup. `caffold/src/agent/codex/status.rs` owns the
 post-connection projection of account, managed runtime, and initialization

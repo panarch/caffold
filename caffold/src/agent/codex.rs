@@ -18,6 +18,9 @@ mod reconnect_spike;
 mod status;
 mod transport;
 
+pub(crate) use contract::{
+    ApprovalKind, approval_request, approval_response, conversation_item, response_item,
+};
 use protocol::{
     ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse,
     CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS, CONFIG_READ, ConfigReadResponse, EmptyResponse,

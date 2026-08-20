@@ -91,7 +91,9 @@ pub(super) async fn task_archive(
             message: "active tasks cannot be archived".to_string(),
         });
     }
-    let task = state.detail.record_from_codex_thread(&thread)?;
+    let task = state
+        .detail
+        .record_from_conversation(&Conversation::from(&thread))?;
     state
         .lifecycle
         .preflight_archive_worktree(thread_id.clone())
@@ -144,7 +146,9 @@ pub(super) async fn task_recovery_restore(
         .codex_sessions
         .observe_thread_metadata(thread.clone())
         .await;
-    let mut task = state.detail.record_from_codex_thread(&thread)?;
+    let mut task = state
+        .detail
+        .record_from_conversation(&Conversation::from(&thread))?;
     apply_managed_thread_metadata(&mut task, &managed);
     let placement = match state.lifecycle.place_active_task(&task).await {
         Ok(Some(placement)) => placement,
@@ -190,7 +194,10 @@ pub(super) async fn task_recovery_recheck(
         .await?
     {
         ManagedCodexThreadLocation::Active(thread) => {
-            match state.detail.record_from_codex_thread(&thread) {
+            match state
+                .detail
+                .record_from_conversation(&Conversation::from(&thread))
+            {
                 Ok(mut task) => {
                     apply_managed_thread_metadata(&mut task, &managed);
                     task.conversation_available = false;
@@ -203,7 +210,10 @@ pub(super) async fn task_recovery_recheck(
             }
         }
         ManagedCodexThreadLocation::Archived(thread) => {
-            match state.detail.record_from_codex_thread(&thread) {
+            match state
+                .detail
+                .record_from_conversation(&Conversation::from(&thread))
+            {
                 Ok(mut task) => {
                     apply_managed_thread_metadata(&mut task, &managed);
                     task.conversation_available = false;
@@ -238,7 +248,9 @@ pub(super) async fn task_recovery_archive(
             return Err(task_recovery_changed_error());
         }
     };
-    let mut task = state.detail.record_from_codex_thread(&thread)?;
+    let mut task = state
+        .detail
+        .record_from_conversation(&Conversation::from(&thread))?;
     apply_managed_thread_metadata(&mut task, &managed);
     task.conversation_available = false;
     let worktree = state.lifecycle.archive_worktree(thread_id.clone()).await?;
@@ -339,7 +351,9 @@ pub(super) async fn task_restore(
         .codex_sessions
         .observe_thread_metadata(thread.clone())
         .await;
-    let mut task = state.detail.record_from_codex_thread(&thread)?;
+    let mut task = state
+        .detail
+        .record_from_conversation(&Conversation::from(&thread))?;
     apply_managed_thread_metadata(&mut task, &archived);
     let placement = match state.lifecycle.restore_active_task(&task).await {
         Ok(Some(placement)) => placement,

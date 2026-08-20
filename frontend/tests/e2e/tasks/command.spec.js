@@ -33,7 +33,6 @@ test("owns active disclosure state and terminal presentation across canonical up
     { status: "inProgress" },
   );
   const commandStarted = commandEvent(now + 1_000, turnId, {
-    lifecycle: "started",
     status: "inProgress",
   });
 
@@ -80,9 +79,8 @@ test("owns active disclosure state and terminal presentation across canonical up
     .toBeCloseTo(summaryOffset, 1);
 
   const commandUpdated = commandEvent(now + 2_000, turnId, {
-    lifecycle: "updated",
     status: "inProgress",
-    aggregatedOutput: "Compiling caffold v0.6.0",
+    output: "Compiling caffold v0.6.0",
   });
   await emitTaskEvent(page, threadId, commandUpdated, 2);
   await expect(command).toContainText("Compiling caffold v0.6.0");
@@ -110,11 +108,10 @@ test("owns active disclosure state and terminal presentation across canonical up
   await captureReviewScreenshot(page, testInfo, "command-active-expanded");
 
   const commandCompleted = commandEvent(now + 3_000, turnId, {
-    lifecycle: "completed",
     status: "completed",
     exitCode: 0,
     durationMs: 1_600,
-    aggregatedOutput: "test result: ok",
+    output: "test result: ok",
   });
   await emitTaskEvent(page, threadId, commandCompleted, 3);
   await expect(command).toHaveAttribute("data-command-terminal", "");

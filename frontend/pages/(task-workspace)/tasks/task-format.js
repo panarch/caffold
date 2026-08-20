@@ -213,25 +213,14 @@ function relativeAgePresentation(value, suffix, unit) {
 }
 
 export function formatDecision(decision) {
-  return {
-    accept: "Accept",
-    acceptForSession: "Accept for Session",
-    decline: "Decline",
-    cancel: "Cancel",
-  }[decision] ?? decision;
-}
-
-export function formatCommand(command) {
-  if (Array.isArray(command)) {
-    return command.join(" ");
-  }
-  if (typeof command === "string" && command.trim()) {
-    return command;
-  }
-  if (command && typeof command === "object") {
-    return JSON.stringify(command);
-  }
-  return "(command unavailable)";
+  return (
+    {
+      allow: "Allow",
+      allowAlways: "Allow Always",
+      deny: "Deny",
+      denyAndStop: "Deny and Stop",
+    }[decision] ?? decision
+  );
 }
 
 export function shortId(id) {
