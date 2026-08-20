@@ -8,7 +8,7 @@ use crate::{
         CodexThreadClient, CodexTurnOptions, is_fast_service_tier, service_tier_for_fast_mode,
     },
     app::error::ApiError,
-    codex_thread_sessions::{CodexThreadSessions, StartedThreadSettings},
+    app::tasks::sessions::{StartedSettings, TaskSessions},
     fs::RootedFs,
     task_store::{ComposerSettings, ManagedThread, TaskStore, TaskStoreError},
 };
@@ -75,7 +75,7 @@ enum LocalPlacementMutation {
 #[derive(Clone)]
 pub(in crate::app) struct TaskLifecycle {
     fs: Arc<RootedFs>,
-    sessions: CodexThreadSessions,
+    sessions: TaskSessions,
     events: TaskEvents,
     list_events: TaskListEvents,
     store: TaskStore,
@@ -85,7 +85,7 @@ pub(in crate::app) struct TaskLifecycle {
 impl TaskLifecycle {
     pub(in crate::app) fn new(
         fs: Arc<RootedFs>,
-        sessions: CodexThreadSessions,
+        sessions: TaskSessions,
         events: TaskEvents,
         list_events: TaskListEvents,
         store: TaskStore,
@@ -178,10 +178,10 @@ impl TaskLifecycle {
         self.list_events.place(task.clone(), placement.clone());
         self.sessions
             .register_started_thread(
-                client,
+                &connection.driver(),
                 connection.generation,
                 Conversation::from(&thread.thread),
-                StartedThreadSettings {
+                StartedSettings {
                     permission_mode: thread_permission_mode,
                     model: thread.model.clone(),
                     reasoning_effort: thread.reasoning_effort.clone(),
@@ -564,7 +564,7 @@ fn task_store_worker_error(error: tokio::task::JoinError) -> ApiError {
 mod tests {
     use super::*;
     use crate::{
-        codex_thread_sessions::CodexThreadSessions,
+        app::tasks::sessions::TaskSessions,
         task_store::{ManagedWorktreeState, TaskStore},
     };
 
@@ -582,7 +582,7 @@ mod tests {
             root,
             TaskLifecycle::new(
                 fs,
-                CodexThreadSessions::default(),
+                TaskSessions::default(),
                 TaskEvents::default(),
                 TaskListEvents::new(),
                 store,

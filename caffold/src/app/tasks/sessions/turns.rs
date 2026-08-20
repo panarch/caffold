@@ -1,32 +1,25 @@
-use crate::agent::codex::{CodexThreadClient, CodexThreadError};
-use crate::agent::{Conversation, ThreadStatus, Turn, TurnPage, TurnStatus};
+use crate::agent::codex::CodexThreadError;
+use crate::agent::{Conversation, Driver, ThreadStatus, Turn, TurnPage, TurnStatus};
 
-use super::{
-    CodexThreadSessions, INITIAL_TURNS_PAGE_SIZE, ThreadSessionSnapshot, ThreadSessionState,
-    snapshot,
-};
+use super::{INITIAL_TURNS_PAGE_SIZE, SessionSnapshot, SessionState, TaskSessions, snapshot};
 
-impl CodexThreadSessions {
-    pub async fn load_older_turns(
+impl TaskSessions {
+    pub(in crate::app::tasks) async fn load_older_turns(
         &self,
-        client: &CodexThreadClient,
+        driver: &Driver,
         generation: u64,
         thread_id: &str,
         cursor: &str,
         limit: usize,
-    ) -> Result<(ThreadSessionSnapshot, TurnPage), CodexThreadError> {
-        self.ensure_subscribed(client, generation, thread_id)
+    ) -> Result<(SessionSnapshot, TurnPage), CodexThreadError> {
+        self.ensure_subscribed(driver, generation, thread_id)
             .await?;
-        let page = TurnPage::from(
-            &client
-                .list_thread_turns(thread_id, Some(cursor), limit)
-                .await?,
-        );
+        let page = driver.read_turns(thread_id, Some(cursor), limit).await?;
         let entry = self.entry(thread_id).await;
         let state = entry.state.lock().await;
         if state.generation != generation {
             return Err(CodexThreadError::SubscriptionLost(format!(
-                "Codex thread {thread_id} changed app-server generation while loading history"
+                "conversation {thread_id} changed connection while reading its history"
             )));
         }
         Ok((snapshot(&state), page))
@@ -57,7 +50,7 @@ pub(super) fn active_turn_id(
 }
 
 pub(super) fn update_active_turn(
-    state: &mut ThreadSessionState,
+    state: &mut SessionState,
     active_turn_id: Option<String>,
     inferred_cwd: Option<String>,
 ) {
@@ -73,7 +66,7 @@ pub(super) fn update_active_turn(
 }
 
 pub(super) fn replace_active_turn(
-    state: &mut ThreadSessionState,
+    state: &mut SessionState,
     active_turn_id: Option<String>,
     cwd: String,
 ) {
@@ -81,7 +74,7 @@ pub(super) fn replace_active_turn(
     state.active_turn_id = active_turn_id;
 }
 
-pub(super) fn turn_is_in_progress(state: &ThreadSessionState, turn_id: &str) -> bool {
+pub(super) fn turn_is_in_progress(state: &SessionState, turn_id: &str) -> bool {
     state
         .conversation
         .iter()
@@ -90,7 +83,7 @@ pub(super) fn turn_is_in_progress(state: &ThreadSessionState, turn_id: &str) -> 
         .any(|turn| turn.id == turn_id && turn.status == TurnStatus::InProgress)
 }
 
-pub(super) fn turn_is_terminal(state: &ThreadSessionState, turn_id: &str) -> bool {
+pub(super) fn turn_is_terminal(state: &SessionState, turn_id: &str) -> bool {
     state
         .conversation
         .iter()
@@ -178,7 +171,7 @@ pub(super) fn sort_turns_desc(turns: &mut [Turn]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codex_thread_sessions::test_support::*;
+    use crate::app::tasks::sessions::test_support::*;
 
     #[tokio::test]
     async fn terminal_turn_copy_wins_over_stale_running_history_copy() {
@@ -190,10 +183,10 @@ mod tests {
                 vec![wire_turn("turn-duplicate", TurnStatus::Completed)],
             ),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
@@ -216,10 +209,10 @@ mod tests {
                 vec![wire_turn("turn-stale", TurnStatus::InProgress)],
             ),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
@@ -273,14 +266,14 @@ mod tests {
                 },
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let snapshot = sessions
-            .refresh_subscription(&client, 1, "thread-1")
+            .refresh_subscription(&client.driver(), 1, "thread-1")
             .await
             .expect("refresh latest page");
         let page = snapshot.turns_page.expect("merged history");
@@ -347,14 +340,14 @@ mod tests {
                 },
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let snapshot = sessions
-            .refresh_subscription(&client, 1, "thread-1")
+            .refresh_subscription(&client.driver(), 1, "thread-1")
             .await
             .expect("refresh latest page");
         let page = snapshot.turns_page.expect("latest page");
@@ -397,14 +390,14 @@ mod tests {
                 ),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let (snapshot, older_page) = sessions
-            .load_older_turns(&client, 1, "thread-1", "older-1", 8)
+            .load_older_turns(&client.driver(), 1, "thread-1", "older-1", 8)
             .await
             .expect("load older history");
         let page = snapshot.turns_page.expect("history");
@@ -453,14 +446,14 @@ mod tests {
                 ),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let (snapshot, older_page) = sessions
-            .load_older_turns(&client, 1, "thread-1", "older-1", 8)
+            .load_older_turns(&client.driver(), 1, "thread-1", "older-1", 8)
             .await
             .expect("load older history");
         let canonical_page = snapshot.turns_page.expect("latest history page");
@@ -503,15 +496,15 @@ mod tests {
                 },
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
         let before = sessions.snapshot("thread-1").await.expect("snapshot");
 
         let error = sessions
-            .load_older_turns(&client, 1, "thread-1", "older-1", 8)
+            .load_older_turns(&client.driver(), 1, "thread-1", "older-1", 8)
             .await
             .expect_err("older history request should time out");
         assert!(matches!(
@@ -523,7 +516,7 @@ mod tests {
         ));
 
         let after = sessions.snapshot("thread-1").await.expect("snapshot");
-        assert_eq!(after.lifecycle, ThreadSessionLifecycle::Subscribed);
+        assert_eq!(after.lifecycle, SessionLifecycle::Subscribed);
         assert_eq!(after.conversation, before.conversation);
         assert_eq!(after.turns_page, before.turns_page);
         assert_eq!(after.revision, before.revision);

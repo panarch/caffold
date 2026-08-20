@@ -1,3 +1,37 @@
+//! What Caffold knows about a Task while somebody is watching it.
+//!
+//! The agent owns the conversation. Caffold owns watching it, and watching
+//! carries costs and races the agent knows nothing about. They live here.
+//!
+//! **Who is watching.** A subscription is not free, so it opens when the first
+//! viewer arrives and closes when the last one leaves. Following a link drops
+//! and retakes a lease within milliseconds, so closing at once would thrash:
+//! the departing viewer advances an epoch, waits [`VIEWER_HANDOFF_GRACE`], and
+//! gives the subscription up only if nobody arrived in between.
+//!
+//! **How much a reader has already seen.** Every change advances a revision, so
+//! a reader holding an older one can be handed a whole snapshot instead of a
+//! stream of changes it cannot place. Status and title carry revisions of their
+//! own, because a reader watching only the badge should not redraw for every
+//! item the agent writes.
+//!
+//! **Which connection said it.** A connection is replaced on restart, crash, or
+//! upgrade. An answer from the previous one must not overwrite what its
+//! replacement established, so a change carries the generation it came from and
+//! is dropped once the session has moved past it.
+//!
+//! **A slow read against a live stream.** Re-reading a conversation takes long
+//! enough that the agent reports more work while the read is in flight. The
+//! revision at the moment the read began settles which of the two is stale.
+//!
+//! None of that belongs to one agent. A Claude Task is watched by the same
+//! viewers, read by the same browser, and cut off by the same restarts. What
+//! does belong to an agent is the three questions this asks one: open a
+//! conversation, read an older page of its turns, stop watching.
+//!
+//! This is not where a Task is kept — that is `task_store` — and not what a
+//! Task has said — that is `events`. It lives for as long as the process does.
+
 mod metadata;
 mod prompt;
 mod reconciliation;
@@ -15,15 +49,15 @@ use std::{
 use serde::Serialize;
 use tokio::sync::Mutex as AsyncMutex;
 
-use crate::agent::codex::{CodexPermissionMode, CodexThreadClient};
-use crate::agent::{Conversation, ThreadStatus, TurnPage};
+use crate::agent::codex::CodexPermissionMode;
+use crate::agent::{Conversation, Driver, ThreadStatus, TurnPage};
 
 const INITIAL_TURNS_PAGE_SIZE: usize = 8;
 const VIEWER_HANDOFF_GRACE: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub enum ThreadSessionLifecycle {
+pub(in crate::app::tasks) enum SessionLifecycle {
     Unloaded,
     Subscribing,
     Subscribed,
@@ -33,87 +67,87 @@ pub enum ThreadSessionLifecycle {
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-pub struct ThreadSessionSnapshot {
-    pub lifecycle: ThreadSessionLifecycle,
-    pub conversation: Option<Conversation>,
-    pub turns_page: Option<TurnPage>,
-    pub active_turn_id: Option<String>,
-    pub active_turn_cwd: Option<String>,
-    pub viewer_leases: usize,
-    pub runtime_lease: bool,
-    pub generation: u64,
-    pub revision: u64,
-    pub last_sync_ms: Option<u64>,
-    pub last_error: Option<String>,
-    pub external_syncing: bool,
-    pub external_sync_started_ms: Option<u64>,
-    pub permission_mode: Option<CodexPermissionMode>,
-    pub model: Option<String>,
-    pub reasoning_effort: Option<String>,
-    pub fast_mode: bool,
+pub(in crate::app::tasks) struct SessionSnapshot {
+    pub(in crate::app::tasks) lifecycle: SessionLifecycle,
+    pub(in crate::app::tasks) conversation: Option<Conversation>,
+    pub(in crate::app::tasks) turns_page: Option<TurnPage>,
+    pub(in crate::app::tasks) active_turn_id: Option<String>,
+    pub(in crate::app::tasks) active_turn_cwd: Option<String>,
+    pub(in crate::app::tasks) viewer_leases: usize,
+    pub(in crate::app::tasks) runtime_lease: bool,
+    pub(in crate::app::tasks) generation: u64,
+    pub(in crate::app::tasks) revision: u64,
+    pub(in crate::app::tasks) last_sync_ms: Option<u64>,
+    pub(in crate::app::tasks) last_error: Option<String>,
+    pub(in crate::app::tasks) external_syncing: bool,
+    pub(in crate::app::tasks) external_sync_started_ms: Option<u64>,
+    pub(in crate::app::tasks) permission_mode: Option<CodexPermissionMode>,
+    pub(in crate::app::tasks) model: Option<String>,
+    pub(in crate::app::tasks) reasoning_effort: Option<String>,
+    pub(in crate::app::tasks) fast_mode: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct SessionEventOutcome {
-    pub(crate) canonical_state_changed: bool,
-    pub(crate) terminal: Option<TerminalTurnApplyOutcome>,
+pub(in crate::app::tasks) struct SessionEventOutcome {
+    pub(in crate::app::tasks) canonical_state_changed: bool,
+    pub(in crate::app::tasks) terminal: Option<TerminalTurnApplyOutcome>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TerminalTurnApplyOutcome {
+pub(in crate::app::tasks) struct TerminalTurnApplyOutcome {
     /// True only when this event first terminates the current in-progress turn.
-    pub(crate) first_current_transition: bool,
+    pub(in crate::app::tasks) first_current_transition: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct StartedThreadSettings {
-    pub(crate) permission_mode: Option<CodexPermissionMode>,
-    pub(crate) model: Option<String>,
-    pub(crate) reasoning_effort: Option<String>,
-    pub(crate) fast_mode: bool,
+pub(in crate::app::tasks) struct StartedSettings {
+    pub(in crate::app::tasks) permission_mode: Option<CodexPermissionMode>,
+    pub(in crate::app::tasks) model: Option<String>,
+    pub(in crate::app::tasks) reasoning_effort: Option<String>,
+    pub(in crate::app::tasks) fast_mode: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadSessionDiagnostics {
-    pub thread_id: String,
-    pub lifecycle: ThreadSessionLifecycle,
-    pub viewer_leases: usize,
-    pub runtime_lease: bool,
-    pub generation: u64,
-    pub revision: u64,
-    pub last_sync_ms: Option<u64>,
-    pub last_error: Option<String>,
+pub(in crate::app::tasks) struct SessionDiagnostics {
+    pub(in crate::app::tasks) thread_id: String,
+    pub(in crate::app::tasks) lifecycle: SessionLifecycle,
+    pub(in crate::app::tasks) viewer_leases: usize,
+    pub(in crate::app::tasks) runtime_lease: bool,
+    pub(in crate::app::tasks) generation: u64,
+    pub(in crate::app::tasks) revision: u64,
+    pub(in crate::app::tasks) last_sync_ms: Option<u64>,
+    pub(in crate::app::tasks) last_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadSessionsDiagnostics {
-    pub tracked_sessions: usize,
-    pub subscribed_sessions: usize,
-    pub viewer_leases: usize,
-    pub runtime_leases: usize,
-    pub active_sessions: Vec<ThreadSessionDiagnostics>,
+pub(in crate::app::tasks) struct SessionsDiagnostics {
+    pub(in crate::app::tasks) tracked_sessions: usize,
+    pub(in crate::app::tasks) subscribed_sessions: usize,
+    pub(in crate::app::tasks) viewer_leases: usize,
+    pub(in crate::app::tasks) runtime_leases: usize,
+    pub(in crate::app::tasks) active_sessions: Vec<SessionDiagnostics>,
 }
 
 #[derive(Debug, Clone)]
-pub enum PromptTarget {
+pub(in crate::app::tasks) enum PromptTarget {
     Start { cwd: String },
     Steer { turn_id: String },
 }
 
 #[derive(Clone, Default)]
-pub struct CodexThreadSessions {
-    entries: Arc<AsyncMutex<HashMap<String, Arc<ThreadSessionEntry>>>>,
+pub(in crate::app::tasks) struct TaskSessions {
+    entries: Arc<AsyncMutex<HashMap<String, Arc<SessionEntry>>>>,
 }
 
-struct ThreadSessionEntry {
-    state: AsyncMutex<ThreadSessionState>,
+struct SessionEntry {
+    state: AsyncMutex<SessionState>,
     operation: AsyncMutex<()>,
 }
 
-struct ThreadSessionState {
-    lifecycle: ThreadSessionLifecycle,
+struct SessionState {
+    lifecycle: SessionLifecycle,
     /// What the agent last said this conversation is, in Caffold's shape.
     ///
     /// Its turns are not the history: the agent reports the conversation and a
@@ -126,7 +160,9 @@ struct ThreadSessionState {
     viewer_leases: usize,
     viewer_epoch: u64,
     runtime_lease: bool,
-    client: Option<CodexThreadClient>,
+    /// The agent this session is being watched through, kept so the last
+    /// viewer to leave can say so without being handed one.
+    driver: Option<Driver>,
     generation: u64,
     revision: u64,
     status_revision: u64,
@@ -142,10 +178,10 @@ struct ThreadSessionState {
     fast_mode: bool,
 }
 
-impl Default for ThreadSessionState {
+impl Default for SessionState {
     fn default() -> Self {
         Self {
-            lifecycle: ThreadSessionLifecycle::Unloaded,
+            lifecycle: SessionLifecycle::Unloaded,
             conversation: None,
             turns_page: None,
             active_turn_id: None,
@@ -154,7 +190,7 @@ impl Default for ThreadSessionState {
             viewer_leases: 0,
             viewer_epoch: 0,
             runtime_lease: false,
-            client: None,
+            driver: None,
             generation: 0,
             revision: 0,
             status_revision: 0,
@@ -172,13 +208,13 @@ impl Default for ThreadSessionState {
     }
 }
 
-pub struct ThreadViewerLease {
-    sessions: CodexThreadSessions,
+pub(in crate::app::tasks) struct ViewerLease {
+    sessions: TaskSessions,
     thread_id: String,
 }
 
-impl CodexThreadSessions {
-    pub async fn diagnostics(&self) -> ThreadSessionsDiagnostics {
+impl TaskSessions {
+    pub(in crate::app::tasks) async fn diagnostics(&self) -> SessionsDiagnostics {
         let entries = self
             .entries
             .lock()
@@ -193,7 +229,7 @@ impl CodexThreadSessions {
 
         for (thread_id, entry) in &entries {
             let state = entry.state.lock().await;
-            if state.lifecycle == ThreadSessionLifecycle::Subscribed {
+            if state.lifecycle == SessionLifecycle::Subscribed {
                 subscribed_sessions += 1;
             }
             viewer_leases += state.viewer_leases;
@@ -202,10 +238,10 @@ impl CodexThreadSessions {
                 || state.runtime_lease
                 || matches!(
                     state.lifecycle,
-                    ThreadSessionLifecycle::Subscribing | ThreadSessionLifecycle::Error
+                    SessionLifecycle::Subscribing | SessionLifecycle::Error
                 )
             {
-                active_sessions.push(ThreadSessionDiagnostics {
+                active_sessions.push(SessionDiagnostics {
                     thread_id: thread_id.clone(),
                     lifecycle: state.lifecycle,
                     viewer_leases: state.viewer_leases,
@@ -219,7 +255,7 @@ impl CodexThreadSessions {
         }
         active_sessions.sort_by(|left, right| left.thread_id.cmp(&right.thread_id));
 
-        ThreadSessionsDiagnostics {
+        SessionsDiagnostics {
             tracked_sessions: entries.len(),
             subscribed_sessions,
             viewer_leases,
@@ -229,36 +265,36 @@ impl CodexThreadSessions {
     }
 
     #[allow(dead_code)]
-    pub async fn snapshot(&self, thread_id: &str) -> Option<ThreadSessionSnapshot> {
+    pub(in crate::app::tasks) async fn snapshot(&self, thread_id: &str) -> Option<SessionSnapshot> {
         let entry = self.existing_entry(thread_id).await?;
         let state = entry.state.lock().await;
         Some(snapshot(&state))
     }
 
-    pub async fn forget_thread(&self, thread_id: &str) {
+    pub(in crate::app::tasks) async fn forget_thread(&self, thread_id: &str) {
         self.entries.lock().await.remove(thread_id);
     }
 
-    async fn entry(&self, thread_id: &str) -> Arc<ThreadSessionEntry> {
+    async fn entry(&self, thread_id: &str) -> Arc<SessionEntry> {
         let mut entries = self.entries.lock().await;
         entries
             .entry(thread_id.to_string())
             .or_insert_with(|| {
-                Arc::new(ThreadSessionEntry {
-                    state: AsyncMutex::new(ThreadSessionState::default()),
+                Arc::new(SessionEntry {
+                    state: AsyncMutex::new(SessionState::default()),
                     operation: AsyncMutex::new(()),
                 })
             })
             .clone()
     }
 
-    async fn existing_entry(&self, thread_id: &str) -> Option<Arc<ThreadSessionEntry>> {
+    async fn existing_entry(&self, thread_id: &str) -> Option<Arc<SessionEntry>> {
         self.entries.lock().await.get(thread_id).cloned()
     }
 }
 
-fn snapshot(state: &ThreadSessionState) -> ThreadSessionSnapshot {
-    ThreadSessionSnapshot {
+fn snapshot(state: &SessionState) -> SessionSnapshot {
+    SessionSnapshot {
         lifecycle: state.lifecycle,
         conversation: state.conversation.clone(),
         turns_page: state.turns_page.clone(),
@@ -292,8 +328,8 @@ pub(super) mod test_support {
     pub(super) use serde_json::json;
 
     pub(super) use super::{
-        CodexThreadSessions, INITIAL_TURNS_PAGE_SIZE, PromptTarget, TerminalTurnApplyOutcome,
-        ThreadSessionLifecycle, ThreadSessionSnapshot,
+        INITIAL_TURNS_PAGE_SIZE, PromptTarget, SessionLifecycle, SessionSnapshot, TaskSessions,
+        TerminalTurnApplyOutcome,
     };
     pub(super) use crate::agent::codex::{
         CodexPermissionMode, CodexThread, CodexThreadClient, CodexThreadError, CodexTurn,
@@ -311,7 +347,7 @@ pub(super) mod test_support {
     /// exercising the adapter rather than asserting against a shape it would
     /// have rejected.
     pub(super) fn decoded<T: serde::de::DeserializeOwned>(value: serde_json::Value) -> T {
-        serde_json::from_value(value).expect("the fixture decodes as Codex sends it")
+        serde_json::from_value(value).expect("the fixture decodes the way the agent sends it")
     }
 
     /// One report from the live stream, the way every reader of it sees it.
@@ -465,9 +501,9 @@ mod tests {
             ),
             MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
@@ -483,7 +519,7 @@ mod tests {
 
     #[tokio::test]
     async fn forgotten_thread_releases_its_ephemeral_session_entry() {
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         sessions
             .observe_thread_metadata(Conversation::from(&thread(ThreadStatus::Idle, Vec::new())))
             .await;

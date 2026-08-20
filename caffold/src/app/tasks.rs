@@ -9,6 +9,7 @@ mod push;
 mod recovery;
 mod routes;
 mod runtime;
+mod sessions;
 mod startup;
 mod sync;
 mod worktrees;
@@ -36,7 +37,7 @@ struct TaskState {
     fs: Arc<RootedFs>,
     default_cwd_path: String,
     codex_runtime: CodexRuntime,
-    codex_sessions: crate::codex_thread_sessions::CodexThreadSessions,
+    codex_sessions: crate::app::tasks::sessions::TaskSessions,
     detail: DetailContext,
     task_events: TaskEvents,
     task_sync: TaskSync<TaskDetailSync>,
@@ -76,7 +77,7 @@ impl TaskState {
         push: PushService,
     ) -> anyhow::Result<Self> {
         let task_events = TaskEvents::default();
-        let codex_sessions = crate::codex_thread_sessions::CodexThreadSessions::default();
+        let codex_sessions = crate::app::tasks::sessions::TaskSessions::default();
         let task_list_events = TaskListEvents::new();
         let managed_worktrees =
             ManagedWorktrees::new(fs.clone(), task_store.clone(), worktree_root)?;

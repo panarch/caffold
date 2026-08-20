@@ -507,11 +507,11 @@ mod tests {
     use super::*;
     use crate::{
         agent::codex::{self, CodexThreadError, MockCodexResponse, session_event},
+        app::tasks::sessions::TaskSessions,
         app::tasks::{
             events::TaskEvents, lifecycle::TaskLifecycle, routes::TaskListEvents,
             worktrees::ManagedWorktrees,
         },
-        codex_thread_sessions::CodexThreadSessions,
         fs::RootedFs,
         task_store::{ManagedThread, TaskStore},
     };
@@ -613,7 +613,7 @@ mod tests {
 
     fn test_runtime_with_store(events: TaskEvents, store: TaskStore) -> CodexRuntime {
         let (shutdown, _) = broadcast::channel(1);
-        CodexRuntime::new(CodexThreadSessions::default(), events, store, shutdown)
+        CodexRuntime::new(TaskSessions::default(), events, store, shutdown)
     }
 
     #[tokio::test]
@@ -1205,7 +1205,7 @@ mod tests {
                 1,
             )
             .unwrap();
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let events = TaskEvents::default();
         let worktrees = ManagedWorktrees::new(
             fs.clone(),

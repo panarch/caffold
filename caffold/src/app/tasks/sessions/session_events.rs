@@ -1,15 +1,14 @@
 use crate::agent::{SessionEvent, SessionEventKind, ThreadStatus, TurnStatus};
 
 use super::{
-    CodexThreadSessions, SessionEventOutcome, TerminalTurnApplyOutcome, ThreadSessionLifecycle,
-    ThreadSessionState,
+    SessionEventOutcome, SessionLifecycle, SessionState, TaskSessions, TerminalTurnApplyOutcome,
 };
 use super::{
     reconciliation::apply_thread_settings,
     turns::{active_turn_id, turn_is_terminal, update_active_turn, upsert_turn},
 };
 
-impl CodexThreadSessions {
+impl TaskSessions {
     #[cfg(test)]
     pub(super) async fn apply_session_event(&self, generation: u64, event: &SessionEvent) {
         self.apply_session_event_with_outcome(generation, event)
@@ -20,7 +19,7 @@ impl CodexThreadSessions {
     ///
     /// A report that arrives for a generation this session has moved past is
     /// dropped: the connection it came from is no longer the one being read.
-    pub(crate) async fn apply_session_event_with_outcome(
+    pub(in crate::app::tasks) async fn apply_session_event_with_outcome(
         &self,
         generation: u64,
         event: &SessionEvent,
@@ -76,7 +75,7 @@ enum SessionEventEffect {
 ///
 /// A reader that only wants the status, or only the name, compares its own
 /// revision against these rather than against every change to the session.
-fn mark_what_changed(state: &mut ThreadSessionState, kind: &SessionEventKind) {
+fn mark_what_changed(state: &mut SessionState, kind: &SessionEventKind) {
     match kind {
         SessionEventKind::ConversationStarted { .. } => {
             state.status_revision = state.revision;
@@ -89,7 +88,7 @@ fn mark_what_changed(state: &mut ThreadSessionState, kind: &SessionEventKind) {
 }
 
 fn is_first_current_terminal_transition(
-    state: &ThreadSessionState,
+    state: &SessionState,
     turn_id: &str,
     status: TurnStatus,
 ) -> bool {
@@ -102,14 +101,12 @@ fn is_first_current_terminal_transition(
 }
 
 fn apply_session_event_state(
-    state: &mut ThreadSessionState,
+    state: &mut SessionState,
     kind: &SessionEventKind,
 ) -> SessionEventEffect {
     match kind {
         SessionEventKind::ConversationStarted { conversation } => {
-            if state.lifecycle == ThreadSessionLifecycle::Subscribing
-                || state.conversation.is_some()
-            {
+            if state.lifecycle == SessionLifecycle::Subscribing || state.conversation.is_some() {
                 return SessionEventEffect::Ignored;
             }
             let next_active_turn_id = active_turn_id(conversation, state.turns_page.as_ref())
@@ -163,7 +160,7 @@ fn apply_session_event_state(
                 .as_ref()
                 .map(|conversation| conversation.cwd.clone());
             update_active_turn(state, Some(turn.id.clone()), inferred_cwd);
-            if state.lifecycle == ThreadSessionLifecycle::Subscribed {
+            if state.lifecycle == SessionLifecycle::Subscribed {
                 state.terminal_candidate_turn_id = Some(turn.id.clone());
             }
             state.runtime_lease = true;
@@ -202,7 +199,7 @@ fn apply_session_event_state(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codex_thread_sessions::test_support::*;
+    use crate::app::tasks::sessions::test_support::*;
 
     #[tokio::test]
     async fn item_and_diff_reports_advance_revision_without_changing_canonical_state() {
@@ -210,9 +207,9 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
         let initial_revision = sessions
@@ -272,9 +269,9 @@ mod tests {
             "thread/resume",
             CodexThreadError::ThreadUnavailable("thread-1".to_string()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         sessions
-            .ensure_subscribed(&client, 1, "thread-1")
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
             .await
             .expect_err("the thread could not be read");
 
@@ -306,9 +303,9 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         sessions
-            .ensure_subscribed(&client, 1, "thread-1")
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
             .await
             .expect("subscribe");
 
@@ -346,9 +343,9 @@ mod tests {
                 vec![wire_turn("turn-1", TurnStatus::InProgress)],
             ),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         sessions
-            .ensure_subscribed(&client, 1, "thread-1")
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
             .await
             .expect("subscribe");
 
@@ -392,9 +389,9 @@ mod tests {
                 vec![wire_turn("turn-1", TurnStatus::InProgress)],
             ),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         sessions
-            .ensure_subscribed(&client, 1, "thread-1")
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
             .await
             .expect("subscribe");
         sessions
@@ -471,9 +468,9 @@ mod tests {
                 vec![wire_turn("turn-1", TurnStatus::InProgress)],
             ),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         sessions
-            .ensure_subscribed(&client, 1, "thread-1")
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
             .await
             .expect("subscribe");
         let in_progress_completion = session_event(
@@ -537,12 +534,12 @@ mod tests {
             response,
             Duration::from_millis(100),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let subscribing_sessions = sessions.clone();
         let subscribing_client = client.clone();
         let subscription = tokio::spawn(async move {
             subscribing_sessions
-                .ensure_subscribed(&subscribing_client, 1, "thread-1")
+                .ensure_subscribed(&subscribing_client.driver(), 1, "thread-1")
                 .await
         });
         wait_for_method_count(&client, "thread/resume", 1).await;
@@ -629,9 +626,9 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let initial = sessions
-            .ensure_subscribed(&client, 1, "thread-1")
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
             .await
             .expect("subscribe");
 
@@ -665,9 +662,9 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         sessions
-            .ensure_subscribed(&client, 1, "thread-1")
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
             .await
             .expect("subscribe");
 
@@ -705,9 +702,9 @@ mod tests {
                 vec![wire_turn("turn-stale", TurnStatus::InProgress)],
             ),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
@@ -744,9 +741,9 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
         let initial_revision = sessions
@@ -792,9 +789,9 @@ mod tests {
                 vec![active],
             ),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
@@ -822,7 +819,7 @@ mod tests {
             .await;
 
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
-        assert_eq!(snapshot.lifecycle, ThreadSessionLifecycle::Subscribed);
+        assert_eq!(snapshot.lifecycle, SessionLifecycle::Subscribed);
         assert_eq!(snapshot.viewer_leases, 1);
         assert!(!snapshot.runtime_lease);
         assert_eq!(snapshot.active_turn_id, None);
@@ -856,9 +853,9 @@ mod tests {
             ),
             MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         sessions
-            .recover_loaded_thread(&client, 1, "thread-1")
+            .recover_loaded_thread(&client.driver(), 1, "thread-1")
             .await
             .expect("recover active thread")
             .expect("active thread remains subscribed");
@@ -879,7 +876,7 @@ mod tests {
         assert_eq!(idle.active_turn_id, None);
 
         let refreshed = sessions
-            .refresh_subscription(&client, 1, "thread-1")
+            .refresh_subscription(&client.driver(), 1, "thread-1")
             .await
             .expect("refresh after early idle");
         assert!(

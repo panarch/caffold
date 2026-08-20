@@ -328,14 +328,13 @@ mod tests {
 
     use super::*;
     use crate::{
-        app::tasks::events::TaskEvents, codex_thread_sessions::CodexThreadSessions,
-        task_store::TaskStore,
+        app::tasks::events::TaskEvents, app::tasks::sessions::TaskSessions, task_store::TaskStore,
     };
 
     fn test_runtime() -> CodexRuntime {
         let (shutdown, _) = broadcast::channel(1);
         CodexRuntime::new(
-            CodexThreadSessions::default(),
+            TaskSessions::default(),
             TaskEvents::default(),
             TaskStore::memory().unwrap(),
             shutdown,

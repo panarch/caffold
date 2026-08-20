@@ -11,7 +11,7 @@ use crate::{
         codex::{CodexThread, CodexThreadClient},
     },
     app::error::ApiError,
-    codex_thread_sessions::CodexThreadSessions,
+    app::tasks::sessions::TaskSessions,
     fs::RootedFs,
     task_store::{ComposerSettings, ManagedSection, ManagedThread, TaskStore},
 };
@@ -154,7 +154,7 @@ pub(in crate::app) async fn load_cached(
 pub(in crate::app) async fn load_runtime_snapshot(
     fs: Arc<RootedFs>,
     store: TaskStore,
-    sessions: &CodexThreadSessions,
+    sessions: &TaskSessions,
     generation: u64,
     client: &CodexThreadClient,
 ) -> Result<ActiveTaskRuntimeProjection, ApiError> {

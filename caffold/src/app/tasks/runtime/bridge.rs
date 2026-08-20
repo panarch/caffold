@@ -71,7 +71,7 @@ impl CodexRuntime {
         tokio::spawn(async move {
             for (thread_id, error) in runtime
                 .sessions
-                .resubscribe_leased(&connection.client, connection.generation)
+                .resubscribe_leased(&connection.driver(), connection.generation)
                 .await
             {
                 eprintln!("failed to restore Codex thread subscription {thread_id}: {error}");
@@ -125,7 +125,7 @@ impl CodexRuntime {
                     match runtime
                         .sessions
                         .recover_loaded_thread(
-                            &connection.client,
+                            &connection.driver(),
                             connection.generation,
                             &thread_id,
                         )
@@ -362,18 +362,18 @@ mod tests {
     use super::*;
     use crate::{
         agent::codex::{self, CodexNotification, CodexThreadClient, MockCodexResponse},
+        app::tasks::sessions::TaskSessions,
         app::tasks::{
             events::TaskEvents, lifecycle::TaskLifecycle, routes::TaskListEvents,
             worktrees::ManagedWorktrees,
         },
-        codex_thread_sessions::CodexThreadSessions,
         fs::RootedFs,
         task_store::{ManagedThread, PushSubscriptionInput, TaskStore},
     };
 
     fn runtime_with_events_and_store(events: TaskEvents, store: TaskStore) -> CodexRuntime {
         let (shutdown, _) = broadcast::channel(1);
-        CodexRuntime::new(CodexThreadSessions::default(), events, store, shutdown)
+        CodexRuntime::new(TaskSessions::default(), events, store, shutdown)
     }
 
     fn runtime_with_list_events(
@@ -382,7 +382,7 @@ mod tests {
     ) -> (CodexRuntime, TaskListEvents) {
         let root = tempfile::tempdir().unwrap();
         let fs = std::sync::Arc::new(RootedFs::new(root.path()).unwrap());
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let list_events = TaskListEvents::new();
         let worktrees =
             ManagedWorktrees::new(fs.clone(), store.clone(), root.path().join("worktrees"))
@@ -452,7 +452,7 @@ mod tests {
         )]);
         let _viewer = runtime
             .sessions
-            .acquire_viewer(&client, 1, thread_id)
+            .acquire_viewer(&client.driver(), 1, thread_id)
             .await
             .expect("viewer");
         let initial_revision = runtime

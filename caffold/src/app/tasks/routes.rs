@@ -48,7 +48,7 @@ use crate::{
         },
     },
     app::error::ApiError,
-    codex_thread_sessions::{PromptTarget, ThreadSessionSnapshot, ThreadSessionsDiagnostics},
+    app::tasks::sessions::{PromptTarget, SessionSnapshot, SessionsDiagnostics},
     fs::MAX_IMAGE_BYTES,
     task_store::{ManagedThread, ManagedWorktree, ManagedWorktreeState, TaskStoreError},
 };
@@ -63,7 +63,7 @@ const TASK_CANONICAL_READ_CONCURRENCY: usize = 8;
 struct CodexRuntimeDiagnostics {
     process_generation: u64,
     process_connected: bool,
-    thread_sessions: ThreadSessionsDiagnostics,
+    thread_sessions: SessionsDiagnostics,
     usage: super::runtime::CodexUsageDiagnostics,
 }
 

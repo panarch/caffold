@@ -3,7 +3,6 @@ pub mod cli;
 pub mod fs;
 
 mod agent;
-mod codex_thread_sessions;
 
 // The supported Codex baseline is already part of Caffold's outward contract:
 // it is reported by the status API and gates every Task operation. Exposing the

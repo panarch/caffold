@@ -1,19 +1,26 @@
-use crate::agent::codex::{
-    CodexPermissionMode, CodexThreadClient, ThreadResumeResponse, is_fast_service_tier,
+use std::collections::BTreeMap;
+
+use serde_json::Value;
+
+use crate::agent::codex::{CodexPermissionMode, is_fast_service_tier};
+use crate::agent::{
+    Conversation, Driver, OpenedConversation, ThreadStatus, Turn, TurnPage, TurnStatus,
 };
-use crate::agent::{Conversation, ThreadStatus, Turn, TurnPage, TurnStatus};
 
 use super::turns::{
     active_turn_id, bound_latest_turns_page, merge_canonical_turns, merge_latest_turns_page,
     merge_stale_turns_page, replace_active_turn, sort_turns_desc, turn_is_in_progress,
     update_active_turn,
 };
-use super::{ThreadSessionLifecycle, ThreadSessionState, now_unix_ms};
+use super::{SessionLifecycle, SessionState, now_unix_ms};
 
-pub(super) fn apply_thread_settings(
-    state: &mut ThreadSessionState,
-    settings: &std::collections::BTreeMap<String, serde_json::Value>,
-) {
+/// What the agent says this conversation's settings are.
+///
+/// Still read in Codex's own keys. A permission mode is the one part of this
+/// vocabulary Caffold has not decided across agents, and inventing a shared
+/// meaning with one agent in hand would be guessing — so this moves when
+/// readiness and settings do.
+pub(super) fn apply_thread_settings(state: &mut SessionState, settings: &BTreeMap<String, Value>) {
     state.permission_mode = Some(CodexPermissionMode::from_settings(settings));
     if let Some(model) = settings.get("model").and_then(serde_json::Value::as_str) {
         state.model = Some(model.to_string());
@@ -28,26 +35,18 @@ pub(super) fn apply_thread_settings(
     );
 }
 
-/// What a resume answer says, in the shape the session keeps it.
-///
-/// Codex reports the conversation and a page of its turns as two parts of one
-/// answer, and both are read here so that nothing below this point handles a
-/// Codex type.
-fn read_resume(response: ThreadResumeResponse) -> (Conversation, Option<TurnPage>, String) {
-    (
-        Conversation::from(&response.thread),
-        response.initial_turns_page.as_ref().map(TurnPage::from),
-        response.cwd,
-    )
-}
-
 fn merge_external_resume_response(
-    state: &mut ThreadSessionState,
-    response: ThreadResumeResponse,
+    state: &mut SessionState,
+    response: OpenedConversation,
     base_revision: u64,
 ) -> MetadataMergeOutcome {
-    apply_thread_settings(state, &response.extra);
-    let (conversation, turns_page, cwd) = read_resume(response);
+    apply_thread_settings(state, &response.settings);
+    let OpenedConversation {
+        conversation,
+        turns_page,
+        cwd,
+        ..
+    } = response;
     merge_external_snapshot_with_active_cwd(
         state,
         conversation,
@@ -58,7 +57,7 @@ fn merge_external_resume_response(
 }
 
 pub(super) fn merge_external_snapshot(
-    state: &mut ThreadSessionState,
+    state: &mut SessionState,
     incoming_thread: Conversation,
     latest_turns: Option<TurnPage>,
     base_revision: u64,
@@ -73,7 +72,7 @@ pub(super) fn merge_external_snapshot(
 }
 
 fn merge_external_snapshot_with_active_cwd(
-    state: &mut ThreadSessionState,
+    state: &mut SessionState,
     mut incoming_thread: Conversation,
     latest_turns: Option<TurnPage>,
     base_revision: u64,
@@ -170,23 +169,28 @@ fn merge_external_turns_page(
     bound_latest_turns_page(page);
 }
 
-pub(super) fn apply_resume_response(
-    state: &mut ThreadSessionState,
-    client: &CodexThreadClient,
+pub(super) fn apply_opened_conversation(
+    state: &mut SessionState,
+    driver: &Driver,
     generation: u64,
-    response: ThreadResumeResponse,
+    opened: OpenedConversation,
     merge_history: bool,
 ) {
     let preserved_terminal_candidate = merge_history
         .then(|| state.terminal_candidate_turn_id.clone())
         .flatten();
-    apply_thread_settings(state, &response.extra);
-    let (thread, incoming_page, active_turn_cwd) = read_resume(response);
+    apply_thread_settings(state, &opened.settings);
+    let OpenedConversation {
+        conversation: thread,
+        turns_page: incoming_page,
+        cwd: active_turn_cwd,
+        ..
+    } = opened;
     let active_turn_id = active_turn_id(&thread, incoming_page.as_ref());
     let thread_is_active = matches!(thread.status, ThreadStatus::Active { .. });
 
-    state.lifecycle = ThreadSessionLifecycle::Subscribed;
-    state.client = Some(client.clone());
+    state.lifecycle = SessionLifecycle::Subscribed;
+    state.driver = Some(driver.clone());
     state.generation = generation;
     replace_active_turn(state, active_turn_id.clone(), active_turn_cwd);
     state.conversation = Some(thread);
@@ -216,16 +220,21 @@ pub(super) fn apply_resume_response(
     state.last_error = None;
 }
 
-pub(super) fn apply_stale_refresh_response(
-    state: &mut ThreadSessionState,
-    client: &CodexThreadClient,
+pub(super) fn apply_stale_refresh(
+    state: &mut SessionState,
+    driver: &Driver,
     generation: u64,
-    response: ThreadResumeResponse,
+    opened: OpenedConversation,
     base_revision: u64,
 ) {
     let preserved_terminal_candidate = state.terminal_candidate_turn_id.clone();
-    apply_thread_settings(state, &response.extra);
-    let (incoming_thread, incoming_page, active_turn_cwd) = read_resume(response);
+    apply_thread_settings(state, &opened.settings);
+    let OpenedConversation {
+        conversation: incoming_thread,
+        turns_page: incoming_page,
+        cwd: active_turn_cwd,
+        ..
+    } = opened;
     let baseline_active_turn_id = active_turn_id(&incoming_thread, incoming_page.as_ref());
     let newer_status = newer_thread_status(state, base_revision);
     let status_applied = newer_status.is_none();
@@ -262,8 +271,8 @@ pub(super) fn apply_stale_refresh_response(
     }
     let thread_is_active = matches!(thread.status, ThreadStatus::Active { .. });
 
-    state.lifecycle = ThreadSessionLifecycle::Subscribed;
-    state.client = Some(client.clone());
+    state.lifecycle = SessionLifecycle::Subscribed;
+    state.driver = Some(driver.clone());
     state.generation = generation;
     state.conversation = Some(thread);
     state.terminal_candidate_turn_id = newer_active_turn_id
@@ -287,16 +296,16 @@ pub(super) fn apply_stale_refresh_response(
     state.last_error = None;
 }
 
-pub(super) fn apply_prompt_resume_response(
-    state: &mut ThreadSessionState,
-    client: &CodexThreadClient,
+pub(super) fn apply_prompt_resume(
+    state: &mut SessionState,
+    driver: &Driver,
     generation: u64,
-    response: ThreadResumeResponse,
+    opened: OpenedConversation,
     base_revision: u64,
 ) {
-    let applied = merge_external_resume_response(state, response, base_revision);
-    state.lifecycle = ThreadSessionLifecycle::Subscribed;
-    state.client = Some(client.clone());
+    let applied = merge_external_resume_response(state, opened, base_revision);
+    state.lifecycle = SessionLifecycle::Subscribed;
+    state.driver = Some(driver.clone());
     state.generation = generation;
     state.runtime_lease = true;
     state.terminal_candidate_turn_id = state.active_turn_id.clone();
@@ -311,7 +320,7 @@ pub(super) fn apply_prompt_resume_response(
     state.last_error = None;
 }
 
-fn newer_thread_status(state: &ThreadSessionState, base_revision: u64) -> Option<ThreadStatus> {
+fn newer_thread_status(state: &SessionState, base_revision: u64) -> Option<ThreadStatus> {
     (state.status_revision > base_revision)
         .then(|| {
             state
@@ -323,7 +332,7 @@ fn newer_thread_status(state: &ThreadSessionState, base_revision: u64) -> Option
         .flatten()
 }
 
-fn newer_thread_name(state: &ThreadSessionState, base_revision: u64) -> Option<Option<String>> {
+fn newer_thread_name(state: &SessionState, base_revision: u64) -> Option<Option<String>> {
     (state.name_revision > base_revision)
         .then(|| {
             state
@@ -337,13 +346,13 @@ fn newer_thread_name(state: &ThreadSessionState, base_revision: u64) -> Option<O
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codex_thread_sessions::test_support::*;
+    use crate::app::tasks::sessions::test_support::*;
 
     async fn apply_external_snapshot(
-        sessions: &CodexThreadSessions,
+        sessions: &TaskSessions,
         base_revision: u64,
         response: ThreadResumeResponse,
-    ) -> ThreadSessionSnapshot {
+    ) -> SessionSnapshot {
         sessions
             .apply_external_read_sync(
                 "thread-1",
@@ -369,7 +378,7 @@ mod tests {
             response,
             Duration::from_millis(100),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         sessions
             .observe_thread_metadata(Conversation::from(&listed_thread))
             .await;
@@ -378,7 +387,7 @@ mod tests {
         let subscribing_client = client.clone();
         let subscription = tokio::spawn(async move {
             subscribing_sessions
-                .ensure_subscribed(&subscribing_client, 1, "thread-1")
+                .ensure_subscribed(&subscribing_client.driver(), 1, "thread-1")
                 .await
         });
         wait_for_method_count(&client, "thread/resume", 1).await;
@@ -422,13 +431,13 @@ mod tests {
             response,
             Duration::from_millis(100),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions.reserve_viewer("thread-1").await;
         let subscribing_sessions = sessions.clone();
         let subscribing_client = client.clone();
         let subscription = tokio::spawn(async move {
             subscribing_sessions
-                .ensure_subscribed(&subscribing_client, 1, "thread-1")
+                .ensure_subscribed(&subscribing_client.driver(), 1, "thread-1")
                 .await
         });
         wait_for_method_count(&client, "thread/resume", 1).await;
@@ -509,9 +518,9 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         sessions
-            .ensure_subscribed(&client, 1, "thread-1")
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
             .await
             .expect("subscribe");
         let syncing = sessions.begin_external_sync("thread-1").await;
@@ -570,10 +579,10 @@ mod tests {
             .insert("serviceTier".to_string(), json!("priority"));
         let client =
             CodexThreadClient::mock(vec![MockCodexResponse::ok("thread/resume", response)]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         let snapshot = sessions
-            .ensure_subscribed(&client, 1, "thread-1")
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
             .await
             .expect("subscribe");
 
@@ -594,10 +603,10 @@ mod tests {
             .insert("serviceTier".to_string(), json!("default"));
         let client =
             CodexThreadClient::mock(vec![MockCodexResponse::ok("thread/resume", response)]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         let snapshot = sessions
-            .ensure_subscribed(&client, 1, "thread-1")
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
             .await
             .expect("subscribe");
 
@@ -611,12 +620,12 @@ mod tests {
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
             Duration::from_millis(100),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let loading_sessions = sessions.clone();
         let loading_client = client.clone();
         let metadata = tokio::spawn(async move {
             loading_sessions
-                .load_metadata(&loading_client, 1, "thread-1")
+                .load_metadata(&loading_client.driver(), 1, "thread-1")
                 .await
         });
 
@@ -685,14 +694,14 @@ mod tests {
                 ),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let snapshot = sessions
-            .refresh_subscription(&client, 1, "thread-1")
+            .refresh_subscription(&client.driver(), 1, "thread-1")
             .await
             .expect("refresh external task");
 
@@ -716,9 +725,9 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), vec![completed_turn]),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
@@ -752,9 +761,9 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
@@ -797,9 +806,9 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
@@ -834,7 +843,7 @@ mod tests {
             snapshot
                 .conversation
                 .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. })),
-            "the app-server snapshot remains the canonical thread status"
+            "what the agent last said remains the canonical status"
         );
         assert_eq!(
             snapshot.turns_page.expect("history").turns[0].status,
@@ -862,14 +871,14 @@ mod tests {
                 resume_response(ThreadStatus::Idle, Vec::new(), vec![completed_turn]),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let snapshot = sessions
-            .refresh_subscription(&client, 1, "thread-1")
+            .refresh_subscription(&client.driver(), 1, "thread-1")
             .await
             .expect("refresh completion");
 
@@ -892,9 +901,9 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
@@ -929,9 +938,9 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&primary, 7, "thread-1")
+            .acquire_viewer(&primary.driver(), 7, "thread-1")
             .await
             .unwrap();
 
@@ -983,9 +992,9 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&primary, 7, "thread-1")
+            .acquire_viewer(&primary.driver(), 7, "thread-1")
             .await
             .unwrap();
 
@@ -1042,9 +1051,9 @@ mod tests {
                 Duration::from_millis(150),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
@@ -1052,7 +1061,7 @@ mod tests {
         let refresh_client = client.clone();
         let refresh = tokio::spawn(async move {
             refresh_sessions
-                .refresh_subscription(&refresh_client, 1, "thread-1")
+                .refresh_subscription(&refresh_client.driver(), 1, "thread-1")
                 .await
         });
         for _ in 0..20 {
@@ -1064,7 +1073,7 @@ mod tests {
 
         let target = tokio::time::timeout(
             Duration::from_millis(50),
-            sessions.prepare_prompt(&client, 1, "thread-1"),
+            sessions.prepare_prompt(&client.driver(), 1, "thread-1"),
         )
         .await
         .expect("prompt preparation must use the subscribed snapshot")
@@ -1131,9 +1140,9 @@ mod tests {
                 Duration::from_millis(150),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
@@ -1141,7 +1150,7 @@ mod tests {
         let refresh_client = client.clone();
         let refresh = tokio::spawn(async move {
             refresh_sessions
-                .refresh_subscription(&refresh_client, 1, "thread-1")
+                .refresh_subscription(&refresh_client.driver(), 1, "thread-1")
                 .await
         });
         for _ in 0..20 {
@@ -1193,10 +1202,10 @@ mod tests {
                 vec![wire_turn("turn-live", TurnStatus::InProgress)],
             ),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         assert!(matches!(
-            sessions.prepare_prompt(&client, 1, "thread-1").await,
+            sessions.prepare_prompt(&client.driver(), 1, "thread-1").await,
             Ok(PromptTarget::Steer { turn_id }) if turn_id == "turn-live"
         ));
         assert_eq!(

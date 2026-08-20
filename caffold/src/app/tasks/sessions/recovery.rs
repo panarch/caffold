@@ -1,12 +1,16 @@
 use futures_util::{StreamExt, stream};
 
-use crate::agent::ThreadStatus;
-use crate::agent::codex::{CodexThreadClient, CodexThreadError};
+use crate::agent::codex::CodexThreadError;
+use crate::agent::{Driver, ThreadStatus};
 
-use super::{CodexThreadSessions, ThreadSessionLifecycle, ThreadSessionSnapshot};
+use super::{SessionLifecycle, SessionSnapshot, TaskSessions};
 
-impl CodexThreadSessions {
-    pub async fn connection_lost(&self, generation: u64, message: String) -> Vec<String> {
+impl TaskSessions {
+    pub(in crate::app::tasks) async fn connection_lost(
+        &self,
+        generation: u64,
+        message: String,
+    ) -> Vec<String> {
         let entries = self
             .entries
             .lock()
@@ -18,8 +22,8 @@ impl CodexThreadSessions {
         for (thread_id, entry) in entries {
             let mut state = entry.state.lock().await;
             if state.generation == generation {
-                state.lifecycle = ThreadSessionLifecycle::Error;
-                state.client = None;
+                state.lifecycle = SessionLifecycle::Error;
+                state.driver = None;
                 state.terminal_candidate_turn_id = None;
                 state.last_error = Some(message.clone());
                 state.revision = state.revision.saturating_add(1);
@@ -29,9 +33,9 @@ impl CodexThreadSessions {
         affected
     }
 
-    pub async fn resubscribe_leased(
+    pub(in crate::app::tasks) async fn resubscribe_leased(
         &self,
-        client: &CodexThreadClient,
+        driver: &Driver,
         generation: u64,
     ) -> Vec<(String, CodexThreadError)> {
         let entries = self
@@ -55,10 +59,10 @@ impl CodexThreadSessions {
         stream::iter(leased_threads)
             .map(|thread_id| {
                 let sessions = self.clone();
-                let client = client.clone();
+                let driver = driver.clone();
                 async move {
                     sessions
-                        .ensure_subscribed(&client, generation, &thread_id)
+                        .ensure_subscribed(&driver, generation, &thread_id)
                         .await
                         .err()
                         .map(|error| (thread_id, error))
@@ -70,16 +74,16 @@ impl CodexThreadSessions {
             .await
     }
 
-    pub async fn recover_loaded_thread(
+    pub(in crate::app::tasks) async fn recover_loaded_thread(
         &self,
-        client: &CodexThreadClient,
+        driver: &Driver,
         generation: u64,
         thread_id: &str,
-    ) -> Result<Option<ThreadSessionSnapshot>, CodexThreadError> {
+    ) -> Result<Option<SessionSnapshot>, CodexThreadError> {
         let entry = self.entry(thread_id).await;
         entry.state.lock().await.runtime_lease = true;
 
-        match self.ensure_subscribed(client, generation, thread_id).await {
+        match self.ensure_subscribed(driver, generation, thread_id).await {
             Ok(snapshot)
                 if snapshot
                     .conversation
@@ -103,7 +107,7 @@ impl CodexThreadSessions {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codex_thread_sessions::test_support::*;
+    use crate::app::tasks::sessions::test_support::*;
 
     #[tokio::test]
     async fn connection_recovery_resubscribes_only_leased_sessions() {
@@ -115,22 +119,24 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&first_client, 1, "thread-1")
+            .acquire_viewer(&first_client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let _ = sessions
             .connection_lost(1, "process exited".to_string())
             .await;
-        let failures = sessions.resubscribe_leased(&recovered_client, 2).await;
+        let failures = sessions
+            .resubscribe_leased(&recovered_client.driver(), 2)
+            .await;
 
         assert!(failures.is_empty());
         assert_eq!(methods(&recovered_client).await, vec!["thread/resume"]);
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
         assert_eq!(snapshot.generation, 2);
-        assert_eq!(snapshot.lifecycle, ThreadSessionLifecycle::Subscribed);
+        assert_eq!(snapshot.lifecycle, SessionLifecycle::Subscribed);
     }
 
     #[tokio::test]
@@ -145,13 +151,13 @@ mod tests {
                 resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _first_viewer = sessions
-            .acquire_viewer(&first_client, 1, "thread-1")
+            .acquire_viewer(&first_client.driver(), 1, "thread-1")
             .await
             .expect("first viewer");
         let _second_viewer = sessions
-            .acquire_viewer(&first_client, 1, "thread-2")
+            .acquire_viewer(&first_client.driver(), 1, "thread-2")
             .await
             .expect("second viewer");
 
@@ -172,7 +178,9 @@ mod tests {
         ]);
 
         let started = tokio::time::Instant::now();
-        let failures = sessions.resubscribe_leased(&recovered_client, 2).await;
+        let failures = sessions
+            .resubscribe_leased(&recovered_client.driver(), 2)
+            .await;
 
         assert!(failures.is_empty());
         assert!(
@@ -198,10 +206,10 @@ mod tests {
                 Vec::new(),
             ),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         let recovered = sessions
-            .recover_loaded_thread(&client, 3, "thread-1")
+            .recover_loaded_thread(&client.driver(), 3, "thread-1")
             .await
             .expect("recover active thread")
             .expect("active thread remains subscribed");
@@ -220,11 +228,11 @@ mod tests {
             ),
             MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         assert!(
             sessions
-                .recover_loaded_thread(&client, 3, "thread-1")
+                .recover_loaded_thread(&client.driver(), 3, "thread-1")
                 .await
                 .expect("recover idle thread")
                 .is_none()

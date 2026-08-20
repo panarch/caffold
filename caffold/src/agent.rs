@@ -17,11 +17,14 @@
 //!
 //! It divides the way the product does. [`conversation`] is what a Task shows —
 //! its turns, and what the agent said and did in them. [`approval`] is what the
-//! agent stops to ask, and what a person answers.
+//! agent stops to ask, and what a person answers. [`driver`] is which agent is
+//! being asked, and the questions Caffold has found are the same whichever one
+//! it is.
 
 pub(crate) mod approval;
 pub(crate) mod codex;
 pub(crate) mod conversation;
+pub(crate) mod driver;
 
 pub(crate) use approval::{
     ApprovalDecision, ApprovalDetail, ApprovalOutcome, ApprovalRequest, PermissionRow,
@@ -31,3 +34,4 @@ pub(crate) use conversation::{
     MessageContent, MessagePhase, SessionEvent, SessionEventKind, ThreadActiveFlag, ThreadStatus,
     TokenCount, TokenUsage, Turn, TurnPage, TurnStatus,
 };
+pub(crate) use driver::{Driver, OpenedConversation};

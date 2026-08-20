@@ -1,16 +1,18 @@
 use crate::agent::codex::CodexThreadError;
 use crate::agent::{Conversation, TurnPage};
 
-use super::{
-    CodexThreadSessions, ThreadSessionLifecycle, ThreadSessionSnapshot, now_unix_ms, snapshot,
-};
+use super::{SessionLifecycle, SessionSnapshot, TaskSessions, now_unix_ms, snapshot};
 use super::{
     reconciliation::merge_external_snapshot,
     turns::{active_turn_id, update_active_turn},
 };
 
-impl CodexThreadSessions {
-    pub async fn track_listed_thread(&self, generation: u64, thread_id: &str) {
+impl TaskSessions {
+    pub(in crate::app::tasks) async fn track_listed_thread(
+        &self,
+        generation: u64,
+        thread_id: &str,
+    ) {
         let entry = self.entry(thread_id).await;
         let _operation = entry.operation.lock().await;
         let mut state = entry.state.lock().await;
@@ -18,13 +20,13 @@ impl CodexThreadSessions {
             if state.viewer_leases > 0 || state.runtime_lease {
                 return;
             }
-            state.lifecycle = ThreadSessionLifecycle::Unloaded;
+            state.lifecycle = SessionLifecycle::Unloaded;
             state.conversation = None;
             state.turns_page = None;
             state.active_turn_id = None;
             state.active_turn_cwd = None;
             state.terminal_candidate_turn_id = None;
-            state.client = None;
+            state.driver = None;
             state.pending_thread_status = None;
             state.last_sync_ms = None;
             state.external_syncing = false;
@@ -37,19 +39,27 @@ impl CodexThreadSessions {
         state.last_error = None;
     }
 
-    pub async fn restore_managed_fast_mode(&self, thread_id: &str, fast_mode: bool) {
+    pub(in crate::app::tasks) async fn restore_managed_fast_mode(
+        &self,
+        thread_id: &str,
+        fast_mode: bool,
+    ) {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
-        if state.lifecycle != ThreadSessionLifecycle::Subscribed {
+        if state.lifecycle != SessionLifecycle::Subscribed {
             state.fast_mode = fast_mode;
         }
     }
 
-    pub async fn observe_thread_metadata(&self, mut thread: Conversation) {
+    pub(in crate::app::tasks) async fn observe_thread_metadata(&self, mut thread: Conversation) {
         self.observe_thread_metadata_inner(&mut thread, None).await;
     }
 
-    pub async fn observe_listed_thread_metadata(&self, generation: u64, mut thread: Conversation) {
+    pub(in crate::app::tasks) async fn observe_listed_thread_metadata(
+        &self,
+        generation: u64,
+        mut thread: Conversation,
+    ) {
         self.observe_thread_metadata_inner(&mut thread, Some(generation))
             .await;
     }
@@ -94,7 +104,10 @@ impl CodexThreadSessions {
         }
     }
 
-    pub async fn begin_external_sync(&self, thread_id: &str) -> ThreadSessionSnapshot {
+    pub(in crate::app::tasks) async fn begin_external_sync(
+        &self,
+        thread_id: &str,
+    ) -> SessionSnapshot {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
         state.external_syncing = true;
@@ -105,13 +118,13 @@ impl CodexThreadSessions {
         snapshot(&state)
     }
 
-    pub async fn apply_external_read_sync(
+    pub(in crate::app::tasks) async fn apply_external_read_sync(
         &self,
         thread_id: &str,
         base_revision: u64,
         thread: Conversation,
         latest_turns: TurnPage,
-    ) -> ThreadSessionSnapshot {
+    ) -> SessionSnapshot {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
         let applied =
@@ -130,7 +143,11 @@ impl CodexThreadSessions {
         snapshot(&state)
     }
 
-    pub async fn fail_external_sync(&self, thread_id: &str, error: &CodexThreadError) {
+    pub(in crate::app::tasks) async fn fail_external_sync(
+        &self,
+        thread_id: &str,
+        error: &CodexThreadError,
+    ) {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
         state.external_syncing = false;
@@ -143,7 +160,7 @@ impl CodexThreadSessions {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codex_thread_sessions::test_support::*;
+    use crate::app::tasks::sessions::test_support::*;
 
     #[tokio::test]
     async fn restored_fast_task_resumes_with_an_explicit_priority_tier() {
@@ -153,11 +170,11 @@ mod tests {
             .insert("serviceTier".to_string(), json!("priority"));
         let client =
             CodexThreadClient::mock(vec![MockCodexResponse::ok("thread/resume", response)]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         sessions.restore_managed_fast_mode("thread-1", true).await;
 
         let snapshot = sessions
-            .ensure_subscribed(&client, 1, "thread-1")
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
             .await
             .expect("subscribe");
         let requests = client.mock_requests().await;
@@ -178,9 +195,9 @@ mod tests {
                 vec![wire_turn("turn-stale", TurnStatus::InProgress)],
             ),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
@@ -227,9 +244,9 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&primary, 7, "thread-1")
+            .acquire_viewer(&primary.driver(), 7, "thread-1")
             .await
             .unwrap();
 
@@ -239,7 +256,7 @@ mod tests {
 
         let target = tokio::time::timeout(
             Duration::from_millis(50),
-            sessions.prepare_prompt(&primary, 7, "thread-1"),
+            sessions.prepare_prompt(&primary.driver(), 7, "thread-1"),
         )
         .await
         .expect("prompt must not wait for external sync")
@@ -260,7 +277,7 @@ mod tests {
             )
             .await;
         assert_eq!(snapshot.generation, 7);
-        assert_eq!(snapshot.lifecycle, ThreadSessionLifecycle::Subscribed);
+        assert_eq!(snapshot.lifecycle, SessionLifecycle::Subscribed);
         assert!(!snapshot.external_syncing);
         assert_eq!(methods(&primary).await, vec!["thread/resume"]);
     }
@@ -290,7 +307,7 @@ mod tests {
 
     #[tokio::test]
     async fn new_generation_listing_drops_unleased_status_from_the_old_connection() {
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         sessions.track_listed_thread(1, "thread-1").await;
         sessions
             .observe_listed_thread_metadata(1, listed_thread("thread-1", active_status()))
@@ -308,7 +325,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_current_generation_report_wins_over_an_older_list_page() {
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         sessions.track_listed_thread(3, "thread-1").await;
         sessions
             .apply_session_event(

@@ -58,6 +58,16 @@ works in Caffold's conversation, session-event, and approval types; what still
 crosses from `agent::codex` is the client handle, its errors, turn options, and
 readiness — the control surface rather than the conversation.
 
+`caffold/src/agent/driver.rs` names the agents Caffold can drive and the
+questions it asks one. The set is a closed enum rather than something reached
+behind a pointer, because Caffold supports the agents it was built against and
+loads nothing at run time — which makes a capability one agent has and another
+lacks a missing match arm rather than a default quietly standing in. Only what
+watching a conversation needs is there: open a conversation, read an older page
+of its turns, stop watching. Starting a turn, answering an approval, reporting
+readiness, and resolving settings are still reached through Codex's own client,
+because Caffold has not yet watched two agents do them.
+
 The live stream is translated once, at the connection, and every part of
 Caffold that reacts to it reads the same report: the canonical session, the
 Task event stream, the Task list's recency, Web Push, and pending approvals.
@@ -132,17 +142,23 @@ runtime shutdown lifecycle to `caffold/src/app.rs`.
   or `TaskState`. Projection preserves app-server status; Events normalizes and
   merges transcript/live records without acquiring thread-status ownership.
 
-This separation is application ownership, not another state ledger.
-`CodexThreadSessions` remains the ephemeral canonical session coordinator and
-Codex app-server remains the source of truth.
+- `sessions.rs` owns what Caffold knows about a Task while somebody is
+  watching it: viewer leases and the grace period that survives a page
+  navigation, the revisions a reader compares against, the connection
+  generation that decides whether a late answer still counts, and the
+  arbitration between a slow read and the live stream. None of that is one
+  agent's, and it names none.
+
+This separation is application ownership, not another state ledger. The session
+store remains ephemeral and Codex app-server remains the source of truth.
 
 ## Thread Subscription Lifecycle
 
 The persistent app-server daemon, Caffold's proxy connection, and a thread
 subscription are separate lifecycles. Starting the daemon or proxy does not make
 every Codex thread a notification source.
-Caffold keeps an ephemeral `CodexThreadSessions` coordinator for that boundary;
-it does not persist a second task ledger.
+Caffold keeps an ephemeral session store for that boundary; it does not
+persist a second task ledger.
 
 - The first task detail or SSE viewer resumes the thread with `excludeTurns`
   and an initial page of the latest eight summary turns.

@@ -62,7 +62,7 @@ pub(super) async fn task_prompt(
         .await;
     let mut target = match state
         .codex_sessions
-        .prepare_prompt(&connection.client, connection.generation, &thread_id)
+        .prepare_prompt(&connection.driver(), connection.generation, &thread_id)
         .await
     {
         Ok(target) => target,
@@ -123,7 +123,7 @@ pub(super) async fn task_prompt(
                 refreshed_stale_turn = true;
                 if let Err(refresh_error) = state
                     .codex_sessions
-                    .refresh_subscription(&connection.client, connection.generation, &thread_id)
+                    .refresh_subscription(&connection.driver(), connection.generation, &thread_id)
                     .await
                 {
                     state.codex_sessions.cancel_runtime(&thread_id).await;
@@ -135,7 +135,7 @@ pub(super) async fn task_prompt(
                 }
                 target = match state
                     .codex_sessions
-                    .prepare_prompt(&connection.client, connection.generation, &thread_id)
+                    .prepare_prompt(&connection.driver(), connection.generation, &thread_id)
                     .await
                 {
                     Ok(target) => target,
@@ -253,7 +253,7 @@ pub(super) fn managed_prompt_cwd(
 pub(super) fn managed_prompt_target(
     target: PromptTarget,
     managed_cwd: &str,
-    snapshot: Option<&ThreadSessionSnapshot>,
+    snapshot: Option<&SessionSnapshot>,
 ) -> Result<PromptTarget, ApiError> {
     match target {
         PromptTarget::Start { .. } => Ok(PromptTarget::Start {
@@ -299,7 +299,7 @@ pub(super) async fn task_interrupt(
     let connection = require_codex_thread_connection(&state).await?;
     let Some(turn_id) = state
         .codex_sessions
-        .active_turn_id(&connection.client, connection.generation, &thread_id)
+        .active_turn_id(&connection.driver(), connection.generation, &thread_id)
         .await?
     else {
         return Err(ApiError::BadRequest {

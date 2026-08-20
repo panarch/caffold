@@ -8,9 +8,9 @@ use tokio::sync::{Mutex, broadcast};
 
 use super::{events::TaskEvents, lifecycle::TaskLifecycle, push::PushService};
 use crate::{
-    agent::TokenUsage,
     agent::codex::{CodexThreadClient, CodexThreadError},
-    codex_thread_sessions::{CodexThreadSessions, ThreadSessionSnapshot},
+    agent::{Driver, TokenUsage},
+    app::tasks::sessions::{SessionSnapshot, TaskSessions},
     task_store::TaskStore,
 };
 
@@ -24,7 +24,7 @@ use server_requests::PendingApproval;
 #[derive(Clone)]
 pub(in crate::app) struct CodexRuntime {
     process: Arc<CodexProcess>,
-    sessions: CodexThreadSessions,
+    sessions: TaskSessions,
     events: TaskEvents,
     task_store: TaskStore,
     lifecycle: Option<TaskLifecycle>,
@@ -54,11 +54,18 @@ pub(in crate::app) struct CodexConnection {
     pub(in crate::app) generation: u64,
 }
 
+impl CodexConnection {
+    /// This connection as the agent it reaches.
+    pub(in crate::app) fn driver(&self) -> Driver {
+        self.client.driver()
+    }
+}
+
 #[derive(Clone)]
 pub(in crate::app) enum CodexRuntimeSignal {
     SessionChanged {
         thread_id: String,
-        snapshot: Box<ThreadSessionSnapshot>,
+        snapshot: Box<SessionSnapshot>,
     },
     SessionUnavailable {
         thread_id: String,
@@ -82,7 +89,7 @@ impl From<CodexThreadError> for ApprovalResolveError {
 
 impl CodexRuntime {
     pub(in crate::app) fn new(
-        sessions: CodexThreadSessions,
+        sessions: TaskSessions,
         events: TaskEvents,
         task_store: TaskStore,
         shutdown: broadcast::Sender<()>,
@@ -149,7 +156,7 @@ mod tests {
     fn test_runtime(store: TaskStore) -> CodexRuntime {
         let (shutdown, _) = broadcast::channel(1);
         CodexRuntime::new(
-            CodexThreadSessions::default(),
+            TaskSessions::default(),
             TaskEvents::default(),
             store,
             shutdown,
@@ -231,7 +238,7 @@ mod tests {
 
     #[tokio::test]
     async fn daemon_restart_marks_subscribed_sessions_unavailable() {
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let events = TaskEvents::default();
         let store = TaskStore::memory().expect("in-memory task store");
         let (shutdown, _) = broadcast::channel(1);
@@ -258,7 +265,7 @@ mod tests {
         )]);
         runtime.install_test_client(13, client.clone()).await;
         sessions
-            .ensure_subscribed(&client, 13, "thread_restart")
+            .ensure_subscribed(&client.driver(), 13, "thread_restart")
             .await
             .expect("subscribed session");
         let mut signals = runtime.subscribe();
@@ -285,7 +292,7 @@ mod tests {
             .expect("session snapshot");
         assert_eq!(
             snapshot.lifecycle,
-            crate::codex_thread_sessions::ThreadSessionLifecycle::Error
+            crate::app::tasks::sessions::SessionLifecycle::Error
         );
         assert_eq!(
             snapshot.last_error.as_deref(),

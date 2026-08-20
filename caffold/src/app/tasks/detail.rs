@@ -27,7 +27,7 @@ use crate::{
         codex::{CodexPermissionMode, CodexThreadClient, CodexThreadError},
     },
     app::error::ApiError,
-    codex_thread_sessions::{CodexThreadSessions, ThreadSessionSnapshot},
+    app::tasks::sessions::{SessionSnapshot, TaskSessions},
     fs::RootedFs,
     task_store::{ManagedThread, ManagedWorktreeState, TaskStore, TaskStoreError},
 };
@@ -42,7 +42,7 @@ pub(in crate::app) struct DetailContext {
     store: TaskStore,
     runtime: CodexRuntime,
     runtime_signals: Arc<AsyncMutex<Option<broadcast::Receiver<CodexRuntimeSignal>>>>,
-    sessions: CodexThreadSessions,
+    sessions: TaskSessions,
     events: TaskEvents,
     file_links: TaskFileLinkResolver,
     sync: TaskSync<TaskDetailSync>,
@@ -123,7 +123,7 @@ impl DetailContext {
         store: TaskStore,
         runtime: CodexRuntime,
         runtime_signals: broadcast::Receiver<CodexRuntimeSignal>,
-        sessions: CodexThreadSessions,
+        sessions: TaskSessions,
         events: TaskEvents,
         sync: TaskSync<TaskDetailSync>,
         shutdown: broadcast::Sender<()>,
@@ -164,7 +164,7 @@ impl DetailContext {
             let connection = self.connection().await?;
             let _viewer = self
                 .sessions
-                .acquire_viewer(&connection.client, connection.generation, thread_id)
+                .acquire_viewer(&connection.driver(), connection.generation, thread_id)
                 .await?;
             return self.read(&connection, thread_id, Some(cursor)).await;
         }
@@ -382,7 +382,7 @@ impl DetailContext {
             let (snapshot, page) = self
                 .sessions
                 .load_older_turns(
-                    &connection.client,
+                    &connection.driver(),
                     connection.generation,
                     thread_id,
                     cursor,
@@ -393,7 +393,7 @@ impl DetailContext {
         } else {
             (
                 self.sessions
-                    .load_metadata(&connection.client, connection.generation, thread_id)
+                    .load_metadata(&connection.driver(), connection.generation, thread_id)
                     .await?,
                 None,
             )
@@ -443,7 +443,7 @@ impl DetailContext {
         };
         let snapshot = match self
             .sessions
-            .ensure_subscribed(&connection.client, connection.generation, thread_id)
+            .ensure_subscribed(&connection.driver(), connection.generation, thread_id)
             .await
         {
             Ok(snapshot) => snapshot,
@@ -465,7 +465,7 @@ impl DetailContext {
 
     pub(in crate::app) async fn assemble_snapshot(
         &self,
-        snapshot: ThreadSessionSnapshot,
+        snapshot: SessionSnapshot,
         response_page: Option<TurnPage>,
     ) -> Result<TaskDetailResponse, ApiError> {
         let revision = snapshot.revision;
@@ -673,7 +673,7 @@ impl DetailContext {
     async fn broadcast_snapshot(
         &self,
         thread_id: &str,
-        snapshot: ThreadSessionSnapshot,
+        snapshot: SessionSnapshot,
         reason: &'static str,
     ) {
         let Ok(detail) = self.assemble_snapshot(snapshot, None).await else {
@@ -985,7 +985,7 @@ mod request_tests {
             codex::{CodexNotification, CodexPermissionMode, CodexRuntimeEvent, CodexThreadClient},
         },
         app::error::ApiError,
-        codex_thread_sessions::{CodexThreadSessions, ThreadSessionLifecycle},
+        app::tasks::sessions::{SessionLifecycle, TaskSessions},
         fs::RootedFs,
         task_store::TaskStore,
     };
@@ -1003,7 +1003,7 @@ mod request_tests {
         manage_test_thread(&state, thread_id, root.path()).await;
         let _viewer = state
             .codex_sessions
-            .acquire_viewer(&client, 1, thread_id)
+            .acquire_viewer(&client.driver(), 1, thread_id)
             .await
             .expect("viewer");
         let initial_revision = state
@@ -1125,7 +1125,7 @@ mod request_tests {
 
         let snapshot = state
             .codex_sessions
-            .ensure_subscribed(&client, 1, thread_id)
+            .ensure_subscribed(&client.driver(), 1, thread_id)
             .await
             .unwrap();
         let detail = state
@@ -1246,8 +1246,8 @@ mod request_tests {
             "backwardsCursor": null
         }))
         .unwrap();
-        let mut snapshot = crate::codex_thread_sessions::ThreadSessionSnapshot {
-            lifecycle: ThreadSessionLifecycle::Subscribed,
+        let mut snapshot = crate::app::tasks::sessions::SessionSnapshot {
+            lifecycle: SessionLifecycle::Subscribed,
             conversation: Some(Conversation::from(&thread)),
             turns_page: Some(TurnPage::from(&turns_page)),
             active_turn_id: None,
@@ -1444,7 +1444,7 @@ mod request_tests {
             .unwrap();
         let _viewer = state
             .codex_sessions
-            .acquire_viewer(&client, 1, thread_id)
+            .acquire_viewer(&client.driver(), 1, thread_id)
             .await
             .expect("initial task subscription succeeds");
 
@@ -1812,7 +1812,7 @@ mod request_tests {
 
     #[tokio::test]
     async fn app_server_recovery_does_not_block_on_leased_thread_restoration() {
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let first_client =
             CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
                 "thread/resume",
@@ -1835,7 +1835,7 @@ mod request_tests {
                 }),
             )]);
         let _viewer = sessions
-            .acquire_viewer(&first_client, 1, "thread-slow-recovery")
+            .acquire_viewer(&first_client.driver(), 1, "thread-slow-recovery")
             .await
             .expect("viewer");
         let _ = sessions
@@ -1890,7 +1890,7 @@ mod request_tests {
             .await
             .expect("recovered snapshot");
         assert_eq!(snapshot.generation, 2);
-        assert_eq!(snapshot.lifecycle, ThreadSessionLifecycle::Subscribed);
+        assert_eq!(snapshot.lifecycle, SessionLifecycle::Subscribed);
     }
 
     #[tokio::test]
@@ -2105,7 +2105,7 @@ mod request_tests {
             .expect("thread session snapshot");
         assert_eq!(
             snapshot.lifecycle,
-            crate::codex_thread_sessions::ThreadSessionLifecycle::Subscribed
+            crate::app::tasks::sessions::SessionLifecycle::Subscribed
         );
         assert_eq!(snapshot.viewer_leases, 1);
 
