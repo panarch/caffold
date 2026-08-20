@@ -6,6 +6,7 @@ use axum::{
 use serde::Serialize;
 
 use crate::{
+    agent::TurnRejected,
     agent::codex::CodexThreadError,
     fs::FsError,
     watch::{WatchError, WatchError::Unavailable},
@@ -75,6 +76,23 @@ impl From<CodexThreadError> for ApiError {
                 }
             }
             error => Self::CodexThread(error.to_string()),
+        }
+    }
+}
+
+impl From<TurnRejected> for ApiError {
+    fn from(rejected: TurnRejected) -> Self {
+        let (code, message) = match rejected {
+            TurnRejected::Model => ("unsupported_model", "the agent does not offer that model"),
+            TurnRejected::Effort => (
+                "unsupported_effort",
+                "the agent does not work at that depth with the chosen model",
+            ),
+            TurnRejected::Unavailable(error) => return Self::from(error),
+        };
+        Self::BadRequest {
+            code,
+            message: message.to_string(),
         }
     }
 }

@@ -41,10 +41,9 @@ use super::generated_images::GeneratedImageError;
 
 use crate::{
     agent::{
-        ApprovalDecision, Conversation, Turn,
+        ApprovalDecision, Conversation, PermissionModes, Turn, TurnOptions, TurnRejected,
         codex::{
-            CodexDaemonInfo, CodexPermissionMode, CodexStatusResponse, CodexThreadClient,
-            CodexThreadError, CodexTurnOptions, NORMAL_SERVICE_TIER_ID, ThreadStatus,
+            CodexDaemonInfo, CodexStatusResponse, CodexThreadClient, CodexThreadError, ThreadStatus,
         },
     },
     app::error::ApiError,
@@ -104,7 +103,7 @@ struct CreateTaskRequest {
     effort: Option<String>,
     #[serde(default)]
     fast_mode: bool,
-    permission_mode: Option<CodexPermissionMode>,
+    permission_mode: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -117,25 +116,8 @@ struct TaskPromptRequest {
     effort: Option<String>,
     #[serde(default)]
     fast_mode: bool,
-    permission_mode: Option<CodexPermissionMode>,
+    permission_mode: Option<String>,
     active_turn_id: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CodexPermissionsResponse {
-    default_mode: CodexPermissionMode,
-    options: Vec<CodexPermissionOption>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CodexPermissionOption {
-    mode: CodexPermissionMode,
-    label: &'static str,
-    description: &'static str,
-    allowed: bool,
-    dangerous: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -149,7 +131,7 @@ struct TaskPromptResponse {
 struct TaskPromptOutcome {
     turn_id: String,
     steered: bool,
-    started_turn: Option<(crate::agent::codex::CodexTurn, CodexTurnOptions)>,
+    started_turn: Option<(Turn, TurnOptions)>,
 }
 
 #[derive(Debug, Deserialize)]

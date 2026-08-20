@@ -1,5 +1,5 @@
-use crate::agent::codex::{CodexThreadError, CodexTurnOptions, is_fast_service_tier};
-use crate::agent::{Driver, ThreadStatus, Turn, TurnStatus};
+use crate::agent::codex::CodexThreadError;
+use crate::agent::{Driver, ThreadStatus, Turn, TurnOptions, TurnStatus};
 
 use super::{
     INITIAL_TURNS_PAGE_SIZE, PromptTarget, SessionLifecycle, SessionSnapshot, TaskSessions,
@@ -168,7 +168,7 @@ impl TaskSessions {
         thread_id: &str,
         cwd: Option<&str>,
         turn: Turn,
-        options: CodexTurnOptions,
+        options: TurnOptions,
     ) {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
@@ -195,7 +195,7 @@ impl TaskSessions {
         if options.effort.is_some() {
             state.reasoning_effort = options.effort;
         }
-        state.fast_mode = is_fast_service_tier(options.service_tier.as_deref());
+        state.fast_mode = options.fast_mode;
         state.runtime_lease = true;
         upsert_turn(&mut state.turns_page, turn);
         state.revision = state.revision.saturating_add(1);
@@ -486,7 +486,7 @@ mod tests {
                 "thread-1",
                 Some("/managed/worktree"),
                 turn("turn-new", TurnStatus::InProgress),
-                CodexTurnOptions::default(),
+                TurnOptions::default(),
             )
             .await;
         viewer

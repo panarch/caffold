@@ -4,9 +4,8 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
-    agent::codex::{
-        CodexThreadClient, CodexTurnOptions, is_fast_service_tier, service_tier_for_fast_mode,
-    },
+    agent::TurnOptions,
+    agent::codex::CodexThreadClient,
     app::error::ApiError,
     app::tasks::sessions::{StartedSettings, TaskSessions},
     fs::RootedFs,
@@ -23,7 +22,6 @@ use super::{
         ArchiveOutcome, IsolateOutcome, ManagedWorktreeError, ManagedWorktrees, RestoreOutcome,
     },
 };
-use crate::agent::{Conversation, Turn};
 
 mod initial_request_name;
 
@@ -31,7 +29,7 @@ pub(in crate::app) struct StartTask {
     pub(in crate::app) cwd: String,
     pub(in crate::app) prompt: String,
     pub(in crate::app) images: Vec<String>,
-    pub(in crate::app) turn_options: CodexTurnOptions,
+    pub(in crate::app) turn_options: TurnOptions,
     pub(in crate::app) initial_name: Option<String>,
 }
 
@@ -113,43 +111,45 @@ impl TaskLifecycle {
             turn_options,
             initial_name,
         } = request;
-        let requested_permission_mode = turn_options.permission_mode;
-        let requested_model = turn_options.model.clone();
-        let requested_reasoning_effort = turn_options.effort.clone();
-        let requested_service_tier = turn_options.service_tier.clone();
-        let requested_fast_mode = is_fast_service_tier(requested_service_tier.as_deref());
+        let requested_fast_mode = turn_options.fast_mode;
         let client = &connection.client;
-        let mut thread = client
-            .start_thread(
-                &cwd,
-                turn_options.permission_mode,
-                requested_service_tier
-                    .as_deref()
-                    .unwrap_or_else(|| service_tier_for_fast_mode(requested_fast_mode)),
-            )
-            .await?;
+        let driver = connection.driver();
+        // The agent agrees to the options first: a model it never had would
+        // otherwise leave a conversation behind before anyone found out.
+        let accepted = driver.accept_turn_options(&turn_options).await?;
+        let mut started = driver.start_conversation(&cwd, &accepted).await?;
+        let conversation_id = started.conversation.id.clone();
         let initial_name = initial_name
             .or_else(|| initial_request_name::from_prompt(&prompt))
-            .unwrap_or_else(|| format!("Thread {}", short_thread_id(&thread.thread_id)));
+            .unwrap_or_else(|| format!("Thread {}", short_thread_id(&conversation_id)));
         // Keep the app-server's canonical Thread name aligned with the name
         // Caffold persists in its navigator ledger.
         if let Err(error) = client
-            .set_thread_name(&thread.thread_id, &initial_name)
+            .set_thread_name(&conversation_id, &initial_name)
             .await
         {
-            self.rollback_unclaimed_thread(client, &thread.thread_id)
+            self.rollback_unclaimed_thread(client, &conversation_id)
                 .await;
             return Err(error.into());
         }
-        thread.thread.name = Some(initial_name);
-        let thread_permission_mode = requested_permission_mode.or(thread.permission_mode);
-        let effective_model = requested_model.or_else(|| thread.model.clone());
-        let effective_reasoning_effort =
-            requested_reasoning_effort.or_else(|| thread.reasoning_effort.clone());
-        let task = match self.record_from_conversation(&Conversation::from(&thread.thread)) {
+        started.conversation.title = Some(initial_name);
+        // What the person asked for stands where they asked for something, and
+        // what the agent settled on fills the rest.
+        let settled = TurnOptions {
+            model: turn_options.model.clone().or(started.settings.model),
+            effort: turn_options.effort.clone().or(started.settings.effort),
+            fast_mode: requested_fast_mode,
+            permission_mode: turn_options
+                .permission_mode
+                .clone()
+                .or(started.settings.permission_mode),
+        };
+        let effective_model = settled.model.clone();
+        let effective_reasoning_effort = settled.effort.clone();
+        let task = match self.record_from_conversation(&started.conversation) {
             Ok(task) => task,
             Err(error) => {
-                self.rollback_unclaimed_thread(client, &thread.thread_id)
+                self.rollback_unclaimed_thread(client, &conversation_id)
                     .await;
                 return Err(error);
             }
@@ -169,7 +169,7 @@ impl TaskLifecycle {
         {
             Ok(placement) => placement,
             Err(error) => {
-                self.rollback_unclaimed_thread(client, &thread.thread_id)
+                self.rollback_unclaimed_thread(client, &conversation_id)
                     .await;
                 return Err(error);
             }
@@ -180,42 +180,37 @@ impl TaskLifecycle {
             .register_started_thread(
                 &connection.driver(),
                 connection.generation,
-                Conversation::from(&thread.thread),
+                started.conversation.clone(),
                 StartedSettings {
-                    permission_mode: thread_permission_mode,
-                    model: thread.model.clone(),
-                    reasoning_effort: thread.reasoning_effort.clone(),
-                    fast_mode: requested_fast_mode,
+                    permission_mode: settled.permission_mode.clone(),
+                    model: settled.model.clone(),
+                    reasoning_effort: settled.effort.clone(),
+                    fast_mode: settled.fast_mode,
                 },
             )
             .await;
-        let turn = match client
-            .start_turn(&thread.thread_id, &cwd, &prompt, &images, turn_options)
+        let turn = match driver
+            .start_turn(&conversation_id, &cwd, &prompt, &images, &accepted)
             .await
         {
             Ok(turn) => turn,
             Err(error) => {
-                self.sessions.cancel_runtime(&thread.thread_id).await;
+                self.sessions.cancel_runtime(&conversation_id).await;
                 return Err(error.into());
             }
         };
         self.sessions
             .record_turn_started(
                 connection.generation,
-                &thread.thread_id,
+                &conversation_id,
                 Some(&cwd),
-                Turn::from(&turn.turn),
-                CodexTurnOptions {
-                    permission_mode: thread_permission_mode,
-                    model: effective_model.clone(),
-                    effort: effective_reasoning_effort.clone(),
-                    service_tier: requested_service_tier,
-                },
+                turn.turn.clone(),
+                turn.applied.clone(),
             )
             .await;
         if let Err(error) = self
             .update_composer_settings(
-                &thread.thread_id,
+                &conversation_id,
                 effective_model.as_deref(),
                 effective_reasoning_effort.as_deref(),
                 requested_fast_mode,
@@ -224,12 +219,12 @@ impl TaskLifecycle {
         {
             eprintln!(
                 "failed to persist composer settings for started thread {}: {error:?}",
-                thread.thread_id
+                conversation_id
             );
         }
         self.events.publish(accepted_user_message_event(
-            &thread.thread_id,
-            &turn.turn_id,
+            &conversation_id,
+            &turn.turn.id,
             &prompt,
             &images,
         ));

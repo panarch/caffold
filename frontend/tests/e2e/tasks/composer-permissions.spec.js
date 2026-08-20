@@ -79,6 +79,64 @@ test("composer exposes Codex approval modes and confirms full access", { tag: "@
   await expect(picker).toContainText("Full access");
 });
 
+test("offers a mode Caffold has no wording for, under the agent's own name", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  // An agent names its own permission modes and sends a label with each one.
+  // A mode this build has never heard of has to stay choosable and has to read
+  // as itself — labelling it with a mode we do know would tell the person the
+  // agent is doing something it is not.
+  await installTaskApiFixture(page, {
+    permissions: {
+      defaultMode: "acceptEdits",
+      options: [
+        {
+          mode: "acceptEdits",
+          label: "Accept edits",
+          description: "Apply file edits without asking, and ask before running commands.",
+          allowed: true,
+          dangerous: false,
+        },
+        {
+          mode: "plan",
+          label: "Plan only",
+          description: "Work out an approach without changing anything.",
+          allowed: true,
+          dangerous: false,
+        },
+        {
+          mode: "bypassPermissions",
+          label: "Bypass permissions",
+          description: "Run without asking for anything.",
+          allowed: true,
+          dangerous: true,
+        },
+      ],
+    },
+  });
+  await page.goto("/tasks/new?cwd=src");
+
+  const form = page.locator('.task-new-form[data-task-form="create"]');
+  const picker = form.getByRole("button", { name: "Choose approval mode" });
+  // No compact wording exists for this one, so the agent's own label stands in
+  // rather than a mode Caffold happens to know.
+  await expect(picker).toContainText("Accept edits");
+  await expect(picker).not.toContainText("Ask approval");
+
+  await picker.click();
+  const permissionPopover = form.getByRole("menu", { name: "Approval modes" });
+  await expect(permissionPopover.getByRole("button")).toHaveCount(3);
+  await expect(permissionPopover).toContainText("Plan only");
+  await expect(permissionPopover).toContainText("Bypass permissions");
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await form.getByRole("button", { name: /^Bypass permissions/ }).click();
+  await expect(form.locator('input[name="permissionMode"]')).toHaveValue(
+    "bypassPermissions",
+  );
+  await expect(picker).toContainText("Bypass permissions");
+});
+
 test("model options use native popover dismissal and return focus to their trigger", { tag: "@all-viewports" }, async ({
   page,
 }) => {

@@ -34,4 +34,4 @@ pub(crate) use conversation::{
     MessageContent, MessagePhase, SessionEvent, SessionEventKind, ThreadActiveFlag, ThreadStatus,
     TokenCount, TokenUsage, Turn, TurnPage, TurnStatus,
 };
-pub(crate) use driver::{Driver, OpenedConversation};
+pub(crate) use driver::{Driver, OpenedConversation, PermissionModes, TurnOptions, TurnRejected};

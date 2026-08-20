@@ -62,11 +62,25 @@ readiness — the control surface rather than the conversation.
 questions it asks one. The set is a closed enum rather than something reached
 behind a pointer, because Caffold supports the agents it was built against and
 loads nothing at run time — which makes a capability one agent has and another
-lacks a missing match arm rather than a default quietly standing in. Only what
-watching a conversation needs is there: open a conversation, read an older page
-of its turns, stop watching. Starting a turn, answering an approval, reporting
-readiness, and resolving settings are still reached through Codex's own client,
-because Caffold has not yet watched two agents do them.
+lacks a missing match arm rather than a default quietly standing in. What is there is what a Task needs of an agent: begin a
+conversation, open one and watch it, read an older page of its turns, stop
+watching, begin a turn, add to a running one, stop it, and say how the agent can
+be allowed to work. Answering an approval, reporting readiness, and the rest of
+settings are still reached through Codex's own client, because Caffold has not
+yet watched two agents do them.
+
+Nothing above the driver names a permission mode. An agent assembles the choices
+it offers and writes the wording for each, because knowing what a mode does to an
+agent is knowing that agent: Codex has permission profiles and a separate
+reviewer setting and the choices worth offering are combinations of the two,
+while Claude names six modes outright. A mode travels back to start a turn under
+the agent's own name for it, unread, so a mode an agent adds needs nothing from
+Caffold to become choosable.
+
+An agent agrees to a turn's options before anything is created. Which model
+answers to a name and what depths it works at are questions only the agent can
+answer, and asking after a conversation exists would leave one behind when the
+answer is no.
 
 The live stream is translated once, at the connection, and every part of
 Caffold that reacts to it reads the same report: the canonical session, the

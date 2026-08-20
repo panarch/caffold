@@ -24,7 +24,7 @@ use super::{
 use crate::{
     agent::{
         Conversation, TurnPage,
-        codex::{CodexPermissionMode, CodexThreadClient, CodexThreadError},
+        codex::{CodexThreadClient, CodexThreadError},
     },
     app::error::ApiError,
     app::tasks::sessions::{SessionSnapshot, TaskSessions},
@@ -63,7 +63,7 @@ pub(in crate::app) struct TaskDetailResponse {
     pub(in crate::app) events_page: TaskEventsPage,
     pub(in crate::app) pending_approvals: Vec<TaskEventRecord>,
     pub(in crate::app) history_loading: bool,
-    pub(in crate::app) permission_mode: Option<CodexPermissionMode>,
+    pub(in crate::app) permission_mode: Option<String>,
     pub(in crate::app) model: Option<String>,
     pub(in crate::app) reasoning_effort: Option<String>,
     pub(in crate::app) fast_mode: bool,
@@ -982,7 +982,7 @@ mod request_tests {
     use crate::{
         agent::{
             ThreadStatus, TurnStatus, codex,
-            codex::{CodexNotification, CodexPermissionMode, CodexRuntimeEvent, CodexThreadClient},
+            codex::{CodexNotification, CodexRuntimeEvent, CodexThreadClient},
         },
         app::error::ApiError,
         app::tasks::sessions::{SessionLifecycle, TaskSessions},
@@ -2156,7 +2156,7 @@ mod request_tests {
                 events_page: TaskEventsPage { next_cursor: None },
                 pending_approvals: Vec::new(),
                 history_loading: false,
-                permission_mode: Some(CodexPermissionMode::AskForApproval),
+                permission_mode: Some("askForApproval".to_string()),
                 model: Some("gpt-test".to_string()),
                 reasoning_effort: Some("xhigh".to_string()),
                 fast_mode: true,

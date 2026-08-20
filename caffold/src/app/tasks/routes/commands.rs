@@ -7,15 +7,12 @@ pub(super) async fn create_task(
     let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
     let cwd = task_cwd(&state, request.cwd.as_deref())?;
     let connection = require_codex_thread_connection(&state).await?;
-    let client = &connection.client;
-    let turn_options = codex_turn_options(
-        client,
-        request.model,
-        request.effort,
-        request.fast_mode,
-        request.permission_mode,
-    )
-    .await?;
+    let turn_options = TurnOptions {
+        model: request.model,
+        effort: request.effort,
+        fast_mode: request.fast_mode,
+        permission_mode: request.permission_mode,
+    };
 
     let started = state
         .lifecycle
@@ -86,32 +83,36 @@ pub(super) async fn task_prompt(
         let attempted_steer = matches!(&target, PromptTarget::Steer { .. });
         let result: Result<TaskPromptOutcome, _> = match target {
             PromptTarget::Steer { turn_id } => connection
-                .client
+                .driver()
                 .steer_turn(&thread_id, &turn_id, &prompt, &images)
                 .await
-                .map(|_| TaskPromptOutcome {
+                .map(|()| TaskPromptOutcome {
                     turn_id,
                     steered: true,
                     started_turn: None,
                 }),
             PromptTarget::Start { cwd } => {
-                let turn_options = codex_turn_options(
-                    &connection.client,
-                    requested_model.clone(),
-                    requested_effort.clone(),
-                    requested_fast_mode,
-                    requested_permission_mode,
-                )
-                .await?;
-                let applied_options = turn_options.clone();
-                connection
-                    .client
-                    .start_turn(&thread_id, &cwd, &prompt, &images, turn_options)
+                let chosen = TurnOptions {
+                    model: requested_model.clone(),
+                    effort: requested_effort.clone(),
+                    fast_mode: requested_fast_mode,
+                    permission_mode: requested_permission_mode.clone(),
+                };
+                let driver = connection.driver();
+                let accepted = match driver.accept_turn_options(&chosen).await {
+                    Ok(accepted) => accepted,
+                    Err(TurnRejected::Unavailable(error)) => {
+                        return Err(error.into());
+                    }
+                    Err(rejected) => return Err(rejected.into()),
+                };
+                driver
+                    .start_turn(&thread_id, &cwd, &prompt, &images, &accepted)
                     .await
                     .map(|started| TaskPromptOutcome {
-                        turn_id: started.turn_id.clone(),
+                        turn_id: started.turn.id.clone(),
                         steered: false,
-                        started_turn: Some((started.turn, applied_options)),
+                        started_turn: Some((started.turn, started.applied)),
                     })
             }
         };
@@ -173,7 +174,7 @@ pub(super) async fn task_prompt(
                 connection.generation,
                 &thread_id,
                 managed_cwd.as_deref(),
-                Turn::from(&turn),
+                turn.clone(),
                 applied_options.clone(),
             )
             .await;
@@ -307,7 +308,11 @@ pub(super) async fn task_interrupt(
             message: "thread does not have an active turn to interrupt".to_string(),
         });
     };
-    if let Err(error) = connection.client.interrupt_turn(&thread_id, &turn_id).await {
+    if let Err(error) = connection
+        .driver()
+        .interrupt_turn(&thread_id, &turn_id)
+        .await
+    {
         state
             .codex_runtime
             .recover_connection_error(&connection, &error)
@@ -730,16 +735,13 @@ mod tests {
                 model: None,
                 effort: None,
                 fast_mode: false,
-                permission_mode: Some(CodexPermissionMode::ApproveForMe),
+                permission_mode: Some("approveForMe".to_string()),
             }),
         )
         .await
         .expect("task creation succeeds");
 
-        assert_eq!(
-            response.0.permission_mode,
-            Some(CodexPermissionMode::ApproveForMe)
-        );
+        assert_eq!(response.0.permission_mode, Some("approveForMe".to_string()));
         assert_eq!(
             response.0.task.as_ref().map(|task| task.title.as_str()),
             Some("[REQ] Use the selected approval mode")

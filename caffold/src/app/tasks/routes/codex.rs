@@ -39,173 +39,17 @@ pub(super) async fn codex_models(
 pub(super) async fn codex_permissions(
     State(state): State<TaskState>,
     Query(query): Query<CodexPermissionsQuery>,
-) -> Result<Json<CodexPermissionsResponse>, ApiError> {
+) -> Result<Json<PermissionModes>, ApiError> {
     let cwd = task_cwd(&state, query.cwd.as_deref())?;
     let client = require_codex_thread_client(&state).await?;
-    let (profiles, default_mode) = tokio::try_join!(
-        client.list_permission_profiles(&cwd, 100),
-        client.default_permission_mode(&cwd),
-    )?;
-    let profile_allowed = |profile_id: &str| {
-        profiles
-            .iter()
-            .find(|profile| profile.id == profile_id)
-            .is_some_and(|profile| profile.allowed)
-    };
-    let workspace_allowed = profile_allowed(":workspace");
-    let full_access_allowed = profile_allowed(":danger-full-access");
-
-    Ok(Json(CodexPermissionsResponse {
-        default_mode,
-        options: vec![
-            CodexPermissionOption {
-                mode: CodexPermissionMode::AskForApproval,
-                label: "Ask for approval",
-                description: "Work in the workspace and ask before crossing its boundary.",
-                allowed: workspace_allowed,
-                dangerous: false,
-            },
-            CodexPermissionOption {
-                mode: CodexPermissionMode::ApproveForMe,
-                label: "Approve for me",
-                description: "Keep the workspace boundary and review eligible requests automatically.",
-                allowed: workspace_allowed,
-                dangerous: false,
-            },
-            CodexPermissionOption {
-                mode: CodexPermissionMode::FullAccess,
-                label: "Full access",
-                description: "Run without sandbox restrictions or approval prompts.",
-                allowed: full_access_allowed,
-                dangerous: true,
-            },
-        ],
-    }))
+    client
+        .driver()
+        .permission_modes(&cwd)
+        .await
+        .map(Json)
+        .map_err(ApiError::from)
 }
 
-pub(super) fn codex_reasoning_effort_value(effort: &JsonValue) -> Option<&str> {
-    effort
-        .get("value")
-        .and_then(JsonValue::as_str)
-        .or_else(|| effort.get("reasoningEffort").and_then(JsonValue::as_str))
-        .or_else(|| effort.as_str())
-}
-
-pub(super) async fn codex_turn_options(
-    client: &CodexThreadClient,
-    model: Option<String>,
-    effort: Option<String>,
-    fast_mode: bool,
-    permission_mode: Option<CodexPermissionMode>,
-) -> Result<CodexTurnOptions, ApiError> {
-    let model = normalize_codex_model(model)?;
-    let effort = normalize_codex_effort(effort)?;
-    if model.is_none() && effort.is_none() && !fast_mode {
-        return Ok(CodexTurnOptions {
-            model,
-            effort,
-            service_tier: Some(NORMAL_SERVICE_TIER_ID.to_string()),
-            permission_mode,
-        });
-    }
-
-    let models = client.list_models(100).await.map_err(ApiError::from)?.data;
-    let selected_model = match model.as_deref() {
-        Some(requested) => models
-            .iter()
-            .find(|candidate| candidate.model == requested || candidate.id == requested),
-        None => models
-            .iter()
-            .find(|candidate| candidate.is_default)
-            .or_else(|| models.first()),
-    };
-
-    let Some(selected_model) = selected_model else {
-        let (code, message) = if model.is_some() {
-            ("invalid_codex_model", "Codex model value is not supported")
-        } else {
-            (
-                "invalid_codex_effort",
-                "Codex reasoning effort is not supported",
-            )
-        };
-        return Err(ApiError::BadRequest {
-            code,
-            message: message.to_string(),
-        });
-    };
-
-    if effort.as_deref().is_some_and(|requested| {
-        !selected_model
-            .supported_reasoning_efforts
-            .iter()
-            .filter_map(codex_reasoning_effort_value)
-            .any(|supported| supported == requested)
-    }) {
-        return Err(ApiError::BadRequest {
-            code: "invalid_codex_effort",
-            message: "Codex reasoning effort is not supported".to_string(),
-        });
-    }
-
-    let normal_service_tier = selected_model
-        .default_service_tier
-        .clone()
-        .unwrap_or_else(|| NORMAL_SERVICE_TIER_ID.to_string());
-    let service_tier = Some(
-        fast_mode
-            .then(|| selected_model.fast_service_tier_id().map(str::to_string))
-            .flatten()
-            .unwrap_or(normal_service_tier),
-    );
-
-    Ok(CodexTurnOptions {
-        model,
-        effort,
-        service_tier,
-        permission_mode,
-    })
-}
-
-pub(super) fn normalize_codex_model(model: Option<String>) -> Result<Option<String>, ApiError> {
-    let Some(model) = model else {
-        return Ok(None);
-    };
-    let model = model.trim();
-    if model.is_empty() {
-        return Ok(None);
-    }
-    if model.len() > 128 || model.chars().any(char::is_control) {
-        return Err(ApiError::BadRequest {
-            code: "invalid_codex_model",
-            message: "Codex model value is not supported".to_string(),
-        });
-    }
-    Ok(Some(model.to_string()))
-}
-
-pub(super) fn normalize_codex_effort(effort: Option<String>) -> Result<Option<String>, ApiError> {
-    let Some(effort) = effort else {
-        return Ok(None);
-    };
-    let effort = effort.trim();
-    if effort.is_empty() {
-        return Ok(None);
-    }
-    if effort.len() > 32 || effort.chars().any(char::is_control) {
-        return Err(ApiError::BadRequest {
-            code: "invalid_codex_effort",
-            message: "Codex reasoning effort is not supported".to_string(),
-        });
-    }
-    Ok(Some(effort.to_string()))
-}
-
-/// The answer the browser sent, as one of the four Caffold offers.
-///
-/// The request said which decisions it would accept, so a decision outside that
-/// set is a stale card rather than a new capability, and the driver rejects it
-/// when it tries to answer.
 pub(super) fn normalize_approval_decision(decision: &str) -> Result<ApprovalDecision, ApiError> {
     match decision {
         "allow" => Ok(ApprovalDecision::Allow),
@@ -223,7 +67,6 @@ pub(super) fn normalize_approval_decision(decision: &str) -> Result<ApprovalDeci
 mod tests {
     use serde_json::json;
 
-    use super::super::test_support::*;
     use super::*;
     use crate::{app::tasks::test_support::*, fs::RootedFs};
 
@@ -348,136 +191,27 @@ mod tests {
                 .await
                 .unwrap();
 
-        assert_eq!(response.default_mode, CodexPermissionMode::ApproveForMe);
-        assert!(response.options[0].allowed);
-        assert!(response.options[1].allowed);
-        assert!(!response.options[2].allowed);
-        assert!(response.options[2].dangerous);
-    }
-
-    #[tokio::test]
-    async fn codex_turn_options_accepts_server_reported_reasoning_efforts() {
-        let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok("model/list", current_model_list_response()),
-            crate::agent::codex::MockCodexResponse::ok("model/list", current_model_list_response()),
-        ]);
-
-        let xhigh = codex_turn_options(
-            &client,
-            Some("gpt-5.6-sol".to_string()),
-            Some("xhigh".to_string()),
-            false,
-            Some(CodexPermissionMode::AskForApproval),
-        )
-        .await
-        .unwrap();
-        assert_eq!(xhigh.model.as_deref(), Some("gpt-5.6-sol"));
-        assert_eq!(xhigh.effort.as_deref(), Some("xhigh"));
-
-        let max = codex_turn_options(
-            &client,
-            Some("gpt-5.6-luna".to_string()),
-            Some("max".to_string()),
-            false,
-            Some(CodexPermissionMode::ApproveForMe),
-        )
-        .await
-        .unwrap();
-        assert_eq!(max.model.as_deref(), Some("gpt-5.6-luna"));
-        assert_eq!(max.effort.as_deref(), Some("max"));
-    }
-
-    #[tokio::test]
-    async fn codex_turn_options_maps_fast_mode_and_normalizes_unsupported_models() {
-        let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok("model/list", current_model_list_response()),
-            crate::agent::codex::MockCodexResponse::ok("model/list", current_model_list_response()),
-            crate::agent::codex::MockCodexResponse::ok("model/list", current_model_list_response()),
-        ]);
-
-        let fast = codex_turn_options(
-            &client,
-            Some("gpt-5.6-sol".to_string()),
-            Some("low".to_string()),
-            true,
-            None,
-        )
-        .await
-        .unwrap();
-        assert_eq!(fast.service_tier.as_deref(), Some("priority"));
-
-        let normal = codex_turn_options(
-            &client,
-            Some("gpt-5.6-sol".to_string()),
-            Some("low".to_string()),
-            false,
-            None,
-        )
-        .await
-        .unwrap();
-        assert_eq!(normal.service_tier.as_deref(), Some("default"));
-
-        let normalized = codex_turn_options(
-            &client,
-            Some("gpt-5.4-mini".to_string()),
-            Some("low".to_string()),
-            true,
-            None,
-        )
-        .await
-        .unwrap();
-        assert_eq!(normalized.service_tier.as_deref(), Some("default"));
-    }
-
-    #[tokio::test]
-    async fn codex_turn_options_rejects_effort_not_supported_by_selected_model() {
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
-            "model/list",
-            current_model_list_response(),
-        )]);
-
-        let error = codex_turn_options(
-            &client,
-            Some("gpt-5.6-luna".to_string()),
-            Some("ultra".to_string()),
-            true,
-            Some(CodexPermissionMode::AskForApproval),
-        )
-        .await
-        .unwrap_err();
-
-        assert!(matches!(
-            error,
-            ApiError::BadRequest {
-                code: "invalid_codex_effort",
-                ..
-            }
-        ));
-    }
-
-    #[tokio::test]
-    async fn codex_turn_options_rejects_model_missing_from_server_list() {
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
-            "model/list",
-            current_model_list_response(),
-        )]);
-
-        let error = codex_turn_options(
-            &client,
-            Some("gpt-imaginary".to_string()),
-            Some("high".to_string()),
-            false,
-            Some(CodexPermissionMode::AskForApproval),
-        )
-        .await
-        .unwrap_err();
-
-        assert!(matches!(
-            error,
-            ApiError::BadRequest {
-                code: "invalid_codex_model",
-                ..
-            }
-        ));
+        assert_eq!(response.default_mode, "approveForMe");
+        // Two choices share the workspace profile and differ by who reviews, so
+        // the third is the only one a forbidden profile can withhold.
+        assert_eq!(
+            response
+                .options
+                .iter()
+                .map(|option| (option.mode.as_str(), option.allowed, option.dangerous))
+                .collect::<Vec<_>>(),
+            vec![
+                ("askForApproval", true, false),
+                ("approveForMe", true, false),
+                ("fullAccess", false, true),
+            ]
+        );
+        assert!(
+            response
+                .options
+                .iter()
+                .all(|option| !option.label.is_empty() && !option.description.is_empty()),
+            "a mode reaches the interface already named"
+        );
     }
 }

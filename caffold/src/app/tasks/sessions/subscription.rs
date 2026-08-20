@@ -576,7 +576,7 @@ mod tests {
                     vec![wire_turn("turn-new", TurnStatus::InProgress)],
                 )),
                 StartedSettings {
-                    permission_mode: Some(CodexPermissionMode::AskForApproval),
+                    permission_mode: Some("askForApproval".to_string()),
                     model: Some("gpt-test".to_string()),
                     reasoning_effort: Some("xhigh".to_string()),
                     fast_mode: true,

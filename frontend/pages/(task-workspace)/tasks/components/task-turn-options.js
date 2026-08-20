@@ -647,7 +647,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
           ? "Codex default"
           : permissionModeLabel(permissionMode));
     const compactPermission = permission
-      ? compactPermissionModeLabel(permissionMode)
+      ? compactPermissionModeLabel(permissionMode, permission.label)
       : this.permissionLoading
         ? "Loading"
         : this.permissionError
@@ -896,24 +896,30 @@ function renderPermissionFallback(loading, error) {
   return `<p class="task-model-note">Open this menu after Codex is connected.</p>`;
 }
 
+// A mode is named by the agent that offers it, and the agent sends a label
+// with it. These are the shorter forms the compact control needs, and a last
+// resort for a mode that arrives without a label at all: showing the agent's
+// own name for it is honest, where guessing at a known one is not. A mode this
+// does not recognize is a mode an agent added, and it has to remain choosable
+// without Caffold shipping a line for it.
+const COMPACT_PERMISSION_MODE_LABELS = {
+  askForApproval: "Ask approval",
+  approveForMe: "Auto review",
+  fullAccess: "Full access",
+};
+
+const PERMISSION_MODE_LABELS = {
+  askForApproval: "Ask for approval",
+  approveForMe: "Approve for me",
+  fullAccess: "Full access",
+};
+
 function permissionModeLabel(mode) {
-  if (mode === "approveForMe") {
-    return "Approve for me";
-  }
-  if (mode === "fullAccess") {
-    return "Full access";
-  }
-  return "Ask for approval";
+  return PERMISSION_MODE_LABELS[mode] ?? `${mode ?? ""}`;
 }
 
-function compactPermissionModeLabel(mode) {
-  if (mode === "approveForMe") {
-    return "Auto review";
-  }
-  if (mode === "fullAccess") {
-    return "Full access";
-  }
-  return "Ask approval";
+function compactPermissionModeLabel(mode, label = "") {
+  return COMPACT_PERMISSION_MODE_LABELS[mode] ?? `${label || mode || ""}`;
 }
 
 if (!customElements.get("caffold-task-turn-options")) {

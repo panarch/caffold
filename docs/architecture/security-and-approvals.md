@@ -68,6 +68,9 @@ Current rules:
   additional permissions even when no command text is present;
 - permission approval cards show the reason, cwd, and complete requested
   network and filesystem profile;
+- the approval modes offered are assembled by the Codex driver from the
+  permission profiles the workspace allows and the reviewer setting, and reach
+  the interface already worded;
 - allowing a permission request returns the original server-requested profile,
   scoped to the turn or the session, while denial returns an empty profile;
 - a permission request cannot stop a turn, because Codex's permission response

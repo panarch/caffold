@@ -21,9 +21,12 @@
 use serde_json::{Value, json};
 
 use super::protocol::{
-    CodexNotification, CodexThread, CodexTurn, ThreadActiveFlag, ThreadStatus, ThreadTokenUsage,
-    TokenUsageBreakdown, TurnStatus, TurnsPage, seconds_to_ms, seconds_to_ms_value,
+    CodexNotification, CodexPermissionMode, CodexThread, CodexTurn, ThreadActiveFlag, ThreadStatus,
+    ThreadTokenUsage, TokenUsageBreakdown, TurnStatus, TurnsPage, seconds_to_ms,
+    seconds_to_ms_value,
 };
+use super::{CodexThreadClient, CodexThreadError, CodexTurnOptions, NORMAL_SERVICE_TIER_ID};
+use crate::agent::driver::{PermissionModeOption, TurnOptions, TurnRejected};
 use crate::agent::{
     ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, CommandExecution,
     Conversation, ConversationItem, GeneratedImage, ItemKind, MessageContent, MessagePhase,
@@ -765,9 +768,398 @@ fn is_a_time(value: &u64) -> bool {
     *value > 0
 }
 
+/// The ways Codex can be allowed to work here, ready to show.
+///
+/// Two of the three share the workspace profile and differ by who reviews the
+/// requests, so this is a composition of two settings rather than the profile
+/// list passed on — and the wording is written here, because knowing what a
+/// mode does to Codex is knowing Codex.
+pub(crate) async fn codex_permission_modes(
+    client: &CodexThreadClient,
+    cwd: &str,
+) -> Result<(String, Vec<PermissionModeOption>), CodexThreadError> {
+    let (profiles, default_mode) = tokio::try_join!(
+        client.list_permission_profiles(cwd, 100),
+        client.default_permission_mode(cwd),
+    )?;
+    let allowed = |profile_id: &str| {
+        profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .is_some_and(|profile| profile.allowed)
+    };
+    let workspace = allowed(CodexPermissionMode::AskForApproval.profile_id());
+    let full_access = allowed(CodexPermissionMode::FullAccess.profile_id());
+    Ok((
+        codex_mode_id(default_mode),
+        vec![
+            codex_option(
+                CodexPermissionMode::AskForApproval,
+                "Ask for approval",
+                "Work in the workspace and ask before crossing its boundary.",
+                workspace,
+                false,
+            ),
+            codex_option(
+                CodexPermissionMode::ApproveForMe,
+                "Approve for me",
+                "Keep the workspace boundary and review eligible requests automatically.",
+                workspace,
+                false,
+            ),
+            codex_option(
+                CodexPermissionMode::FullAccess,
+                "Full access",
+                "Run without sandbox restrictions or approval prompts.",
+                full_access,
+                true,
+            ),
+        ],
+    ))
+}
+
+/// What Codex will accept for a turn.
+///
+/// Caffold names a model, a depth, and a speed; what each of those means to
+/// Codex is worked out here — which model answers to that name, whether it
+/// works at that depth, whether it has a faster tier — so that choosing an
+/// agent stays a question of which agent rather than of what its settings mean.
+pub(crate) async fn codex_turn_options(
+    client: &CodexThreadClient,
+    options: &TurnOptions,
+) -> Result<CodexTurnOptions, TurnRejected> {
+    let model = bounded(options.model.as_deref(), 128).ok_or(TurnRejected::Model)?;
+    let effort = bounded(options.effort.as_deref(), 32).ok_or(TurnRejected::Effort)?;
+    let permission_mode = codex_permission_mode(options.permission_mode.as_deref());
+    if model.is_none() && effort.is_none() && !options.fast_mode {
+        return Ok(CodexTurnOptions {
+            model,
+            effort,
+            service_tier: Some(NORMAL_SERVICE_TIER_ID.to_string()),
+            permission_mode,
+        });
+    }
+
+    let models = client.list_models(100).await?.data;
+    let selected = match model.as_deref() {
+        Some(requested) => models
+            .iter()
+            .find(|candidate| candidate.model == requested || candidate.id == requested),
+        None => models
+            .iter()
+            .find(|candidate| candidate.is_default)
+            .or_else(|| models.first()),
+    };
+    let Some(selected) = selected else {
+        return Err(if model.is_some() {
+            TurnRejected::Model
+        } else {
+            TurnRejected::Effort
+        });
+    };
+    if effort.as_deref().is_some_and(|requested| {
+        !selected
+            .supported_reasoning_efforts
+            .iter()
+            .filter_map(codex_reasoning_effort)
+            .any(|supported| supported == requested)
+    }) {
+        return Err(TurnRejected::Effort);
+    }
+
+    let normal = selected
+        .default_service_tier
+        .clone()
+        .unwrap_or_else(|| NORMAL_SERVICE_TIER_ID.to_string());
+    let service_tier = Some(
+        options
+            .fast_mode
+            .then(|| selected.fast_service_tier_id().map(str::to_string))
+            .flatten()
+            .unwrap_or(normal),
+    );
+    Ok(CodexTurnOptions {
+        model,
+        effort,
+        service_tier,
+        permission_mode,
+    })
+}
+
+/// A value a person typed, or nothing when they typed nothing.
+///
+/// `None` from an absent or blank choice means "whatever the agent prefers".
+/// A value too long or carrying control characters never came from the choices
+/// the agent offered, and is refused before it reaches one.
+fn bounded(value: Option<&str>, limit: usize) -> Option<Option<String>> {
+    let Some(value) = value.map(str::trim) else {
+        return Some(None);
+    };
+    if value.is_empty() {
+        return Some(None);
+    }
+    if value.len() > limit || value.chars().any(char::is_control) {
+        return None;
+    }
+    Some(Some(value.to_string()))
+}
+
+/// A permission mode Codex offered, read back.
+///
+/// An unreadable one falls to Codex's own default rather than being refused:
+/// the mode came from a list Codex gave out, and a stale choice should not stop
+/// a person from working.
+fn codex_permission_mode(mode: Option<&str>) -> Option<CodexPermissionMode> {
+    let mode = mode?;
+    serde_json::from_value(Value::String(mode.to_string())).ok()
+}
+
+fn codex_reasoning_effort(effort: &Value) -> Option<&str> {
+    effort
+        .get("value")
+        .and_then(Value::as_str)
+        .or_else(|| effort.get("reasoningEffort").and_then(Value::as_str))
+}
+
+fn codex_option(
+    mode: CodexPermissionMode,
+    label: &str,
+    description: &str,
+    allowed: bool,
+    dangerous: bool,
+) -> PermissionModeOption {
+    PermissionModeOption {
+        mode: codex_mode_id(mode),
+        label: label.to_string(),
+        description: description.to_string(),
+        allowed,
+        dangerous,
+    }
+}
+
+/// The name a Codex mode travels under, which is the name it already had on the
+/// wire before Caffold stopped naming modes for every agent at once.
+pub(crate) fn codex_mode_id(mode: CodexPermissionMode) -> String {
+    serde_json::to_value(mode)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::codex::{CodexThreadClient, MockCodexResponse};
+
+    fn codex_client(responses: Vec<MockCodexResponse>) -> CodexThreadClient {
+        CodexThreadClient::mock(responses)
+    }
+
+    /// Two models Codex could report, differing in the depths they work at.
+    fn model_list() -> Value {
+        json!({
+            "data": [
+                {
+                    "id": "gpt-5.6-sol",
+                    "model": "gpt-5.6-sol",
+                    "displayName": "GPT-5.6-Sol",
+                    "description": "Latest frontier agentic coding model.",
+                    "hidden": false,
+                    "supportedReasoningEfforts": [
+                        { "reasoningEffort": "low", "description": "Fast" },
+                        { "reasoningEffort": "xhigh", "description": "Deep" }
+                    ],
+                    "defaultReasoningEffort": "low",
+                    "serviceTiers": [{ "id": "priority", "name": "Fast", "description": "Faster" }],
+                    "defaultServiceTier": null,
+                    "inputModalities": ["text"],
+                    "supportsPersonality": false,
+                    "isDefault": true
+                },
+                {
+                    "id": "gpt-5.6-luna",
+                    "model": "gpt-5.6-luna",
+                    "displayName": "GPT-5.6-Luna",
+                    "description": "General purpose model.",
+                    "hidden": false,
+                    "supportedReasoningEfforts": [{ "reasoningEffort": "max", "description": "Deepest" }],
+                    "defaultReasoningEffort": "max",
+                    "serviceTiers": [],
+                    "defaultServiceTier": null,
+                    "inputModalities": ["text"],
+                    "supportsPersonality": true,
+                    "isDefault": false
+                }
+            ],
+            "nextCursor": null
+        })
+    }
+
+    async fn read_options(
+        responses: usize,
+        options: TurnOptions,
+    ) -> Result<CodexTurnOptions, TurnRejected> {
+        let client = codex_client(
+            (0..responses)
+                .map(|_| MockCodexResponse::ok("model/list", model_list()))
+                .collect(),
+        );
+        codex_turn_options(&client, &options).await
+    }
+
+    #[tokio::test]
+    async fn a_depth_the_chosen_model_works_at_is_accepted() {
+        let read = read_options(
+            1,
+            TurnOptions {
+                model: Some("gpt-5.6-sol".to_string()),
+                effort: Some("xhigh".to_string()),
+                fast_mode: false,
+                permission_mode: Some("askForApproval".to_string()),
+            },
+        )
+        .await
+        .expect("the agent works at that depth");
+
+        assert_eq!(read.model.as_deref(), Some("gpt-5.6-sol"));
+        assert_eq!(read.effort.as_deref(), Some("xhigh"));
+        assert_eq!(
+            read.permission_mode,
+            Some(CodexPermissionMode::AskForApproval)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_depth_the_chosen_model_does_not_work_at_is_refused() {
+        // The depths belong to the model, not to the agent, so this cannot be
+        // decided without asking which model was chosen.
+        let refused = read_options(
+            1,
+            TurnOptions {
+                model: Some("gpt-5.6-luna".to_string()),
+                effort: Some("xhigh".to_string()),
+                fast_mode: false,
+                permission_mode: None,
+            },
+        )
+        .await
+        .expect_err("that model does not work at that depth");
+
+        assert!(matches!(refused, TurnRejected::Effort));
+    }
+
+    #[tokio::test]
+    async fn a_model_the_agent_does_not_offer_is_refused() {
+        let refused = read_options(
+            1,
+            TurnOptions {
+                model: Some("gpt-imaginary".to_string()),
+                effort: None,
+                fast_mode: false,
+                permission_mode: None,
+            },
+        )
+        .await
+        .expect_err("no such model");
+
+        assert!(matches!(refused, TurnRejected::Model));
+    }
+
+    #[tokio::test]
+    async fn working_faster_falls_back_to_the_normal_tier_when_a_model_has_none() {
+        // Asking for speed from a model with no faster tier is answered with
+        // its ordinary one rather than refused, and the caller is told which it
+        // got so the interface can stop offering what did not happen.
+        let fast = read_options(
+            1,
+            TurnOptions {
+                model: Some("gpt-5.6-sol".to_string()),
+                effort: None,
+                fast_mode: true,
+                permission_mode: None,
+            },
+        )
+        .await
+        .expect("the model has a faster tier");
+        assert_eq!(fast.service_tier.as_deref(), Some("priority"));
+
+        let normal = read_options(
+            1,
+            TurnOptions {
+                model: Some("gpt-5.6-luna".to_string()),
+                effort: None,
+                fast_mode: true,
+                permission_mode: None,
+            },
+        )
+        .await
+        .expect("a model without one still runs");
+        assert_eq!(normal.service_tier.as_deref(), Some("default"));
+    }
+
+    #[tokio::test]
+    async fn nothing_chosen_asks_the_agent_nothing() {
+        // Reading the model list costs a round trip in front of the person
+        // waiting, and there is nothing to check when they chose nothing.
+        let client = codex_client(Vec::new());
+
+        let read = codex_turn_options(&client, &TurnOptions::default())
+            .await
+            .expect("no choice is a valid choice");
+
+        assert!(client.mock_requests().await.is_empty());
+        assert_eq!(read.service_tier.as_deref(), Some("default"));
+    }
+
+    #[tokio::test]
+    async fn a_choice_that_never_came_from_the_agent_is_refused() {
+        // Nothing the agent offered is this long or carries control characters,
+        // so it did not come from a list the agent gave out.
+        let long = read_options(
+            0,
+            TurnOptions {
+                model: Some("m".repeat(129)),
+                effort: None,
+                fast_mode: false,
+                permission_mode: None,
+            },
+        )
+        .await
+        .expect_err("no model is named that");
+        assert!(matches!(long, TurnRejected::Model));
+
+        let control = read_options(
+            0,
+            TurnOptions {
+                model: None,
+                effort: Some("hi\u{7}gh".to_string()),
+                fast_mode: false,
+                permission_mode: None,
+            },
+        )
+        .await
+        .expect_err("no depth is named that");
+        assert!(matches!(control, TurnRejected::Effort));
+    }
+
+    #[tokio::test]
+    async fn a_permission_mode_the_agent_no_longer_offers_falls_to_its_default() {
+        // The mode came from a list the agent gave out. A stale one should not
+        // stop a person from working, so Codex's own default stands in.
+        let read = read_options(
+            0,
+            TurnOptions {
+                model: None,
+                effort: None,
+                fast_mode: false,
+                permission_mode: Some("acceptEdits".to_string()),
+            },
+        )
+        .await
+        .expect("a stale mode still starts a turn");
+
+        assert_eq!(read.permission_mode, None);
+    }
 
     /// Every item type in the Codex v2 schema, so that adding a surface for one
     /// is a deliberate change here rather than a silent reclassification.

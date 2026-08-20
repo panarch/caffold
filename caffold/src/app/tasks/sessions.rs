@@ -49,7 +49,6 @@ use std::{
 use serde::Serialize;
 use tokio::sync::Mutex as AsyncMutex;
 
-use crate::agent::codex::CodexPermissionMode;
 use crate::agent::{Conversation, Driver, ThreadStatus, TurnPage};
 
 const INITIAL_TURNS_PAGE_SIZE: usize = 8;
@@ -81,7 +80,7 @@ pub(in crate::app::tasks) struct SessionSnapshot {
     pub(in crate::app::tasks) last_error: Option<String>,
     pub(in crate::app::tasks) external_syncing: bool,
     pub(in crate::app::tasks) external_sync_started_ms: Option<u64>,
-    pub(in crate::app::tasks) permission_mode: Option<CodexPermissionMode>,
+    pub(in crate::app::tasks) permission_mode: Option<String>,
     pub(in crate::app::tasks) model: Option<String>,
     pub(in crate::app::tasks) reasoning_effort: Option<String>,
     pub(in crate::app::tasks) fast_mode: bool,
@@ -101,7 +100,7 @@ pub(in crate::app::tasks) struct TerminalTurnApplyOutcome {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(in crate::app::tasks) struct StartedSettings {
-    pub(in crate::app::tasks) permission_mode: Option<CodexPermissionMode>,
+    pub(in crate::app::tasks) permission_mode: Option<String>,
     pub(in crate::app::tasks) model: Option<String>,
     pub(in crate::app::tasks) reasoning_effort: Option<String>,
     pub(in crate::app::tasks) fast_mode: bool,
@@ -172,7 +171,7 @@ struct SessionState {
     last_error: Option<String>,
     external_syncing: bool,
     external_sync_started_ms: Option<u64>,
-    permission_mode: Option<CodexPermissionMode>,
+    permission_mode: Option<String>,
     model: Option<String>,
     reasoning_effort: Option<String>,
     fast_mode: bool,
@@ -308,7 +307,7 @@ fn snapshot(state: &SessionState) -> SessionSnapshot {
         last_error: state.last_error.clone(),
         external_syncing: state.external_syncing,
         external_sync_started_ms: state.external_sync_started_ms,
-        permission_mode: state.permission_mode,
+        permission_mode: state.permission_mode.clone(),
         model: state.model.clone(),
         reasoning_effort: state.reasoning_effort.clone(),
         fast_mode: state.fast_mode,
@@ -332,12 +331,12 @@ pub(super) mod test_support {
         TerminalTurnApplyOutcome,
     };
     pub(super) use crate::agent::codex::{
-        CodexPermissionMode, CodexThread, CodexThreadClient, CodexThreadError, CodexTurn,
-        CodexTurnOptions, MockCodexResponse, ThreadResumeResponse,
+        CodexThread, CodexThreadClient, CodexThreadError, CodexTurn, MockCodexResponse,
+        ThreadResumeResponse,
     };
     pub(super) use crate::agent::{
         ActivityStatus, Conversation, ConversationItem, ItemKind, SessionEvent, SessionEventKind,
-        ThreadStatus, Turn, TurnPage, TurnStatus,
+        ThreadStatus, Turn, TurnOptions, TurnPage, TurnStatus,
     };
 
     /// A fixture written in Caffold's vocabulary and read back as Codex's.

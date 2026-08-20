@@ -32,7 +32,7 @@ export const TASK_PERMISSION_FIXTURE = {
   ],
 };
 
-export async function installTaskApiFixture(page) {
+export async function installTaskApiFixture(page, overrides = {}) {
   await installExternalModuleDefaults(page);
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
@@ -77,7 +77,7 @@ export async function installTaskApiFixture(page) {
     };
   });
   await page.route("**/api/codex/permissions*", (route) =>
-    route.fulfill({ json: TASK_PERMISSION_FIXTURE }),
+    route.fulfill({ json: overrides.permissions ?? TASK_PERMISSION_FIXTURE }),
   );
   await page.route("**/api/codex/models", (route) =>
     route.fulfill({

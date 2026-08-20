@@ -6,21 +6,32 @@
 //! one agent has and another lacks into a missing match arm — an error at every
 //! place that has to decide — instead of a default quietly standing in.
 //!
-//! What is here is only what watching a conversation needs. Starting a turn,
-//! answering an approval, reporting readiness, and resolving settings are still
-//! each agent's own, reached through its own driver, because Caffold has not
-//! yet watched two agents do them and would be guessing at the shared shape.
+//! What is here is what a Task needs of an agent: begin a conversation, open
+//! one and watch it, page back through its turns, stop watching, begin a turn,
+//! add to a running one, stop it, and say how the agent can be allowed to work.
+//! Answering an approval, reporting readiness, and the rest of settings are
+//! still each agent's own, because Caffold has not yet watched two agents do
+//! them and would be guessing at the shared shape.
 //!
-//! The failures are still Codex's, for the same reason: sixty places across the
-//! application read a `CodexThreadError` by variant, and giving the failures a
-//! shared vocabulary is its own change rather than a detail of this one.
+//! This module holds the vocabulary and the choosing. What a choice means to an
+//! agent belongs to that agent — `codex::contract` for Codex — so that a second
+//! agent adds a match arm here rather than a second pile of internals.
+//!
+//! The failures are still Codex's, for a reason of the same kind: sixty places
+//! across the application read a `CodexThreadError` by variant, and giving the
+//! failures a shared vocabulary is its own change rather than a detail of this
+//! one.
 
 use std::collections::BTreeMap;
 
+use serde::Serialize;
 use serde_json::Value;
 
-use super::codex::{CodexThreadClient, CodexThreadError, service_tier_for_fast_mode};
-use super::{Conversation, TurnPage};
+use super::codex::{
+    CodexThreadClient, CodexThreadError, CodexTurnOptions, codex_mode_id, codex_permission_modes,
+    codex_turn_options, is_fast_service_tier, service_tier_for_fast_mode,
+};
+use super::{Conversation, Turn, TurnPage};
 
 /// One agent, reached the way that agent is reached.
 #[derive(Clone)]
@@ -44,7 +55,221 @@ pub(crate) struct OpenedConversation {
     pub(crate) settings: BTreeMap<String, Value>,
 }
 
+/// The ways a person can let an agent work, as that agent offers them.
+///
+/// Neither agent hands this over ready to show. Codex has permission profiles
+/// and a separate reviewer setting, and the choices worth offering are
+/// combinations of the two; Claude names its modes outright but calls one of
+/// them `bypassPermissions`. Either way the assembling and the naming are the
+/// driver's, because knowing what a mode does to an agent is knowing that
+/// agent.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PermissionModes {
+    /// What this installation works under when nobody chooses.
+    pub(crate) default_mode: String,
+    pub(crate) options: Vec<PermissionModeOption>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PermissionModeOption {
+    /// The agent's own name for it. Caffold carries this back verbatim when a
+    /// turn starts rather than translating it, so a mode an agent adds needs
+    /// nothing from Caffold to become choosable.
+    pub(crate) mode: String,
+    pub(crate) label: String,
+    pub(crate) description: String,
+    /// False when this installation cannot offer it — a profile the workspace
+    /// forbids, say. The choice is still shown, so that it reads as withheld
+    /// rather than missing.
+    pub(crate) allowed: bool,
+    /// True when choosing it gives up a protection.
+    pub(crate) dangerous: bool,
+}
+
+/// What a person chose for a turn.
+///
+/// Every field is Caffold's word for something, and what each one means to an
+/// agent is the agent's to work out — which model answers to that name, whether
+/// it has a faster tier, what that permission mode does.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct TurnOptions {
+    pub(crate) model: Option<String>,
+    pub(crate) effort: Option<String>,
+    pub(crate) fast_mode: bool,
+    /// A mode the agent itself offered, carried back under the agent's own name
+    /// for it. Caffold does not read this.
+    pub(crate) permission_mode: Option<String>,
+}
+
+/// Options an agent has agreed to.
+///
+/// Agreeing is a question asked of the agent — which model answers to that
+/// name, what depths it works at — so it happens once, before anything is
+/// created, and the answer is carried to whatever needs it. Starting a
+/// conversation and then discovering the model was never real would leave the
+/// conversation behind.
+pub(crate) struct AcceptedTurnOptions {
+    /// What the agent settled on, which is what the interface should report.
+    pub(crate) applied: TurnOptions,
+    codex: CodexTurnOptions,
+}
+
+/// A conversation the agent has just begun, and what it begins under.
+///
+/// An agent settles the settings at the same moment it makes the conversation,
+/// and what it settled on is not always what was asked for, so it says.
+pub(crate) struct StartedConversation {
+    pub(crate) conversation: Conversation,
+    pub(crate) settings: TurnOptions,
+}
+
+/// A turn the agent has begun.
+pub(crate) struct StartedTurn {
+    pub(crate) turn: Turn,
+    /// What the agent settled on, which is not always what was asked for: a
+    /// model without a faster tier answers a request for speed with its normal
+    /// one, and the person should be told what they got.
+    pub(crate) applied: TurnOptions,
+}
+
+/// Why an agent would not start a turn as asked.
+#[derive(Debug)]
+pub(crate) enum TurnRejected {
+    /// No such model, by that name, for this agent.
+    Model,
+    /// The chosen model does not work at that depth.
+    Effort,
+    /// The agent could not be reached to find out.
+    Unavailable(CodexThreadError),
+}
+
+impl From<CodexThreadError> for TurnRejected {
+    fn from(error: CodexThreadError) -> Self {
+        Self::Unavailable(error)
+    }
+}
+
 impl Driver {
+    /// Ask the agent whether it will work this way.
+    pub(crate) async fn accept_turn_options(
+        &self,
+        options: &TurnOptions,
+    ) -> Result<AcceptedTurnOptions, TurnRejected> {
+        match self {
+            Self::Codex(client) => {
+                let codex = codex_turn_options(client, options).await?;
+                Ok(AcceptedTurnOptions {
+                    applied: TurnOptions {
+                        model: codex.model.clone(),
+                        effort: codex.effort.clone(),
+                        fast_mode: is_fast_service_tier(codex.service_tier.as_deref()),
+                        permission_mode: options.permission_mode.clone(),
+                    },
+                    codex,
+                })
+            }
+        }
+    }
+
+    /// Begin a conversation for work in `cwd`.
+    pub(crate) async fn start_conversation(
+        &self,
+        cwd: &str,
+        options: &AcceptedTurnOptions,
+    ) -> Result<StartedConversation, CodexThreadError> {
+        match self {
+            Self::Codex(client) => {
+                let started = client
+                    .start_thread(
+                        cwd,
+                        options.codex.permission_mode,
+                        options
+                            .codex
+                            .service_tier
+                            .as_deref()
+                            .unwrap_or_else(|| service_tier_for_fast_mode(false)),
+                    )
+                    .await?;
+                Ok(StartedConversation {
+                    settings: TurnOptions {
+                        model: started.model.clone(),
+                        effort: started.reasoning_effort.clone(),
+                        fast_mode: started.fast_mode,
+                        permission_mode: started.permission_mode.map(codex_mode_id),
+                    },
+                    conversation: Conversation::from(&started.thread),
+                })
+            }
+        }
+    }
+
+    /// Begin a turn on options the agent has already agreed to.
+    pub(crate) async fn start_turn(
+        &self,
+        conversation_id: &str,
+        cwd: &str,
+        prompt: &str,
+        images: &[String],
+        options: &AcceptedTurnOptions,
+    ) -> Result<StartedTurn, CodexThreadError> {
+        match self {
+            Self::Codex(client) => {
+                let started = client
+                    .start_turn(conversation_id, cwd, prompt, images, options.codex.clone())
+                    .await?;
+                Ok(StartedTurn {
+                    turn: Turn::from(&started.turn),
+                    applied: options.applied.clone(),
+                })
+            }
+        }
+    }
+
+    /// Add to a turn already running, without starting another.
+    pub(crate) async fn steer_turn(
+        &self,
+        conversation_id: &str,
+        turn_id: &str,
+        prompt: &str,
+        images: &[String],
+    ) -> Result<(), CodexThreadError> {
+        match self {
+            Self::Codex(client) => client
+                .steer_turn(conversation_id, turn_id, prompt, images)
+                .await
+                .map(|_| ()),
+        }
+    }
+
+    /// Stop a turn where it stands.
+    pub(crate) async fn interrupt_turn(
+        &self,
+        conversation_id: &str,
+        turn_id: &str,
+    ) -> Result<(), CodexThreadError> {
+        match self {
+            Self::Codex(client) => client.interrupt_turn(conversation_id, turn_id).await,
+        }
+    }
+
+    /// How this agent can be allowed to work, here.
+    pub(crate) async fn permission_modes(
+        &self,
+        cwd: &str,
+    ) -> Result<PermissionModes, CodexThreadError> {
+        match self {
+            Self::Codex(client) => {
+                let (default_mode, options) = codex_permission_modes(client, cwd).await?;
+                Ok(PermissionModes {
+                    default_mode,
+                    options,
+                })
+            }
+        }
+    }
+
     /// Open a conversation, and watch it from here on.
     ///
     /// Opening is what starts the watching; there is no separate step, and
@@ -107,6 +332,12 @@ impl Driver {
     }
 }
 
+/// What Codex will accept for a turn, given what the person asked for.
+///
+/// Codex answers depth and speed per model — a model has its own reasoning
+/// efforts and its own faster tier, or none — so the model list has to be read
+/// before either can be honoured. Nothing is asked of Codex when there is
+/// nothing to check.
 impl CodexThreadClient {
     /// This client as the agent it drives.
     pub(crate) fn driver(&self) -> Driver {

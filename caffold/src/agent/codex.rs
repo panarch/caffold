@@ -18,7 +18,10 @@ mod reconnect_spike;
 mod status;
 mod transport;
 
-pub(crate) use contract::{ApprovalKind, approval_request, approval_response, session_event};
+pub(crate) use contract::{
+    ApprovalKind, approval_request, approval_response, codex_mode_id, codex_permission_modes,
+    codex_turn_options, session_event,
+};
 /// Item translation on its own, for the tests that write an item the way Codex
 /// sends it and assert on what Caffold makes of it.
 #[cfg(test)]
@@ -230,6 +233,18 @@ pub(crate) fn service_tier_for_fast_mode(fast_mode: bool) -> &'static str {
     } else {
         NORMAL_SERVICE_TIER_ID
     }
+}
+
+/// What Codex calls the permission mode these settings describe.
+///
+/// Caffold carries a mode under the agent's own name for it, so reading four
+/// Codex settings into one is where that name is minted.
+pub(crate) fn permission_mode_name(
+    settings: &std::collections::BTreeMap<String, Value>,
+) -> Option<String> {
+    serde_json::to_value(CodexPermissionMode::from_settings(settings))
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
 }
 
 pub(crate) fn is_fast_service_tier(service_tier: Option<&str>) -> bool {

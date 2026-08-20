@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-use crate::agent::codex::{CodexPermissionMode, is_fast_service_tier};
+use crate::agent::codex::{is_fast_service_tier, permission_mode_name};
 use crate::agent::{
     Conversation, Driver, OpenedConversation, ThreadStatus, Turn, TurnPage, TurnStatus,
 };
@@ -21,7 +21,7 @@ use super::{SessionLifecycle, SessionState, now_unix_ms};
 /// meaning with one agent in hand would be guessing — so this moves when
 /// readiness and settings do.
 pub(super) fn apply_thread_settings(state: &mut SessionState, settings: &BTreeMap<String, Value>) {
-    state.permission_mode = Some(CodexPermissionMode::from_settings(settings));
+    state.permission_mode = permission_mode_name(settings);
     if let Some(model) = settings.get("model").and_then(serde_json::Value::as_str) {
         state.model = Some(model.to_string());
     }
@@ -586,10 +586,7 @@ mod tests {
             .await
             .expect("subscribe");
 
-        assert_eq!(
-            snapshot.permission_mode,
-            Some(CodexPermissionMode::ApproveForMe)
-        );
+        assert_eq!(snapshot.permission_mode, Some("approveForMe".to_string()));
         assert_eq!(snapshot.model.as_deref(), Some("gpt-test"));
         assert_eq!(snapshot.reasoning_effort.as_deref(), Some("xhigh"));
         assert!(snapshot.fast_mode);
@@ -1086,7 +1083,7 @@ mod tests {
                 "thread-1",
                 Some("/managed/worktree"),
                 turn("turn-new", TurnStatus::InProgress),
-                CodexTurnOptions::default(),
+                TurnOptions::default(),
             )
             .await;
         refresh
