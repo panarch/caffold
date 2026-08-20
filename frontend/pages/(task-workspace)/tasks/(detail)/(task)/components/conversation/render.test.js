@@ -115,6 +115,52 @@ test("a pending approval stays visible beside the command it is asking about", (
   }
 });
 
+test("a running tool call is a card, not a status chip", () => {
+  // While the turn runs, its work is drawn one entry at a time; only after the
+  // turn ends does it collapse into work details. A tool call has to be the
+  // same thing on both, or the conversation changes shape underneath a reader
+  // at the moment the turn finishes.
+  const running = turnEvent("thread-1:turn-1:tool-1", "tool_call", 2, {
+    itemId: "tool-1",
+    name: "Web search",
+    status: "inProgress",
+  });
+
+  const { html } = renderConversation([running], activeTask());
+
+  assert.match(html, /class="task-event task-tool-card"/);
+  assert.doesNotMatch(
+    html,
+    /task-status-chip/,
+    "a tool call names itself rather than restating its own summary",
+  );
+  assert.match(html, /<strong>Web search<\/strong>/);
+  assert.match(html, /Status: inProgress/);
+});
+
+test("a failed tool call reads as failed while the turn is still running", () => {
+  const failed = turnEvent("thread-1:turn-1:tool-1", "tool_call", 2, {
+    itemId: "tool-1",
+    name: "inspector.probe",
+    status: "failed",
+  });
+
+  const { html } = renderConversation([failed], activeTask());
+
+  assert.match(html, /data-tool-tone="danger"/);
+});
+
+test("a tool call the agent did not name is still an entry", () => {
+  const unnamed = turnEvent("thread-1:turn-1:tool-1", "tool_call", 2, {
+    itemId: "tool-1",
+    status: "completed",
+  });
+
+  const { html } = renderConversation([unnamed], activeTask());
+
+  assert.match(html, /<strong>Tool call<\/strong>/);
+});
+
 function activeTask() {
   return {
     id: "thread-1",

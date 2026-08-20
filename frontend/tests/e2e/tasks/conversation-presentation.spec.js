@@ -691,6 +691,68 @@ test("preserves ordered-list starts through Task Markdown sanitization", { tag: 
   await expect(checkboxes.last()).toBeDisabled();
 });
 
+test("names the work an agent did that Caffold draws no surface for", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page, {
+    threadId: "019fd747-1247-7bb0-998b-9aec53bdf7f3",
+  });
+  await scenario.seedCompletedTask();
+  scenario.events = scenario.events.concat([
+    scenario.eventRecord(
+      "event_web_search",
+      "tool_call",
+      "web_search: completed",
+      {
+        threadId: scenario.threadId,
+        turnId: "turn_1",
+        itemId: "tool_web_search",
+        name: "web_search",
+        status: "completed",
+      },
+      20,
+    ),
+    scenario.eventRecord(
+      "event_mcp_probe",
+      "tool_call",
+      "inspector.probe: failed",
+      {
+        threadId: scenario.threadId,
+        turnId: "turn_1",
+        itemId: "tool_mcp_probe",
+        name: "inspector.probe",
+        status: "failed",
+      },
+      21,
+    ),
+  ]);
+
+  await page.goto(`/tasks/${scenario.threadId}`);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const workSummary = tasksPage.locator(
+    "caffold-task-work-details > details > summary",
+  );
+  await workSummary.scrollIntoViewIfNeeded();
+  await workSummary.click();
+
+  const toolCalls = tasksPage.locator(
+    '.task-work-details-item[data-event-type="tool_call"]',
+  );
+  await expect(toolCalls).toHaveCount(2);
+
+  // The agent's own name for the work, not a summary line restating it.
+  const searched = toolCalls.filter({ hasText: "web_search" });
+  await expect(searched.locator("header strong")).toHaveText("web_search");
+  await expect(searched).toContainText("Status: completed");
+  await expect(searched).toHaveAttribute("data-tool-tone", "neutral");
+
+  // Work that failed reads as failed, the way every other failure here does.
+  const probed = toolCalls.filter({ hasText: "inspector.probe" });
+  await expect(probed.locator("header strong")).toHaveText("inspector.probe");
+  await expect(probed).toContainText("Status: failed");
+  await expect(probed).toHaveAttribute("data-tool-tone", "danger");
+});
+
 test("presents a completed canonical turn without duplicate or unsafe content", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {

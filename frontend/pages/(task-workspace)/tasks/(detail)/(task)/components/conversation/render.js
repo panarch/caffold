@@ -27,6 +27,7 @@ import {
   formatDecision,
   formatDuration,
   formatStatus,
+  toolCallPresentation,
 } from "../../../../task-format.js";
 import { activeTurnPresentation } from "./components/active-turn/model.js";
 export function renderConversation(events, task, approvals = [], options = {}) {
@@ -444,6 +445,10 @@ export function renderConversationEvent(event, task, eventState) {
       eventState?.filePathPresentationBase,
       eventState?.changedFiles,
     );
+  }
+  if (event.type === "tool_call") {
+    const tool = toolCallPresentation(payload);
+    return renderToolEvent(event, tool.label, tool.text, tool.tone);
   }
   if (event.type === "task_failed") {
     return renderToolEvent(event, "Error", event.summary, "danger");

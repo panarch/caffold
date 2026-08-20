@@ -10,6 +10,7 @@ import {
 import {
   formatDate,
   formatStatus,
+  toolCallPresentation,
 } from "../../../../../task-format.js";
 import "./changed-files.js";
 import "./command.js";
@@ -397,6 +398,10 @@ function renderWorkItem(
       [summary, status].filter(Boolean).join("\n"),
       identity,
     );
+  }
+  if (event.type === "tool_call") {
+    const tool = toolCallPresentation(payload);
+    return renderWorkItemShell(event, tool.label, tool.text, tool.tone);
   }
   if (event.type === "task_failed") {
     return renderWorkItemShell(event, "Error", event.summary, "danger");

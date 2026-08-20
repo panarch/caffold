@@ -159,6 +159,25 @@ export function cleanLogicalPath(path) {
   return cleanRelativeTaskPath(path);
 }
 
+// How one tool call reads.
+//
+// Everything an agent does that Caffold draws no surface of its own for arrives
+// under the agent's own name for it. The name and how far along it is are all
+// there is to say, and saying only that is what lets an agent grow new kinds of
+// work without Caffold guessing at them.
+//
+// A running turn and a finished one show a tool call in different places. Both
+// read this, so the same work does not change shape when the turn ends.
+export function toolCallPresentation(payload = {}) {
+  const name = `${payload.name ?? ""}`.trim();
+  const status = `${payload.status ?? ""}`.trim();
+  return {
+    label: name || "Tool call",
+    text: status ? `Status: ${formatStatus(status)}` : "",
+    tone: status === "failed" ? "danger" : "neutral",
+  };
+}
+
 export function formatStatus(status) {
   const normalized = `${status ?? ""}`.trim();
   return `${normalized || "unknown"}`.replaceAll("_", " ");

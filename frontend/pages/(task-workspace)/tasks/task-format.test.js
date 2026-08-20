@@ -11,6 +11,7 @@ import {
   normalizeTaskPath,
   presentTaskFilePath,
   shortId,
+  toolCallPresentation,
 } from "./task-format.js";
 
 test("task paths normalize separators without allowing parent traversal", () => {
@@ -176,4 +177,25 @@ test("every decision Caffold offers has a label", () => {
   assert.equal(formatDecision("allowAlways"), "Allow Always");
   assert.equal(formatDecision("deny"), "Deny");
   assert.equal(formatDecision("denyAndStop"), "Deny and Stop");
+});
+
+test("a tool call reads by the agent's own name for it", () => {
+  assert.deepEqual(toolCallPresentation({ name: "Web search", status: "inProgress" }), {
+    label: "Web search",
+    text: "Status: inProgress",
+    tone: "neutral",
+  });
+  assert.deepEqual(toolCallPresentation({ name: "inspector.probe", status: "failed" }), {
+    label: "inspector.probe",
+    text: "Status: failed",
+    tone: "danger",
+  });
+});
+
+test("a tool call with nothing said about it is still nameable", () => {
+  assert.deepEqual(toolCallPresentation({}), {
+    label: "Tool call",
+    text: "",
+    tone: "neutral",
+  });
 });
