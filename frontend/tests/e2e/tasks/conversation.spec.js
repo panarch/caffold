@@ -1065,6 +1065,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
     {
       approvalId: "approval_chronology",
       turnId,
+      itemId: "command_1",
       title: "Command approval requested",
       reason: "Run the regression test",
       command: "cargo test",
@@ -1192,8 +1193,12 @@ test("keeps task event chronology stable through approval, completion, and reloa
     "approval_requested",
   ]);
 
-  await emitTaskEvent(approvalResolved, 4);
-  await emitTaskEvent(commandStarted, 5);
+  // The command Codex is asking about is announced while the question is
+  // still open. It joins the turn; it does not replace the card.
+  await emitTaskEvent(commandStarted, 4);
+  await expect(tasksPage.locator(".task-approval-card")).toHaveCount(1);
+
+  await emitTaskEvent(approvalResolved, 5);
   await expect(tasksPage.locator(".task-approval-card")).toHaveCount(0);
   expect(await visibleEventOrder()).toEqual([
     "user_message",

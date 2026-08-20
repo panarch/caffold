@@ -149,6 +149,33 @@ test("structured canonical duplicates beat sparse notifications", () => {
   assert.deepEqual(dedupeCanonicalEvents([sparse, canonical]), [canonical]);
 });
 
+test("an approval and the command it asks about are separate entries", () => {
+  const identity = { threadId: "thread-1", turnId: "turn-1", itemId: "item-1" };
+  const command = event("thread-1:turn-1:item-1", "command_execution", 100, {
+    ...identity,
+    status: "inProgress",
+    command: "/bin/zsh -lc 'open -a TextEdit'",
+  });
+  const approval = event("approval_requested:401", "approval_requested", 100, {
+    ...identity,
+    approvalId: "401",
+    title: "Command approval requested",
+    command: "/bin/zsh -lc 'open -a TextEdit'",
+    decisions: ["allow", "denyAndStop"],
+  });
+
+  assert.deepEqual(
+    dedupeCanonicalEvents([approval, command]).map(({ id }) => id),
+    ["approval_requested:401", "thread-1:turn-1:item-1"],
+    "an approval that names its item must not be collapsed into that item",
+  );
+  assert.deepEqual(
+    dedupeCanonicalEvents([command, approval]).map(({ id }) => id),
+    ["thread-1:turn-1:item-1", "approval_requested:401"],
+    "which of the two arrived first cannot decide whether the card appears",
+  );
+});
+
 test("an item's start and its finish stay one conversation entry", () => {
   const identity = { threadId: "thread-1", turnId: "turn-1", itemId: "item-1" };
   const started = event("thread-1:turn-1:item-1", "command_execution", 100, {

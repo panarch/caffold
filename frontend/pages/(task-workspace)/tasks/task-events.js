@@ -294,14 +294,18 @@ export function eventIdentityKey(event) {
 
   const payload = event.payload ?? {};
   const threadId = event.threadId ?? payload.threadId ?? "";
-  const itemId = payload.itemId ?? "";
-  if (itemId) {
-    return ["item", threadId, eventTurnId(event) ?? "", itemId].join(":");
-  }
 
+  // An approval names the item it is asking about, but it is not that item:
+  // the question and the work are two entries, and answering one of them is
+  // what lets the other proceed.
   const approvalId = payload.approvalId ?? "";
   if (approvalId) {
     return ["approval", threadId, approvalId, event.type].join(":");
+  }
+
+  const itemId = payload.itemId ?? "";
+  if (itemId) {
+    return ["item", threadId, eventTurnId(event) ?? "", itemId].join(":");
   }
 
   const turnId = eventTurnId(event);

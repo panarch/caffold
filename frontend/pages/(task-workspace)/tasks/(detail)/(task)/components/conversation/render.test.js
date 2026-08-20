@@ -78,6 +78,43 @@ test("opts only stable user and final assistant messages into code controls", ()
   assert.equal(hasCodeBlockControls(progressAssistant), false);
 });
 
+test("a pending approval stays visible beside the command it is asking about", () => {
+  // Codex names the item its approval is about, and announces that item in the
+  // same breath. Both belong on screen: the command is what will run, and the
+  // approval is the only thing a person can press.
+  const identity = { itemId: "exec-1" };
+  const command = turnEvent("thread-1:turn-1:exec-1", "command_execution", 2, {
+    ...identity,
+    command: "/bin/zsh -lc 'open -a TextEdit'",
+    cwd: "src",
+    status: "inProgress",
+  });
+  const approval = turnEvent("approval_requested:401", "approval_requested", 1, {
+    ...identity,
+    threadId: "thread-1",
+    approvalId: "401",
+    title: "Command approval requested",
+    command: "/bin/zsh -lc 'open -a TextEdit'",
+    cwd: "src",
+    decisions: ["allow", "denyAndStop"],
+  });
+
+  for (const events of [[approval, command], [command, approval]]) {
+    const { html } = renderConversation(events, activeTask(), [approval]);
+
+    assert.match(
+      html,
+      /data-decision="allow"/,
+      "a pending approval must offer its answers however its item was ordered",
+    );
+    assert.match(
+      html,
+      /task-approval-card/,
+      "the approval card must survive beside its own command item",
+    );
+  }
+});
+
 function activeTask() {
   return {
     id: "thread-1",
