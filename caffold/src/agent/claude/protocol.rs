@@ -175,11 +175,46 @@ pub(crate) enum ContentBlock {
         #[serde(default)]
         is_error: bool,
     },
-    /// An image, which the conversation does not draw yet.
-    Image,
+    Image {
+        /// Where the picture is. Absent when the agent points at one somewhere
+        /// else rather than carrying it, which nothing here can draw.
+        #[serde(default)]
+        source: Option<ImageSource>,
+    },
     /// A block kind this release does not draw.
     #[serde(other)]
     Other,
+}
+
+/// Where a picture is.
+///
+/// Every field is optional because the agent may say where a picture is in
+/// ways this release has never seen — pointing at a URL, naming a file it
+/// uploaded — and a shape that does not fit must cost the picture and nothing
+/// else. Requiring a field here would fail the block, and a failed block fails
+/// the message around it: the words, the thinking, and the tool calls in it
+/// would all go with the picture.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub(crate) struct ImageSource {
+    #[serde(default, rename = "type")]
+    pub(crate) kind: String,
+    #[serde(default)]
+    pub(crate) media_type: String,
+    #[serde(default)]
+    pub(crate) data: String,
+}
+
+impl ImageSource {
+    /// The picture as the browser can draw it, when it is carried here.
+    ///
+    /// This is [`image_block`] undone, and it lives beside it so the two halves
+    /// of one grammar stay together. A source that only says where a picture is
+    /// has nothing to hand over, and saying `;base64,` about bytes that are not
+    /// would draw a broken picture rather than none.
+    pub(crate) fn data_url(&self) -> Option<String> {
+        (self.kind == "base64" && !self.media_type.is_empty() && !self.data.is_empty())
+            .then(|| format!("data:{};base64,{}", self.media_type, self.data))
+    }
 }
 
 /// What one turn cost and how it ended.
@@ -314,11 +349,24 @@ pub(crate) fn user_message(text: &str, images: &[String]) -> Value {
 
 /// One image, from the data URL the browser sent.
 fn image_block(image: &str) -> Option<Value> {
-    let (media_type, data) = image.strip_prefix("data:")?.split_once(";base64,")?;
+    let source = image_source(image)?;
     Some(serde_json::json!({
         "type": "image",
-        "source": { "type": "base64", "media_type": media_type, "data": data },
+        "source": { "type": "base64", "media_type": source.media_type, "data": source.data },
     }))
+}
+
+/// A data URL taken apart, or nothing when it is not one.
+///
+/// Both what is sent to the agent and what is drawn for a person come through
+/// here, so a picture Caffold cannot send is not a picture Caffold shows.
+pub(crate) fn image_source(image: &str) -> Option<ImageSource> {
+    let (media_type, data) = image.strip_prefix("data:")?.split_once(";base64,")?;
+    (!media_type.is_empty() && !data.is_empty()).then(|| ImageSource {
+        kind: "base64".to_string(),
+        media_type: media_type.to_string(),
+        data: data.to_string(),
+    })
 }
 
 /// One request from the host, addressed by an identifier the answer carries
@@ -473,6 +521,60 @@ mod tests {
         let content = frame["message"]["content"].as_array().expect("content");
         assert_eq!(content.len(), 1);
         assert_eq!(content[0]["type"], "image");
+    }
+
+    #[test]
+    fn a_picture_shaped_in_a_way_this_release_cannot_read_costs_the_picture_and_no_more() {
+        // The margin is in shape, never in meaning: an image the agent points
+        // at rather than carries must not take the words around it with it.
+        let frame: MessageFrame = serde_json::from_value(serde_json::json!({
+            "uuid": "u1",
+            "message": { "content": [
+                { "type": "text", "text": "before" },
+                { "type": "image", "source": { "type": "url", "url": "https://x/y.png" } },
+                { "type": "text", "text": "after" },
+            ]},
+        }))
+        .expect("the frame reads");
+
+        let MessageContent::Blocks(blocks) = &frame.message.content else {
+            panic!("the message is blocks: {:?}", frame.message.content);
+        };
+        assert_eq!(blocks.len(), 3, "the words survive the picture: {blocks:?}");
+        assert!(matches!(blocks[0], ContentBlock::Text { .. }));
+        assert!(matches!(blocks[2], ContentBlock::Text { .. }));
+        let ContentBlock::Image { source } = &blocks[1] else {
+            panic!("the picture is still a picture: {:?}", blocks[1]);
+        };
+        // Read, and with nothing to draw: it says where a picture is rather
+        // than carrying one.
+        assert_eq!(source.as_ref().and_then(ImageSource::data_url), None);
+    }
+
+    #[test]
+    fn a_picture_survives_being_sent_and_read_back_as_the_same_picture() {
+        let sent = "data:image/png;base64,aGVsbG8=";
+        let block = image_block(sent).expect("the picture is sendable");
+        let source: ImageSource =
+            serde_json::from_value(block["source"].clone()).expect("the source reads");
+
+        assert_eq!(source.data_url().as_deref(), Some(sent));
+    }
+
+    #[test]
+    fn what_cannot_be_sent_is_not_shown_as_though_it_had_been() {
+        for pointed_at in [
+            "https://example.test/cat.png",
+            "/Users/somebody/shot.png",
+            "data:image/png,notbase64",
+            "data:;base64,aGVsbG8=",
+            "data:image/png;base64,",
+        ] {
+            assert!(
+                image_source(pointed_at).is_none(),
+                "{pointed_at} is not a picture this can carry"
+            );
+        }
     }
 
     #[test]

@@ -49,8 +49,8 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use super::protocol::{Message, MessageContent};
-use super::translate::{ToolCalls, message_items, prompt_text, user_message_item};
-use crate::agent::{Turn, TurnPage, TurnStatus};
+use super::translate::{ToolCalls, message_items, prompt_content, user_message_item};
+use crate::agent::{MessageContent as CaffoldContent, Turn, TurnPage, TurnStatus};
 
 /// One line of the transcript.
 ///
@@ -141,6 +141,24 @@ pub(crate) struct Reading {
     pub(crate) unreadable: usize,
 }
 
+/// Where a turn begins, without reading what it is about.
+///
+/// Nothing but the file says which lines start turns, so finding the window a
+/// page wants means walking every line. This is what is read while doing that:
+/// the identity, and deliberately not the message. A `message` field here would
+/// have the reader decode every picture in a session to hand back eight turns.
+#[derive(Debug, Deserialize)]
+struct Boundary {
+    #[serde(default, rename = "type")]
+    kind: String,
+    #[serde(default)]
+    uuid: Option<String>,
+    #[serde(default, rename = "promptSource")]
+    prompt_source: Option<String>,
+    #[serde(default, rename = "isSidechain")]
+    is_sidechain: bool,
+}
+
 /// The most recent turns, newest first, and where to continue reading older
 /// ones.
 ///
@@ -149,26 +167,81 @@ pub(crate) struct Reading {
 /// an empty history rather than a failure — and so is one that cannot be read,
 /// because a conversation that will not load is better shown as the turns that
 /// did than as an error where the conversation should be.
+///
+/// Read in two passes. The first finds where the turns begin and reads nothing
+/// else; the second reads only the lines of the turns being handed back. One
+/// pass would mean building a whole conversation to return the end of it —
+/// for a session with pictures in it, most of the file decoded and dropped, and
+/// dropped again on every page after the first.
 pub(crate) fn read(path: &Path, before: Option<&str>, limit: usize) -> Reading {
     let Ok(contents) = std::fs::read_to_string(path) else {
         return Reading::default();
     };
-    let (turns, unreadable) = turns(&contents);
+    let lines: Vec<&str> = contents.lines().collect();
+    let Some(window) = window(&lines, before, limit) else {
+        return Reading::default();
+    };
+    let (turns, unreadable) = turns(&lines[window.lines]);
     Reading {
-        page: page(turns, before, limit),
+        page: TurnPage {
+            // Newest first, which is the order history is read in.
+            turns: turns.into_iter().rev().collect(),
+            next_cursor: window.older,
+            backwards_cursor: None,
+        },
         unreadable,
     }
 }
 
-/// Every turn in the file, oldest first, and how much of it went unread.
-fn turns(contents: &str) -> (Vec<Turn>, usize) {
+/// The lines a page is made of, and where the turns older than it begin.
+struct Window {
+    lines: std::ops::Range<usize>,
+    older: Option<String>,
+}
+
+/// Which lines the asked-for turns are written on.
+///
+/// A turn runs from the line that opens it to the line before the next one, and
+/// the last runs to the end of the file — so work the agent did before anyone
+/// asked it anything falls outside every window, which is where it belongs.
+fn window(lines: &[&str], before: Option<&str>, limit: usize) -> Option<Window> {
+    let opens: Vec<(usize, String)> = lines
+        .iter()
+        .enumerate()
+        .filter_map(|(index, line)| {
+            let row = serde_json::from_str::<Boundary>(line).ok()?;
+            let opens_a_turn =
+                !row.is_sidechain && row.kind == "user" && row.prompt_source.is_some();
+            opens_a_turn.then_some(())?;
+            Some((index, row.uuid?))
+        })
+        .collect();
+
+    // A cursor names the oldest turn already read, so this page ends where that
+    // one began. One naming a turn that is not here — a file that was replaced,
+    // or a cursor that was never ours — reads as nothing further.
+    let end = match before {
+        Some(cursor) => opens.iter().position(|(_, id)| id == cursor)?,
+        None => opens.len(),
+    };
+    let start = end.saturating_sub(limit);
+    let line_of = |at: usize| opens.get(at).map_or(lines.len(), |(line, _)| *line);
+    Some(Window {
+        older: (start > 0).then(|| opens[start].1.clone()),
+        lines: line_of(start)..line_of(end),
+    })
+}
+
+/// Every turn on these lines, oldest first, and how much of them went unread.
+fn turns(lines: &[&str]) -> (Vec<Turn>, usize) {
     let mut turns: Vec<Turn> = Vec::new();
     let mut unreadable = 0;
-    // Held across the whole file, because a tool call is drawn from where it
-    // started and answered somewhere later.
+    // Held across the window, because a tool call is drawn from where it
+    // started and answered somewhere later. A call never outlives the turn it
+    // was made in, so a window of whole turns holds both ends of every one.
     let mut calls = ToolCalls::default();
 
-    for line in contents.lines() {
+    for line in lines.iter().copied() {
         let Ok(row) = serde_json::from_str::<Row>(line) else {
             // A line this release cannot read is one message missing from a
             // conversation, which is worth less than the conversation — but it
@@ -190,13 +263,21 @@ fn turns(contents: &str) -> (Vec<Turn>, usize) {
         if let Some(steer) = steered_message(&row) {
             if let Some(turn) = turns.last_mut() {
                 turn.items
-                    .push(user_message_item(&format!("{anchor}:steer"), &steer));
+                    .push(user_message_item(&format!("{anchor}:steer"), steer));
             }
             continue;
         }
         let Some(message) = row.message.as_ref() else {
             continue;
         };
+        // The line read and the message inside it did not. Counted here as well
+        // as above, because a message this release cannot make anything of is
+        // missing from the conversation whether the loss was the whole line or
+        // the body of it.
+        if matches!(message.content, MessageContent::Unreadable(_)) {
+            unreadable += 1;
+            continue;
+        }
 
         if row.kind == "user" && row.prompt_source.is_some() {
             turns.push(Turn {
@@ -206,7 +287,7 @@ fn turns(contents: &str) -> (Vec<Turn>, usize) {
                 completed_at_ms: at_ms,
                 items: vec![user_message_item(
                     &format!("{anchor}:prompt"),
-                    &prompt_text(message),
+                    prompt_content(message),
                 )],
             });
             continue;
@@ -244,38 +325,26 @@ fn turns(contents: &str) -> (Vec<Turn>, usize) {
 /// What a person said into a turn that was already running, if that is what
 /// this row is.
 ///
-/// A queued command whose words this release cannot read is passed over rather
-/// than shown as an empty thing somebody said.
-fn steered_message(row: &Row) -> Option<String> {
+/// A queued command with nothing in it to show is passed over rather than
+/// shown as an empty thing somebody said. Having parts is not the same as
+/// having anything to say: a blank line is one part.
+fn steered_message(row: &Row) -> Option<Vec<CaffoldContent>> {
     let attachment = row.attachment.as_ref()?;
     if attachment.kind != "queued_command" {
         return None;
     }
-    let said = prompt_text(&Message {
+    let said = prompt_content(&Message {
         id: None,
         content: attachment.prompt.clone(),
     });
-    (!said.is_empty()).then_some(said)
+    said.iter().any(is_worth_showing).then_some(said)
 }
 
-/// A window of turns, newest first, with a cursor into what lies beyond it.
-fn page(mut turns: Vec<Turn>, before: Option<&str>, limit: usize) -> TurnPage {
-    if let Some(cursor) = before {
-        match turns.iter().position(|turn| turn.id == cursor) {
-            Some(index) => turns.truncate(index),
-            // A cursor naming a turn that is no longer here — the file was
-            // rewritten, or it was never ours — reads as nothing further.
-            None => return TurnPage::default(),
-        }
-    }
-    let remaining = turns.len().saturating_sub(limit);
-    let window: Vec<Turn> = turns.split_off(remaining);
-    TurnPage {
-        next_cursor: (remaining > 0)
-            .then(|| window.first().map(|turn| turn.id.clone()))
-            .flatten(),
-        turns: window.into_iter().rev().collect(),
-        backwards_cursor: None,
+/// Whether one part of a message puts anything on the screen.
+fn is_worth_showing(part: &CaffoldContent) -> bool {
+    match part {
+        CaffoldContent::Text { text } => !text.trim().is_empty(),
+        CaffoldContent::Image { .. } | CaffoldContent::LocalImage { .. } => true,
     }
 }
 
@@ -302,10 +371,16 @@ mod tests {
         row.to_string()
     }
 
+    /// Every turn a written-down conversation holds, for a test that wants all
+    /// of them rather than a page.
+    fn all_turns(contents: &str) -> (Vec<Turn>, usize) {
+        turns(&contents.lines().collect::<Vec<_>>())
+    }
+
     /// The turns of a conversation, for a test with nothing to say about what
     /// could not be read.
     fn read_turns(contents: &str) -> Vec<Turn> {
-        let (turns, unreadable) = turns(contents);
+        let (turns, unreadable) = all_turns(contents);
         assert_eq!(unreadable, 0, "every line was expected to be readable");
         turns
     }
@@ -439,6 +514,82 @@ mod tests {
     }
 
     #[test]
+    fn a_queued_command_with_nothing_in_it_is_not_shown_as_something_said() {
+        let contents = [
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "go"},
+            })),
+            line(serde_json::json!({
+                "type": "attachment",
+                "uuid": "queued-1",
+                "attachment": {
+                    "type": "queued_command",
+                    "prompt": [{"type": "text", "text": "   "}],
+                },
+            })),
+        ]
+        .join("\n");
+
+        let turns = read_turns(&contents);
+
+        assert_eq!(turns.len(), 1);
+        assert_eq!(turns[0].items.len(), 1, "{:?}", items_of(&turns[0]));
+    }
+
+    #[test]
+    fn a_message_whose_body_cannot_be_read_is_counted_as_missing() {
+        // The line reads and the body does not, which is a message gone from a
+        // conversation that would otherwise be handed over as whole.
+        let contents = [
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "go"},
+            })),
+            line(serde_json::json!({
+                "type": "assistant",
+                "uuid": "answer-1",
+                "message": {"role": "assistant", "content": 42},
+            })),
+        ]
+        .join("\n");
+
+        let (turns, unreadable) = all_turns(&contents);
+
+        assert_eq!(turns.len(), 1);
+        assert_eq!(unreadable, 1);
+    }
+
+    #[test]
+    fn a_picture_the_agent_only_points_at_costs_the_picture_and_not_the_words() {
+        // The agent may say where a picture is in ways this release has never
+        // seen. Losing the words around it would be losing the conversation.
+        let contents = line(serde_json::json!({
+            "type": "user",
+            "uuid": "prompt-1",
+            "promptSource": "sdk",
+            "message": {"role": "user", "content": [
+                {"type": "text", "text": "look at this"},
+                {"type": "image", "source": {"type": "url", "url": "https://x/y.png"}},
+            ]},
+        }));
+
+        let (turns, unreadable) = all_turns(&contents);
+
+        assert_eq!(unreadable, 0, "the message was read");
+        assert_eq!(turns.len(), 1);
+        let ItemKind::UserMessage { text, content } = &turns[0].items[0].kind else {
+            panic!("the prompt survived: {:?}", items_of(&turns[0]));
+        };
+        assert_eq!(text, "look at this");
+        assert_eq!(content.len(), 1, "the words, and no picture: {content:?}");
+    }
+
+    #[test]
     fn a_line_that_cannot_be_read_costs_one_message_and_not_the_conversation() {
         let contents = [
             line(serde_json::json!({
@@ -456,7 +607,7 @@ mod tests {
         ]
         .join("\n");
 
-        let (turns, unreadable) = turns(&contents);
+        let (turns, unreadable) = all_turns(&contents);
 
         assert_eq!(turns.len(), 1);
         assert_eq!(turns[0].items.len(), 2);
@@ -465,38 +616,57 @@ mod tests {
         assert_eq!(unreadable, 1);
     }
 
+    /// One page of a written-down conversation, the way `read` asks for one.
+    fn page_of(contents: &str, before: Option<&str>, limit: usize) -> TurnPage {
+        let lines: Vec<&str> = contents.lines().collect();
+        let window = window(&lines, before, limit).expect("the window is found");
+        let (turns, unreadable) = turns(&lines[window.lines]);
+        assert_eq!(unreadable, 0, "every line was expected to be readable");
+        TurnPage {
+            turns: turns.into_iter().rev().collect(),
+            next_cursor: window.older,
+            backwards_cursor: None,
+        }
+    }
+
+    fn ids(page: &TurnPage) -> Vec<&str> {
+        page.turns.iter().map(|turn| turn.id.as_str()).collect()
+    }
+
     #[test]
     fn a_page_is_the_newest_turns_and_a_cursor_to_the_rest() {
-        let all = read_turns(&conversation());
+        let newest = page_of(&conversation(), None, 1);
 
-        let newest = page(all.clone(), None, 1);
-
-        assert_eq!(
-            newest
-                .turns
-                .iter()
-                .map(|turn| turn.id.as_str())
-                .collect::<Vec<_>>(),
-            ["prompt-2"]
-        );
+        assert_eq!(ids(&newest), ["prompt-2"]);
         assert_eq!(newest.next_cursor.as_deref(), Some("prompt-2"));
 
-        let older = page(all.clone(), newest.next_cursor.as_deref(), 8);
+        let older = page_of(&conversation(), newest.next_cursor.as_deref(), 8);
 
-        assert_eq!(
-            older
-                .turns
-                .iter()
-                .map(|turn| turn.id.as_str())
-                .collect::<Vec<_>>(),
-            ["prompt-1"]
-        );
+        assert_eq!(ids(&older), ["prompt-1"]);
         assert_eq!(older.next_cursor, None);
     }
 
     #[test]
+    fn only_the_turns_of_a_page_are_read_at_all() {
+        // The whole point of finding the window first: a page of one turn must
+        // not cost the work of building the turn before it.
+        let contents = conversation();
+        let lines: Vec<&str> = contents.lines().collect();
+        let window = window(&lines, None, 1).expect("the window is found");
+
+        let (turns, _) = turns(&lines[window.lines.clone()]);
+        assert_eq!(turns.len(), 1);
+        assert!(
+            !lines[window.lines]
+                .iter()
+                .any(|line| line.contains("first")),
+            "the older turn's lines are outside the window"
+        );
+    }
+
+    #[test]
     fn asking_for_more_than_there_is_asks_for_nothing_further() {
-        let page = page(read_turns(&conversation()), None, 8);
+        let page = page_of(&conversation(), None, 8);
 
         assert_eq!(page.turns.len(), 2);
         assert_eq!(page.next_cursor, None);
@@ -505,8 +675,16 @@ mod tests {
     }
 
     #[test]
+    fn a_cursor_that_names_no_turn_here_reads_as_nothing_further() {
+        let contents = conversation();
+        let lines: Vec<&str> = contents.lines().collect();
+
+        assert!(window(&lines, Some("prompt-never-written"), 8).is_none());
+    }
+
+    #[test]
     fn history_read_from_the_file_is_history_that_finished() {
-        let page = page(read_turns(&conversation()), None, 8);
+        let page = page_of(&conversation(), None, 8);
 
         assert!(
             page.turns
@@ -544,6 +722,14 @@ mod tests {
     /// as a queued command rather than as a message.
     const RECORDED_WITH_A_COMMAND: &str =
         include_str!("transcript/a-session-with-a-command-and-a-steer.jsonl");
+
+    /// A session somebody put a picture in.
+    ///
+    /// A picture travels inside the message rather than beside it, so reading
+    /// one back is a matter of undoing what was written to send it. The picture
+    /// is a small solid square, because what is being checked is the shape the
+    /// agent files it in and not the picture.
+    const RECORDED_WITH_A_PICTURE: &str = include_str!("transcript/a-session-with-a-picture.jsonl");
 
     #[test]
     fn a_session_the_agent_really_wrote_reads_back_as_the_conversation_it_was() {
@@ -662,6 +848,36 @@ mod tests {
             )),
             "{:?}",
             items_of(&turns[0])
+        );
+    }
+
+    #[test]
+    fn a_picture_somebody_sent_comes_back_as_the_picture_they_sent() {
+        let turns = read_turns(RECORDED_WITH_A_PICTURE);
+
+        assert_eq!(turns.len(), 1);
+        let ItemKind::UserMessage { text, content } = &turns[0].items[0].kind else {
+            panic!(
+                "the prompt is what a person said: {:?}",
+                items_of(&turns[0])
+            );
+        };
+        // The words are the words, with nothing of the picture folded in.
+        assert_eq!(text, "What colour is this square? One word.");
+        assert_eq!(content.len(), 2, "{content:?}");
+        assert!(matches!(&content[0], CaffoldContent::Text { .. }));
+        let CaffoldContent::Image { url } = &content[1] else {
+            panic!("the picture is beside the words: {content:?}");
+        };
+        // A data URL, which is what the browser was handed to begin with.
+        assert!(
+            url.starts_with("data:image/png;base64,"),
+            "{}",
+            &url[..40.min(url.len())]
+        );
+        assert!(
+            url.len() > "data:image/png;base64,".len(),
+            "the picture has bytes in it"
         );
     }
 

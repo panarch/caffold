@@ -148,10 +148,10 @@ struct SessionState {
     ///
     /// The turn has no name until the agent says what it filed the prompt as,
     /// so this holds the place between writing the prompt and learning what to
-    /// call what follows. The words are kept because the turn may end up being
-    /// opened by a frame that is not the prompt coming home, and that frame
-    /// does not know what was asked.
-    pending_prompt: Option<(String, oneshot::Sender<Turn>)>,
+    /// call what follows. What was said is kept because the turn may end up
+    /// being opened by a frame that is not the prompt coming home, and that
+    /// frame does not know what was asked.
+    pending_prompt: Option<(Vec<MessageContent>, oneshot::Sender<Turn>)>,
     /// The turns this session has run while Caffold watched.
     turns: Vec<Turn>,
     /// Tool calls a person refused.
@@ -480,7 +480,7 @@ impl ClaudeClient {
                 )));
             }
             let (sender, receiver) = oneshot::channel();
-            state.pending_prompt = Some((prompt.to_string(), sender));
+            state.pending_prompt = Some((translate::prompt_content_of(prompt, images), sender));
             receiver
         };
 
@@ -539,7 +539,7 @@ impl ClaudeClient {
         named
             .and_then(|id| state.turns.iter().find(|turn| turn.id == id))
             .cloned()
-            .unwrap_or_else(|| open_turn(&mut state, &uuid::Uuid::new_v4().to_string(), ""))
+            .unwrap_or_else(|| open_turn(&mut state, &uuid::Uuid::new_v4().to_string(), Vec::new()))
     }
 
     /// Bring the session to the settings a person has chosen.
@@ -647,16 +647,10 @@ impl ClaudeClient {
         let session = self.require_session(conversation_id).await?;
         session.send(protocol::user_message(prompt, images)).await?;
 
-        let item = ConversationItem {
-            id: format!("{turn_id}:steer:{}", now_ms()),
-            status: ActivityStatus::Completed,
-            kind: ItemKind::UserMessage {
-                text: prompt.to_string(),
-                content: vec![MessageContent::Text {
-                    text: prompt.to_string(),
-                }],
-            },
-        };
+        let item = translate::user_message_item(
+            &format!("{turn_id}:steer:{}", now_ms()),
+            translate::prompt_content_of(prompt, images),
+        );
         self.record_item(&session, turn_id, item.clone()).await;
         self.report(
             conversation_id,
@@ -1457,11 +1451,11 @@ fn changed(current: &Option<String>, wanted: &Option<String>) -> Option<String> 
 /// to a timeout that the agent's own answer has already outrun — a turn opened
 /// after its `result` went by is a turn nothing will ever close.
 fn open_pending_turn(state: &mut SessionState, named: Option<&str>) -> Option<Turn> {
-    let (prompt, waiting) = state.pending_prompt.take()?;
+    let (said, waiting) = state.pending_prompt.take()?;
     let turn_id = named
         .map(str::to_string)
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    let turn = open_turn(state, &turn_id, &prompt);
+    let turn = open_turn(state, &turn_id, said);
     // Nobody waiting means the prompt gave up on being told, and has taken this
     // turn as the session's active one by another route.
     let _ = waiting.send(turn.clone());
@@ -1472,7 +1466,7 @@ fn open_pending_turn(state: &mut SessionState, named: Option<&str>) -> Option<Tu
 ///
 /// Whoever calls this holds the session's state, which is what makes the turn
 /// exist before anything the agent says next can arrive looking for it.
-fn open_turn(state: &mut SessionState, turn_id: &str, prompt: &str) -> Turn {
+fn open_turn(state: &mut SessionState, turn_id: &str, said: Vec<MessageContent>) -> Turn {
     let started_at_ms = now_ms();
     let turn = Turn {
         id: turn_id.to_string(),
@@ -1481,7 +1475,7 @@ fn open_turn(state: &mut SessionState, turn_id: &str, prompt: &str) -> Turn {
         completed_at_ms: None,
         items: vec![translate::user_message_item(
             &format!("{turn_id}:prompt"),
-            prompt,
+            said,
         )],
     };
     state.active_turn = Some(turn_id.to_string());
@@ -2072,6 +2066,50 @@ mod tests {
         ));
         let heard = runner.heard(SESSION).await;
         assert_eq!(heard.len(), 1, "the prompt was written once, not twice");
+    }
+
+    #[tokio::test]
+    async fn a_picture_sent_with_a_prompt_belongs_to_the_turn_it_started() {
+        // Until now Caffold showed one from an event of its own, which lives in
+        // the backend rather than in the conversation and dies with it. The
+        // turn carrying it is what survives being read back.
+        let (client, runner, _events) = watching().await;
+        let picture = "data:image/png;base64,aGVsbG8=".to_string();
+
+        let turn = client
+            .start_turn(
+                SESSION,
+                "what is this",
+                std::slice::from_ref(&picture),
+                &options("opus"),
+            )
+            .await
+            .expect("the turn starts");
+
+        let ItemKind::UserMessage { text, content } = &turn.items[0].kind else {
+            panic!("the prompt is what a person said: {:?}", turn.items[0].kind);
+        };
+        assert_eq!(text, "what is this", "the words are the words");
+        assert_eq!(
+            content,
+            &vec![
+                MessageContent::Text {
+                    text: "what is this".to_string()
+                },
+                MessageContent::Image {
+                    url: picture.clone()
+                },
+            ]
+        );
+
+        // And it reached the agent as a picture rather than as its data URL.
+        let heard = runner.heard(SESSION).await;
+        let blocks = heard[0]["message"]["content"]
+            .as_array()
+            .expect("content")
+            .clone();
+        assert_eq!(blocks[1]["type"], "image");
+        assert_eq!(blocks[1]["source"]["media_type"], "image/png");
     }
 
     #[tokio::test]

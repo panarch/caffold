@@ -22,7 +22,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use super::protocol::{ContentBlock, Message, MessageContent};
+use super::protocol::{ContentBlock, ImageSource, Message, MessageContent, image_source};
 use crate::agent::{
     ActivityStatus, CommandExecution, ConversationItem, ItemKind, MessageContent as CaffoldContent,
 };
@@ -58,7 +58,12 @@ pub(crate) fn message_items(
 ) -> Vec<ConversationItem> {
     let blocks = match &message.content {
         MessageContent::Blocks(blocks) => blocks.as_slice(),
-        MessageContent::Text(text) => return vec![user_message_item(anchor, text)],
+        MessageContent::Text(text) => {
+            return vec![user_message_item(
+                anchor,
+                vec![CaffoldContent::Text { text: text.clone() }],
+            )];
+        }
         MessageContent::Unreadable(_) => return Vec::new(),
     };
 
@@ -97,48 +102,84 @@ pub(crate) fn message_items(
                     items.push(item);
                 }
             }
-            ContentBlock::Image | ContentBlock::Other => {}
+            // A picture belongs to the message a person wrote, which is read
+            // by `prompt_content`, not to the work the agent reports.
+            ContentBlock::Image { .. } | ContentBlock::Other => {}
         }
     }
     items
 }
 
-/// A message a person typed, which the agent stores as plain text.
-/// What a person actually said, out of the message they said it in.
+/// Everything a person put in a message, out of the message they put it in.
 ///
-/// An image sent with a prompt is not drawn, in either reader — the two have to
-/// agree, and a conversation that grew pictures on reload would be the two
-/// disagreeing.
-pub(crate) fn prompt_text(message: &Message) -> String {
+/// A picture is carried in the message rather than pointed at, so reading one
+/// back is [`super::protocol::user_message`] undone: the media type and the
+/// bytes become the data URL the browser was given in the first place.
+pub(crate) fn prompt_content(message: &Message) -> Vec<CaffoldContent> {
     match &message.content {
-        MessageContent::Text(text) => text.clone(),
+        MessageContent::Text(text) => vec![CaffoldContent::Text { text: text.clone() }],
         MessageContent::Blocks(blocks) => blocks
             .iter()
             .filter_map(|block| match block {
-                ContentBlock::Text { text } => Some(text.as_str()),
+                ContentBlock::Text { text } => Some(CaffoldContent::Text { text: text.clone() }),
+                ContentBlock::Image { source } => source
+                    .as_ref()
+                    .and_then(ImageSource::data_url)
+                    .map(|url| CaffoldContent::Image { url }),
                 _ => None,
             })
-            .collect::<Vec<_>>()
-            .join("\n"),
-        MessageContent::Unreadable(_) => String::new(),
+            .collect(),
+        MessageContent::Unreadable(_) => Vec::new(),
     }
 }
 
 /// What a person said, as the conversation shows it.
 ///
 /// Both readers build a prompt with this, so a prompt watched live and the same
-/// prompt read from the transcript are the same item under the same identity.
-pub(crate) fn user_message_item(anchor: &str, text: &str) -> ConversationItem {
+/// prompt read from the transcript are the same item under the same identity —
+/// and, since a picture travels in the message, the same pictures.
+///
+/// The text is what was written and nothing else, because it is what a Task is
+/// previewed and searched by; the pictures live beside it in the content.
+pub(crate) fn user_message_item(anchor: &str, content: Vec<CaffoldContent>) -> ConversationItem {
+    let text = content
+        .iter()
+        .filter_map(|part| match part {
+            CaffoldContent::Text { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     ConversationItem {
         id: anchor.to_string(),
         status: ActivityStatus::Completed,
-        kind: ItemKind::UserMessage {
-            text: text.to_string(),
-            content: vec![CaffoldContent::Text {
-                text: text.to_string(),
-            }],
-        },
+        kind: ItemKind::UserMessage { text, content },
     }
+}
+
+/// What a person said, out of what Caffold was given to send.
+///
+/// The live reader starts here rather than from a message, because a prompt is
+/// drawn before the agent has said anything about it.
+///
+/// A picture is kept only if it is one the agent can be given, because
+/// [`super::protocol::user_message`] decides the same way: drawing one that was
+/// never sent would put it in the conversation now and take it out again the
+/// moment the conversation is read back from what the agent wrote.
+pub(crate) fn prompt_content_of(text: &str, images: &[String]) -> Vec<CaffoldContent> {
+    let said = (!text.is_empty()).then(|| CaffoldContent::Text {
+        text: text.to_string(),
+    });
+    said.into_iter()
+        .chain(
+            images
+                .iter()
+                .filter(|image| image_source(image).is_some())
+                .map(|url| CaffoldContent::Image {
+                    url: url.to_string(),
+                }),
+        )
+        .collect()
 }
 
 impl ToolCalls {
