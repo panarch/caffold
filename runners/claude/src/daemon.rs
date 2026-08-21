@@ -150,14 +150,14 @@ impl Runner {
                 Err(error) => Outcome::Err(error),
             },
             Request::SessionClose { session } => {
-                let removed = self.sessions.lock().await.remove(&session);
-                match removed {
-                    Some(removed) => {
-                        removed.close().await;
-                        Outcome::Ok(ReplyBody::Empty {})
-                    }
-                    None => Outcome::Err(unknown_session(&session)),
+                // Idempotent: what was asked for is that this session not be
+                // running, and one the runner does not have is not running.
+                // A client cannot know whether a session it never opened was
+                // started by an earlier one of itself.
+                if let Some(removed) = self.sessions.lock().await.remove(&session) {
+                    removed.close().await;
                 }
+                Outcome::Ok(ReplyBody::Empty {})
             }
             Request::SessionAttach { session } => match self.attach(&session, connection).await {
                 Ok(info) => Outcome::Ok(ReplyBody::Session(info)),

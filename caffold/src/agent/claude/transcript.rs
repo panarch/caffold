@@ -96,19 +96,47 @@ struct Attachment {
     prompt: MessageContent,
 }
 
+/// Where the agent keeps every project's conversations.
+///
+/// Read once, when a client is built, rather than at each use: a backend whose
+/// environment has no home has nowhere to read or remove conversations, and
+/// finding that out at the moment of a delete would mean reporting one that
+/// removed nothing as done.
+pub(crate) fn projects_root() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME").filter(|home| !home.is_empty())?;
+    Some(Path::new(&home).join(".claude").join("projects"))
+}
+
 /// Where the agent keeps this session's conversation.
 ///
 /// `cwd` is the directory the session runs in, which is the one it was created
 /// in: resuming a session somewhere else leaves its record where it was.
-pub(crate) fn locate(cwd: &str, session_id: &str) -> Option<PathBuf> {
-    let home = std::env::var_os("HOME").filter(|home| !home.is_empty())?;
-    Some(
-        Path::new(&home)
-            .join(".claude")
-            .join("projects")
+///
+/// Nothing is located for a session whose name is not a name. The identifier
+/// reaches here from a row in Caffold's store and is joined into a path that
+/// [`erase`] removes, so a name that is not one is not a path this can work out
+/// — `..` would climb out of the directory, an absolute one would leave it
+/// altogether, and both would be removed as readily as the right file.
+pub(crate) fn locate(projects: &Path, cwd: &str, session_id: &str) -> Option<PathBuf> {
+    names_one_conversation(session_id).then(|| {
+        projects
             .join(project_directory(cwd))
-            .join(format!("{session_id}.jsonl")),
-    )
+            .join(format!("{session_id}.jsonl"))
+    })
+}
+
+/// Whether an identifier names one conversation and nothing else.
+///
+/// The agent names a session with a UUID and so does Caffold, so this asks for
+/// no more than that shape allows: something written, made only of the
+/// characters a UUID is made of. Anything else is refused rather than
+/// interpreted, because what is on the other side of this is a recursive
+/// removal and the cost of guessing wrong is not recoverable.
+fn names_one_conversation(session_id: &str) -> bool {
+    !session_id.is_empty()
+        && session_id
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '-')
 }
 
 /// The name a working directory is filed under.
@@ -157,6 +185,28 @@ struct Boundary {
     prompt_source: Option<String>,
     #[serde(default, rename = "isSidechain")]
     is_sidechain: bool,
+}
+
+/// Remove a written-down conversation and everything filed with it.
+///
+/// A local session is the file and the directory beside it — the subagent
+/// conversations, the tool output that spilled out of the file — and nothing
+/// else anywhere. Removing both is the whole of forgetting one.
+///
+/// Gone already is the outcome asked for, so only a removal that failed for
+/// some other reason is a failure.
+pub(crate) fn erase(written: &Path) -> std::io::Result<()> {
+    let beside = written.with_extension("");
+    match std::fs::remove_file(written) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    match std::fs::remove_dir_all(&beside) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 /// The most recent turns, newest first, and where to continue reading older
@@ -691,6 +741,56 @@ mod tests {
                 .iter()
                 .all(|turn| turn.status == TurnStatus::Completed)
         );
+    }
+
+    #[test]
+    fn a_name_that_is_not_a_name_locates_nothing() {
+        // What is on the other side of `locate` removes a directory and
+        // everything under it, so every one of these once resolved somewhere
+        // it had no business removing: `.` and `..` to the directory holding
+        // every project, `../..` to the agent's whole home, an absolute one to
+        // wherever it pointed.
+        let projects = Path::new("/home/somebody/.claude/projects");
+        for named in [".", "..", "../..", "/etc/passwd", "", "a/b", "a\\b", "id.1"] {
+            assert_eq!(
+                locate(projects, "/tmp/project", named),
+                None,
+                "{named:?} does not name one conversation"
+            );
+        }
+        assert!(
+            locate(
+                projects,
+                "/tmp/project",
+                "069e211f-802d-4c1e-bf64-799ae77084a8"
+            )
+            .is_some()
+        );
+    }
+
+    #[test]
+    fn erasing_a_conversation_takes_the_file_and_what_was_filed_with_it() {
+        let root = tempfile::tempdir().unwrap();
+        let written = root.path().join("a-session.jsonl");
+        let beside = root.path().join("a-session");
+        std::fs::write(&written, "{}\n").unwrap();
+        std::fs::create_dir_all(beside.join("subagents")).unwrap();
+        std::fs::write(beside.join("subagents/agent-1.jsonl"), "{}\n").unwrap();
+        let kept = root.path().join("another-session.jsonl");
+        std::fs::write(&kept, "{}\n").unwrap();
+
+        erase(&written).expect("the conversation is erased");
+
+        assert!(!written.exists());
+        assert!(!beside.exists());
+        assert!(kept.exists(), "only the conversation named was erased");
+    }
+
+    #[test]
+    fn erasing_a_conversation_that_is_already_gone_is_what_was_asked_for() {
+        let root = tempfile::tempdir().unwrap();
+
+        erase(&root.path().join("never-written.jsonl")).expect("gone is the outcome asked for");
     }
 
     #[test]

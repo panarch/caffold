@@ -41,6 +41,9 @@ pub enum Request {
         attach: bool,
     },
     SessionList,
+    /// End a session and the process behind it. Idempotent, for the same reason
+    /// [`Request::SessionCreate`] is: a caller asks for a session not to be
+    /// running, and one that was never started is not running.
     SessionClose {
         session: String,
     },

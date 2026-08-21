@@ -15,32 +15,13 @@ pub(super) async fn list_archived_tasks(
 ) -> Result<Json<TaskListResponse>, ApiError> {
     let (archived, next_cursor) =
         task_store_list_archived(&state, query.cursor.as_deref(), TASK_LIST_PAGE_SIZE).await?;
-    let connection = require_codex_thread_connection(&state).await?;
     let reads = stream::iter(archived)
         .map(|managed| {
             let state = state.clone();
-            let client = connection.client.clone();
             async move {
-                match client.read_thread(&managed.thread_id).await {
-                    Ok(thread) => {
-                        state
-                            .task_sessions
-                            .observe_thread_metadata(Conversation::from(&thread))
-                            .await;
-                        let mut task = state
-                            .detail
-                            .record_from_conversation(&Conversation::from(&thread))?;
-                        let activity_ms = task_activity_ms(&task);
-                        apply_managed_thread_metadata(&mut task, &managed);
-                        Ok::<_, ApiError>((task, activity_ms))
-                    }
-                    Err(error) if error.is_thread_unavailable() => {
-                        let task = unavailable_archived_task(&managed);
-                        let activity_ms = task_activity_ms(&task);
-                        Ok((task, activity_ms))
-                    }
-                    Err(error) => Err(error.into()),
-                }
+                let task = archived_task(&state, &managed).await?;
+                let activity_ms = task_activity_ms(&task);
+                Ok::<_, ApiError>((task, activity_ms))
             }
         })
         .buffer_unordered(TASK_CANONICAL_READ_CONCURRENCY)
@@ -54,6 +35,43 @@ pub(super) async fn list_archived_tasks(
     });
     let tasks = tasks.into_iter().map(|(task, _)| task).collect();
     Ok(Json(TaskListResponse { tasks, next_cursor }))
+}
+
+/// One row of the archived list, described by the agent that runs it.
+///
+/// Only one thing on the row needs the agent at all: whether there is still a
+/// conversation to go back to, which is what decides whether restoring is
+/// offered. The name, the worktree, and when it was last seen are Caffold's own
+/// and come from the row.
+///
+/// Codex answers by reading the thread, which also describes it. Claude cannot
+/// be asked without being started, and starting a session for every archived
+/// Task in a list would start them all — so the answer is whether the agent
+/// still has the conversation written down, which costs a look at the
+/// filesystem.
+async fn archived_task(state: &TaskState, managed: &ManagedThread) -> Result<TaskRecord, ApiError> {
+    let driver = state
+        .task_runtime
+        .agent_for(&managed.run_by)
+        .await?
+        .driver();
+    let described = match driver.describe(&managed.thread_id).await {
+        Ok(described) => described,
+        // A conversation the agent no longer has is a Task that can be listed
+        // but not gone back to, which the row says for itself. Anything else
+        // going wrong is the list failing rather than one row being empty.
+        Err(error) if error.is_thread_unavailable() => {
+            return Ok(unavailable_archived_task(managed));
+        }
+        Err(error) => return Err(error.into()),
+    };
+    if let Some(conversation) = &described {
+        state
+            .task_sessions
+            .observe_thread_metadata(conversation.clone())
+            .await;
+    }
+    task_described_as(state, &driver, managed, described).await
 }
 
 pub(super) async fn task_list_stream(State(state): State<TaskState>) -> Result<Response, ApiError> {
@@ -596,7 +614,7 @@ mod tests {
         client.mock_publish_event(crate::agent::codex::CodexRuntimeEvent::Notification(
             crate::agent::codex::CodexNotification::ThreadStatusChanged {
                 thread_id: first_id.to_string(),
-                status: ThreadStatus::Idle,
+                status: crate::agent::codex::ThreadStatus::Idle,
             },
         ));
         let third = tokio::time::timeout(std::time::Duration::from_millis(100), body.next())

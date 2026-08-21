@@ -559,6 +559,116 @@ impl Driver {
         }
     }
 
+    /// Put a conversation away.
+    ///
+    /// Codex has an archive of its own and this asks for it. Claude has none —
+    /// a local session is a process and a file, and neither has a state between
+    /// kept and gone — so Caffold's archive is the only one there is, and what
+    /// the agent is asked for is simply to stop: the process ends and the row
+    /// Caffold keeps is what remembers the Task.
+    pub(crate) async fn archive_conversation(
+        &self,
+        conversation_id: &str,
+    ) -> Result<(), CodexThreadError> {
+        match self {
+            Self::Codex(client) => client.archive_thread(conversation_id).await,
+            Self::Claude(claude) => Ok(claude.client.close_conversation(conversation_id).await?),
+        }
+    }
+
+    /// Take a conversation back out, and answer with it when the agent knows
+    /// what it is.
+    ///
+    /// Nothing was done to Claude that has to be undone: the session ended, and
+    /// a session that ended resumes by name the next time the Task is opened.
+    /// That is also what makes this the way to roll an archive back — there is
+    /// no state to put right, only a Task that goes on being active.
+    pub(crate) async fn restore_conversation(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Option<Conversation>, CodexThreadError> {
+        match self {
+            Self::Codex(client) => client
+                .unarchive_thread(conversation_id)
+                .await
+                .map(|thread| Some(Conversation::from(&thread))),
+            // Codex refuses to take back out a thread it no longer has, and a
+            // Task restored onto a conversation that is gone is one that can
+            // never be opened again. So the same refusal is made here, by
+            // looking — which is the only way this agent can be asked.
+            Self::Claude(claude) => {
+                match claude
+                    .client
+                    .was_written_down(&claude.cwd, conversation_id)
+                    .await
+                {
+                    true => Ok(None),
+                    // The neutral variant, because the failure vocabulary is
+                    // still Codex's and the words it prints are Codex's too:
+                    // this one prints what it is given.
+                    false => Err(CodexThreadError::Agent(format!(
+                        "the agent no longer has conversation {conversation_id}"
+                    ))),
+                }
+            }
+        }
+    }
+
+    /// Remove a conversation for good.
+    ///
+    /// For Claude this is the whole of it: the file the agent wrote and the
+    /// directory beside it, with no server holding a copy and nothing to come
+    /// back from.
+    pub(crate) async fn delete_conversation(
+        &self,
+        conversation_id: &str,
+    ) -> Result<(), CodexThreadError> {
+        match self {
+            Self::Codex(client) => client.delete_thread(conversation_id).await,
+            Self::Claude(claude) => Ok(claude.client.erase(conversation_id, &claude.cwd).await?),
+        }
+    }
+
+    /// Whether the agent still has this conversation to go back to.
+    ///
+    /// Asked of an archived Task, where the answer decides whether restoring is
+    /// offered at all. Nothing is started to find out: Codex holds its archive
+    /// and answers from it, and Claude's answer is whether the file is there.
+    pub(crate) async fn conversation_exists(&self, conversation_id: &str) -> bool {
+        match self {
+            Self::Codex(client) => client.read_thread(conversation_id).await.is_ok(),
+            Self::Claude(claude) => {
+                claude
+                    .client
+                    .was_written_down(&claude.cwd, conversation_id)
+                    .await
+            }
+        }
+    }
+
+    /// A conversation as the agent has it, without starting anything.
+    ///
+    /// Codex answers from its own store, so it always answers. Claude answers
+    /// only about a session already being watched: a Task about to be put away
+    /// is not one to start a process for, and a list of archived Tasks is not a
+    /// reason to start one each.
+    ///
+    /// `None` is therefore not "no such conversation" but "nobody here can say
+    /// without going and looking", which is the caller's cue to describe the
+    /// Task from what Caffold itself wrote down.
+    pub(crate) async fn describe(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Option<Conversation>, CodexThreadError> {
+        match self {
+            Self::Codex(client) => client
+                .read_thread(conversation_id)
+                .await
+                .map(|thread| Some(Conversation::from(&thread))),
+            Self::Claude(claude) => Ok(claude.client.watched_conversation(conversation_id).await),
+        }
+    }
+
     /// Stop watching a conversation. It carries on without an audience.
     pub(crate) async fn stop_watching(
         &self,

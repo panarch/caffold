@@ -248,7 +248,10 @@ pub(in crate::app::tasks) mod test_support {
     ) -> TaskState {
         let (shutdown, _) = broadcast::channel(16);
         let worktree_root = fs.root().join(".caffold-test/worktrees");
-        let (claude, _runner) = ClaudeClient::mock();
+        // Conversations are kept under the test's own root rather than the
+        // developer's home, so a test can write one down and see it removed.
+        let (claude, _runner) =
+            ClaudeClient::mock_writing_to(fs.root().join(".caffold-test/projects"));
         let state = TaskState::new(
             Arc::new(fs),
             String::new(),

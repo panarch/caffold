@@ -26,6 +26,10 @@ pub(crate) use contract::{
 /// sends it and assert on what Caffold makes of it.
 #[cfg(test)]
 pub(crate) use contract::{conversation_item, response_item};
+/// Codex's own thread status, for the tests that build a notification
+/// carrying one. A Task's status is the shared one, converted here.
+#[cfg(test)]
+pub use protocol::ThreadStatus;
 /// Codex's own turn status, for the tests that read a turn straight off the
 /// wire rather than through the conversation.
 #[cfg(test)]
@@ -49,8 +53,8 @@ use protocol::{
 pub use protocol::{
     CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest, CodexThread,
     CodexTurn, ModelListResponse, PermissionProfileSummary, SortDirection, ThreadResumeResponse,
-    ThreadSection, ThreadSectionFilter, ThreadSectionListResponse, ThreadStatus,
-    ThreadUnsubscribeResponse, TurnsPage,
+    ThreadSection, ThreadSectionFilter, ThreadSectionListResponse, ThreadUnsubscribeResponse,
+    TurnsPage,
 };
 pub(crate) use protocol::{ISOLATE_CURRENT_TASK_TOOL_NAME, RENAME_CURRENT_THREAD_TOOL_NAME};
 use protocol::{

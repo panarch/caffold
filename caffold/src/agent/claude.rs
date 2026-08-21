@@ -102,6 +102,10 @@ pub(crate) struct ClaudeClient {
 
 struct ClaudeClientInner {
     runner: RunnerClient,
+    /// Where the agent keeps every project's conversations. Absent when this
+    /// installation's environment names no home, in which case a conversation
+    /// can be neither read nor removed and neither is reported as done.
+    projects: Option<std::path::PathBuf>,
     sessions: AsyncMutex<HashMap<String, Arc<Session>>>,
     events: broadcast::Sender<ClaudeRuntimeEvent>,
     /// The model list, once asked for. Asking costs a process start, and the
@@ -249,16 +253,39 @@ impl ClaudeClient {
         (Self::with_runner(runner), handle)
     }
 
+    /// A client that keeps conversations somewhere a test owns.
+    #[cfg(test)]
+    pub(crate) fn mock_writing_to(projects: std::path::PathBuf) -> (Self, MockRunnerHandle) {
+        let (runner, handle) = RunnerClient::mock();
+        (
+            Self::with_runner_and_projects(runner, Some(projects)),
+            handle,
+        )
+    }
+
     fn with_runner(runner: RunnerClient) -> Self {
+        Self::with_runner_and_projects(runner, transcript::projects_root())
+    }
+
+    fn with_runner_and_projects(
+        runner: RunnerClient,
+        projects: Option<std::path::PathBuf>,
+    ) -> Self {
         let (events, _) = broadcast::channel(256);
         Self {
             inner: Arc::new(ClaudeClientInner {
                 runner,
+                projects,
                 sessions: AsyncMutex::new(HashMap::new()),
                 events,
                 models: AsyncMutex::new(None),
             }),
         }
+    }
+
+    /// Where this client reads and removes conversations.
+    fn projects(&self) -> Option<&std::path::Path> {
+        self.inner.projects.as_deref()
     }
 
     pub(crate) fn subscribe(&self) -> broadcast::Receiver<ClaudeRuntimeEvent> {
@@ -334,6 +361,65 @@ impl ClaudeClient {
     ) -> Result<(), ClaudeError> {
         self.inner.sessions.lock().await.remove(conversation_id);
         self.inner.runner.close(conversation_id).await
+    }
+
+    /// A conversation as it stands, if anyone is watching it.
+    ///
+    /// Nothing is started to find out. A conversation nobody is watching is not
+    /// doing anything — the agent only works while a turn is running, and a
+    /// turn only runs on a session — so the absence of a session is an answer
+    /// rather than a reason to go and get one. It is the answer that matters
+    /// where this is asked: putting a Task away should not start it first.
+    pub(crate) async fn watched_conversation(&self, conversation_id: &str) -> Option<Conversation> {
+        let session = self.session(conversation_id).await?;
+        Some(self.conversation_of(&session).await)
+    }
+
+    /// Whether the agent still has this conversation written down.
+    ///
+    /// This is the whole of a local session's existence: no server holds a
+    /// copy, so the file being there is the conversation being there.
+    ///
+    /// Asked once per row of a list, and answered by a disk that may be a
+    /// network away, so the look happens off the runtime's own threads.
+    pub(crate) async fn was_written_down(&self, cwd: &str, conversation_id: &str) -> bool {
+        let Some(path) = self
+            .projects()
+            .and_then(|projects| transcript::locate(projects, cwd, conversation_id))
+        else {
+            return false;
+        };
+        tokio::task::spawn_blocking(move || path.exists())
+            .await
+            .unwrap_or(false)
+    }
+
+    /// Remove a conversation from the world.
+    ///
+    /// What the agent wrote is a local session in its entirety: there is
+    /// nothing to ask a server to forget, and nothing that comes back.
+    ///
+    /// The session is closed first, because a process still writing to a file
+    /// that has been removed would write the conversation back.
+    pub(crate) async fn erase(&self, conversation_id: &str, cwd: &str) -> Result<(), ClaudeError> {
+        self.close_conversation(conversation_id).await?;
+        // Not knowing where it is, is not the same as it being gone. Reporting
+        // this as done would delete the only row pointing at a conversation
+        // that is still on disk.
+        let Some(written) = self
+            .projects()
+            .and_then(|projects| transcript::locate(projects, cwd, conversation_id))
+        else {
+            return Err(ClaudeError::Runner(format!(
+                "cannot work out where conversation {conversation_id} is written down"
+            )));
+        };
+        tokio::task::spawn_blocking(move || transcript::erase(&written))
+            .await
+            .map_err(|error| ClaudeError::Runner(error.to_string()))?
+            .map_err(|error| {
+                ClaudeError::Runner(format!("could not remove what the agent wrote: {error}"))
+            })
     }
 
     async fn session(&self, conversation_id: &str) -> Option<Arc<Session>> {
@@ -830,7 +916,10 @@ impl ClaudeClient {
         cursor: Option<&str>,
         limit: usize,
     ) -> TurnPage {
-        let Some(path) = transcript::locate(cwd, conversation_id) else {
+        let Some(path) = self
+            .projects()
+            .and_then(|projects| transcript::locate(projects, cwd, conversation_id))
+        else {
             return TurnPage::default();
         };
         let cursor = cursor.map(str::to_string);
@@ -1485,9 +1574,19 @@ fn open_turn(state: &mut SessionState, turn_id: &str, said: Vec<MessageContent>)
 }
 
 /// What the conversation is doing, from what the session is waiting on.
+///
+/// A prompt that has been written and not yet handed back has no turn to be
+/// named by, and the agent is already working on it. Reading that moment as
+/// idle would let a Task be archived — and its process ended — between a person
+/// asking for something and the agent saying what it is called.
 fn status_of(state: &SessionState) -> ThreadStatus {
     if state.ended {
         return ThreadStatus::Idle;
+    }
+    if state.pending_prompt.is_some() {
+        return ThreadStatus::Active {
+            active_flags: Vec::new(),
+        };
     }
     match (&state.active_turn, state.pending_approvals.is_empty()) {
         (None, _) => ThreadStatus::Idle,

@@ -194,6 +194,18 @@ fn closing_a_session_removes_it() {
 }
 
 #[test]
+fn closing_a_session_that_was_never_started_is_what_was_asked_for() {
+    // A client asks for a session not to be running. One it never opened - or
+    // one an earlier run of itself opened and closed - is not running, and a
+    // client cannot tell those apart from where it stands.
+    let runner = Runner::start();
+
+    runner.run_raw(&["session", "close", "--session", "never-started"]);
+
+    assert!(runner.sessions().is_empty());
+}
+
+#[test]
 fn sending_without_attaching_is_refused() {
     // Sending is only meaningful from the client that is reading the replies.
     let runner = Runner::start();

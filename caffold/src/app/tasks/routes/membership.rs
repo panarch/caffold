@@ -80,31 +80,35 @@ pub(super) async fn task_archive(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskRecord>, ApiError> {
-    if task_store_get(&state, &thread_id).await?.is_none() {
+    let Some(managed) = task_store_get(&state, &thread_id).await? else {
         return Err(task_not_managed_error());
-    }
-    let connection = require_codex_thread_connection(&state).await?;
-    let thread = connection.client.read_thread(&thread_id).await?;
-    if matches!(thread.status, ThreadStatus::Active { .. }) {
+    };
+    let agent = state.task_runtime.agent_for(&managed.run_by).await?;
+    let driver = agent.driver();
+    let task = described_task(&state, &driver, &managed).await?;
+    // A turn still running would be archived out from under itself, and the
+    // agent asked about it afterwards would be asked about a Task nothing is
+    // watching any more.
+    if matches!(
+        task.thread_status,
+        crate::agent::ThreadStatus::Active { .. }
+    ) {
         return Err(ApiError::BadRequest {
             code: "task_active",
             message: "active tasks cannot be archived".to_string(),
         });
     }
-    let task = state
-        .detail
-        .record_from_conversation(&Conversation::from(&thread))?;
     state
         .lifecycle
         .preflight_archive_worktree(thread_id.clone())
         .await?;
-    connection.client.archive_thread(&thread_id).await?;
+    driver.archive_conversation(&thread_id).await?;
     let worktree = match state.lifecycle.archive_worktree(thread_id.clone()).await {
         Ok(worktree) => worktree,
         Err(error) => {
-            if let Err(rollback_error) = connection.client.unarchive_thread(&thread_id).await {
+            if let Err(rollback_error) = driver.restore_conversation(&thread_id).await {
                 eprintln!(
-                    "failed to unarchive Codex thread after worktree archive failure: {rollback_error}"
+                    "failed to take a conversation back out after worktree archive failure: {rollback_error}"
                 );
             }
             return Err(error);
@@ -113,16 +117,96 @@ pub(super) async fn task_archive(
     match task_store_archive(&state, &thread_id).await {
         Ok(Some(_)) => {}
         Ok(None) => {
-            rollback_task_archive(&state, &connection.client, &thread_id, &worktree).await;
+            rollback_task_archive(&state, &driver, &thread_id, &worktree).await;
             return Err(task_not_managed_error());
         }
         Err(error) => {
-            rollback_task_archive(&state, &connection.client, &thread_id, &worktree).await;
+            rollback_task_archive(&state, &driver, &thread_id, &worktree).await;
             return Err(error);
         }
     }
     notify_task_removed(&state, &thread_id, "archived");
     Ok(Json(task))
+}
+
+/// A Task as its agent describes it, or as Caffold's own row does when the
+/// agent cannot say without being started.
+///
+/// The fallback is not a lesser answer, it is the true one: a Claude session
+/// nobody is watching has no status to report, and whether the Task can be
+/// gone back to is whether the agent still has the conversation written down.
+///
+/// The row describes it well enough because a Claude Task's row carries where
+/// it works, and where it works is what a Section placement and a worktree are
+/// worked out from. So the row becomes a conversation and goes through the same
+/// reading as one the agent answered with.
+pub(super) async fn described_task(
+    state: &TaskState,
+    driver: &Driver,
+    managed: &ManagedThread,
+) -> Result<TaskRecord, ApiError> {
+    let described = driver.describe(&managed.thread_id).await?;
+    task_described_as(state, driver, managed, described).await
+}
+
+/// What Caffold's own row says about a conversation, for an agent that cannot
+/// be asked without being started.
+///
+/// A Claude Task's row carries where it works, and where it works is what a
+/// Section placement and a worktree are worked out from — so the row is enough
+/// to describe one, and it goes through the same reading as a conversation the
+/// agent answered with.
+fn conversation_from_row(managed: &ManagedThread, cwd: &str) -> Conversation {
+    let seen_at_ms = managed
+        .last_observed_recency_ms
+        .or(managed.archived_at_ms)
+        .unwrap_or(managed.claimed_at_ms);
+    Conversation {
+        id: managed.thread_id.clone(),
+        title: Some(managed.display_name.clone()),
+        preview: String::new(),
+        status: crate::agent::ThreadStatus::NotLoaded,
+        cwd: cwd.to_string(),
+        transcript_path: None,
+        created_at_ms: seen_at_ms,
+        updated_at_ms: seen_at_ms,
+        recency_at_ms: Some(seen_at_ms),
+        turns: Vec::new(),
+    }
+}
+
+/// The record for a Task, from what its agent said about it — or did not.
+///
+/// Split from the asking so that a caller which can read the agent's failures
+/// keeps them: an archived list turns a thread the agent no longer has into a
+/// row that cannot be restored, and turns anything else into the failure it is.
+pub(super) async fn task_described_as(
+    state: &TaskState,
+    driver: &Driver,
+    managed: &ManagedThread,
+    described: Option<Conversation>,
+) -> Result<TaskRecord, ApiError> {
+    let mut task = match described {
+        Some(conversation) => state.detail.record_from_conversation(&conversation)?,
+        None => {
+            let RunBy::Claude { cwd } = &managed.run_by else {
+                // Only an agent that cannot be asked answers with nothing, and
+                // only a Claude row carries where it works. A Codex answer is
+                // either a conversation or a failure.
+                return Err(ApiError::Internal(format!(
+                    "no agent answered for Task {}",
+                    managed.thread_id
+                )));
+            };
+            let mut task = state
+                .detail
+                .record_from_conversation(&conversation_from_row(managed, cwd))?;
+            task.conversation_available = driver.conversation_exists(&managed.thread_id).await;
+            task
+        }
+    };
+    apply_managed_thread_metadata(&mut task, managed);
+    Ok(task)
 }
 
 pub(super) async fn task_recovery_restore(
@@ -331,38 +415,40 @@ pub(super) async fn task_restore(
     let Some(archived) = task_store_get_archived(&state, &thread_id).await? else {
         return Err(task_not_archived_error());
     };
-    let connection = require_codex_thread_connection(&state).await?;
-    let thread = match connection.client.unarchive_thread(&thread_id).await {
-        Ok(thread) => thread,
-        Err(error) => return Err(error.into()),
-    };
+    let agent = state.task_runtime.agent_for(&archived.run_by).await?;
+    let driver = agent.driver();
+    let restored = driver.restore_conversation(&thread_id).await?;
+    let took_it_back_out = restored.is_some();
     let worktree = match state.lifecycle.restore_worktree(thread_id.clone()).await {
         Ok(worktree) => worktree,
         Err(error) => {
-            if let Err(rollback_error) = connection.client.archive_thread(&thread_id).await {
-                eprintln!(
-                    "failed to re-archive Codex thread after worktree restore failure: {rollback_error}"
-                );
-            }
+            rollback_restored_conversation(&driver, &thread_id, took_it_back_out).await;
             return Err(error);
         }
     };
-    state
-        .task_sessions
-        .observe_thread_metadata(Conversation::from(&thread))
-        .await;
-    let mut task = state
-        .detail
-        .record_from_conversation(&Conversation::from(&thread))?;
-    apply_managed_thread_metadata(&mut task, &archived);
+    let task = match restored {
+        Some(conversation) => {
+            state
+                .task_sessions
+                .observe_thread_metadata(conversation.clone())
+                .await;
+            let mut task = state.detail.record_from_conversation(&conversation)?;
+            apply_managed_thread_metadata(&mut task, &archived);
+            task
+        }
+        // An agent that had nothing to take back out has nothing to describe
+        // either: the session resumes by name when the Task is next opened, and
+        // until then the row is all there is to say.
+        None => described_task(&state, &driver, &archived).await?,
+    };
     let placement = match state.lifecycle.restore_active_task(&task).await {
         Ok(Some(placement)) => placement,
         Ok(None) => {
-            rollback_task_restore(&state, &connection.client, &thread_id, &worktree).await;
+            rollback_task_restore(&state, &driver, &thread_id, took_it_back_out, &worktree).await;
             return Err(task_not_archived_error());
         }
         Err(error) => {
-            rollback_task_restore(&state, &connection.client, &thread_id, &worktree).await;
+            rollback_task_restore(&state, &driver, &thread_id, took_it_back_out, &worktree).await;
             return Err(error);
         }
     };
@@ -379,9 +465,9 @@ pub(super) async fn task_delete(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskDeleteResponse>, ApiError> {
-    if task_store_get_archived(&state, &thread_id).await?.is_none() {
+    let Some(archived) = task_store_get_archived(&state, &thread_id).await? else {
         return Err(task_not_archived_error());
-    }
+    };
     let worktree = task_store_worktree_for_thread(&state, &thread_id).await?;
     if let Some(worktree) = &worktree
         && worktree.state != ManagedWorktreeState::Archived
@@ -392,8 +478,12 @@ pub(super) async fn task_delete(
         });
     }
 
-    let connection = require_codex_thread_connection(&state).await?;
-    connection.client.delete_thread(&thread_id).await?;
+    let agent = state.task_runtime.agent_for(&archived.run_by).await?;
+    // The agent goes first and the row second, so that a delete which fails
+    // part way through leaves the Task still there to be deleted again.
+    // Removing a conversation is idempotent for both agents — one that is
+    // already gone is the outcome asked for — so the retry converges.
+    agent.driver().delete_conversation(&thread_id).await?;
     let deleted = task_store_delete_task_rows(
         &state,
         &thread_id,
@@ -414,12 +504,12 @@ pub(super) async fn task_delete(
 
 pub(super) async fn rollback_task_archive(
     state: &TaskState,
-    client: &CodexThreadClient,
+    driver: &Driver,
     thread_id: &str,
     worktree: &super::super::worktrees::ArchiveOutcome,
 ) {
-    if let Err(error) = client.unarchive_thread(thread_id).await {
-        eprintln!("failed to unarchive Codex thread while rolling back archive: {error}");
+    if let Err(error) = driver.restore_conversation(thread_id).await {
+        eprintln!("failed to take a conversation back out while rolling back archive: {error}");
     }
     state
         .lifecycle
@@ -429,17 +519,31 @@ pub(super) async fn rollback_task_archive(
 
 pub(super) async fn rollback_task_restore(
     state: &TaskState,
-    client: &CodexThreadClient,
+    driver: &Driver,
     thread_id: &str,
+    took_it_back_out: bool,
     worktree: &super::super::worktrees::RestoreOutcome,
 ) {
-    if let Err(error) = client.archive_thread(thread_id).await {
-        eprintln!("failed to archive Codex thread while rolling back restore: {error}");
-    }
+    rollback_restored_conversation(driver, thread_id, took_it_back_out).await;
     state
         .lifecycle
         .rollback_restored_worktree(thread_id, worktree)
         .await;
+}
+
+/// Put back a conversation a restore took out, and leave alone one it did not.
+///
+/// Only an agent that has an archive of its own took anything out. For one that
+/// has none the restore did nothing to the agent, and undoing it by closing the
+/// session would end a process the restore never started — a destructive undo
+/// of something inert.
+async fn rollback_restored_conversation(driver: &Driver, thread_id: &str, took_it_back_out: bool) {
+    if !took_it_back_out {
+        return;
+    }
+    if let Err(error) = driver.archive_conversation(thread_id).await {
+        eprintln!("failed to put a conversation back while rolling back restore: {error}");
+    }
 }
 
 pub(super) fn notify_task_removed(state: &TaskState, thread_id: &str, reason: &'static str) {
@@ -1161,6 +1265,163 @@ mod tests {
             crate::task_store::ManagedWorktreeState::Archived
         );
         assert!(!std::path::Path::new(&worktree.worktree_path).exists());
+    }
+
+    /// Where the stand-in agent keeps a conversation for a Task in `cwd`.
+    fn written_down(
+        root: &std::path::Path,
+        thread_id: &str,
+        cwd: &std::path::Path,
+    ) -> std::path::PathBuf {
+        let slug: String = cwd
+            .display()
+            .to_string()
+            .chars()
+            .map(
+                |character| match character.is_ascii_alphanumeric() || character == '-' {
+                    true => character,
+                    false => '-',
+                },
+            )
+            .collect();
+        root.join(".caffold-test/projects")
+            .join(slug)
+            .join(format!("{thread_id}.jsonl"))
+    }
+
+    /// A Claude Task, claimed the way one really is, with the conversation the
+    /// agent would have written for it.
+    async fn manage_claude_task(state: &TaskState, thread_id: &str, cwd: &std::path::Path) {
+        let written = written_down(cwd, thread_id, cwd);
+        std::fs::create_dir_all(written.parent().expect("a project directory")).unwrap();
+        std::fs::write(&written, "{}\n").unwrap();
+        std::fs::create_dir_all(written.with_extension("").join("subagents")).unwrap();
+        state
+            .task_store
+            .claim(
+                crate::task_store::ManagedThread {
+                    run_by: crate::task_store::RunBy::Claude {
+                        cwd: cwd.display().to_string(),
+                    },
+                    display_name: "A Claude Task".to_string(),
+                    ..crate::task_store::ManagedThread::new(
+                        thread_id,
+                        crate::task_store::RunBy::Codex,
+                        Some(1_000),
+                        None,
+                        None,
+                    )
+                },
+                1,
+            )
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_claude_task_is_archived_and_restored_without_asking_codex_about_it() {
+        // Codex has never heard of a Claude conversation, so a mock with no
+        // answers in it is the assertion: any question put to Codex fails the
+        // test rather than being quietly answered.
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "claude-archive";
+        let client = CodexThreadClient::mock(Vec::new());
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        manage_claude_task(&state, thread_id, root.path()).await;
+
+        let archived = task_archive(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .expect("a Claude Task can be archived")
+            .0;
+
+        assert_eq!(archived.thread_id, thread_id);
+        assert_eq!(archived.title, "A Claude Task");
+        assert!(task_store_get(&state, thread_id).await.unwrap().is_none());
+        assert!(
+            task_store_get_archived(&state, thread_id)
+                .await
+                .unwrap()
+                .is_some(),
+            "the row is kept, which is what archiving a Claude Task is"
+        );
+
+        let listed = list_archived_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+            .await
+            .expect("the archived list does not ask Codex either")
+            .0;
+        assert_eq!(listed.tasks.len(), 1);
+        assert_eq!(listed.tasks[0].thread_id, thread_id);
+
+        let restored = task_restore(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .expect("a Claude Task can be restored")
+            .0;
+
+        assert_eq!(restored.task.thread_id, thread_id);
+        assert!(
+            task_store_get(&state, thread_id).await.unwrap().is_some(),
+            "and the row comes back to the active list"
+        );
+    }
+
+    #[tokio::test]
+    async fn deleting_a_claude_task_asks_no_server_to_forget_it() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "claude-delete";
+        let client = CodexThreadClient::mock(Vec::new());
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        manage_claude_task(&state, thread_id, root.path()).await;
+        let _archived = task_archive(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .expect("archived first, as deleting requires");
+
+        let deleted = task_delete(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .expect("a Claude Task can be deleted")
+            .0;
+
+        assert_eq!(deleted.thread_id, thread_id);
+        assert!(
+            task_store_get_archived(&state, thread_id)
+                .await
+                .unwrap()
+                .is_none(),
+            "the row is gone"
+        );
+        let written = written_down(root.path(), thread_id, root.path());
+        assert!(!written.exists(), "and so is what the agent wrote");
+        assert!(
+            !written.with_extension("").exists(),
+            "and what was filed beside it"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_claude_task_whose_conversation_is_gone_cannot_be_restored() {
+        // Codex refuses to take back out a thread it no longer has. A Task
+        // restored onto a conversation that is gone could never be opened.
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "claude-vanished";
+        let client = CodexThreadClient::mock(Vec::new());
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        manage_claude_task(&state, thread_id, root.path()).await;
+        let _archived = task_archive(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .expect("archived first");
+        std::fs::remove_file(written_down(root.path(), thread_id, root.path())).unwrap();
+
+        let refused = task_restore(State(state.clone()), AxumPath(thread_id.to_string())).await;
+
+        assert!(
+            matches!(refused, Err(ApiError::CodexThread(_))),
+            "{refused:?}"
+        );
+        assert!(
+            task_store_get_archived(&state, thread_id)
+                .await
+                .unwrap()
+                .is_some(),
+            "and the Task stays archived rather than coming back broken"
+        );
     }
 
     #[tokio::test]

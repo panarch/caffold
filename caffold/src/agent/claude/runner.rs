@@ -207,13 +207,21 @@ impl RunnerClient {
     }
 
     /// End a session and the process behind it.
+    ///
+    /// A runner that is not listening is not started to be told this: it holds
+    /// no sessions, so a session it does not have is a session not running,
+    /// which is what was asked for. Starting one in order to close nothing
+    /// would be the only way to fail — and archiving a Task nobody has opened
+    /// since the backend started is exactly when there is nothing to close.
     pub(crate) async fn close(&self, session: &str) -> Result<(), ClaudeError> {
         #[cfg(test)]
         if let Some(mock) = &self.mock {
             mock.close(session).await;
             return Ok(());
         }
-        let mut client = self.connect().await?;
+        let Ok(mut client) = self.connect().await else {
+            return Ok(());
+        };
         client
             .request(Request::SessionClose {
                 session: session.to_string(),

@@ -230,14 +230,31 @@ impl TaskRuntime {
             .await
             .map_err(|error| CodexThreadError::Agent(format!("task store worker failed: {error}")))?
             .map_err(|error| CodexThreadError::Agent(error.to_string()))?;
-        match managed.map(|managed| managed.run_by) {
-            Some(RunBy::Claude { cwd }) => Ok(TaskAgent::Claude {
-                driver: self.claude.driver(cwd),
-            }),
+        match managed {
+            Some(managed) => self.agent_for(&managed.run_by).await,
             // A Task Caffold does not have a row for is not one it can route,
             // and every Task it does have a row for predating a second agent is
             // Codex's.
-            Some(RunBy::Codex) | None => Ok(TaskAgent::Codex(self.connection().await?)),
+            None => Ok(TaskAgent::Codex(self.connection().await?)),
+        }
+    }
+
+    /// The agent that runs a Task, from the row that says so.
+    ///
+    /// Looking a Task up by name finds it only while it is active, so anything
+    /// working on a Task that has been put away — restoring it, deleting it,
+    /// listing what has been archived — already holds the row and asks with it.
+    /// Asking by name there would find nothing and fall back to Codex, which
+    /// for a Claude Task is the wrong agent rather than no answer.
+    pub(in crate::app) async fn agent_for(
+        &self,
+        run_by: &RunBy,
+    ) -> Result<TaskAgent, CodexThreadError> {
+        match run_by {
+            RunBy::Claude { cwd } => Ok(TaskAgent::Claude {
+                driver: self.claude.driver(cwd.clone()),
+            }),
+            RunBy::Codex => Ok(TaskAgent::Codex(self.connection().await?)),
         }
     }
 

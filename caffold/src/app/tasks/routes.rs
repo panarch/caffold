@@ -1,6 +1,3 @@
-#[cfg(test)]
-use crate::task_store::RunBy;
-
 mod agent;
 mod codex;
 mod commands;
@@ -45,15 +42,13 @@ use super::generated_images::GeneratedImageError;
 
 use crate::{
     agent::{
-        ApprovalDecision, Conversation, PermissionModes, Turn, TurnOptions, TurnRejected,
-        codex::{
-            CodexDaemonInfo, CodexStatusResponse, CodexThreadClient, CodexThreadError, ThreadStatus,
-        },
+        ApprovalDecision, Conversation, Driver, PermissionModes, Turn, TurnOptions, TurnRejected,
+        codex::{CodexDaemonInfo, CodexStatusResponse, CodexThreadClient, CodexThreadError},
     },
     app::error::ApiError,
     app::tasks::sessions::{PromptTarget, SessionSnapshot, SessionsDiagnostics},
     fs::MAX_IMAGE_BYTES,
-    task_store::{ManagedThread, ManagedWorktree, ManagedWorktreeState, TaskStoreError},
+    task_store::{ManagedThread, ManagedWorktree, ManagedWorktreeState, RunBy, TaskStoreError},
 };
 
 const MAX_TASK_IMAGES: usize = 4;
