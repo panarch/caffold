@@ -7,8 +7,8 @@
 
 mod support;
 
-use serde_json::Value;
-use support::{Runner, fake_agent};
+use serde_json::{Value, json};
+use support::{Runner, Wire, fake_agent};
 
 #[test]
 fn the_runner_reports_itself_before_any_session_exists() {
@@ -70,6 +70,68 @@ fn a_frame_crosses_the_runner_unchanged() {
     let raw = attached.next_raw_frame();
 
     assert_eq!(raw, r#"{"type":"ready"}"#);
+}
+
+#[test]
+fn one_subscriber_carries_every_sessions_stream() {
+    // The backend is one client, and its subscription is one connection: every
+    // session it attaches sends its output down that same connection, told
+    // apart by the session each event names. A connection per session would
+    // make the wire's own session tags dead weight — and would leave the
+    // runner with no one thing that is "the backend" for lifecycle to speak
+    // about.
+    let runner = Runner::start();
+    runner.create("s1", &fake_agent(&[]));
+    runner.create("s2", &fake_agent(&[]));
+
+    let mut wire = Wire::connect(&runner);
+    wire.request(json!({ "m": "session_attach", "session": "s1" }));
+    wire.request(json!({ "m": "session_attach", "session": "s2" }));
+
+    wire.request(json!({
+        "m": "session_send", "session": "s1",
+        "f": { "type": "user", "text": "to the first" },
+    }));
+    wire.request(json!({
+        "m": "session_send", "session": "s2",
+        "f": { "type": "user", "text": "to the second" },
+    }));
+
+    // Both sessions answer down the one connection, each event naming its
+    // session. (The ready frames may arrive first; what matters is that both
+    // replies arrive here at all.)
+    let mut answered = std::collections::HashSet::new();
+    while answered.len() < 2 {
+        let event = wire.next_event();
+        if event["f"]["received"] == 1 {
+            answered.insert(event["s"].as_str().expect("a tagged event").to_string());
+        }
+    }
+    assert!(
+        answered.contains("s1") && answered.contains("s2"),
+        "{answered:?}"
+    );
+}
+
+#[test]
+fn a_subscription_held_by_one_connection_refuses_another() {
+    // One backend. A second connection trying to subscribe while the first
+    // holds it would split the conversation between two readers, so it is
+    // refused — per client now, not per session: the subscription is the
+    // relationship lifecycle rules speak about.
+    let runner = Runner::start();
+    runner.create("s1", &fake_agent(&[]));
+    runner.create("s2", &fake_agent(&[]));
+    let mut first = Wire::connect(&runner);
+    first.request(json!({ "m": "session_attach", "session": "s1" }));
+
+    let mut second = Wire::connect(&runner);
+    let refused = second.request(json!({ "m": "session_attach", "session": "s2" }));
+
+    assert_eq!(
+        refused["err"]["code"], "already_attached",
+        "a different session makes no difference — the subscription is taken: {refused}"
+    );
 }
 
 #[test]

@@ -12,25 +12,32 @@
 //! the translation, the control protocol and the session bookkeeping are the
 //! same code either way.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
-use caffold_claude_runner::client::{Client, FrameWriter, Streaming};
-use caffold_claude_runner::protocol::{ReplyBody, Request, SessionInfo, SpawnRequest, WireEvent};
+use caffold_claude_runner::client::{Client, encode};
+use caffold_claude_runner::protocol::{
+    EventKind, Outcome, ReplyBody, Request, Response, SessionInfo, SpawnRequest, WireEvent,
+    WireResponse,
+};
 use caffold_claude_runner::{SOCKET_NAME, protocol};
 use serde_json::Value;
 use serde_json::value::RawValue;
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::net::unix::OwnedReadHalf;
-
-#[cfg(test)]
-use std::collections::HashMap;
-#[cfg(test)]
-use tokio::sync::{Mutex as AsyncMutex, mpsc};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::UnixStream;
+use tokio::net::unix::OwnedWriteHalf;
+use tokio::sync::{Mutex as AsyncMutex, mpsc, oneshot};
 
 use super::ClaudeError;
+
+/// How long to wait for the runner to answer one request on the shared
+/// connection. Requests are small and local; what this bounds is a runner that
+/// died mid-request.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// How long to wait for a runner Caffold just started to open its socket.
 const START_TIMEOUT: Duration = Duration::from_secs(10);
@@ -40,8 +47,165 @@ const START_POLL: Duration = Duration::from_millis(50);
 #[derive(Clone)]
 pub(crate) struct RunnerClient {
     socket: Option<Arc<PathBuf>>,
+    /// The one subscribed connection every session shares, once one is up.
+    wire: Arc<AsyncMutex<Option<Arc<Wire>>>>,
     #[cfg(test)]
     mock: Option<Arc<MockRunner>>,
+}
+
+/// The backend's one connection to the runner.
+///
+/// The backend is one client, so it holds one subscription: every session's
+/// frames go out on this connection, and every session's events come back on
+/// it, each named by its session. One reader routes what arrives — replies to
+/// whoever asked, events to the session they name — so nothing is dropped for
+/// having arrived while something else was being awaited.
+pub(crate) struct Wire {
+    writer: AsyncMutex<OwnedWriteHalf>,
+    next_id: AtomicU64,
+    alive: AtomicBool,
+    pending: std::sync::Mutex<HashMap<u64, oneshot::Sender<Result<ReplyBody, String>>>>,
+    sessions: std::sync::Mutex<HashMap<String, mpsc::UnboundedSender<RunnerEvent>>>,
+}
+
+impl Wire {
+    /// Send one request and wait for its reply.
+    async fn request(self: &Arc<Self>, request: Request) -> Result<ReplyBody, ClaudeError> {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let encoded =
+            encode(request, id).map_err(|error| ClaudeError::Runner(error.to_string()))?;
+        let (sender, receiver) = oneshot::channel();
+        self.pending
+            .lock()
+            .expect("pending lock")
+            .insert(id, sender);
+        {
+            let mut writer = self.writer.lock().await;
+            if let Err(error) = writer.write_all(&encoded).await {
+                self.pending.lock().expect("pending lock").remove(&id);
+                return Err(ClaudeError::Runner(error.to_string()));
+            }
+            if let Err(error) = writer.flush().await {
+                self.pending.lock().expect("pending lock").remove(&id);
+                return Err(ClaudeError::Runner(error.to_string()));
+            }
+        }
+        match tokio::time::timeout(REQUEST_TIMEOUT, receiver).await {
+            Ok(Ok(Ok(body))) => Ok(body),
+            Ok(Ok(Err(message))) => Err(ClaudeError::Runner(message)),
+            Ok(Err(_)) => Err(ClaudeError::Runner(
+                "the runner connection ended before answering".to_string(),
+            )),
+            Err(_) => {
+                self.pending.lock().expect("pending lock").remove(&id);
+                Err(ClaudeError::Runner(format!(
+                    "the runner did not answer within {} seconds",
+                    REQUEST_TIMEOUT.as_secs()
+                )))
+            }
+        }
+    }
+
+    /// Write one frame to a session, without waiting on the acknowledgement.
+    ///
+    /// The reply arrives on the shared reader, which lets unclaimed replies
+    /// pass; a transport failure is the only thing this can report, exactly as
+    /// the per-session connection before it reported.
+    async fn send_frame(&self, session: &str, frame: Box<RawValue>) -> Result<(), ClaudeError> {
+        if !self.alive.load(Ordering::Relaxed) {
+            return Err(ClaudeError::Runner(
+                "the runner connection is gone".to_string(),
+            ));
+        }
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let encoded = encode(
+            Request::SessionSend {
+                session: session.to_string(),
+                frame,
+            },
+            id,
+        )
+        .map_err(|error| ClaudeError::Runner(error.to_string()))?;
+        let mut writer = self.writer.lock().await;
+        writer
+            .write_all(&encoded)
+            .await
+            .map_err(|error| ClaudeError::Runner(error.to_string()))?;
+        writer
+            .flush()
+            .await
+            .map_err(|error| ClaudeError::Runner(error.to_string()))
+    }
+
+    /// Read the connection for as long as it lives, routing what arrives.
+    async fn route(self: Arc<Self>, reader: tokio::net::unix::OwnedReadHalf) {
+        let mut reader = BufReader::new(reader);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            let read = match reader.read_line(&mut line).await {
+                Ok(read) => read,
+                Err(_) => break,
+            };
+            if read == 0 {
+                break;
+            }
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            match protocol::carries_event(trimmed) {
+                Ok(true) => self.route_event(trimmed),
+                Ok(false) => self.route_reply(trimmed),
+                Err(_) => continue,
+            }
+        }
+        // The connection is over. Sessions hear it as their stream ending, and
+        // callers still waiting hear it as the answer never coming.
+        self.alive.store(false, Ordering::Relaxed);
+        self.sessions.lock().expect("sessions lock").clear();
+        self.pending.lock().expect("pending lock").clear();
+    }
+
+    fn route_event(&self, line: &str) {
+        let Ok(event) = serde_json::from_str::<WireEvent>(line) else {
+            return;
+        };
+        let runner_event = match event.t {
+            EventKind::Frame => match event.frame {
+                Some(frame) => RunnerEvent::Frame(frame.get().to_string()),
+                None => return,
+            },
+            EventKind::Stderr => match event.line {
+                Some(line) => RunnerEvent::Stderr(line),
+                None => return,
+            },
+            EventKind::Exit => RunnerEvent::Exit(event.code),
+        };
+        let ended = matches!(runner_event, RunnerEvent::Exit(_));
+        let mut sessions = self.sessions.lock().expect("sessions lock");
+        if let Some(sender) = sessions.get(&event.s) {
+            let delivered = sender.send(runner_event).is_ok();
+            if ended || !delivered {
+                sessions.remove(&event.s);
+            }
+        }
+    }
+
+    fn route_reply(&self, line: &str) {
+        let Ok(wire) = serde_json::from_str::<WireResponse>(line) else {
+            return;
+        };
+        let Response { id, outcome } = Response::from_wire(wire);
+        // A reply nobody registered for belongs to a fire-and-forget send.
+        let Some(waiting) = self.pending.lock().expect("pending lock").remove(&id) else {
+            return;
+        };
+        let _ = waiting.send(match outcome {
+            Outcome::Ok(body) => Ok(body),
+            Outcome::Err(error) => Err(format!("{:?}: {}", error.code, error.message)),
+        });
+    }
 }
 
 /// One session, attached: what the agent says, and what may be said to it.
@@ -53,7 +217,8 @@ pub(crate) struct RunnerSession {
 
 /// The writing half of an attached session.
 pub(crate) enum SessionFrames {
-    Socket(Box<FrameWriter>),
+    /// The shared connection, and which session this writer speaks for on it.
+    Shared { wire: Arc<Wire>, session: String },
     #[cfg(test)]
     Mock {
         session: String,
@@ -61,12 +226,9 @@ pub(crate) enum SessionFrames {
     },
 }
 
-/// The reading half of an attached session.
-pub(crate) enum SessionEvents {
-    Socket(Box<BufReader<OwnedReadHalf>>),
-    #[cfg(test)]
-    Mock(mpsc::UnboundedReceiver<RunnerEvent>),
-}
+/// The reading half of an attached session: its slice of the shared
+/// connection, routed to it by the session each event names.
+pub(crate) struct SessionEvents(mpsc::UnboundedReceiver<RunnerEvent>);
 
 /// Something that happened to a session, as the runner reports it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,6 +250,7 @@ impl RunnerClient {
     pub(crate) fn in_data_dir(data_dir: &Path) -> Self {
         Self {
             socket: Some(Arc::new(data_dir.join(SOCKET_NAME))),
+            wire: Arc::new(AsyncMutex::new(None)),
             #[cfg(test)]
             mock: None,
         }
@@ -100,6 +263,7 @@ impl RunnerClient {
         (
             Self {
                 socket: None,
+                wire: Arc::new(AsyncMutex::new(None)),
                 mock: Some(runner.clone()),
             },
             MockRunnerHandle(runner),
@@ -192,18 +356,67 @@ impl RunnerClient {
         if let Some(mock) = &self.mock {
             return MockRunner::open(mock, session, spawn).await;
         }
-        self.ensure_running().await?;
-        let client = self.connect().await?;
-        let (info, streaming) = client
-            .create_attached(session, spawn)
-            .await
-            .map_err(|error| ClaudeError::Runner(error.to_string()))?;
-        let Streaming { reader, frames } = streaming;
+        let wire = self.shared_wire().await?;
+        // Registered before the session is asked for, because an agent speaks
+        // the moment it starts and its first events must find their channel.
+        let (sender, receiver) = mpsc::unbounded_channel();
+        wire.sessions
+            .lock()
+            .expect("sessions lock")
+            .insert(session.to_string(), sender);
+        let reply = wire
+            .request(Request::SessionCreate {
+                session: session.to_string(),
+                spawn,
+                attach: true,
+            })
+            .await;
+        let info = match reply {
+            Ok(ReplyBody::Session(info)) => info,
+            Ok(_) => {
+                wire.sessions.lock().expect("sessions lock").remove(session);
+                return Err(ClaudeError::Runner(
+                    "the runner answered an attach with something else".to_string(),
+                ));
+            }
+            Err(error) => {
+                wire.sessions.lock().expect("sessions lock").remove(session);
+                return Err(error);
+            }
+        };
         Ok(RunnerSession {
             info,
-            frames: SessionFrames::Socket(Box::new(frames)),
-            events: SessionEvents::Socket(Box::new(reader)),
+            frames: SessionFrames::Shared {
+                wire,
+                session: session.to_string(),
+            },
+            events: SessionEvents(receiver),
         })
+    }
+
+    /// The shared connection, connecting and subscribing if there is none.
+    async fn shared_wire(&self) -> Result<Arc<Wire>, ClaudeError> {
+        let mut slot = self.wire.lock().await;
+        if let Some(wire) = slot.as_ref()
+            && wire.alive.load(Ordering::Relaxed)
+        {
+            return Ok(Arc::clone(wire));
+        }
+        self.ensure_running().await?;
+        let stream = UnixStream::connect(self.socket())
+            .await
+            .map_err(|error| ClaudeError::Runner(error.to_string()))?;
+        let (reader, writer) = stream.into_split();
+        let wire = Arc::new(Wire {
+            writer: AsyncMutex::new(writer),
+            next_id: AtomicU64::new(1),
+            alive: AtomicBool::new(true),
+            pending: std::sync::Mutex::new(HashMap::new()),
+            sessions: std::sync::Mutex::new(HashMap::new()),
+        });
+        tokio::spawn(Arc::clone(&wire).route(reader));
+        *slot = Some(Arc::clone(&wire));
+        Ok(wire)
     }
 
     /// The conversations the runner is still holding a process for.
@@ -267,13 +480,10 @@ impl SessionFrames {
         let encoded = serde_json::to_string(&frame)
             .map_err(|error| ClaudeError::Protocol(error.to_string()))?;
         match self {
-            Self::Socket(writer) => {
+            Self::Shared { wire, session } => {
                 let raw = RawValue::from_string(encoded)
                     .map_err(|error| ClaudeError::Protocol(error.to_string()))?;
-                writer
-                    .send(raw)
-                    .await
-                    .map_err(|error| ClaudeError::Runner(error.to_string()))
+                wire.send_frame(session, raw).await
             }
             #[cfg(test)]
             Self::Mock { session, runner } => {
@@ -285,41 +495,15 @@ impl SessionFrames {
 }
 
 impl SessionEvents {
+    /// A stand-in stream a test feeds by hand.
+    #[cfg(test)]
+    pub(crate) fn from_channel(receiver: mpsc::UnboundedReceiver<RunnerEvent>) -> Self {
+        Self(receiver)
+    }
+
     /// The next thing the session did, or `None` once it can do nothing more.
     pub(crate) async fn next(&mut self) -> Option<RunnerEvent> {
-        match self {
-            Self::Socket(reader) => loop {
-                let mut line = String::new();
-                if reader.read_line(&mut line).await.ok()? == 0 {
-                    return None;
-                }
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                // Replies to what Caffold wrote share this channel with the
-                // session's own output. Only the output is an event.
-                match protocol::carries_event(trimmed) {
-                    Ok(true) => {}
-                    Ok(false) => continue,
-                    Err(_) => continue,
-                }
-                let Ok(event) = serde_json::from_str::<WireEvent>(trimmed) else {
-                    continue;
-                };
-                return Some(match event.t {
-                    protocol::EventKind::Frame => {
-                        RunnerEvent::Frame(event.frame?.get().to_string())
-                    }
-                    protocol::EventKind::Stderr => {
-                        RunnerEvent::Stderr(event.line.unwrap_or_default())
-                    }
-                    protocol::EventKind::Exit => RunnerEvent::Exit(event.code),
-                });
-            },
-            #[cfg(test)]
-            Self::Mock(receiver) => receiver.recv().await,
-        }
+        self.0.recv().await
     }
 }
 
@@ -441,7 +625,7 @@ impl MockRunner {
                 session: session.to_string(),
                 runner: runner.clone(),
             },
-            events: SessionEvents::Mock(receiver),
+            events: SessionEvents::from_channel(receiver),
         })
     }
 

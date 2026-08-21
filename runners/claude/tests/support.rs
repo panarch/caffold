@@ -283,6 +283,71 @@ impl Drop for Runner {
     }
 }
 
+/// One socket connection speaking the wire protocol directly.
+///
+/// The CLI holds one session per connection by construction, so a case about
+/// one connection carrying several sessions needs the wire itself. Transport
+/// only: what a reply or an event means stays with the test reading it.
+pub struct Wire {
+    stream: std::os::unix::net::UnixStream,
+    reader: BufReader<std::os::unix::net::UnixStream>,
+    next_id: u64,
+}
+
+impl Wire {
+    pub fn connect(runner: &Runner) -> Self {
+        let stream = std::os::unix::net::UnixStream::connect(runner.socket())
+            .expect("connect to the runner");
+        stream
+            .set_read_timeout(Some(TIMEOUT))
+            .expect("a read deadline");
+        let reader = BufReader::new(stream.try_clone().expect("clone the stream"));
+        Self {
+            stream,
+            reader,
+            next_id: 1,
+        }
+    }
+
+    /// Send one request and return its reply, letting events pass by.
+    pub fn request(&mut self, mut body: Value) -> Value {
+        let id = self.next_id;
+        self.next_id += 1;
+        body["id"] = Value::from(id);
+        let mut line = body.to_string();
+        line.push('\n');
+        self.stream
+            .write_all(line.as_bytes())
+            .expect("write the request");
+        loop {
+            let row = self.next_line();
+            if row.get("id").and_then(Value::as_u64) == Some(id) {
+                return row;
+            }
+        }
+    }
+
+    /// The next event line, letting replies pass by.
+    pub fn next_event(&mut self) -> Value {
+        loop {
+            let row = self.next_line();
+            if row.get("t").is_some() {
+                return row;
+            }
+        }
+    }
+
+    fn next_line(&mut self) -> Value {
+        let mut line = String::new();
+        let read = self
+            .reader
+            .read_line(&mut line)
+            .expect("read from the runner");
+        assert!(read > 0, "the runner closed the connection");
+        serde_json::from_str(line.trim()).expect("a JSON line")
+    }
+}
+
 /// A client attached to one session, reading on a background thread so a test
 /// can wait with a deadline rather than block forever.
 pub struct Attached {

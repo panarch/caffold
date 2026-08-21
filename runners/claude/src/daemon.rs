@@ -35,15 +35,32 @@ pub struct Runner {
     /// The children this runner is answerable for, written where the next
     /// runner can find them if this one does not get to end them itself.
     leftovers: Leftovers,
+    /// The one client subscribed to session output, when there is one.
+    ///
+    /// The backend is one client and its subscription is one connection: every
+    /// attached session delivers into this lane, and each event names its
+    /// session. Held by the runner rather than by a connection so that there
+    /// is one thing that is "the backend" — the relationship every lifecycle
+    /// rule speaks about, and the thing a second client is refused against.
+    subscription: Mutex<Option<Subscription>>,
+    next_connection: std::sync::atomic::AtomicU64,
     shutdown: Notify,
 }
 
-/// What one connection is currently doing. A connection may attach to at most
-/// one session, and only an attached connection may write to it.
+struct Subscription {
+    /// Which connection holds it, so only its own end releases it.
+    connection: u64,
+    /// The lane every attached session writes into.
+    lane: mpsc::Sender<Event>,
+    /// The task carrying the lane onto the subscribed connection.
+    pump: tokio::task::JoinHandle<()>,
+}
+
+/// One accepted connection. Requests are answered on it; holding the
+/// subscription is recorded on the runner, under this connection's number.
 struct Connection {
+    id: u64,
     writer: Arc<Mutex<OwnedWriteHalf>>,
-    attached: Option<String>,
-    pump: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Runner {
@@ -52,6 +69,8 @@ impl Runner {
             leftovers: Leftovers::beside(&socket),
             socket,
             sessions: Mutex::new(BTreeMap::new()),
+            subscription: Mutex::new(None),
+            next_connection: std::sync::atomic::AtomicU64::new(1),
             shutdown: Notify::new(),
         })
     }
@@ -92,9 +111,10 @@ impl Runner {
     async fn serve_connection(self: Arc<Self>, stream: UnixStream) -> anyhow::Result<()> {
         let (reader, writer) = stream.into_split();
         let mut connection = Connection {
+            id: self
+                .next_connection
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             writer: Arc::new(Mutex::new(writer)),
-            attached: None,
-            pump: None,
         };
         let mut reader = BufReader::new(reader);
 
@@ -112,15 +132,70 @@ impl Runner {
             write_response(&connection.writer, response).await?;
         }
 
-        if let Some(pump) = connection.pump.take() {
-            pump.abort();
-        }
-        if let Some(session) = connection.attached
-            && let Some(session) = self.sessions.lock().await.get(&session)
+        self.release_subscription_of(connection.id).await;
+        Ok(())
+    }
+
+    /// Let go of the subscription this connection held, if it held one.
+    ///
+    /// Every attached session is detached with it: their lane led here, and a
+    /// lane to a connection that has gone is a lane to nobody.
+    async fn release_subscription_of(&self, connection: u64) {
         {
+            let mut subscription = self.subscription.lock().await;
+            match subscription.as_ref() {
+                Some(held) if held.connection == connection => {
+                    if let Some(held) = subscription.take() {
+                        held.pump.abort();
+                    }
+                }
+                _ => return,
+            }
+        }
+        for session in self.sessions.lock().await.values() {
             session.detach().await;
         }
-        Ok(())
+    }
+
+    /// The lane of this connection's subscription, taking the subscription if
+    /// nobody live holds it.
+    ///
+    /// One client: a second connection asking while the first still reads is
+    /// refused, whatever session it asked about. A subscription whose reader
+    /// has gone is over, whether or not its connection said so.
+    async fn lane_for(&self, connection: &Connection) -> Result<mpsc::Sender<Event>, ErrorBody> {
+        let mut subscription = self.subscription.lock().await;
+        if let Some(held) = subscription.as_ref() {
+            if held.connection == connection.id {
+                return Ok(held.lane.clone());
+            }
+            if !held.lane.is_closed() && !held.pump.is_finished() {
+                return Err(ErrorBody {
+                    code: ErrorCode::AlreadyAttached,
+                    message: "another client is already subscribed".to_string(),
+                });
+            }
+        }
+        if let Some(stale) = subscription.take() {
+            stale.pump.abort();
+        }
+        let (lane, events) = mpsc::channel(EVENT_QUEUE);
+        let pump = tokio::spawn(pump_events(events, Arc::clone(&connection.writer)));
+        *subscription = Some(Subscription {
+            connection: connection.id,
+            lane: lane.clone(),
+            pump,
+        });
+        Ok(lane)
+    }
+
+    /// Whether this connection holds the subscription.
+    async fn is_subscriber(&self, connection: &Connection) -> bool {
+        self.subscription
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|held| held.connection == connection.id)
     }
 
     /// Answer one line. A line that does not parse still gets a reply, because
@@ -178,10 +253,10 @@ impl Runner {
                 Err(error) => Outcome::Err(error),
             },
             Request::SessionSend { session, frame } => {
-                if connection.attached.as_deref() != Some(session.as_str()) {
+                if !self.is_subscriber(connection).await {
                     return Outcome::Err(ErrorBody {
                         code: ErrorCode::NotAttached,
-                        message: "attach to the session before sending".to_string(),
+                        message: "subscribe before sending".to_string(),
                     });
                 }
                 let held = self.sessions.lock().await.get(&session).cloned();
@@ -226,20 +301,21 @@ impl Runner {
             let existing = Arc::clone(existing);
             drop(sessions);
             if attach {
-                self.begin_pump(id, &existing, connection).await?;
+                let lane = self.lane_for(connection).await?;
+                existing.attach(lane).await.map_err(session_error)?;
             }
             return Ok(existing.info().await);
         }
 
-        let subscriber = attach.then(|| mpsc::channel(EVENT_QUEUE));
-        let (sender, receiver) = match subscriber {
-            Some((sender, receiver)) => (Some(sender), Some(receiver)),
-            None => (None, None),
+        let lane = if attach {
+            Some(self.lane_for(connection).await?)
+        } else {
+            None
         };
         // An exited session is replaced rather than reported: the caller asked
         // for a session, and the arguments it supplied say how to get one back.
         let session = Arc::new(
-            Session::spawn(id, &spawn, sender)
+            Session::spawn(id, &spawn, lane)
                 .await
                 .map_err(session_error)?,
         );
@@ -250,15 +326,6 @@ impl Runner {
             self.leftovers.remember(pid).await;
         }
         sessions.insert(id.to_string(), Arc::clone(&session));
-        drop(sessions);
-
-        if let Some(receiver) = receiver {
-            connection.attached = Some(id.to_string());
-            connection.pump = Some(tokio::spawn(pump_events(
-                receiver,
-                Arc::clone(&connection.writer),
-            )));
-        }
         Ok(info)
     }
 
@@ -287,26 +354,9 @@ impl Runner {
             .get(id)
             .cloned()
             .ok_or_else(|| unknown_session(id))?;
-        self.begin_pump(id, &session, connection).await?;
+        let lane = self.lane_for(connection).await?;
+        session.attach(lane).await.map_err(session_error)?;
         Ok(session.info().await)
-    }
-
-    async fn begin_pump(
-        self: &Arc<Self>,
-        id: &str,
-        session: &Arc<Session>,
-        connection: &mut Connection,
-    ) -> Result<(), ErrorBody> {
-        let events = session.attach().await.map_err(session_error)?;
-        if let Some(previous) = connection.pump.take() {
-            previous.abort();
-        }
-        connection.attached = Some(id.to_string());
-        connection.pump = Some(tokio::spawn(pump_events(
-            events,
-            Arc::clone(&connection.writer),
-        )));
-        Ok(())
     }
 }
 

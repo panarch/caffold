@@ -158,17 +158,19 @@ impl Session {
         }
     }
 
-    /// Take over this session's output. One client at a time: a second attach
-    /// is refused rather than splitting the stream, because both halves would
-    /// then be an incomplete conversation.
-    pub async fn attach(&self) -> Result<mpsc::Receiver<Event>, SessionError> {
+    /// Deliver this session's output into the subscriber's lane.
+    ///
+    /// The lane is shared: every attached session writes into it and each event
+    /// names its session. One delivery per session — attaching one that is
+    /// already delivering somewhere live is refused rather than splitting its
+    /// stream, though a lane whose reader has gone counts as nowhere.
+    pub async fn attach(&self, lane: mpsc::Sender<Event>) -> Result<(), SessionError> {
         let mut subscriber = self.subscriber.lock().await;
         if subscriber.as_ref().is_some_and(|tx| !tx.is_closed()) {
             return Err(SessionError::AlreadyAttached);
         }
-        let (tx, rx) = mpsc::channel(EVENT_QUEUE);
-        *subscriber = Some(tx);
-        Ok(rx)
+        *subscriber = Some(lane);
+        Ok(())
     }
 
     pub async fn detach(&self) {

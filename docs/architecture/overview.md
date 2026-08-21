@@ -26,7 +26,7 @@ flowchart TD
     MacWrapper -->|"HTTP"| Backend
     Backend -->|"JSON-RPC / WebSocket"| Proxy
     Proxy --> AppServer
-    Backend -->|"unix socket, one attached connection per session"| Runner
+    Backend -->|"unix socket, one subscribed connection"| Runner
     Runner --> ClaudeSession
     Backend --> Git
     Backend --> Whisper
@@ -135,8 +135,9 @@ Claude ships no daemon, so Caffold runs one: `caffold-claude-runner`, a
 workspace member that holds `claude` child processes and relays their frames
 without reading them. It listens on a unix socket beside the database, so an
 installed application and a development server drive their own. One session per
-Claude Task, reached on one attached connection; the runner refuses a second
-client for the same session rather than splitting its output.
+Claude Task, and one subscribed connection carrying every session's output with
+each event naming its session; a second client asking to subscribe is refused
+rather than splitting the stream.
 
 The runner is deliberately ignorant. It does not know which argument selects a
 model or enables the permission callback, and it keeps no history. It outlives

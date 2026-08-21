@@ -33,9 +33,14 @@ runner          — process supervision, relay
 claude
 ```
 
-One child per session, one attached client per session, and one runner per data
-directory — the socket lives beside the database, so an installed application, a
-development server, and a test run each get their own without arranging it.
+One child per session, one subscribed client per runner, and one runner per
+data directory — the socket lives beside the database, so an installed
+application, a development server, and a test run each get their own without
+arranging it. The subscription is a single connection: every attached session
+delivers its output down it, each event naming its session, and a second client
+asking to subscribe is refused while the first still reads. That one connection
+is what "the backend" means to the runner, which is what its lifecycle rules
+are stated against.
 
 A runner that starts owns nothing from before. Shutting down ends the children
 it supervises, but a runner killed outright runs no shutdown code, and its

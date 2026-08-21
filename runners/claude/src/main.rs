@@ -276,6 +276,7 @@ async fn attach(args: AttachArgs) -> anyhow::Result<()> {
             .await?
     };
     let client::Streaming {
+        held,
         mut reader,
         mut frames,
     } = streaming;
@@ -297,6 +298,13 @@ async fn attach(args: AttachArgs) -> anyhow::Result<()> {
     });
 
     let mut stdout = tokio::io::stdout();
+    // What arrived before streaming began comes first, or the front of the
+    // conversation would be missing from the bridge.
+    for line in held {
+        stdout.write_all(line.as_bytes()).await?;
+        stdout.write_all(b"\n").await?;
+        stdout.flush().await?;
+    }
     let mut line = String::new();
     loop {
         line.clear();

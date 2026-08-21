@@ -3,6 +3,7 @@
 //! Used by this crate's own command line, and shaped so the Caffold backend can
 //! reuse the same request and response types rather than re-deriving them.
 
+use std::collections::VecDeque;
 use std::path::Path;
 
 use serde_json::value::RawValue;
@@ -18,11 +19,20 @@ pub struct Client {
     reader: BufReader<OwnedReadHalf>,
     writer: OwnedWriteHalf,
     next_id: u64,
+    /// Events that arrived while a reply was being awaited.
+    ///
+    /// A subscribed session speaks the moment it starts, so its first events
+    /// can land ahead of the reply to the very request that attached it.
+    /// Dropping them would lose the front of the conversation; they are held
+    /// and handed to whoever streams next.
+    held: VecDeque<String>,
 }
 
 /// An attached connection, split so that reading a session's output and writing
 /// to it can proceed at the same time.
 pub struct Streaming {
+    /// Event lines that arrived before streaming began, to be read first.
+    pub held: VecDeque<String>,
     pub reader: BufReader<OwnedReadHalf>,
     pub frames: FrameWriter,
 }
@@ -48,6 +58,7 @@ impl Client {
             reader: BufReader::new(reader),
             writer,
             next_id: 1,
+            held: VecDeque::new(),
         })
     }
 
@@ -68,9 +79,11 @@ impl Client {
                 anyhow::bail!("the runner closed the connection");
             }
             let trimmed = line.trim();
-            // Session output belongs to whatever attached; a caller waiting on
-            // a reply is not the one that can act on it.
+            // Session output belongs to whatever streams afterwards; a caller
+            // waiting on a reply is not the one that can act on it, but it must
+            // not be lost either.
             if carries_event(trimmed)? {
+                self.held.push_back(trimmed.to_string());
                 continue;
             }
             let wire: WireResponse = serde_json::from_str(trimmed)?;
@@ -135,6 +148,7 @@ impl Client {
         Ok((
             info,
             Streaming {
+                held: self.held,
                 reader: self.reader,
                 frames: FrameWriter {
                     writer: self.writer,
@@ -162,7 +176,9 @@ impl FrameWriter {
     }
 }
 
-fn encode(request: Request, id: u64) -> anyhow::Result<Vec<u8>> {
+/// One request as the line the runner reads, for a caller that manages its
+/// own connection.
+pub fn encode(request: Request, id: u64) -> anyhow::Result<Vec<u8>> {
     let mut encoded = serde_json::to_vec(&request.into_wire(id))?;
     encoded.push(b'\n');
     Ok(encoded)
