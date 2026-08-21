@@ -47,10 +47,23 @@ enum DaemonCommand {
     Start(DataDirArgs),
     /// Run in the foreground. This is what `start` launches, and what a test
     /// runs directly so it can supervise the process itself.
-    Run(DataDirArgs),
+    Run(RunArgs),
     Stop(DataDirArgs),
     Restart(DataDirArgs),
     Status(DataDirArgs),
+}
+
+#[derive(Debug, Args)]
+struct RunArgs {
+    #[command(flatten)]
+    data: DataDirArgs,
+    /// End the runner after this many seconds with no subscribed client.
+    ///
+    /// The runner outlives the backend on purpose, so a backend that dies
+    /// without ceremony cannot say so; going unsubscribed this long is the
+    /// signal. Zero disables the timeout.
+    #[arg(long, default_value_t = 600)]
+    idle_timeout: u64,
 }
 
 #[derive(Debug, Subcommand)]
@@ -117,7 +130,11 @@ struct AttachArgs {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Daemon(DaemonCommand::Run(args)) => run_foreground(socket_path(&args)?).await,
+        Command::Daemon(DaemonCommand::Run(args)) => {
+            let timeout =
+                (args.idle_timeout > 0).then(|| std::time::Duration::from_secs(args.idle_timeout));
+            run_foreground(socket_path(&args.data)?, timeout).await
+        }
         Command::Daemon(DaemonCommand::Start(args)) => start(socket_path(&args)?).await,
         Command::Daemon(DaemonCommand::Stop(args)) => stop(socket_path(&args)?).await,
         Command::Daemon(DaemonCommand::Restart(args)) => {
@@ -148,9 +165,12 @@ fn default_data_dir() -> anyhow::Result<PathBuf> {
     Ok(home.join(".caffold"))
 }
 
-async fn run_foreground(socket: PathBuf) -> anyhow::Result<()> {
+async fn run_foreground(
+    socket: PathBuf,
+    idle_timeout: Option<std::time::Duration>,
+) -> anyhow::Result<()> {
     let listener = daemon::bind(&socket).await?;
-    let runner = daemon::Runner::new(socket);
+    let runner = daemon::Runner::new(socket, idle_timeout);
     runner.serve(listener).await
 }
 

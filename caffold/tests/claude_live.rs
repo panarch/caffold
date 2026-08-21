@@ -211,6 +211,40 @@ async fn a_question_nobody_answered_is_asked_again_after_the_backend_is_replaced
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn restarting_the_claude_runtime_ends_its_sessions_and_tasks_resume() {
+    // The explicit restart a person asks for in Settings. The runner is
+    // replaced, every session it held ends the way an application update ends
+    // them, and a Task spoken to afterwards resumes its conversation on a
+    // fresh agent.
+    let backend = Backend::start().await;
+    let task = backend
+        .start_task("Reply with the single word: ok.", MODEL)
+        .await;
+    task.wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+    let old_agent = backend.agent_process().await;
+
+    let replaced = backend
+        .post("/api/claude/restart", serde_json::json!({}))
+        .await
+        .expect("the restart answers");
+    assert_eq!(
+        replaced["sessions"], 0,
+        "the replacement runner holds nothing: {replaced}"
+    );
+    assert!(
+        support::wait_for_process_exit(old_agent),
+        "the old agent ended with the old runner"
+    );
+
+    let asked = task.say("Reply with the single word: alive.").await;
+    assert!(!asked.steered, "a fresh turn on a fresh session");
+    task.wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
 async fn a_conversation_survives_the_runner_being_killed_outright() {
     // The runner is what holds the agent, and a runner killed outright runs no
     // shutdown code: its children are left running with nothing able to reach

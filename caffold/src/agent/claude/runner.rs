@@ -442,6 +442,46 @@ impl RunnerClient {
         }
     }
 
+    /// Stop the runner and start a fresh one, reporting the replacement.
+    ///
+    /// Deliberate, and only deliberate: every session the old runner held ends
+    /// with it, the way an application update ends them, and each conversation
+    /// resumes from its file the next time its Task is opened. The stop is the
+    /// graceful one — children closed, the book emptied — and the runner that
+    /// answers afterwards is running whatever binary is installed now, which
+    /// is the other thing restarting is for.
+    pub(crate) async fn restart(&self) -> Result<protocol::DaemonStatus, ClaudeError> {
+        #[cfg(test)]
+        if let Some(mock) = &self.mock {
+            return Ok(mock.restart().await);
+        }
+        if let Ok(mut client) = self.connect().await {
+            // The reply may be cut off by the stop it asks for; gone is gone.
+            let _ = client.request(Request::DaemonStop).await;
+        }
+        let deadline = tokio::time::Instant::now() + START_TIMEOUT;
+        while Client::connect(self.socket()).await.is_ok() {
+            if tokio::time::Instant::now() >= deadline {
+                return Err(ClaudeError::Runner(
+                    "the runner went on answering after it was asked to stop".to_string(),
+                ));
+            }
+            tokio::time::sleep(START_POLL).await;
+        }
+        self.ensure_running().await?;
+        let mut client = self.connect().await?;
+        match client
+            .request(Request::DaemonStatus)
+            .await
+            .map_err(|error| ClaudeError::Runner(error.to_string()))?
+        {
+            ReplyBody::Daemon(status) => Ok(status),
+            _ => Err(ClaudeError::Runner(
+                "the runner answered a status request with something else".to_string(),
+            )),
+        }
+    }
+
     /// End a session and the process behind it.
     ///
     /// A runner that is not listening is not started to be told this: it holds
@@ -668,6 +708,24 @@ impl MockRunner {
     async fn close(&self, session: &str) {
         let mut state = self.state.lock().await;
         state.sessions.remove(session);
+    }
+
+    /// Restart as the real runner restarts: every session ends, and the
+    /// replacement holds nothing.
+    async fn restart(&self) -> protocol::DaemonStatus {
+        let mut state = self.state.lock().await;
+        for (_, session) in state.sessions.drain() {
+            let _ = session.agent.send(RunnerEvent::Exit(Some(0)));
+        }
+        protocol::DaemonStatus {
+            protocol_version: protocol::PROTOCOL_VERSION,
+            runner_version: "stand-in".to_string(),
+            pid: 4242,
+            socket: "stand-in".to_string(),
+            sessions: 0,
+            idle_timeout_secs: Some(600),
+            unsubscribed_for_secs: None,
+        }
     }
 }
 

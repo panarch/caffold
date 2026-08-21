@@ -129,6 +129,13 @@ pub struct DaemonStatus {
     pub pid: u32,
     pub socket: String,
     pub sessions: usize,
+    /// After this many seconds with no subscriber, the runner ends itself.
+    /// Absent when the timeout is disabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idle_timeout_secs: Option<u64>,
+    /// How long nobody has been subscribed, when nobody is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unsubscribed_for_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

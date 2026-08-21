@@ -108,6 +108,17 @@ const ROUTE_DEFINITIONS = [
     parent: () => settingsRoute(),
   }),
   routeDefinition({
+    id: "settings-claude",
+    kind: "settings",
+    pattern: "/settings/claude",
+    surface: "task-workspace",
+    target: "claude",
+    toRoute: () => settingsRoute("claude"),
+    matchesRoute: (route) =>
+      route?.kind === "settings" && route.section === "claude",
+    parent: () => settingsRoute(),
+  }),
+  routeDefinition({
     id: "settings-about",
     kind: "settings",
     pattern: "/settings/about",
@@ -729,6 +740,7 @@ function settingsRoute(section = "") {
       "notifications",
       "remote-access",
       "codex",
+      "claude",
       "about",
     ].includes(section)
       ? section

@@ -162,6 +162,9 @@ Settings includes:
   private Tailnet URL, copy/open actions, QR handoff, and same-tailnet guidance;
 - Codex installation readiness, repair guidance, runtime status, Refresh,
   restart, and diagnostics;
+- Claude runner runtime control: an explicit, confirmed restart that stops the
+  runner — ending every Claude session it holds — and starts a fresh one on the
+  installed binary; conversations resume as their Tasks are opened;
 - About Caffold application and build information, including shared
   checking/ready/settled update status and a **Reload to update** action while
   a prepared PWA generation remains ready. Copied diagnostics also include the

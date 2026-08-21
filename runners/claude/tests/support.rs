@@ -61,12 +61,31 @@ impl Runner {
         runner
     }
 
+    /// Start with extra `daemon run` arguments, in a directory of its own.
+    pub fn start_with_args(extra: &[&str]) -> Self {
+        let unique = format!(
+            "caffold-runner-test-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        );
+        let data_dir = std::env::temp_dir().join(unique);
+        std::fs::create_dir_all(&data_dir).expect("create the data directory");
+        let mut runner = Self::start_in_with(&data_dir, extra);
+        runner.owns_directory = true;
+        runner
+    }
+
     /// Start against an existing directory, so a test can replace a runner that
     /// left state behind.
     pub fn start_in(data_dir: &Path) -> Self {
+        Self::start_in_with(data_dir, &[])
+    }
+
+    fn start_in_with(data_dir: &Path, extra: &[&str]) -> Self {
         let process = Command::new(BINARY)
             .args(["daemon", "run", "--data-dir"])
             .arg(data_dir)
+            .args(extra)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -182,6 +201,27 @@ impl Runner {
         self.sessions()
             .into_iter()
             .find(|session| session["session"] == id)
+    }
+
+    /// Poll until the runner stops answering, so a test does not depend on how
+    /// promptly it acts on its own timeout.
+    pub fn wait_until_gone(&self) {
+        let deadline = Instant::now() + TIMEOUT;
+        while Instant::now() < deadline {
+            let answering = Command::new(BINARY)
+                .args(["daemon", "status", "--data-dir"])
+                .arg(&self.data_dir)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map(|status| status.success())
+                .unwrap_or(false);
+            if !answering {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        panic!("the runner never stopped answering");
     }
 
     /// Poll until the child has exited, so a test does not depend on how long a

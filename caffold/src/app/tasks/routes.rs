@@ -1,4 +1,5 @@
 mod agent;
+mod claude;
 mod codex;
 mod commands;
 mod conversation;
@@ -7,6 +8,7 @@ mod membership;
 mod store;
 
 use agent::*;
+use claude::*;
 use codex::*;
 use commands::*;
 use conversation::*;
@@ -312,6 +314,7 @@ pub(super) fn router(state: TaskState) -> Router {
         .merge(super::push::router())
         .route("/api/codex/status", get(codex_status))
         .route("/api/codex/restart", post(codex_restart))
+        .route("/api/claude/restart", post(claude_restart))
         .route("/api/agent/models", get(agent_models))
         .route("/api/agent/permissions", get(agent_permissions))
         .route(

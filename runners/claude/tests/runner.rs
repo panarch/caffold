@@ -7,6 +7,8 @@
 
 mod support;
 
+use std::time::Duration;
+
 use serde_json::{Value, json};
 use support::{Runner, Wire, fake_agent};
 
@@ -342,6 +344,59 @@ fn a_child_left_by_a_crashed_runner_is_ended_by_the_next_one() {
         "the runner that started ended what the last one left"
     );
     assert_eq!(replacement.sessions().len(), 0, "and claims none of them");
+}
+
+#[test]
+fn a_runner_nobody_subscribes_to_ends_itself_after_its_timeout() {
+    // The runner outlives the backend on purpose, and a backend that dies
+    // without ceremony leaves nothing behind to say so. Going unsubscribed for
+    // the configured stretch is itself the signal — the runner takes the same
+    // way out a deliberate stop takes, so nothing lingers as a zombie for a
+    // client that is never coming back.
+    let runner = Runner::start_with_args(&["--idle-timeout", "1"]);
+    let socket = runner.socket();
+    let status = runner.run(&["daemon", "status"]);
+    assert_eq!(
+        status["idle_timeout_secs"], 1,
+        "the timeout is part of what the runner reports about itself: {status}"
+    );
+
+    runner.wait_until_gone();
+
+    assert!(
+        !socket.exists(),
+        "it ended the way a deliberate stop ends, tidying the socket"
+    );
+}
+
+#[test]
+fn a_subscriber_holds_the_runner_open_past_its_timeout() {
+    // The subscription is what "a backend is connected" means, so as long as
+    // one is held the clock never starts. Its end starts the clock, and the
+    // end that follows is the graceful one: the child is closed rather than
+    // orphaned, and the book of children is emptied.
+    let runner = Runner::start_with_args(&["--idle-timeout", "1"]);
+    let mut attached = runner.create_attached("s1", &fake_agent(&["--busy-for", "60"]));
+    assert_eq!(attached.next_frame()["type"], "ready");
+    let child = runner.sessions()[0]["pid"].as_u64().expect("pid") as i32;
+
+    std::thread::sleep(Duration::from_millis(2_500));
+    assert_eq!(
+        runner.run(&["daemon", "status"])["sessions"],
+        1,
+        "still serving while somebody subscribes"
+    );
+
+    attached.disconnect();
+    runner.wait_until_gone();
+    assert!(
+        support::wait_for_process_exit(child),
+        "the agent ended with the runner rather than being left behind"
+    );
+    let records = std::fs::read_dir(runner.data_dir().join("children"))
+        .map(|entries| entries.count())
+        .unwrap_or(0);
+    assert_eq!(records, 0, "and nothing is left written down");
 }
 
 #[test]

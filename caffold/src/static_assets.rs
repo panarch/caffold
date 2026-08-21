@@ -183,6 +183,22 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/codex/page.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/settings/codex/page.js"
         ))),
+        "pages/(task-workspace)/settings/claude/page.css" => Some(css(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/claude/page.css"
+        ))),
+        "pages/(task-workspace)/settings/claude/page.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/claude/page.js"
+        ))),
+        "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css"
+            )))
+        }
+        "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js"
+            )))
+        }
         "pages/(task-workspace)/settings/about/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/about/page.css"
         ))),
@@ -1028,11 +1044,15 @@ mod tests {
             "pages/(task-workspace)/settings/remote-access/page.js",
             "pages/(task-workspace)/settings/remote-access/tailscale.js",
             "pages/(task-workspace)/settings/codex/page.js",
+            "pages/(task-workspace)/settings/claude/page.js",
+            "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
             "pages/(task-workspace)/settings/about/page.js",
         ] {
             let asset = get(path).unwrap_or_else(|| panic!("missing settings asset {path}"));
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
-            assert!(asset.body.starts_with(b"import "));
+            // The body is the module itself, not an HTML error page. A module
+            // with no imports of its own opens with what it exports.
+            assert!(asset.body.starts_with(b"import ") || asset.body.starts_with(b"export "));
         }
 
         let notification_lifecycle =

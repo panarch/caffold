@@ -44,6 +44,10 @@ pub struct Runner {
     /// rule speaks about, and the thing a second client is refused against.
     subscription: Mutex<Option<Subscription>>,
     next_connection: std::sync::atomic::AtomicU64,
+    /// End the runner after this long with no subscriber, when set.
+    idle_timeout: Option<std::time::Duration>,
+    /// When the subscription was last seen absent, while it stays absent.
+    unsubscribed_since: Mutex<Option<tokio::time::Instant>>,
     shutdown: Notify,
 }
 
@@ -64,13 +68,15 @@ struct Connection {
 }
 
 impl Runner {
-    pub fn new(socket: PathBuf) -> Arc<Self> {
+    pub fn new(socket: PathBuf, idle_timeout: Option<std::time::Duration>) -> Arc<Self> {
         Arc::new(Self {
             leftovers: Leftovers::beside(&socket),
             socket,
             sessions: Mutex::new(BTreeMap::new()),
             subscription: Mutex::new(None),
             next_connection: std::sync::atomic::AtomicU64::new(1),
+            idle_timeout,
+            unsubscribed_since: Mutex::new(None),
             shutdown: Notify::new(),
         })
     }
@@ -83,6 +89,10 @@ impl Runner {
         // is still writing to would put a second agent on it.
         self.leftovers.clear().await;
 
+        // The idle clock, kept here so a deliberate stop and an unattended one
+        // leave through the same door below.
+        let mut ticker = tokio::time::interval(std::time::Duration::from_millis(500));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tokio::select! {
                 accepted = listener.accept() => {
@@ -93,6 +103,12 @@ impl Runner {
                             eprintln!("connection ended: {error}");
                         }
                     });
+                }
+                _ = ticker.tick() => {
+                    if self.unsubscribed_past_the_timeout().await {
+                        eprintln!("nobody has subscribed for the configured stretch; stopping");
+                        break;
+                    }
                 }
                 () = self.shutdown.notified() => break,
             }
@@ -189,6 +205,34 @@ impl Runner {
         Ok(lane)
     }
 
+    /// Whether the stretch with nobody subscribed has outrun the timeout.
+    ///
+    /// The subscription is what "a backend is connected" means, so its absence
+    /// is the whole test — sessions, running or not, do not hold the runner
+    /// open, or a backend that died mid-turn would leave a zombie exactly as
+    /// long as its agent kept working. The conversation is on disk; ending the
+    /// agent loses nothing a resume cannot pick back up.
+    async fn unsubscribed_past_the_timeout(&self) -> bool {
+        let Some(timeout) = self.idle_timeout else {
+            return false;
+        };
+        let subscribed = self
+            .subscription
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|held| !held.pump.is_finished());
+        let mut since = self.unsubscribed_since.lock().await;
+        if subscribed {
+            *since = None;
+            return false;
+        }
+        since
+            .get_or_insert_with(tokio::time::Instant::now)
+            .elapsed()
+            >= timeout
+    }
+
     /// Whether this connection holds the subscription.
     async fn is_subscriber(&self, connection: &Connection) -> bool {
         self.subscription
@@ -278,6 +322,12 @@ impl Runner {
             pid: std::process::id(),
             socket: self.socket.display().to_string(),
             sessions: self.sessions.lock().await.len(),
+            idle_timeout_secs: self.idle_timeout.map(|timeout| timeout.as_secs()),
+            unsubscribed_for_secs: self
+                .unsubscribed_since
+                .lock()
+                .await
+                .map(|since| since.elapsed().as_secs()),
         }
     }
 

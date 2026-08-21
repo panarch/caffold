@@ -8,6 +8,10 @@ export async function getCodexStatus() {
   return requestJson("/api/codex/status");
 }
 
+export async function restartClaudeRuntime() {
+  return requestJson("/api/claude/restart", {}, { method: "POST" });
+}
+
 export async function restartCodexRuntime() {
   return requestJson("/api/codex/restart", {}, { method: "POST" });
 }

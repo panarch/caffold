@@ -4,6 +4,7 @@ import "./files/page.js";
 import "./notifications/page.js";
 import "./remote-access/page.js";
 import "./codex/page.js";
+import "./claude/page.js";
 import "./about/page.js";
 
 const TITLES = {
@@ -12,6 +13,7 @@ const TITLES = {
   notifications: "Notifications",
   "remote-access": "Remote Access",
   codex: "Codex",
+  claude: "Claude",
   about: "About Caffold",
 };
 const SETTINGS_MASTER_DETAIL_MEDIA_QUERY = "(min-width: 900px)";
@@ -73,6 +75,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
           <caffold-settings-notifications-page hidden></caffold-settings-notifications-page>
           <caffold-settings-remote-access-page hidden></caffold-settings-remote-access-page>
           <caffold-settings-codex-page hidden></caffold-settings-codex-page>
+          <caffold-settings-claude-page hidden></caffold-settings-claude-page>
           <caffold-settings-about-page hidden></caffold-settings-about-page>
         </div>
       </div>
@@ -163,6 +166,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
       notifications: this.querySelector("caffold-settings-notifications-page"),
       "remote-access": this.querySelector("caffold-settings-remote-access-page"),
       codex: this.querySelector("caffold-settings-codex-page"),
+      claude: this.querySelector("caffold-settings-claude-page"),
       about: this.querySelector("caffold-settings-about-page"),
     };
     for (const [section, page] of Object.entries(pages)) {
@@ -214,6 +218,11 @@ class CaffoldSettingsWorkspace extends HTMLElement {
   setCodexRestartState(state) {
     this.ensureRendered();
     this.querySelector("caffold-settings-codex-page").setRestartState(state);
+  }
+
+  setClaudeRestartState(state) {
+    this.ensureRendered();
+    this.querySelector("caffold-settings-claude-page").setRestartState(state);
   }
 
   setBuildStatus(health) {

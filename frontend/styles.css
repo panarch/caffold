@@ -17,6 +17,8 @@
 @import "./pages/(task-workspace)/settings/notifications/page.css";
 @import "./pages/(task-workspace)/settings/remote-access/page.css";
 @import "./pages/(task-workspace)/settings/codex/page.css";
+@import "./pages/(task-workspace)/settings/claude/page.css";
+@import "./pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css";
 @import "./pages/(task-workspace)/settings/about/page.css";
 @import "./pages/(task-workspace)/tasks/controls.css";
 @import "./pages/(task-workspace)/tasks/components/task-status.css";

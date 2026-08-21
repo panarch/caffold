@@ -42,6 +42,15 @@ asking to subscribe is refused while the first still reads. That one connection
 is what "the backend" means to the runner, which is what its lifecycle rules
 are stated against.
 
+The runner ends itself after ten minutes with no subscriber (`daemon run
+--idle-timeout`, in seconds; zero disables it). It outlives the backend on
+purpose, so a backend that dies without ceremony cannot say so — going
+unsubscribed that long is the signal, and the runner leaves by the same door a
+deliberate stop uses: children closed, the book of children emptied, the
+socket removed. A backend restart reattaches within seconds and never starts
+the clock; ending the runner on purpose is the backend's `/api/claude/restart`,
+which stops it and starts a fresh one on the currently installed binary.
+
 A runner that starts owns nothing from before. Shutting down ends the children
 it supervises, but a runner killed outright runs no shutdown code, and its
 children would go on with the pipes to them gone — unreachable, and still

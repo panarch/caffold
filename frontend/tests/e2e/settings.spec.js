@@ -179,6 +179,68 @@ test("keeps Codex Settings actionable when runtime restart fails", { tag: "@all-
   await expect(settings.getByRole("button", { name: "Restart runtime" })).toBeEnabled();
 });
 
+test("explicitly restarts the Claude runner from its Settings item", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  let restartRequests = 0;
+  await page.route(/\/api\/claude\/restart(?:\?|$)/, (route) => {
+    restartRequests += 1;
+    expect(route.request().method()).toBe("POST");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        protocol_version: 1,
+        runner_version: "0.7.2",
+        pid: 4242,
+        socket: "/tmp/claude-runner.sock",
+        sessions: 0,
+        idle_timeout_secs: 600,
+      }),
+    });
+  });
+
+  await page.goto("/settings/claude");
+  const settings = page.locator("caffold-settings-claude-page");
+  await expect(settings).toContainText("Restarting stops the runner");
+
+  await settings.getByRole("button", { name: "Restart runtime" }).click();
+  const dialog = page.getByRole("dialog", { name: "Restart Claude runtime?" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("ends every running Claude turn");
+  await dialog.getByRole("button", { name: "Restart Claude" }).click();
+
+  await expect(settings).toContainText("Claude runner restarted");
+  expect(restartRequests).toBe(1);
+  await expect(settings.getByRole("button", { name: "Restart runtime" })).toBeEnabled();
+});
+
+test("keeps the Claude Settings item actionable when the restart fails", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await page.route(/\/api\/claude\/restart(?:\?|$)/, (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: {
+          code: "claude_runtime_unavailable",
+          message: "The Claude runner went on answering after it was asked to stop.",
+        },
+      }),
+    }),
+  );
+
+  await page.goto("/settings/claude");
+  const settings = page.locator("caffold-settings-claude-page");
+  await settings.getByRole("button", { name: "Restart runtime" }).click();
+  await page.getByRole("dialog", { name: "Restart Claude runtime?" })
+    .getByRole("button", { name: "Restart Claude" })
+    .click();
+
+  await expect(settings).toContainText("went on answering");
+  await expect(settings.getByRole("button", { name: "Restart runtime" })).toBeEnabled();
+});
+
 test("enables, lists, removes, and explicitly revokes notification installations", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
