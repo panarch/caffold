@@ -1023,12 +1023,12 @@ mod request_tests {
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;
         let _viewer = state
-            .codex_sessions
+            .task_sessions
             .acquire_viewer(&client.driver(), 1, thread_id)
             .await
             .expect("viewer");
         let initial_revision = state
-            .codex_sessions
+            .task_sessions
             .snapshot(thread_id)
             .await
             .expect("initial snapshot")
@@ -1145,7 +1145,7 @@ mod request_tests {
         .unwrap();
 
         let snapshot = state
-            .codex_sessions
+            .task_sessions
             .ensure_subscribed(&client.driver(), 1, thread_id)
             .await
             .unwrap();
@@ -1324,11 +1324,11 @@ mod request_tests {
         )
         .expect("canonical thread");
         state
-            .codex_sessions
+            .task_sessions
             .observe_thread_metadata(Conversation::from(&thread))
             .await;
         let snapshot = state
-            .codex_sessions
+            .task_sessions
             .snapshot("thread-unmanaged")
             .await
             .expect("canonical snapshot");
@@ -1464,7 +1464,7 @@ mod request_tests {
             .update_display_name(thread_id, "Cached task detail regression")
             .unwrap();
         let _viewer = state
-            .codex_sessions
+            .task_sessions
             .acquire_viewer(&client.driver(), 1, thread_id)
             .await
             .expect("initial task subscription succeeds");
@@ -1525,7 +1525,7 @@ mod request_tests {
             serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
                 .expect("cached thread metadata");
         state
-            .codex_sessions
+            .task_sessions
             .observe_thread_metadata(Conversation::from(&thread))
             .await;
 
@@ -1603,7 +1603,7 @@ mod request_tests {
             serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
                 .expect("cached thread metadata");
         state
-            .codex_sessions
+            .task_sessions
             .observe_thread_metadata(Conversation::from(&thread))
             .await;
 
@@ -1738,7 +1738,7 @@ mod request_tests {
         wait_for_mock_method(&client, "thread/resume").await;
         tokio::time::sleep(Duration::from_millis(20)).await;
         let snapshot = state
-            .codex_sessions
+            .task_sessions
             .snapshot(thread_id)
             .await
             .expect("cached session remains tracked");
@@ -1822,7 +1822,7 @@ mod request_tests {
         assert!(matches!(second, ApiError::CodexThread(_)));
 
         let snapshot = state
-            .codex_sessions
+            .task_sessions
             .snapshot(thread_id)
             .await
             .expect("cached session remains tracked");
@@ -2122,7 +2122,7 @@ mod request_tests {
 
         tokio::time::sleep(Duration::from_millis(275)).await;
         let snapshot = state
-            .codex_sessions
+            .task_sessions
             .snapshot(thread_id)
             .await
             .expect("thread session snapshot");
@@ -2294,7 +2294,7 @@ mod sync_tests {
 
         wait_for_mock_method(&client, "thread/read").await;
         let snapshot = state
-            .codex_sessions
+            .task_sessions
             .snapshot(thread_id)
             .await
             .expect("thread session");
@@ -2327,7 +2327,7 @@ mod sync_tests {
             serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
                 .expect("cached thread metadata");
         state
-            .codex_sessions
+            .task_sessions
             .observe_thread_metadata(Conversation::from(&thread))
             .await;
 
@@ -2356,7 +2356,7 @@ mod sync_tests {
         assert!(matches!(error, ApiError::CodexThread(_)));
 
         let snapshot = state
-            .codex_sessions
+            .task_sessions
             .snapshot(thread_id)
             .await
             .expect("cached session remains tracked");

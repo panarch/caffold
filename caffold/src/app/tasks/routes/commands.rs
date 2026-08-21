@@ -54,11 +54,11 @@ pub(super) async fn task_prompt(
     let requested_fast_mode = request.fast_mode;
     let requested_permission_mode = request.permission_mode;
     state
-        .codex_sessions
+        .task_sessions
         .restore_managed_fast_mode(&thread_id, managed.fast_mode)
         .await;
     let mut target = match state
-        .codex_sessions
+        .task_sessions
         .prepare_prompt(&agent.driver(), agent.generation(), &thread_id)
         .await
     {
@@ -75,7 +75,7 @@ pub(super) async fn task_prompt(
         target = managed_prompt_target(
             target,
             managed_cwd,
-            state.codex_sessions.snapshot(&thread_id).await.as_ref(),
+            state.task_sessions.snapshot(&thread_id).await.as_ref(),
         )?;
     }
     let mut refreshed_stale_turn = false;
@@ -123,22 +123,22 @@ pub(super) async fn task_prompt(
             {
                 refreshed_stale_turn = true;
                 if let Err(refresh_error) = state
-                    .codex_sessions
+                    .task_sessions
                     .refresh_subscription(&agent.driver(), agent.generation(), &thread_id)
                     .await
                 {
-                    state.codex_sessions.cancel_runtime(&thread_id).await;
+                    state.task_sessions.cancel_runtime(&thread_id).await;
                     recover_agent_connection(&state, &agent, &refresh_error).await;
                     return Err(refresh_error.into());
                 }
                 target = match state
-                    .codex_sessions
+                    .task_sessions
                     .prepare_prompt(&agent.driver(), agent.generation(), &thread_id)
                     .await
                 {
                     Ok(target) => target,
                     Err(refresh_error) => {
-                        state.codex_sessions.cancel_runtime(&thread_id).await;
+                        state.task_sessions.cancel_runtime(&thread_id).await;
                         state
                             .codex_runtime
                             .recover_connection_error_for(&agent, &refresh_error)
@@ -150,12 +150,12 @@ pub(super) async fn task_prompt(
                     target = managed_prompt_target(
                         target,
                         managed_cwd,
-                        state.codex_sessions.snapshot(&thread_id).await.as_ref(),
+                        state.task_sessions.snapshot(&thread_id).await.as_ref(),
                     )?;
                 }
             }
             Err(error) => {
-                state.codex_sessions.cancel_runtime(&thread_id).await;
+                state.task_sessions.cancel_runtime(&thread_id).await;
                 state
                     .codex_runtime
                     .recover_connection_error_for(&agent, &error)
@@ -166,7 +166,7 @@ pub(super) async fn task_prompt(
     };
     if let Some((turn, applied_options)) = outcome.started_turn {
         state
-            .codex_sessions
+            .task_sessions
             .record_turn_started(
                 agent.generation(),
                 &thread_id,
@@ -175,7 +175,7 @@ pub(super) async fn task_prompt(
                 applied_options.clone(),
             )
             .await;
-        if let Some(snapshot) = state.codex_sessions.snapshot(&thread_id).await {
+        if let Some(snapshot) = state.task_sessions.snapshot(&thread_id).await {
             let persistence_result = task_store_update_composer_settings(
                 &state,
                 &thread_id,
@@ -291,12 +291,12 @@ pub(super) async fn task_interrupt(
         .await?
         .ok_or_else(task_not_managed_error)?;
     state
-        .codex_sessions
+        .task_sessions
         .restore_managed_fast_mode(&thread_id, managed.fast_mode)
         .await;
     let agent = state.codex_runtime.task_agent(&thread_id).await?;
     let Some(turn_id) = state
-        .codex_sessions
+        .task_sessions
         .active_turn_id(&agent.driver(), agent.generation(), &thread_id)
         .await?
     else {
@@ -1213,7 +1213,7 @@ mod tests {
         assert_eq!(turn_start.1["cwd"], managed_cwd.display().to_string());
         assert_eq!(
             state
-                .codex_sessions
+                .task_sessions
                 .snapshot(thread_id)
                 .await
                 .unwrap()
@@ -1223,9 +1223,9 @@ mod tests {
             managed_cwd.display().to_string()
         );
 
-        let syncing = state.codex_sessions.begin_external_sync(thread_id).await;
+        let syncing = state.task_sessions.begin_external_sync(thread_id).await;
         state
-            .codex_sessions
+            .task_sessions
             .apply_external_read_sync(
                 thread_id,
                 syncing.revision,
@@ -1249,7 +1249,7 @@ mod tests {
                 }))),
             )
             .await;
-        let snapshot = state.codex_sessions.snapshot(thread_id).await.unwrap();
+        let snapshot = state.task_sessions.snapshot(thread_id).await.unwrap();
         assert_eq!(
             snapshot.conversation.unwrap().cwd,
             root.path().display().to_string()
@@ -1557,7 +1557,7 @@ mod tests {
         .expect("post-restart managed turn remains steerable");
 
         assert!(response.0.steered);
-        let snapshot = state.codex_sessions.snapshot(thread_id).await.unwrap();
+        let snapshot = state.task_sessions.snapshot(thread_id).await.unwrap();
         assert_eq!(snapshot.active_turn_id.as_deref(), Some(turn_id));
         assert_eq!(
             snapshot.active_turn_cwd.as_deref(),
@@ -1653,7 +1653,7 @@ mod tests {
         );
         assert_eq!(
             state
-                .codex_sessions
+                .task_sessions
                 .snapshot(thread_id)
                 .await
                 .expect("recovered session")

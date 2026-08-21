@@ -6,7 +6,7 @@ pub(super) async fn codex_status(State(state): State<TaskState>) -> Json<CodexSt
     let diagnostics = CodexRuntimeDiagnostics {
         process_generation,
         process_connected,
-        thread_sessions: state.codex_sessions.diagnostics().await,
+        thread_sessions: state.task_sessions.diagnostics().await,
         usage: state.codex_runtime.usage_diagnostics(),
     };
     Json(CodexStatusPayload {

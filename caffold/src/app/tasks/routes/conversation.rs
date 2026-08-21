@@ -77,13 +77,13 @@ pub(super) async fn mark_task_seen(
             let conversation =
                 Conversation::from(&connection.client.read_thread(&thread_id).await?);
             state
-                .codex_sessions
+                .task_sessions
                 .observe_thread_metadata(conversation.clone())
                 .await;
             state.detail.record_from_conversation(&conversation)?
         }
         None => match state
-            .codex_sessions
+            .task_sessions
             .snapshot(&thread_id)
             .await
             .and_then(|snapshot| snapshot.conversation)

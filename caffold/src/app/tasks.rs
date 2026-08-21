@@ -40,7 +40,7 @@ struct TaskState {
     fs: Arc<RootedFs>,
     default_cwd_path: String,
     codex_runtime: CodexRuntime,
-    codex_sessions: crate::app::tasks::sessions::TaskSessions,
+    task_sessions: crate::app::tasks::sessions::TaskSessions,
     detail: DetailContext,
     task_events: TaskEvents,
     task_sync: TaskSync<TaskDetailSync>,
@@ -83,13 +83,13 @@ impl TaskState {
         claude: ClaudeClient,
     ) -> anyhow::Result<Self> {
         let task_events = TaskEvents::default();
-        let codex_sessions = crate::app::tasks::sessions::TaskSessions::default();
+        let task_sessions = crate::app::tasks::sessions::TaskSessions::default();
         let task_list_events = TaskListEvents::new();
         let managed_worktrees =
             ManagedWorktrees::new(fs.clone(), task_store.clone(), worktree_root)?;
         let lifecycle = TaskLifecycle::new(
             fs.clone(),
-            codex_sessions.clone(),
+            task_sessions.clone(),
             task_events.clone(),
             task_list_events.clone(),
             task_store.clone(),
@@ -98,7 +98,7 @@ impl TaskState {
         );
         let codex_runtime = CodexRuntime::new(
             claude,
-            codex_sessions.clone(),
+            task_sessions.clone(),
             task_events.clone(),
             task_store.clone(),
             shutdown.clone(),
@@ -113,7 +113,7 @@ impl TaskState {
             task_store.clone(),
             codex_runtime.clone(),
             codex_runtime_signals,
-            codex_sessions.clone(),
+            task_sessions.clone(),
             task_events.clone(),
             task_sync.clone(),
             shutdown.clone(),
@@ -123,7 +123,7 @@ impl TaskState {
             fs,
             default_cwd_path,
             codex_runtime,
-            codex_sessions,
+            task_sessions,
             detail,
             task_events,
             task_sync,
@@ -336,7 +336,7 @@ pub(in crate::app::tasks) mod test_support {
             serde_json::from_value(task_thread_list(thread_id, cwd)["data"][0].clone())
                 .expect("canonical test thread");
         state
-            .codex_sessions
+            .task_sessions
             .observe_thread_metadata(Conversation::from(&thread))
             .await;
         manage_test_thread(state, thread_id, cwd).await;

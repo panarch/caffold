@@ -141,9 +141,9 @@ pub(super) async fn task_recovery_restore(
             }
             ManagedCodexThreadLocation::Missing => return Err(task_recovery_changed_error()),
         };
-    state.codex_sessions.forget_thread(&thread_id).await;
+    state.task_sessions.forget_thread(&thread_id).await;
     state
-        .codex_sessions
+        .task_sessions
         .observe_thread_metadata(Conversation::from(&thread))
         .await;
     let mut task = state
@@ -155,7 +155,7 @@ pub(super) async fn task_recovery_restore(
         Ok(None) => {
             if unarchived {
                 let _ = connection.client.archive_thread(&thread_id).await;
-                state.codex_sessions.forget_thread(&thread_id).await;
+                state.task_sessions.forget_thread(&thread_id).await;
             }
             return Err(task_not_managed_error());
         }
@@ -168,7 +168,7 @@ pub(super) async fn task_recovery_restore(
                 );
             }
             if unarchived {
-                state.codex_sessions.forget_thread(&thread_id).await;
+                state.task_sessions.forget_thread(&thread_id).await;
             }
             return Err(error);
         }
@@ -271,7 +271,7 @@ pub(super) async fn task_recovery_archive(
             return Err(error);
         }
     }
-    state.codex_sessions.forget_thread(&thread_id).await;
+    state.task_sessions.forget_thread(&thread_id).await;
     notify_task_removed(&state, &thread_id, "archived");
     Ok(Json(task))
 }
@@ -348,7 +348,7 @@ pub(super) async fn task_restore(
         }
     };
     state
-        .codex_sessions
+        .task_sessions
         .observe_thread_metadata(Conversation::from(&thread))
         .await;
     let mut task = state
@@ -1714,8 +1714,8 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        state.codex_sessions.begin_external_sync(thread_id).await;
-        assert_eq!(state.codex_sessions.diagnostics().await.tracked_sessions, 1);
+        state.task_sessions.begin_external_sync(thread_id).await;
+        assert_eq!(state.task_sessions.diagnostics().await.tracked_sessions, 1);
 
         let archived =
             list_archived_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
@@ -1758,7 +1758,7 @@ mod tests {
         assert_eq!(body["threadId"], thread_id);
         assert!(state.task_store.get_archived(thread_id).unwrap().is_none());
         assert!(state.task_events.for_thread(thread_id).is_empty());
-        assert_eq!(state.codex_sessions.diagnostics().await.tracked_sessions, 0);
+        assert_eq!(state.task_sessions.diagnostics().await.tracked_sessions, 0);
         assert_eq!(
             client
                 .mock_requests()

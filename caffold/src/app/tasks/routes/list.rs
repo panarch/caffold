@@ -24,7 +24,7 @@ pub(super) async fn list_archived_tasks(
                 match client.read_thread(&managed.thread_id).await {
                     Ok(thread) => {
                         state
-                            .codex_sessions
+                            .task_sessions
                             .observe_thread_metadata(Conversation::from(&thread))
                             .await;
                         let mut task = state
@@ -111,14 +111,14 @@ pub(super) async fn task_list_stream_initial_frames(
     let projection = super::super::active_list::load_runtime_snapshot(
         state.fs.clone(),
         state.task_store.clone(),
-        &state.codex_sessions,
+        &state.task_sessions,
         connection.generation,
         &connection.client,
     )
     .await?;
     for thread in projection.observed_threads {
         state
-            .codex_sessions
+            .task_sessions
             .observe_listed_thread_metadata(connection.generation, Conversation::from(&thread))
             .await;
     }
