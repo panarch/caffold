@@ -17,7 +17,7 @@ use super::{
         TaskRecord, apply_canonical_turn_projection, conversation_with_turns,
         resolve_conversation_cwd, task_record_from_conversation,
     },
-    runtime::{CodexConnection, CodexRuntime, CodexRuntimeSignal, TaskAgent},
+    runtime::{CodexConnection, TaskAgent, TaskRuntime, TaskRuntimeSignal},
     sync::{DeferredTaskRolloutSubscription, TaskSync, TaskSyncJob, TaskSyncOutcome},
     worktrees::inspect_ready_worktree,
 };
@@ -40,8 +40,8 @@ type RefreshTaskList = Arc<dyn Fn() + Send + Sync>;
 pub(in crate::app) struct DetailContext {
     fs: Arc<RootedFs>,
     store: TaskStore,
-    runtime: CodexRuntime,
-    runtime_signals: Arc<AsyncMutex<Option<broadcast::Receiver<CodexRuntimeSignal>>>>,
+    runtime: TaskRuntime,
+    runtime_signals: Arc<AsyncMutex<Option<broadcast::Receiver<TaskRuntimeSignal>>>>,
     sessions: TaskSessions,
     events: TaskEvents,
     file_links: TaskFileLinkResolver,
@@ -130,8 +130,8 @@ impl DetailContext {
     pub(in crate::app) fn new(
         fs: Arc<RootedFs>,
         store: TaskStore,
-        runtime: CodexRuntime,
-        runtime_signals: broadcast::Receiver<CodexRuntimeSignal>,
+        runtime: TaskRuntime,
+        runtime_signals: broadcast::Receiver<TaskRuntimeSignal>,
         sessions: TaskSessions,
         events: TaskEvents,
         sync: TaskSync<TaskDetailSync>,
@@ -590,7 +590,7 @@ impl DetailContext {
                     signal = receiver.recv() => signal,
                 };
                 match signal {
-                    Ok(CodexRuntimeSignal::SessionChanged {
+                    Ok(TaskRuntimeSignal::SessionChanged {
                         thread_id,
                         snapshot,
                     }) => {
@@ -598,7 +598,7 @@ impl DetailContext {
                             .broadcast_snapshot(&thread_id, *snapshot, "app-server-notification")
                             .await;
                     }
-                    Ok(CodexRuntimeSignal::SessionUnavailable { thread_id, message }) => {
+                    Ok(TaskRuntimeSignal::SessionUnavailable { thread_id, message }) => {
                         context.broadcast_error(&thread_id, message).await;
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {}
@@ -991,7 +991,7 @@ mod request_tests {
     use tokio::sync::broadcast;
 
     use super::super::{
-        CodexConnection, CodexRuntime,
+        CodexConnection, TaskRuntime,
         events::*,
         projection::*,
         routes::{
@@ -1036,7 +1036,7 @@ mod request_tests {
         let mut task_events = state.task_events.subscribe();
         let mut detail_syncs = state.task_sync.subscribe_updates();
         state.detail.ensure_runtime_signal_driver().await;
-        state.codex_runtime.spawn_test_bridge(client.clone(), 1);
+        state.task_runtime.spawn_test_bridge(client.clone(), 1);
 
         client.mock_publish_event(CodexRuntimeEvent::Notification(
             CodexNotification::ItemStarted {
@@ -1529,7 +1529,7 @@ mod request_tests {
             .observe_thread_metadata(Conversation::from(&thread))
             .await;
 
-        let runtime = state.codex_runtime.clone();
+        let runtime = state.task_runtime.clone();
         let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
         let blocker = tokio::spawn(async move {
             runtime
@@ -1607,7 +1607,7 @@ mod request_tests {
             .observe_thread_metadata(Conversation::from(&thread))
             .await;
 
-        let runtime = state.codex_runtime.clone();
+        let runtime = state.task_runtime.clone();
         let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
         let blocker = tokio::spawn(async move {
             runtime
@@ -1648,7 +1648,7 @@ mod request_tests {
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;
 
-        let runtime = state.codex_runtime.clone();
+        let runtime = state.task_runtime.clone();
         let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
         let blocker = tokio::spawn(async move {
             runtime
@@ -1691,7 +1691,7 @@ mod request_tests {
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;
 
-        let runtime = state.codex_runtime.clone();
+        let runtime = state.task_runtime.clone();
         let (locked_tx, locked_rx) = tokio::sync::oneshot::channel();
         let blocker = tokio::spawn(async move {
             runtime
@@ -1828,7 +1828,7 @@ mod request_tests {
             .expect("cached session remains tracked");
         assert!(snapshot.conversation.is_some());
         assert!(snapshot.last_error.is_some());
-        assert_eq!(state.codex_runtime.diagnostics().await, (1, true));
+        assert_eq!(state.task_runtime.diagnostics().await, (1, true));
     }
 
     #[tokio::test]
@@ -1891,7 +1891,7 @@ mod request_tests {
         };
         let (shutdown, _) = broadcast::channel(1);
         let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
-        let runtime = CodexRuntime::new(
+        let runtime = TaskRuntime::new(
             claude,
             sessions.clone(),
             TaskEvents::default(),
@@ -2362,7 +2362,7 @@ mod sync_tests {
             .expect("cached session remains tracked");
         assert!(snapshot.conversation.is_some());
         assert!(snapshot.last_error.is_some());
-        assert_eq!(state.codex_runtime.diagnostics().await, (1, true));
+        assert_eq!(state.task_runtime.diagnostics().await, (1, true));
     }
 
     #[tokio::test]

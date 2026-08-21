@@ -62,7 +62,7 @@ pub(super) async fn agent_models(
         }),
     }
 
-    match state.codex_runtime.claude().models().await {
+    match state.task_runtime.claude().models().await {
         Ok(offered) => extend(&mut models, TaskProvider::Claude, offered),
         Err(error) => unavailable.push(UnavailableAgent {
             provider: TaskProvider::Claude.as_str(),
@@ -97,7 +97,7 @@ pub(super) async fn agent_permissions(
 ) -> Result<Json<PermissionModes>, ApiError> {
     let cwd = task_cwd(&state, query.cwd.as_deref())?;
     let driver = match query.provider.as_deref().map(str::trim) {
-        Some("claude") => state.codex_runtime.claude().driver(&cwd),
+        Some("claude") => state.task_runtime.claude().driver(&cwd),
         None | Some("") | Some("codex") => require_codex_thread_client(&state).await?.driver(),
         Some(_) => {
             return Err(ApiError::BadRequest {

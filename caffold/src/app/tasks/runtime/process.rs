@@ -2,7 +2,7 @@ use std::future::Future;
 
 use tokio::sync::Mutex;
 
-use super::{CodexConnection, CodexRuntime, CodexRuntimeSignal};
+use super::{CodexConnection, TaskRuntime, TaskRuntimeSignal};
 use crate::agent::codex::{
     CodexInstallation, CodexReadiness, CodexStatusResponse, CodexThreadClient, CodexThreadError,
     inspect_codex_installation,
@@ -24,7 +24,7 @@ struct CodexProcessState {
     test_client: bool,
 }
 
-impl CodexRuntime {
+impl TaskRuntime {
     pub(in crate::app) fn startup(&self) {
         self.watch_claude();
         let runtime = self.clone();
@@ -200,7 +200,7 @@ impl CodexRuntime {
             .connection_lost(generation, message.clone())
             .await;
         for thread_id in affected {
-            let _ = self.signals.send(CodexRuntimeSignal::SessionUnavailable {
+            let _ = self.signals.send(TaskRuntimeSignal::SessionUnavailable {
                 thread_id,
                 message: message.clone(),
             });
@@ -251,7 +251,7 @@ impl CodexRuntime {
             .connection_lost(connection.generation, message.clone())
             .await;
         for thread_id in affected {
-            let _ = self.signals.send(CodexRuntimeSignal::SessionUnavailable {
+            let _ = self.signals.send(TaskRuntimeSignal::SessionUnavailable {
                 thread_id,
                 message: message.clone(),
             });
@@ -348,9 +348,9 @@ mod tests {
         app::tasks::events::TaskEvents, app::tasks::sessions::TaskSessions, task_store::TaskStore,
     };
 
-    fn test_runtime() -> CodexRuntime {
+    fn test_runtime() -> TaskRuntime {
         let (shutdown, _) = broadcast::channel(1);
-        CodexRuntime::new(
+        TaskRuntime::new(
             crate::agent::claude::ClaudeClient::mock().0,
             TaskSessions::default(),
             TaskEvents::default(),

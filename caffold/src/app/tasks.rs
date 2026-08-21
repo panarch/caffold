@@ -30,7 +30,7 @@ use lifecycle::TaskLifecycle;
 pub(super) use projection::TaskRecord;
 use push::{PushRuntime, PushService};
 use routes::TaskListEvents;
-use runtime::CodexRuntime;
+use runtime::TaskRuntime;
 pub(super) use startup::PersistentTasksGateway;
 use sync::TaskSync;
 use worktrees::ManagedWorktrees;
@@ -39,7 +39,7 @@ use worktrees::ManagedWorktrees;
 struct TaskState {
     fs: Arc<RootedFs>,
     default_cwd_path: String,
-    codex_runtime: CodexRuntime,
+    task_runtime: TaskRuntime,
     task_sessions: crate::app::tasks::sessions::TaskSessions,
     detail: DetailContext,
     task_events: TaskEvents,
@@ -96,7 +96,7 @@ impl TaskState {
             managed_worktrees,
             claude.clone(),
         );
-        let codex_runtime = CodexRuntime::new(
+        let task_runtime = TaskRuntime::new(
             claude,
             task_sessions.clone(),
             task_events.clone(),
@@ -105,14 +105,14 @@ impl TaskState {
         )
         .with_push_service(push.clone())
         .with_lifecycle(lifecycle.clone());
-        let codex_runtime_signals = codex_runtime.subscribe();
+        let task_runtime_signals = task_runtime.subscribe();
         let task_sync = TaskSync::new(shutdown.clone());
         let refresh_events = task_list_events.clone();
         let detail = DetailContext::new(
             fs.clone(),
             task_store.clone(),
-            codex_runtime.clone(),
-            codex_runtime_signals,
+            task_runtime.clone(),
+            task_runtime_signals,
             task_sessions.clone(),
             task_events.clone(),
             task_sync.clone(),
@@ -122,7 +122,7 @@ impl TaskState {
         Ok(Self {
             fs,
             default_cwd_path,
-            codex_runtime,
+            task_runtime,
             task_sessions,
             detail,
             task_events,
@@ -138,7 +138,7 @@ impl TaskState {
 
 pub(super) struct TasksApp {
     router: Router,
-    runtime: CodexRuntime,
+    runtime: TaskRuntime,
     push: PushRuntime,
 }
 
@@ -161,7 +161,7 @@ impl TasksApp {
             push.service(),
             claude,
         )?;
-        let runtime = state.codex_runtime.clone();
+        let runtime = state.task_runtime.clone();
         Ok(Self {
             router: routes::router(state),
             runtime,
@@ -258,7 +258,7 @@ pub(in crate::app::tasks) mod test_support {
             claude,
         )
         .expect("task state");
-        state.codex_runtime.install_test_client(1, client).await;
+        state.task_runtime.install_test_client(1, client).await;
         state
     }
 

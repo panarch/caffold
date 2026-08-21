@@ -509,7 +509,7 @@ mod tests {
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         state
-            .codex_runtime
+            .task_runtime
             .set_test_readiness(crate::agent::codex::CodexReadiness::blocking(
                 crate::agent::codex::CodexReadinessState::Error,
                 crate::agent::codex::CodexReadinessReason::AppServerUnavailable,

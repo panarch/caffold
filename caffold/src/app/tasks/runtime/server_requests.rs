@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use serde_json::{Value as JsonValue, json};
 
-use super::{ApprovalResolveError, CodexRuntime, TaskAgent};
+use super::{ApprovalResolveError, TaskAgent, TaskRuntime};
 use crate::agent::codex::{
     ApprovalKind, CodexServerRequest, CodexThreadClient, ISOLATE_CURRENT_TASK_TOOL_NAME,
     RENAME_CURRENT_THREAD_TOOL_NAME, approval_request, approval_response,
@@ -85,7 +85,7 @@ struct DynamicToolInvocation {
     arguments: JsonValue,
 }
 
-impl CodexRuntime {
+impl TaskRuntime {
     pub(in crate::app) async fn approval_events(&self, thread_id: &str) -> Vec<TaskEventRecord> {
         self.approvals
             .lock()
@@ -649,17 +649,17 @@ mod tests {
         .unwrap()
     }
 
-    fn runtime_with_events(events: TaskEvents) -> CodexRuntime {
+    fn runtime_with_events(events: TaskEvents) -> TaskRuntime {
         test_runtime_with_store(events, TaskStore::memory().unwrap())
     }
 
-    fn test_runtime(store: TaskStore) -> CodexRuntime {
+    fn test_runtime(store: TaskStore) -> TaskRuntime {
         test_runtime_with_store(TaskEvents::default(), store)
     }
 
-    fn test_runtime_with_store(events: TaskEvents, store: TaskStore) -> CodexRuntime {
+    fn test_runtime_with_store(events: TaskEvents, store: TaskStore) -> TaskRuntime {
         let (shutdown, _) = broadcast::channel(1);
-        CodexRuntime::new(
+        TaskRuntime::new(
             crate::agent::claude::ClaudeClient::mock().0,
             TaskSessions::default(),
             events,
@@ -1286,7 +1286,7 @@ mod tests {
             claude.clone(),
         );
         let (shutdown, _) = broadcast::channel(1);
-        let runtime = CodexRuntime::new(claude, sessions, events, store.clone(), shutdown)
+        let runtime = TaskRuntime::new(claude, sessions, events, store.clone(), shutdown)
             .with_lifecycle(lifecycle);
         let thread_read = json!({
             "thread": {

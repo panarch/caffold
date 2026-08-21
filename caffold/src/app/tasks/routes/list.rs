@@ -563,7 +563,7 @@ mod tests {
             "",
         );
         let before = cached_projection_rows(&state);
-        state.codex_runtime.spawn_test_bridge(client.clone(), 1);
+        state.task_runtime.spawn_test_bridge(client.clone(), 1);
 
         let response = task_list_stream(State(state.clone())).await.unwrap();
         let mut body = response.into_body().into_data_stream();

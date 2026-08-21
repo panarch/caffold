@@ -48,7 +48,7 @@ pub(super) async fn task_prompt(
     let managed_cwd = managed_prompt_cwd(managed_worktree.as_ref())?;
     let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
     let _requested_active_turn_id = request.active_turn_id;
-    let agent = state.codex_runtime.task_agent(&thread_id).await?;
+    let agent = state.task_runtime.task_agent(&thread_id).await?;
     let requested_model = request.model;
     let requested_effort = request.effort;
     let requested_fast_mode = request.fast_mode;
@@ -65,7 +65,7 @@ pub(super) async fn task_prompt(
         Ok(target) => target,
         Err(error) => {
             state
-                .codex_runtime
+                .task_runtime
                 .recover_connection_error_for(&agent, &error)
                 .await;
             return Err(error.into());
@@ -140,7 +140,7 @@ pub(super) async fn task_prompt(
                     Err(refresh_error) => {
                         state.task_sessions.cancel_runtime(&thread_id).await;
                         state
-                            .codex_runtime
+                            .task_runtime
                             .recover_connection_error_for(&agent, &refresh_error)
                             .await;
                         return Err(refresh_error.into());
@@ -157,7 +157,7 @@ pub(super) async fn task_prompt(
             Err(error) => {
                 state.task_sessions.cancel_runtime(&thread_id).await;
                 state
-                    .codex_runtime
+                    .task_runtime
                     .recover_connection_error_for(&agent, &error)
                     .await;
                 return Err(error.into());
@@ -294,7 +294,7 @@ pub(super) async fn task_interrupt(
         .task_sessions
         .restore_managed_fast_mode(&thread_id, managed.fast_mode)
         .await;
-    let agent = state.codex_runtime.task_agent(&thread_id).await?;
+    let agent = state.task_runtime.task_agent(&thread_id).await?;
     let Some(turn_id) = state
         .task_sessions
         .active_turn_id(&agent.driver(), agent.generation(), &thread_id)
@@ -321,10 +321,10 @@ pub(super) async fn task_approval(
     if task_store_get(&state, &thread_id).await?.is_none() {
         return Err(task_not_managed_error());
     }
-    let agent = state.codex_runtime.task_agent(&thread_id).await?;
+    let agent = state.task_runtime.task_agent(&thread_id).await?;
     let decision = normalize_approval_decision(&request.decision)?;
     match state
-        .codex_runtime
+        .task_runtime
         .resolve_approval(&agent, &thread_id, &approval_id, decision)
         .await
     {
@@ -381,7 +381,7 @@ async fn new_task_agent(
             require_codex_thread_connection(state).await?,
         )),
         Some("claude") => Ok(TaskAgent::Claude {
-            driver: state.codex_runtime.claude().driver(cwd),
+            driver: state.task_runtime.claude().driver(cwd),
         }),
         Some(_) => Err(ApiError::BadRequest {
             code: "unsupported_provider",
@@ -393,7 +393,7 @@ async fn new_task_agent(
 /// Tell the runtime a connection failed, when the agent has one to lose.
 async fn recover_agent_connection(state: &TaskState, agent: &TaskAgent, error: &CodexThreadError) {
     state
-        .codex_runtime
+        .task_runtime
         .recover_connection_error_for(agent, error)
         .await;
 }
@@ -548,7 +548,7 @@ mod tests {
         request_id: i64,
     ) {
         let mut task_events = state.task_events.subscribe();
-        state.codex_runtime.spawn_test_bridge(client.clone(), 1);
+        state.task_runtime.spawn_test_bridge(client.clone(), 1);
         let request = crate::agent::codex::decode_server_request(
             json!(request_id),
             "item/permissions/requestApproval",
@@ -651,10 +651,7 @@ mod tests {
         let body: JsonValue = serde_json::from_slice(&body).unwrap();
         assert_eq!(body["error"]["code"], "approval_resolution_mismatch");
         assert!(client.mock_server_responses().await.is_empty());
-        assert_eq!(
-            state.codex_runtime.approval_events(thread_id).await.len(),
-            1
-        );
+        assert_eq!(state.task_runtime.approval_events(thread_id).await.len(), 1);
     }
 
     #[tokio::test]
@@ -669,7 +666,7 @@ mod tests {
             "Codex CLI 0.146.0 is older than the minimum supported version 0.147.0.",
             None,
         );
-        state.codex_runtime.set_test_readiness(readiness).await;
+        state.task_runtime.set_test_readiness(readiness).await;
 
         let response = router(state)
             .oneshot(

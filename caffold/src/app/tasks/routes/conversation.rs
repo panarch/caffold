@@ -71,7 +71,7 @@ pub(super) async fn mark_task_seen(
     let Some(managed) = task_store_get(&state, &thread_id).await? else {
         return Err(task_not_managed_error());
     };
-    let agent = state.codex_runtime.task_agent(&thread_id).await?;
+    let agent = state.task_runtime.task_agent(&thread_id).await?;
     let mut task = match agent.codex() {
         Some(connection) => {
             let conversation =
@@ -185,7 +185,7 @@ mod tests {
             "and it stays seen when the Task is read again"
         );
         assert!(
-            state.codex_runtime.usage_diagnostics().threads.is_empty(),
+            state.task_runtime.usage_diagnostics().threads.is_empty(),
             "nothing woke an agent to answer a click"
         );
     }

@@ -2,14 +2,14 @@ use futures_util::{StreamExt, stream};
 use serde_json::json;
 use tokio::sync::broadcast;
 
-use super::{CodexConnection, CodexRuntime, CodexRuntimeSignal};
+use super::{CodexConnection, TaskRuntime, TaskRuntimeSignal};
 use crate::agent::codex::{CodexRuntimeEvent, CodexThreadClient, session_event};
 use crate::agent::{SessionEvent, SessionEventKind, ThreadStatus, TurnStatus};
 use crate::app::tasks::events::{
     now_ms, task_event_from_item, task_event_record, turn_completed_event, turn_started_event,
 };
 
-impl CodexRuntime {
+impl TaskRuntime {
     pub(super) fn spawn_bridge(
         &self,
         client: CodexThreadClient,
@@ -55,12 +55,10 @@ impl CodexRuntime {
                 .connection_lost(generation, connection_error.clone())
                 .await;
             for thread_id in affected {
-                let _ = runtime
-                    .signals
-                    .send(CodexRuntimeSignal::SessionUnavailable {
-                        thread_id,
-                        message: connection_error.clone(),
-                    });
+                let _ = runtime.signals.send(TaskRuntimeSignal::SessionUnavailable {
+                    thread_id,
+                    message: connection_error.clone(),
+                });
             }
             runtime.process.invalidate(generation).await;
         });
@@ -132,7 +130,7 @@ impl CodexRuntime {
                         .await
                     {
                         Ok(Some(snapshot)) => {
-                            let _ = runtime.signals.send(CodexRuntimeSignal::SessionChanged {
+                            let _ = runtime.signals.send(TaskRuntimeSignal::SessionChanged {
                                 thread_id,
                                 snapshot: Box::new(snapshot),
                             });
@@ -181,7 +179,7 @@ impl CodexRuntime {
         if outcome.canonical_state_changed
             && let Some(snapshot) = snapshot
         {
-            let _ = self.signals.send(CodexRuntimeSignal::SessionChanged {
+            let _ = self.signals.send(TaskRuntimeSignal::SessionChanged {
                 thread_id: event.thread_id,
                 snapshot: Box::new(snapshot),
             });
@@ -371,16 +369,16 @@ mod tests {
         task_store::{ManagedThread, PushSubscriptionInput, RunBy, TaskStore},
     };
 
-    fn runtime_with_events_and_store(events: TaskEvents, store: TaskStore) -> CodexRuntime {
+    fn runtime_with_events_and_store(events: TaskEvents, store: TaskStore) -> TaskRuntime {
         let (shutdown, _) = broadcast::channel(1);
         let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
-        CodexRuntime::new(claude, TaskSessions::default(), events, store, shutdown)
+        TaskRuntime::new(claude, TaskSessions::default(), events, store, shutdown)
     }
 
     fn runtime_with_list_events(
         events: TaskEvents,
         store: TaskStore,
-    ) -> (CodexRuntime, TaskListEvents) {
+    ) -> (TaskRuntime, TaskListEvents) {
         let root = tempfile::tempdir().unwrap();
         let fs = std::sync::Arc::new(RootedFs::new(root.path()).unwrap());
         let sessions = TaskSessions::default();
@@ -400,7 +398,7 @@ mod tests {
         );
         let (shutdown, _) = broadcast::channel(1);
         (
-            CodexRuntime::new(claude, sessions, events, store, shutdown).with_lifecycle(lifecycle),
+            TaskRuntime::new(claude, sessions, events, store, shutdown).with_lifecycle(lifecycle),
             list_events,
         )
     }
@@ -499,7 +497,7 @@ mod tests {
             .await
             .expect("canonical status change publishes a runtime signal")
             .expect("runtime signal channel remains open");
-        let CodexRuntimeSignal::SessionChanged {
+        let TaskRuntimeSignal::SessionChanged {
             thread_id: signal_thread_id,
             snapshot,
         } = signal

@@ -1,10 +1,10 @@
 use tokio::sync::broadcast;
 
-use super::{CodexRuntime, server_requests::PendingApproval};
+use super::{TaskRuntime, server_requests::PendingApproval};
 use crate::agent::claude::ClaudeRuntimeEvent;
 use crate::app::tasks::events::{approval_requested_event, now_ms};
 
-impl CodexRuntime {
+impl TaskRuntime {
     /// Carry what Claude sessions say into the Task application.
     ///
     /// The Codex bridge translates notifications first and reports second,

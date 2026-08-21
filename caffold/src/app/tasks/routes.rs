@@ -63,7 +63,7 @@ const TASK_CANONICAL_READ_CONCURRENCY: usize = 8;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CodexRuntimeDiagnostics {
+struct CodexStatusDiagnostics {
     process_generation: u64,
     process_connected: bool,
     thread_sessions: SessionsDiagnostics,
@@ -75,7 +75,7 @@ struct CodexRuntimeDiagnostics {
 struct CodexStatusPayload {
     #[serde(flatten)]
     status: CodexStatusResponse,
-    diagnostics: CodexRuntimeDiagnostics,
+    diagnostics: CodexStatusDiagnostics,
 }
 
 #[derive(Debug, Deserialize)]

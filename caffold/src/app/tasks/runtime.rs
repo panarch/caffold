@@ -23,8 +23,15 @@ mod server_requests;
 use process::CodexProcess;
 use server_requests::PendingApproval;
 
+/// Everything a Task is run through, whichever agent runs it.
+///
+/// It is not one agent's: it holds the Codex process and the Claude client
+/// side by side and hands out whichever a Task belongs to. The things inside it
+/// that are named after Codex really are Codex's — `CodexProcess` is the
+/// app-server proxy and nothing else has one, because Claude has no daemon to
+/// proxy.
 #[derive(Clone)]
-pub(in crate::app) struct CodexRuntime {
+pub(in crate::app) struct TaskRuntime {
     process: Arc<CodexProcess>,
     claude: ClaudeClient,
     sessions: TaskSessions,
@@ -34,7 +41,7 @@ pub(in crate::app) struct CodexRuntime {
     push: Option<PushService>,
     approvals: Arc<Mutex<HashMap<String, PendingApproval>>>,
     usage: Arc<StdMutex<BTreeMap<String, ThreadUsageDiagnostics>>>,
-    signals: broadcast::Sender<CodexRuntimeSignal>,
+    signals: broadcast::Sender<TaskRuntimeSignal>,
     shutdown: broadcast::Sender<()>,
 }
 
@@ -124,8 +131,13 @@ impl TaskAgent {
     }
 }
 
+/// Something that happened to a session, told to whoever is watching it.
+///
+/// Neither of these asks which agent the session belongs to, and neither
+/// should: a session that changed and a session that can no longer be reached
+/// are the same news either way.
 #[derive(Clone)]
-pub(in crate::app) enum CodexRuntimeSignal {
+pub(in crate::app) enum TaskRuntimeSignal {
     SessionChanged {
         thread_id: String,
         snapshot: Box<SessionSnapshot>,
@@ -150,7 +162,7 @@ impl From<CodexThreadError> for ApprovalResolveError {
     }
 }
 
-impl CodexRuntime {
+impl TaskRuntime {
     pub(in crate::app) fn new(
         claude: ClaudeClient,
         sessions: TaskSessions,
@@ -195,7 +207,7 @@ impl CodexRuntime {
         self
     }
 
-    pub(in crate::app) fn subscribe(&self) -> broadcast::Receiver<CodexRuntimeSignal> {
+    pub(in crate::app) fn subscribe(&self) -> broadcast::Receiver<TaskRuntimeSignal> {
         self.signals.subscribe()
     }
 
@@ -259,9 +271,9 @@ mod tests {
     use super::*;
     use crate::agent::codex::{CodexDaemonInfo, CodexReadiness, MockCodexResponse};
 
-    fn test_runtime(store: TaskStore) -> CodexRuntime {
+    fn test_runtime(store: TaskStore) -> TaskRuntime {
         let (shutdown, _) = broadcast::channel(1);
-        CodexRuntime::new(
+        TaskRuntime::new(
             crate::agent::claude::ClaudeClient::mock().0,
             TaskSessions::default(),
             TaskEvents::default(),
@@ -349,7 +361,7 @@ mod tests {
         let events = TaskEvents::default();
         let store = TaskStore::memory().expect("in-memory task store");
         let (shutdown, _) = broadcast::channel(1);
-        let runtime = CodexRuntime::new(
+        let runtime = TaskRuntime::new(
             crate::agent::claude::ClaudeClient::mock().0,
             sessions.clone(),
             events,
@@ -413,7 +425,7 @@ mod tests {
         );
         assert!(matches!(
             signals.try_recv(),
-            Ok(CodexRuntimeSignal::SessionUnavailable { thread_id, message })
+            Ok(TaskRuntimeSignal::SessionUnavailable { thread_id, message })
                 if thread_id == "thread_restart" && message == "Codex runtime is restarting."
         ));
     }

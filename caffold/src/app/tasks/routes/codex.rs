@@ -2,12 +2,12 @@ use super::*;
 
 pub(super) async fn codex_status(State(state): State<TaskState>) -> Json<CodexStatusPayload> {
     let (status, process_generation, process_connected) =
-        state.codex_runtime.status_with_diagnostics().await;
-    let diagnostics = CodexRuntimeDiagnostics {
+        state.task_runtime.status_with_diagnostics().await;
+    let diagnostics = CodexStatusDiagnostics {
         process_generation,
         process_connected,
         thread_sessions: state.task_sessions.diagnostics().await,
-        usage: state.codex_runtime.usage_diagnostics(),
+        usage: state.task_runtime.usage_diagnostics(),
     };
     Json(CodexStatusPayload {
         status,
@@ -19,7 +19,7 @@ pub(super) async fn codex_restart(
     State(state): State<TaskState>,
 ) -> Result<Json<CodexDaemonInfo>, ApiError> {
     state
-        .codex_runtime
+        .task_runtime
         .restart_daemon()
         .await
         .map(Json)
