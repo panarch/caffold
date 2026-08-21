@@ -17,18 +17,21 @@
 //! nothing until it is spoken to, so a conversation cannot wait to be told its
 //! own name.
 //!
-//! **A turn is bounded by what Caffold sent and what the agent answered.** The
-//! agent does not name turns, so Caffold does: a turn opens when a prompt is
-//! written and closes on the `result` frame that answers it.
+//! **A turn is bounded by what Caffold sent and what the agent answered.** It
+//! opens when a prompt is written and closes on the `result` frame that answers
+//! it. Its name comes from the agent: a prompt is handed back under the
+//! identity the agent filed it as, and that identity is what the transcript
+//! knows the turn by, so a turn watched here and the same turn read from disk
+//! are one turn.
 //!
-//! **Nothing here is history.** What a session has said is kept for as long as
-//! the session is watched, because that is what a viewer arriving mid-turn
-//! needs. Reading a conversation back after the backend has forgotten it means
-//! reading the agent's own transcript, which is the next piece of work and not
-//! this one.
+//! **History belongs to the agent.** What a session has said is kept here for
+//! as long as the session is watched, because that is what a viewer arriving
+//! mid-turn needs, and it is thrown away with the session. The record that
+//! outlives a restart is the one the agent writes, which [`transcript`] reads.
 
 pub(crate) mod protocol;
 pub(crate) mod runner;
+pub(crate) mod transcript;
 pub(crate) mod translate;
 
 use std::collections::{BTreeMap, HashMap};
@@ -52,7 +55,7 @@ use crate::agent::driver::{
 use crate::agent::{
     ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, Conversation,
     ConversationItem, ItemKind, MessageContent, SessionEvent, SessionEventKind, ThreadActiveFlag,
-    ThreadStatus, TokenCount, TokenUsage, Turn, TurnStatus,
+    ThreadStatus, TokenCount, TokenUsage, Turn, TurnPage, TurnStatus,
 };
 use caffold_claude_runner::protocol::SessionState as RunnerSessionState;
 
@@ -65,6 +68,15 @@ pub(crate) use self::runner::MockRunnerHandle;
 /// that has stopped answering must surface as a failure rather than as a page
 /// that never finishes loading.
 const ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// How long to wait for a prompt to be handed back before naming its turn
+/// without the agent's help.
+///
+/// The prompt has already been written by the time this starts, so waiting only
+/// delays what a person sees. The agent hands one back as soon as it reads it,
+/// and it is only ever read when nothing else is running, so this is long
+/// enough to be a fault rather than a slow moment.
+const PROMPT_HANDBACK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// Why an operation on a Claude session did not happen.
 #[derive(Debug, thiserror::Error)]
@@ -131,6 +143,15 @@ struct SessionState {
     calls: ToolCalls,
     /// The turn Caffold opened and the agent has not answered.
     active_turn: Option<String>,
+    /// A prompt sent and not yet given a turn: what was said, and who is
+    /// waiting to hear what the turn is called.
+    ///
+    /// The turn has no name until the agent says what it filed the prompt as,
+    /// so this holds the place between writing the prompt and learning what to
+    /// call what follows. The words are kept because the turn may end up being
+    /// opened by a frame that is not the prompt coming home, and that frame
+    /// does not know what was asked.
+    pending_prompt: Option<(String, oneshot::Sender<Turn>)>,
     /// The turns this session has run while Caffold watched.
     turns: Vec<Turn>,
     /// Tool calls a person refused.
@@ -425,8 +446,11 @@ impl ClaudeClient {
 
     /// Begin a turn, and report it as begun.
     ///
-    /// The identifier is Caffold's because the agent does not name turns. It is
-    /// what every item of this turn is reported under, and what stops it.
+    /// The turn is named by the agent, which hands a prompt back under the
+    /// identity it filed it as. That is the name every item of this turn is
+    /// reported under, the name that stops it, and the name the transcript will
+    /// know it by — which is what makes reading this turn back later find this
+    /// turn rather than another one just like it.
     pub(crate) async fn start_turn(
         &self,
         conversation_id: &str,
@@ -436,27 +460,8 @@ impl ClaudeClient {
     ) -> Result<Turn, ClaudeError> {
         let session = self.require_session(conversation_id).await?;
         self.apply_settings(&session, options).await?;
-        let turn_id = uuid::Uuid::new_v4().to_string();
-        let started_at_ms = now_ms();
 
-        let prompt_item = ConversationItem {
-            id: format!("{turn_id}:prompt"),
-            status: ActivityStatus::Completed,
-            kind: ItemKind::UserMessage {
-                text: prompt.to_string(),
-                content: vec![MessageContent::Text {
-                    text: prompt.to_string(),
-                }],
-            },
-        };
-        let turn = Turn {
-            id: turn_id.clone(),
-            status: TurnStatus::InProgress,
-            started_at_ms: Some(started_at_ms),
-            completed_at_ms: None,
-            items: vec![prompt_item.clone()],
-        };
-        {
+        let handed_back = {
             let mut state = session.state.lock().await;
             // A turn already running would be lost: its items would go on
             // arriving under an identifier nothing reads any more, and it would
@@ -467,25 +472,47 @@ impl ClaudeClient {
                     "turn {running} is still running on conversation {conversation_id}"
                 )));
             }
-            state.active_turn = Some(turn_id.clone());
-            state.moved_at_ms = started_at_ms;
-            state.turns.push(turn.clone());
+            // A prompt already written has no turn yet, and would lose its name
+            // to this one.
+            if state.pending_prompt.is_some() {
+                return Err(ClaudeError::Protocol(format!(
+                    "a prompt is already being sent on conversation {conversation_id}"
+                )));
+            }
+            let (sender, receiver) = oneshot::channel();
+            state.pending_prompt = Some((prompt.to_string(), sender));
+            receiver
+        };
+
+        if let Err(error) = session.send(protocol::user_message(prompt, images)).await {
+            session.state.lock().await.pending_prompt = None;
+            return Err(error);
         }
 
-        session.send(protocol::user_message(prompt, images)).await?;
+        // The turn is opened by the first thing the agent says, not here, so
+        // that nothing it says arrives before there is a turn to say it in. This
+        // only waits to be told which turn that was; the timeout is for an agent
+        // that says nothing at all.
+        let turn = match tokio::time::timeout(PROMPT_HANDBACK_TIMEOUT, handed_back).await {
+            Ok(Ok(turn)) => turn,
+            _ => self.open_a_turn_unprompted(&session).await,
+        };
 
+        let prompt_item = turn.items.first().cloned();
         self.report(
             conversation_id,
             SessionEventKind::TurnStarted { turn: turn.clone() },
         );
-        self.report(
-            conversation_id,
-            SessionEventKind::ItemChanged {
-                turn_id: turn_id.clone(),
-                item: prompt_item,
-                at_ms: started_at_ms,
-            },
-        );
+        if let Some(prompt_item) = prompt_item {
+            self.report(
+                conversation_id,
+                SessionEventKind::ItemChanged {
+                    turn_id: turn.id.clone(),
+                    item: prompt_item,
+                    at_ms: turn.started_at_ms.unwrap_or_else(now_ms),
+                },
+            );
+        }
         self.report(
             conversation_id,
             SessionEventKind::StatusChanged {
@@ -495,6 +522,24 @@ impl ClaudeClient {
             },
         );
         Ok(turn)
+    }
+
+    /// Open a turn for a prompt the agent has answered nothing to.
+    ///
+    /// A session that says nothing at all still has the prompt, so the turn has
+    /// to exist for the answer to arrive into. Waiting longer would only make a
+    /// person watch a conversation that shows nothing of what they asked.
+    async fn open_a_turn_unprompted(&self, session: &Arc<Session>) -> Turn {
+        let mut state = session.state.lock().await;
+        if let Some(turn) = open_pending_turn(&mut state, None) {
+            return turn;
+        }
+        // Something opened it while this was giving up on waiting.
+        let named = state.active_turn.clone();
+        named
+            .and_then(|id| state.turns.iter().find(|turn| turn.id == id))
+            .cloned()
+            .unwrap_or_else(|| open_turn(&mut state, &uuid::Uuid::new_v4().to_string(), ""))
     }
 
     /// Bring the session to the settings a person has chosen.
@@ -774,6 +819,52 @@ impl ClaudeClient {
         }
     }
 
+    /// A conversation's turns, newest first, and where the older ones are.
+    ///
+    /// The history is the agent's transcript, not what this session remembers,
+    /// because the session remembers only what it watched and a Task outlives
+    /// every session that ever ran it.
+    ///
+    /// What a running session knows is laid over the top of it. Both describe
+    /// the same turns under the same names, and where they differ the session
+    /// is the one that can say a turn is still running, that a tool is waiting
+    /// on an answer, or that a failed tool result was somebody declining.
+    pub(crate) async fn read_turns(
+        &self,
+        conversation_id: &str,
+        cwd: &str,
+        cursor: Option<&str>,
+        limit: usize,
+    ) -> TurnPage {
+        let Some(path) = transcript::locate(cwd, conversation_id) else {
+            return TurnPage::default();
+        };
+        let cursor = cursor.map(str::to_string);
+        let reading =
+            tokio::task::spawn_blocking(move || transcript::read(&path, cursor.as_deref(), limit))
+                .await
+                .unwrap_or_default();
+        if reading.unreadable > 0 {
+            self.publish(ClaudeRuntimeEvent::Diagnostic {
+                message: format!(
+                    "conversation {conversation_id} has {} line(s) this release cannot read; \
+                     what is shown is missing that much of it",
+                    reading.unreadable
+                ),
+            });
+        }
+        let mut page = reading.page;
+        if let Some(session) = self.session(conversation_id).await {
+            let state = session.state.lock().await;
+            for turn in &state.turns {
+                if let Some(known) = page.turns.iter_mut().find(|known| known.id == turn.id) {
+                    *known = turn.clone();
+                }
+            }
+        }
+        page
+    }
+
     /// What the agent says its settings for this conversation are, in its own
     /// words.
     pub(crate) async fn settings_of(&self, conversation_id: &str) -> BTreeMap<String, Value> {
@@ -887,6 +978,10 @@ impl ClaudeClient {
         if frame.parent_tool_use_id.is_some() {
             return;
         }
+        if frame.is_replay {
+            self.handle_replayed_prompt(session, frame).await;
+            return;
+        }
         // The frame, not the message. One assistant message is streamed as
         // several frames — thinking in one, its answer in the next — all
         // carrying the same message identifier and each numbering its own
@@ -907,6 +1002,13 @@ impl ClaudeClient {
 
         let (turn_id, items) = {
             let mut state = session.state.lock().await;
+            // The agent answering a prompt it never handed back. Some sessions
+            // cannot hand one back — a session started before Caffold began
+            // asking for it is still held by the runner, and its arguments are
+            // fixed for as long as it lives — and waiting for one that will
+            // never come would let this answer, and the `result` that ends it,
+            // arrive before the turn they belong to existed.
+            open_pending_turn(&mut state, None);
             let Some(turn_id) = state.active_turn.clone() else {
                 // Work with no turn open belongs to nothing Caffold can show.
                 return;
@@ -935,6 +1037,23 @@ impl ClaudeClient {
         }
     }
 
+    /// A prompt coming home, which is the agent saying what it filed it as.
+    ///
+    /// The turn opens here rather than where the prompt was written, because
+    /// this is the last moment before the agent starts answering: everything
+    /// the agent says next arrives on this same stream, in order, and finds a
+    /// turn already waiting for it.
+    ///
+    /// A prompt nobody is waiting on is one Caffold sent on its own account — a
+    /// depth change, a message steering a running turn — and opens nothing.
+    async fn handle_replayed_prompt(&self, session: &Arc<Session>, frame: MessageFrame) {
+        let Some(anchor) = frame.uuid.as_deref() else {
+            return;
+        };
+        let mut state = session.state.lock().await;
+        open_pending_turn(&mut state, Some(anchor));
+    }
+
     async fn handle_result(&self, session: &Arc<Session>, result: ResultFrame) {
         let status = if result.was_interrupted() {
             TurnStatus::Interrupted
@@ -952,6 +1071,10 @@ impl ClaudeClient {
                 let _ = waiting.send(());
                 return;
             }
+            // A turn that began and ended without the agent handing its prompt
+            // back, which is a short answer on a session that cannot hand one
+            // back at all.
+            open_pending_turn(&mut state, None);
             let Some(turn_id) = state.active_turn.take() else {
                 return;
             };
@@ -1324,6 +1447,47 @@ fn settings_map(introduction: &Introduction, state: &SessionState) -> BTreeMap<S
 fn changed(current: &Option<String>, wanted: &Option<String>) -> Option<String> {
     let wanted = wanted.as_deref()?;
     (current.as_deref() != Some(wanted)).then(|| wanted.to_string())
+}
+
+/// Open the turn a written prompt is waiting for, if one is waiting.
+///
+/// `named` is what the agent filed the prompt as, which only the prompt coming
+/// home can say. Anything else arriving first means the agent is answering
+/// without having handed it back, and the turn is named here rather than left
+/// to a timeout that the agent's own answer has already outrun — a turn opened
+/// after its `result` went by is a turn nothing will ever close.
+fn open_pending_turn(state: &mut SessionState, named: Option<&str>) -> Option<Turn> {
+    let (prompt, waiting) = state.pending_prompt.take()?;
+    let turn_id = named
+        .map(str::to_string)
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let turn = open_turn(state, &turn_id, &prompt);
+    // Nobody waiting means the prompt gave up on being told, and has taken this
+    // turn as the session's active one by another route.
+    let _ = waiting.send(turn.clone());
+    Some(turn)
+}
+
+/// Open a turn on a session, under the name it will be known by.
+///
+/// Whoever calls this holds the session's state, which is what makes the turn
+/// exist before anything the agent says next can arrive looking for it.
+fn open_turn(state: &mut SessionState, turn_id: &str, prompt: &str) -> Turn {
+    let started_at_ms = now_ms();
+    let turn = Turn {
+        id: turn_id.to_string(),
+        status: TurnStatus::InProgress,
+        started_at_ms: Some(started_at_ms),
+        completed_at_ms: None,
+        items: vec![translate::user_message_item(
+            &format!("{turn_id}:prompt"),
+            prompt,
+        )],
+    };
+    state.active_turn = Some(turn_id.to_string());
+    state.moved_at_ms = started_at_ms;
+    state.turns.push(turn.clone());
+    turn
 }
 
 /// What the conversation is doing, from what the session is waiting on.
@@ -1886,6 +2050,141 @@ mod tests {
         );
         assert_eq!(ended.status, TurnStatus::Completed);
         assert!(ended.completed_at_ms.is_some());
+    }
+
+    #[tokio::test]
+    async fn a_turn_is_called_what_the_agent_filed_the_prompt_as() {
+        // The name is the whole point: it is what the transcript will know this
+        // turn by, so a Caffold that restarts reads this turn back as this turn
+        // rather than as one more just like it.
+        let (client, runner, _events) = watching().await;
+
+        let turn = client
+            .start_turn(SESSION, "fix the test", &[], &options("opus"))
+            .await
+            .expect("the turn starts");
+
+        assert_eq!(turn.id, format!("{SESSION}-prompt-1"));
+        assert_eq!(turn.items[0].id, format!("{SESSION}-prompt-1:prompt"));
+        assert!(matches!(
+            &turn.items[0].kind,
+            ItemKind::UserMessage { text, .. } if text == "fix the test"
+        ));
+        let heard = runner.heard(SESSION).await;
+        assert_eq!(heard.len(), 1, "the prompt was written once, not twice");
+    }
+
+    #[tokio::test]
+    async fn a_session_that_never_hands_a_prompt_back_still_runs_and_ends_its_turn() {
+        // A session the runner held from before Caffold began asking to be
+        // handed prompts back cannot hand one back, and its arguments are fixed
+        // for as long as it lives. Waiting for one let the answer — and the
+        // `result` that ends the turn — go by before the turn existed, and what
+        // was opened afterwards had nothing left to close it.
+        let (client, runner, mut events) = watching().await;
+        runner.swallow_prompts(SESSION).await;
+
+        let starting = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .start_turn(SESSION, "fix the test", &[], &options("opus"))
+                    .await
+            }
+        });
+        heard_the_prompt(&runner).await;
+
+        // The agent answers as though nothing had to be acknowledged.
+        runner
+            .say(
+                SESSION,
+                assistant_frame("msg_1", json!([{ "type": "text", "text": "done" }])),
+            )
+            .await;
+        let turn = tokio::time::timeout(REPORT_TIMEOUT, starting)
+            .await
+            .expect("the turn does not wait out the handback")
+            .expect("the task finishes")
+            .expect("the turn starts");
+        assert_eq!(turn.status, TurnStatus::InProgress);
+
+        runner.say(SESSION, result_frame(Some("end_turn"))).await;
+
+        let ended = loop {
+            if let SessionEventKind::TurnEnded { turn } =
+                next_session_event(&mut events, "turn end").await
+            {
+                break turn;
+            }
+        };
+        assert_eq!(
+            ended.id, turn.id,
+            "the turn that ended is the one that began"
+        );
+        assert_eq!(ended.status, TurnStatus::Completed);
+        assert!(
+            ended.items.iter().any(|item| matches!(
+                &item.kind,
+                ItemKind::AssistantMessage { text, .. } if text == "done"
+            )),
+            "the answer belongs to the turn: {:?}",
+            ended.items
+        );
+    }
+
+    #[tokio::test]
+    async fn a_turn_answered_only_by_its_result_is_still_a_turn() {
+        // The shortest way for the answer to outrun the handback: nothing to
+        // say, and the turn over.
+        let (client, runner, mut events) = watching().await;
+        runner.swallow_prompts(SESSION).await;
+
+        let starting = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .start_turn(SESSION, "fix the test", &[], &options("opus"))
+                    .await
+            }
+        });
+        heard_the_prompt(&runner).await;
+        runner.say(SESSION, result_frame(Some("end_turn"))).await;
+
+        let turn = tokio::time::timeout(REPORT_TIMEOUT, starting)
+            .await
+            .expect("the turn does not wait out the handback")
+            .expect("the task finishes")
+            .expect("the turn starts");
+
+        let ended = loop {
+            if let SessionEventKind::TurnEnded { turn } =
+                next_session_event(&mut events, "turn end").await
+            {
+                break turn;
+            }
+        };
+        assert_eq!(ended.id, turn.id);
+        assert_eq!(ended.status, TurnStatus::Completed);
+    }
+
+    /// Wait until the prompt has reached the agent, so what the agent says next
+    /// is said to a session that is waiting for it.
+    async fn heard_the_prompt(runner: &MockRunnerHandle) {
+        tokio::time::timeout(REPORT_TIMEOUT, async {
+            loop {
+                if runner
+                    .heard(SESSION)
+                    .await
+                    .iter()
+                    .any(|frame| frame["type"] == "user")
+                {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("the prompt reaches the agent");
     }
 
     #[tokio::test]

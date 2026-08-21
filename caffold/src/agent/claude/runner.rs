@@ -349,6 +349,14 @@ struct MockSession {
     spawn: SpawnRequest,
     agent: mpsc::UnboundedSender<RunnerEvent>,
     heard: Vec<Value>,
+    /// How many prompts have been handed back, which is what names the next
+    /// one. The real agent uses identifiers of its own; what matters to a
+    /// caller is that each is different and that the same one reaches the
+    /// transcript.
+    replays: usize,
+    /// Keep prompts rather than handing them back, standing in for an agent
+    /// that took a prompt and never said what it filed it as.
+    swallow_prompts: bool,
 }
 
 /// What a test speaks to a stand-in runner through.
@@ -373,6 +381,8 @@ impl MockRunner {
                 spawn,
                 agent: sender,
                 heard: Vec::new(),
+                replays: 0,
+                swallow_prompts: false,
             },
         );
         Ok(RunnerSession {
@@ -410,6 +420,17 @@ impl MockRunner {
                 .to_string(),
             ));
         }
+        // Every session runs with `--replay-user-messages`, so a prompt
+        // written to the agent comes back under the identity the agent filed it
+        // as, and that identity is what names the turn. A stand-in that kept
+        // the prompt to itself would leave every turn waiting to be named.
+        if frame["type"] == "user" && !existing.swallow_prompts {
+            existing.replays += 1;
+            let mut replay = frame.clone();
+            replay["uuid"] = serde_json::json!(format!("{session}-prompt-{}", existing.replays));
+            replay["isReplay"] = serde_json::json!(true);
+            let _ = existing.agent.send(RunnerEvent::Frame(replay.to_string()));
+        }
         existing.heard.push(frame);
     }
 
@@ -435,6 +456,14 @@ impl MockRunnerHandle {
         let state = self.0.state.lock().await;
         if let Some(held) = state.sessions.get(session) {
             let _ = held.agent.send(RunnerEvent::Frame(frame.to_string()));
+        }
+    }
+
+    /// Take prompts without handing any of them back.
+    pub(crate) async fn swallow_prompts(&self, session: &str) {
+        let mut state = self.0.state.lock().await;
+        if let Some(held) = state.sessions.get_mut(session) {
+            held.swallow_prompts = true;
         }
     }
 

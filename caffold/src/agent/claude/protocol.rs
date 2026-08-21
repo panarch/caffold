@@ -32,6 +32,11 @@ pub(crate) const MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION: &str = "2.1.236";
 /// the end. `--permission-prompt-tool stdio` is what makes the agent ask before
 /// it acts: without it `can_use_tool` is never sent, and a Caffold with no
 /// approval cards would look like an agent that never needed permission.
+///
+/// `--replay-user-messages` hands a prompt back under the identity the agent
+/// wrote it down as. That identity is a turn's name in the transcript, so
+/// taking it is what makes a turn watched live and the same turn read from
+/// disk one turn rather than two.
 pub(crate) const BASE_ARGUMENTS: &[&str] = &[
     "-p",
     "--input-format",
@@ -41,6 +46,7 @@ pub(crate) const BASE_ARGUMENTS: &[&str] = &[
     "--verbose",
     "--permission-prompt-tool",
     "stdio",
+    "--replay-user-messages",
 ];
 
 // ---------------------------------------------------------------------------
@@ -104,6 +110,10 @@ pub(crate) struct MessageFrame {
     /// conversation a person is watching.
     #[serde(default)]
     pub(crate) parent_tool_use_id: Option<String>,
+    /// A prompt handed back rather than a message arriving: this is Caffold's
+    /// own words coming home under the identity the agent filed them as.
+    #[serde(default, rename = "isReplay")]
+    pub(crate) is_replay: bool,
 }
 
 /// The message body, shared by the stream and the transcript.
@@ -467,12 +477,14 @@ mod tests {
 
     #[test]
     fn every_session_asks_the_agent_to_stream_and_to_ask_before_acting() {
-        // Both are load-bearing and neither is obvious from the flag name, so
+        // All three are load-bearing and none is obvious from the flag name, so
         // their absence should fail here rather than as silence at run time.
         assert!(BASE_ARGUMENTS.contains(&"--verbose"));
         let permission = BASE_ARGUMENTS
             .windows(2)
             .find(|pair| pair[0] == "--permission-prompt-tool");
         assert_eq!(permission.map(|pair| pair[1]), Some("stdio"));
+        // Without this a turn has no name the transcript would know it by.
+        assert!(BASE_ARGUMENTS.contains(&"--replay-user-messages"));
     }
 }

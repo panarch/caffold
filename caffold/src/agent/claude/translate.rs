@@ -104,7 +104,31 @@ pub(crate) fn message_items(
 }
 
 /// A message a person typed, which the agent stores as plain text.
-fn user_message_item(anchor: &str, text: &str) -> ConversationItem {
+/// What a person actually said, out of the message they said it in.
+///
+/// An image sent with a prompt is not drawn, in either reader — the two have to
+/// agree, and a conversation that grew pictures on reload would be the two
+/// disagreeing.
+pub(crate) fn prompt_text(message: &Message) -> String {
+    match &message.content {
+        MessageContent::Text(text) => text.clone(),
+        MessageContent::Blocks(blocks) => blocks
+            .iter()
+            .filter_map(|block| match block {
+                ContentBlock::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        MessageContent::Unreadable(_) => String::new(),
+    }
+}
+
+/// What a person said, as the conversation shows it.
+///
+/// Both readers build a prompt with this, so a prompt watched live and the same
+/// prompt read from the transcript are the same item under the same identity.
+pub(crate) fn user_message_item(anchor: &str, text: &str) -> ConversationItem {
     ConversationItem {
         id: anchor.to_string(),
         status: ActivityStatus::Completed,

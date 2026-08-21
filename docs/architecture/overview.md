@@ -103,6 +103,7 @@ caffold/src/agent/claude.rs            Claude sessions, their control protocol, 
 caffold/src/agent/claude/
   protocol.rs                          the stream-json and control wire types
   translate.rs                         one translator from Claude content blocks to Caffold items
+  transcript.rs                        reading a conversation back from the file the agent writes
   runner.rs                            reaching the runner, and the stand-in a test drives instead
 caffold/src/app/tasks/sync.rs          rollout invalidation scheduling and retry timing
 caffold/src/app/tasks/projection.rs    pure thread/turn to browser task projection
@@ -197,8 +198,17 @@ transcript, or event summary.
 
 A Claude Task also stores its working directory, because nothing else can answer
 for it: a Claude session is a process, resuming one starts a new process, and
-that process works wherever it is started. Codex holds a thread's working
-directory and answers for it, so a Codex Task stores none. Active list identity and placement come directly from this local
+that process works wherever it is started, and the conversation the agent writes
+down is filed under the directory the session was created in. Codex holds a
+thread's working directory and answers for it, so a Codex Task stores none.
+
+A Claude conversation is read from that file rather than from anything Caffold
+keeps, so a Task the backend has forgotten comes back whole. Every session runs
+with `--replay-user-messages`, which hands a prompt back under the identity the
+agent filed it as; that identity names the turn, and it is the same identity the
+file uses, so a turn watched live and the same turn read from disk are one turn
+rather than two. What a running session knows is laid over the top, because only
+it can say a turn is still running or that a refusal was a refusal. Active list identity and placement come directly from this local
 projection; runtime state arrives independently after Codex connects. Caffold
 derives repository and worktree presentation live from each thread cwd or
 persisted logical Section path and does not keep a project registry. Tasks

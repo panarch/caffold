@@ -36,6 +36,13 @@ use super::codex::{
 };
 use super::{Conversation, Turn, TurnPage};
 
+/// How many turns come back with a conversation that has just been opened.
+///
+/// Only Claude needs this said: Codex has its own idea of a first page and
+/// answers with one, while a transcript is a file and will hand back as much of
+/// itself as it is asked for.
+const INITIAL_TURNS_PAGE: usize = 8;
+
 /// One agent, reached the way that agent is reached.
 #[derive(Clone)]
 pub(crate) enum Driver {
@@ -513,14 +520,15 @@ impl Driver {
                     .client
                     .open_conversation(conversation_id, &claude.cwd, &options)
                     .await?;
-                let turns_page = with_turns.then(|| TurnPage {
-                    // Newest first, which is the order history is read in.
-                    turns: conversation.turns.iter().rev().cloned().collect(),
-                    // Everything this session has said is here. Older turns
-                    // live in the agent's transcript, which nothing reads yet.
-                    next_cursor: None,
-                    backwards_cursor: None,
-                });
+                let turns_page = match with_turns {
+                    true => Some(
+                        claude
+                            .client
+                            .read_turns(conversation_id, &claude.cwd, None, INITIAL_TURNS_PAGE)
+                            .await,
+                    ),
+                    false => None,
+                };
                 Ok(OpenedConversation {
                     settings: claude.client.settings_of(conversation_id).await,
                     cwd: conversation.cwd.clone(),
@@ -544,9 +552,10 @@ impl Driver {
                     .list_thread_turns(conversation_id, cursor, limit)
                     .await?,
             )),
-            // A cursor is only ever one this agent gave out, and it gives out
-            // none, so there is nothing further to read.
-            Self::Claude(_) => Ok(TurnPage::default()),
+            Self::Claude(claude) => Ok(claude
+                .client
+                .read_turns(conversation_id, &claude.cwd, cursor, limit)
+                .await),
         }
     }
 
