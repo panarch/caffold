@@ -193,7 +193,7 @@ pub(super) fn apply_opened_conversation(
 
     state.lifecycle = SessionLifecycle::Subscribed;
     state.driver = Some(driver.clone());
-    state.generation = generation;
+    state.on_connection(driver, generation);
     replace_active_turn(state, active_turn_id.clone(), active_turn_cwd);
     state.conversation = Some(thread);
     state.pending_thread_status = None;
@@ -275,7 +275,7 @@ pub(super) fn apply_stale_refresh(
 
     state.lifecycle = SessionLifecycle::Subscribed;
     state.driver = Some(driver.clone());
-    state.generation = generation;
+    state.on_connection(driver, generation);
     state.conversation = Some(thread);
     state.terminal_candidate_turn_id = newer_active_turn_id
         .filter(|turn_id| turn_is_in_progress(state, turn_id))
@@ -308,7 +308,7 @@ pub(super) fn apply_prompt_resume(
     let applied = merge_external_resume_response(state, driver, opened, base_revision);
     state.lifecycle = SessionLifecycle::Subscribed;
     state.driver = Some(driver.clone());
-    state.generation = generation;
+    state.on_connection(driver, generation);
     state.runtime_lease = true;
     state.terminal_candidate_turn_id = state.active_turn_id.clone();
     state.revision = state.revision.saturating_add(1);

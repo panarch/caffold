@@ -37,6 +37,13 @@ One child per session, one attached client per session, and one runner per data
 directory — the socket lives beside the database, so an installed application, a
 development server, and a test run each get their own without arranging it.
 
+A runner that starts owns nothing from before. Shutting down ends the children
+it supervises, but a runner killed outright runs no shutdown code, and its
+children would go on with the pipes to them gone — unreachable, and still
+writing to conversations the next runner would report as having no session. So
+each child is written down as it starts, and a runner ends whatever the last one
+left before it answers anything.
+
 Frames pass through verbatim. The envelope adds only the session they belong to,
 and the frame itself is carried raw so that what the child wrote is what the
 client reads.
@@ -65,12 +72,19 @@ already exists returns the existing one.
 
 ## Recovery
 
-The runner keeps no history. When a client reattaches it receives frames from
-that moment on, and recovering what it missed is the client's job: re-sending
-`initialize` returns any unanswered permission requests with their original
-identifiers, and the session transcript supplies the conversation. Both are
-Claude mechanisms the backend already has to use, so buffering here would only
-duplicate them.
+The runner keeps no history, and keeps nothing about the conversations it
+carries. When a client reattaches it receives frames from that moment on, and
+recovering what it missed is the client's job — which the agent gives it three
+ways, none of them here:
+
+- `initialize`, re-sent, answers `session_state` — whether a prompt is still
+  outstanding — and hands back every unanswered permission and dialog request
+  under the identifiers it first gave them.
+- The session transcript supplies the conversation.
+- The frames that follow supply everything after.
+
+All three are Claude's own, so keeping any of it here would be a second copy to
+hold in step with the first.
 
 A child that exits stays listed as `exited` rather than being restarted or
 dropped. The conversation is on disk, so the backend recovers by asking for the
@@ -80,8 +94,8 @@ session again with arguments that resume it.
 
 `cargo test -p caffold-claude-runner` runs everything the runner is responsible
 for against a stand-in agent: relay, survival across a client disconnect,
-reattachment, exit reporting, and the refusals. It spends no model usage and is
-deterministic.
+reattachment, exit reporting, the refusals, and a runner killed outright leaving
+nothing behind. It spends no model usage and is deterministic.
 
 One assumption cannot be checked that way — whether Claude itself still honours
 a client that left and came back. That is opt-in, needs an authenticated CLI,

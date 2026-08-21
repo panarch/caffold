@@ -396,6 +396,17 @@ impl Drop for Attached {
 
 /// Whether a process is gone, polled rather than assumed so the result does not
 /// depend on scheduling.
+/// Whether this process is still running, answered at once.
+pub fn is_running(pid: i32) -> bool {
+    Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
 pub fn wait_for_process_exit(pid: i32) -> bool {
     let deadline = Instant::now() + TIMEOUT;
     while Instant::now() < deadline {

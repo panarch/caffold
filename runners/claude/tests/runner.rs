@@ -255,6 +255,54 @@ fn a_socket_left_by_a_crashed_runner_does_not_block_the_next_one() {
 }
 
 #[test]
+fn a_child_left_by_a_crashed_runner_is_ended_by_the_next_one() {
+    // The runner holds that a child does not outlive the runner supervising it,
+    // and shutting down acts on it. A runner killed outright runs no code, so
+    // its children go on with the pipes to them gone: unreachable, and still
+    // writing to a conversation the next client will be told has no session —
+    // which is how a second agent ends up on it. The rule is kept at the end
+    // where there is always a process to keep it.
+    let mut runner = Runner::start();
+    // Busy rather than waiting to be spoken to: a process reading stdin ends
+    // when the pipe to it closes, and an agent in the middle of a turn does not.
+    runner.create("s1", &fake_agent(&["--busy-for", "60"]));
+    let orphan = runner.sessions()[0]["pid"].as_u64().expect("pid") as i32;
+    runner.kill_without_cleanup();
+    assert!(
+        support::is_running(orphan),
+        "the child outlives a runner that was killed outright"
+    );
+
+    let replacement = Runner::start_in(runner.data_dir());
+
+    assert!(
+        support::wait_for_process_exit(orphan),
+        "the runner that started ended what the last one left"
+    );
+    assert_eq!(replacement.sessions().len(), 0, "and claims none of them");
+}
+
+#[test]
+fn closing_a_session_forgets_the_child_it_ended() {
+    // The record under `children/` exists so the next runner can end what a
+    // crashed one left. A child this runner ended itself is nobody's to end
+    // again, and a record that outlived it would sit in the book until the
+    // next start for no reason.
+    let runner = Runner::start();
+    runner.create("s1", &fake_agent(&[]));
+    let pid = runner.sessions()[0]["pid"].as_u64().expect("pid");
+    let record = runner.data_dir().join("children").join(pid.to_string());
+    assert!(record.exists(), "a started child is written down");
+
+    runner.run_raw(&["session", "close", "--session", "s1"]);
+
+    assert!(
+        !record.exists(),
+        "a child this runner ended is no longer written down"
+    );
+}
+
+#[test]
 fn stopping_the_runner_ends_the_sessions_it_held() {
     let runner = Runner::start();
     runner.create("s1", &fake_agent(&[]));

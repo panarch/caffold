@@ -311,17 +311,41 @@ pub(crate) struct ControlResponseBody {
     pub(crate) response: Value,
     #[serde(default)]
     pub(crate) error: Option<String>,
+    /// Questions about using a tool that nothing has answered.
+    #[serde(default)]
+    pub(crate) pending_permission_requests: Vec<Value>,
+    /// Questions put to the person that nothing has answered.
+    #[serde(default)]
+    pub(crate) pending_user_dialog_requests: Vec<Value>,
+}
+
+/// What the agent answered, and what it is still waiting on.
+///
+/// The two travel together because the agent sends them together: the
+/// unanswered questions sit beside the payload rather than inside it. Only
+/// saying hello asks for them, and every other request leaves them empty.
+#[derive(Debug, Clone)]
+pub(crate) struct ControlAnswer {
+    pub(crate) payload: Value,
+    /// The questions as the agent asked them, so they can be asked again
+    /// exactly as they were rather than described a second time.
+    pub(crate) unanswered: Vec<Value>,
 }
 
 impl ControlResponseBody {
-    /// The payload, or the agent's reason for refusing.
-    pub(crate) fn into_result(self) -> Result<Value, String> {
+    /// The answer, or the agent's reason for refusing.
+    pub(crate) fn into_result(self) -> Result<ControlAnswer, String> {
         if self.subtype.as_deref() == Some("error") {
             return Err(self
                 .error
                 .unwrap_or_else(|| "the agent refused without saying why".to_string()));
         }
-        Ok(self.response)
+        let mut unanswered = self.pending_permission_requests;
+        unanswered.extend(self.pending_user_dialog_requests);
+        Ok(ControlAnswer {
+            payload: self.response,
+            unanswered,
+        })
     }
 }
 
@@ -480,9 +504,44 @@ mod tests {
             request_id: "1".to_string(),
             response: Value::Null,
             error: Some("no such model".to_string()),
+            pending_permission_requests: Vec::new(),
+            pending_user_dialog_requests: Vec::new(),
         };
 
-        assert_eq!(refused.into_result(), Err("no such model".to_string()));
+        assert_eq!(
+            refused.into_result().err(),
+            Some("no such model".to_string())
+        );
+    }
+
+    #[test]
+    fn saying_hello_answers_with_every_question_the_agent_is_held_up_by() {
+        // Both kinds travel beside the payload rather than inside it, and both
+        // hold a turn up until they are answered, so both come back together.
+        let hello: ControlResponseBody = serde_json::from_value(json!({
+            "subtype": "success",
+            "request_id": "1",
+            "response": { "session_state": "running" },
+            "pending_permission_requests": [
+                { "type": "control_request", "request_id": "may-i", "request": {} },
+            ],
+            "pending_user_dialog_requests": [
+                { "type": "control_request", "request_id": "which-one", "request": {} },
+            ],
+        }))
+        .expect("the answer decodes");
+
+        let answer = hello.into_result().expect("a success is not a refusal");
+
+        assert_eq!(answer.payload["session_state"], "running");
+        assert_eq!(
+            answer
+                .unanswered
+                .iter()
+                .map(|question| question["request_id"].as_str().unwrap_or_default())
+                .collect::<Vec<_>>(),
+            vec!["may-i", "which-one"],
+        );
     }
 
     #[test]

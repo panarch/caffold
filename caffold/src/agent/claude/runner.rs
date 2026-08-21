@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use caffold_claude_runner::client::{Client, FrameWriter, Streaming};
-use caffold_claude_runner::protocol::{Request, SessionInfo, SpawnRequest, WireEvent};
+use caffold_claude_runner::protocol::{ReplyBody, Request, SessionInfo, SpawnRequest, WireEvent};
 use caffold_claude_runner::{SOCKET_NAME, protocol};
 use serde_json::Value;
 use serde_json::value::RawValue;
@@ -206,6 +206,29 @@ impl RunnerClient {
         })
     }
 
+    /// The conversations the runner is still holding a process for.
+    ///
+    /// A runner that is not listening is not started to answer this. It would
+    /// answer nothing either way, and starting one to hear that would spend a
+    /// process on the case where there is least to say.
+    pub(crate) async fn live_sessions(&self) -> Vec<String> {
+        #[cfg(test)]
+        if let Some(mock) = &self.mock {
+            return mock.state.lock().await.sessions.keys().cloned().collect();
+        }
+        let Ok(mut client) = self.connect().await else {
+            return Vec::new();
+        };
+        match client.request(Request::SessionList).await {
+            Ok(ReplyBody::Sessions { sessions }) => sessions
+                .into_iter()
+                .filter(|session| matches!(session.state, protocol::SessionState::Running))
+                .map(|session| session.session)
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
     /// End a session and the process behind it.
     ///
     /// A runner that is not listening is not started to be told this: it holds
@@ -350,11 +373,22 @@ struct MockRunnerState {
     sessions: HashMap<String, MockSession>,
     /// What the next session created will say the moment it is attached.
     greeting: Vec<Value>,
+    /// What the next session created will answer when it is greeted: the state
+    /// it was already in, and the questions it is already held up by.
+    hello: Value,
+}
+
+/// A session that has just started and is holding nothing up.
+#[cfg(test)]
+fn default_hello() -> Value {
+    serde_json::json!({ "response": { "session_state": "idle" } })
 }
 
 #[cfg(test)]
 struct MockSession {
     spawn: SpawnRequest,
+    /// What this session answers when it is greeted.
+    hello: Value,
     agent: mpsc::UnboundedSender<RunnerEvent>,
     heard: Vec<Value>,
     /// How many prompts have been handed back, which is what names the next
@@ -383,10 +417,12 @@ impl MockRunner {
         for frame in state.greeting.drain(..).collect::<Vec<_>>() {
             let _ = sender.send(RunnerEvent::Frame(frame.to_string()));
         }
+        let hello = std::mem::replace(&mut state.hello, default_hello());
         state.sessions.insert(
             session.to_string(),
             MockSession {
                 spawn,
+                hello,
                 agent: sender,
                 heard: Vec::new(),
                 replays: 0,
@@ -420,12 +456,15 @@ impl MockRunner {
         if frame["type"] == "control_request"
             && let Some(request_id) = frame["request_id"].as_str()
         {
+            let mut body = if frame["request"]["subtype"] == "initialize" {
+                existing.hello.clone()
+            } else {
+                serde_json::json!({ "response": {} })
+            };
+            body["subtype"] = serde_json::json!("success");
+            body["request_id"] = serde_json::json!(request_id);
             let _ = existing.agent.send(RunnerEvent::Frame(
-                serde_json::json!({
-                    "type": "control_response",
-                    "response": { "subtype": "success", "request_id": request_id, "response": {} },
-                })
-                .to_string(),
+                serde_json::json!({ "type": "control_response", "response": body }).to_string(),
             ));
         }
         // Every session runs with `--replay-user-messages`, so a prompt
@@ -459,6 +498,15 @@ impl MockRunnerHandle {
         self.0.state.lock().await.greeting = frames;
     }
 
+    /// What the next session created will answer when it is greeted.
+    ///
+    /// A session the runner held across a restart of the client answers with
+    /// the state it was already in and the questions it is already held up by,
+    /// and that answer is the only way the client learns either.
+    pub(crate) async fn greet_next_session_as(&self, hello: Value) {
+        self.0.state.lock().await.hello = hello;
+    }
+
     /// Say one more thing as the agent, now.
     pub(crate) async fn say(&self, session: &str, frame: Value) {
         let state = self.0.state.lock().await;
@@ -473,6 +521,14 @@ impl MockRunnerHandle {
         if let Some(held) = state.sessions.get_mut(session) {
             held.swallow_prompts = true;
         }
+    }
+
+    /// Go away without a word, the way a runner killed outright does.
+    ///
+    /// Distinct from the agent exiting, which is something the runner is there
+    /// to report. Here the reporting itself stops.
+    pub(crate) async fn vanish(&self, session: &str) {
+        self.0.state.lock().await.sessions.remove(session);
     }
 
     /// End the session as the agent exiting.
@@ -491,6 +547,18 @@ impl MockRunnerHandle {
             .get(session)
             .map(|held| held.heard.clone())
             .unwrap_or_default()
+    }
+
+    /// What the session was asked to do, without the housekeeping around it.
+    ///
+    /// Every session is greeted the moment it opens, so a test about prompts
+    /// has to say that prompts are what it means.
+    pub(crate) async fn prompts(&self, session: &str) -> Vec<Value> {
+        self.heard(session)
+            .await
+            .into_iter()
+            .filter(|frame| frame["type"] == "user")
+            .collect()
     }
 
     /// How the session was started.

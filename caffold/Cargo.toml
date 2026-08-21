@@ -5,6 +5,18 @@ edition = "2024"
 rust-version = "1.96"
 license = "Apache-2.0"
 
+# Declared rather than discovered, so the harness the tests share can live at
+# `tests/support.rs` without cargo turning it into a test binary of its own.
+autotests = false
+
+[[test]]
+name = "codex_protocol"
+path = "tests/codex_protocol.rs"
+
+[[test]]
+name = "claude_live"
+path = "tests/claude_live.rs"
+
 [dependencies]
 anyhow = "1.0.98"
 axum = "0.8.4"

@@ -132,6 +132,7 @@ pub(super) async fn task_list_stream_initial_frames(
         &state.task_sessions,
         connection.generation,
         &connection.client,
+        state.task_runtime.claude(),
     )
     .await?;
     for thread in projection.observed_threads {

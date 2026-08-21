@@ -1860,7 +1860,7 @@ mod request_tests {
             .await
             .expect("viewer");
         let _ = sessions
-            .connection_lost(1, "process exited".to_string())
+            .codex_connection_lost(1, "process exited".to_string())
             .await;
 
         let recovered_client =

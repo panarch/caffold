@@ -52,7 +52,7 @@ impl TaskRuntime {
             };
             let affected = runtime
                 .sessions
-                .connection_lost(generation, connection_error.clone())
+                .codex_connection_lost(generation, connection_error.clone())
                 .await;
             for thread_id in affected {
                 let _ = runtime.signals.send(TaskRuntimeSignal::SessionUnavailable {
@@ -69,7 +69,7 @@ impl TaskRuntime {
         tokio::spawn(async move {
             for (thread_id, error) in runtime
                 .sessions
-                .resubscribe_leased(&connection.driver(), connection.generation)
+                .resubscribe_leased_codex_threads(&connection.driver(), connection.generation)
                 .await
             {
                 eprintln!("failed to restore Codex thread subscription {thread_id}: {error}");

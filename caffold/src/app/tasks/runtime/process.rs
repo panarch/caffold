@@ -197,7 +197,7 @@ impl TaskRuntime {
         let message = "Codex runtime is restarting.".to_string();
         let affected = self
             .sessions
-            .connection_lost(generation, message.clone())
+            .codex_connection_lost(generation, message.clone())
             .await;
         for thread_id in affected {
             let _ = self.signals.send(TaskRuntimeSignal::SessionUnavailable {
@@ -248,7 +248,7 @@ impl TaskRuntime {
         let message = error.to_string();
         let affected = self
             .sessions
-            .connection_lost(connection.generation, message.clone())
+            .codex_connection_lost(connection.generation, message.clone())
             .await;
         for thread_id in affected {
             let _ = self.signals.send(TaskRuntimeSignal::SessionUnavailable {

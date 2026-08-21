@@ -123,6 +123,16 @@ pub(crate) enum ClaudeRuntimeEvent {
         conversation_id: String,
         request: Box<ApprovalRequest>,
     },
+    /// The session can no longer be reached, and did not say it was ending.
+    ///
+    /// Distinct from the agent exiting, which the agent says and which leaves a
+    /// conversation that simply has no process behind it. This is the runner
+    /// going away underneath one — nothing said, and what Caffold last heard
+    /// left standing as though it were still true.
+    Unreachable {
+        conversation_id: String,
+        message: String,
+    },
     /// Something worth writing down that nothing acts on.
     Diagnostic { message: String },
 }
@@ -135,7 +145,7 @@ struct Session {
     frames: AsyncMutex<SessionFrames>,
     state: AsyncMutex<SessionState>,
     /// Control requests Caffold has sent and is waiting on.
-    pending: AsyncMutex<HashMap<String, oneshot::Sender<Result<Value, String>>>>,
+    pending: AsyncMutex<HashMap<String, oneshot::Sender<Result<protocol::ControlAnswer, String>>>>,
     next_control_id: AtomicU64,
 }
 
@@ -338,6 +348,16 @@ impl ClaudeClient {
         Ok(self.conversation_of(&session).await)
     }
 
+    /// The conversations that still have a process behind them.
+    ///
+    /// Asked of the runner rather than of any agent, because it is the one
+    /// thing that outlives this process and so the only thing that knows what
+    /// survived it. Nothing is started to answer it: everything it names is
+    /// already running, and a runner that has just started names nothing.
+    pub(crate) async fn live_conversations(&self) -> Vec<String> {
+        self.inner.runner.live_sessions().await
+    }
+
     /// Let go of a conversation. Nothing happens.
     ///
     /// A Codex subscription is nearly free to drop and to take again, so
@@ -462,7 +482,6 @@ impl ClaudeClient {
                 "the Claude session for {id} has already exited"
             )));
         }
-
         let session = Arc::new(Session {
             id: id.to_string(),
             cwd: cwd.to_string(),
@@ -488,13 +507,108 @@ impl ClaudeClient {
             .await
             .insert(id.to_string(), session.clone());
         self.spawn_reader(session.clone(), events);
+        if matches!(start, SessionStart::Resume) {
+            self.take_up_what_was_already_happening(&session).await;
+        }
         Ok(session)
+    }
+
+    /// Learn what this session was doing before Caffold was here.
+    ///
+    /// A session the runner held across a restart of this process has a past
+    /// that nothing in this process remembers: a prompt may still be
+    /// outstanding, and questions may be waiting on an answer that the client
+    /// which was asked them is no longer around to give. The agent keeps both
+    /// and hands them over when a client says hello, which is what this is.
+    ///
+    /// Only for a conversation that had a past. A session started here and now
+    /// has nothing outstanding by construction, and asking anyway would put the
+    /// wait for an agent to come up in front of every Task somebody creates.
+    async fn take_up_what_was_already_happening(&self, session: &Arc<Session>) {
+        let hello = match session.control(json!({ "subtype": "initialize" })).await {
+            Ok(hello) => hello,
+            Err(error) => {
+                self.publish(ClaudeRuntimeEvent::Diagnostic {
+                    message: format!("claude {} did not say hello: {error}", session.id),
+                });
+                return;
+            }
+        };
+        let working = hello.payload.get("session_state").and_then(Value::as_str) == Some("running");
+        if working && let Some(turn) = self.turn_left_running(&session.id, &session.cwd).await {
+            let mut state = session.state.lock().await;
+            state.active_turn = Some(turn.id.clone());
+            state.turns = vec![turn];
+        }
+        // Asked again exactly as they were first asked, so a question the agent
+        // is held up by reaches the reader by the path every other question
+        // takes. Nothing here decides what any of them means.
+        for question in hello.unanswered {
+            self.handle_line(session, &question.to_string()).await;
+        }
+    }
+
+    /// The turn a session is in the middle of, once the agent has said it is
+    /// in one.
+    ///
+    /// The agent answers *that* a prompt is outstanding and not *which* turn it
+    /// belongs to, so which one is read from the conversation the agent writes
+    /// for itself: a prompt still being answered opened the newest turn there.
+    ///
+    /// Without this, work arriving for a turn nothing knows about is dropped as
+    /// belonging to nothing, and the Task reads as idle for as long as the turn
+    /// runs — which is exactly as long as there is something to watch.
+    async fn turn_left_running(&self, id: &str, cwd: &str) -> Option<Turn> {
+        // The newest turn the conversation holds, which is the one the prompt
+        // the runner is still waiting on opened.
+        let mut turn = self.newest_filed_turn(cwd, id).await?;
+        turn.status = TurnStatus::InProgress;
+        Some(turn)
+    }
+
+    /// The newest turn the conversation on disk holds.
+    ///
+    /// Both recoveries read the file the same way — the turn a resumed session
+    /// was in the middle of, and the name an unhanded prompt was filed under —
+    /// and this is that one way.
+    async fn newest_filed_turn(&self, cwd: &str, id: &str) -> Option<Turn> {
+        let path = self
+            .projects()
+            .and_then(|projects| transcript::locate(projects, cwd, id))?;
+        let reading = tokio::task::spawn_blocking(move || transcript::read(&path, None, 1))
+            .await
+            .ok()?;
+        reading.page.turns.into_iter().next()
+    }
+
+    /// Whether a written prompt is still waiting to learn its turn's name.
+    async fn awaiting_a_turn_name(&self, session: &Arc<Session>) -> bool {
+        let state = session.state.lock().await;
+        state.pending_prompt.is_some() && state.active_turn.is_none()
+    }
+
+    /// The name the agent filed the pending prompt under.
+    ///
+    /// Asked of the conversation on disk when the prompt has not come home: the
+    /// agent files a prompt the moment it takes one, so the newest turn there
+    /// is the one the pending prompt opened, under the name every later reader
+    /// of the file will use. A name this session already knows is an older turn
+    /// read ahead of a prompt not yet flushed, and is refused — new work must
+    /// not be filed into a turn that already ended.
+    async fn filed_prompt_name(&self, session: &Arc<Session>) -> Option<String> {
+        let candidate = self.newest_filed_turn(&session.cwd, &session.id).await?.id;
+        let state = session.state.lock().await;
+        if state.turns.iter().any(|turn| turn.id == candidate) {
+            return None;
+        }
+        Some(candidate)
     }
 
     /// Read one session for as long as it says anything.
     fn spawn_reader(&self, session: Arc<Session>, mut events: runner::SessionEvents) {
         let client = self.clone();
         tokio::spawn(async move {
+            let mut said_goodbye = false;
             while let Some(event) = events.next().await {
                 match event {
                     RunnerEvent::Frame(line) => client.handle_line(&session, &line).await,
@@ -505,6 +619,7 @@ impl ClaudeClient {
                     }
                     RunnerEvent::Exit(code) => {
                         client.handle_exit(&session, code).await;
+                        said_goodbye = true;
                         break;
                     }
                 }
@@ -512,6 +627,18 @@ impl ClaudeClient {
             // A session that stops speaking is no longer one Caffold can drive,
             // whether it exited or the connection went away.
             client.inner.sessions.lock().await.remove(&session.id);
+            if !said_goodbye {
+                // Nothing said it was ending, so the runner went away under it.
+                // Said out loud rather than dropped: everything Caffold last
+                // heard would otherwise stand as the current state of a
+                // conversation nothing can reach, and the way back to it is to
+                // open it again — which nobody does for a Task that looks like
+                // it is already being watched.
+                client.publish(ClaudeRuntimeEvent::Unreachable {
+                    conversation_id: session.id.clone(),
+                    message: "the Claude runner went away".to_string(),
+                });
+            }
         });
     }
 
@@ -1013,8 +1140,8 @@ impl ClaudeClient {
         };
         match frame {
             StreamFrame::System(system) => self.handle_system(session, system).await,
-            StreamFrame::Assistant(message) => self.handle_message(session, message).await,
-            StreamFrame::User(message) => self.handle_message(session, message).await,
+            StreamFrame::Assistant(message) => self.handle_message(session, message, false).await,
+            StreamFrame::User(message) => self.handle_message(session, message, true).await,
             StreamFrame::Result(result) => self.handle_result(session, result).await,
             StreamFrame::ControlRequest(request) => {
                 self.handle_control_request(session, request).await;
@@ -1054,7 +1181,12 @@ impl ClaudeClient {
         self.report(&session.id, SessionEventKind::SettingsChanged { settings });
     }
 
-    async fn handle_message(&self, session: &Arc<Session>, frame: MessageFrame) {
+    async fn handle_message(
+        &self,
+        session: &Arc<Session>,
+        frame: MessageFrame,
+        spoken_by_user: bool,
+    ) {
         // A subagent's messages belong to the tool call that started it, which
         // the conversation already shows. Folding them in would interleave two
         // conversations under one turn.
@@ -1065,6 +1197,27 @@ impl ClaudeClient {
             self.handle_replayed_prompt(session, frame).await;
             return;
         }
+        let awaiting_name = self.awaiting_a_turn_name(session).await;
+        if awaiting_name && spoken_by_user {
+            // A user frame between the prompt going in and the prompt coming
+            // home is the prompt's own reflection — the resize note a large
+            // image earns, or a replay that lost its marking — not new work.
+            // Taken as the agent answering unprompted, it would name the turn
+            // with an invented id while the file names it something else, and
+            // the same answer would then stand twice, once under each name.
+            // The file keeps whatever the reflection said, so nothing is lost
+            // by not drawing it live.
+            return;
+        }
+        // The name the turn will be known by, read from the conversation on
+        // disk when the prompt has not come home. Some sessions never hand one
+        // back — a session started before Caffold began asking still has the
+        // arguments it was started with — and the file names their turns too.
+        let filed = if awaiting_name {
+            self.filed_prompt_name(session).await
+        } else {
+            None
+        };
         // The frame, not the message. One assistant message is streamed as
         // several frames — thinking in one, its answer in the next — all
         // carrying the same message identifier and each numbering its own
@@ -1085,13 +1238,11 @@ impl ClaudeClient {
 
         let (turn_id, items) = {
             let mut state = session.state.lock().await;
-            // The agent answering a prompt it never handed back. Some sessions
-            // cannot hand one back — a session started before Caffold began
-            // asking for it is still held by the runner, and its arguments are
-            // fixed for as long as it lives — and waiting for one that will
-            // never come would let this answer, and the `result` that ends it,
-            // arrive before the turn they belong to existed.
-            open_pending_turn(&mut state, None);
+            // The agent answering a prompt it never handed back. Waiting for a
+            // handback that will never come would let this answer, and the
+            // `result` that ends it, arrive before the turn they belong to
+            // existed.
+            open_pending_turn(&mut state, filed.as_deref());
             let Some(turn_id) = state.active_turn.clone() else {
                 // Work with no turn open belongs to nothing Caffold can show.
                 return;
@@ -1147,6 +1298,14 @@ impl ClaudeClient {
         };
         let completed_at_ms = now_ms();
 
+        // A turn that began and ended without the agent handing its prompt
+        // back, which is a short answer on a session that cannot hand one back
+        // at all. Its name is read from the file like any other unhanded turn.
+        let filed = if self.awaiting_a_turn_name(session).await {
+            self.filed_prompt_name(session).await
+        } else {
+            None
+        };
         let (turn, abandoned) = {
             let mut state = session.state.lock().await;
             if let Some(waiting) = state.quiet_turn.take() {
@@ -1154,10 +1313,7 @@ impl ClaudeClient {
                 let _ = waiting.send(());
                 return;
             }
-            // A turn that began and ended without the agent handing its prompt
-            // back, which is a short answer on a session that cannot hand one
-            // back at all.
-            open_pending_turn(&mut state, None);
+            open_pending_turn(&mut state, filed.as_deref());
             let Some(turn_id) = state.active_turn.take() else {
                 return;
             };
@@ -1273,7 +1429,7 @@ impl Session {
     }
 
     /// Ask the agent something over the control protocol, and wait.
-    async fn control(&self, body: Value) -> Result<Value, ClaudeError> {
+    async fn control(&self, body: Value) -> Result<protocol::ControlAnswer, ClaudeError> {
         let request_id = format!(
             "caffold-{}",
             self.next_control_id.fetch_add(1, Ordering::Relaxed)
@@ -1534,11 +1690,12 @@ fn changed(current: &Option<String>, wanted: &Option<String>) -> Option<String> 
 
 /// Open the turn a written prompt is waiting for, if one is waiting.
 ///
-/// `named` is what the agent filed the prompt as, which only the prompt coming
-/// home can say. Anything else arriving first means the agent is answering
-/// without having handed it back, and the turn is named here rather than left
-/// to a timeout that the agent's own answer has already outrun — a turn opened
-/// after its `result` went by is a turn nothing will ever close.
+/// `named` is what the agent filed the prompt as — said by the prompt coming
+/// home, or read back from the conversation on disk when the agent answered
+/// without handing it back. Only with no name from either source is one made
+/// up here, rather than left to a timeout the agent's own answer has already
+/// outrun — a turn opened after its `result` went by is a turn nothing will
+/// ever close.
 fn open_pending_turn(state: &mut SessionState, named: Option<&str>) -> Option<Turn> {
     let (said, waiting) = state.pending_prompt.take()?;
     let turn_id = named
@@ -1588,13 +1745,19 @@ fn status_of(state: &SessionState) -> ThreadStatus {
             active_flags: Vec::new(),
         };
     }
-    match (&state.active_turn, state.pending_approvals.is_empty()) {
-        (None, _) => ThreadStatus::Idle,
-        (Some(_), true) => ThreadStatus::Active {
-            active_flags: Vec::new(),
-        },
-        (Some(_), false) => ThreadStatus::Active {
+    if !state.pending_approvals.is_empty() {
+        // Waiting on a person is not being idle, whether or not a turn is open
+        // here. A conversation taken up while the agent was already blocked on a
+        // question has the question and not yet the turn it belongs to, and
+        // reading that as idle would withdraw the very question just recovered.
+        return ThreadStatus::Active {
             active_flags: vec![ThreadActiveFlag::WaitingOnApproval],
+        };
+    }
+    match &state.active_turn {
+        None => ThreadStatus::Idle,
+        Some(_) => ThreadStatus::Active {
+            active_flags: Vec::new(),
         },
     }
 }
@@ -1832,7 +1995,11 @@ async fn ask_one_off(body: Value) -> Result<Value, ClaudeError> {
             if response.response.request_id != request_id {
                 continue;
             }
-            break response.response.into_result().map_err(ClaudeError::Agent);
+            break response
+                .response
+                .into_result()
+                .map(|answer| answer.payload)
+                .map_err(ClaudeError::Agent);
         }
     })
     .await
@@ -1907,6 +2074,308 @@ mod tests {
             model: Some(model.to_string()),
             ..ClaudeTurnOptions::default()
         }
+    }
+
+    #[tokio::test]
+    async fn a_session_that_stops_speaking_without_ending_is_one_to_open_again() {
+        // The runner killed outright. Nothing says the agent ended, because
+        // nothing is left to say it, and what Caffold last heard would go on
+        // standing as the state of a conversation it can no longer reach. Said
+        // out loud instead, because opening it again is the whole repair — and
+        // nothing opens a Task that already looks like one being watched.
+        let (client, runner, mut events) = watching().await;
+
+        runner.vanish(SESSION).await;
+
+        let reported = tokio::time::timeout(REPORT_TIMEOUT, async {
+            loop {
+                if let Ok(ClaudeRuntimeEvent::Unreachable {
+                    conversation_id, ..
+                }) = events.recv().await
+                {
+                    return conversation_id;
+                }
+            }
+        })
+        .await
+        .expect("the session says it can no longer be reached");
+        assert_eq!(reported, SESSION);
+        assert!(
+            client.session(SESSION).await.is_none(),
+            "and it is no longer one this client holds"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_session_the_agent_ended_says_so_rather_than_asking_to_be_opened_again() {
+        // The other half. An agent that exits has said what happened, and a
+        // conversation with no process behind it is not one to re-open behind
+        // a person's back.
+        let (_client, runner, mut events) = watching().await;
+
+        runner.exit(SESSION, Some(0)).await;
+
+        let ended = tokio::time::timeout(REPORT_TIMEOUT, async {
+            loop {
+                match events.recv().await {
+                    Ok(ClaudeRuntimeEvent::Unreachable { .. }) => return false,
+                    Ok(ClaudeRuntimeEvent::Session(SessionEvent {
+                        kind:
+                            SessionEventKind::StatusChanged {
+                                status: ThreadStatus::Idle,
+                            },
+                        ..
+                    })) => return true,
+                    Ok(_) => continue,
+                    Err(_) => return false,
+                }
+            }
+        })
+        .await
+        .expect("the exit is reported");
+        assert!(ended, "an exit is reported as an exit");
+    }
+
+    /// A conversation the agent has already written, where it writes them.
+    ///
+    /// A session Caffold restarted under is one whose whole history is on
+    /// disk, so a case about picking one up has to start from a file rather
+    /// than from what a stand-in says next.
+    fn written_conversation() -> tempfile::TempDir {
+        let projects = tempfile::tempdir().expect("a projects directory");
+        transcript::plant(
+            projects.path(),
+            CWD,
+            SESSION,
+            include_str!("claude/transcript/a-session-claude-wrote.jsonl"),
+        );
+        projects
+    }
+
+    #[tokio::test]
+    async fn a_session_still_working_is_picked_up_in_the_turn_it_is_working_on() {
+        // Caffold restarted while the agent was answering. The agent kept
+        // working and says so when it is greeted; the turn that prompt opened is
+        // read from what the agent has written so far. Without both, the rest of
+        // that turn arrives for a turn nothing knows about and is dropped, and
+        // the Task reads as idle for exactly as long as there is something to
+        // watch.
+        let projects = written_conversation();
+        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
+        runner
+            .greet_next_session_as(json!({ "response": { "session_state": "running" } }))
+            .await;
+        runner
+            .greet_next_session_with(vec![init_frame(SESSION)])
+            .await;
+
+        client
+            .open_conversation(SESSION, CWD, &options("opus"))
+            .await
+            .expect("the conversation opens");
+
+        let page = client.read_turns(SESSION, CWD, None, 8).await;
+        let running = page.turns.first().expect("the turn it was working on");
+        assert_eq!(running.id, "e848560b-26f6-4bcf-92e2-86539d420ab9");
+        assert_eq!(running.status, TurnStatus::InProgress);
+    }
+
+    #[tokio::test]
+    async fn a_prompts_reflection_does_not_take_the_turn_from_the_name_the_agent_filed() {
+        // A large image earns a resize note: an extra user row the agent adds
+        // beside the prompt, and on some models an extra user frame ahead of
+        // the prompt coming home. Taken as the agent answering unprompted, that
+        // frame named the turn with an invented id — and the file names it
+        // something else, so the same answer stood twice, once under each name.
+        let projects = tempfile::tempdir().expect("a projects directory");
+        transcript::plant(
+            projects.path(),
+            CWD,
+            SESSION,
+            concat!(
+                r#"{"type":"user","uuid":"filed-prompt","timestamp":"2026-08-21T13:38:40.000Z","promptSource":"sdk","message":{"role":"user","content":[{"type":"text","text":"do you see it?"}]}}"#,
+                "\n",
+                r#"{"type":"user","uuid":"note-row","timestamp":"2026-08-21T13:38:40.500Z","message":{"role":"user","content":[{"type":"text","text":"[Image: original 2004x410, displayed at 2000x409]"}]}}"#,
+                "\n",
+            ),
+        );
+        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
+        runner
+            .greet_next_session_with(vec![init_frame(SESSION)])
+            .await;
+        client
+            .open_conversation(SESSION, CWD, &options("opus"))
+            .await
+            .expect("the conversation opens");
+        runner.swallow_prompts(SESSION).await;
+
+        let starting = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .start_turn(SESSION, "do you see it?", &[], &options("opus"))
+                    .await
+            }
+        });
+        heard_the_prompt(&runner).await;
+
+        // The reflection arrives before the prompt comes home: a user frame
+        // with no replay marking.
+        runner
+            .say(
+                SESSION,
+                json!({
+                    "type": "user",
+                    "uuid": "note-row",
+                    "timestamp": "2026-08-21T13:38:40.500Z",
+                    "message": { "role": "user", "content": [{
+                        "type": "text",
+                        "text": "[Image: original 2004x410, displayed at 2000x409]",
+                    }]},
+                }),
+            )
+            .await;
+        // And the agent starts answering before any replay has arrived.
+        runner
+            .say(
+                SESSION,
+                assistant_frame("msg_1", json!([{ "type": "text", "text": "I see it." }])),
+            )
+            .await;
+
+        let turn = tokio::time::timeout(REPORT_TIMEOUT, starting)
+            .await
+            .expect("the turn opens without waiting out the handback")
+            .expect("the task finishes")
+            .expect("the turn starts");
+        assert_eq!(
+            turn.id, "filed-prompt",
+            "the turn is named what the agent filed the prompt as"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_conversation_waiting_on_a_person_is_not_idle_without_a_turn_to_show() {
+        // A conversation taken up while the agent was already blocked has the
+        // question before it has the turn the question belongs to. Read as idle
+        // in that moment, the Task withdraws the very question it just
+        // recovered, and the agent waits for an answer nobody can give.
+        let projects = written_conversation();
+        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
+        runner
+            .greet_next_session_as(json!({
+                "response": { "session_state": "running" },
+                "pending_permission_requests": [{
+                    "type": "control_request",
+                    "request_id": "req-left-waiting",
+                    "request": {
+                        "subtype": "can_use_tool",
+                        "tool_name": "Bash",
+                        "input": { "command": "rm -rf build" },
+                        "toolUseID": "toolu_7",
+                    },
+                }],
+            }))
+            .await;
+        runner
+            .greet_next_session_with(vec![init_frame(SESSION)])
+            .await;
+        client
+            .open_conversation(SESSION, CWD, &options("opus"))
+            .await
+            .expect("the conversation opens");
+
+        let session = client.session(SESSION).await.expect("the session");
+        {
+            // The turn it belongs to is not always recoverable, and the
+            // question is outstanding either way.
+            let mut state = session.state.lock().await;
+            state.active_turn = None;
+        }
+
+        let status = status_of(&*session.state.lock().await);
+        assert_eq!(
+            status,
+            ThreadStatus::Active {
+                active_flags: vec![ThreadActiveFlag::WaitingOnApproval],
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn a_question_the_agent_is_held_up_by_comes_back_when_it_is_greeted() {
+        // The client that was asked is gone, and the agent is waiting on an
+        // answer only a client can give. It hands the question back, as it
+        // asked it, to whichever client says hello next — so the question
+        // arrives here by the path every other question takes, and nothing has
+        // to be kept anywhere in the meantime.
+        let projects = written_conversation();
+        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
+        let events = client.subscribe();
+        runner
+            .greet_next_session_as(json!({
+                "response": { "session_state": "running" },
+                "pending_permission_requests": [{
+                    "type": "control_request",
+                    "request_id": "req-left-waiting",
+                    "request": {
+                        "subtype": "can_use_tool",
+                        "tool_name": "Bash",
+                        "input": { "command": "rm -rf build" },
+                        "toolUseID": "toolu_7",
+                    },
+                }],
+            }))
+            .await;
+        runner
+            .greet_next_session_with(vec![init_frame(SESSION)])
+            .await;
+
+        client
+            .open_conversation(SESSION, CWD, &options("opus"))
+            .await
+            .expect("the conversation opens");
+
+        let mut events = events;
+        let asked = tokio::time::timeout(REPORT_TIMEOUT, async {
+            loop {
+                if let Ok(ClaudeRuntimeEvent::Approval { request, .. }) = events.recv().await {
+                    return request;
+                }
+            }
+        })
+        .await
+        .expect("the question is put to somebody who can answer it");
+        assert_eq!(asked.id, "req-left-waiting");
+    }
+
+    #[tokio::test]
+    async fn a_session_working_on_nothing_is_picked_up_with_no_turn_open() {
+        // The half that keeps the other half honest. Taken as running without
+        // asking, every conversation would show its last turn as never having
+        // ended.
+        let projects = written_conversation();
+        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
+        runner
+            .greet_next_session_with(vec![init_frame(SESSION)])
+            .await;
+
+        client
+            .open_conversation(SESSION, CWD, &options("opus"))
+            .await
+            .expect("the conversation opens");
+
+        let page = client.read_turns(SESSION, CWD, None, 8).await;
+        assert!(
+            page.turns
+                .iter()
+                .all(|turn| turn.status == TurnStatus::Completed),
+            "nothing is outstanding: {:?}",
+            page.turns
+                .iter()
+                .map(|turn| turn.status)
+                .collect::<Vec<_>>()
+        );
     }
 
     /// A client watching one conversation the stand-in has already greeted.
@@ -2120,9 +2589,8 @@ mod tests {
             .await
             .expect("the turn starts");
 
-        let heard = runner.heard(SESSION).await;
+        let heard = runner.prompts(SESSION).await;
         assert_eq!(heard.len(), 1, "one prompt, written once");
-        assert_eq!(heard[0]["type"], "user");
         assert_eq!(
             heard[0]["message"]["content"][0]["text"], "fix the test",
             "{:?}",
@@ -2163,7 +2631,7 @@ mod tests {
             &turn.items[0].kind,
             ItemKind::UserMessage { text, .. } if text == "fix the test"
         ));
-        let heard = runner.heard(SESSION).await;
+        let heard = runner.prompts(SESSION).await;
         assert_eq!(heard.len(), 1, "the prompt was written once, not twice");
     }
 
@@ -2202,7 +2670,7 @@ mod tests {
         );
 
         // And it reached the agent as a picture rather than as its data URL.
-        let heard = runner.heard(SESSION).await;
+        let heard = runner.prompts(SESSION).await;
         let blocks = heard[0]["message"]["content"]
             .as_array()
             .expect("content")
@@ -2625,7 +3093,7 @@ mod tests {
             .await
             .expect("a conversation let go of is still a conversation");
         assert_eq!(
-            runner.heard(SESSION).await.len(),
+            runner.prompts(SESSION).await.len(),
             1,
             "the prompt reached the same session, without attaching again"
         );
@@ -2691,7 +3159,7 @@ mod tests {
                     .heard(SESSION)
                     .await
                     .into_iter()
-                    .find(|frame| frame["type"] == "control_request")
+                    .find(|frame| frame["request"]["subtype"] == "interrupt")
                 {
                     return frame;
                 }

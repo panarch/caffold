@@ -140,6 +140,41 @@ pub(in crate::app::tasks) struct TaskSessions {
     entries: Arc<AsyncMutex<HashMap<String, Arc<SessionEntry>>>>,
 }
 
+/// Which agent a session is run by, as against how it is reached.
+///
+/// Leases and generations say a Task is being watched and how recently; neither
+/// says whose it is. Codex serves every thread it has from one connection and
+/// counts them, so both are answers about Codex — and a Claude session, which
+/// is its own process on its own connection, has to be told apart from them
+/// rather than swept along.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionAgent {
+    Codex,
+    Claude,
+}
+
+impl From<&Driver> for SessionAgent {
+    fn from(driver: &Driver) -> Self {
+        match driver {
+            Driver::Codex(_) => Self::Codex,
+            Driver::Claude(_) => Self::Claude,
+        }
+    }
+}
+
+impl SessionState {
+    /// Record the connection this session is now being watched on.
+    fn on_connection(&mut self, driver: &Driver, generation: u64) {
+        self.generation = generation;
+        self.agent = Some(SessionAgent::from(driver));
+    }
+
+    /// Whether a Codex connection speaks for this session.
+    fn is_codex(&self) -> bool {
+        self.agent == Some(SessionAgent::Codex)
+    }
+}
+
 struct SessionEntry {
     state: AsyncMutex<SessionState>,
     operation: AsyncMutex<()>,
@@ -162,6 +197,14 @@ struct SessionState {
     /// The agent this session is being watched through, kept so the last
     /// viewer to leave can say so without being handed one.
     driver: Option<Driver>,
+    /// Which agent runs this session.
+    ///
+    /// Kept apart from `driver` because a driver is dropped the moment a
+    /// connection goes away, and this outlives that. What may sweep a session —
+    /// a Codex connection lost, a Codex connection coming back — turns on the
+    /// answer, and asking it of a driver that has just been dropped would
+    /// answer nothing about every session that most needs it.
+    agent: Option<SessionAgent>,
     generation: u64,
     revision: u64,
     status_revision: u64,
@@ -181,6 +224,7 @@ impl Default for SessionState {
     fn default() -> Self {
         Self {
             lifecycle: SessionLifecycle::Unloaded,
+            agent: None,
             conversation: None,
             turns_page: None,
             active_turn_id: None,

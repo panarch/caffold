@@ -9,11 +9,16 @@
 
 exit_code=""
 stderr_line=""
+busy_for=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --exit-code) exit_code="$2"; shift 2 ;;
     --stderr) stderr_line="$2"; shift 2 ;;
+    # Work for this long before reading anything, the way an agent in the
+    # middle of a turn does. A process reading stdin ends when the pipe to it
+    # closes, which is not what a real agent does when its supervisor dies.
+    --busy-for) busy_for="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
@@ -30,6 +35,10 @@ fi
 
 # Acknowledge each line so a test can prove the client-to-child direction
 # without inspecting the content of what it sent.
+if [ -n "$busy_for" ]; then
+  sleep "$busy_for"
+fi
+
 received=0
 while IFS= read -r _line; do
   received=$((received + 1))

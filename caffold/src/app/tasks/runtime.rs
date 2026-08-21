@@ -195,6 +195,7 @@ impl TaskRuntime {
     /// running executor.
     pub(in crate::app) fn watch_claude(&self) {
         self.spawn_claude_bridge(self.shutdown.subscribe());
+        self.take_up_live_conversations();
     }
 
     pub(in crate::app) fn with_lifecycle(mut self, lifecycle: TaskLifecycle) -> Self {

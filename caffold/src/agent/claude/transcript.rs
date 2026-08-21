@@ -398,6 +398,19 @@ fn is_worth_showing(part: &CaffoldContent) -> bool {
     }
 }
 
+/// Write a conversation where the agent would have written it.
+///
+/// Here rather than in the caller because where a conversation lives is this
+/// module's to know, and a test that worked it out for itself would be
+/// asserting against its own copy of the rule.
+#[cfg(test)]
+pub(super) fn plant(projects: &Path, cwd: &str, session_id: &str, contents: &str) {
+    let project = projects.join(project_directory(cwd));
+    std::fs::create_dir_all(&project).expect("the project directory");
+    std::fs::write(project.join(format!("{session_id}.jsonl")), contents)
+        .expect("the conversation");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

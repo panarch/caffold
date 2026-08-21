@@ -20,6 +20,10 @@ use crate::protocol::{
 };
 use crate::session::{EVENT_QUEUE, Session, SessionError};
 
+mod leftovers;
+
+use leftovers::Leftovers;
+
 /// Requests are small; a client that sends a much larger one is malfunctioning.
 /// A frame bound for a child may be large, so this has to clear the session
 /// line limit rather than sit under it.
@@ -28,6 +32,9 @@ const MAX_REQUEST_BYTES: usize = crate::session::MAX_LINE_BYTES + 4096;
 pub struct Runner {
     socket: PathBuf,
     sessions: Mutex<BTreeMap<String, Arc<Session>>>,
+    /// The children this runner is answerable for, written where the next
+    /// runner can find them if this one does not get to end them itself.
+    leftovers: Leftovers,
     shutdown: Notify,
 }
 
@@ -42,6 +49,7 @@ struct Connection {
 impl Runner {
     pub fn new(socket: PathBuf) -> Arc<Self> {
         Arc::new(Self {
+            leftovers: Leftovers::beside(&socket),
             socket,
             sessions: Mutex::new(BTreeMap::new()),
             shutdown: Notify::new(),
@@ -50,6 +58,12 @@ impl Runner {
 
     /// Serve until asked to stop.
     pub async fn serve(self: Arc<Self>, listener: UnixListener) -> anyhow::Result<()> {
+        // Before a single client is answered. A runner that starts owns nothing
+        // from before: anything the last one left is unreachable, and telling a
+        // client there is no session for a conversation an unreachable process
+        // is still writing to would put a second agent on it.
+        self.leftovers.clear().await;
+
         loop {
             tokio::select! {
                 accepted = listener.accept() => {
@@ -69,7 +83,7 @@ impl Runner {
         // would be able to reach them afterwards, and they would hold a
         // conversation open that no client could join.
         for session in self.sessions.lock().await.values() {
-            session.close().await;
+            self.close_and_forget(session).await;
         }
         let _ = tokio::fs::remove_file(&self.socket).await;
         Ok(())
@@ -155,7 +169,7 @@ impl Runner {
                 // A client cannot know whether a session it never opened was
                 // started by an earlier one of itself.
                 if let Some(removed) = self.sessions.lock().await.remove(&session) {
-                    removed.close().await;
+                    self.close_and_forget(&removed).await;
                 }
                 Outcome::Ok(ReplyBody::Empty {})
             }
@@ -230,6 +244,11 @@ impl Runner {
                 .map_err(session_error)?,
         );
         let info = session.info().await;
+        // Written down before the session is handed out, so a runner that dies
+        // in the next instant still leaves a child its successor knows to end.
+        if let Some(pid) = info.pid {
+            self.leftovers.remember(pid).await;
+        }
         sessions.insert(id.to_string(), Arc::clone(&session));
         drop(sessions);
 
@@ -241,6 +260,19 @@ impl Runner {
             )));
         }
         Ok(info)
+    }
+
+    /// End a child and stop being answerable for it.
+    ///
+    /// The number is read before the ending, because a session that has ended
+    /// no longer answers with one — and a record looked up afterwards would
+    /// never be found, leaving the book to grow until the next runner starts.
+    async fn close_and_forget(&self, session: &Arc<Session>) {
+        let pid = session.info().await.pid;
+        session.close().await;
+        if let Some(pid) = pid {
+            self.leftovers.forget(pid).await;
+        }
     }
 
     async fn attach(

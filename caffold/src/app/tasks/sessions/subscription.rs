@@ -74,7 +74,7 @@ impl TaskSessions {
         let (base_revision, fast_mode) = {
             let mut state = entry.state.lock().await;
             state.lifecycle = SessionLifecycle::Subscribing;
-            state.generation = generation;
+            state.on_connection(driver, generation);
             state.terminal_candidate_turn_id = None;
             state.last_error = None;
             (state.revision, state.fast_mode)
@@ -132,7 +132,7 @@ impl TaskSessions {
         if !preserve_subscription {
             let mut state = entry.state.lock().await;
             state.lifecycle = SessionLifecycle::Subscribing;
-            state.generation = generation;
+            state.on_connection(driver, generation);
             state.terminal_candidate_turn_id = None;
             state.last_error = None;
         }
@@ -174,7 +174,7 @@ impl TaskSessions {
         let mut state = entry.state.lock().await;
         state.lifecycle = SessionLifecycle::Subscribed;
         state.driver = Some(driver.clone());
-        state.generation = generation;
+        state.on_connection(driver, generation);
         let next_active_turn_id = active_turn_id(&thread, None);
         update_active_turn(
             &mut state,

@@ -8,7 +8,14 @@ use super::{
 };
 
 impl TaskSessions {
-    pub(in crate::app::tasks) async fn track_listed_thread(
+    /// Note that this thread was listed on the current Codex connection.
+    ///
+    /// Codex's bookkeeping only: the generation is Codex's count of its own
+    /// connections, and stamping it onto a thread another agent runs would
+    /// sweep that thread's session on the first listing after a Codex restart —
+    /// and then drop its every report as belonging to an old connection. The
+    /// caller filters by who runs the thread, which is the store's to say.
+    pub(in crate::app::tasks) async fn track_listed_codex_thread(
         &self,
         generation: u64,
         thread_id: &str,
@@ -308,12 +315,12 @@ mod tests {
     #[tokio::test]
     async fn new_generation_listing_drops_unleased_status_from_the_old_connection() {
         let sessions = TaskSessions::default();
-        sessions.track_listed_thread(1, "thread-1").await;
+        sessions.track_listed_codex_thread(1, "thread-1").await;
         sessions
             .observe_listed_thread_metadata(1, listed_thread("thread-1", active_status()))
             .await;
 
-        sessions.track_listed_thread(2, "thread-1").await;
+        sessions.track_listed_codex_thread(2, "thread-1").await;
         sessions
             .observe_listed_thread_metadata(2, listed_thread("thread-1", ThreadStatus::Idle))
             .await;
@@ -326,7 +333,7 @@ mod tests {
     #[tokio::test]
     async fn a_current_generation_report_wins_over_an_older_list_page() {
         let sessions = TaskSessions::default();
-        sessions.track_listed_thread(3, "thread-1").await;
+        sessions.track_listed_codex_thread(3, "thread-1").await;
         sessions
             .apply_session_event(
                 3,
