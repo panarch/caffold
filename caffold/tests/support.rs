@@ -526,16 +526,66 @@ impl Http {
 }
 
 impl Backend {
+    /// Poll fresh list snapshots until this Task's row stops wearing the
+    /// given placeholder, and answer with the name it wears instead.
+    pub async fn wait_past_placeholder_name(
+        &self,
+        thread_id: &str,
+        placeholder: &str,
+        within: Duration,
+    ) -> String {
+        let row = self
+            .row_satisfying(
+                thread_id,
+                within,
+                &format!("named past {placeholder:?}"),
+                |row| {
+                    row["title"]
+                        .as_str()
+                        .is_some_and(|title| !title.starts_with(placeholder))
+                },
+            )
+            .await;
+        row["title"].as_str().unwrap_or_default().to_string()
+    }
+
+    /// Poll fresh list snapshots until this Task's row wears the given name.
+    pub async fn wait_for_task_name(&self, thread_id: &str, name: &str, within: Duration) -> Value {
+        self.row_satisfying(thread_id, within, &format!("named {name:?}"), |row| {
+            row["title"] == name
+        })
+        .await
+    }
+
     /// Poll fresh list snapshots until this Task's row reads as wanted.
-    ///
-    /// Each look is a new stream connection, which is what reopening the list
-    /// does, so a row that never satisfies here is one a person never sees
-    /// satisfied either.
     pub async fn wait_for_list_row(
         &self,
         thread_id: &str,
         wanted: TurnState,
         within: Duration,
+    ) -> Value {
+        self.row_satisfying(thread_id, within, &format!("as {wanted:?}"), |row| {
+            let state = match row["threadStatus"]["type"].as_str() {
+                Some("active") => TurnState::Running,
+                Some("idle") => TurnState::Idle,
+                _ => TurnState::Unknown,
+            };
+            state == wanted
+        })
+        .await
+    }
+
+    /// Poll fresh list snapshots until this Task's row satisfies the caller.
+    ///
+    /// Each look is a new stream connection, which is what reopening the list
+    /// does, so a row that never satisfies here is one a person never sees
+    /// satisfied either.
+    async fn row_satisfying(
+        &self,
+        thread_id: &str,
+        within: Duration,
+        wanted: &str,
+        satisfied: impl Fn(&Value) -> bool,
     ) -> Value {
         let deadline = Instant::now() + within;
         let mut last = None;
@@ -545,22 +595,17 @@ impl Backend {
                     .iter()
                     .find(|row| row["threadId"] == thread_id)
                     .cloned();
-                if let Some(row) = &row {
-                    let state = match row["threadStatus"]["type"].as_str() {
-                        Some("active") => TurnState::Running,
-                        Some("idle") => TurnState::Idle,
-                        _ => TurnState::Unknown,
-                    };
-                    if state == wanted {
-                        return row.clone();
-                    }
+                if let Some(row) = &row
+                    && satisfied(row)
+                {
+                    return row.clone();
                 }
                 last = Some(row);
             }
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
         panic!(
-            "the list never showed Task {thread_id} as {wanted:?}; \
+            "the list never showed Task {thread_id} {wanted}; \
              the last snapshot had {last:?}"
         );
     }

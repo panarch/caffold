@@ -246,11 +246,21 @@ pub(in crate::app::tasks) mod test_support {
         fs: RootedFs,
         client: CodexThreadClient,
     ) -> TaskState {
+        let (state, _runner) = task_state_with_agents(fs, client).await;
+        state
+    }
+
+    /// The same state, keeping a hand on the Claude stand-in so a test can
+    /// speak as that agent too.
+    pub(in crate::app::tasks) async fn task_state_with_agents(
+        fs: RootedFs,
+        client: CodexThreadClient,
+    ) -> (TaskState, crate::agent::claude::MockRunnerHandle) {
         let (shutdown, _) = broadcast::channel(16);
         let worktree_root = fs.root().join(".caffold-test/worktrees");
         // Conversations are kept under the test's own root rather than the
         // developer's home, so a test can write one down and see it removed.
-        let (claude, _runner) =
+        let (claude, runner) =
             ClaudeClient::mock_writing_to(fs.root().join(".caffold-test/projects"));
         let state = TaskState::new(
             Arc::new(fs),
@@ -262,7 +272,7 @@ pub(in crate::app::tasks) mod test_support {
         )
         .expect("task state");
         state.task_runtime.install_test_client(1, client).await;
-        state
+        (state, runner)
     }
 
     pub(in crate::app::tasks) async fn wait_for_mock_method(

@@ -1,11 +1,14 @@
-//! What a person sees when Caffold is restarted under a Claude Task.
+//! What only the real `claude` can prove about a Claude Task.
 //!
-//! Every case here is a thing that goes wrong between processes rather than
+//! Most cases here are things that go wrong between processes rather than
 //! inside one: the backend is replaced while an agent is working, the runner is
 //! killed outright, a question is left unanswered by the client that was asked
 //! it. None of that can be shown against a stand-in, because what is being
 //! checked is whether the real `claude` still honours a client that left and
-//! came back, and whether Caffold asks it the right question when it does.
+//! came back, and whether Caffold asks it the right question when it does. The
+//! rest is the agent reaching Caffold on purpose — calling the tool Caffold
+//! serves — where the stand-in would only prove that Caffold agrees with
+//! itself.
 //!
 //! So these drive the shipped binary over HTTP, as a browser does. A case
 //! reads as the sequence a person would carry out, and a failure is
@@ -239,6 +242,61 @@ async fn restarting_the_claude_runtime_ends_its_sessions_and_tasks_resume() {
 
     let asked = task.say("Reply with the single word: alive.").await;
     assert!(!asked.steered, "a fresh turn on a fresh session");
+    task.wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn the_agent_renames_its_task_when_asked_to_in_the_conversation() {
+    // The one tool Caffold serves the agent, driven the only way it is meant
+    // to be driven: a person asks in the conversation, the model calls
+    // `mcp__caffold__rename_current_task`, and the name every surface reads
+    // changes. The whole exchange happens inside the asking turn — discovery,
+    // the call, and the agent's own session title following over a control
+    // request — which is exactly what a stand-in cannot vouch for.
+    let backend = Backend::start().await;
+    let task = backend
+        .start_task(
+            "Call the mcp__caffold__rename_current_task tool with name \
+             'Renamed by the agent'. Then reply with the single word: done.",
+            MODEL,
+        )
+        .await;
+
+    backend
+        .wait_for_task_name(
+            task.thread_id(),
+            "Renamed by the agent",
+            Duration::from_secs(180),
+        )
+        .await;
+    task.wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn a_new_task_is_named_by_the_agent_on_its_first_turn() {
+    // Nothing in the prompt mentions naming. The once-only session setup on a
+    // fresh session's hello is what asks for it, so the `[REQ]` placeholder a
+    // Task is created wearing giving way to a real name is that setup landing,
+    // the model honouring it, and the rename loop closing — unprompted.
+    let backend = Backend::start().await;
+    let task = backend
+        .start_task(
+            "Say one friendly sentence about the Rust programming language.",
+            MODEL,
+        )
+        .await;
+
+    let named = backend
+        .wait_past_placeholder_name(task.thread_id(), "[REQ]", Duration::from_secs(180))
+        .await;
+    assert!(
+        !named.trim().is_empty(),
+        "the agent chose a name of its own: {named:?}"
+    );
     task.wait_for(TurnState::Idle, Duration::from_secs(120))
         .await;
 }

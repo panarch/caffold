@@ -37,6 +37,10 @@ pub(crate) const MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION: &str = "2.1.236";
 /// wrote it down as. That identity is a turn's name in the transcript, so
 /// taking it is what makes a turn watched live and the same turn read from
 /// disk one turn rather than two.
+///
+/// `--allowedTools` grants the one tool Caffold itself serves: the agent
+/// calling it is already the user asking, so it takes no approval — exactly as
+/// Codex's dynamic tools answer without one.
 pub(crate) const BASE_ARGUMENTS: &[&str] = &[
     "-p",
     "--input-format",
@@ -47,6 +51,8 @@ pub(crate) const BASE_ARGUMENTS: &[&str] = &[
     "--permission-prompt-tool",
     "stdio",
     "--replay-user-messages",
+    "--allowedTools",
+    RENAME_CURRENT_TASK_QUALIFIED_NAME,
 ];
 
 // ---------------------------------------------------------------------------
@@ -294,6 +300,12 @@ pub(crate) struct ControlRequestBody {
     pub(crate) decision_reason: Value,
     #[serde(default, rename = "toolUseID")]
     pub(crate) tool_use_id: Option<String>,
+    /// Which SDK-hosted MCP server an `mcp_message` request is for.
+    #[serde(default)]
+    pub(crate) server_name: Option<String>,
+    /// The MCP JSON-RPC message an `mcp_message` request carries.
+    #[serde(default)]
+    pub(crate) message: Value,
 }
 
 /// The agent's answer to something the host asked.
@@ -413,6 +425,179 @@ pub(crate) fn control_response(request_id: &str, payload: Value) -> Value {
             "response": payload,
         },
     })
+}
+
+/// The hello, which is also where Caffold says what it serves.
+///
+/// `sdkMcpServers` is processed on every initialize, first or repeated, so a
+/// fresh session and a re-attached one declare the same way. The answer
+/// carries the session's past; a caller that has no use for one may send this
+/// without listening.
+pub(crate) fn initialize_request() -> Value {
+    serde_json::json!({
+        "subtype": "initialize",
+        "sdkMcpServers": [MCP_SERVER_NAME],
+    })
+}
+
+/// The hello for a session that is a newly created Task, which also carries
+/// the one-time session setup: name the Task on the first turn.
+///
+/// Only for a fresh session. The instructions call the session newly created
+/// and scope themselves to its first turn, so a resumed conversation says the
+/// plain hello instead — as Codex does, whose resume carries no instructions
+/// either.
+pub(crate) fn initialize_request_for_a_new_task() -> Value {
+    serde_json::json!({
+        "subtype": "initialize",
+        "sdkMcpServers": [MCP_SERVER_NAME],
+        "appendSystemPrompt": CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS,
+    })
+}
+
+/// What replaces the `[REQ]` placeholder a Task is created wearing.
+///
+/// The Claude wording of the instructions Codex receives as
+/// `developer_instructions` at thread start, naming the tool as the model
+/// sees it. The isolate caveat Codex carries has no counterpart yet, because
+/// Caffold serves Claude no isolate tool yet.
+pub(crate) const CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS: &str = concat!(
+    "This session is a newly created Caffold task. ",
+    "On its first user turn, after you understand the user's underlying goal and immediately ",
+    "before your final response, you must call mcp__caffold__rename_current_task exactly once ",
+    "with a concise, meaningful user-facing task name in the user's language. ",
+    "Do not copy response-format instructions, verification markers, or the eventual answer ",
+    "into the name. ",
+    "If the user specifies an exact task name or format, honor it in that same call. ",
+    "On later turns, call mcp__caffold__rename_current_task only when the user explicitly asks ",
+    "to rename the task."
+);
+
+/// Retitle the agent's own session, so the name Caffold keeps is also the
+/// name the agent's own surfaces show.
+pub(crate) fn rename_session_request(title: &str) -> Value {
+    serde_json::json!({ "subtype": "rename_session", "title": title })
+}
+
+// ---------------------------------------------------------------------------
+// The MCP server Caffold hosts
+// ---------------------------------------------------------------------------
+
+/// The in-process MCP server every session is told about.
+///
+/// The name is half of every tool's identity: a tool `t` served here reaches
+/// the model as `mcp__caffold__t`.
+pub(crate) const MCP_SERVER_NAME: &str = "caffold";
+
+/// Set the user-facing name of the current Task.
+pub(crate) const RENAME_CURRENT_TASK_TOOL_NAME: &str = "rename_current_task";
+
+/// The rename tool under the name the model calls it by, for granting it up
+/// front in [`BASE_ARGUMENTS`].
+pub(crate) const RENAME_CURRENT_TASK_QUALIFIED_NAME: &str = "mcp__caffold__rename_current_task";
+
+/// Answer one MCP request with its result.
+pub(crate) fn mcp_result(request_id: &str, mcp_id: &Value, result: Value) -> Value {
+    control_response(
+        request_id,
+        serde_json::json!({
+            "mcp_response": { "jsonrpc": "2.0", "id": mcp_id, "result": result },
+        }),
+    )
+}
+
+/// Acknowledge an MCP notification, which asks for nothing back.
+///
+/// The placeholder identity is the reference client's own: a notification has
+/// no id to echo, and the acknowledgement is discarded.
+pub(crate) fn mcp_notification_ack(request_id: &str) -> Value {
+    control_response(
+        request_id,
+        serde_json::json!({
+            "mcp_response": { "jsonrpc": "2.0", "id": 0, "result": {} },
+        }),
+    )
+}
+
+/// Refuse an MCP method Caffold does not serve, in MCP's own words for it.
+pub(crate) fn mcp_method_refused(request_id: &str, mcp_id: &Value, method: &str) -> Value {
+    control_response(
+        request_id,
+        serde_json::json!({
+            "mcp_response": {
+                "jsonrpc": "2.0",
+                "id": mcp_id,
+                "error": {
+                    "code": -32601,
+                    "message": format!("Caffold does not serve `{method}`."),
+                },
+            },
+        }),
+    )
+}
+
+/// What the handshake says: tools, and nothing else.
+pub(crate) fn mcp_initialize_result(message: &Value) -> Value {
+    let requested = message
+        .get("params")
+        .and_then(|params| params.get("protocolVersion"))
+        .and_then(Value::as_str)
+        .unwrap_or("2025-06-18");
+    serde_json::json!({
+        "protocolVersion": requested,
+        "capabilities": { "tools": {} },
+        "serverInfo": { "name": MCP_SERVER_NAME, "version": env!("CARGO_PKG_VERSION") },
+    })
+}
+
+/// The tools Caffold serves, described to the agent.
+///
+/// `anthropic/alwaysLoad` keeps a tool's schema in the model's context. The
+/// CLI otherwise defers MCP tools to its search pool, where a tool is only a
+/// name until the model chooses to load it — and a model instructed to call
+/// this one sometimes would not bother, measured as the first-turn rename
+/// landing on some runs and not others.
+pub(crate) fn mcp_tool_listing() -> Value {
+    serde_json::json!({
+        "tools": [
+            {
+                "name": RENAME_CURRENT_TASK_TOOL_NAME,
+                "description": "Set the user-facing name of the current Caffold task.",
+                "inputSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "The new user-facing name for the current Caffold task.",
+                        },
+                    },
+                    "required": ["name"],
+                },
+                "_meta": { "anthropic/alwaysLoad": true },
+            },
+        ],
+    })
+}
+
+/// A tool call's outcome, spoken as MCP speaks it: text, flagged when it is a
+/// failure rather than an answer.
+pub(crate) fn mcp_tool_outcome(
+    request_id: &str,
+    mcp_id: &Value,
+    outcome: &Result<String, String>,
+) -> Value {
+    let text = match outcome {
+        Ok(text) | Err(text) => text,
+    };
+    let mut result = serde_json::json!({
+        "content": [ { "type": "text", "text": text } ],
+    });
+    if outcome.is_err() {
+        result["isError"] = Value::Bool(true);
+    }
+    mcp_result(request_id, mcp_id, result)
 }
 
 #[cfg(test)]
@@ -647,5 +832,114 @@ mod tests {
         assert_eq!(permission.map(|pair| pair[1]), Some("stdio"));
         // Without this a turn has no name the transcript would know it by.
         assert!(BASE_ARGUMENTS.contains(&"--replay-user-messages"));
+    }
+
+    #[test]
+    fn every_session_grants_the_tool_caffold_serves_under_the_name_the_model_calls_it_by() {
+        let granted = BASE_ARGUMENTS
+            .windows(2)
+            .find(|pair| pair[0] == "--allowedTools");
+        assert_eq!(
+            granted.map(|pair| pair[1]),
+            Some(RENAME_CURRENT_TASK_QUALIFIED_NAME)
+        );
+        // The qualified name is derived by the CLI, not chosen by Caffold, so
+        // the grant only holds while the three names actually compose.
+        assert_eq!(
+            RENAME_CURRENT_TASK_QUALIFIED_NAME,
+            format!("mcp__{MCP_SERVER_NAME}__{RENAME_CURRENT_TASK_TOOL_NAME}")
+        );
+    }
+
+    #[test]
+    fn saying_hello_is_also_declaring_the_server_caffold_hosts() {
+        assert_eq!(
+            initialize_request(),
+            json!({ "subtype": "initialize", "sdkMcpServers": ["caffold"] })
+        );
+    }
+
+    #[test]
+    fn a_new_tasks_hello_also_asks_for_its_name_and_a_plain_hello_does_not() {
+        let hello = initialize_request_for_a_new_task();
+        assert_eq!(hello["sdkMcpServers"], json!(["caffold"]));
+        let setup = hello["appendSystemPrompt"]
+            .as_str()
+            .expect("the once-only session setup rides the first hello");
+        // The instruction names the tool the way the model calls it, or the
+        // model is told to call something it cannot find.
+        assert!(setup.contains(RENAME_CURRENT_TASK_QUALIFIED_NAME));
+        assert!(setup.contains("first user turn"));
+        // A resumed conversation is not a newly created Task, so its hello
+        // must not claim it is.
+        assert!(initialize_request().get("appendSystemPrompt").is_none());
+    }
+
+    #[test]
+    fn a_message_for_the_hosted_server_is_read_with_its_address() {
+        let frame = frame(json!({
+            "type": "control_request",
+            "request_id": "req-7",
+            "request": {
+                "subtype": "mcp_message",
+                "server_name": "caffold",
+                "message": { "jsonrpc": "2.0", "id": 3, "method": "tools/list" },
+            },
+        }));
+        let StreamFrame::ControlRequest(request) = frame else {
+            panic!("an mcp_message is a control request");
+        };
+        assert_eq!(request.request.subtype.as_deref(), Some("mcp_message"));
+        assert_eq!(request.request.server_name.as_deref(), Some("caffold"));
+        assert_eq!(request.request.message["method"], "tools/list");
+    }
+
+    #[test]
+    fn the_handshake_answers_in_the_version_the_agent_asked_in() {
+        let result = mcp_initialize_result(&json!({
+            "method": "initialize",
+            "params": { "protocolVersion": "2031-01-01" },
+        }));
+        assert_eq!(result["protocolVersion"], "2031-01-01");
+        assert_eq!(result["serverInfo"]["name"], "caffold");
+        assert!(result["capabilities"]["tools"].is_object());
+    }
+
+    #[test]
+    fn the_listing_serves_the_rename_tool_and_requires_its_name() {
+        let listing = mcp_tool_listing();
+        let tool = &listing["tools"][0];
+        assert_eq!(tool["name"], RENAME_CURRENT_TASK_TOOL_NAME);
+        assert_eq!(tool["inputSchema"]["required"], json!(["name"]));
+        // Without this marker the CLI defers the tool to its search pool and
+        // the instructed first-turn rename becomes a coin toss.
+        assert_eq!(tool["_meta"]["anthropic/alwaysLoad"], true);
+    }
+
+    #[test]
+    fn a_tool_outcome_is_text_and_only_a_failure_is_flagged() {
+        let done = mcp_tool_outcome("req-1", &json!(4), &Ok("Renamed.".to_string()));
+        let result = &done["response"]["response"]["mcp_response"]["result"];
+        assert_eq!(result["content"][0]["text"], "Renamed.");
+        assert!(result.get("isError").is_none());
+        assert_eq!(done["response"]["response"]["mcp_response"]["id"], 4);
+
+        let refused = mcp_tool_outcome("req-2", &json!(5), &Err("No.".to_string()));
+        let result = &refused["response"]["response"]["mcp_response"]["result"];
+        assert_eq!(result["isError"], true);
+    }
+
+    #[test]
+    fn a_notification_is_acknowledged_and_an_unknown_method_is_refused_in_mcp_words() {
+        let ack = mcp_notification_ack("req-3");
+        assert_eq!(
+            ack["response"]["response"]["mcp_response"]["result"],
+            json!({})
+        );
+
+        let refused = mcp_method_refused("req-4", &json!(9), "resources/list");
+        let error = &refused["response"]["response"]["mcp_response"]["error"];
+        assert_eq!(error["code"], -32601);
+        assert_eq!(error["message"], "Caffold does not serve `resources/list`.");
     }
 }

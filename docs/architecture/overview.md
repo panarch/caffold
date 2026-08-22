@@ -94,7 +94,7 @@ caffold/src/app/tasks/runtime.rs       runtime composition, per-Task agent routi
 caffold/src/app/tasks/runtime/
   process.rs                           readiness, connection, generation, restart, and shutdown
   bridge.rs                            app-server event bridging and managed session recovery
-  claude_bridge.rs                     Claude session reports and approvals routed into the Task application
+  claude_bridge.rs                     Claude session reports, approvals, and Caffold-served tool calls routed into the Task application
   server_requests.rs                   approvals and Caffold-owned dynamic tool requests
 caffold/src/agent.rs                   the agents Caffold drives and the vocabulary they report in
 caffold/src/agent/driver.rs            which agent is being asked, and the questions that are the same for all

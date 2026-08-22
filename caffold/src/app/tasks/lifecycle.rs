@@ -125,8 +125,10 @@ impl TaskLifecycle {
             .or_else(|| initial_request_name::from_prompt(&prompt))
             .unwrap_or_else(|| format!("Thread {}", short_thread_id(&conversation_id)));
         // Codex keeps a name of its own for a thread, and it should read as
-        // the name Caffold shows. Claude has no such name yet, so there is
-        // nothing to keep aligned.
+        // the name Caffold shows. Claude titles its own sessions and is asked
+        // to name the Task on its first turn — which renames both sides — so
+        // pushing this placeholder over the agent's own title would replace
+        // something with less.
         if let Some(connection) = agent.codex()
             && let Err(error) = connection
                 .client
