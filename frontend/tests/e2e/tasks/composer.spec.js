@@ -5,7 +5,7 @@ import {
   canonicalTaskState,
   emitTaskDetailBootstrap,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
   pasteImage,
   scrollTop,
 } from "../support/task-fixtures.js";
@@ -38,7 +38,7 @@ test("starts a completed task follow-up clock only from canonical turn metadata"
       close() {}
     };
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_follow_up_clock";
   const firstTurnStartedMs = Date.now() - 2 * 60 * 60 * 1_000;
@@ -216,7 +216,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
       close() {}
     };
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_completed_follow_up";
   const now = 1_767_190_000_000;
@@ -282,7 +282,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
         contentType: "application/json",
         body: JSON.stringify({
           error: {
-            code: "codex_app_server_timeout",
+            code: "agent_timeout",
             message: "Codex app-server request timed out.",
           },
         }),
@@ -529,7 +529,7 @@ test("unlocks a completed task when canonical item content arrives before the pr
       close() {}
     };
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_canonical_item_ack";
   const now = 1_767_190_300_000;
@@ -618,11 +618,9 @@ test("unlocks a completed task when canonical item content arrives before the pr
       summary: "User prompt",
       payload: {
         turnId: "turn_1",
-        item: {
-          id: "item_canonical_item_prompt",
-          type: "userMessage",
-          content: [{ type: "input_text", text: "Canonical item prompt" }],
-        },
+        id: "item_canonical_item_prompt",
+        type: "userMessage",
+        content: [{ type: "input_text", text: "Canonical item prompt" }],
       },
       createdMs: now + 1,
     },
@@ -669,7 +667,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
   page,
 }, testInfo) => {
   await installEventSourceMock(page, { autoOpen: true });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const now = 1_767_190_300_000;
   const taskA = {

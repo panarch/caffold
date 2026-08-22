@@ -1140,6 +1140,7 @@ mod tests {
             store.clone(),
             root.path().join("worktrees"),
             push_runtime.service(),
+            crate::agent::claude::ClaudeClient::mock().0,
         )
         .unwrap();
         let app = router().with_state(state);

@@ -1,31 +1,29 @@
-use crate::codex_app_server::{
-    CodexThreadClient, CodexThreadError, CodexTurn, CodexTurnOptions, ThreadStatus, TurnStatus,
-    is_fast_service_tier, service_tier_for_fast_mode,
-};
+use crate::agent::AgentError;
+use crate::agent::{Driver, ThreadStatus, Turn, TurnOptions, TurnStatus};
 
 use super::{
-    CodexThreadSessions, INITIAL_TURNS_PAGE_SIZE, PromptTarget, ThreadSessionLifecycle,
-    ThreadSessionSnapshot, now_unix_ms, snapshot,
+    INITIAL_TURNS_PAGE_SIZE, PromptTarget, SessionLifecycle, SessionSnapshot, TaskSessions,
+    now_unix_ms, snapshot,
 };
 use super::{
-    reconciliation::apply_prompt_resume_response,
+    reconciliation::apply_prompt_resume,
     turns::{merge_latest_turns_page, upsert_turn},
 };
 
-impl CodexThreadSessions {
-    pub async fn prepare_prompt(
+impl TaskSessions {
+    pub(in crate::app::tasks) async fn prepare_prompt(
         &self,
-        client: &CodexThreadClient,
+        driver: &Driver,
         generation: u64,
         thread_id: &str,
-    ) -> Result<PromptTarget, CodexThreadError> {
+    ) -> Result<PromptTarget, AgentError> {
         let entry = self.entry(thread_id).await;
         let current = {
             let mut state = entry.state.lock().await;
             state.runtime_lease = true;
             if state.generation == generation
-                && state.lifecycle == ThreadSessionLifecycle::Subscribed
-                && state.thread.is_some()
+                && state.lifecycle == SessionLifecycle::Subscribed
+                && state.conversation.is_some()
             {
                 Some(snapshot(&state))
             } else {
@@ -34,7 +32,7 @@ impl CodexThreadSessions {
         };
         let current = match current {
             Some(snapshot) => snapshot,
-            None => match self.resume_for_prompt(client, generation, thread_id).await {
+            None => match self.resume_for_prompt(driver, generation, thread_id).await {
                 Ok(snapshot) => snapshot,
                 Err(error) => {
                     self.cancel_runtime(thread_id).await;
@@ -43,12 +41,12 @@ impl CodexThreadSessions {
             },
         };
         let current = if current
-            .thread
+            .conversation
             .as_ref()
             .is_some_and(|thread| thread.status == ThreadStatus::NotLoaded)
         {
             match self
-                .refresh_subscription(client, generation, thread_id)
+                .refresh_subscription(driver, generation, thread_id)
                 .await
             {
                 Ok(snapshot) => snapshot,
@@ -63,14 +61,14 @@ impl CodexThreadSessions {
 
         if current.generation != generation {
             self.cancel_runtime(thread_id).await;
-            return Err(CodexThreadError::SubscriptionLost(format!(
-                "Codex thread {thread_id} changed app-server generation before prompt"
+            return Err(AgentError::Failed(format!(
+                "conversation {thread_id} changed connection before its prompt"
             )));
         }
 
-        let thread = current.thread.ok_or_else(|| {
-            CodexThreadError::SubscriptionLost(format!(
-                "Codex thread {thread_id} did not return canonical metadata while preparing a prompt"
+        let thread = current.conversation.ok_or_else(|| {
+            AgentError::Failed(format!(
+                "conversation {thread_id} did not come back while preparing a prompt"
             ))
         })?;
 
@@ -78,8 +76,8 @@ impl CodexThreadSessions {
             let turn_id = if let Some(turn_id) = current.active_turn_id {
                 turn_id
             } else {
-                let page = match client
-                    .list_thread_turns(thread_id, None, INITIAL_TURNS_PAGE_SIZE)
+                let page = match driver
+                    .read_turns(thread_id, None, INITIAL_TURNS_PAGE_SIZE)
                     .await
                 {
                     Ok(page) => page,
@@ -90,13 +88,13 @@ impl CodexThreadSessions {
                     }
                 };
                 let Some(turn_id) = page
-                    .data
+                    .turns
                     .iter()
                     .find(|turn| turn.status == TurnStatus::InProgress)
                     .map(|turn| turn.id.clone())
                 else {
                     self.cancel_runtime(thread_id).await;
-                    return Err(CodexThreadError::SubscriptionLost(format!(
+                    return Err(AgentError::Failed(format!(
                         "active thread {thread_id} did not expose its active turn"
                     )));
                 };
@@ -118,62 +116,59 @@ impl CodexThreadSessions {
             Ok(PromptTarget::Start { cwd: thread.cwd })
         } else {
             self.cancel_runtime(thread_id).await;
-            Err(CodexThreadError::SubscriptionLost(format!(
-                "Codex thread {thread_id} is unavailable for a prompt"
+            Err(AgentError::Failed(format!(
+                "conversation {thread_id} cannot take a prompt"
             )))
         }
     }
 
     async fn resume_for_prompt(
         &self,
-        client: &CodexThreadClient,
+        driver: &Driver,
         generation: u64,
         thread_id: &str,
-    ) -> Result<ThreadSessionSnapshot, CodexThreadError> {
+    ) -> Result<SessionSnapshot, AgentError> {
         let entry = self.entry(thread_id).await;
         let _operation = entry.operation.lock().await;
         {
             let state = entry.state.lock().await;
             if state.generation == generation
-                && state.lifecycle == ThreadSessionLifecycle::Subscribed
-                && state.thread.is_some()
+                && state.lifecycle == SessionLifecycle::Subscribed
+                && state.conversation.is_some()
             {
                 return Ok(snapshot(&state));
             }
         }
-        let (base_revision, service_tier) = {
+        let (base_revision, fast_mode) = {
             let state = entry.state.lock().await;
-            (state.revision, service_tier_for_fast_mode(state.fast_mode))
+            (state.revision, state.fast_mode)
         };
-        let response = match client
-            .resume_thread_with_page(thread_id, false, service_tier)
-            .await
-        {
-            Ok(response) => response,
+        let opened = match driver.open_conversation(thread_id, false, fast_mode).await {
+            Ok(opened) => opened,
             Err(error) => {
                 let mut state = entry.state.lock().await;
-                state.lifecycle = ThreadSessionLifecycle::Error;
+                state.lifecycle = SessionLifecycle::Error;
                 state.last_error = Some(error.to_string());
                 return Err(error);
             }
         };
         let mut state = entry.state.lock().await;
         if state.generation > generation {
-            return Err(CodexThreadError::SubscriptionLost(format!(
-                "Codex thread {thread_id} changed app-server generation while preparing a prompt"
+            return Err(AgentError::Failed(format!(
+                "conversation {thread_id} changed connection while preparing a prompt"
             )));
         }
-        apply_prompt_resume_response(&mut state, client, generation, response, base_revision);
+        apply_prompt_resume(&mut state, driver, generation, opened, base_revision);
         Ok(snapshot(&state))
     }
 
-    pub async fn record_turn_started(
+    pub(in crate::app::tasks) async fn record_turn_started(
         &self,
         generation: u64,
         thread_id: &str,
         cwd: Option<&str>,
-        turn: CodexTurn,
-        options: CodexTurnOptions,
+        turn: Turn,
+        options: TurnOptions,
     ) {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
@@ -182,9 +177,9 @@ impl CodexThreadSessions {
         }
         let active_turn_cwd = cwd
             .map(str::to_string)
-            .or_else(|| state.thread.as_ref().map(|thread| thread.cwd.clone()));
+            .or_else(|| state.conversation.as_ref().map(|thread| thread.cwd.clone()));
         if let Some(cwd) = cwd
-            && let Some(thread) = state.thread.as_mut()
+            && let Some(thread) = state.conversation.as_mut()
         {
             thread.cwd = cwd.to_string();
         }
@@ -200,14 +195,14 @@ impl CodexThreadSessions {
         if options.effort.is_some() {
             state.reasoning_effort = options.effort;
         }
-        state.fast_mode = is_fast_service_tier(options.service_tier.as_deref());
+        state.fast_mode = options.fast_mode;
         state.runtime_lease = true;
         upsert_turn(&mut state.turns_page, turn);
         state.revision = state.revision.saturating_add(1);
         state.last_sync_ms = Some(now_unix_ms());
     }
 
-    pub async fn cancel_runtime(&self, thread_id: &str) {
+    pub(in crate::app::tasks) async fn cancel_runtime(&self, thread_id: &str) {
         let Some(entry) = self.existing_entry(thread_id).await else {
             return;
         };
@@ -215,37 +210,40 @@ impl CodexThreadSessions {
         self.unsubscribe_if_unused(thread_id, &entry).await;
     }
 
-    pub async fn active_turn_id(
+    pub(in crate::app::tasks) async fn active_turn_id(
         &self,
-        client: &CodexThreadClient,
+        driver: &Driver,
         generation: u64,
         thread_id: &str,
-    ) -> Result<Option<String>, CodexThreadError> {
+    ) -> Result<Option<String>, AgentError> {
         let snapshot = self
-            .ensure_subscribed(client, generation, thread_id)
+            .ensure_subscribed(driver, generation, thread_id)
             .await?;
         if snapshot.active_turn_id.is_some() {
             return Ok(snapshot.active_turn_id);
         }
         if !snapshot
-            .thread
+            .conversation
             .as_ref()
             .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
         {
             return Ok(None);
         }
-        let page = client.list_thread_turns(thread_id, None, 8).await?;
+        let page = driver.read_turns(thread_id, None, 8).await?;
         let turn_id = page
-            .data
+            .turns
             .iter()
             .find(|turn| turn.status == TurnStatus::InProgress)
             .map(|turn| turn.id.clone());
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
         state.active_turn_id = turn_id.clone();
-        state.active_turn_cwd = turn_id
-            .as_ref()
-            .and_then(|_| snapshot.thread.as_ref().map(|thread| thread.cwd.clone()));
+        state.active_turn_cwd = turn_id.as_ref().and_then(|_| {
+            snapshot
+                .conversation
+                .as_ref()
+                .map(|thread| thread.cwd.clone())
+        });
         state.terminal_candidate_turn_id = turn_id.clone();
         merge_latest_turns_page(&mut state.turns_page, page);
         state.revision = state.revision.saturating_add(1);
@@ -256,7 +254,7 @@ impl CodexThreadSessions {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codex_thread_sessions::test_support::*;
+    use crate::app::tasks::sessions::test_support::*;
 
     #[tokio::test]
     async fn completed_subscribed_prompt_starts_without_another_resume() {
@@ -264,14 +262,14 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let target = sessions
-            .prepare_prompt(&client, 1, "thread-1")
+            .prepare_prompt(&client.driver(), 1, "thread-1")
             .await
             .expect("prepare completed follow-up");
 
@@ -281,7 +279,7 @@ mod tests {
 
     #[tokio::test]
     async fn active_subscribed_prompt_steers_without_another_resume() {
-        let canonical = turn("turn-canonical", TurnStatus::InProgress);
+        let canonical = wire_turn("turn-canonical", TurnStatus::InProgress);
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(
@@ -292,14 +290,14 @@ mod tests {
                 vec![canonical],
             ),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let target = sessions
-            .prepare_prompt(&client, 1, "thread-1")
+            .prepare_prompt(&client.driver(), 1, "thread-1")
             .await
             .expect("prepare active follow-up");
 
@@ -320,9 +318,9 @@ mod tests {
                 Duration::from_millis(250),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
@@ -330,7 +328,7 @@ mod tests {
         let refresh_client = client.clone();
         let refresh = tokio::spawn(async move {
             refresh_sessions
-                .refresh_subscription(&refresh_client, 1, "thread-1")
+                .refresh_subscription(&refresh_client.driver(), 1, "thread-1")
                 .await
         });
         for _ in 0..20 {
@@ -342,7 +340,7 @@ mod tests {
 
         let target = tokio::time::timeout(
             Duration::from_millis(50),
-            sessions.prepare_prompt(&client, 1, "thread-1"),
+            sessions.prepare_prompt(&client.driver(), 1, "thread-1"),
         )
         .await
         .expect("prompt preparation must not wait for background sync")
@@ -361,14 +359,14 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::SystemError, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let target = sessions
-            .prepare_prompt(&client, 1, "thread-1")
+            .prepare_prompt(&client.driver(), 1, "thread-1")
             .await
             .expect("prepare recovery prompt");
 
@@ -395,14 +393,14 @@ mod tests {
                 resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let target = sessions
-            .prepare_prompt(&client, 1, "thread-1")
+            .prepare_prompt(&client.driver(), 1, "thread-1")
             .await
             .expect("prepare loaded prompt");
 
@@ -422,22 +420,24 @@ mod tests {
             ),
             MockCodexResponse::error(
                 "thread/resume",
-                CodexThreadError::RequestTimeout {
+                crate::agent::codex::CodexThreadError::RequestTimeout {
                     method: "thread/resume",
                     request_id: 2,
                     timeout_ms: 120_000,
                 },
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         assert!(matches!(
-            sessions.prepare_prompt(&client, 1, "thread-1").await,
-            Err(CodexThreadError::RequestTimeout { .. })
+            sessions
+                .prepare_prompt(&client.driver(), 1, "thread-1")
+                .await,
+            Err(AgentError::TimedOut(_))
         ));
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
         assert!(!snapshot.runtime_lease);
@@ -455,13 +455,13 @@ mod tests {
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
             Duration::from_millis(250),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         let viewer_sessions = sessions.clone();
         let viewer_client = client.clone();
         let viewer = tokio::spawn(async move {
             viewer_sessions
-                .acquire_viewer(&viewer_client, 1, "thread-1")
+                .acquire_viewer(&viewer_client.driver(), 1, "thread-1")
                 .await
         });
         for _ in 0..20 {
@@ -473,7 +473,7 @@ mod tests {
 
         let target = tokio::time::timeout(
             Duration::from_millis(500),
-            sessions.prepare_prompt(&client, 1, "thread-1"),
+            sessions.prepare_prompt(&client.driver(), 1, "thread-1"),
         )
         .await
         .expect("completed prompt should finish after the shared bootstrap")
@@ -486,7 +486,7 @@ mod tests {
                 "thread-1",
                 Some("/managed/worktree"),
                 turn("turn-new", TurnStatus::InProgress),
-                CodexTurnOptions::default(),
+                TurnOptions::default(),
             )
             .await;
         viewer
@@ -501,12 +501,15 @@ mod tests {
             Some("/managed/worktree")
         );
         assert_eq!(
-            snapshot.thread.as_ref().map(|thread| thread.cwd.as_str()),
+            snapshot
+                .conversation
+                .as_ref()
+                .map(|thread| thread.cwd.as_str()),
             Some("/managed/worktree")
         );
         assert!(
             snapshot
-                .thread
+                .conversation
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle),
             "starting a turn must not synthesize thread status"
         );
@@ -514,7 +517,7 @@ mod tests {
 
     #[tokio::test]
     async fn prompt_uses_an_external_turn_discovered_during_refresh() {
-        let external = turn("turn-external", TurnStatus::InProgress);
+        let external = wire_turn("turn-external", TurnStatus::InProgress);
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok(
                 "thread/resume",
@@ -531,19 +534,19 @@ mod tests {
                 ),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         sessions
-            .refresh_subscription(&client, 1, "thread-1")
+            .refresh_subscription(&client.driver(), 1, "thread-1")
             .await
             .expect("external invalidation refresh");
 
         assert!(matches!(
-            sessions.prepare_prompt(&client, 1, "thread-1").await,
+            sessions.prepare_prompt(&client.driver(), 1, "thread-1").await,
             Ok(PromptTarget::Steer { turn_id }) if turn_id == "turn-external"
         ));
         assert_eq!(
@@ -554,8 +557,8 @@ mod tests {
 
     #[tokio::test]
     async fn completed_external_turn_switches_follow_up_back_to_start() {
-        let active = turn("turn-external", TurnStatus::InProgress);
-        let completed = turn("turn-external", TurnStatus::Completed);
+        let active = wire_turn("turn-external", TurnStatus::InProgress);
+        let completed = wire_turn("turn-external", TurnStatus::Completed);
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok(
                 "thread/resume",
@@ -572,19 +575,21 @@ mod tests {
                 resume_response(ThreadStatus::Idle, Vec::new(), vec![completed]),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         sessions
-            .refresh_subscription(&client, 1, "thread-1")
+            .refresh_subscription(&client.driver(), 1, "thread-1")
             .await
             .expect("external completion refresh");
 
         assert!(matches!(
-            sessions.prepare_prompt(&client, 1, "thread-1").await,
+            sessions
+                .prepare_prompt(&client.driver(), 1, "thread-1")
+                .await,
             Ok(PromptTarget::Start { .. })
         ));
         assert_eq!(
@@ -595,7 +600,7 @@ mod tests {
 
     #[tokio::test]
     async fn active_status_without_turn_falls_back_to_latest_turn_page() {
-        let canonical = turn("turn-canonical", TurnStatus::InProgress);
+        let canonical = wire_turn("turn-canonical", TurnStatus::InProgress);
         let active_status = ThreadStatus::Active {
             active_flags: Vec::new(),
         };
@@ -606,17 +611,17 @@ mod tests {
             ),
             MockCodexResponse::ok(
                 "thread/turns/list",
-                page(vec![canonical], None, Some("active-anchor")),
+                wire_page(vec![canonical], None, Some("active-anchor")),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         assert!(matches!(
-            sessions.prepare_prompt(&client, 1, "thread-1").await,
+            sessions.prepare_prompt(&client.driver(), 1, "thread-1").await,
             Ok(PromptTarget::Steer { turn_id }) if turn_id == "turn-canonical"
         ));
         assert_eq!(
@@ -635,16 +640,18 @@ mod tests {
                 timeout_ms: 120_000,
             },
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         assert!(matches!(
-            sessions.prepare_prompt(&client, 1, "thread-1").await,
-            Err(CodexThreadError::RequestTimeout { .. })
+            sessions
+                .prepare_prompt(&client.driver(), 1, "thread-1")
+                .await,
+            Err(AgentError::TimedOut(_))
         ));
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
         assert!(!snapshot.runtime_lease);
-        assert_eq!(snapshot.lifecycle, ThreadSessionLifecycle::Error);
-        assert!(snapshot.thread.is_none());
+        assert_eq!(snapshot.lifecycle, SessionLifecycle::Error);
+        assert!(snapshot.conversation.is_none());
         assert!(snapshot.last_error.is_some());
     }
 }

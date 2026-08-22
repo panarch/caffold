@@ -2,7 +2,9 @@ import { routeDomain, routeTarget } from "../../../navigation-routes.js";
 import {
   INITIAL_CODEX_STATUS_SNAPSHOT,
   codexBlocksTaskOperations,
-  codexTaskRecoveryVisible,
+  codexSetupVisible,
+  taskStoreBlocksTaskOperations,
+  taskStoreRecoveryVisible as taskStoreTakesOver,
 } from "../codex-status.js";
 import "./components/codex-readiness-recovery.js";
 import "./(detail)/layout.js";
@@ -206,7 +208,7 @@ class CaffoldTasksPage extends HTMLElement {
     if (listRecovery) {
       recoveries.set("list", listRecovery);
     }
-    if (!this.codexOperationsBlocked() && this.view === "detail") {
+    if (!this.taskStoreOperationsBlocked() && this.view === "detail") {
       const detailRecovery = this.taskDetail()?.recoverForeground();
       if (detailRecovery) {
         recoveries.set("detail", detailRecovery);
@@ -305,10 +307,6 @@ class CaffoldTasksPage extends HTMLElement {
   async openRoute(route, options = {}) {
     const prepared = this.prepareRoute(route, options);
     const navigatorRequest = this.taskNavigator()?.activate();
-    if (this.codexOperationsBlocked()) {
-      this.render();
-      return null;
-    }
     const target = routeTarget(route);
     if (target === "new") {
       this.taskNew()?.prepare({
@@ -421,18 +419,23 @@ class CaffoldTasksPage extends HTMLElement {
 
   setCodexStatusSnapshot(snapshot) {
     this.ensureRendered();
-    const wasBlocked = this.codexOperationsBlocked();
+    const wasTakenOver = this.taskStoreRecoveryVisible();
     this.codexStatusSnapshotValue = snapshot ?? INITIAL_CODEX_STATUS_SNAPSHOT;
-    const blocked = this.codexOperationsBlocked();
     this.taskNew()?.setCodexStatusSnapshot(this.codexStatusSnapshotValue);
     this.taskDetail()?.setCodexStatusSnapshot(this.codexStatusSnapshotValue);
     this.taskNavigator()?.setCodexStatusSnapshot(this.codexStatusSnapshotValue);
     this.codexReadinessRecovery()?.setSnapshot(this.codexStatusSnapshotValue);
-    if (this.codexRecoveryVisible()) {
+    if (this.taskStoreRecoveryVisible()) {
       this.taskDetail()?.deactivate();
+    } else if (wasTakenOver && this.view === "detail" && this.selectedThreadId) {
+      // The takeover deactivated the open Task; its clearing has to bring
+      // the Task back, or the pane it uncovers is blank.
+      void this.taskDetail()?.open(this.selectedThreadId, {
+        preserveLoadedTask: true,
+        route: this.currentRoute,
+      });
     }
     this.render();
-    return wasBlocked && !blocked;
   }
 
   setCodexRestartState(state) {
@@ -445,8 +448,12 @@ class CaffoldTasksPage extends HTMLElement {
     return codexBlocksTaskOperations(this.codexStatusSnapshotValue.status);
   }
 
-  codexRecoveryVisible() {
-    return codexTaskRecoveryVisible(this.codexStatusSnapshotValue);
+  taskStoreOperationsBlocked() {
+    return taskStoreBlocksTaskOperations(this.codexStatusSnapshotValue.status);
+  }
+
+  taskStoreRecoveryVisible() {
+    return taskStoreTakesOver(this.codexStatusSnapshotValue);
   }
 
   get taskDetailView() {
@@ -641,16 +648,25 @@ class CaffoldTasksPage extends HTMLElement {
       this.detailPresentation,
     );
     const showNew = this.view === "new" || this.view === "home";
-    const recoveryVisible = this.codexRecoveryVisible();
-    this.codexReadinessRecovery()?.toggleAttribute("hidden", !recoveryVisible);
-    this.taskNew()?.toggleAttribute("hidden", recoveryVisible || !showNew);
+    // Only the store may take the Task surface over — it gates every agent.
+    // Codex setup shows beside the surface on the home views, never over an
+    // open Task: a Claude Task is not held hostage by Codex being unready.
+    const takeover = this.taskStoreRecoveryVisible();
+    const setupBeside =
+      !takeover && showNew && codexSetupVisible(this.codexStatusSnapshotValue);
+    const setup = this.codexReadinessRecovery();
+    setup?.toggleAttribute("hidden", !(takeover || setupBeside));
+    if (setup) {
+      setup.dataset.presentation = setupBeside ? "beside" : "takeover";
+    }
+    this.taskNew()?.toggleAttribute("hidden", takeover || !showNew);
     this.taskDetail()?.toggleAttribute(
       "hidden",
-      recoveryVisible || this.view !== "detail",
+      takeover || this.view !== "detail",
     );
     this.taskRecovery()?.toggleAttribute(
       "hidden",
-      recoveryVisible || this.view !== "recovery",
+      takeover || this.view !== "recovery",
     );
     this.taskNavigator()?.setSelectedSubject(this.selectedSubject());
     this.dispatchEvent(

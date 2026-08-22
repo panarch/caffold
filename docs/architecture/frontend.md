@@ -108,8 +108,7 @@ same pause path, restoration requests the same canonical recovery, and
 unsupported browsers continue through standard lifecycle and transport paths.
 Every completion still has to match the active recovery generation.
 
-Foreground recovery refreshes the workspace's canonical backend status first.
-A blocked-to-ready transition then uses the existing pending-route activation,
+Foreground recovery refreshes the workspace's canonical backend status first,
 after which the Tasks page asks its navigator and selected detail to reconcile
 their separately owned transports. Parents call public child methods; the app
 shell does not inspect Task transport internals. Async completions must still
@@ -200,11 +199,17 @@ The workspace also owns the one browser lifecycle for backend-owned Codex
 readiness requests and forwards a request snapshot to Tasks, Settings, and the
 workspace navigation. That snapshot keeps frontend request phase (`checking`,
 `loaded`, or `failed`) separate from the canonical backend status payload. A
-refresh may retain the previous status while the request is checking. The
-initial check remains fail-closed for Task operations but preserves the stable
-Task shell. A later failed refresh retains the last useful canonical status;
-only a failed initial check without a prior status, or a loaded status with
-`blocksTaskOperations: true`, presents the Task-owned recovery surface.
+refresh may retain the previous status while the request is checking.
+
+The snapshot carries two separate blocking axes, consumed as derived
+presentation rather than routing state. Task-store readiness gates every Task
+operation — it is the shared store — and alone presents the takeover recovery
+surface while it blocks. Codex readiness gates only Codex surfaces: the setup
+card renders beside the New Task surface, and routes always open — a Task's
+conversation stays readable from the store while its agent is unready. No
+surface pre-guesses an operation's fate from the snapshot: a Codex-run
+operation tried while Codex is unready is refused by the server, and the
+refusal is the answer shown. Claude surfaces never consult either Codex axis.
 Settings remains routable. Retry refreshes the canonical diagnosis; frontend
 code does not compare versions or classify stderr.
 
@@ -212,8 +217,8 @@ One workspace-scoped Codex status lifecycle owns that request, the confirmed
 runtime-restart mutation, its request generations, and the post-restart status
 refresh. Tasks and Settings emit the same restart intent and render its shared
 request snapshot. The workspace mounts one long-lived native confirmation
-dialog. A successful restart response does not unblock Tasks; only the refreshed
-backend readiness snapshot can do that.
+dialog. A successful restart response does not release the Codex surfaces it
+holds; only the refreshed backend readiness snapshot can do that.
 
 This request ownership is scoped to the mounted browser component tree. It is
 not exclusive ownership of Codex settings or actions across Caffold clients.

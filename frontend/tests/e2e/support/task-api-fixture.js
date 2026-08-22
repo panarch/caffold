@@ -32,7 +32,7 @@ export const TASK_PERMISSION_FIXTURE = {
   ],
 };
 
-export async function installTaskApiFixture(page) {
+export async function installTaskApiFixture(page, overrides = {}) {
   await installExternalModuleDefaults(page);
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
@@ -76,37 +76,25 @@ export async function installTaskApiFixture(page) {
       }
     };
   });
-  await page.route("**/api/codex/permissions*", (route) =>
-    route.fulfill({ json: TASK_PERMISSION_FIXTURE }),
+  await page.route("**/api/agent/permissions*", (route) =>
+    route.fulfill({ json: overrides.permissions ?? TASK_PERMISSION_FIXTURE }),
   );
-  await page.route("**/api/codex/models", (route) =>
+  await page.route("**/api/agent/models", (route) =>
     route.fulfill({
       json: {
-        data: [
+        models: [
           {
-            id: "gpt-test",
+            provider: "codex",
             model: "gpt-test",
             displayName: "GPT Test",
             description: "Test model",
-            hidden: false,
-            supportedReasoningEfforts: [
-              { reasoningEffort: "medium", description: "Balanced depth" },
-              { reasoningEffort: "xhigh", description: "Extra depth" },
-            ],
-            defaultReasoningEffort: "medium",
-            serviceTiers: [
-              {
-                id: "priority",
-                name: "Fast",
-                description: "1.5x speed, increased usage",
-              },
-            ],
-            inputModalities: ["text"],
-            supportsPersonality: false,
             isDefault: true,
+            defaultEffort: "medium",
+            efforts: ["medium", "xhigh"],
+            supportsFastMode: true,
           },
         ],
-        nextCursor: null,
+        unavailable: [],
       },
     }),
   );
@@ -128,6 +116,7 @@ export function taskDetailFixture({
   fastMode = false,
 } = {}) {
   return {
+    provider: "codex",
     threadId: "thread-1",
     syncState: "ready",
     revision: 1,

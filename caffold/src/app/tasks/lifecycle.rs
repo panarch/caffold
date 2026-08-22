@@ -4,20 +4,19 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
+    agent::TurnOptions,
+    agent::claude::ClaudeClient,
     app::error::ApiError,
-    codex_app_server::{
-        CodexThreadClient, CodexTurnOptions, is_fast_service_tier, service_tier_for_fast_mode,
-    },
-    codex_thread_sessions::{CodexThreadSessions, StartedThreadSettings},
+    app::tasks::sessions::{StartedSettings, TaskSessions},
     fs::RootedFs,
-    task_store::{ComposerSettings, ManagedThread, TaskStore, TaskStoreError},
+    task_store::{ComposerSettings, ManagedThread, RunBy, TaskStore, TaskStoreError},
 };
 
 use super::{
-    CodexConnection, TaskRecord,
+    TaskAgent, TaskRecord,
     composer_settings::persist_started_turn_composer_settings,
     events::{TaskEvents, accepted_user_message_event, now_ms},
-    projection::{resolve_thread_cwd, task_activity_ms, task_record_from_thread},
+    projection::{resolve_conversation_cwd, task_activity_ms, task_record_from_conversation},
     routes::TaskListEvents,
     worktrees::{
         ArchiveOutcome, IsolateOutcome, ManagedWorktreeError, ManagedWorktrees, RestoreOutcome,
@@ -30,7 +29,7 @@ pub(in crate::app) struct StartTask {
     pub(in crate::app) cwd: String,
     pub(in crate::app) prompt: String,
     pub(in crate::app) images: Vec<String>,
-    pub(in crate::app) turn_options: CodexTurnOptions,
+    pub(in crate::app) turn_options: TurnOptions,
     pub(in crate::app) initial_name: Option<String>,
 }
 
@@ -74,21 +73,23 @@ enum LocalPlacementMutation {
 #[derive(Clone)]
 pub(in crate::app) struct TaskLifecycle {
     fs: Arc<RootedFs>,
-    sessions: CodexThreadSessions,
+    sessions: TaskSessions,
     events: TaskEvents,
     list_events: TaskListEvents,
     store: TaskStore,
     worktrees: ManagedWorktrees,
+    claude: ClaudeClient,
 }
 
 impl TaskLifecycle {
     pub(in crate::app) fn new(
         fs: Arc<RootedFs>,
-        sessions: CodexThreadSessions,
+        sessions: TaskSessions,
         events: TaskEvents,
         list_events: TaskListEvents,
         store: TaskStore,
         worktrees: ManagedWorktrees,
+        claude: ClaudeClient,
     ) -> Self {
         Self {
             fs,
@@ -97,12 +98,13 @@ impl TaskLifecycle {
             list_events,
             store,
             worktrees,
+            claude,
         }
     }
 
     pub(in crate::app) async fn start_task(
         &self,
-        connection: &CodexConnection,
+        agent: &TaskAgent,
         request: StartTask,
     ) -> Result<StartedTask, ApiError> {
         let StartTask {
@@ -112,63 +114,64 @@ impl TaskLifecycle {
             turn_options,
             initial_name,
         } = request;
-        let requested_permission_mode = turn_options.permission_mode;
-        let requested_model = turn_options.model.clone();
-        let requested_reasoning_effort = turn_options.effort.clone();
-        let requested_service_tier = turn_options.service_tier.clone();
-        let requested_fast_mode = is_fast_service_tier(requested_service_tier.as_deref());
-        let client = &connection.client;
-        let mut thread = client
-            .start_thread(
-                &cwd,
-                turn_options.permission_mode,
-                requested_service_tier
-                    .as_deref()
-                    .unwrap_or_else(|| service_tier_for_fast_mode(requested_fast_mode)),
-            )
-            .await?;
+        let requested_fast_mode = turn_options.fast_mode;
+        let driver = agent.driver();
+        // The agent agrees to the options first: a model it never had would
+        // otherwise leave a conversation behind before anyone found out.
+        let accepted = driver.accept_turn_options(&turn_options).await?;
+        let mut started = driver.start_conversation(&cwd, &accepted).await?;
+        let conversation_id = started.conversation.id.clone();
         let initial_name = initial_name
             .or_else(|| initial_request_name::from_prompt(&prompt))
-            .unwrap_or_else(|| format!("Thread {}", short_thread_id(&thread.thread_id)));
-        // Keep the app-server's canonical Thread name aligned with the name
-        // Caffold persists in its navigator ledger.
-        if let Err(error) = client
-            .set_thread_name(&thread.thread_id, &initial_name)
-            .await
+            .unwrap_or_else(|| format!("Thread {}", short_thread_id(&conversation_id)));
+        // Codex keeps a name of its own for a thread, and it should read as
+        // the name Caffold shows. Claude titles its own sessions and is asked
+        // to name the Task on its first turn — which renames both sides — so
+        // pushing this placeholder over the agent's own title would replace
+        // something with less.
+        if let Some(connection) = agent.codex()
+            && let Err(error) = connection
+                .client
+                .set_thread_name(&conversation_id, &initial_name)
+                .await
         {
-            self.rollback_unclaimed_thread(client, &thread.thread_id)
+            self.rollback_unclaimed_conversation(agent, &conversation_id)
                 .await;
             return Err(error.into());
         }
-        thread.thread.name = Some(initial_name);
-        let thread_permission_mode = requested_permission_mode.or(thread.permission_mode);
-        let effective_model = requested_model.or_else(|| thread.model.clone());
-        let effective_reasoning_effort =
-            requested_reasoning_effort.or_else(|| thread.reasoning_effort.clone());
-        let task = match self.record_from_codex_thread(&thread.thread) {
+        started.conversation.title = Some(initial_name);
+        // What the person asked for stands where they asked for something, and
+        // what the agent settled on fills the rest.
+        let settled = TurnOptions {
+            model: turn_options.model.clone().or(started.settings.model),
+            effort: turn_options.effort.clone().or(started.settings.effort),
+            fast_mode: requested_fast_mode,
+            permission_mode: turn_options
+                .permission_mode
+                .clone()
+                .or(started.settings.permission_mode),
+        };
+        let effective_model = settled.model.clone();
+        let effective_reasoning_effort = settled.effort.clone();
+        let task = match self.record_from_conversation(&started.conversation) {
             Ok(task) => task,
             Err(error) => {
-                self.rollback_unclaimed_thread(client, &thread.thread_id)
+                self.rollback_unclaimed_conversation(agent, &conversation_id)
                     .await;
                 return Err(error);
             }
         };
-        let placement = match self
-            .claim_at_top(
-                managed_thread_from_task_record(
-                    &task,
-                    effective_model.clone(),
-                    effective_reasoning_effort.clone(),
-                    requested_fast_mode,
-                ),
-                &task.title,
-                &task,
-            )
-            .await
-        {
+        let managed = managed_thread_from_task_record(
+            &task,
+            agent.run_by(&cwd),
+            effective_model.clone(),
+            effective_reasoning_effort.clone(),
+            requested_fast_mode,
+        );
+        let placement = match self.claim_at_top(managed, &task.title, &task).await {
             Ok(placement) => placement,
             Err(error) => {
-                self.rollback_unclaimed_thread(client, &thread.thread_id)
+                self.rollback_unclaimed_conversation(agent, &conversation_id)
                     .await;
                 return Err(error);
             }
@@ -177,44 +180,39 @@ impl TaskLifecycle {
         self.list_events.place(task.clone(), placement.clone());
         self.sessions
             .register_started_thread(
-                client,
-                connection.generation,
-                thread.thread.clone(),
-                StartedThreadSettings {
-                    permission_mode: thread_permission_mode,
-                    model: thread.model.clone(),
-                    reasoning_effort: thread.reasoning_effort.clone(),
-                    fast_mode: requested_fast_mode,
+                &driver,
+                agent.generation(),
+                started.conversation.clone(),
+                StartedSettings {
+                    permission_mode: settled.permission_mode.clone(),
+                    model: settled.model.clone(),
+                    reasoning_effort: settled.effort.clone(),
+                    fast_mode: settled.fast_mode,
                 },
             )
             .await;
-        let turn = match client
-            .start_turn(&thread.thread_id, &cwd, &prompt, &images, turn_options)
+        let turn = match driver
+            .start_turn(&conversation_id, &cwd, &prompt, &images, &accepted)
             .await
         {
             Ok(turn) => turn,
             Err(error) => {
-                self.sessions.cancel_runtime(&thread.thread_id).await;
+                self.sessions.cancel_runtime(&conversation_id).await;
                 return Err(error.into());
             }
         };
         self.sessions
             .record_turn_started(
-                connection.generation,
-                &thread.thread_id,
+                agent.generation(),
+                &conversation_id,
                 Some(&cwd),
-                turn.turn,
-                CodexTurnOptions {
-                    permission_mode: thread_permission_mode,
-                    model: effective_model.clone(),
-                    effort: effective_reasoning_effort.clone(),
-                    service_tier: requested_service_tier,
-                },
+                turn.turn.clone(),
+                turn.applied.clone(),
             )
             .await;
         if let Err(error) = self
             .update_composer_settings(
-                &thread.thread_id,
+                &conversation_id,
                 effective_model.as_deref(),
                 effective_reasoning_effort.as_deref(),
                 requested_fast_mode,
@@ -223,12 +221,12 @@ impl TaskLifecycle {
         {
             eprintln!(
                 "failed to persist composer settings for started thread {}: {error:?}",
-                thread.thread_id
+                conversation_id
             );
         }
         self.events.publish(accepted_user_message_event(
-            &thread.thread_id,
-            &turn.turn_id,
+            &conversation_id,
+            &turn.turn.id,
             &prompt,
             &images,
         ));
@@ -339,13 +337,16 @@ impl TaskLifecycle {
         self.events.remove_thread(thread_id);
     }
 
-    fn record_from_codex_thread(
+    fn record_from_conversation(
         &self,
-        thread: &crate::codex_app_server::CodexThread,
+        conversation: &crate::agent::Conversation,
     ) -> Result<TaskRecord, ApiError> {
-        let thread = thread.clone().into_value();
-        let resolved = resolve_thread_cwd(&self.fs, &thread);
-        task_record_from_thread(&thread, &[], resolved.as_ref())
+        let resolved = resolve_conversation_cwd(&self.fs, conversation);
+        Ok(task_record_from_conversation(
+            conversation,
+            &[],
+            resolved.as_ref(),
+        ))
     }
 
     async fn claim_at_top(
@@ -482,11 +483,23 @@ impl TaskLifecycle {
         Ok(())
     }
 
-    async fn rollback_unclaimed_thread(&self, client: &CodexThreadClient, thread_id: &str) {
-        match client.archive_thread(thread_id).await {
-            Ok(_) => {}
-            Err(error) => {
-                eprintln!("failed to archive an unclaimed Codex thread: {error}");
+    /// Let go of a conversation no Task ever claimed.
+    ///
+    /// Codex keeps a thread whether or not anyone claimed it, so an unclaimed
+    /// one is archived out of the way. A Claude session is a process, so an
+    /// unclaimed one is stopped — otherwise it would sit there holding an
+    /// agent nobody can reach.
+    async fn rollback_unclaimed_conversation(&self, agent: &TaskAgent, conversation_id: &str) {
+        match agent {
+            TaskAgent::Codex(connection) => {
+                if let Err(error) = connection.client.archive_thread(conversation_id).await {
+                    eprintln!("failed to archive an unclaimed Codex thread: {error}");
+                }
+            }
+            TaskAgent::Claude { .. } => {
+                if let Err(error) = self.claude.close_conversation(conversation_id).await {
+                    eprintln!("failed to close an unclaimed Claude session: {error}");
+                }
             }
         }
     }
@@ -511,12 +524,14 @@ fn short_thread_id(thread_id: &str) -> &str {
 
 fn managed_thread_from_task_record(
     task: &TaskRecord,
+    run_by: RunBy,
     model: Option<String>,
     reasoning_effort: Option<String>,
     fast_mode: bool,
 ) -> ManagedThread {
     let mut managed = ManagedThread::new(
         task.thread_id.clone(),
+        run_by,
         Some(task_activity_ms(task)),
         model,
         reasoning_effort,
@@ -560,7 +575,7 @@ fn task_store_worker_error(error: tokio::task::JoinError) -> ApiError {
 mod tests {
     use super::*;
     use crate::{
-        codex_thread_sessions::CodexThreadSessions,
+        app::tasks::sessions::TaskSessions,
         task_store::{ManagedWorktreeState, TaskStore},
     };
 
@@ -574,15 +589,17 @@ mod tests {
             root.path().join("managed-worktrees"),
         )
         .unwrap();
+        let (claude, _runner) = ClaudeClient::mock();
         (
             root,
             TaskLifecycle::new(
                 fs,
-                CodexThreadSessions::default(),
+                TaskSessions::default(),
                 TaskEvents::default(),
                 TaskListEvents::new(),
                 store,
                 worktrees,
+                claude,
             ),
         )
     }
@@ -598,8 +615,11 @@ mod tests {
             "updatedAt": 2.0,
             "turns": [],
         });
-        let resolved = resolve_thread_cwd(&lifecycle.fs, &thread);
-        task_record_from_thread(&thread, &[], resolved.as_ref()).unwrap()
+        let thread: crate::agent::codex::CodexThread =
+            serde_json::from_value(thread).expect("the fixture decodes as a Codex thread");
+        let conversation = crate::agent::Conversation::from(&thread);
+        let resolved = resolve_conversation_cwd(&lifecycle.fs, &conversation);
+        task_record_from_conversation(&conversation, &[], resolved.as_ref())
     }
 
     #[tokio::test]
@@ -610,7 +630,7 @@ mod tests {
 
         let first_placement = lifecycle
             .claim_at_top(
-                managed_thread_from_task_record(&first, None, None, false),
+                managed_thread_from_task_record(&first, RunBy::Codex, None, None, false),
                 &first.title,
                 &first,
             )
@@ -618,7 +638,7 @@ mod tests {
             .unwrap();
         let second_placement = lifecycle
             .claim_at_top(
-                managed_thread_from_task_record(&second, None, None, false),
+                managed_thread_from_task_record(&second, RunBy::Codex, None, None, false),
                 &second.title,
                 &second,
             )
@@ -658,7 +678,7 @@ mod tests {
         let second = task(&lifecycle, "thread-second", &second_directory);
         let first_placement = lifecycle
             .claim_at_top(
-                managed_thread_from_task_record(&first, None, None, false),
+                managed_thread_from_task_record(&first, RunBy::Codex, None, None, false),
                 &first.title,
                 &first,
             )
@@ -666,7 +686,7 @@ mod tests {
             .unwrap();
         let second_placement = lifecycle
             .claim_at_top(
-                managed_thread_from_task_record(&second, None, None, false),
+                managed_thread_from_task_record(&second, RunBy::Codex, None, None, false),
                 &second.title,
                 &second,
             )
@@ -695,7 +715,13 @@ mod tests {
         let first_replacement = task(&lifecycle, "thread-first-next", &first_directory);
         let replacement_placement = lifecycle
             .claim_at_top(
-                managed_thread_from_task_record(&first_replacement, None, None, false),
+                managed_thread_from_task_record(
+                    &first_replacement,
+                    RunBy::Codex,
+                    None,
+                    None,
+                    false,
+                ),
                 &first_replacement.title,
                 &first_replacement,
             )

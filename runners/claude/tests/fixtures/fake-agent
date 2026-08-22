@@ -1,0 +1,48 @@
+#!/bin/sh
+# A stand-in for `claude` that speaks the same shape without a model.
+#
+# The runner does not read what it carries, so its behaviour can be verified
+# against any process that writes newline-delimited JSON. Using this instead of
+# the real CLI keeps the checks deterministic and free of model usage; the one
+# thing it cannot stand in for is whether Claude itself still honours a
+# reattached client, which is what the live test covers.
+
+exit_code=""
+stderr_line=""
+busy_for=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --exit-code) exit_code="$2"; shift 2 ;;
+    --stderr) stderr_line="$2"; shift 2 ;;
+    # Work for this long before reading anything, the way an agent in the
+    # middle of a turn does. A process reading stdin ends when the pipe to it
+    # closes, which is not what a real agent does when its supervisor dies.
+    --busy-for) busy_for="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
+if [ -n "$stderr_line" ]; then
+  echo "$stderr_line" >&2
+fi
+
+echo '{"type":"ready"}'
+
+if [ -n "$exit_code" ]; then
+  exit "$exit_code"
+fi
+
+# Acknowledge each line so a test can prove the client-to-child direction
+# without inspecting the content of what it sent.
+if [ -n "$busy_for" ]; then
+  sleep "$busy_for"
+fi
+
+received=0
+while IFS= read -r _line; do
+  received=$((received + 1))
+  echo "{\"type\":\"echo\",\"received\":$received}"
+done
+
+echo '{"type":"done"}'

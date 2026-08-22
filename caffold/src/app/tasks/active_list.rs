@@ -6,22 +6,27 @@ use std::{
 use serde::Serialize;
 
 use crate::{
+    agent::{
+        ThreadStatus,
+        claude::ClaudeClient,
+        codex::{CodexThread, CodexThreadClient},
+    },
     app::error::ApiError,
-    codex_app_server::{CodexThread, CodexThreadClient, ThreadStatus},
-    codex_thread_sessions::CodexThreadSessions,
+    app::tasks::sessions::TaskSessions,
     fs::RootedFs,
-    task_store::{ComposerSettings, ManagedSection, ManagedThread, TaskStore},
+    task_store::{ComposerSettings, ManagedSection, ManagedThread, RunBy, TaskStore},
 };
 
 use super::{
     TaskRecord,
     detail::project_managed_worktree_cwd,
     projection::{
-        apply_canonical_turn_projection, resolve_thread_cwd, task_activity_ms,
-        task_record_from_thread,
+        apply_canonical_turn_projection, resolve_conversation_cwd, task_activity_ms,
+        task_record_from_conversation,
     },
     recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason},
 };
+use crate::agent::Conversation;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -150,9 +155,10 @@ pub(in crate::app) async fn load_cached(
 pub(in crate::app) async fn load_runtime_snapshot(
     fs: Arc<RootedFs>,
     store: TaskStore,
-    sessions: &CodexThreadSessions,
+    sessions: &TaskSessions,
     generation: u64,
     client: &CodexThreadClient,
+    claude: &ClaudeClient,
 ) -> Result<ActiveTaskRuntimeProjection, ApiError> {
     let managed = {
         let store = store.clone();
@@ -170,8 +176,15 @@ pub(in crate::app) async fn load_runtime_snapshot(
             observed_threads: Vec::new(),
         });
     }
-    for thread_id in managed.keys() {
-        sessions.track_listed_thread(generation, thread_id).await;
+    for managed in managed.values() {
+        // Codex's bookkeeping, for Codex's threads. A Claude session counts
+        // its connections as one fixed generation of its own, and Codex's
+        // count must not be stamped over it.
+        if matches!(managed.run_by, RunBy::Codex) {
+            sessions
+                .track_listed_codex_thread(generation, &managed.thread_id)
+                .await;
+        }
     }
 
     let mut tasks = Vec::new();
@@ -180,13 +193,28 @@ pub(in crate::app) async fn load_runtime_snapshot(
         let Some(managed) = managed.get(&thread.id) else {
             continue;
         };
-        let projected = project_managed_worktree_cwd(&store, thread.clone().into_value())?;
-        let resolved = resolve_thread_cwd(&fs, &projected);
-        let mut task = task_record_from_thread(&projected, &[], resolved.as_ref())?;
-        apply_canonical_turn_projection(&mut task, &projected)?;
-        apply_managed_runtime_metadata(&mut task, managed);
+        tasks.push(live_task_row(
+            &fs,
+            &store,
+            managed,
+            Conversation::from(&thread),
+        )?);
         observed_threads.push(thread);
-        tasks.push(task);
+    }
+    // Codex answers for every thread it has in one list. Claude has no list to
+    // ask for, and is not asked for one: what it has is the conversations being
+    // watched — the runner's live sessions are taken up when this process
+    // starts, and viewers hold the rest. A conversation nobody is watching is
+    // not doing anything, so the stored row a person sees instead of these is
+    // not hiding anything live.
+    for managed in managed.values() {
+        if !matches!(managed.run_by, RunBy::Claude { .. }) {
+            continue;
+        }
+        let Some(conversation) = claude.watched_conversation(&managed.thread_id).await else {
+            continue;
+        };
+        tasks.push(live_task_row(&fs, &store, managed, conversation)?);
     }
     tasks.sort_by(|left, right| left.thread_id.cmp(&right.thread_id));
     observed_threads.sort_by(|left, right| left.id.cmp(&right.id));
@@ -194,6 +222,21 @@ pub(in crate::app) async fn load_runtime_snapshot(
         snapshot: ActiveTaskRuntimeSnapshot { tasks },
         observed_threads,
     })
+}
+
+/// One list row for a conversation as its agent reports it now.
+fn live_task_row(
+    fs: &RootedFs,
+    store: &TaskStore,
+    managed: &ManagedThread,
+    conversation: Conversation,
+) -> Result<TaskRecord, ApiError> {
+    let projected = project_managed_worktree_cwd(store, conversation)?;
+    let resolved = resolve_conversation_cwd(fs, &projected);
+    let mut task = task_record_from_conversation(&projected, &[], resolved.as_ref());
+    apply_canonical_turn_projection(&mut task, &projected);
+    apply_managed_runtime_metadata(&mut task, managed);
+    Ok(task)
 }
 
 fn apply_managed_runtime_metadata(task: &mut TaskRecord, managed: &ManagedThread) {
@@ -254,6 +297,7 @@ pub(super) fn unavailable_active_task(managed: &ManagedThread) -> TaskRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::task_store::RunBy;
 
     fn fixture() -> (tempfile::TempDir, Arc<RootedFs>, TaskStore) {
         let root = tempfile::tempdir().unwrap();
@@ -281,7 +325,7 @@ mod tests {
                 };
                 tables.upsert_managed_section(&section)?;
                 tables.claim_managed_thread_at_top(
-                    ManagedThread::new(thread_id, Some(recency_ms), None, None),
+                    ManagedThread::new(thread_id, RunBy::Codex, Some(recency_ms), None, None),
                     display_name,
                     &section.section_id,
                     recency_ms,
@@ -294,6 +338,191 @@ mod tests {
         store
             .read(|tables| Ok((tables.managed_sections()?, tables.active_managed_threads()?)))
             .unwrap()
+    }
+
+    /// A Claude client watching one conversation the stand-in already greeted.
+    async fn watching_a_claude_conversation(thread_id: &str, cwd: &str) -> ClaudeClient {
+        let (claude, runner) = crate::agent::claude::ClaudeClient::mock();
+        runner
+            .greet_next_session_with(vec![serde_json::json!({
+                "type": "system",
+                "subtype": "init",
+                "session_id": thread_id,
+                "cwd": cwd,
+                "model": "claude-opus-5",
+                "permissionMode": "default",
+                "claude_code_version": "9.9.9",
+            })])
+            .await;
+        claude
+            .open_conversation(thread_id, cwd, &Default::default())
+            .await
+            .expect("the conversation opens");
+        claude
+    }
+
+    fn an_empty_codex() -> crate::agent::codex::CodexThreadClient {
+        crate::agent::codex::CodexThreadClient::mock(vec![
+            crate::agent::codex::MockCodexResponse::ok(
+                "thread/list",
+                serde_json::json!({ "data": [], "nextCursor": null, "backwardsCursor": null }),
+            ),
+        ])
+    }
+
+    #[tokio::test]
+    async fn runtime_snapshot_shows_a_claude_conversation_somebody_is_watching() {
+        // The list is drawn from this snapshot, and Codex's thread list is only
+        // Codex's answer. A working Claude Task left out of it reads as nothing
+        // for exactly as long as it is working — the one stretch a person is
+        // deciding whether it needs them.
+        let (_root, fs, store) = fixture();
+        let cwd = "/Users/example/project";
+        store
+            .claim(
+                ManagedThread::new(
+                    "claude-1",
+                    RunBy::Claude {
+                        cwd: cwd.to_string(),
+                    },
+                    Some(500),
+                    None,
+                    None,
+                ),
+                500,
+            )
+            .unwrap();
+        let claude = watching_a_claude_conversation("claude-1", cwd).await;
+        claude
+            .start_turn("claude-1", "keep going", &[], &Default::default())
+            .await
+            .expect("the turn starts");
+
+        let projection = load_runtime_snapshot(
+            fs,
+            store,
+            &super::super::sessions::TaskSessions::default(),
+            1,
+            &an_empty_codex(),
+            &claude,
+        )
+        .await
+        .unwrap();
+
+        let row = projection
+            .snapshot
+            .tasks
+            .iter()
+            .find(|task| task.thread_id == "claude-1")
+            .expect("the watched conversation is a row");
+        assert_eq!(
+            row.thread_status,
+            ThreadStatus::Active {
+                active_flags: Vec::new(),
+            }
+        );
+        assert_eq!(
+            row.latest_turn_status,
+            Some(crate::agent::TurnStatus::InProgress)
+        );
+        assert!(row.conversation_available);
+    }
+
+    #[tokio::test]
+    async fn a_list_load_on_a_newer_codex_connection_leaves_claude_sessions_alone() {
+        // Generations are Codex's count of its own connections; the listing
+        // bookkeeping stamps them onto the threads it lists. A Claude session
+        // carries the one fixed generation its kind stands for, and a startup
+        // take-up holds no lease — so stamping it with Codex's count would wipe
+        // it on the first list load after a Codex restart, and every report it
+        // makes afterwards would be dropped as belonging to an old connection.
+        let (_root, fs, store) = fixture();
+        let cwd = "/Users/example/project";
+        store
+            .claim(
+                ManagedThread::new(
+                    "claude-1",
+                    RunBy::Claude {
+                        cwd: cwd.to_string(),
+                    },
+                    Some(500),
+                    None,
+                    None,
+                ),
+                500,
+            )
+            .unwrap();
+        let claude = watching_a_claude_conversation("claude-1", cwd).await;
+        let sessions = super::super::sessions::TaskSessions::default();
+        sessions
+            .ensure_subscribed(&claude.driver(cwd), 1, "claude-1")
+            .await
+            .expect("the Claude session subscribes on its own generation");
+
+        // Codex has restarted: its connection count moved past Claude's fixed
+        // generation, and the list is loaded again.
+        let projection = load_runtime_snapshot(fs, store, &sessions, 2, &an_empty_codex(), &claude)
+            .await
+            .unwrap();
+
+        assert!(
+            projection
+                .snapshot
+                .tasks
+                .iter()
+                .any(|task| task.thread_id == "claude-1"),
+            "the watched conversation is still a row"
+        );
+        let snapshot = sessions
+            .snapshot("claude-1")
+            .await
+            .expect("the session is still known");
+        assert_eq!(
+            snapshot.lifecycle,
+            super::super::sessions::SessionLifecycle::Subscribed,
+            "and was not swept by Codex's count"
+        );
+        assert_eq!(snapshot.generation, 1, "its own generation, not Codex's");
+    }
+
+    #[tokio::test]
+    async fn runtime_snapshot_leaves_an_unwatched_claude_task_to_its_stored_row() {
+        // A conversation nobody is watching is not doing anything — the agent
+        // only works while a turn runs, and a turn only runs on a session — so
+        // the stored row stands, and nothing is started to improve on it.
+        let (_root, fs, store) = fixture();
+        store
+            .claim(
+                ManagedThread::new(
+                    "claude-quiet",
+                    RunBy::Claude {
+                        cwd: "/Users/example/project".to_string(),
+                    },
+                    Some(500),
+                    None,
+                    None,
+                ),
+                500,
+            )
+            .unwrap();
+        let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
+
+        let projection = load_runtime_snapshot(
+            fs,
+            store,
+            &super::super::sessions::TaskSessions::default(),
+            1,
+            &an_empty_codex(),
+            &claude,
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            projection.snapshot.tasks.is_empty(),
+            "nothing live to say: {:?}",
+            projection.snapshot.tasks
+        );
     }
 
     #[tokio::test]
@@ -383,7 +612,10 @@ mod tests {
     async fn cached_projection_keeps_unplaced_rows_visible_for_explicit_recovery() {
         let (_root, fs, store) = fixture();
         store
-            .claim(ManagedThread::new("unplaced", Some(500), None, None), 500)
+            .claim(
+                ManagedThread::new("unplaced", RunBy::Codex, Some(500), None, None),
+                500,
+            )
             .unwrap();
 
         let projection = load_cached(fs, store).await.unwrap();

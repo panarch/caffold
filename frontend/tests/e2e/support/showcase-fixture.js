@@ -2,7 +2,7 @@ import {
   activeTaskProjection,
   canonicalTaskState,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "./task-fixtures.js";
 
 const THREAD_ID = "thread_showcase_readme";
@@ -126,7 +126,7 @@ export async function installShowcaseFixture(page) {
         "Assistant response",
         {
           turnId: TURN_ID,
-          phase: "commentary",
+          phase: "progress",
           text: "I’m aligning the product story, installation path, and representative review fixture.",
         },
       ),
@@ -143,20 +143,13 @@ export async function installShowcaseFixture(page) {
           status: "completed",
           exitCode: 0,
           durationMs: 4_820,
-          aggregatedOutput: "tests 101\npass 101\nfail 0",
+          output: "tests 101\npass 101\nfail 0",
         },
       ),
       event(turnStart + 3_000, "showcase-files", "file_change", "Files changed", {
         turnId: TURN_ID,
         status: "completed",
-        changeCount: 5,
-        changes: [
-          { path: "README.md" },
-          { path: "docs/product/installation.md" },
-          { path: "docs/product/vision.md" },
-          { path: "tests/e2e/showcase.spec.js" },
-          { path: "tests/e2e/support/showcase-fixture.js" },
-        ],
+        paths: ["README.md", "docs/product/installation.md", "docs/product/vision.md", "tests/e2e/showcase.spec.js", "tests/e2e/support/showcase-fixture.js"],
       }),
       event(
         turnStart + 4_000,
@@ -202,7 +195,7 @@ export async function installShowcaseFixture(page) {
     "__caffoldShowcaseDetailBootstrap",
     (requestedThreadId) => requestedThreadId === THREAD_ID ? detail : null,
   );
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({ json: activeTaskProjection(tasks) }),

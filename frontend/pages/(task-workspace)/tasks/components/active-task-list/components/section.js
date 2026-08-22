@@ -1,5 +1,5 @@
 import { renderInlineIcon, warmIcons } from "../../../../../../components/icons.js";
-import { PENDING_CODEX_TASK_OPERATIONS } from "../../../../codex-status.js";
+import { taskStoreOperationsPresentation } from "../../../../codex-status.js";
 import { taskThreadId } from "../../../task-list-model.js";
 import {
   ACTIVE_TASK_ROW_INTENT_EVENT,
@@ -53,7 +53,7 @@ class CaffoldActiveTaskSection extends HTMLElement {
       selectedSectionId: "",
       selectedThreadId: "",
       transportState: "idle",
-      codexTaskOperations: PENDING_CODEX_TASK_OPERATIONS,
+      taskOperations: taskStoreOperationsPresentation(null),
       reorderMode: "none",
       pending: false,
     };
@@ -610,7 +610,7 @@ class CaffoldActiveTaskSection extends HTMLElement {
       task,
       selectedThreadId: this.snapshot.selectedThreadId,
       transportState: this.snapshot.transportState,
-      codexTaskOperations: this.snapshot.codexTaskOperations,
+      taskOperations: this.snapshot.taskOperations,
       reorderMode: this.snapshot.reorderMode === "tasks",
       reorderable: !this.snapshot.section?.recovery,
       pending: this.snapshot.pending,

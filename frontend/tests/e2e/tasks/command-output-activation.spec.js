@@ -6,7 +6,7 @@ import {
   captureReviewScreenshot,
   emitTaskDetailBootstrap,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -20,7 +20,7 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
     registryKey: "__commandOutputActivationSources",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_command_output_activation";
   const completedTurnId = "turn_completed";
@@ -55,7 +55,6 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
   const command = (id, createdMs, turnId, status) =>
     event(id, "command_execution", createdMs, turnId, {
       itemId: id,
-      lifecycle: "completed",
       command:
         status === "failed"
           ? "cargo test --package intentionally-missing"
@@ -64,7 +63,7 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
       status,
       exitCode: status === "failed" ? 101 : 0,
       durationMs: status === "failed" ? 2_400 : 1_250,
-      aggregatedOutput:
+      output:
         status === "failed"
           ? "error: package `intentionally-missing` was not found"
           : "test result: ok",
@@ -94,7 +93,7 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
         activeTurnId,
         {
           itemId: `active_update_${index}`,
-          phase: "commentary",
+          phase: "progress",
           text: `Command review update ${index + 1}: preserve the scrolling boundary.`,
         },
       ),
@@ -277,7 +276,7 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
       ...detail.events,
       event("active_refresh", "assistant_message", now + 15_000, activeTurnId, {
         itemId: "active_refresh",
-        phase: "commentary",
+        phase: "progress",
         text: "Keep the exact command output opener during reconciliation.",
       }),
     ],

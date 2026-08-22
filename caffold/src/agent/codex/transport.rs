@@ -300,7 +300,7 @@ mod tests {
     #[cfg(unix)]
     fn checked_in_codex_fixture(name: &str) -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src/codex_app_server/transport/fixtures")
+            .join("src/agent/codex/transport/fixtures")
             .join(name)
     }
 }

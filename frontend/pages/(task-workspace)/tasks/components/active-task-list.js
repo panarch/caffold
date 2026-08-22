@@ -5,7 +5,7 @@ import {
   taskListStreamUrl,
 } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
-import { PENDING_CODEX_TASK_OPERATIONS } from "../../codex-status.js";
+import { taskStoreOperationsPresentation } from "../../codex-status.js";
 import {
   TASK_TRANSPORT_STATE,
   isTaskTransportStale,
@@ -75,7 +75,7 @@ class CaffoldActiveTaskList extends HTMLElement {
     this.selectedSectionId = "";
     this.revisionByThread = new Map();
     this.active = false;
-    this.codexTaskOperations = PENDING_CODEX_TASK_OPERATIONS;
+    this.taskOperations = taskStoreOperationsPresentation(null);
     this.reorderMode = "none";
     this.pendingMove = null;
     this.reorderError = null;
@@ -108,18 +108,18 @@ class CaffoldActiveTaskList extends HTMLElement {
     return await this.loadTasks({ force });
   }
 
-  get codexOperationsBlocked() {
-    return this.codexTaskOperations?.blocked !== false;
+  get taskOperationsBlocked() {
+    return this.taskOperations?.blocked !== false;
   }
 
-  setCodexTaskOperations(presentation) {
+  setTaskOperations(presentation) {
     this.ensureState();
-    if (this.codexTaskOperations?.key === presentation.key) {
+    if (this.taskOperations?.key === presentation.key) {
       return;
     }
     const becameBlocked =
-      this.codexTaskOperations?.blocked === false && presentation.blocked;
-    this.codexTaskOperations = presentation;
+      this.taskOperations?.blocked === false && presentation.blocked;
+    this.taskOperations = presentation;
     if (becameBlocked) {
       this.closeStream();
     }
@@ -999,7 +999,7 @@ class CaffoldActiveTaskList extends HTMLElement {
   }
 
   connectStream() {
-    if (this.codexOperationsBlocked || !this.active || !this.isConnected) {
+    if (this.taskOperationsBlocked || !this.active || !this.isConnected) {
       return;
     }
     this.taskListStream.activate("task-list");
@@ -1013,7 +1013,7 @@ class CaffoldActiveTaskList extends HTMLElement {
     if (!this.active || !this.isConnected) {
       return { ok: true, skipped: true };
     }
-    if (this.codexOperationsBlocked) {
+    if (this.taskOperationsBlocked) {
       const response = await this.loadTasks({ force: true });
       if (!response) {
         throw this.taskListError ?? new Error("Caffold Task ledger unavailable.");
@@ -1475,7 +1475,7 @@ class CaffoldActiveTaskList extends HTMLElement {
       selectedSectionId: this.selectedSectionId,
       selectedThreadId: this.selectedThreadId,
       transportState: this.streamState,
-      codexTaskOperations: this.codexTaskOperations,
+      taskOperations: this.taskOperations,
       reorderMode: this.reorderMode,
       pending: Boolean(this.pendingMove),
     }, options);

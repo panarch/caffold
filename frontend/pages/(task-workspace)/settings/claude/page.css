@@ -1,0 +1,171 @@
+caffold-settings-claude-page {
+  container: settings-claude / inline-size;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  font-size: var(--interface-font-size);
+  line-height: var(--interface-line-height);
+
+  & .settings-content-scroll {
+    height: 100%;
+    min-height: 0;
+    overflow: auto;
+    padding-block: var(--settings-content-padding-block);
+    padding-inline: var(--settings-content-padding-inline);
+  }
+
+  & .settings-content-section {
+    display: grid;
+    width: min(100%, var(--settings-content-max-width));
+    min-width: 0;
+    margin: 0 auto;
+  }
+
+  & .settings-content-section > header {
+    display: flex;
+    align-items: end;
+    gap: var(--interface-space-7);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: var(--interface-space-6);
+  }
+
+  & .settings-content-section > header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--settings-page-description-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .settings-content-section > section {
+    margin-top: var(--interface-space-10);
+  }
+
+  & .settings-content-section > section > h3 {
+    font-size: var(--settings-field-label-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .settings-details {
+    display: grid;
+    margin: 0;
+  }
+
+  & .settings-details > div {
+    display: grid;
+    grid-template-columns: minmax(8rem, 0.55fr) minmax(0, 1fr);
+    gap: var(--interface-space-7);
+    align-items: baseline;
+    border-bottom: 1px solid var(--border-subtle);
+    padding: var(--interface-space-6) 0;
+  }
+
+  & .settings-details dt {
+    color: var(--muted);
+    font-size: var(--settings-detail-label-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .settings-details dd {
+    min-width: 0;
+    margin: 0;
+    font-size: var(--settings-detail-value-size);
+    line-height: var(--interface-line-height);
+    overflow-wrap: anywhere;
+  }
+
+  & .settings-details dd[data-state="unavailable"] {
+    color: var(--danger);
+  }
+
+  & .settings-runtime-control {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--interface-space-8);
+    padding: var(--interface-space-8);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--surface-subtle);
+  }
+
+  & .settings-runtime-control > div {
+    display: grid;
+    gap: var(--interface-space-2);
+  }
+
+  & .settings-runtime-control h3 {
+    font-size: var(--settings-field-label-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .settings-runtime-control p {
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--settings-small-text-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .settings-runtime-control button {
+    position: relative;
+    isolation: isolate;
+    height: var(--settings-page-action-size);
+    min-height: var(--settings-page-action-size);
+    padding: 0 var(--interface-control-padding-inline);
+    border: 0;
+    background: transparent;
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--settings-small-text-size);
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  & .settings-runtime-control button::before {
+    position: absolute;
+    z-index: -1;
+    inset: var(--interface-control-hit-outset) 0;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    content: "";
+  }
+
+  & .settings-runtime-control button:hover:not(:disabled),
+  & .settings-runtime-control button:focus-visible {
+    outline: none;
+  }
+
+  & .settings-runtime-control button:disabled {
+    color: var(--disabled-text);
+    cursor: default;
+  }
+
+  & .settings-runtime-control button:not(:disabled) {
+    color: var(--primary-action-fg);
+  }
+
+  & .settings-runtime-control button:not(:disabled)::before {
+    border-color: var(--primary-action-border);
+    background: var(--primary-action-bg);
+  }
+
+  & .settings-runtime-control button:hover:not(:disabled)::before,
+  & .settings-runtime-control button:focus-visible::before {
+    border-color: var(--border-strong);
+    background: var(--primary-action-bg);
+  }
+
+  & .settings-runtime-message {
+    margin: 0;
+    margin-top: var(--interface-space-5);
+    color: var(--success);
+    font-size: var(--settings-small-text-size);
+  }
+
+  & .settings-runtime-message[data-state="failed"] {
+    color: var(--danger);
+  }
+}

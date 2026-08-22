@@ -151,6 +151,7 @@ test("renders and previews assistant-generated images after history reload", { t
         turnId: "turn_1",
         itemId: "image_1",
         status: "completed",
+        available: true,
         revisedPrompt: "A compact green architecture diagram",
         name: "Generated image.png",
       },

@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use futures_util::{StreamExt, stream};
 
 use crate::{
-    codex_app_server::{
+    agent::codex::{
         CodexStatusResponse, CodexThread, CodexThreadClient, CodexThreadError, ThreadSectionFilter,
         inspect_codex_installation,
     },
@@ -203,7 +203,7 @@ async fn collect_snapshot_from_client(
 
 async fn list_all_sections(
     client: &CodexThreadClient,
-) -> Result<Vec<crate::codex_app_server::ThreadSection>, CodexThreadError> {
+) -> Result<Vec<crate::agent::codex::ThreadSection>, CodexThreadError> {
     let mut cursor = None;
     let mut seen_cursors = HashSet::new();
     let mut seen_ids = HashSet::new();
@@ -330,7 +330,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::codex_app_server::MockCodexResponse;
+    use crate::agent::codex::MockCodexResponse;
 
     #[tokio::test]
     async fn uses_thread_read_names_and_never_reads_unmanaged_threads() {

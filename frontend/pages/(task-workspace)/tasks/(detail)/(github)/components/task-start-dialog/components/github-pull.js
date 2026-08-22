@@ -68,7 +68,7 @@ class CaffoldGithubPullTaskSource extends HTMLElement {
     return Boolean(this.repository?.rootPath && pullIsValid(this.source()) && !this.pending);
   }
 
-  async prepareSetup() {
+  async prepareSetup(provider) {
     const pull = this.source();
     const rootPath = this.repository?.rootPath;
     if (!pullIsValid(pull) || !rootPath || this.pending) {
@@ -97,6 +97,7 @@ class CaffoldGithubPullTaskSource extends HTMLElement {
         github: this.payload.github,
         repository: this.repository,
         headRef: prepared.headRef,
+        provider,
       });
     } catch (error) {
       if (requestId !== this.prepareRequestId) {
@@ -204,7 +205,21 @@ function pullIsValid(pull) {
   return Boolean(pull?.headRefOid && pull?.baseRepository?.nameWithOwner);
 }
 
-function pullSetupPrompt({ pull, github, repository, headRef }) {
+// The same ask reaches each agent through its own tool names: Codex through
+// the dynamic tools Caffold registers on its threads, Claude through the MCP
+// tools Caffold serves its sessions.
+function caffoldTaskTools(provider) {
+  if (provider === "claude") {
+    return {
+      rename: "mcp__caffold__rename_current_task",
+      isolate: "mcp__caffold__isolate_current_task",
+    };
+  }
+  return { rename: "rename_current_thread", isolate: "isolate_current_task" };
+}
+
+function pullSetupPrompt({ pull, github, repository, headRef, provider }) {
+  const tools = caffoldTaskTools(provider);
   const repositoryIdentity = `${github?.nameWithOwner ?? ""}`.trim() || repository.rootPath;
   const baseRepository = pull.baseRepository?.nameWithOwner ?? repositoryIdentity;
   const headRepository = pull.headRepository?.nameWithOwner ?? "Unavailable";
@@ -230,9 +245,9 @@ function pullSetupPrompt({ pull, github, repository, headRef }) {
     JSON.stringify(pull.commitSummaries ?? [], null, 2),
     "--- END UNTRUSTED PULL REQUEST DATA ---",
     "",
-    `First, use rename_current_thread to give this Task a concise PR-specific name ending in \`(#${pull.number})\`.`,
+    `First, use ${tools.rename} to give this Task a concise PR-specific name ending in \`(#${pull.number})\`.`,
     "Then choose a concise new local branch name appropriate for the pull request.",
-    `As the final file-affecting action, call isolate_current_task with that branchName, baseRef exactly ${JSON.stringify(headRef)}, and includeChanges set to false. Do not switch branches or move current checkout changes yourself.`,
+    `As the final file-affecting action, call ${tools.isolate} with that branchName, baseRef exactly ${JSON.stringify(headRef)}, and includeChanges set to false. Do not switch branches or move current checkout changes yourself.`,
     "After the worktree is ready, stop immediately. Do not run commands, inspect files, review, analyze, or begin implementation afterward. Wait for the user's next prompt.",
   ].join("\n");
 }

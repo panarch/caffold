@@ -52,7 +52,7 @@ caffold-task-turn-options {
   }
 
   & .task-model-button {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     justify-content: stretch;
     width: fit-content;
     max-width: min(100%, 384px);
@@ -62,7 +62,15 @@ caffold-task-turn-options {
     text-align: left;
   }
 
+  /* A track is declared only when something occupies it. A model that works at
+     one depth shows no depth, and a column held open for it would read as
+     padding nobody asked for. */
+  & .task-model-button.has-effort,
   & .task-model-button.is-fast {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  & .task-model-button.has-effort.is-fast {
     grid-template-columns: minmax(0, 1fr) auto auto;
   }
 

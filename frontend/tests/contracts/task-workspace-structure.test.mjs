@@ -737,7 +737,9 @@ test("Codex status and Task recovery keep explicit lifecycle and UI owners", () 
   assert.doesNotMatch(owner, /class CodexStatusLifecycle/);
   assert.doesNotMatch(owner, /export \*/);
   assert.match(model, /function codexBlocksTaskOperations/);
-  assert.match(model, /function codexTaskRecoveryVisible/);
+  assert.match(model, /function taskStoreBlocksTaskOperations/);
+  assert.match(model, /function taskStoreRecoveryVisible/);
+  assert.match(model, /function codexSetupVisible/);
   assert.match(lifecycle, /class CodexStatusLifecycle/);
   assert.match(lifecycle, /new CodexRuntimeRestartLifecycle/);
   assert.match(restartLifecycle, /class CodexRuntimeRestartLifecycle/);

@@ -73,6 +73,50 @@ export function mockCodexStatus(overrides = {}) {
   };
 }
 
+export function mockClaudeStatus(overrides = {}) {
+  return {
+    executable: {
+      path: "/Users/example/.local/bin/claude",
+      version: "2.1.239 (Claude Code)",
+    },
+    auth: {
+      loggedIn: true,
+      method: "claude.ai",
+      email: "user@example.com",
+      subscription: "max",
+    },
+    usage: {
+      subscriptionType: "max",
+      windows: [
+        {
+          kind: "session",
+          percent: 4,
+          resetsAt: "2026-08-22T12:30:00.000+00:00",
+        },
+        {
+          kind: "weekly_all",
+          percent: 15,
+          resetsAt: "2026-08-28T09:59:59.000+00:00",
+        },
+        {
+          kind: "weekly_scoped",
+          percent: 24,
+          resetsAt: "2026-08-28T09:59:59.000+00:00",
+          model: "Fable",
+        },
+      ],
+    },
+    runner: {
+      running: true,
+      pid: 4242,
+      version: "0.7.2",
+      sessions: 2,
+      idleTimeoutSecs: 600,
+    },
+    ...overrides,
+  };
+}
+
 export async function installBrowserDefaults(page) {
   await page.addInitScript(installTaskSseControllerInBrowser);
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
@@ -82,7 +126,14 @@ export async function installBrowserDefaults(page) {
     }),
   );
 
-  await page.route(/\/api\/codex\/permissions(?:\?|$)/, (route) =>
+  await page.route(/\/api\/claude\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockClaudeStatus()),
+    }),
+  );
+
+  await page.route(/\/api\/agent\/permissions(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({

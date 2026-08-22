@@ -1,6 +1,6 @@
 //! Contract between Caffold's Codex adapter and the installed Codex CLI.
 //!
-//! The adapter in `src/codex_app_server/` is written against a specific
+//! The adapter in `src/agent/codex/` is written against a specific
 //! app-server schema. This asks the installed CLI to generate that schema and
 //! checks that every method, field, and variant the adapter depends on is still
 //! there, so an upgrade that removes one fails here rather than at runtime.
@@ -20,7 +20,7 @@ use std::process::Command;
 use caffold::MINIMUM_SUPPORTED_CODEX_CLI_VERSION;
 use semver::Version;
 
-/// Mirrors the released install policy in `codex_app_server::readiness`:
+/// Mirrors the released install policy in `agent::codex::readiness`:
 /// `CAFFOLD_CODEX_BIN` is the explicit development override, and the official
 /// standalone installation is the supported location otherwise.
 fn codex_binary() -> PathBuf {

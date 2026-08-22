@@ -10,6 +10,7 @@ import {
 import {
   formatDate,
   formatStatus,
+  toolCallPresentation,
 } from "../../../../../task-format.js";
 import "./changed-files.js";
 import "./command.js";
@@ -321,12 +322,7 @@ function renderCombinedFileChangeWorkItem(
   }
   const latest = latestEvent(events);
   const payload = latest.payload ?? {};
-  const latestCount =
-    typeof payload.changeCount === "number"
-      ? payload.changeCount
-      : Array.isArray(payload.changes)
-        ? payload.changes.length
-        : null;
+  const latestCount = Array.isArray(payload.paths) ? payload.paths.length : null;
   const latestSummary =
     typeof latestCount === "number"
       ? latestCount === 1
@@ -388,11 +384,7 @@ function renderWorkItem(
   }
   if (event.type === "file_change") {
     const count =
-      typeof payload.changeCount === "number"
-        ? payload.changeCount
-        : Array.isArray(payload.changes)
-          ? payload.changes.length
-          : 0;
+      Array.isArray(payload.paths) ? payload.paths.length : 0;
     const status = payload.status
       ? `Status: ${formatStatus(payload.status)}`
       : "";
@@ -406,6 +398,10 @@ function renderWorkItem(
       [summary, status].filter(Boolean).join("\n"),
       identity,
     );
+  }
+  if (event.type === "tool_call") {
+    const tool = toolCallPresentation(payload);
+    return renderWorkItemShell(event, tool.label, tool.text, tool.tone);
   }
   if (event.type === "task_failed") {
     return renderWorkItemShell(event, "Error", event.summary, "danger");

@@ -8,6 +8,7 @@ use std::{
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 use super::events::TaskEventRecord;
+use crate::agent::GeneratedImage;
 use crate::fs::MAX_IMAGE_BYTES;
 
 const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
@@ -21,27 +22,15 @@ pub(in crate::app) struct GeneratedImageObservation {
 }
 
 impl GeneratedImageObservation {
-    pub(in crate::app) fn from_item(item: &serde_json::Value) -> Option<Self> {
-        let item_id = item.get("id").and_then(serde_json::Value::as_str)?.trim();
-        if item_id.is_empty() {
-            return None;
-        }
-        let saved_path = item
-            .get("savedPath")
-            .and_then(serde_json::Value::as_str)
-            .map(str::trim)
-            .filter(|path| !path.is_empty())
-            .map(PathBuf::from);
-        let result = item
-            .get("result")
-            .and_then(serde_json::Value::as_str)
-            .map(str::trim)
-            .filter(|result| !result.is_empty())
-            .map(str::to_string);
-        (saved_path.is_some() || result.is_some()).then_some(Self {
+    /// Where an image the agent generated can be read from, if anywhere yet.
+    ///
+    /// An agent still drawing has neither a file nor bytes, and there is
+    /// nothing to serve until it does.
+    pub(in crate::app) fn for_item(item_id: &str, image: &GeneratedImage) -> Option<Self> {
+        image.is_available().then(|| Self {
             item_id: item_id.to_string(),
-            saved_path,
-            result,
+            saved_path: image.saved_path.as_deref().map(PathBuf::from),
+            result: image.encoded.clone(),
         })
     }
 }
@@ -209,28 +198,26 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::app::tasks::events::task_event_from_thread_item;
+    use crate::agent::{ActivityStatus, codex::conversation_item};
+    use crate::app::tasks::events::task_event_from_item;
 
     const ONE_PIXEL_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
     #[tokio::test]
     async fn generated_image_store_keys_assets_by_thread_and_item() {
-        let event = task_event_from_thread_item(
-            "thread_1",
-            1,
+        let item = conversation_item(
             &json!({
-                "threadId": "thread_1",
-                "turnId": "turn_1",
-                "item": {
-                    "type": "imageGeneration",
-                    "id": "image_1",
-                    "status": "completed",
-                    "result": ONE_PIXEL_PNG,
-                    "savedPath": null
-                }
+                "type": "imageGeneration",
+                "id": "image_1",
+                "status": "completed",
+                "result": ONE_PIXEL_PNG,
+                "savedPath": null
             }),
+            ActivityStatus::Completed,
         )
-        .expect("generated image event");
+        .expect("a generated image item");
+        let event =
+            task_event_from_item("thread_1", "turn_1", 1, &item).expect("generated image event");
         let store = GeneratedImageStore::new(None);
         store.observe(&event);
 
@@ -299,8 +286,13 @@ mod tests {
 
     #[test]
     fn generated_image_observation_requires_an_identified_asset() {
-        assert!(GeneratedImageObservation::from_item(&json!({ "id": "" })).is_none());
-        assert!(GeneratedImageObservation::from_item(&json!({ "id": "image_1" })).is_none());
+        let drawing = GeneratedImage {
+            revised_prompt: None,
+            saved_path: None,
+            encoded: None,
+        };
+
+        assert!(GeneratedImageObservation::for_item("image_1", &drawing).is_none());
     }
 
     #[test]

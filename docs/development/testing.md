@@ -58,6 +58,8 @@ one records where it runs from and what it needs:
 | `npm run test:e2e` | `frontend/` | Node, Chromium, a built server | deterministic fixture-backed Playwright coverage |
 | `cargo test --test codex_protocol -- --ignored` | repository root | installed Codex CLI | Codex CLI schema compatibility without authentication or model usage |
 | `npm run test:codex-live` | `frontend/` | authenticated Codex CLI | authenticated Codex browser coverage with model usage |
+| `cargo test -p caffold-claude-runner --test live -- --ignored` | repository root | authenticated Claude CLI | that Claude still returns an unanswered permission request to a client that reattaches, with model usage |
+| `cargo test -p caffold --test claude_live -- --ignored --test-threads=1` | repository root | authenticated Claude CLI | what a person sees when the backend is replaced or the runner is killed under a working Claude Task, that each permission decision does what it says, that the agent reaches the tool Caffold serves it, and that the installation reports its status, with model usage |
 | `node --test docs/tests/*.test.mjs` | repository root | Node | documentation index, links, entrypoints, and this command index |
 | `node --test scripts/tests/*.test.mjs` | repository root | Node | repository tooling behavior, such as the release version bump |
 | `desktop/macos/test-contracts` | repository root | Node | macOS packaging, release, and installer contracts, from `desktop/macos/tests/` |
@@ -77,12 +79,18 @@ verifies the repository tooling, and `desktop/macos/tests/` verifies the macOS
 application. The frontend package keeps its own under
 `frontend/tests/contracts/`.
 
-The Rust server is a workspace member at `caffold/`, and its tests live
-with it in `caffold/tests/` — Cargo integration tests and the fixtures the
-backend shares, today the Codex protocol contract and the stub Codex CLI that the
-readiness tests and the browser server both use. A test written in Node does not
-make it frontend material, and a contract on the backend's own boundary belongs
-to the backend even when a different harness would be easier.
+The workspace has two Rust members, and each keeps its tests with it. The
+server is `caffold/`, and `caffold/tests/` holds its Cargo integration tests
+and the fixtures the backend shares — today the Codex protocol contract and the
+stub Codex CLI that the readiness tests and the browser server both use. The
+Claude runner is `runners/claude/`, and `runners/claude/tests/` holds its own:
+a suite driven by a stand-in agent, which is deterministic and spends no model
+usage, and the opt-in live check above. `cargo test` from the repository root
+covers every member, so neither needs its own job.
+
+A test written in Node does not make it frontend material, and a contract on
+the backend's own boundary belongs to the backend even when a different harness
+would be easier.
 
 Continuous integration follows the same ownership. Pull-request checks run one
 job per owner, and each job name says both whose it is and what kind of

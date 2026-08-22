@@ -18,7 +18,7 @@ mod push_vapid_key;
 mod schema_migration;
 
 pub(crate) use managed_section::ManagedSection;
-pub(crate) use managed_thread::ManagedThread;
+pub(crate) use managed_thread::{ManagedThread, RunBy, TaskProvider};
 pub(crate) use managed_worktree::{CheckoutAnchor, ManagedWorktree, ManagedWorktreeState};
 pub(crate) use migration::{
     ManagedThreadMigrationInventory, NavigatorMigrationSection, NavigatorMigrationSnapshot,
@@ -753,7 +753,7 @@ mod tests {
     use super::*;
 
     fn thread(id: &str) -> ManagedThread {
-        ManagedThread::new(id, Some(20), None, None)
+        ManagedThread::new(id, RunBy::Codex, Some(20), None, None)
     }
 
     fn worktree(id: &str, thread_id: &str) -> ManagedWorktree {

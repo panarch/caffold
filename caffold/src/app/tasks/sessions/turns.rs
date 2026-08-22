@@ -1,32 +1,25 @@
-use crate::codex_app_server::{
-    CodexThread, CodexThreadClient, CodexThreadError, CodexTurn, ThreadStatus, TurnStatus,
-    TurnsPage,
-};
+use crate::agent::AgentError;
+use crate::agent::{Conversation, Driver, ThreadStatus, Turn, TurnPage, TurnStatus};
 
-use super::{
-    CodexThreadSessions, INITIAL_TURNS_PAGE_SIZE, ThreadSessionSnapshot, ThreadSessionState,
-    snapshot,
-};
+use super::{INITIAL_TURNS_PAGE_SIZE, SessionSnapshot, SessionState, TaskSessions, snapshot};
 
-impl CodexThreadSessions {
-    pub async fn load_older_turns(
+impl TaskSessions {
+    pub(in crate::app::tasks) async fn load_older_turns(
         &self,
-        client: &CodexThreadClient,
+        driver: &Driver,
         generation: u64,
         thread_id: &str,
         cursor: &str,
         limit: usize,
-    ) -> Result<(ThreadSessionSnapshot, TurnsPage), CodexThreadError> {
-        self.ensure_subscribed(client, generation, thread_id)
+    ) -> Result<(SessionSnapshot, TurnPage), AgentError> {
+        self.ensure_subscribed(driver, generation, thread_id)
             .await?;
-        let page = client
-            .list_thread_turns(thread_id, Some(cursor), limit)
-            .await?;
+        let page = driver.read_turns(thread_id, Some(cursor), limit).await?;
         let entry = self.entry(thread_id).await;
         let state = entry.state.lock().await;
         if state.generation != generation {
-            return Err(CodexThreadError::SubscriptionLost(format!(
-                "Codex thread {thread_id} changed app-server generation while loading history"
+            return Err(AgentError::Failed(format!(
+                "conversation {thread_id} changed connection while reading its history"
             )));
         }
         Ok((snapshot(&state), page))
@@ -34,8 +27,8 @@ impl CodexThreadSessions {
 }
 
 pub(super) fn active_turn_id(
-    thread: &CodexThread,
-    turns_page: Option<&TurnsPage>,
+    thread: &Conversation,
+    turns_page: Option<&TurnPage>,
 ) -> Option<String> {
     if !matches!(thread.status, ThreadStatus::Active { .. }) {
         return None;
@@ -43,7 +36,7 @@ pub(super) fn active_turn_id(
     let turns = thread
         .turns
         .iter()
-        .chain(turns_page.into_iter().flat_map(|page| page.data.iter()))
+        .chain(turns_page.into_iter().flat_map(|page| page.turns.iter()))
         .collect::<Vec<_>>();
     turns
         .iter()
@@ -57,7 +50,7 @@ pub(super) fn active_turn_id(
 }
 
 pub(super) fn update_active_turn(
-    state: &mut ThreadSessionState,
+    state: &mut SessionState,
     active_turn_id: Option<String>,
     inferred_cwd: Option<String>,
 ) {
@@ -73,7 +66,7 @@ pub(super) fn update_active_turn(
 }
 
 pub(super) fn replace_active_turn(
-    state: &mut ThreadSessionState,
+    state: &mut SessionState,
     active_turn_id: Option<String>,
     cwd: String,
 ) {
@@ -81,44 +74,44 @@ pub(super) fn replace_active_turn(
     state.active_turn_id = active_turn_id;
 }
 
-pub(super) fn turn_is_in_progress(state: &ThreadSessionState, turn_id: &str) -> bool {
+pub(super) fn turn_is_in_progress(state: &SessionState, turn_id: &str) -> bool {
     state
-        .thread
+        .conversation
         .iter()
-        .flat_map(|thread| thread.turns.iter())
-        .chain(state.turns_page.iter().flat_map(|page| page.data.iter()))
+        .flat_map(|conversation| conversation.turns.iter())
+        .chain(state.turns_page.iter().flat_map(|page| page.turns.iter()))
         .any(|turn| turn.id == turn_id && turn.status == TurnStatus::InProgress)
 }
 
-pub(super) fn turn_is_terminal(state: &ThreadSessionState, turn_id: &str) -> bool {
+pub(super) fn turn_is_terminal(state: &SessionState, turn_id: &str) -> bool {
     state
-        .thread
+        .conversation
         .iter()
-        .flat_map(|thread| thread.turns.iter())
-        .chain(state.turns_page.iter().flat_map(|page| page.data.iter()))
+        .flat_map(|conversation| conversation.turns.iter())
+        .chain(state.turns_page.iter().flat_map(|page| page.turns.iter()))
         .any(|turn| turn.id == turn_id && turn.status != TurnStatus::InProgress)
 }
 
-pub(super) fn upsert_turn(page: &mut Option<TurnsPage>, turn: CodexTurn) {
-    let page = page.get_or_insert_with(|| TurnsPage {
-        data: Vec::new(),
+pub(super) fn upsert_turn(page: &mut Option<TurnPage>, turn: Turn) {
+    let page = page.get_or_insert_with(|| TurnPage {
+        turns: Vec::new(),
         next_cursor: None,
         backwards_cursor: None,
     });
-    if let Some(existing) = page.data.iter_mut().find(|item| item.id == turn.id) {
+    if let Some(existing) = page.turns.iter_mut().find(|item| item.id == turn.id) {
         if existing.status == TurnStatus::InProgress || turn.status != TurnStatus::InProgress {
             *existing = turn;
         }
     } else {
-        page.data.push(turn);
+        page.turns.push(turn);
     }
     bound_latest_turns_page(page);
 }
 
-pub(super) fn merge_latest_turns_page(target: &mut Option<TurnsPage>, incoming: TurnsPage) {
+pub(super) fn merge_latest_turns_page(target: &mut Option<TurnPage>, incoming: TurnPage) {
     let next_cursor = incoming.next_cursor.clone();
     let backwards_cursor = incoming.backwards_cursor.clone();
-    for turn in incoming.data {
+    for turn in incoming.turns {
         upsert_turn(target, turn);
     }
     if let Some(target) = target {
@@ -130,13 +123,13 @@ pub(super) fn merge_latest_turns_page(target: &mut Option<TurnsPage>, incoming: 
     }
 }
 
-pub(super) fn merge_stale_turns_page(target: &mut Option<TurnsPage>, incoming: TurnsPage) {
-    let page = target.get_or_insert_with(|| TurnsPage {
-        data: Vec::new(),
+pub(super) fn merge_stale_turns_page(target: &mut Option<TurnPage>, incoming: TurnPage) {
+    let page = target.get_or_insert_with(|| TurnPage {
+        turns: Vec::new(),
         next_cursor: None,
         backwards_cursor: None,
     });
-    merge_canonical_turns(&mut page.data, incoming.data);
+    merge_canonical_turns(&mut page.turns, incoming.turns);
     if page.next_cursor.is_none() && incoming.next_cursor.is_some() {
         page.next_cursor = incoming.next_cursor;
     }
@@ -146,14 +139,14 @@ pub(super) fn merge_stale_turns_page(target: &mut Option<TurnsPage>, incoming: T
     bound_latest_turns_page(page);
 }
 
-pub(super) fn bound_latest_turns_page(page: &mut TurnsPage) {
-    sort_turns_desc(&mut page.data);
-    page.data.truncate(INITIAL_TURNS_PAGE_SIZE);
+pub(super) fn bound_latest_turns_page(page: &mut TurnPage) {
+    sort_turns_desc(&mut page.turns);
+    page.turns.truncate(INITIAL_TURNS_PAGE_SIZE);
 }
 
 pub(super) fn merge_canonical_turns(
-    target: &mut Vec<CodexTurn>,
-    incoming: impl IntoIterator<Item = CodexTurn>,
+    target: &mut Vec<Turn>,
+    incoming: impl IntoIterator<Item = Turn>,
 ) {
     for turn in incoming {
         if let Some(existing) = target.iter_mut().find(|existing| existing.id == turn.id) {
@@ -166,12 +159,11 @@ pub(super) fn merge_canonical_turns(
     }
 }
 
-pub(super) fn sort_turns_desc(turns: &mut [CodexTurn]) {
+pub(super) fn sort_turns_desc(turns: &mut [Turn]) {
     turns.sort_by(|left, right| {
         right
-            .started_at
-            .partial_cmp(&left.started_at)
-            .unwrap_or(std::cmp::Ordering::Equal)
+            .started_at_ms
+            .cmp(&left.started_at_ms)
             .then_with(|| right.id.cmp(&left.id))
     });
 }
@@ -179,7 +171,7 @@ pub(super) fn sort_turns_desc(turns: &mut [CodexTurn]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codex_thread_sessions::test_support::*;
+    use crate::app::tasks::sessions::test_support::*;
 
     #[tokio::test]
     async fn terminal_turn_copy_wins_over_stale_running_history_copy() {
@@ -187,14 +179,14 @@ mod tests {
             "thread/resume",
             resume_response(
                 ThreadStatus::Idle,
-                vec![turn("turn-duplicate", TurnStatus::InProgress)],
-                vec![turn("turn-duplicate", TurnStatus::Completed)],
+                vec![wire_turn("turn-duplicate", TurnStatus::InProgress)],
+                vec![wire_turn("turn-duplicate", TurnStatus::Completed)],
             ),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
@@ -202,7 +194,7 @@ mod tests {
         assert_eq!(snapshot.active_turn_id, None);
         assert!(
             snapshot
-                .thread
+                .conversation
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle)
         );
     }
@@ -214,13 +206,13 @@ mod tests {
             resume_response(
                 ThreadStatus::Idle,
                 Vec::new(),
-                vec![turn("turn-stale", TurnStatus::InProgress)],
+                vec![wire_turn("turn-stale", TurnStatus::InProgress)],
             ),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
@@ -228,12 +220,12 @@ mod tests {
         assert_eq!(snapshot.active_turn_id, None);
         assert!(
             snapshot
-                .thread
+                .conversation
                 .as_ref()
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle)
         );
         assert_eq!(
-            snapshot.turns_page.as_ref().expect("history").data[0].status,
+            snapshot.turns_page.as_ref().expect("history").turns[0].status,
             TurnStatus::InProgress
         );
     }
@@ -246,14 +238,14 @@ mod tests {
                 ThreadResumeResponse {
                     cwd: "/tmp".to_string(),
                     thread: thread(ThreadStatus::Idle, Vec::new()),
-                    initial_turns_page: Some(page(
+                    initial_turns_page: Some(decoded(wire_page(
                         vec![
-                            turn_at("turn-2", TurnStatus::InProgress, 2.0),
-                            turn_at("turn-1", TurnStatus::Completed, 1.0),
+                            wire_turn_at("turn-2", TurnStatus::InProgress, 2.0),
+                            wire_turn_at("turn-1", TurnStatus::Completed, 1.0),
                         ],
                         Some("older"),
                         Some("anchor-1"),
-                    )),
+                    ))),
                     extra: BTreeMap::new(),
                 },
             ),
@@ -262,38 +254,38 @@ mod tests {
                 ThreadResumeResponse {
                     cwd: "/tmp".to_string(),
                     thread: thread(ThreadStatus::Idle, Vec::new()),
-                    initial_turns_page: Some(page(
+                    initial_turns_page: Some(decoded(wire_page(
                         vec![
-                            turn_at("turn-3", TurnStatus::Completed, 3.0),
-                            turn_at("turn-2", TurnStatus::Completed, 2.0),
+                            wire_turn_at("turn-3", TurnStatus::Completed, 3.0),
+                            wire_turn_at("turn-2", TurnStatus::Completed, 2.0),
                         ],
                         None,
                         Some("anchor-2"),
-                    )),
+                    ))),
                     extra: BTreeMap::new(),
                 },
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let snapshot = sessions
-            .refresh_subscription(&client, 1, "thread-1")
+            .refresh_subscription(&client.driver(), 1, "thread-1")
             .await
             .expect("refresh latest page");
         let page = snapshot.turns_page.expect("merged history");
 
         assert_eq!(
-            page.data
+            page.turns
                 .iter()
                 .map(|turn| turn.id.as_str())
                 .collect::<Vec<_>>(),
             vec!["turn-3", "turn-2", "turn-1"]
         );
-        assert_eq!(page.data[1].status, TurnStatus::Completed);
+        assert_eq!(page.turns[1].status, TurnStatus::Completed);
         assert_eq!(page.next_cursor.as_deref(), Some("older"));
         assert_eq!(page.backwards_cursor.as_deref(), Some("anchor-2"));
     }
@@ -303,7 +295,7 @@ mod tests {
         let initial_turns = (1..=INITIAL_TURNS_PAGE_SIZE)
             .rev()
             .map(|index| {
-                turn_at(
+                wire_turn_at(
                     &format!("turn-{index}"),
                     TurnStatus::Completed,
                     index as f64,
@@ -313,7 +305,7 @@ mod tests {
         let refreshed_turns = (2..=INITIAL_TURNS_PAGE_SIZE + 1)
             .rev()
             .map(|index| {
-                turn_at(
+                wire_turn_at(
                     &format!("turn-{index}"),
                     TurnStatus::Completed,
                     index as f64,
@@ -326,7 +318,11 @@ mod tests {
                 ThreadResumeResponse {
                     cwd: "/tmp".to_string(),
                     thread: thread(ThreadStatus::Idle, Vec::new()),
-                    initial_turns_page: Some(page(initial_turns, Some("older"), Some("anchor-1"))),
+                    initial_turns_page: Some(decoded(wire_page(
+                        initial_turns,
+                        Some("older"),
+                        Some("anchor-1"),
+                    ))),
                     extra: BTreeMap::new(),
                 },
             ),
@@ -335,30 +331,34 @@ mod tests {
                 ThreadResumeResponse {
                     cwd: "/tmp".to_string(),
                     thread: thread(ThreadStatus::Idle, Vec::new()),
-                    initial_turns_page: Some(page(refreshed_turns, None, Some("anchor-2"))),
+                    initial_turns_page: Some(decoded(wire_page(
+                        refreshed_turns,
+                        None,
+                        Some("anchor-2"),
+                    ))),
                     extra: BTreeMap::new(),
                 },
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let snapshot = sessions
-            .refresh_subscription(&client, 1, "thread-1")
+            .refresh_subscription(&client.driver(), 1, "thread-1")
             .await
             .expect("refresh latest page");
         let page = snapshot.turns_page.expect("latest page");
 
-        assert_eq!(page.data.len(), INITIAL_TURNS_PAGE_SIZE);
+        assert_eq!(page.turns.len(), INITIAL_TURNS_PAGE_SIZE);
         assert_eq!(
-            page.data.first().map(|turn| turn.id.as_str()),
+            page.turns.first().map(|turn| turn.id.as_str()),
             Some("turn-9")
         );
         assert_eq!(
-            page.data.last().map(|turn| turn.id.as_str()),
+            page.turns.last().map(|turn| turn.id.as_str()),
             Some("turn-2")
         );
         assert_eq!(page.next_cursor.as_deref(), Some("older"));
@@ -373,31 +373,31 @@ mod tests {
                 ThreadResumeResponse {
                     cwd: "/tmp".to_string(),
                     thread: thread(ThreadStatus::Idle, Vec::new()),
-                    initial_turns_page: Some(page(
-                        vec![turn_at("turn-2", TurnStatus::Completed, 2.0)],
+                    initial_turns_page: Some(decoded(wire_page(
+                        vec![wire_turn_at("turn-2", TurnStatus::Completed, 2.0)],
                         Some("older-1"),
                         Some("latest-anchor"),
-                    )),
+                    ))),
                     extra: BTreeMap::new(),
                 },
             ),
             MockCodexResponse::ok(
                 "thread/turns/list",
-                page(
-                    vec![turn_at("turn-1", TurnStatus::Completed, 1.0)],
+                wire_page(
+                    vec![wire_turn_at("turn-1", TurnStatus::Completed, 1.0)],
                     Some("older-2"),
                     None,
                 ),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let (snapshot, older_page) = sessions
-            .load_older_turns(&client, 1, "thread-1", "older-1", 8)
+            .load_older_turns(&client.driver(), 1, "thread-1", "older-1", 8)
             .await
             .expect("load older history");
         let page = snapshot.turns_page.expect("history");
@@ -405,7 +405,7 @@ mod tests {
         assert_eq!(older_page.next_cursor.as_deref(), Some("older-2"));
         assert_eq!(page.next_cursor.as_deref(), Some("older-1"));
         assert_eq!(page.backwards_cursor.as_deref(), Some("latest-anchor"));
-        assert_eq!(page.data.len(), 1);
+        assert_eq!(page.turns.len(), 1);
     }
 
     #[tokio::test]
@@ -413,7 +413,7 @@ mod tests {
         let latest_turns = (3..=10)
             .rev()
             .map(|index| {
-                turn_at(
+                wire_turn_at(
                     &format!("turn-{index}"),
                     TurnStatus::Completed,
                     index as f64,
@@ -426,40 +426,43 @@ mod tests {
                 ThreadResumeResponse {
                     cwd: "/tmp".to_string(),
                     thread: thread(ThreadStatus::Idle, Vec::new()),
-                    initial_turns_page: Some(page(
+                    initial_turns_page: Some(decoded(wire_page(
                         latest_turns.clone(),
                         Some("older-1"),
                         Some("latest-anchor"),
-                    )),
+                    ))),
                     extra: BTreeMap::new(),
                 },
             ),
             MockCodexResponse::ok(
                 "thread/turns/list",
-                page(
+                wire_page(
                     vec![
-                        turn_at("turn-2", TurnStatus::Completed, 2.0),
-                        turn_at("turn-1", TurnStatus::Completed, 1.0),
+                        wire_turn_at("turn-2", TurnStatus::Completed, 2.0),
+                        wire_turn_at("turn-1", TurnStatus::Completed, 1.0),
                     ],
                     None,
                     None,
                 ),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let (snapshot, older_page) = sessions
-            .load_older_turns(&client, 1, "thread-1", "older-1", 8)
+            .load_older_turns(&client.driver(), 1, "thread-1", "older-1", 8)
             .await
             .expect("load older history");
         let canonical_page = snapshot.turns_page.expect("latest history page");
 
-        assert_eq!(older_page.data.len(), 2);
-        assert_eq!(canonical_page.data, latest_turns);
+        assert_eq!(older_page.turns.len(), 2);
+        assert_eq!(
+            canonical_page.turns,
+            latest_turns.iter().map(Turn::from).collect::<Vec<_>>()
+        );
         assert_eq!(canonical_page.next_cursor.as_deref(), Some("older-1"));
         assert_eq!(
             canonical_page.backwards_cursor.as_deref(),
@@ -469,18 +472,18 @@ mod tests {
 
     #[tokio::test]
     async fn older_history_timeout_preserves_the_canonical_session_snapshot() {
-        let latest_turn = turn_at("turn-latest", TurnStatus::Completed, 2.0);
+        let latest_turn = wire_turn_at("turn-latest", TurnStatus::Completed, 2.0);
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok(
                 "thread/resume",
                 ThreadResumeResponse {
                     cwd: "/tmp".to_string(),
                     thread: thread(ThreadStatus::Idle, Vec::new()),
-                    initial_turns_page: Some(page(
+                    initial_turns_page: Some(decoded(wire_page(
                         vec![latest_turn.clone()],
                         Some("older-1"),
                         Some("latest-anchor"),
-                    )),
+                    ))),
                     extra: BTreeMap::new(),
                 },
             ),
@@ -493,28 +496,25 @@ mod tests {
                 },
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
         let before = sessions.snapshot("thread-1").await.expect("snapshot");
 
         let error = sessions
-            .load_older_turns(&client, 1, "thread-1", "older-1", 8)
+            .load_older_turns(&client.driver(), 1, "thread-1", "older-1", 8)
             .await
             .expect_err("older history request should time out");
         assert!(matches!(
             error,
-            CodexThreadError::RequestTimeout {
-                method: "thread/turns/list",
-                ..
-            }
+            AgentError::TimedOut(ref message) if message.contains("thread/turns/list")
         ));
 
         let after = sessions.snapshot("thread-1").await.expect("snapshot");
-        assert_eq!(after.lifecycle, ThreadSessionLifecycle::Subscribed);
-        assert_eq!(after.thread, before.thread);
+        assert_eq!(after.lifecycle, SessionLifecycle::Subscribed);
+        assert_eq!(after.conversation, before.conversation);
         assert_eq!(after.turns_page, before.turns_page);
         assert_eq!(after.revision, before.revision);
         assert_eq!(
@@ -528,7 +528,7 @@ mod tests {
             after
                 .turns_page
                 .as_ref()
-                .and_then(|page| page.data.first())
+                .and_then(|page| page.turns.first())
                 .map(|turn| turn.id.as_str()),
             Some(latest_turn.id.as_str())
         );

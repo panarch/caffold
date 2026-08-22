@@ -23,11 +23,11 @@ import {
 } from "../../../../task-events.js";
 import {
   effectiveTaskFileRoot,
-  formatCommand,
   formatDate,
   formatDecision,
   formatDuration,
   formatStatus,
+  toolCallPresentation,
 } from "../../../../task-format.js";
 import { activeTurnPresentation } from "./components/active-turn/model.js";
 export function renderConversation(events, task, approvals = [], options = {}) {
@@ -235,6 +235,9 @@ function renderCompletedTurnGroupEntries(
   const generatedImages = group.events.filter(
     (event) => event.type === "generated_image",
   );
+  // A failure stands on its own beside the messages: it is why nothing
+  // happened, and must not need work details expanded to be seen.
+  const failures = group.events.filter((event) => event.type === "agent_failure");
   const approvals = group.events.filter(
     (event) =>
       event.type === "approval_requested" &&
@@ -271,6 +274,18 @@ function renderCompletedTurnGroupEntries(
     );
   }
   for (const event of generatedImages) {
+    output.push(
+      renderedTimelineEntry(
+        [event],
+        renderConversationEvent(event, task, {
+          active: false,
+          filePathPresentationBase,
+        }),
+        eventOrder,
+      ),
+    );
+  }
+  for (const event of failures) {
     output.push(
       renderedTimelineEntry(
         [event],
@@ -333,6 +348,9 @@ function renderActiveTurnTimelineEvent(
     event.type === "user_message" ||
     event.type === "assistant_message" ||
     event.type === "generated_image" ||
+    // A failure stands beside the messages rather than folding into work
+    // details: it is why nothing happened, and must not need expanding.
+    event.type === "agent_failure" ||
     isWorkEvent(event)
   ) {
     return renderConversationEvent(event, task, {
@@ -394,7 +412,7 @@ function shouldRenderStandaloneEvent(event, userPrompts) {
     "approval_requested",
     "approval_resolved",
     "diff_updated",
-    "work_status",
+    "tool_call",
   ].includes(event.type);
 }
 
@@ -416,7 +434,7 @@ export function renderConversationEvent(event, task, eventState) {
   }
   if (event.type === "generated_image") {
     return renderMessageEvent(event, "assistant", "", {
-      attachments: [generatedImagePresentation(event)],
+      attachments: payload.available ? [generatedImagePresentation(event)] : [],
     });
   }
   if (event.type === "reasoning") {
@@ -445,6 +463,13 @@ export function renderConversationEvent(event, task, eventState) {
       eventState?.filePathPresentationBase,
       eventState?.changedFiles,
     );
+  }
+  if (event.type === "tool_call") {
+    const tool = toolCallPresentation(payload);
+    return renderToolEvent(event, tool.label, tool.text, tool.tone);
+  }
+  if (event.type === "agent_failure") {
+    return renderToolEvent(event, "Error", payload.text, "danger");
   }
   if (event.type === "task_failed") {
     return renderToolEvent(event, "Error", event.summary, "danger");
@@ -612,10 +637,7 @@ function userMessageText(payload) {
 }
 
 function userMessageContent(payload) {
-  if (Array.isArray(payload?.content)) {
-    return payload.content;
-  }
-  return Array.isArray(payload?.item?.content) ? payload.item.content : [];
+  return Array.isArray(payload?.content) ? payload.content : [];
 }
 
 function normalizedUserMessageText(text) {
@@ -835,12 +857,7 @@ function renderFileChangeEvent(
   changedFiles = new Map(),
 ) {
   const payload = event.payload ?? {};
-  const count =
-    typeof payload.changeCount === "number"
-      ? payload.changeCount
-      : Array.isArray(payload.changes)
-        ? payload.changes.length
-        : 0;
+  const count = Array.isArray(payload.paths) ? payload.paths.length : 0;
   const status = payload.status ? `Status: ${formatStatus(payload.status)}` : "";
   const summary = count === 1 ? "1 changed file" : `${count} changed files`;
   const identity = fileChangeEventIdentity(event);
@@ -874,178 +891,90 @@ function fileChangeEventIdentity(event) {
 
 function renderApprovalCard(event, options = {}) {
   const payload = event.payload ?? {};
-  const params = payload.params ?? {};
   const approvalId = payload.approvalId ?? "";
   const requestError = options.approvalErrors?.get(approvalId) ?? null;
-  const kind = payload.kind ?? "file_change";
 
   return `
-    <article class="task-approval-card" data-approval-kind="${escapeHtml(kind)}">
+    <article class="task-approval-card">
       <header>
-        <h3>${escapeHtml(approvalTitle(kind, params))}</h3>
-        <p class="task-approval-reason">${escapeHtml(params.reason ?? "Approval requested")}</p>
+        <h3>${escapeHtml(payload.title ?? "Approval requested")}</h3>
+        ${payload.reason ? `<p class="task-approval-reason">${escapeHtml(payload.reason)}</p>` : ""}
       </header>
-      ${renderApprovalDetails(kind, params)}
+      ${renderApprovalDetails(payload)}
       ${
         requestError
           ? `<p class="task-approval-error" role="alert">${escapeHtml(requestError.message ?? requestError)}</p>`
           : ""
       }
       <div class="task-approval-actions">
-        ${renderApprovalActions(kind, params, approvalId, options.disabled)}
+        ${renderApprovalActions(payload.decisions, approvalId, options.disabled)}
       </div>
     </article>
   `;
 }
 
-function approvalTitle(kind, params) {
-  if (kind === "permission") {
-    return "Permission Request";
-  }
-  if (kind === "command") {
-    return params.networkApprovalContext && !hasCommand(params.command)
-      ? "Network Access Approval"
-      : "Command Approval";
-  }
-  return "File Change Approval";
+/**
+ * The specifics of one request, in the order a reader checks them: what would
+ * run, what it would reach, and where. Every part is optional because requests
+ * differ, so this renders what is present rather than switching on a kind.
+ */
+function renderApprovalDetails(payload) {
+  const command = `${payload.command ?? ""}`.trim();
+  const sections = [
+    command
+      ? `<pre class="task-approval-command"><code>${escapeHtml(command)}</code></pre>`
+      : "",
+    payload.networkEndpoint
+      ? renderApprovalDefinitionList(
+          [
+            {
+              label: "Network destination",
+              value: `${payload.networkEndpoint}`,
+              code: true,
+            },
+          ],
+          "Network request",
+        )
+      : "",
+    renderPermissionRows(payload.permissions),
+    renderApprovalContext(payload),
+  ];
+  return sections.filter(Boolean).join("");
 }
 
-function renderApprovalDetails(kind, params) {
-  if (kind === "permission") {
-    return [
-      renderPermissionProfile(params.permissions),
-      renderApprovalMetadata(params),
-    ].join("");
-  }
-  if (kind === "command") {
-    const command = hasCommand(params.command)
-      ? `<pre>${escapeHtml(formatCommand(params.command))}</pre>`
-      : "";
-    return [
-      command,
-      renderNetworkApprovalContext(params.networkApprovalContext),
-      params.additionalPermissions
-        ? renderPermissionProfile(params.additionalPermissions)
-        : "",
-      renderApprovalMetadata(params),
-    ].join("");
-  }
-  const grantRoot = `${params.grantRoot ?? ""}`.trim();
-  return [
-    grantRoot
-      ? `<p class="task-approval-description">Grant root: <code>${renderBreakableCode(grantRoot)}</code></p>`
-      : '<p class="task-approval-description">File change permission requested</p>',
-    renderApprovalMetadata(params),
-  ].join("");
-}
-
-function renderApprovalActions(kind, params, approvalId, disabled) {
-  const actions =
-    kind === "permission"
-      ? [
-          { decision: "allow", scope: "turn", label: "Allow this turn" },
-          { decision: "allow", scope: "session", label: "Allow for session" },
-          { decision: "deny", scope: "", label: "Deny" },
-        ]
-      : (params.availableDecisions ?? [
-          "accept",
-          "acceptForSession",
-          "decline",
-          "cancel",
-        ])
-          .filter(
-            (decision) =>
-              typeof decision === "string" &&
-              ["accept", "acceptForSession", "decline", "cancel"].includes(decision),
-          )
-          .map((decision) => ({
-            decision,
-            scope: "",
-            label: formatDecision(decision),
-          }));
-  return actions
-    .map(
-      ({ decision, scope, label }) =>
-        `<button type="button" class="task-secondary-button" data-task-action="approval" data-approval-id="${escapeHtml(approvalId)}" data-decision="${escapeHtml(decision)}"${scope ? ` data-scope="${escapeHtml(scope)}"` : ""} ${disabled ? "disabled" : ""}>${escapeHtml(label)}</button>`,
-    )
-    .join("");
-}
-
-function renderPermissionProfile(profile) {
-  const rows = permissionRows(profile);
-  if (!rows.length) {
-    return '<p class="task-approval-description">Additional permissions requested</p>';
-  }
-  return renderApprovalDefinitionList(rows, "Requested permissions");
-}
-
-function permissionRows(profile) {
-  if (!profile || typeof profile !== "object") {
-    return [];
-  }
-  const rows = [];
-  if (profile.network && typeof profile.network === "object") {
-    rows.push({
-      label: "Network",
-      value: profile.network.enabled === false ? "Disabled" : "Outbound access",
-    });
-  }
-  const fileSystem = profile.fileSystem;
-  if (fileSystem && typeof fileSystem === "object") {
-    for (const entry of fileSystem.entries ?? []) {
-      rows.push({
-        label: `File system · ${formatPermissionAccess(entry?.access)}`,
-        value: formatPermissionPath(entry?.path),
-        code: true,
-      });
-    }
-    for (const [access, paths] of [
-      ["Read", fileSystem.read],
-      ["Write", fileSystem.write],
-    ]) {
-      for (const path of paths ?? []) {
-        rows.push({
-          label: `File system · ${access}`,
-          value: `${path ?? ""}`,
-          code: true,
-        });
-      }
-    }
-    if (Number.isFinite(fileSystem.globScanMaxDepth)) {
-      rows.push({
-        label: "Glob scan depth",
-        value: `${fileSystem.globScanMaxDepth}`,
-      });
-    }
-  }
-  return rows;
-}
-
-function renderNetworkApprovalContext(context) {
-  if (!context || typeof context !== "object") {
+function renderPermissionRows(permissions) {
+  if (!Array.isArray(permissions) || !permissions.length) {
     return "";
   }
-  const protocol = `${context.protocol ?? ""}`.trim();
-  const host = `${context.host ?? ""}`.trim();
-  if (!protocol && !host) {
-    return "";
-  }
-  const destination = protocol && host ? `${protocol}://${host}` : protocol || host;
   return renderApprovalDefinitionList(
-    [{ label: "Network destination", value: destination, code: true }],
-    "Network request",
+    permissions.map((row) => ({
+      label: `${row?.label ?? ""}`,
+      value: `${row?.value ?? ""}`,
+      code: Boolean(row?.verbatim),
+    })),
+    "Requested permissions",
   );
 }
 
-function renderApprovalMetadata(params) {
-  const rows = [];
-  if (`${params.cwd ?? ""}`.trim()) {
-    rows.push({ label: "Working directory", value: `${params.cwd}`, code: true });
-  }
-  if (`${params.environmentId ?? ""}`.trim()) {
-    rows.push({ label: "Environment", value: `${params.environmentId}`, code: true });
-  }
+function renderApprovalContext(payload) {
+  const rows = [
+    ["Grant root", payload.grantRoot],
+    ["Working directory", payload.cwd],
+    ["Environment", payload.environment],
+  ]
+    .filter(([, value]) => `${value ?? ""}`.trim())
+    .map(([label, value]) => ({ label, value: `${value}`, code: true }));
   return rows.length ? renderApprovalDefinitionList(rows, "Request context") : "";
+}
+
+function renderApprovalActions(decisions, approvalId, disabled) {
+  const offered = Array.isArray(decisions) ? decisions : [];
+  return offered
+    .map(
+      (decision) =>
+        `<button type="button" class="task-secondary-button" data-task-action="approval" data-approval-id="${escapeHtml(approvalId)}" data-decision="${escapeHtml(decision)}" ${disabled ? "disabled" : ""}>${escapeHtml(formatDecision(decision))}</button>`,
+    )
+    .join("");
 }
 
 function renderApprovalDefinitionList(rows, label) {
@@ -1067,37 +996,6 @@ function renderBreakableCode(value) {
   return escapeHtml(value)
     .replaceAll("/", "/<wbr>")
     .replaceAll("\\", "\\<wbr>");
-}
-
-function hasCommand(command) {
-  return Array.isArray(command)
-    ? command.length > 0
-    : typeof command === "string"
-      ? Boolean(command.trim())
-      : Boolean(command && typeof command === "object");
-}
-
-function formatPermissionAccess(access) {
-  return { read: "Read", write: "Write", deny: "Deny" }[access] ?? "Access";
-}
-
-function formatPermissionPath(path) {
-  if (!path || typeof path !== "object") {
-    return "(path unavailable)";
-  }
-  if (path.type === "path") {
-    return `${path.path ?? ""}`;
-  }
-  if (path.type === "glob_pattern") {
-    return `${path.pattern ?? ""}`;
-  }
-  if (path.type === "special") {
-    const value = path.value ?? {};
-    const kind = `${value.kind ?? "special"}`;
-    const detail = `${value.subpath ?? value.path ?? ""}`.trim();
-    return detail ? `${kind}: ${detail}` : kind;
-  }
-  return JSON.stringify(path);
 }
 
 function statusTone(type) {

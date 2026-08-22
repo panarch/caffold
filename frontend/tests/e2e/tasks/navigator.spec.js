@@ -6,7 +6,7 @@ import {
   captureReviewScreenshot,
   emitTaskDetailBootstrap,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
   scrollTop,
   stabilizeDynamicText,
   taskPresentation,
@@ -82,7 +82,7 @@ test("mounts initial loading once and preserves settled Task DOM across refresh"
   page,
 }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const initialTasks = deferred();
   const tasks = [
     initialNavigatorTask("thread_initial_dom_a", "Initial DOM Alpha"),
@@ -204,7 +204,7 @@ test("retains an initial Archived result without revealing it before active Task
   page,
 }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const activeTask = initialNavigatorTask("thread_initial_active", "Initial active Task");
   const archivedTask = initialNavigatorTask(
     "thread_initial_archived",
@@ -241,7 +241,7 @@ test("shows active Tasks first and appends a settled Archived section without re
   page,
 }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const activeTask = initialNavigatorTask(
     "thread_active_first",
     "Active result first",
@@ -287,7 +287,7 @@ test("reveals confirmed empty active and Archived states only after both initial
   page,
 }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const gates = await installInitialTaskListGates(page);
 
   await page.goto("/tasks");
@@ -312,7 +312,7 @@ test("reveals confirmed empty active and Archived states only after both initial
 
 test("holds an initial Archived failure until active Tasks settle", { tag: "@all-viewports" }, async ({ page }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const activeTask = initialNavigatorTask(
     "thread_active_after_archive_failure",
     "Active after Archived failure",
@@ -348,7 +348,7 @@ test("shows an initial active failure immediately and reveals Archived after it 
   page,
 }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const archivedTask = initialNavigatorTask(
     "thread_archived_after_active_failure",
     "Archived after active failure",
@@ -382,7 +382,7 @@ test("shows an initial active failure immediately and reveals Archived after it 
 
 test("keeps settled list sections visible during later parallel refreshes", { tag: "@all-viewports" }, async ({ page }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const activeTask = initialNavigatorTask(
     "thread_refresh_active",
     "Retained active refresh row",
@@ -453,7 +453,7 @@ test("keeps settled list sections visible during later parallel refreshes", { ta
 
 test("renders the backend-exhausted Active projection without cursor paging", { tag: "@all-viewports" }, async ({ page }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const task = (threadId, title, updatedMs, worktree = null) => ({
     id: threadId,
@@ -502,7 +502,7 @@ test("refreshes persisted identity and order without replacing runtime status", 
     sourceKey: "__taskListRefreshSource",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const first = initialNavigatorTask(
     "thread_order_first",
     "First ordered Task",
@@ -572,7 +572,7 @@ test("hydrates a cached Task with the task-list stream bootstrap snapshot", { ta
     sourceKey: "__taskListBootstrapSource",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const cached = initialNavigatorTask(
     "thread_list_bootstrap",
     "Persisted navigator name",
@@ -671,7 +671,7 @@ test("applies canonical top placements without list refetches or duplicate reord
     sourceKey: "__activePlacementSource",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const existing = initialNavigatorTask(
     "thread_placement_existing",
     "Existing placed Task",
@@ -833,7 +833,7 @@ test("shows relative age from the latest completion instead of thread recency", 
   page,
 }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const now = Date.now();
   const lastCompletedMs = now - 5 * 60 * 1_000;
   const task = {
@@ -876,7 +876,7 @@ test("keeps Task row indicator columns aligned across worktree and meta states",
     registryKey: "__indicatorEventSources",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const minute = 60_000;
   const hour = 60 * minute;
   const month = 30 * 24 * hour;
@@ -1090,7 +1090,7 @@ test("keeps Archived Task indicator columns aligned with unavailable warning act
   page,
 }, testInfo) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const hour = 60 * 60_000;
   const month = 30 * 24 * hour;
   const now = Date.now();
@@ -1236,7 +1236,7 @@ test("starts active Task navigator spinners at independent phases", { tag: "@all
   page,
 }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const now = Date.now();
   const tasks = ["alpha", "bravo", "charlie"].map((suffix, index) => ({
     id: `thread_spinner_${suffix}`,
@@ -1330,7 +1330,7 @@ test("keeps unseen completion markers blinking, phase-shifted, and motion-safe",
   page,
 }, testInfo) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const now = Date.now();
   const tasks = ["alpha", "bravo", "charlie"].map((suffix, index) => ({
     id: `thread-unseen-${suffix}`,
@@ -1411,7 +1411,7 @@ test("archives and restores an idle Caffold task through the grouped Archived se
   page,
 }, testInfo) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const requestedPaths = [];
   page.on("request", (request) => {
     requestedPaths.push(new URL(request.url()).pathname);
@@ -1666,7 +1666,7 @@ test("archives and restores an idle Caffold task through the grouped Archived se
 
 test("keeps an idle task active when the archive request fails", { tag: "@all-viewports" }, async ({ page }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const task = {
     id: "thread_archive_failure",
     threadId: "thread_archive_failure",
@@ -1742,7 +1742,7 @@ test("keeps an idle task active when the archive request fails", { tag: "@all-vi
 
 test("keeps a task archived when restore fails", { tag: "@all-viewports" }, async ({ page }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const task = {
     id: "thread_restore_failure",
     threadId: "thread_restore_failure",
@@ -1808,7 +1808,7 @@ test("keeps a task archived when restore fails", { tag: "@all-viewports" }, asyn
 
 test("does not offer archive while the canonical task is active", { tag: "@all-viewports" }, async ({ page }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const task = {
     id: "thread_active_archive",
     threadId: "thread_active_archive",
@@ -1864,7 +1864,7 @@ test("keeps cached task rows visible when a list refresh fails", { tag: "@all-vi
     sourceKey: "__taskListEventSource",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const task = {
     id: "thread_stale_list",
@@ -1922,7 +1922,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
   await installEventSourceMock(page, {
     bootstrapFunctionKey: "__groupedNavigatorDetailBootstrap",
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const now = 1_767_300_000_000;
   const taskRecord = (overrides) => ({
     id: overrides.threadId,
@@ -2491,7 +2491,7 @@ test("switches Tasks to master-detail at the Fold8 landscape boundary", { tag: "
       close() {}
     };
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const now = 1_767_300_000_000;
   const task = {
     id: "thread-fold8-boundary",
@@ -2583,7 +2583,7 @@ test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@al
       close() {}
     };
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const now = 1_767_300_000_000;
   const tasks = [
@@ -2729,7 +2729,7 @@ test("patches Task rows in place without reordering and preserves a running spin
     registryKey: "__taskDomEventSources",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const now = 1_767_300_000_000;
   const worktree = {
@@ -2995,7 +2995,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
       close() {}
     };
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const now = 1_767_300_000_000;
   const task = (threadId, title, worktree, updatedMs) => ({
     id: threadId,
@@ -3147,7 +3147,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
       threadId: "thread_gluesql_feature",
       type: "reasoning",
       summary: "Reasoning",
-      payload: { lifecycle: "started", summary: [], content: [] },
+      payload: { summary: [], content: [] },
       createdMs: now + 750,
     },
   );

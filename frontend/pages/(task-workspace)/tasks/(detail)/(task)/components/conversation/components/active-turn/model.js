@@ -29,58 +29,37 @@ function activeTurnStateLabel(events, task) {
     return activeFlagLabel;
   }
 
+  // The newest thing still running says what is happening now. Nothing
+  // running means the agent is between pieces of work.
   const event =
-    [...events]
-      .reverse()
-      .find((entry) => entry.payload?.lifecycle === "started") ??
-    [...events]
-      .reverse()
-      .find((entry) =>
-        entry.type === "work_status" ||
-        entry.type === "reasoning" ||
-        entry.type === "plan" ||
-        entry.type === "command_execution" ||
-        entry.type === "file_change" ||
-        entry.type === "assistant_message",
-      );
-  if (!event) {
-    return "Thinking";
-  }
-  if (event.type === "work_status") {
-    return activeWorkItemLabel(
-      event.payload?.itemType,
-      event.payload?.lifecycle,
-    );
-  }
-  if (event.type === "reasoning") {
-    return "Thinking";
-  }
-  if (event.type === "plan") {
-    return "Updating plan";
-  }
+    [...events].reverse().find((entry) => entry.payload?.status === "inProgress") ??
+    [...events].reverse().find((entry) => WORKING_EVENT_TYPES.includes(entry.type));
+  return event ? workingLabel(event) : "Thinking";
+}
+
+const WORKING_EVENT_TYPES = [
+  "tool_call",
+  "reasoning",
+  "plan",
+  "command_execution",
+  "file_change",
+  "assistant_message",
+];
+
+function workingLabel(event) {
   if (event.type === "command_execution") {
     return "Running command";
   }
   if (event.type === "file_change") {
     return "Editing files";
   }
-  return "Thinking";
-}
-
-function activeWorkItemLabel(itemType, lifecycle) {
-  if (itemType === "contextCompaction") {
-    return lifecycle === "started" ? "Compacting context…" : "Thinking";
-  }
-  if (itemType === "plan") {
+  if (event.type === "plan") {
     return "Updating plan";
   }
-  if (
-    ["commandExecution", "mcpToolCall", "dynamicToolCall"].includes(itemType)
-  ) {
-    return "Running command";
-  }
-  if (itemType === "fileChange") {
-    return "Editing files";
+  // Work Caffold has no surface for says what it is itself, in the agent's
+  // own words, because Caffold has no better name for it.
+  if (event.type === "tool_call" && event.payload?.status === "inProgress") {
+    return `${event.payload?.name ?? "Working"}…`;
   }
   return "Thinking";
 }

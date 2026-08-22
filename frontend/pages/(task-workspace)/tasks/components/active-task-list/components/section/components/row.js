@@ -1,6 +1,6 @@
 import { escapeHtml } from "../../../../../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../../../../../components/icons.js";
-import { PENDING_CODEX_TASK_OPERATIONS } from "../../../../../../codex-status.js";
+import { taskStoreOperationsPresentation } from "../../../../../../codex-status.js";
 import {
   taskStatusView,
   taskThreadStatusType,
@@ -57,7 +57,7 @@ class CaffoldActiveTaskRow extends HTMLElement {
       task: null,
       selectedThreadId: "",
       transportState: "idle",
-      codexTaskOperations: PENDING_CODEX_TASK_OPERATIONS,
+      taskOperations: taskStoreOperationsPresentation(null),
       reorderMode: false,
       reorderable: false,
       pending: false,
@@ -344,9 +344,9 @@ function renderRow(snapshot, mode) {
       </span>`
     : "";
   const action = recoveryCopy ? "open-task-recovery" : "open-task";
-  const blocked = snapshot.codexTaskOperations?.blocked !== false;
+  const blocked = snapshot.taskOperations?.blocked !== false;
   const title = blocked
-    ? snapshot.codexTaskOperations.title
+    ? snapshot.taskOperations.title
     : recoveryCopy
       ? `${task.title} — ${recoveryCopy}`
       : task.title;

@@ -122,6 +122,11 @@ test("failed replacement restores the previous app only after the new runtime st
     writeFileSync(join(path, "Contents", "Resources", "caffold"), "server\n", {
       mode: 0o755,
     });
+    writeFileSync(
+      join(path, "Contents", "Resources", "caffold-claude-runner"),
+      "runner\n",
+      { mode: 0o755 },
+    );
     writeFileSync(join(path, "Contents", "Info.plist"), "plist\n");
     writeFileSync(join(path, "marker"), `${marker}\n`);
   }

@@ -410,7 +410,7 @@ test("creates a task with responsive composer controls and canonical approval st
   await expect(
     tasksPage.locator('.task-message[data-message-role="user"] .task-message-content'),
   ).toHaveCSS("font-size", "14px");
-  await expect(tasksPage).toContainText("Command Approval");
+  await expect(tasksPage).toContainText("Command approval requested");
   await expect(tasksPage).toContainText("cargo test");
   await expect(tasksPage).toContainText("Run the test suite");
   await expect(tasksPage.locator(".task-conversation .task-approval-flow")).toHaveCount(1);
@@ -476,7 +476,7 @@ test("creates a task with responsive composer controls and canonical approval st
     );
     const approvalButton = await taskPresentation(
       tasksPage.locator(
-        '.task-approval-card button[data-task-action="approval"][data-decision="accept"]',
+        '.task-approval-card button[data-task-action="approval"][data-decision="allow"]',
       ),
     );
     expect(approvalButton).toEqual(
@@ -562,14 +562,14 @@ test("creates a task with responsive composer controls and canonical approval st
   await expect
     .poll(() =>
       tasksPage
-        .locator('.task-approval-card button[data-task-action="approval"][data-decision="accept"]')
+        .locator('.task-approval-card button[data-task-action="approval"][data-decision="allow"]')
         .evaluate((button) => ({
           action: button.dataset.taskAction,
           approvalId: button.dataset.approvalId,
           decision: button.dataset.decision,
         })),
     )
-    .toEqual({ action: "approval", approvalId: "approval_1", decision: "accept" });
+    .toEqual({ action: "approval", approvalId: "approval_1", decision: "allow" });
 
 });
 

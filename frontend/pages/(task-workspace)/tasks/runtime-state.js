@@ -87,12 +87,17 @@ export function formatTaskStatus(task) {
 export function classifyPromptFailure(error) {
   const status = Number(error?.status);
   const code = `${error?.code ?? ""}`;
+  // Refused before anything started: the backend answers this before a turn
+  // exists, so the outcome is certainly a rejection — the draft comes back,
+  // rather than lingering as a prompt that might have been heard.
+  if (code === "codex_readiness_blocked") {
+    return PROMPT_SUBMISSION_STATE.REJECTED;
+  }
   const outcomeUnknown =
     !Number.isFinite(status) ||
     status === 0 ||
     status >= 500 ||
-    code === "request_timeout" ||
-    code === "codex_app_server_timeout";
+    code === "agent_timeout";
   return outcomeUnknown
     ? PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN
     : PROMPT_SUBMISSION_STATE.REJECTED;

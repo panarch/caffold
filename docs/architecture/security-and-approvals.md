@@ -17,7 +17,7 @@ Expected deployment:
 - personal host machines
 - private network access such as Tailscale
 - no public unauthenticated exposure
-- browser access to the local filesystem and Codex command execution only
+- browser access to the local filesystem and agent command execution only
   through the Caffold backend
 
 Caffold should still assume that remote command execution is sensitive.
@@ -26,10 +26,33 @@ Caffold should still assume that remote command execution is sensitive.
 
 - Show the cwd and exact command when a command approval supplies them.
 - Show the complete requested capability profile before permission approval.
-- Distinguish one-time approval from accept-for-session.
+- Distinguish allowing once from allowing always.
 - Keep every approval decision visible in the canonical conversation.
-- Make decline and cancel first-class outcomes.
+- Make refusal a first-class outcome, both when the turn continues and when it
+  stops.
 - Avoid silent destructive operations.
+
+## The Approval Vocabulary
+
+Caffold offers four answers to any approval: allow, allow always, deny, and deny
+and stop. A request advertises which of them it accepts, and answering with one
+it did not offer is refused before anything reaches the agent.
+
+Caffold owns the answer, not the permission. Allowing something always tells the
+agent to apply the grant the agent itself proposed, so the permission model
+stays the agent's and Caffold never composes one.
+
+A request reaches the interface already written for a person to read: a title, a
+reason, and whichever specifics it carries — the command, the working directory,
+the network destination, the requested access as labelled rows. The driver
+writes those, because reading a permission profile means understanding it, and
+the driver is what understands its own agent.
+
+An approval's identity is Caffold's; the request it must be answered on is the
+agent's. The driver holds the pairing between the two, so nothing above it
+carries a protocol id, and taking that pairing is what retires the approval —
+whether a person answered it here or the agent resolved it first. Each pairing
+is taken once, so an approval is never answered or withdrawn twice.
 
 ## Codex Execution Approvals
 
@@ -45,14 +68,50 @@ Current rules:
   additional permissions even when no command text is present;
 - permission approval cards show the reason, cwd, and complete requested
   network and filesystem profile;
-- a one-turn or session grant returns the original server-requested permission
-  profile, while denial returns an empty profile;
+- the approval modes offered are assembled by the Codex driver from the
+  permission profiles the workspace allows and the reviewer setting, and reach
+  the interface already worded;
+- allowing a permission request returns the original server-requested profile,
+  scoped to the turn or the session, while denial returns an empty profile;
+- a permission request cannot stop a turn, because Codex's permission response
+  has no way to say so, and it therefore does not offer that answer;
 - command output and exit status remain attached to the canonical turn;
 - long-running commands expose visible running state;
+- a command a person refused reads as declined rather than failed;
 - approval outcomes are sent back through the original app-server request.
 
 Allowlists, deny lists, or command classes require a separate policy before they
 can change the approval flow.
+
+## Claude Execution Approvals
+
+Claude asks on the same channel it speaks on, as a `can_use_tool` control
+request that blocks the turn until it is answered. It asks only because the
+session is started with `--permission-prompt-tool stdio`; without that flag the
+agent never asks and Caffold would show a conversation that appeared to need no
+permission at all.
+
+Current rules:
+
+- command cwd follows the Task's working directory, which is the directory the
+  session's process was started in;
+- an approval card shows the tool the agent named and, for a shell command, the
+  command itself;
+- a tool call does not imply an approval card — the agent's own classifier
+  settles obviously safe calls without asking, so an unasked call is a call that
+  did not need asking rather than one that slipped past;
+- allowing always hands back the permission suggestion the agent itself
+  proposed, unread;
+- denying and stopping is offered, and is carried out as a denial followed by an
+  interrupt, because the agent's permission answer has no way to say "and stop";
+- a call a person refused reads as declined rather than failed, which Caffold
+  can say because Caffold is what refused — the agent reports a refusal as a
+  failed tool result, which is what it is from where the agent stands;
+- the approval modes offered are named by the Claude driver rather than asked
+  for, because the agent publishes no list and what each mode gives up is
+  knowledge about the agent;
+- a control request Caffold did not register for — a hook callback, an
+  in-process tool — is answered rather than left to block the turn.
 
 ## Git Mutations
 

@@ -5,7 +5,7 @@ import {
   activeTaskProjection,
   canonicalTaskState,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
 
 test("selects a Section and opens fixed-directory Task creation", { tag: "@all-viewports" }, async ({ page }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const task = {
     id: "thread_section_entry",
     threadId: "thread_section_entry",
@@ -103,7 +103,7 @@ test("offers GitHub work shortcuts from repository Task creation", { tag: "@all-
   page,
 }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const rootPath = "frontend/tests/e2e/fixtures/home";
   const repository = { rootPath, branch: "main", dirty: false };
   const github = {
@@ -230,7 +230,7 @@ test("offers GitHub work shortcuts from repository Task creation", { tag: "@all-
 
 test("returns a missing Section route to Tasks home", { tag: "@all-viewports" }, async ({ page }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({ json: { sections: [], unsectioned: [] } })
   );
@@ -244,7 +244,7 @@ test("returns a missing Section route to Tasks home", { tag: "@all-viewports" },
 
 test("keeps a repository Section draft while switching shared surfaces", { tag: "@all-viewports" }, async ({ page }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const task = {
     id: "thread_repository_section",
     threadId: "thread_repository_section",
@@ -330,7 +330,7 @@ test("replaces the New Task context when a selected Section path changes", { tag
   page,
 }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const sectionId = "section-path-rebind";
   const task = {
     id: "thread_section_path_rebind",
@@ -447,7 +447,7 @@ test("replaces the New Task context when a selected Section path changes", { tag
 
 test("uses the Section's last composer settings for its next Task request", { tag: "@desktop" }, async ({ page }) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const sectionId = "section-composer-seed";
   const rootPath = "frontend/tests/e2e/fixtures/home";
   const task = {
@@ -518,7 +518,7 @@ test("falls back stale Section settings and applies targeted updates without rel
   page,
 }) => {
   await installEventSourceMock(page, { registryKey: "__sectionComposerSources" });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const sectionId = "section-composer-update";
   const rootPath = "frontend/tests/e2e/fixtures/home";
   const task = {
@@ -593,7 +593,7 @@ test("clears shared repository context when the selected Section loses capabilit
   page,
 }) => {
   await installEventSourceMock(page, { registryKey: "__sectionDetailWatchSources" });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
   const sectionId = "section-context-rebind";
   const rootPath = "frontend/tests/e2e/fixtures/home";
   const repository = { rootPath, branch: "main", dirty: false };

@@ -1,4 +1,5 @@
 use super::*;
+use crate::agent::AgentError;
 
 pub(super) async fn create_task(
     State(state): State<TaskState>,
@@ -6,21 +7,18 @@ pub(super) async fn create_task(
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
     let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
     let cwd = task_cwd(&state, request.cwd.as_deref())?;
-    let connection = require_codex_thread_connection(&state).await?;
-    let client = &connection.client;
-    let turn_options = codex_turn_options(
-        client,
-        request.model,
-        request.effort,
-        request.fast_mode,
-        request.permission_mode,
-    )
-    .await?;
+    let agent = new_task_agent(&state, request.provider.as_deref(), &cwd).await?;
+    let turn_options = TurnOptions {
+        model: request.model,
+        effort: request.effort,
+        fast_mode: request.fast_mode,
+        permission_mode: request.permission_mode,
+    };
 
     let started = state
         .lifecycle
         .start_task(
-            &connection,
+            &agent,
             StartTask {
                 cwd,
                 prompt,
@@ -32,7 +30,7 @@ pub(super) async fn create_task(
         .await?;
     let mut detail = state
         .detail
-        .read(&connection, &started.task.thread_id, None)
+        .read(&agent, &started.task.thread_id, None)
         .await?;
     detail.active_top_placement = Some(started.placement);
     Ok(Json(detail))
@@ -51,25 +49,25 @@ pub(super) async fn task_prompt(
     let managed_cwd = managed_prompt_cwd(managed_worktree.as_ref())?;
     let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
     let _requested_active_turn_id = request.active_turn_id;
-    let connection = require_codex_thread_connection(&state).await?;
+    let agent = state.task_runtime.task_agent(&thread_id).await?;
     let requested_model = request.model;
     let requested_effort = request.effort;
     let requested_fast_mode = request.fast_mode;
     let requested_permission_mode = request.permission_mode;
     state
-        .codex_sessions
+        .task_sessions
         .restore_managed_fast_mode(&thread_id, managed.fast_mode)
         .await;
     let mut target = match state
-        .codex_sessions
-        .prepare_prompt(&connection.client, connection.generation, &thread_id)
+        .task_sessions
+        .prepare_prompt(&agent.driver(), agent.generation(), &thread_id)
         .await
     {
         Ok(target) => target,
         Err(error) => {
             state
-                .codex_runtime
-                .recover_connection_error(&connection, &error)
+                .task_runtime
+                .recover_connection_error_for(&agent, &error)
                 .await;
             return Err(error.into());
         }
@@ -78,72 +76,75 @@ pub(super) async fn task_prompt(
         target = managed_prompt_target(
             target,
             managed_cwd,
-            state.codex_sessions.snapshot(&thread_id).await.as_ref(),
+            state.task_sessions.snapshot(&thread_id).await.as_ref(),
         )?;
     }
     let mut refreshed_stale_turn = false;
     let outcome = loop {
         let attempted_steer = matches!(&target, PromptTarget::Steer { .. });
         let result: Result<TaskPromptOutcome, _> = match target {
-            PromptTarget::Steer { turn_id } => connection
-                .client
+            PromptTarget::Steer { turn_id } => agent
+                .driver()
                 .steer_turn(&thread_id, &turn_id, &prompt, &images)
                 .await
-                .map(|_| TaskPromptOutcome {
+                .map(|()| TaskPromptOutcome {
                     turn_id,
                     steered: true,
                     started_turn: None,
                 }),
             PromptTarget::Start { cwd } => {
-                let turn_options = codex_turn_options(
-                    &connection.client,
-                    requested_model.clone(),
-                    requested_effort.clone(),
-                    requested_fast_mode,
-                    requested_permission_mode,
-                )
-                .await?;
-                let applied_options = turn_options.clone();
-                connection
-                    .client
-                    .start_turn(&thread_id, &cwd, &prompt, &images, turn_options)
+                let chosen = TurnOptions {
+                    model: requested_model.clone(),
+                    effort: requested_effort.clone(),
+                    fast_mode: requested_fast_mode,
+                    permission_mode: requested_permission_mode.clone(),
+                };
+                let driver = agent.driver();
+                let accepted = match driver.accept_turn_options(&chosen).await {
+                    Ok(accepted) => accepted,
+                    Err(TurnRejected::Unavailable(error)) => {
+                        return Err(error.into());
+                    }
+                    Err(rejected) => return Err(rejected.into()),
+                };
+                driver
+                    .start_turn(&thread_id, &cwd, &prompt, &images, &accepted)
                     .await
                     .map(|started| TaskPromptOutcome {
-                        turn_id: started.turn_id.clone(),
+                        turn_id: started.turn.id.clone(),
                         steered: false,
-                        started_turn: Some((started.turn, applied_options)),
+                        started_turn: Some((started.turn, started.applied)),
                     })
             }
         };
         match result {
             Ok(result) => break result,
             Err(error)
-                if attempted_steer && !refreshed_stale_turn && error.is_turn_unavailable() =>
+                if attempted_steer
+                    && !refreshed_stale_turn
+                    && matches!(error, AgentError::TurnGone(_)) =>
             {
                 refreshed_stale_turn = true;
                 if let Err(refresh_error) = state
-                    .codex_sessions
-                    .refresh_subscription(&connection.client, connection.generation, &thread_id)
+                    .task_sessions
+                    .refresh_subscription(&agent.driver(), agent.generation(), &thread_id)
                     .await
                 {
-                    state.codex_sessions.cancel_runtime(&thread_id).await;
-                    state
-                        .codex_runtime
-                        .recover_connection_error(&connection, &refresh_error)
-                        .await;
+                    state.task_sessions.cancel_runtime(&thread_id).await;
+                    recover_agent_connection(&state, &agent, &refresh_error).await;
                     return Err(refresh_error.into());
                 }
                 target = match state
-                    .codex_sessions
-                    .prepare_prompt(&connection.client, connection.generation, &thread_id)
+                    .task_sessions
+                    .prepare_prompt(&agent.driver(), agent.generation(), &thread_id)
                     .await
                 {
                     Ok(target) => target,
                     Err(refresh_error) => {
-                        state.codex_sessions.cancel_runtime(&thread_id).await;
+                        state.task_sessions.cancel_runtime(&thread_id).await;
                         state
-                            .codex_runtime
-                            .recover_connection_error(&connection, &refresh_error)
+                            .task_runtime
+                            .recover_connection_error_for(&agent, &refresh_error)
                             .await;
                         return Err(refresh_error.into());
                     }
@@ -152,15 +153,15 @@ pub(super) async fn task_prompt(
                     target = managed_prompt_target(
                         target,
                         managed_cwd,
-                        state.codex_sessions.snapshot(&thread_id).await.as_ref(),
+                        state.task_sessions.snapshot(&thread_id).await.as_ref(),
                     )?;
                 }
             }
             Err(error) => {
-                state.codex_sessions.cancel_runtime(&thread_id).await;
+                state.task_sessions.cancel_runtime(&thread_id).await;
                 state
-                    .codex_runtime
-                    .recover_connection_error(&connection, &error)
+                    .task_runtime
+                    .recover_connection_error_for(&agent, &error)
                     .await;
                 return Err(error.into());
             }
@@ -168,16 +169,16 @@ pub(super) async fn task_prompt(
     };
     if let Some((turn, applied_options)) = outcome.started_turn {
         state
-            .codex_sessions
+            .task_sessions
             .record_turn_started(
-                connection.generation,
+                agent.generation(),
                 &thread_id,
                 managed_cwd.as_deref(),
-                turn,
+                turn.clone(),
                 applied_options.clone(),
             )
             .await;
-        if let Some(snapshot) = state.codex_sessions.snapshot(&thread_id).await {
+        if let Some(snapshot) = state.task_sessions.snapshot(&thread_id).await {
             let persistence_result = task_store_update_composer_settings(
                 &state,
                 &thread_id,
@@ -253,7 +254,7 @@ pub(super) fn managed_prompt_cwd(
 pub(super) fn managed_prompt_target(
     target: PromptTarget,
     managed_cwd: &str,
-    snapshot: Option<&ThreadSessionSnapshot>,
+    snapshot: Option<&SessionSnapshot>,
 ) -> Result<PromptTarget, ApiError> {
     match target {
         PromptTarget::Start { .. } => Ok(PromptTarget::Start {
@@ -293,13 +294,13 @@ pub(super) async fn task_interrupt(
         .await?
         .ok_or_else(task_not_managed_error)?;
     state
-        .codex_sessions
+        .task_sessions
         .restore_managed_fast_mode(&thread_id, managed.fast_mode)
         .await;
-    let connection = require_codex_thread_connection(&state).await?;
+    let agent = state.task_runtime.task_agent(&thread_id).await?;
     let Some(turn_id) = state
-        .codex_sessions
-        .active_turn_id(&connection.client, connection.generation, &thread_id)
+        .task_sessions
+        .active_turn_id(&agent.driver(), agent.generation(), &thread_id)
         .await?
     else {
         return Err(ApiError::BadRequest {
@@ -307,16 +308,11 @@ pub(super) async fn task_interrupt(
             message: "thread does not have an active turn to interrupt".to_string(),
         });
     };
-    if let Err(error) = connection.client.interrupt_turn(&thread_id, &turn_id).await {
-        state
-            .codex_runtime
-            .recover_connection_error(&connection, &error)
-            .await;
+    if let Err(error) = agent.driver().interrupt_turn(&thread_id, &turn_id).await {
+        recover_agent_connection(&state, &agent, &error).await;
         return Err(error.into());
     }
-    Ok(Json(
-        state.detail.read(&connection, &thread_id, None).await?,
-    ))
+    Ok(Json(state.detail.read(&agent, &thread_id, None).await?))
 }
 
 pub(super) async fn task_approval(
@@ -328,11 +324,11 @@ pub(super) async fn task_approval(
     if task_store_get(&state, &thread_id).await?.is_none() {
         return Err(task_not_managed_error());
     }
-    let connection = require_codex_thread_connection(&state).await?;
-    let resolution = normalize_approval_resolution(request.decision, request.scope)?;
+    let agent = state.task_runtime.task_agent(&thread_id).await?;
+    let decision = normalize_approval_decision(&request.decision)?;
     match state
-        .codex_runtime
-        .resolve_approval(&connection, &thread_id, &approval_id, resolution)
+        .task_runtime
+        .resolve_approval(&agent, &thread_id, &approval_id, decision)
         .await
     {
         Ok(()) => {}
@@ -354,12 +350,10 @@ pub(super) async fn task_approval(
                 message: "approval decision does not match the pending request".to_string(),
             });
         }
-        Err(ApprovalResolveError::Codex(error)) => return Err(error.into()),
+        Err(ApprovalResolveError::Agent(error)) => return Err(error.into()),
     }
 
-    Ok(Json(
-        state.detail.read(&connection, &thread_id, None).await?,
-    ))
+    Ok(Json(state.detail.read(&agent, &thread_id, None).await?))
 }
 
 pub(super) async fn require_codex_thread_client(
@@ -374,6 +368,39 @@ pub(super) async fn require_codex_thread_connection(
     state.detail.connection().await
 }
 
+/// The agent a Task about to be created will belong to.
+///
+/// Every other route reads the agent off the Task. This one has no Task yet, so
+/// the choice comes from the model that was picked: the list a person chose
+/// from said which agent each model belongs to, and that choice is carried back
+/// here rather than guessed at from the model's name.
+async fn new_task_agent(
+    state: &TaskState,
+    provider: Option<&str>,
+    cwd: &str,
+) -> Result<TaskAgent, ApiError> {
+    match provider.map(str::trim).filter(|value| !value.is_empty()) {
+        None | Some("codex") => Ok(TaskAgent::Codex(
+            require_codex_thread_connection(state).await?,
+        )),
+        Some("claude") => Ok(TaskAgent::Claude {
+            driver: state.task_runtime.claude().driver(cwd),
+        }),
+        Some(_) => Err(ApiError::BadRequest {
+            code: "unsupported_provider",
+            message: "Caffold does not drive that agent.".to_string(),
+        }),
+    }
+}
+
+/// Tell the runtime a connection failed, when the agent has one to lose.
+async fn recover_agent_connection(state: &TaskState, agent: &TaskAgent, error: &AgentError) {
+    state
+        .task_runtime
+        .recover_connection_error_for(agent, error)
+        .await;
+}
+
 #[cfg(test)]
 pub(super) fn managed_thread_from_task_record(
     task: &TaskRecord,
@@ -383,6 +410,7 @@ pub(super) fn managed_thread_from_task_record(
 ) -> ManagedThread {
     let mut managed = ManagedThread::new(
         task.thread_id.clone(),
+        RunBy::Codex,
         Some(task_activity_ms(task)),
         model,
         reasoning_effort,
@@ -499,12 +527,21 @@ mod tests {
     use serde_json::{Value as JsonValue, json};
     use tower::ServiceExt;
 
+    /// Decode a fixture the way the adapter decodes a real answer.
+    fn decoded_thread(thread: JsonValue) -> crate::agent::codex::CodexThread {
+        serde_json::from_value(thread).expect("the fixture decodes as a Codex thread")
+    }
+
+    fn decoded_page(page: JsonValue) -> crate::agent::codex::TurnsPage {
+        serde_json::from_value(page).expect("the fixture decodes as a Codex turns page")
+    }
+
     use super::super::test_support::*;
     use super::*;
     use crate::{
         app::tasks::test_support::*,
         fs::RootedFs,
-        task_store::{CheckoutAnchor, ManagedThread},
+        task_store::{CheckoutAnchor, ManagedThread, RunBy},
     };
 
     async fn publish_permission_approval(
@@ -514,8 +551,8 @@ mod tests {
         request_id: i64,
     ) {
         let mut task_events = state.task_events.subscribe();
-        state.codex_runtime.spawn_test_bridge(client.clone(), 1);
-        let request = crate::codex_app_server::decode_server_request(
+        state.task_runtime.spawn_test_bridge(client.clone(), 1);
+        let request = crate::agent::codex::decode_server_request(
             json!(request_id),
             "item/permissions/requestApproval",
             json!({
@@ -529,7 +566,7 @@ mod tests {
             }),
         )
         .unwrap();
-        client.mock_publish_event(crate::codex_app_server::CodexRuntimeEvent::ServerRequest(
+        client.mock_publish_event(crate::agent::codex::CodexRuntimeEvent::ServerRequest(
             request,
         ));
 
@@ -549,7 +586,7 @@ mod tests {
     async fn permission_approval_http_route_grants_only_the_server_requested_profile() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-permission-approval";
-        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
             "thread/resume",
             resumed_task(thread_id, root.path()),
         )]);
@@ -564,7 +601,7 @@ mod tests {
                     .method("POST")
                     .uri(format!("/api/tasks/{thread_id}/approvals/71"))
                     .header(axum::http::header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(r#"{"decision":"allow","scope":"session"}"#))
+                    .body(Body::from(r#"{"decision":"allowAlways"}"#))
                     .unwrap(),
             )
             .await
@@ -589,7 +626,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn permission_approval_http_route_rejects_command_decisions_without_responding() {
+    async fn an_approval_refuses_a_decision_it_did_not_offer() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-permission-mismatch";
         let client = CodexThreadClient::mock(Vec::new());
@@ -604,7 +641,7 @@ mod tests {
                     .method("POST")
                     .uri(format!("/api/tasks/{thread_id}/approvals/72"))
                     .header(axum::http::header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(r#"{"decision":"accept"}"#))
+                    .body(Body::from(r#"{"decision":"denyAndStop"}"#))
                     .unwrap(),
             )
             .await
@@ -617,10 +654,7 @@ mod tests {
         let body: JsonValue = serde_json::from_slice(&body).unwrap();
         assert_eq!(body["error"]["code"], "approval_resolution_mismatch");
         assert!(client.mock_server_responses().await.is_empty());
-        assert_eq!(
-            state.codex_runtime.approval_events(thread_id).await.len(),
-            1
-        );
+        assert_eq!(state.task_runtime.approval_events(thread_id).await.len(), 1);
     }
 
     #[tokio::test]
@@ -629,13 +663,13 @@ mod tests {
         let client = CodexThreadClient::mock(Vec::new());
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        let readiness = crate::codex_app_server::CodexReadiness::blocking(
-            crate::codex_app_server::CodexReadinessState::UpdateRequired,
-            crate::codex_app_server::CodexReadinessReason::VersionBelowMinimum,
+        let readiness = crate::agent::codex::CodexReadiness::blocking(
+            crate::agent::codex::CodexReadinessState::UpdateRequired,
+            crate::agent::codex::CodexReadinessReason::VersionBelowMinimum,
             "Codex CLI 0.146.0 is older than the minimum supported version 0.147.0.",
             None,
         );
-        state.codex_runtime.set_test_readiness(readiness).await;
+        state.task_runtime.set_test_readiness(readiness).await;
 
         let response = router(state)
             .oneshot(
@@ -666,11 +700,11 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-explicit-permission";
         let mut responses = vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "config/read",
                 json!({ "config": { "developer_instructions": "Keep custom guidance." } }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/start",
                 json!({
                 "thread": {
@@ -690,7 +724,7 @@ mod tests {
                 }),
             ),
         ];
-        responses.push(crate::codex_app_server::MockCodexResponse::ok_for(
+        responses.push(crate::agent::codex::MockCodexResponse::ok_for(
             "thread/name/set",
             json!({
                 "threadId": thread_id,
@@ -698,7 +732,7 @@ mod tests {
             }),
             json!({}),
         ));
-        responses.push(crate::codex_app_server::MockCodexResponse::ok(
+        responses.push(crate::agent::codex::MockCodexResponse::ok(
             "turn/start",
             json!({
                 "turn": {
@@ -715,22 +749,20 @@ mod tests {
         let response = create_task(
             State(state),
             Json(CreateTaskRequest {
+                provider: None,
                 prompt: "Use the selected approval mode".to_string(),
                 images: Vec::new(),
                 cwd: None,
                 model: None,
                 effort: None,
                 fast_mode: false,
-                permission_mode: Some(CodexPermissionMode::ApproveForMe),
+                permission_mode: Some("approveForMe".to_string()),
             }),
         )
         .await
         .expect("task creation succeeds");
 
-        assert_eq!(
-            response.0.permission_mode,
-            Some(CodexPermissionMode::ApproveForMe)
-        );
+        assert_eq!(response.0.permission_mode, Some("approveForMe".to_string()));
         assert_eq!(
             response.0.task.as_ref().map(|task| task.title.as_str()),
             Some("[REQ] Use the selected approval mode")
@@ -774,15 +806,12 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-model-settings";
         let mut responses = vec![
-            crate::codex_app_server::MockCodexResponse::ok(
-                "model/list",
-                current_model_list_response(),
-            ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok("model/list", current_model_list_response()),
+            crate::agent::codex::MockCodexResponse::ok(
                 "config/read",
                 json!({ "config": { "developer_instructions": null } }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/start",
                 json!({
                     "thread": {
@@ -799,12 +828,12 @@ mod tests {
                 }),
             ),
         ];
-        responses.push(crate::codex_app_server::MockCodexResponse::ok_for(
+        responses.push(crate::agent::codex::MockCodexResponse::ok_for(
             "thread/name/set",
             json!({ "threadId": thread_id, "name": "[REQ] Use xhigh" }),
             json!({}),
         ));
-        responses.push(crate::codex_app_server::MockCodexResponse::ok(
+        responses.push(crate::agent::codex::MockCodexResponse::ok(
             "turn/start",
             json!({
                 "turn": {
@@ -823,6 +852,7 @@ mod tests {
         let response = create_task(
             State(state.clone()),
             Json(CreateTaskRequest {
+                provider: None,
                 prompt: "Use xhigh".to_string(),
                 images: Vec::new(),
                 cwd: None,
@@ -911,11 +941,11 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-section-setup-failure";
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "config/read",
                 json!({ "config": { "developer_instructions": null } }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/start",
                 json!({
                     "thread": {
@@ -929,7 +959,7 @@ mod tests {
                     }
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok_for(
+            crate::agent::codex::MockCodexResponse::ok_for(
                 "thread/name/set",
                 json!({
                     "threadId": thread_id,
@@ -937,19 +967,23 @@ mod tests {
                 }),
                 json!({}),
             ),
-            crate::codex_app_server::MockCodexResponse::ok("thread/archive", json!({})),
+            crate::agent::codex::MockCodexResponse::ok("thread/archive", json!({})),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         state
             .task_store
-            .claim(ManagedThread::new(thread_id, Some(1), None, None), 1)
+            .claim(
+                ManagedThread::new(thread_id, RunBy::Codex, Some(1), None, None),
+                1,
+            )
             .unwrap();
         state.task_store.archive(thread_id, 2).unwrap().unwrap();
 
         let result = create_task(
             State(state.clone()),
             Json(CreateTaskRequest {
+                provider: None,
                 prompt: "Must not become managed".to_string(),
                 images: Vec::new(),
                 cwd: None,
@@ -990,15 +1024,12 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-follow-up-model-settings";
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/resume",
                 resumed_task(thread_id, root.path()),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
-                "model/list",
-                current_model_list_response(),
-            ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok("model/list", current_model_list_response()),
+            crate::agent::codex::MockCodexResponse::ok(
                 "turn/start",
                 json!({
                     "turn": {
@@ -1108,15 +1139,12 @@ mod tests {
             crate::git::create_attached_worktree(root.path(), &managed_cwd, "caffold/review", None)
                 .unwrap();
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/resume",
                 resumed_task(thread_id, root.path()),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
-                "model/list",
-                current_model_list_response(),
-            ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok("model/list", current_model_list_response()),
+            crate::agent::codex::MockCodexResponse::ok(
                 "turn/start",
                 json!({
                     "turn": {
@@ -1126,7 +1154,7 @@ mod tests {
                     }
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "turn/steer",
                 json!({ "turnId": "turn-managed-follow-up" }),
             ),
@@ -1185,23 +1213,23 @@ mod tests {
         assert_eq!(turn_start.1["cwd"], managed_cwd.display().to_string());
         assert_eq!(
             state
-                .codex_sessions
+                .task_sessions
                 .snapshot(thread_id)
                 .await
                 .unwrap()
-                .thread
+                .conversation
                 .unwrap()
                 .cwd,
             managed_cwd.display().to_string()
         );
 
-        let syncing = state.codex_sessions.begin_external_sync(thread_id).await;
+        let syncing = state.task_sessions.begin_external_sync(thread_id).await;
         state
-            .codex_sessions
+            .task_sessions
             .apply_external_read_sync(
                 thread_id,
                 syncing.revision,
-                serde_json::from_value(json!({
+                crate::agent::Conversation::from(&decoded_thread(json!({
                     "id": thread_id,
                     "preview": "Managed follow-up",
                     "status": { "type": "active", "activeFlags": [] },
@@ -1209,9 +1237,8 @@ mod tests {
                     "createdAt": 1.0,
                     "updatedAt": 2.0,
                     "turns": []
-                }))
-                .unwrap(),
-                serde_json::from_value(json!({
+                }))),
+                crate::agent::TurnPage::from(&decoded_page(json!({
                     "data": [{
                         "id": "turn-managed-follow-up",
                         "items": [],
@@ -1219,13 +1246,12 @@ mod tests {
                     }],
                     "nextCursor": null,
                     "backwardsCursor": null
-                }))
-                .unwrap(),
+                }))),
             )
             .await;
-        let snapshot = state.codex_sessions.snapshot(thread_id).await.unwrap();
+        let snapshot = state.task_sessions.snapshot(thread_id).await.unwrap();
         assert_eq!(
-            snapshot.thread.unwrap().cwd,
+            snapshot.conversation.unwrap().cwd,
             root.path().display().to_string()
         );
         assert_eq!(
@@ -1379,7 +1405,7 @@ mod tests {
         let checkout =
             crate::git::create_attached_worktree(root.path(), &managed_cwd, "caffold/review", None)
                 .unwrap();
-        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
             "thread/resume",
             json!({
                 "thread": {
@@ -1466,7 +1492,7 @@ mod tests {
             crate::git::create_attached_worktree(root.path(), &managed_cwd, "caffold/review", None)
                 .unwrap();
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/resume",
                 json!({
                     "thread": {
@@ -1491,10 +1517,7 @@ mod tests {
                     }
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
-                "turn/steer",
-                json!({ "turnId": turn_id }),
-            ),
+            crate::agent::codex::MockCodexResponse::ok("turn/steer", json!({ "turnId": turn_id })),
         ]);
         // A fresh TaskState models the empty in-memory session state after the
         // Caffold server restarts. The canonical thread cwd remains the source
@@ -1534,7 +1557,7 @@ mod tests {
         .expect("post-restart managed turn remains steerable");
 
         assert!(response.0.steered);
-        let snapshot = state.codex_sessions.snapshot(thread_id).await.unwrap();
+        let snapshot = state.task_sessions.snapshot(thread_id).await.unwrap();
         assert_eq!(snapshot.active_turn_id.as_deref(), Some(turn_id));
         assert_eq!(
             snapshot.active_turn_cwd.as_deref(),
@@ -1557,7 +1580,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-system-error-recovery";
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/resume",
                 json!({
                     "thread": {
@@ -1585,7 +1608,7 @@ mod tests {
                     }
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "turn/start",
                 json!({
                     "turn": {
@@ -1630,7 +1653,7 @@ mod tests {
         );
         assert_eq!(
             state
-                .codex_sessions
+                .task_sessions
                 .snapshot(thread_id)
                 .await
                 .expect("recovered session")
@@ -1664,9 +1687,9 @@ mod tests {
             })
         };
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok("thread/resume", resume("notLoaded")),
-            crate::codex_app_server::MockCodexResponse::ok("thread/resume", resume("idle")),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok("thread/resume", resume("notLoaded")),
+            crate::agent::codex::MockCodexResponse::ok("thread/resume", resume("idle")),
+            crate::agent::codex::MockCodexResponse::ok(
                 "turn/start",
                 json!({
                     "turn": {
@@ -1718,7 +1741,7 @@ mod tests {
         let turn_id = "turn-active";
         let prompt = "Keep this accepted steer visible after reload";
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/resume",
                 json!({
                     "thread": {
@@ -1737,10 +1760,7 @@ mod tests {
                     "cwd": root.path().display().to_string()
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
-                "turn/steer",
-                json!({ "turnId": turn_id }),
-            ),
+            crate::agent::codex::MockCodexResponse::ok("turn/steer", json!({ "turnId": turn_id })),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -1830,7 +1850,7 @@ mod tests {
         let thread_id = "thread-stale-steer-follow-up";
         let stale_turn_id = "turn-completed-before-steer";
         let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/resume",
                 json!({
                     "thread": {
@@ -1858,13 +1878,13 @@ mod tests {
                     }
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::error(
+            crate::agent::codex::MockCodexResponse::error(
                 "turn/steer",
-                crate::codex_app_server::CodexThreadError::TurnUnavailable(
+                crate::agent::codex::CodexThreadError::TurnUnavailable(
                     "no active turn to steer".to_string(),
                 ),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "thread/resume",
                 json!({
                     "thread": {
@@ -1892,7 +1912,7 @@ mod tests {
                     }
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok(
+            crate::agent::codex::MockCodexResponse::ok(
                 "turn/start",
                 json!({
                     "turn": {
@@ -2000,12 +2020,14 @@ mod state_tests {
         let project = root.path().join("project");
         std::fs::create_dir(&project).unwrap();
         let (shutdown, _) = broadcast::channel(1);
+        let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
         let state = TaskState::new(
             Arc::new(RootedFs::new(root.path()).unwrap()),
             "project".to_string(),
             shutdown,
             TaskStore::memory().unwrap(),
             root.path().join("managed-worktrees"),
+            claude,
         )
         .expect("task state");
 

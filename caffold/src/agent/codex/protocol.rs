@@ -155,6 +155,22 @@ fn default_items_view() -> TurnItemsView {
     TurnItemsView::Full
 }
 
+/// Codex reports times in seconds; Caffold works in milliseconds.
+///
+/// Zero and negative values mean "not set" rather than the epoch, so they
+/// convert to zero and the caller decides what an unset time means.
+pub(super) fn seconds_to_ms(value: Option<f64>) -> u64 {
+    value.map(seconds_to_ms_value).unwrap_or(0)
+}
+
+pub(super) fn seconds_to_ms_value(value: f64) -> u64 {
+    if value.is_finite() && value > 0.0 {
+        (value * 1000.0) as u64
+    } else {
+        0
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexThread {
@@ -177,12 +193,6 @@ pub struct CodexThread {
     pub turns: Vec<CodexTurn>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
-}
-
-impl CodexThread {
-    pub fn into_value(self) -> Value {
-        serde_json::to_value(self).expect("serializing a decoded Codex thread cannot fail")
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

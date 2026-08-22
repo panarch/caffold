@@ -6,7 +6,7 @@ import {
   captureReviewScreenshot,
   emitTaskDetailBootstrap,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -20,7 +20,7 @@ test("renders managed Task file changes relative in live cards and Work details"
     registryKey: "__fileChangePathSources",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_file_change_paths";
   const turnId = "turn_file_change_paths";
@@ -59,13 +59,12 @@ test("renders managed Task file changes relative in live cards and Work details"
   });
   const events = [
     event("standalone-file-change", "file_change", 1, {
-      changes: [
-        { path: localAbsolutePath },
-        { path: "tests/css-ownership.test.mjs" },
-        { path: `${rootPath}-copy/tests/css-ownership.test.mjs` },
-        { path: "frontend\\pages\\..\\app.js" },
+      paths: [
+        localAbsolutePath,
+        "tests/css-ownership.test.mjs",
+        `${rootPath}-copy/tests/css-ownership.test.mjs`,
+        "frontend\\pages\\..\\app.js",
       ],
-      changeCount: 4,
       status: "completed",
     }),
     event("completed-user", "user_message", 2, {
@@ -74,17 +73,12 @@ test("renders managed Task file changes relative in live cards and Work details"
     }),
     event("completed-file-change-1", "file_change", 3, {
       turnId,
-      changes: [{ path: `${rootPath}/src/./render.js` }],
-      changeCount: 1,
+      paths: [`${rootPath}/src/./render.js`],
       status: "inProgress",
     }),
     event("completed-file-change-2", "file_change", 4, {
       turnId,
-      changes: [
-        { path: "src/render.js" },
-        { path: "/private/tmp/shared.js" },
-      ],
-      changeCount: 2,
+      paths: ["src/render.js", "/private/tmp/shared.js"],
       status: "completed",
     }),
     event("completed-turn", "turn_completed", 5, {
@@ -202,16 +196,12 @@ test("renders managed Task file changes relative in live cards and Work details"
   const revisedStandalone = revisedDetail.events.find(
     ({ id }) => id === "standalone-file-change",
   );
-  revisedStandalone.payload.changes.push({ path: `${rootPath}/src/new.js` });
-  revisedStandalone.payload.changeCount = 5;
+  revisedStandalone.payload.paths.push(`${rootPath}/src/new.js`);
   revisedStandalone.payload.status = "inProgress";
   const revisedCompleted = revisedDetail.events.find(
     ({ id }) => id === "completed-file-change-2",
   );
-  revisedCompleted.payload.changes.push({
-    path: `${rootPath}/src/new-work.js`,
-  });
-  revisedCompleted.payload.changeCount = 3;
+  revisedCompleted.payload.paths.push(`${rootPath}/src/new-work.js`);
   await emitTaskSync(page, threadId, revisedDetail);
 
   await expect(standaloneFiles.locator("code")).toHaveText([

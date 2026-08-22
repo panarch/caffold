@@ -8,6 +8,13 @@ import {
 import {
   CODEX_RUNTIME_RESTART_CONFIRMED_EVENT,
 } from "./codex-status/components/runtime-restart-dialog.js";
+import { restartClaudeRuntime } from "../../api.js";
+import {
+  CLAUDE_RUNTIME_RESTART_REQUEST_EVENT,
+} from "./settings/claude/page.js";
+import {
+  CLAUDE_RUNTIME_RESTART_CONFIRMED_EVENT,
+} from "./settings/claude/components/runtime-restart-dialog.js";
 import "./components/navigation.js";
 import {
   TASK_ARCHIVED_DELETE_CONFIRMED_EVENT,
@@ -52,9 +59,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.navigationPaneWidth = NAVIGATION_PANE_DEFAULT_WIDTH;
     this.globalListenersAttached = false;
     this.currentOpenOptions = {};
-    this.routeActivationRequested = false;
-    this.pendingCodexTaskRoute = null;
-    this.pendingTaskRouteActivation = null;
     this.codexRestartStateValue = { state: "idle", message: "" };
     this.codexStatusLifecycle = createCodexStatusLifecycle({
       onSnapshotChange: (snapshot) => this.setCodexStatusSnapshot(snapshot),
@@ -108,6 +112,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
       </section>
       <caffold-task-archived-delete-dialog></caffold-task-archived-delete-dialog>
       <caffold-codex-runtime-restart-dialog></caffold-codex-runtime-restart-dialog>
+      <caffold-claude-runtime-restart-dialog></caffold-claude-runtime-restart-dialog>
     `;
     this.backButton = this.querySelector(".task-workspace-back");
     this.closeButton = this.querySelector(".task-workspace-close");
@@ -125,6 +130,9 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.codexRuntimeRestartDialog = this.querySelector(
       ":scope > caffold-codex-runtime-restart-dialog",
     );
+    this.claudeRuntimeRestartDialog = this.querySelector(
+      ":scope > caffold-claude-runtime-restart-dialog",
+    );
     this.tasksPage.ensureRendered();
     this.settingsWorkspace.ensureRendered();
     this.tasksPage.connectTaskNavigator(this.taskNavigator);
@@ -132,6 +140,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.setCodexStatusSnapshot(this.codexStatusSnapshotValue);
     this.tasksPage.setCodexRestartState(this.codexRestartStateValue);
     this.settingsWorkspace.setCodexRestartState(this.codexRestartStateValue);
+    this.settingsWorkspace.setClaudeRestartState(this.claudeRestartStateValue);
     this.renderIcons();
 
     this.backButton.addEventListener("click", () => {
@@ -203,6 +212,17 @@ class CaffoldTaskWorkspace extends HTMLElement {
       (event) => {
         event.stopPropagation();
         void this.codexStatusLifecycle.requestRuntimeRestart();
+      },
+    );
+    this.addEventListener(CLAUDE_RUNTIME_RESTART_REQUEST_EVENT, (event) => {
+      event.stopPropagation();
+      this.claudeRuntimeRestartDialog.open();
+    });
+    this.claudeRuntimeRestartDialog.addEventListener(
+      CLAUDE_RUNTIME_RESTART_CONFIRMED_EVENT,
+      (event) => {
+        event.stopPropagation();
+        void this.restartClaudeRuntimeNow();
       },
     );
     this.masterResizer.addEventListener("pointerdown", (event) => {
@@ -286,22 +306,12 @@ class CaffoldTaskWorkspace extends HTMLElement {
   }
 
   async openRoute(route, options = {}) {
-    this.routeActivationRequested = true;
     this.currentOpenOptions = { ...options };
     this.prepareRoute(route, options);
     if (this.mode === "settings") {
-      this.pendingCodexTaskRoute = null;
       return null;
     }
     void this.taskNavigator.activate();
-    if (this.tasksPage.codexOperationsBlocked()) {
-      this.pendingCodexTaskRoute = {
-        route: { ...route },
-        options: { ...options },
-      };
-      return null;
-    }
-    this.pendingCodexTaskRoute = null;
     const result = await this.tasksPage.openRoute(route, options);
     this.updateChrome();
     return result;
@@ -333,13 +343,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
     if (!isCurrent()) {
       return { stale: true, retry: false };
     }
-    if (this.pendingTaskRouteActivation) {
-      progress?.activatingRoute();
-      await this.pendingTaskRouteActivation;
-    }
-    if (!isCurrent()) {
-      return { stale: true, retry: false };
-    }
     const tasks = this.mode === "tasks"
       ? await this.tasksPage.recoverForeground({
           initialActivation,
@@ -350,7 +353,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     return {
       retry: Boolean(
         statusError ||
-        (!initialActivation && this.tasksPage.codexOperationsBlocked()) ||
+        (!initialActivation && this.tasksPage.taskStoreOperationsBlocked()) ||
         tasks?.retry
       ),
       error: statusError ?? tasks?.error ?? null,
@@ -372,7 +375,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     const nextSnapshot = snapshot ?? this.codexStatusLifecycle.snapshot();
     const nextStatus = nextSnapshot.status;
     this.codexStatusSnapshotValue = nextSnapshot;
-    const becameAvailable = this.tasksPage.setCodexStatusSnapshot(nextSnapshot);
+    this.tasksPage.setCodexStatusSnapshot(nextSnapshot);
     this.settingsWorkspace.setCodexStatusSnapshot(nextSnapshot);
     this.navigation.setCodexStatusSnapshot(nextSnapshot);
     if (
@@ -383,35 +386,35 @@ class CaffoldTaskWorkspace extends HTMLElement {
     }
     this.toggleAttribute(
       "data-codex-recovery-visible",
-      this.tasksPage.codexRecoveryVisible(),
+      this.tasksPage.taskStoreRecoveryVisible(),
     );
-    if (
-      this.routeActivationRequested &&
-      this.tasksPage.codexOperationsBlocked() &&
-      this.mode === "tasks"
-    ) {
-      this.pendingCodexTaskRoute = {
-        route: { ...this.route },
-        options: { ...this.currentOpenOptions },
-      };
+  }
+
+  setClaudeRestartState(state) {
+    this.claudeRestartStateValue = state ?? null;
+    this.settingsWorkspace?.setClaudeRestartState(this.claudeRestartStateValue);
+  }
+
+  // Confirmed by the person in the dialog; every state this passes through is
+  // shown on the settings page that asked.
+  async restartClaudeRuntimeNow() {
+    this.setClaudeRestartState({
+      state: "restarting",
+      message: "Restarting the Claude runner\u2026",
+    });
+    try {
+      await restartClaudeRuntime();
+      this.setClaudeRestartState({
+        state: "restarted",
+        message:
+          "Claude runner restarted. Conversations resume as their Tasks are opened.",
+      });
+    } catch (error) {
+      this.setClaudeRestartState({
+        state: "failed",
+        message: error instanceof Error ? error.message : "The restart failed.",
+      });
     }
-    if (becameAvailable && this.pendingCodexTaskRoute) {
-      const pending = this.pendingCodexTaskRoute;
-      this.pendingCodexTaskRoute = null;
-      const activation = this.tasksPage.openRoute(
-        pending.route,
-        pending.options,
-      );
-      this.pendingTaskRouteActivation = activation;
-      void activation
-        .finally(() => {
-          if (this.pendingTaskRouteActivation === activation) {
-            this.pendingTaskRouteActivation = null;
-          }
-        })
-        .catch(() => {});
-    }
-    return becameAvailable;
   }
 
   setCodexRestartState(state) {

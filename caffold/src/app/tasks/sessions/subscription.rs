@@ -1,19 +1,18 @@
 use std::sync::Arc;
 
-use crate::codex_app_server::{
-    CodexThread, CodexThreadClient, CodexThreadError, service_tier_for_fast_mode,
-};
+use crate::agent::AgentError;
+use crate::agent::{Conversation, Driver};
 
 use super::{
-    CodexThreadSessions, StartedThreadSettings, ThreadSessionEntry, ThreadSessionLifecycle,
-    ThreadSessionSnapshot, ThreadViewerLease, VIEWER_HANDOFF_GRACE, now_unix_ms, snapshot,
+    SessionEntry, SessionLifecycle, SessionSnapshot, StartedSettings, TaskSessions,
+    VIEWER_HANDOFF_GRACE, ViewerLease, now_unix_ms, snapshot,
 };
 use super::{
-    reconciliation::{apply_resume_response, apply_stale_refresh_response},
+    reconciliation::{apply_opened_conversation, apply_stale_refresh},
     turns::{active_turn_id, update_active_turn},
 };
 
-impl Drop for ThreadViewerLease {
+impl Drop for ViewerLease {
     fn drop(&mut self) {
         let sessions = self.sessions.clone();
         let thread_id = self.thread_id.clone();
@@ -25,15 +24,15 @@ impl Drop for ThreadViewerLease {
     }
 }
 
-impl CodexThreadSessions {
-    pub async fn acquire_viewer(
+impl TaskSessions {
+    pub(in crate::app::tasks) async fn acquire_viewer(
         &self,
-        client: &CodexThreadClient,
+        driver: &Driver,
         generation: u64,
         thread_id: &str,
-    ) -> Result<ThreadViewerLease, CodexThreadError> {
+    ) -> Result<ViewerLease, AgentError> {
         let viewer = self.reserve_viewer(thread_id).await;
-        if let Err(error) = self.ensure_subscribed(client, generation, thread_id).await {
+        if let Err(error) = self.ensure_subscribed(driver, generation, thread_id).await {
             let entry = self.entry(thread_id).await;
             let mut state = entry.state.lock().await;
             state.viewer_leases = state.viewer_leases.saturating_sub(1);
@@ -44,140 +43,119 @@ impl CodexThreadSessions {
         Ok(viewer)
     }
 
-    pub async fn reserve_viewer(&self, thread_id: &str) -> ThreadViewerLease {
+    pub(in crate::app::tasks) async fn reserve_viewer(&self, thread_id: &str) -> ViewerLease {
         let entry = self.entry(thread_id).await;
         {
             let mut state = entry.state.lock().await;
             state.viewer_leases += 1;
             state.viewer_epoch = state.viewer_epoch.saturating_add(1);
         }
-        ThreadViewerLease {
+        ViewerLease {
             sessions: self.clone(),
             thread_id: thread_id.to_string(),
         }
     }
 
-    pub async fn ensure_subscribed(
+    pub(in crate::app::tasks) async fn ensure_subscribed(
         &self,
-        client: &CodexThreadClient,
+        driver: &Driver,
         generation: u64,
         thread_id: &str,
-    ) -> Result<ThreadSessionSnapshot, CodexThreadError> {
+    ) -> Result<SessionSnapshot, AgentError> {
         let entry = self.entry(thread_id).await;
         let _operation = entry.operation.lock().await;
         {
             let state = entry.state.lock().await;
-            if state.generation == generation
-                && state.lifecycle == ThreadSessionLifecycle::Subscribed
-            {
+            if state.generation == generation && state.lifecycle == SessionLifecycle::Subscribed {
                 return Ok(snapshot(&state));
             }
         }
 
-        let (base_revision, service_tier) = {
+        let (base_revision, fast_mode) = {
             let mut state = entry.state.lock().await;
-            state.lifecycle = ThreadSessionLifecycle::Subscribing;
-            state.generation = generation;
+            state.lifecycle = SessionLifecycle::Subscribing;
+            state.on_connection(driver, generation);
             state.terminal_candidate_turn_id = None;
             state.last_error = None;
-            (state.revision, service_tier_for_fast_mode(state.fast_mode))
+            (state.revision, state.fast_mode)
         };
-        match client
-            .resume_thread_with_page(thread_id, true, service_tier)
-            .await
-        {
-            Ok(response) => {
+        match driver.open_conversation(thread_id, true, fast_mode).await {
+            Ok(opened) => {
                 let mut state = entry.state.lock().await;
                 if state.generation != generation {
-                    return Err(CodexThreadError::SubscriptionLost(format!(
-                        "Codex thread {thread_id} changed app-server generation while subscribing"
+                    return Err(AgentError::Failed(format!(
+                        "conversation {thread_id} changed connection while being opened"
                     )));
                 }
                 if state.revision == base_revision {
-                    apply_resume_response(&mut state, client, generation, response, false);
+                    apply_opened_conversation(&mut state, driver, generation, opened, false);
                 } else {
-                    apply_stale_refresh_response(
-                        &mut state,
-                        client,
-                        generation,
-                        response,
-                        base_revision,
-                    );
+                    apply_stale_refresh(&mut state, driver, generation, opened, base_revision);
                 }
                 Ok(snapshot(&state))
             }
             Err(error) => {
                 let mut state = entry.state.lock().await;
-                state.lifecycle = ThreadSessionLifecycle::Error;
+                state.lifecycle = SessionLifecycle::Error;
                 state.last_error = Some(error.to_string());
                 Err(error)
             }
         }
     }
 
-    pub async fn load_metadata(
+    pub(in crate::app::tasks) async fn load_metadata(
         &self,
-        client: &CodexThreadClient,
+        driver: &Driver,
         generation: u64,
         thread_id: &str,
-    ) -> Result<ThreadSessionSnapshot, CodexThreadError> {
-        self.ensure_subscribed(client, generation, thread_id).await
+    ) -> Result<SessionSnapshot, AgentError> {
+        self.ensure_subscribed(driver, generation, thread_id).await
     }
 
-    pub async fn refresh_subscription(
+    pub(in crate::app::tasks) async fn refresh_subscription(
         &self,
-        client: &CodexThreadClient,
+        driver: &Driver,
         generation: u64,
         thread_id: &str,
-    ) -> Result<ThreadSessionSnapshot, CodexThreadError> {
+    ) -> Result<SessionSnapshot, AgentError> {
         let entry = self.entry(thread_id).await;
         let _operation = entry.operation.lock().await;
-        let (preserve_subscription, base_revision, service_tier) = {
+        let (preserve_subscription, base_revision, fast_mode) = {
             let state = entry.state.lock().await;
             (
-                state.generation == generation
-                    && state.lifecycle == ThreadSessionLifecycle::Subscribed,
+                state.generation == generation && state.lifecycle == SessionLifecycle::Subscribed,
                 state.revision,
-                service_tier_for_fast_mode(state.fast_mode),
+                state.fast_mode,
             )
         };
 
         if !preserve_subscription {
             let mut state = entry.state.lock().await;
-            state.lifecycle = ThreadSessionLifecycle::Subscribing;
-            state.generation = generation;
+            state.lifecycle = SessionLifecycle::Subscribing;
+            state.on_connection(driver, generation);
             state.terminal_candidate_turn_id = None;
             state.last_error = None;
         }
 
-        match client
-            .resume_thread_with_page(thread_id, true, service_tier)
-            .await
-        {
-            Ok(response) => {
+        match driver.open_conversation(thread_id, true, fast_mode).await {
+            Ok(opened) => {
                 let mut state = entry.state.lock().await;
                 if preserve_subscription && state.generation != generation {
-                    return Err(CodexThreadError::SubscriptionLost(format!(
-                        "Codex thread {thread_id} changed app-server generation while refreshing its subscription"
+                    return Err(AgentError::Failed(format!(
+                        "conversation {thread_id} changed connection while being reopened"
                     )));
                 }
                 if state.revision == base_revision {
-                    apply_resume_response(&mut state, client, generation, response, true);
+                    apply_opened_conversation(&mut state, driver, generation, opened, true);
                 } else {
-                    apply_stale_refresh_response(
-                        &mut state,
-                        client,
-                        generation,
-                        response,
-                        base_revision,
-                    );
+                    apply_stale_refresh(&mut state, driver, generation, opened, base_revision);
                 }
                 Ok(snapshot(&state))
             }
             Err(error) => {
                 let mut state = entry.state.lock().await;
                 if !preserve_subscription {
-                    state.lifecycle = ThreadSessionLifecycle::Error;
+                    state.lifecycle = SessionLifecycle::Error;
                 }
                 state.last_error = Some(error.to_string());
                 Err(error)
@@ -185,18 +163,18 @@ impl CodexThreadSessions {
         }
     }
 
-    pub async fn register_started_thread(
+    pub(in crate::app::tasks) async fn register_started_thread(
         &self,
-        client: &CodexThreadClient,
+        driver: &Driver,
         generation: u64,
-        thread: CodexThread,
-        settings: StartedThreadSettings,
+        thread: Conversation,
+        settings: StartedSettings,
     ) {
         let entry = self.entry(&thread.id).await;
         let mut state = entry.state.lock().await;
-        state.lifecycle = ThreadSessionLifecycle::Subscribed;
-        state.client = Some(client.clone());
-        state.generation = generation;
+        state.lifecycle = SessionLifecycle::Subscribed;
+        state.driver = Some(driver.clone());
+        state.on_connection(driver, generation);
         let next_active_turn_id = active_turn_id(&thread, None);
         update_active_turn(
             &mut state,
@@ -204,7 +182,7 @@ impl CodexThreadSessions {
             Some(thread.cwd.clone()),
         );
         state.terminal_candidate_turn_id = next_active_turn_id;
-        state.thread = Some(thread);
+        state.conversation = Some(thread);
         state.pending_thread_status = None;
         state.permission_mode = settings.permission_mode;
         state.model = settings.model;
@@ -234,11 +212,7 @@ impl CodexThreadSessions {
             .await;
     }
 
-    pub(super) async fn unsubscribe_if_unused(
-        &self,
-        thread_id: &str,
-        entry: &Arc<ThreadSessionEntry>,
-    ) {
+    pub(super) async fn unsubscribe_if_unused(&self, thread_id: &str, entry: &Arc<SessionEntry>) {
         self.unsubscribe_if_unused_for_epoch(thread_id, entry, None)
             .await;
     }
@@ -246,47 +220,47 @@ impl CodexThreadSessions {
     async fn unsubscribe_if_unused_for_epoch(
         &self,
         thread_id: &str,
-        entry: &Arc<ThreadSessionEntry>,
+        entry: &Arc<SessionEntry>,
         expected_viewer_epoch: Option<u64>,
     ) {
-        let (client, generation, unsubscribe_epoch) = {
+        let (driver, generation, unsubscribe_epoch) = {
             let _operation = entry.operation.lock().await;
             let mut state = entry.state.lock().await;
             if expected_viewer_epoch.is_some_and(|epoch| state.viewer_epoch != epoch)
-                || state.lifecycle != ThreadSessionLifecycle::Subscribed
+                || state.lifecycle != SessionLifecycle::Subscribed
                 || state.viewer_leases > 0
                 || state.runtime_lease
             {
                 return;
             }
-            let Some(client) = state.client.clone() else {
+            let Some(driver) = state.driver.clone() else {
                 return;
             };
             let generation = state.generation;
             let unsubscribe_epoch = state.viewer_epoch;
-            state.lifecycle = ThreadSessionLifecycle::Unsubscribing;
-            (client, generation, unsubscribe_epoch)
+            state.lifecycle = SessionLifecycle::Unsubscribing;
+            (driver, generation, unsubscribe_epoch)
         };
 
-        let result = client.unsubscribe_thread(thread_id).await;
+        let result = driver.stop_watching(thread_id).await;
         let mut state = entry.state.lock().await;
         if state.generation != generation
             || state.viewer_epoch != unsubscribe_epoch
-            || state.lifecycle != ThreadSessionLifecycle::Unsubscribing
+            || state.lifecycle != SessionLifecycle::Unsubscribing
             || state.viewer_leases > 0
             || state.runtime_lease
         {
             return;
         }
         match result {
-            Ok(_) => {
-                state.lifecycle = ThreadSessionLifecycle::Unloaded;
-                state.client = None;
+            Ok(()) => {
+                state.lifecycle = SessionLifecycle::Unloaded;
+                state.driver = None;
                 state.terminal_candidate_turn_id = None;
                 state.last_error = None;
             }
             Err(error) => {
-                state.lifecycle = ThreadSessionLifecycle::Error;
+                state.lifecycle = SessionLifecycle::Error;
                 state.last_error = Some(error.to_string());
             }
         }
@@ -296,13 +270,13 @@ impl CodexThreadSessions {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codex_thread_sessions::test_support::*;
+    use crate::app::tasks::sessions::test_support::*;
 
     #[tokio::test]
     async fn initial_subscription_bootstraps_only_from_resume() {
         let initial_turns = (0..INITIAL_TURNS_PAGE_SIZE)
             .map(|index| {
-                turn_at(
+                wire_turn_at(
                     &format!("turn-{index}"),
                     TurnStatus::Completed,
                     index as f64,
@@ -313,10 +287,10 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), initial_turns.clone()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("subscribe viewer");
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
@@ -324,8 +298,8 @@ mod tests {
 
         assert_eq!(methods(&client).await, vec!["thread/resume"]);
         assert_eq!(requests[0].1["serviceTier"], "default");
-        assert_eq!(snapshot.lifecycle, ThreadSessionLifecycle::Subscribed);
-        assert_eq!(snapshot.turns_page.expect("initial page").data.len(), 8);
+        assert_eq!(snapshot.lifecycle, SessionLifecycle::Subscribed);
+        assert_eq!(snapshot.turns_page.expect("initial page").turns.len(), 8);
     }
 
     #[tokio::test]
@@ -335,12 +309,12 @@ mod tests {
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
             Duration::from_millis(250),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let subscribing_sessions = sessions.clone();
         let subscribing_client = client.clone();
         let subscription = tokio::spawn(async move {
             subscribing_sessions
-                .ensure_subscribed(&subscribing_client, 1, "thread-1")
+                .ensure_subscribed(&subscribing_client.driver(), 1, "thread-1")
                 .await
         });
 
@@ -353,13 +327,16 @@ mod tests {
 
         let snapshot = tokio::time::timeout(
             Duration::from_millis(500),
-            sessions.load_metadata(&client, 1, "thread-1"),
+            sessions.load_metadata(&client.driver(), 1, "thread-1"),
         )
         .await
         .expect("metadata request shares the subscription bootstrap")
         .expect("metadata request succeeds");
 
-        assert_eq!(snapshot.thread.expect("thread metadata").id, "thread-1");
+        assert_eq!(
+            snapshot.conversation.expect("thread metadata").id,
+            "thread-1"
+        );
         assert_eq!(methods(&client).await, vec!["thread/resume"]);
         subscription
             .await
@@ -374,23 +351,23 @@ mod tests {
             resume_response(
                 ThreadStatus::Idle,
                 Vec::new(),
-                vec![turn("turn-latest", TurnStatus::Completed)],
+                vec![wire_turn("turn-latest", TurnStatus::Completed)],
             ),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         let snapshot = sessions
-            .load_metadata(&client, 1, "thread-1")
+            .load_metadata(&client.driver(), 1, "thread-1")
             .await
             .expect("metadata bootstrap succeeds");
 
         assert_eq!(methods(&client).await, vec!["thread/resume"]);
-        assert_eq!(snapshot.lifecycle, ThreadSessionLifecycle::Subscribed);
+        assert_eq!(snapshot.lifecycle, SessionLifecycle::Subscribed);
         assert_eq!(
             snapshot
                 .turns_page
                 .expect("initial turns page")
-                .data
+                .turns
                 .first()
                 .map(|turn| turn.id.as_str()),
             Some("turn-latest")
@@ -406,14 +383,14 @@ mod tests {
             ),
             MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         let first = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("first viewer");
         let second = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("second viewer");
         assert_eq!(methods(&client).await, vec!["thread/resume"]);
@@ -447,10 +424,10 @@ mod tests {
                 resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         let detail_viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("detail viewer");
         std::mem::forget(detail_viewer);
@@ -472,7 +449,7 @@ mod tests {
 
         let stream_viewer = tokio::time::timeout(
             Duration::from_millis(50),
-            sessions.acquire_viewer(&client, 1, "thread-1"),
+            sessions.acquire_viewer(&client.driver(), 1, "thread-1"),
         )
         .await
         .expect("stream viewer must not wait for an unsubscribe request")
@@ -503,10 +480,10 @@ mod tests {
             ),
             MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         let first_viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("first viewer");
         drop(first_viewer);
@@ -514,7 +491,7 @@ mod tests {
 
         let second_viewer = tokio::time::timeout(
             Duration::from_millis(50),
-            sessions.acquire_viewer(&client, 1, "thread-1"),
+            sessions.acquire_viewer(&client.driver(), 1, "thread-1"),
         )
         .await
         .expect("a new viewer must not wait for the cleanup RPC")
@@ -527,7 +504,7 @@ mod tests {
 
         tokio::time::sleep(Duration::from_millis(275)).await;
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
-        assert_eq!(snapshot.lifecycle, ThreadSessionLifecycle::Subscribed);
+        assert_eq!(snapshot.lifecycle, SessionLifecycle::Subscribed);
         assert_eq!(snapshot.viewer_leases, 1);
 
         drop(second_viewer);
@@ -536,7 +513,7 @@ mod tests {
 
     #[tokio::test]
     async fn refresh_failure_keeps_canonical_state_and_can_recover() {
-        let recovered = turn("turn-recovered", TurnStatus::InProgress);
+        let recovered = wire_turn("turn-recovered", TurnStatus::InProgress);
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok(
                 "thread/resume",
@@ -554,15 +531,15 @@ mod tests {
                 ),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         assert!(
             sessions
-                .refresh_subscription(&client, 1, "thread-1")
+                .refresh_subscription(&client.driver(), 1, "thread-1")
                 .await
                 .is_err()
         );
@@ -572,12 +549,12 @@ mod tests {
             .expect("failed snapshot");
         assert!(
             failed
-                .thread
+                .conversation
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle)
         );
 
         let recovered = sessions
-            .refresh_subscription(&client, 1, "thread-1")
+            .refresh_subscription(&client.driver(), 1, "thread-1")
             .await
             .expect("recover refresh");
         assert_eq!(recovered.active_turn_id.as_deref(), Some("turn-recovered"));
@@ -587,19 +564,19 @@ mod tests {
     #[tokio::test]
     async fn registered_started_thread_is_subscribed_and_holds_runtime() {
         let client = CodexThreadClient::mock(Vec::new());
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         sessions
             .register_started_thread(
-                &client,
+                &client.driver(),
                 1,
-                thread(
+                Conversation::from(&thread(
                     ThreadStatus::Active {
                         active_flags: Vec::new(),
                     },
-                    vec![turn("turn-new", TurnStatus::InProgress)],
-                ),
-                StartedThreadSettings {
-                    permission_mode: Some(CodexPermissionMode::AskForApproval),
+                    vec![wire_turn("turn-new", TurnStatus::InProgress)],
+                )),
+                StartedSettings {
+                    permission_mode: Some("askForApproval".to_string()),
                     model: Some("gpt-test".to_string()),
                     reasoning_effort: Some("xhigh".to_string()),
                     fast_mode: true,
@@ -608,7 +585,7 @@ mod tests {
             .await;
 
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
-        assert_eq!(snapshot.lifecycle, ThreadSessionLifecycle::Subscribed);
+        assert_eq!(snapshot.lifecycle, SessionLifecycle::Subscribed);
         assert!(snapshot.runtime_lease);
         assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-new"));
         assert_eq!(snapshot.model.as_deref(), Some("gpt-test"));

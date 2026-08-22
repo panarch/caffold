@@ -1,20 +1,21 @@
 import { expect, test } from "@playwright/test";
 import {
   installBrowserDefaults,
+  mockClaudeStatus,
   mockCodexStatus,
 } from "./support/browser-defaults.js";
 import {
   activeTaskProjection,
   captureReviewScreenshot,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "./support/task-fixtures.js";
 
 const SETTINGS_KEY = "caffold:settings";
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 });
 
 test("shows Codex versions and explicitly restarts an outdated runtime", { tag: "@all-viewports" }, async ({
@@ -161,7 +162,7 @@ test("keeps Codex Settings actionable when runtime restart fails", { tag: "@all-
       contentType: "application/json",
       body: JSON.stringify({
         error: {
-          code: "codex_app_server_error",
+          code: "agent_error",
           message: "Codex runtime could not be restarted.",
         },
       }),
@@ -176,6 +177,143 @@ test("keeps Codex Settings actionable when runtime restart fails", { tag: "@all-
     .click();
 
   await expect(settings).toContainText("Codex runtime could not be restarted.");
+  await expect(settings.getByRole("button", { name: "Restart runtime" })).toBeEnabled();
+});
+
+test("shows what the Claude installation is on its Settings page", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/claude");
+  const settings = page.locator("caffold-settings-claude-page");
+
+  await expect(settings).toContainText("2.1.239 (Claude Code)");
+  await expect(settings).toContainText("user@example.com · claude.ai");
+  await expect(settings).toContainText("Max");
+
+  await expect(settings).toContainText("Session");
+  await expect(settings).toContainText("4% used");
+  await expect(settings).toContainText("Weekly · Fable");
+  await expect(settings).toContainText("24% used");
+
+  await expect(settings).toContainText("Running · pid 4242");
+  await expect(settings).toContainText("Sessions");
+  await expect(settings).toContainText("10 min");
+});
+
+test("a source that could not answer costs its block and no more", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await page.route(/\/api\/claude\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(
+        mockClaudeStatus({
+          executable: undefined,
+          usage: undefined,
+          runner: undefined,
+          problems: {
+            executable: "could not run claude",
+            usage: "claude did not answer within 30 seconds",
+            runner: "the runner did not answer within 30 seconds",
+          },
+        }),
+      ),
+    }),
+  );
+
+  await page.goto("/settings/claude");
+  const settings = page.locator("caffold-settings-claude-page");
+
+  await expect(settings).toContainText("Unavailable — could not run claude", {
+    timeout: 10_000,
+  });
+  await expect(settings).toContainText(
+    "user@example.com · claude.ai",
+  );
+  await expect(settings).toContainText(
+    "Unavailable — claude did not answer within 30 seconds",
+  );
+  await expect(settings).toContainText(
+    "Unavailable — the runner did not answer within 30 seconds",
+  );
+});
+
+test("explicitly restarts the Claude runner from its Settings item", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  let restartRequests = 0;
+  let statusRequests = 0;
+  await page.route(/\/api\/claude\/status(?:\?|$)/, (route) => {
+    statusRequests += 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(
+        mockClaudeStatus(
+          restartRequests > 0 ? { runner: { running: true, pid: 5151 } } : {},
+        ),
+      ),
+    });
+  });
+  await page.route(/\/api\/claude\/restart(?:\?|$)/, (route) => {
+    restartRequests += 1;
+    expect(route.request().method()).toBe("POST");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        protocol_version: 1,
+        runner_version: "0.7.2",
+        pid: 5151,
+        socket: "/tmp/claude-runner.sock",
+        sessions: 0,
+        idle_timeout_secs: 600,
+      }),
+    });
+  });
+
+  await page.goto("/settings/claude");
+  const settings = page.locator("caffold-settings-claude-page");
+  await expect(settings).toContainText("Restarting stops the runner");
+  await expect(settings).toContainText("Running · pid 4242");
+
+  await settings.getByRole("button", { name: "Restart runtime" }).click();
+  const dialog = page.getByRole("dialog", { name: "Restart Claude runtime?" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("ends every running Claude turn");
+  await dialog.getByRole("button", { name: "Restart Claude" }).click();
+
+  await expect(settings).toContainText("Claude runner restarted");
+  expect(restartRequests).toBe(1);
+  await expect(settings).toContainText("Running · pid 5151", {
+    timeout: 10_000,
+  });
+  expect(statusRequests).toBeGreaterThanOrEqual(2);
+  await expect(settings.getByRole("button", { name: "Restart runtime" })).toBeEnabled();
+});
+
+test("keeps the Claude Settings item actionable when the restart fails", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await page.route(/\/api\/claude\/restart(?:\?|$)/, (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: {
+          code: "claude_runtime_unavailable",
+          message: "The Claude runner went on answering after it was asked to stop.",
+        },
+      }),
+    }),
+  );
+
+  await page.goto("/settings/claude");
+  const settings = page.locator("caffold-settings-claude-page");
+  await settings.getByRole("button", { name: "Restart runtime" }).click();
+  await page.getByRole("dialog", { name: "Restart Claude runtime?" })
+    .getByRole("button", { name: "Restart Claude" })
+    .click();
+
+  await expect(settings).toContainText("went on answering");
   await expect(settings.getByRole("button", { name: "Restart runtime" })).toBeEnabled();
 });
 

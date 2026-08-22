@@ -10,6 +10,7 @@ use std::{
 };
 
 use futures_util::{SinkExt, StreamExt, stream::SplitSink, stream::SplitStream};
+mod contract;
 mod protocol;
 mod readiness;
 #[cfg(test)]
@@ -17,6 +18,22 @@ mod reconnect_spike;
 mod status;
 mod transport;
 
+pub(crate) use contract::{
+    ApprovalKind, approval_request, approval_response, codex_mode_id, codex_models,
+    codex_permission_modes, codex_turn_options, session_event,
+};
+/// Item translation on its own, for the tests that write an item the way Codex
+/// sends it and assert on what Caffold makes of it.
+#[cfg(test)]
+pub(crate) use contract::{conversation_item, response_item};
+/// Codex's own thread status, for the tests that build a notification
+/// carrying one. A Task's status is the shared one, converted here.
+#[cfg(test)]
+pub use protocol::ThreadStatus;
+/// Codex's own turn status, for the tests that read a turn straight off the
+/// wire rather than through the conversation.
+#[cfg(test)]
+pub use protocol::TurnStatus;
 use protocol::{
     ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse,
     CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS, CONFIG_READ, ConfigReadResponse, EmptyResponse,
@@ -36,15 +53,15 @@ use protocol::{
 pub use protocol::{
     CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest, CodexThread,
     CodexTurn, ModelListResponse, PermissionProfileSummary, SortDirection, ThreadResumeResponse,
-    ThreadSection, ThreadSectionFilter, ThreadSectionListResponse, ThreadStatus, ThreadTokenUsage,
-    ThreadUnsubscribeResponse, TurnStatus, TurnsPage,
+    ThreadSection, ThreadSectionFilter, ThreadSectionListResponse, ThreadUnsubscribeResponse,
+    TurnsPage,
 };
 pub(crate) use protocol::{ISOLATE_CURRENT_TASK_TOOL_NAME, RENAME_CURRENT_THREAD_TOOL_NAME};
 use protocol::{
     THREAD_LOADED_LIST, ThreadListResponse, ThreadLoadedListResponse, thread_loaded_list_params,
 };
 #[cfg(test)]
-pub(crate) use protocol::{TurnItemsView, decode_notification, decode_server_request};
+pub(crate) use protocol::{decode_notification, decode_server_request};
 pub(crate) use readiness::{CodexInstallation, inspect_codex_installation};
 pub use readiness::{
     CodexReadiness, CodexReadinessReason, CodexReadinessState, MINIMUM_SUPPORTED_CODEX_CLI_VERSION,
@@ -87,6 +104,7 @@ struct MockCodexThreadClient {
     responses: AsyncMutex<VecDeque<MockCodexResponse>>,
     requests: AsyncMutex<Vec<(String, Value)>>,
     server_responses: AsyncMutex<Vec<(Value, Value)>>,
+    approvals: AsyncMutex<HashMap<String, Value>>,
     events: broadcast::Sender<CodexRuntimeEvent>,
 }
 
@@ -165,6 +183,13 @@ struct CodexThreadClientInner {
     writer: AsyncMutex<SplitSink<WebSocketStream<ProxyStream>, Message>>,
     _child: AsyncMutex<Child>,
     pending: AsyncMutex<HashMap<u64, PendingRequest>>,
+    /// Which app-server request each pending approval came in on.
+    ///
+    /// An approval's identity above this boundary is Caffold's; the JSON-RPC id
+    /// it must be answered on is app-server's. Holding the pair here is the
+    /// mirror of `pending`, which already correlates the requests this client
+    /// sends.
+    approvals: AsyncMutex<HashMap<String, Value>>,
     next_id: AtomicU64,
     events: broadcast::Sender<CodexRuntimeEvent>,
     app_server: AsyncMutex<Option<CodexAppServerInfo>>,
@@ -214,6 +239,18 @@ pub(crate) fn service_tier_for_fast_mode(fast_mode: bool) -> &'static str {
     }
 }
 
+/// What Codex calls the permission mode these settings describe.
+///
+/// Caffold carries a mode under the agent's own name for it, so reading four
+/// Codex settings into one is where that name is minted.
+pub(crate) fn codex_permission_mode_name(
+    settings: &std::collections::BTreeMap<String, Value>,
+) -> Option<String> {
+    serde_json::to_value(CodexPermissionMode::from_settings(settings))
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_string))
+}
+
 pub(crate) fn is_fast_service_tier(service_tier: Option<&str>) -> bool {
     service_tier.is_some_and(|tier| tier.trim().eq_ignore_ascii_case(FAST_SERVICE_TIER_ID))
 }
@@ -245,9 +282,6 @@ pub enum CodexThreadError {
     ThreadUnavailable(String),
     #[error("Codex app-server active turn is unavailable: {0}")]
     TurnUnavailable(String),
-    #[allow(dead_code)]
-    #[error("Codex app-server subscription was lost: {0}")]
-    SubscriptionLost(String),
     #[error("Codex app-server rejected invalid parameters: {0}")]
     InvalidParams(String),
     #[error("Codex app-server protocol error: {0}")]
@@ -262,18 +296,48 @@ pub enum CodexThreadError {
     ProcessUnavailable,
 }
 
+/// Codex's failures, in the words the application shares.
+///
+/// The application never reads a Codex variant: it asks the shared questions,
+/// and everything Codex-specific — which protocol phase, which request id —
+/// stays in the message.
+impl From<CodexThreadError> for super::AgentError {
+    fn from(error: CodexThreadError) -> Self {
+        use super::AgentError;
+        match &error {
+            CodexThreadError::ThreadUnavailable(_) => {
+                AgentError::ConversationGone(error.to_string())
+            }
+            CodexThreadError::TurnUnavailable(_) => AgentError::TurnGone(error.to_string()),
+            CodexThreadError::ProcessUnavailable => AgentError::Unreachable(error.to_string()),
+            CodexThreadError::Readiness(readiness) => {
+                AgentError::Held(readiness.diagnostic_message.clone())
+            }
+            CodexThreadError::RequestTimeout { .. } | CodexThreadError::StartupTimeout { .. } => {
+                AgentError::TimedOut(error.to_string())
+            }
+            CodexThreadError::StartFailed(_)
+            | CodexThreadError::InitializationFailed { .. }
+            | CodexThreadError::InvalidParams(_)
+            | CodexThreadError::Protocol(_) => AgentError::Failed(error.to_string()),
+        }
+    }
+}
+
+/// Codex could not agree to a turn's options for a reason of its own.
+impl From<CodexThreadError> for super::driver::TurnRejected {
+    fn from(error: CodexThreadError) -> Self {
+        Self::Unavailable(error.into())
+    }
+}
+
 impl CodexThreadError {
-    #[allow(dead_code)]
     pub fn is_thread_unavailable(&self) -> bool {
         matches!(self, Self::ThreadUnavailable(_))
     }
 
     pub fn is_connection_failure(&self) -> bool {
         matches!(self, Self::ProcessUnavailable)
-    }
-
-    pub fn is_turn_unavailable(&self) -> bool {
-        matches!(self, Self::TurnUnavailable(_))
     }
 }
 
@@ -300,6 +364,7 @@ impl CodexThreadClient {
                 writer: AsyncMutex::new(writer),
                 _child: AsyncMutex::new(child),
                 pending: AsyncMutex::new(HashMap::new()),
+                approvals: AsyncMutex::new(HashMap::new()),
                 next_id: AtomicU64::new(100),
                 events,
                 app_server: AsyncMutex::new(None),
@@ -377,6 +442,7 @@ impl CodexThreadClient {
                 responses: AsyncMutex::new(responses.into()),
                 requests: AsyncMutex::new(Vec::new()),
                 server_responses: AsyncMutex::new(Vec::new()),
+                approvals: AsyncMutex::new(HashMap::new()),
                 events,
             })),
         }
@@ -723,6 +789,24 @@ impl CodexThreadClient {
         Ok(())
     }
 
+    /// Remember how to answer one approval, and under what name.
+    pub async fn track_approval(&self, approval_id: &str, request_id: Value) {
+        self.approvals()
+            .await
+            .insert(approval_id.to_string(), request_id);
+    }
+
+    /// The app-server request one approval must be answered on.
+    ///
+    /// Taking it is the claim on answering: the request is held once, so two
+    /// answers cannot both reach app-server, and an approval from a connection
+    /// that has since been replaced is not answerable at all. `None` is an
+    /// approval this connection no longer holds — already answered here, or
+    /// answered elsewhere first.
+    pub async fn take_approval_request(&self, approval_id: &str) -> Option<Value> {
+        self.approvals().await.remove(approval_id)
+    }
+
     pub async fn respond_to_server_request(
         &self,
         request_id: Value,
@@ -738,6 +822,27 @@ impl CodexThreadClient {
         }
         self.write_message(server_response_message(request_id, result))
             .await
+    }
+
+    /// Which approval app-server answered on its own, if Caffold was tracking
+    /// one on that request.
+    pub async fn approval_answered_elsewhere(&self, request_id: &Value) -> Option<String> {
+        let mut approvals = self.approvals().await;
+        let approval_id = approvals
+            .iter()
+            .find(|(_, tracked)| *tracked == request_id)
+            .map(|(approval_id, _)| approval_id.clone())?;
+        approvals.remove(&approval_id);
+        Some(approval_id)
+    }
+
+    /// The approvals waiting on this connection.
+    async fn approvals(&self) -> tokio::sync::MutexGuard<'_, HashMap<String, Value>> {
+        #[cfg(test)]
+        if let Some(mock) = &self.mock {
+            return mock.approvals.lock().await;
+        }
+        self.inner().approvals.lock().await
     }
 
     pub async fn list_models(&self, limit: usize) -> Result<ModelListResponse, CodexThreadError> {

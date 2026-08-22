@@ -7,7 +7,7 @@ import {
   captureReviewScreenshot,
   emitTaskDetailBootstrap,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
   pasteImage,
 } from "../support/task-fixtures.js";
 
@@ -17,7 +17,7 @@ test.beforeEach(async ({ page }) => {
 
 test("opens global Tasks without local registry state", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   await installEventSourceMock(page);
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 
   const threadId = "thread_global_fixture";
   let createdTaskRequest = null;
@@ -601,7 +601,7 @@ test("runs a minimal task from creation through follow-up", { tag: "@all-viewpor
     "Waiting for approval",
   );
   await tasksPage
-    .locator('.task-approval-card button[data-decision="accept"]')
+    .locator('.task-approval-card button[data-decision="allow"]')
     .click();
   await expect.poll(() => scenario.approvalRequests).toBe(1);
   await expect(

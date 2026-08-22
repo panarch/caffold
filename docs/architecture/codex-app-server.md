@@ -40,16 +40,62 @@ The adapter owns:
 
 The rest of Caffold should not depend directly on app-server protocol details.
 
-`caffold/src/codex_app_server/protocol.rs` is the maintained protocol boundary.
+`caffold/src/agent/codex/protocol.rs` is the maintained protocol boundary.
 It owns the method names, request and response DTOs, notification decoding, and
 JSON-RPC error shape used by Caffold. The modules under
 `caffold/src/app/tasks/runtime/` consume the typed adapter operations and
-bridge notifications and server requests into the Tasks application. Neither
+bridge session events and server requests into the Tasks application. Neither
 the application composition root nor the browser projection modules inspect raw
 method names or protocol JSON paths.
 
-`caffold/src/codex_app_server/readiness.rs` owns executable eligibility before
-daemon startup. `caffold/src/codex_app_server/status.rs` owns the
+`caffold/src/agent/codex/contract.rs` is where Codex stops. It reads a thread,
+its turns, and its items into the vocabulary in `caffold/src/agent/`; it says
+what each notification from a subscribed thread means as a `SessionEvent` in
+that same vocabulary; and it turns a Caffold approval decision back into the
+response the asking method expects. All of it lives in one file so that what
+this driver carries is readable in one place. Above it, the Tasks application
+works in Caffold's conversation, session-event, and approval types; what still
+crosses from `agent::codex` is the client handle, its errors, turn options, and
+readiness — the control surface rather than the conversation.
+
+`caffold/src/agent/driver.rs` names the agents Caffold can drive and the
+questions it asks one. The set is a closed enum rather than something reached
+behind a pointer, because Caffold supports the agents it was built against and
+loads nothing at run time — which makes a capability one agent has and another
+lacks a missing match arm rather than a default quietly standing in. What is there is what a Task needs of an agent: begin a
+conversation, open one and watch it, read an older page of its turns, stop
+watching, begin a turn, add to a running one, stop it, and say how the agent can
+be allowed to work. Answering an approval, reporting readiness, and the rest of
+settings are still reached through Codex's own client, because Caffold has not
+yet watched two agents do them.
+
+Nothing above the driver names a permission mode. An agent assembles the choices
+it offers and writes the wording for each, because knowing what a mode does to an
+agent is knowing that agent: Codex has permission profiles and a separate
+reviewer setting and the choices worth offering are combinations of the two,
+while Claude names six modes outright. A mode travels back to start a turn under
+the agent's own name for it, unread, so a mode an agent adds needs nothing from
+Caffold to become choosable.
+
+An agent agrees to a turn's options before anything is created. Which model
+answers to a name and what depths it works at are questions only the agent can
+answer, and asking after a conversation exists would leave one behind when the
+answer is no.
+
+The live stream is translated once, at the connection, and every part of
+Caffold that reacts to it reads the same report: the canonical session, the
+Task event stream, the Task list's recency, Web Push, and pending approvals.
+A notification this Caffold has no use for — including one from a newer
+app-server — becomes no report at all rather than an unread branch in each
+consumer.
+
+Codex reports eighteen kinds of thread item. Caffold draws seven of them with a
+surface of its own and shows the rest as tool calls named after whatever Codex
+called them, so an item kind added to app-server appears as work rather than
+disappearing from the conversation.
+
+`caffold/src/agent/codex/readiness.rs` owns executable eligibility before
+daemon startup. `caffold/src/agent/codex/status.rs` owns the
 post-connection projection of account, managed runtime, and initialization
 results into the canonical Codex status response. Its classification tests live
 with that ownership rather than in the client transport module.
@@ -97,7 +143,7 @@ runtime shutdown lifecycle to `caffold/src/app.rs`.
   `TaskState`. It owns browser request/response DTOs, validation, route
   registration, and REST/SSE adaptation.
 - `runtime.rs` owns the app-server proxy generation, connection recovery,
-  notification/server-request bridge, and pending approval lifecycle. Pending
+  session-event/server-request bridge, and pending approval lifecycle. Pending
   approvals remain JSON-RPC/card state and never become a thread-status writer.
 - `sync.rs` owns subscription counts, rollout invalidation, debounce,
   maximum-latency, and retry scheduling. It does not read Codex threads or
@@ -110,17 +156,23 @@ runtime shutdown lifecycle to `caffold/src/app.rs`.
   or `TaskState`. Projection preserves app-server status; Events normalizes and
   merges transcript/live records without acquiring thread-status ownership.
 
-This separation is application ownership, not another state ledger.
-`CodexThreadSessions` remains the ephemeral canonical session coordinator and
-Codex app-server remains the source of truth.
+- `sessions.rs` owns what Caffold knows about a Task while somebody is
+  watching it: viewer leases and the grace period that survives a page
+  navigation, the revisions a reader compares against, the connection
+  generation that decides whether a late answer still counts, and the
+  arbitration between a slow read and the live stream. None of that is one
+  agent's, and it names none.
+
+This separation is application ownership, not another state ledger. The session
+store remains ephemeral and Codex app-server remains the source of truth.
 
 ## Thread Subscription Lifecycle
 
 The persistent app-server daemon, Caffold's proxy connection, and a thread
 subscription are separate lifecycles. Starting the daemon or proxy does not make
 every Codex thread a notification source.
-Caffold keeps an ephemeral `CodexThreadSessions` coordinator for that boundary;
-it does not persist a second task ledger.
+Caffold keeps an ephemeral session store for that boundary; it does not
+persist a second task ledger.
 
 - The first task detail or SSE viewer resumes the thread with `excludeTurns`
   and an initial page of the latest eight summary turns.
@@ -186,7 +238,10 @@ the original request with either `turn` or `session` scope. A denial returns an
 empty granted profile. The browser cannot construct a broader permission
 profile than app-server requested. A matching `serverRequest/resolved`
 notification removes the pending card without rewriting canonical thread or
-turn state.
+turn state. Which approval that notification resolved is the client's to
+answer: it holds the pairing between a Caffold approval id and the JSON-RPC
+request the approval arrived on, and it names each pairing exactly once, so an
+approval is never withdrawn twice.
 
 ## Incremental History
 
@@ -306,8 +361,8 @@ List and header badges use only `threadStatus`. Within active flags,
 `waitingOnApproval` takes display precedence over `waitingOnUserInput`, while
 the original flag array remains unchanged. Turn completion, failure, and
 interruption are rendered inside that conversation turn rather than replacing
-the thread badge. Item lifecycle, raw response item, and diff notifications
-advance the in-memory session revision. Their live projections use `task-event`
+the thread badge. Item changes and diff reports advance the in-memory session
+revision. Their live projections use `task-event`
 without materializing or broadcasting a full Task Detail snapshot. A later
 canonical Thread or Turn change may therefore publish a `task-sync` revision
 that skips those event-only revisions. Task lifecycle changes arrive through
@@ -372,7 +427,7 @@ through another Codex connection.
 
 ### Daemon/proxy reconnect verification
 
-The opt-in live tests in `codex_app_server::reconnect_spike` exercise the
+The opt-in live tests in `agent::codex::reconnect_spike` exercise the
 daemon-compatible transport boundary used by the product runtime.
 They keep an isolated `codex app-server --listen unix://...` process alive,
 connect through disposable `codex app-server proxy --sock ...` children, and
@@ -461,7 +516,9 @@ Sections without active Tasks afterward. The v7-to-v8 migration adds nullable
 Section composer fields without backfilling historical selections; Sections
 begin recording them only after a later turn starts successfully. While Codex
 is unavailable or incompatible, the HTTP server remains available with explicit
-Task-store/Codex readiness and retry controls, but Task operations stay blocked.
+Task-store/Codex readiness and retry controls; Codex-run operations answer
+with the blocking readiness, while Task reads and the other agent's operations
+continue.
 
 Archived Tasks remain Caffold-owned and independent of Sections. They continue
 to read 30 managed IDs at a time from the archived Redb membership, resolve the

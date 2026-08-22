@@ -15,8 +15,84 @@ use gluesql::{
     },
     prelude::{Glue, SelectResultExt},
 };
+use serde::{Deserialize, Serialize};
 
 pub(super) const TABLE_NAME: &str = "managed_threads";
+
+/// Which agent a Task is run by.
+///
+/// A closed set, like the drivers themselves: Caffold routes a Task to the agent
+/// that owns its conversation, and there is no agent it was not built against.
+/// There is no default. A Task always belongs to exactly one agent, and a place
+/// that cannot say which is a place that does not know — which is worth saying
+/// out loud rather than answering with whichever agent came first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum TaskProvider {
+    Codex,
+    Claude,
+}
+
+impl TaskProvider {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Codex => "codex",
+            Self::Claude => "claude",
+        }
+    }
+}
+
+/// How a Task is run: which agent, and what that agent needs to be reached.
+///
+/// The two travel together because for one of them they are one fact. Codex
+/// holds a thread's working directory and answers for it, so a second copy here
+/// would only go stale. A Claude session is a process, resuming one starts a new
+/// process, and that process works wherever it is started — so a Claude Task
+/// that names no directory is a Task nothing can run.
+///
+/// The table keeps them as two nullable columns, because that is what a table
+/// has. Everything above the row conversion holds this instead, where the
+/// combination that cannot be run cannot be written down either.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RunBy {
+    Codex,
+    Claude { cwd: String },
+}
+
+impl RunBy {
+    pub(crate) fn provider(&self) -> TaskProvider {
+        match self {
+            Self::Codex => TaskProvider::Codex,
+            Self::Claude { .. } => TaskProvider::Claude,
+        }
+    }
+
+    /// Where Caffold runs the agent, when the agent needs telling.
+    fn cwd(&self) -> Option<&str> {
+        match self {
+            Self::Codex => None,
+            Self::Claude { cwd } => Some(cwd),
+        }
+    }
+
+    /// Read the pair of columns the table keeps, refusing a pair no agent can
+    /// be run from.
+    fn from_row(provider: &str, cwd: Option<String>) -> Result<Self> {
+        match provider {
+            "codex" => Ok(Self::Codex),
+            "claude" => cwd
+                .filter(|cwd| !cwd.trim().is_empty())
+                .map(|cwd| Self::Claude { cwd })
+                .ok_or(TaskStoreError::InvalidRow("cwd")),
+            // Not a guess to make. The migration wrote a provider into every
+            // row that existed, so an unrecognized one is a Task written by a
+            // Caffold that drives an agent this one does not — and reading it
+            // as some other agent would send the conversation to the wrong
+            // place.
+            _ => Err(TaskStoreError::InvalidRow("provider")),
+        }
+    }
+}
 pub(super) const POSITION_STEP: i64 = 1024;
 
 const COLUMN_DEFINITIONS: &[&str] = &[
@@ -33,11 +109,18 @@ const COLUMN_DEFINITIONS: &[&str] = &[
     "display_name TEXT",
     "section_id TEXT NULL",
     "position_in_section INTEGER NULL",
+    "provider TEXT NOT NULL DEFAULT 'codex'",
+    "cwd TEXT NULL",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManagedThread {
     pub thread_id: String,
+    /// How this Task is run.
+    ///
+    /// Known before the agent is woken, because the Task list has to decide who
+    /// to ask about a Task without asking anyone.
+    pub run_by: RunBy,
     pub display_name: String,
     pub section_id: Option<String>,
     pub position_in_section: Option<i64>,
@@ -55,6 +138,7 @@ pub(crate) struct ManagedThread {
 impl ManagedThread {
     pub(crate) fn new(
         thread_id: impl Into<String>,
+        run_by: RunBy,
         last_observed_recency_ms: Option<u64>,
         model: Option<String>,
         reasoning_effort: Option<String>,
@@ -63,6 +147,7 @@ impl ManagedThread {
         Self {
             display_name: fallback_display_name(&thread_id),
             thread_id,
+            run_by,
             section_id: None,
             position_in_section: None,
             archived_at_ms: None,
@@ -109,6 +194,8 @@ pub(super) struct ManagedThreadRow {
     pub display_name: String,
     pub section_id: Option<String>,
     pub position_in_section: Option<i64>,
+    pub provider: String,
+    pub cwd: Option<String>,
 }
 
 impl TryFrom<&ManagedThread> for ManagedThreadRow {
@@ -117,6 +204,8 @@ impl TryFrom<&ManagedThread> for ManagedThreadRow {
     fn try_from(thread: &ManagedThread) -> Result<Self> {
         Ok(Self {
             thread_id: thread.thread_id.clone(),
+            provider: thread.run_by.provider().as_str().to_string(),
+            cwd: thread.run_by.cwd().map(str::to_string),
             display_name: validate_display_name(&thread.display_name)?.to_string(),
             section_id: thread.section_id.clone(),
             position_in_section: to_db_position(
@@ -155,6 +244,7 @@ impl TryFrom<ManagedThreadRow> for ManagedThread {
     fn try_from(row: ManagedThreadRow) -> Result<Self> {
         Ok(Self {
             thread_id: row.thread_id,
+            run_by: RunBy::from_row(&row.provider, row.cwd)?,
             display_name: validate_display_name(&row.display_name)?.to_string(),
             position_in_section: from_db_position(
                 row.section_id.as_deref(),
@@ -237,6 +327,11 @@ where
 {
     if let Some(existing) = get(glue, &thread.thread_id)? {
         thread.archived_at_ms = None;
+        // Which agent runs a Task is settled when the Task is created and never
+        // again. A claim carries whatever the caller happened to build, so
+        // taking it here would let a Task change agent — and lose the working
+        // directory its agent is started in.
+        thread.run_by = existing.run_by;
         thread.display_name = existing.display_name;
         thread.section_id = existing.section_id;
         thread.position_in_section = existing.position_in_section;
@@ -1098,7 +1193,7 @@ mod tests {
     }
 
     fn thread(id: &str, recency_ms: Option<u64>) -> ManagedThread {
-        ManagedThread::new(id, recency_ms, None, None)
+        ManagedThread::new(id, RunBy::Codex, recency_ms, None, None)
     }
 
     fn place_with_rank(glue: &mut Glue<MemoryStorage>, id: &str, section_id: &str, position: i64) {
@@ -1145,10 +1240,82 @@ mod tests {
         ));
     }
 
+    /// A row as the table would hold it for an ordinary Codex Task.
+    fn stored_row(thread_id: &str) -> ManagedThreadRow {
+        ManagedThreadRow::try_from(&ManagedThread::new(
+            thread_id,
+            RunBy::Codex,
+            Some(10),
+            None,
+            None,
+        ))
+        .expect("a Task Caffold just built is one it can store")
+    }
+
+    #[test]
+    fn a_claude_row_that_names_no_directory_is_refused_rather_than_read() {
+        // A Claude session is a process, and a process has to start somewhere.
+        // Reading the row anyway would produce a Task nothing can run, and the
+        // failure would surface much later as a session that will not open.
+        let mut row = stored_row("thread-1");
+        row.provider = "claude".to_string();
+        row.cwd = None;
+
+        let refused = ManagedThread::try_from(row);
+
+        assert!(matches!(refused, Err(TaskStoreError::InvalidRow("cwd"))));
+    }
+
+    #[test]
+    fn a_provider_this_release_does_not_drive_is_refused_rather_than_guessed() {
+        // The migration wrote a provider into every row that existed, so an
+        // unrecognized one was written by a Caffold that drives an agent this
+        // one does not. Reading it as Codex would send the conversation to the
+        // wrong agent.
+        let mut row = stored_row("thread-1");
+        row.provider = "some-later-agent".to_string();
+        row.cwd = Some("/Users/example/project".to_string());
+
+        let refused = ManagedThread::try_from(row);
+
+        assert!(matches!(
+            refused,
+            Err(TaskStoreError::InvalidRow("provider"))
+        ));
+    }
+
+    #[test]
+    fn claiming_a_task_again_does_not_change_which_agent_runs_it() {
+        // A claim carries whatever the caller happened to build. Taking its
+        // agent would convert a Claude Task to Codex and lose the directory its
+        // session is started in — silently, because both are valid values.
+        let mut glue = memory();
+        let claude = ManagedThread {
+            run_by: RunBy::Claude {
+                cwd: "/Users/example/project".to_string(),
+            },
+            ..ManagedThread::new("thread-1", RunBy::Codex, Some(10), None, None)
+        };
+        claim(&mut glue, claude.clone(), 100).unwrap();
+
+        claim(
+            &mut glue,
+            ManagedThread::new("thread-1", RunBy::Codex, Some(20), None, None),
+            200,
+        )
+        .unwrap();
+
+        let stored = get(&mut glue, "thread-1").unwrap().unwrap();
+        assert_eq!(stored.run_by, claude.run_by);
+    }
+
     #[test]
     fn row_conversion_round_trips_all_persisted_fields() {
         let thread = ManagedThread {
             thread_id: "fully-populated".to_string(),
+            run_by: RunBy::Claude {
+                cwd: "/Users/example/project".to_string(),
+            },
             display_name: "Fully populated".to_string(),
             section_id: None,
             position_in_section: None,
@@ -1188,7 +1355,7 @@ mod tests {
             ));
         }
 
-        let thread = ManagedThread::new("invalid", None, None, None);
+        let thread = ManagedThread::new("invalid", RunBy::Codex, None, None, None);
         assert_thread_error(thread.clone(), "archived_at_ms", |thread| {
             thread.archived_at_ms = Some(u64::MAX);
         });
@@ -1465,6 +1632,7 @@ mod tests {
         let mut glue = memory();
         let quoted = ManagedThread::new(
             "task'quoted",
+            RunBy::Codex,
             Some(20),
             Some("model'quoted".to_string()),
             Some("reasoning'quoted".to_string()),

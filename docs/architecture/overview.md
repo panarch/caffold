@@ -5,7 +5,7 @@ compatibility contract.
 
 Caffold is organized around one control instance per trusted host.
 
-That instance serves the UI, manages Codex app-server, talks to the local filesystem and git, and exposes task/review APIs to the browser.
+That instance serves the UI, drives the agents a Task can belong to, talks to the local filesystem and git, and exposes task/review APIs to the browser.
 
 ```mermaid
 flowchart TD
@@ -15,6 +15,8 @@ flowchart TD
     PushService["Browser vendor Push Service"]
     Proxy["Codex proxy child"]
     AppServer["Persistent Codex app-server daemon"]
+    Runner["Claude runner"]
+    ClaudeSession["claude session process"]
     Git["git worktree"]
     Whisper["Host-local Whisper model"]
     Tailscale["Tailscale CLI / Serve"]
@@ -24,12 +26,15 @@ flowchart TD
     MacWrapper -->|"HTTP"| Backend
     Backend -->|"JSON-RPC / WebSocket"| Proxy
     Proxy --> AppServer
+    Backend -->|"unix socket, one subscribed connection"| Runner
+    Runner --> ClaudeSession
     Backend --> Git
     Backend --> Whisper
     Backend -->|"fixed status and Serve commands"| Tailscale
     Backend -->|"encrypted Web Push"| PushService
     PushService -->|"Push API delivery"| PWA
     AppServer -->|"agent events / approvals / thread data"| Proxy
+    ClaudeSession -->|"stream-json frames / permission callbacks"| Runner
 ```
 
 ## Components
@@ -62,6 +67,7 @@ The backend owns:
 - host instance lifecycle
 - live file, git, and worktree-context lookup
 - Codex app-server daemon connection and disposable proxy lifecycle
+- Claude runner supervision and one attached session per Claude Task
 - JSON-RPC adapter
 - git status, diff, log, and file APIs
 - host-local Whisper model installation, verification, and transcription
@@ -84,11 +90,27 @@ caffold/src/app/tasks.rs               private Tasks state assembly and runtime 
 caffold/src/app/tasks/routes.rs        Tasks/Codex HTTP DTOs, validation, handlers, REST/SSE routes
 caffold/src/app/tasks/push.rs          Push subscription HTTP API, persistence adapter, and delivery runtime
 caffold/src/app/tasks/detail.rs        canonical task detail, session, history, and sync application
-caffold/src/app/tasks/runtime.rs       Codex runtime composition and cross-role orchestration
+caffold/src/app/tasks/runtime.rs       runtime composition, per-Task agent routing, cross-role orchestration
 caffold/src/app/tasks/runtime/
   process.rs                           readiness, connection, generation, restart, and shutdown
   bridge.rs                            app-server event bridging and managed session recovery
+  claude_bridge.rs                     Claude session reports, approvals, and Caffold-served tool calls routed into the Task application
   server_requests.rs                   approvals and Caffold-owned dynamic tool requests
+caffold/src/agent.rs                   the agents Caffold drives and the vocabulary they report in
+caffold/src/agent/driver.rs            which agent is being asked, and the questions that are the same for all
+caffold/src/agent/codex.rs             Codex app-server transport, protocol, readiness, and contract
+caffold/src/agent/claude.rs            the Claude client's surface: its types, turns, and approvals
+caffold/src/agent/claude/
+  protocol.rs                          the stream-json and control wire types
+  session.rs                           opening a session, and what a reopened one already was
+  starting.rs                          starting the agent, one process at a time
+  reading.rs                           interpreting everything the agent says, as it says it
+  served_tools.rs                      the in-process MCP tools Caffold serves the agent
+  settings.rs                          models and modes, and carrying choices to a running session
+  status.rs                            what this installation is, asked without a Task
+  translate.rs                         one translator from Claude content blocks to Caffold items
+  transcript.rs                        reading a conversation back from the file the agent writes
+  runner.rs                            reaching the runner, and the stand-in a test drives instead
 caffold/src/app/tasks/sync.rs          rollout invalidation scheduling and retry timing
 caffold/src/app/tasks/projection.rs    pure thread/turn to browser task projection
 caffold/src/app/tasks/events.rs        event normalization, merge, cache, and publication
@@ -113,6 +135,41 @@ Codex app-server owns Codex thread, turn, approval, and event stream behavior.
 Caffold treats it as an external integration boundary and does not embed Codex
 internal crates.
 
+### Claude Runner
+
+Claude ships no daemon, so Caffold runs one: `caffold-claude-runner`, a
+workspace member that holds `claude` child processes and relays their frames
+without reading them. It listens on a unix socket beside the database, so an
+installed application and a development server drive their own. The OS caps a
+unix socket address at about a hundred bytes, so a data directory nested too
+deeply cannot host one; the backend refuses such a path by name — length,
+limit, and the way out — before starting anything, and the installation's
+status report carries the same problem, rather than letting a start time out
+saying nothing. One session per Claude Task, and one subscribed connection carrying
+every session's output with each event naming its session; a second client
+asking to subscribe is refused rather than splitting the stream.
+
+The runner is deliberately ignorant. It does not know which argument selects a
+model or enables the permission callback, and it keeps no history. It outlives
+the backend, which is what lets a turn survive a restart, and it is given its
+own process group so a signal to Caffold does not take it along.
+
+Starting `claude` is paced by the backend. A freshly started process refreshes
+the account's stored credentials when they are expiring, and two young
+processes can refresh the same token twice — which the service reads as theft
+and answers by revoking the login everywhere. Every authenticating start this
+backend makes — a session the runner spawns or a one-off question asked
+directly — passes one gate that lets starts begin one at a time, spaced
+apart. The runner's create answer says whether it began a process or handed
+back one already running, and only a beginning shuts the gate behind it, so
+taking live sessions back up after a backend restart is not spaced. A runner
+from before that answer says nothing either way, and every hand-back counts
+as a start until the runner is next replaced. Questions
+answered from what is already on this machine, such as `--version` and
+`auth status`, refresh nothing and do not pass the gate. The gate is per
+backend: a second backend on the same account, or `claude` run by hand,
+starts outside its ordering.
+
 ### Git Worktree
 
 The worktree is the source of truth for code changes. Caffold reads from git and file contents to present review surfaces.
@@ -131,6 +188,8 @@ lifetime; Tailscale is transport for remote browsers, not part of inference.
 ## Source of Truth
 
 - Codex thread/session: conversation, turns, agent activity
+- Claude session: conversation, turns, agent activity, and the transcript the
+  agent writes for itself
 - Caffold Redb: managed-thread membership, stable Active navigator names and
   Section placement, observed recency, persistent Web Push subscriptions and
   the stable server VAPID keypair, Task composer/seen state, each Section's
@@ -148,13 +207,35 @@ The current model is one persistent Codex app-server daemon per user. A Caffold
 backend ensures that daemon is running and connects through a proxy child that
 may be replaced independently. Caffold owns and stops the proxy, not the daemon.
 
+Claude has the same shape one level down: one runner per data directory, started
+by the backend if it is not already listening, and one `claude` process per
+Claude Task the runner holds. Caffold starts the runner and does not stop it,
+because it is what carries a running turn across a backend restart. A Claude
+session is held for as long as it lives rather than released when the last
+viewer leaves — detaching and re-attaching costs a process, where dropping a
+Codex subscription costs nothing.
+
 Codex remains the source of truth for thread content and runtime state. Caffold
 keeps local Caffold-owned tables for managed membership, the stable Active
 navigator projection, and managed worktree ownership/recovery. Managed-thread
 metadata includes the display name, nullable Section placement, observed
-recency, Caffold timestamps, and optional model/reasoning settings. It does not
-store preview, cwd, Codex timestamps, status, active turn, transcript, or event
-summary. Active list identity and placement come directly from this local
+recency, Caffold timestamps, optional model/reasoning settings, and which agent
+runs the Task. It does not store preview, agent timestamps, status, active turn,
+transcript, or event summary.
+
+A Claude Task also stores its working directory, because nothing else can answer
+for it: a Claude session is a process, resuming one starts a new process, and
+that process works wherever it is started, and the conversation the agent writes
+down is filed under the directory the session was created in. Codex holds a
+thread's working directory and answers for it, so a Codex Task stores none.
+
+A Claude conversation is read from that file rather than from anything Caffold
+keeps, so a Task the backend has forgotten comes back whole. Every session runs
+with `--replay-user-messages`, which hands a prompt back under the identity the
+agent filed it as; that identity names the turn, and it is the same identity the
+file uses, so a turn watched live and the same turn read from disk are one turn
+rather than two. What a running session knows is laid over the top, because only
+it can say a turn is still running or that a refusal was a refusal. Active list identity and placement come directly from this local
 projection; runtime state arrives independently after Codex connects. Caffold
 derives repository and worktree presentation live from each thread cwd or
 persisted logical Section path and does not keep a project registry. Tasks

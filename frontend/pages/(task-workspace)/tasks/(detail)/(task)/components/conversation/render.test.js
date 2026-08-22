@@ -13,20 +13,20 @@ test("delegates active-turn presentation to its component snapshot", () => {
   });
   const compactionStarted = turnEvent(
     "turn-1:context-compaction-1",
-    "work_status",
+    "tool_call",
     2,
     {
       itemId: "context-compaction-1",
-      itemType: "contextCompaction",
-      lifecycle: "started",
+      name: "Compacting context",
+      status: "inProgress",
     },
   );
   const compactionCompleted = {
     ...compactionStarted,
-    summary: "Context compacted",
+    summary: "Compacting context: completed",
     payload: {
       ...compactionStarted.payload,
-      lifecycle: "completed",
+      status: "completed",
     },
     updatedMs: 3,
   };
@@ -67,7 +67,7 @@ test("opts only stable user and final assistant messages into code controls", ()
     { messagePhase: "final" },
   );
   const progressAssistant = renderConversationEvent(
-    messageEvent("assistant_message", { phase: "commentary" }),
+    messageEvent("assistant_message", { phase: "progress" }),
     {},
     { messagePhase: "progress" },
   );
@@ -76,6 +76,141 @@ test("opts only stable user and final assistant messages into code controls", ()
   assert.equal(hasCodeBlockControls(pendingUser), false);
   assert.equal(hasCodeBlockControls(finalAssistant), true);
   assert.equal(hasCodeBlockControls(progressAssistant), false);
+});
+
+test("a pending approval stays visible beside the command it is asking about", () => {
+  // Codex names the item its approval is about, and announces that item in the
+  // same breath. Both belong on screen: the command is what will run, and the
+  // approval is the only thing a person can press.
+  const identity = { itemId: "exec-1" };
+  const command = turnEvent("thread-1:turn-1:exec-1", "command_execution", 2, {
+    ...identity,
+    command: "/bin/zsh -lc 'open -a TextEdit'",
+    cwd: "src",
+    status: "inProgress",
+  });
+  const approval = turnEvent("approval_requested:401", "approval_requested", 1, {
+    ...identity,
+    threadId: "thread-1",
+    approvalId: "401",
+    title: "Command approval requested",
+    command: "/bin/zsh -lc 'open -a TextEdit'",
+    cwd: "src",
+    decisions: ["allow", "denyAndStop"],
+  });
+
+  for (const events of [[approval, command], [command, approval]]) {
+    const { html } = renderConversation(events, activeTask(), [approval]);
+
+    assert.match(
+      html,
+      /data-decision="allow"/,
+      "a pending approval must offer its answers however its item was ordered",
+    );
+    assert.match(
+      html,
+      /task-approval-card/,
+      "the approval card must survive beside its own command item",
+    );
+  }
+});
+
+test("a running tool call is a card, not a status chip", () => {
+  // While the turn runs, its work is drawn one entry at a time; only after the
+  // turn ends does it collapse into work details. A tool call has to be the
+  // same thing on both, or the conversation changes shape underneath a reader
+  // at the moment the turn finishes.
+  const running = turnEvent("thread-1:turn-1:tool-1", "tool_call", 2, {
+    itemId: "tool-1",
+    name: "Web search",
+    status: "inProgress",
+  });
+
+  const { html } = renderConversation([running], activeTask());
+
+  assert.match(html, /class="task-event task-tool-card"/);
+  assert.doesNotMatch(
+    html,
+    /task-status-chip/,
+    "a tool call names itself rather than restating its own summary",
+  );
+  assert.match(html, /<strong>Web search<\/strong>/);
+  assert.match(html, /Status: inProgress/);
+});
+
+test("a failed tool call reads as failed while the turn is still running", () => {
+  const failed = turnEvent("thread-1:turn-1:tool-1", "tool_call", 2, {
+    itemId: "tool-1",
+    name: "inspector.probe",
+    status: "failed",
+  });
+
+  const { html } = renderConversation([failed], activeTask());
+
+  assert.match(html, /data-tool-tone="danger"/);
+});
+
+test("an agent failure is an error card, not the agent talking", () => {
+  // The harness wrote this where an answer would have been. Drawn as a
+  // message bubble, "API Error: ..." reads as the agent's answer to what was
+  // asked; drawn as an error card, it reads as the turn failing to run.
+  const failure = turnEvent("thread-1:turn-1:item-1", "agent_failure", 2, {
+    text: "API Error: Connection refused",
+  });
+
+  const { html } = renderConversation([failure], activeTask());
+
+  assert.match(html, /data-tool-tone="danger"/);
+  assert.match(html, /<strong>Error<\/strong>/);
+  assert.match(html, /API Error: Connection refused/);
+  assert.doesNotMatch(
+    html,
+    /task-message-assistant/,
+    "a failure must not wear the agent's own bubble",
+  );
+});
+
+test("a completed turn shows its failure beside the messages, not folded away", () => {
+  // The two ways this was lost while being built: classified as work, the
+  // failure folded into the collapsed work details; classified as nothing,
+  // the completed-turn assembly dropped it entirely.
+  const idleTask = {
+    id: "thread-1",
+    threadId: "thread-1",
+    threadStatus: { type: "idle" },
+  };
+  const prompt = turnEvent("thread-1:turn-1:prompt", "user_message", 1, {
+    itemId: "prompt",
+    text: "Reply with the single word: ok.",
+  });
+  const failure = turnEvent("thread-1:turn-1:item-1", "agent_failure", 2, {
+    itemId: "item-1",
+    text: "API Error: Connection refused",
+  });
+  const ended = turnEvent("thread-1:turn-1:end", "turn_completed", 3, {
+    status: "failed",
+  });
+
+  const { html } = renderConversation([prompt, failure, ended], idleTask);
+
+  assert.match(html, /data-tool-tone="danger"/);
+  assert.match(html, /API Error: Connection refused/);
+  assert.doesNotMatch(
+    html,
+    /task-work-details[\s\S]*API Error/,
+    "the failure must not need work details expanded to be seen",
+  );
+});
+
+test("a tool call the agent did not name is still an entry", () => {
+  const unnamed = turnEvent("thread-1:turn-1:tool-1", "tool_call", 2, {
+    itemId: "tool-1",
+    status: "completed",
+  });
+
+  const { html } = renderConversation([unnamed], activeTask());
+
+  assert.match(html, /<strong>Tool call<\/strong>/);
 });
 
 function activeTask() {

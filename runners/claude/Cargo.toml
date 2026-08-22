@@ -1,0 +1,36 @@
+[package]
+name = "caffold-claude-runner"
+version = "0.7.2"
+edition = "2024"
+rust-version = "1.96"
+license = "Apache-2.0"
+# Declared rather than discovered, so the harness the tests share can live at
+# `tests/support.rs` without cargo turning it into a test binary of its own.
+autotests = false
+
+[dependencies]
+anyhow = "1.0.98"
+clap = { version = "4.5.40", features = ["derive"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = { version = "1.0.140", features = ["raw_value"] }
+thiserror = "2.0.12"
+tokio = { version = "1.45.1", features = [
+    "fs",
+    "io-std",
+    "io-util",
+    "macros",
+    "net",
+    "process",
+    "rt-multi-thread",
+    "signal",
+    "sync",
+    "time",
+] }
+
+[[test]]
+name = "runner"
+path = "tests/runner.rs"
+
+[[test]]
+name = "live"
+path = "tests/live.rs"

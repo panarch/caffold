@@ -126,56 +126,24 @@ export async function captureReviewScreenshot(page, testInfo, name) {
   });
 }
 
-export async function mockCodexModels(page) {
-  await page.route(/\/api\/codex\/models(?:\?|$)/, (route) =>
+export async function mockAgentModels(page) {
+  await page.route(/\/api\/agent\/models(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        data: [
+        models: [
           {
-            id: "gpt-5.6-sol",
+            provider: "codex",
             model: "gpt-5.6-sol",
             displayName: "GPT-5.6-Sol",
             description: "Latest frontier agentic coding model.",
-            hidden: false,
             isDefault: true,
-            defaultReasoningEffort: "low",
-            supportedReasoningEfforts: [
-              {
-                reasoningEffort: "low",
-                description: "Fast responses with lighter reasoning",
-              },
-              {
-                reasoningEffort: "medium",
-                description: "Balances speed and reasoning depth for everyday tasks",
-              },
-              {
-                reasoningEffort: "high",
-                description: "Greater reasoning depth for complex problems",
-              },
-              {
-                reasoningEffort: "xhigh",
-                description: "Extra high reasoning depth for complex problems",
-              },
-              {
-                reasoningEffort: "max",
-                description: "Maximum reasoning depth for the hardest problems",
-              },
-              {
-                reasoningEffort: "ultra",
-                description: "Maximum reasoning with automatic task delegation",
-              },
-            ],
-            serviceTiers: [
-              {
-                id: "priority",
-                name: "Fast",
-                description: "1.5x speed, increased usage",
-              },
-            ],
+            defaultEffort: "low",
+            efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+            supportsFastMode: true,
           },
         ],
-        nextCursor: null,
+        unavailable: [],
       }),
     }),
   );

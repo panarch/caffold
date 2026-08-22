@@ -1,6 +1,9 @@
-use crate::codex_app_server::{
-    CodexPermissionMode, CodexThread, CodexThreadClient, CodexTurn, ThreadResumeResponse,
-    ThreadStatus, TurnStatus, TurnsPage, is_fast_service_tier,
+use std::collections::BTreeMap;
+
+use serde_json::Value;
+
+use crate::agent::{
+    Conversation, Driver, OpenedConversation, ThreadStatus, Turn, TurnPage, TurnStatus,
 };
 
 use super::turns::{
@@ -8,45 +11,57 @@ use super::turns::{
     merge_stale_turns_page, replace_active_turn, sort_turns_desc, turn_is_in_progress,
     update_active_turn,
 };
-use super::{ThreadSessionLifecycle, ThreadSessionState, now_unix_ms};
+use super::{SessionLifecycle, SessionState, now_unix_ms};
 
+/// What the agent says this conversation's settings are.
+///
+/// The settings arrived in the agent's own keys and are read back by that
+/// agent, because what a permission mode or a speed means is the one part of
+/// this vocabulary Caffold has not decided across agents. Nothing is applied
+/// when the agent is unknown, which happens only before a conversation has been
+/// opened at all.
 pub(super) fn apply_thread_settings(
-    state: &mut ThreadSessionState,
-    settings: &std::collections::BTreeMap<String, serde_json::Value>,
+    state: &mut SessionState,
+    driver: &Driver,
+    settings: &BTreeMap<String, Value>,
 ) {
-    state.permission_mode = Some(CodexPermissionMode::from_settings(settings));
-    if let Some(model) = settings.get("model").and_then(serde_json::Value::as_str) {
-        state.model = Some(model.to_string());
+    let read = driver.read_settings(settings);
+    state.permission_mode = read.permission_mode;
+    if read.model.is_some() {
+        state.model = read.model;
     }
-    if let Some(reasoning_effort) = settings.get("reasoningEffort") {
-        state.reasoning_effort = reasoning_effort.as_str().map(str::to_string);
+    if read.effort.is_some() {
+        state.reasoning_effort = read.effort;
     }
-    state.fast_mode = is_fast_service_tier(
-        settings
-            .get("serviceTier")
-            .and_then(serde_json::Value::as_str),
-    );
+    state.fast_mode = read.fast_mode;
 }
 
 fn merge_external_resume_response(
-    state: &mut ThreadSessionState,
-    response: ThreadResumeResponse,
+    state: &mut SessionState,
+    driver: &Driver,
+    response: OpenedConversation,
     base_revision: u64,
 ) -> MetadataMergeOutcome {
-    apply_thread_settings(state, &response.extra);
+    apply_thread_settings(state, driver, &response.settings);
+    let OpenedConversation {
+        conversation,
+        turns_page,
+        cwd,
+        ..
+    } = response;
     merge_external_snapshot_with_active_cwd(
         state,
-        response.thread,
-        response.initial_turns_page,
+        conversation,
+        turns_page,
         base_revision,
-        Some(response.cwd),
+        Some(cwd),
     )
 }
 
 pub(super) fn merge_external_snapshot(
-    state: &mut ThreadSessionState,
-    incoming_thread: CodexThread,
-    latest_turns: Option<TurnsPage>,
+    state: &mut SessionState,
+    incoming_thread: Conversation,
+    latest_turns: Option<TurnPage>,
     base_revision: u64,
 ) -> MetadataMergeOutcome {
     merge_external_snapshot_with_active_cwd(
@@ -59,9 +74,9 @@ pub(super) fn merge_external_snapshot(
 }
 
 fn merge_external_snapshot_with_active_cwd(
-    state: &mut ThreadSessionState,
-    mut incoming_thread: CodexThread,
-    latest_turns: Option<TurnsPage>,
+    state: &mut SessionState,
+    mut incoming_thread: Conversation,
+    latest_turns: Option<TurnPage>,
     base_revision: u64,
     resumed_active_turn_cwd: Option<String>,
 ) -> MetadataMergeOutcome {
@@ -75,7 +90,7 @@ fn merge_external_snapshot_with_active_cwd(
     let newer_active_turn_id = preserve_newer_turns
         .then(|| state.active_turn_id.clone())
         .flatten();
-    if let Some(current) = state.thread.take() {
+    if let Some(current) = state.conversation.take() {
         let mut turns = current.turns;
         merge_external_turns(&mut turns, incoming_thread.turns, preserve_newer_turns);
         incoming_thread.turns = turns;
@@ -84,7 +99,7 @@ fn merge_external_snapshot_with_active_cwd(
         incoming_thread.status = status;
     }
     if let Some(name) = newer_name {
-        incoming_thread.name = name;
+        incoming_thread.title = name;
     }
     if let Some(page) = latest_turns {
         merge_external_turns_page(&mut state.turns_page, page, preserve_newer_turns);
@@ -102,7 +117,7 @@ fn merge_external_snapshot_with_active_cwd(
     if !matches!(incoming_thread.status, ThreadStatus::Active { .. }) {
         state.runtime_lease = false;
     }
-    state.thread = Some(incoming_thread);
+    state.conversation = Some(incoming_thread);
     state.pending_thread_status = None;
     MetadataMergeOutcome {
         status: !preserve_newer_status,
@@ -117,8 +132,8 @@ pub(super) struct MetadataMergeOutcome {
 }
 
 fn merge_external_turns(
-    target: &mut Vec<CodexTurn>,
-    incoming: impl IntoIterator<Item = CodexTurn>,
+    target: &mut Vec<Turn>,
+    incoming: impl IntoIterator<Item = Turn>,
     preserve_existing_status: bool,
 ) {
     for turn in incoming {
@@ -137,16 +152,16 @@ fn merge_external_turns(
 }
 
 fn merge_external_turns_page(
-    target: &mut Option<TurnsPage>,
-    incoming: TurnsPage,
+    target: &mut Option<TurnPage>,
+    incoming: TurnPage,
     preserve_existing_status: bool,
 ) {
-    let page = target.get_or_insert_with(|| TurnsPage {
-        data: Vec::new(),
+    let page = target.get_or_insert_with(|| TurnPage {
+        turns: Vec::new(),
         next_cursor: None,
         backwards_cursor: None,
     });
-    merge_external_turns(&mut page.data, incoming.data, preserve_existing_status);
+    merge_external_turns(&mut page.turns, incoming.turns, preserve_existing_status);
     if page.next_cursor.is_none() {
         page.next_cursor = incoming.next_cursor;
     }
@@ -156,34 +171,38 @@ fn merge_external_turns_page(
     bound_latest_turns_page(page);
 }
 
-pub(super) fn apply_resume_response(
-    state: &mut ThreadSessionState,
-    client: &CodexThreadClient,
+pub(super) fn apply_opened_conversation(
+    state: &mut SessionState,
+    driver: &Driver,
     generation: u64,
-    response: ThreadResumeResponse,
+    opened: OpenedConversation,
     merge_history: bool,
 ) {
     let preserved_terminal_candidate = merge_history
         .then(|| state.terminal_candidate_turn_id.clone())
         .flatten();
-    apply_thread_settings(state, &response.extra);
-    let active_turn_cwd = response.cwd;
-    let thread = response.thread;
-    let active_turn_id = active_turn_id(&thread, response.initial_turns_page.as_ref());
+    apply_thread_settings(state, driver, &opened.settings);
+    let OpenedConversation {
+        conversation: thread,
+        turns_page: incoming_page,
+        cwd: active_turn_cwd,
+        ..
+    } = opened;
+    let active_turn_id = active_turn_id(&thread, incoming_page.as_ref());
     let thread_is_active = matches!(thread.status, ThreadStatus::Active { .. });
 
-    state.lifecycle = ThreadSessionLifecycle::Subscribed;
-    state.client = Some(client.clone());
-    state.generation = generation;
+    state.lifecycle = SessionLifecycle::Subscribed;
+    state.driver = Some(driver.clone());
+    state.on_connection(driver, generation);
     replace_active_turn(state, active_turn_id.clone(), active_turn_cwd);
-    state.thread = Some(thread);
+    state.conversation = Some(thread);
     state.pending_thread_status = None;
     if merge_history {
-        if let Some(page) = response.initial_turns_page {
+        if let Some(page) = incoming_page {
             merge_latest_turns_page(&mut state.turns_page, page);
         }
     } else {
-        state.turns_page = response.initial_turns_page;
+        state.turns_page = incoming_page;
         if let Some(page) = state.turns_page.as_mut() {
             bound_latest_turns_page(page);
         }
@@ -203,18 +222,22 @@ pub(super) fn apply_resume_response(
     state.last_error = None;
 }
 
-pub(super) fn apply_stale_refresh_response(
-    state: &mut ThreadSessionState,
-    client: &CodexThreadClient,
+pub(super) fn apply_stale_refresh(
+    state: &mut SessionState,
+    driver: &Driver,
     generation: u64,
-    response: ThreadResumeResponse,
+    opened: OpenedConversation,
     base_revision: u64,
 ) {
     let preserved_terminal_candidate = state.terminal_candidate_turn_id.clone();
-    apply_thread_settings(state, &response.extra);
-    let active_turn_cwd = response.cwd;
-    let baseline_active_turn_id =
-        active_turn_id(&response.thread, response.initial_turns_page.as_ref());
+    apply_thread_settings(state, driver, &opened.settings);
+    let OpenedConversation {
+        conversation: incoming_thread,
+        turns_page: incoming_page,
+        cwd: active_turn_cwd,
+        ..
+    } = opened;
+    let baseline_active_turn_id = active_turn_id(&incoming_thread, incoming_page.as_ref());
     let newer_status = newer_thread_status(state, base_revision);
     let status_applied = newer_status.is_none();
     let newer_name = newer_thread_name(state, base_revision);
@@ -223,8 +246,8 @@ pub(super) fn apply_stale_refresh_response(
     let newer_active_turn_id = preserve_newer_turns
         .then(|| state.active_turn_id.clone())
         .flatten();
-    let mut thread = response.thread;
-    if let Some(current) = state.thread.take() {
+    let mut thread = incoming_thread;
+    if let Some(current) = state.conversation.take() {
         let mut turns = current.turns;
         merge_canonical_turns(&mut turns, thread.turns);
         thread.turns = turns;
@@ -233,9 +256,9 @@ pub(super) fn apply_stale_refresh_response(
         thread.status = status;
     }
     if let Some(name) = newer_name {
-        thread.name = name;
+        thread.title = name;
     }
-    if let Some(incoming) = response.initial_turns_page {
+    if let Some(incoming) = incoming_page {
         merge_stale_turns_page(&mut state.turns_page, incoming);
     }
 
@@ -250,10 +273,10 @@ pub(super) fn apply_stale_refresh_response(
     }
     let thread_is_active = matches!(thread.status, ThreadStatus::Active { .. });
 
-    state.lifecycle = ThreadSessionLifecycle::Subscribed;
-    state.client = Some(client.clone());
-    state.generation = generation;
-    state.thread = Some(thread);
+    state.lifecycle = SessionLifecycle::Subscribed;
+    state.driver = Some(driver.clone());
+    state.on_connection(driver, generation);
+    state.conversation = Some(thread);
     state.terminal_candidate_turn_id = newer_active_turn_id
         .filter(|turn_id| turn_is_in_progress(state, turn_id))
         .or_else(|| {
@@ -275,17 +298,17 @@ pub(super) fn apply_stale_refresh_response(
     state.last_error = None;
 }
 
-pub(super) fn apply_prompt_resume_response(
-    state: &mut ThreadSessionState,
-    client: &CodexThreadClient,
+pub(super) fn apply_prompt_resume(
+    state: &mut SessionState,
+    driver: &Driver,
     generation: u64,
-    response: ThreadResumeResponse,
+    opened: OpenedConversation,
     base_revision: u64,
 ) {
-    let applied = merge_external_resume_response(state, response, base_revision);
-    state.lifecycle = ThreadSessionLifecycle::Subscribed;
-    state.client = Some(client.clone());
-    state.generation = generation;
+    let applied = merge_external_resume_response(state, driver, opened, base_revision);
+    state.lifecycle = SessionLifecycle::Subscribed;
+    state.driver = Some(driver.clone());
+    state.on_connection(driver, generation);
     state.runtime_lease = true;
     state.terminal_candidate_turn_id = state.active_turn_id.clone();
     state.revision = state.revision.saturating_add(1);
@@ -299,11 +322,11 @@ pub(super) fn apply_prompt_resume_response(
     state.last_error = None;
 }
 
-fn newer_thread_status(state: &ThreadSessionState, base_revision: u64) -> Option<ThreadStatus> {
+fn newer_thread_status(state: &SessionState, base_revision: u64) -> Option<ThreadStatus> {
     (state.status_revision > base_revision)
         .then(|| {
             state
-                .thread
+                .conversation
                 .as_ref()
                 .map(|thread| thread.status.clone())
                 .or_else(|| state.pending_thread_status.clone())
@@ -311,28 +334,33 @@ fn newer_thread_status(state: &ThreadSessionState, base_revision: u64) -> Option
         .flatten()
 }
 
-fn newer_thread_name(state: &ThreadSessionState, base_revision: u64) -> Option<Option<String>> {
+fn newer_thread_name(state: &SessionState, base_revision: u64) -> Option<Option<String>> {
     (state.name_revision > base_revision)
-        .then(|| state.thread.as_ref().map(|thread| thread.name.clone()))
+        .then(|| {
+            state
+                .conversation
+                .as_ref()
+                .map(|conversation| conversation.title.clone())
+        })
         .flatten()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codex_thread_sessions::test_support::*;
+    use crate::app::tasks::sessions::test_support::*;
 
     async fn apply_external_snapshot(
-        sessions: &CodexThreadSessions,
+        sessions: &TaskSessions,
         base_revision: u64,
         response: ThreadResumeResponse,
-    ) -> ThreadSessionSnapshot {
+    ) -> SessionSnapshot {
         sessions
             .apply_external_read_sync(
                 "thread-1",
                 base_revision,
-                response.thread,
-                response.initial_turns_page.expect("latest turns page"),
+                Conversation::from(&response.thread),
+                TurnPage::from(&response.initial_turns_page.expect("latest turns page")),
             )
             .await
     }
@@ -342,7 +370,7 @@ mod tests {
         let active = ThreadStatus::Active {
             active_flags: Vec::new(),
         };
-        let current_turn = turn("turn-managed", TurnStatus::InProgress);
+        let current_turn = wire_turn("turn-managed", TurnStatus::InProgress);
         let mut response = resume_response(active, vec![current_turn.clone()], vec![current_turn]);
         response.thread.cwd = "/workspace/source".to_string();
         response.cwd = "/workspace/managed".to_string();
@@ -352,26 +380,23 @@ mod tests {
             response,
             Duration::from_millis(100),
         )]);
-        let sessions = CodexThreadSessions::default();
-        sessions.observe_thread_metadata(listed_thread).await;
+        let sessions = TaskSessions::default();
+        sessions
+            .observe_thread_metadata(Conversation::from(&listed_thread))
+            .await;
 
         let subscribing_sessions = sessions.clone();
         let subscribing_client = client.clone();
         let subscription = tokio::spawn(async move {
             subscribing_sessions
-                .ensure_subscribed(&subscribing_client, 1, "thread-1")
+                .ensure_subscribed(&subscribing_client.driver(), 1, "thread-1")
                 .await
         });
         wait_for_method_count(&client, "thread/resume", 1).await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ItemStarted {
-                    thread_id: "thread-1".to_string(),
-                    turn_id: "turn-managed".to_string(),
-                    item: json!({ "id": "item-replayed", "type": "agentMessage" }),
-                    started_at_ms: 2,
-                },
+                &session_event("thread-1", item_changed("turn-managed", "item-replayed", 2)),
             )
             .await;
 
@@ -381,7 +406,7 @@ mod tests {
             .expect("resume active managed turn");
 
         assert_eq!(
-            snapshot.thread.expect("canonical thread").cwd,
+            snapshot.conversation.expect("canonical thread").cwd,
             "/workspace/source"
         );
         assert_eq!(
@@ -395,8 +420,8 @@ mod tests {
         let active = ThreadStatus::Active {
             active_flags: Vec::new(),
         };
-        let old_completed = turn("turn-old", TurnStatus::Completed);
-        let current_in_progress = turn_at("turn-current", TurnStatus::InProgress, 2.0);
+        let old_completed = wire_turn("turn-old", TurnStatus::Completed);
+        let current_in_progress = wire_turn_at("turn-current", TurnStatus::InProgress, 2.0);
         let mut response = resume_response(
             active.clone(),
             Vec::new(),
@@ -408,52 +433,57 @@ mod tests {
             response,
             Duration::from_millis(100),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions.reserve_viewer("thread-1").await;
         let subscribing_sessions = sessions.clone();
         let subscribing_client = client.clone();
         let subscription = tokio::spawn(async move {
             subscribing_sessions
-                .ensure_subscribed(&subscribing_client, 1, "thread-1")
+                .ensure_subscribed(&subscribing_client.driver(), 1, "thread-1")
                 .await
         });
         wait_for_method_count(&client, "thread/resume", 1).await;
 
-        let mut replayed_thread = thread(active, vec![turn("turn-old", TurnStatus::InProgress)]);
+        let mut replayed_thread =
+            thread(active, vec![wire_turn("turn-old", TurnStatus::InProgress)]);
         replayed_thread.name = Some("Old task name".to_string());
         sessions
-            .apply_notification_with_outcome(
+            .apply_session_event_with_outcome(
                 1,
-                &CodexNotification::ThreadStarted {
-                    thread: replayed_thread,
-                },
+                &session_event("thread-1", conversation_started(&replayed_thread)),
             )
             .await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::TurnStarted {
-                    thread_id: "thread-1".to_string(),
-                    turn: turn("turn-old", TurnStatus::InProgress),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnStarted {
+                        turn: turn("turn-old", TurnStatus::InProgress),
+                    },
+                ),
             )
             .await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ThreadStatusChanged {
-                    thread_id: "thread-1".to_string(),
-                    status: ThreadStatus::Idle,
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::StatusChanged {
+                        status: ThreadStatus::Idle,
+                    },
+                ),
             )
             .await;
         sessions
-            .apply_notification_with_outcome(
+            .apply_session_event_with_outcome(
                 1,
-                &CodexNotification::TurnCompleted {
-                    thread_id: "thread-1".to_string(),
-                    turn: old_completed,
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnEnded {
+                        turn: Turn::from(&old_completed),
+                    },
+                ),
             )
             .await;
 
@@ -463,9 +493,9 @@ mod tests {
             .expect("subscription baseline succeeds");
         assert_eq!(
             snapshot
-                .thread
+                .conversation
                 .as_ref()
-                .and_then(|thread| thread.name.as_deref()),
+                .and_then(|conversation| conversation.title.as_deref()),
             Some("Current task name")
         );
         let entry = sessions
@@ -490,33 +520,39 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         sessions
-            .ensure_subscribed(&client, 1, "thread-1")
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
             .await
             .expect("subscribe");
         let syncing = sessions.begin_external_sync("thread-1").await;
 
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ThreadNameUpdated {
-                    thread_id: "thread-1".to_string(),
-                    thread_name: Some("Newer name".to_string()),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TitleChanged {
+                        title: Some("Newer name".to_string()),
+                    },
+                ),
             )
             .await;
         let snapshot = sessions
             .apply_external_read_sync(
                 "thread-1",
                 syncing.revision,
-                thread(ThreadStatus::Idle, Vec::new()),
-                page(Vec::new(), None, None),
+                Conversation::from(&thread(ThreadStatus::Idle, Vec::new())),
+                turn_page(Vec::new(), None, None),
             )
             .await;
 
         assert_eq!(
-            snapshot.thread.expect("canonical thread").name.as_deref(),
+            snapshot
+                .conversation
+                .expect("canonical thread")
+                .title
+                .as_deref(),
             Some("Newer name")
         );
     }
@@ -545,17 +581,14 @@ mod tests {
             .insert("serviceTier".to_string(), json!("priority"));
         let client =
             CodexThreadClient::mock(vec![MockCodexResponse::ok("thread/resume", response)]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         let snapshot = sessions
-            .ensure_subscribed(&client, 1, "thread-1")
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
             .await
             .expect("subscribe");
 
-        assert_eq!(
-            snapshot.permission_mode,
-            Some(CodexPermissionMode::ApproveForMe)
-        );
+        assert_eq!(snapshot.permission_mode, Some("approveForMe".to_string()));
         assert_eq!(snapshot.model.as_deref(), Some("gpt-test"));
         assert_eq!(snapshot.reasoning_effort.as_deref(), Some("xhigh"));
         assert!(snapshot.fast_mode);
@@ -569,10 +602,10 @@ mod tests {
             .insert("serviceTier".to_string(), json!("default"));
         let client =
             CodexThreadClient::mock(vec![MockCodexResponse::ok("thread/resume", response)]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         let snapshot = sessions
-            .ensure_subscribed(&client, 1, "thread-1")
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
             .await
             .expect("subscribe");
 
@@ -580,18 +613,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stale_metadata_load_does_not_overwrite_a_newer_status_notification() {
+    async fn stale_metadata_load_does_not_overwrite_a_newer_status_report() {
         let client = CodexThreadClient::mock(vec![MockCodexResponse::delayed_ok(
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
             Duration::from_millis(100),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let loading_sessions = sessions.clone();
         let loading_client = client.clone();
         let metadata = tokio::spawn(async move {
             loading_sessions
-                .load_metadata(&loading_client, 1, "thread-1")
+                .load_metadata(&loading_client.driver(), 1, "thread-1")
                 .await
         });
 
@@ -603,23 +636,27 @@ mod tests {
         }
 
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::TurnStarted {
-                    thread_id: "thread-1".to_string(),
-                    turn: turn("turn-live", TurnStatus::InProgress),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnStarted {
+                        turn: turn("turn-live", TurnStatus::InProgress),
+                    },
+                ),
             )
             .await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ThreadStatusChanged {
-                    thread_id: "thread-1".to_string(),
-                    status: ThreadStatus::Active {
-                        active_flags: Vec::new(),
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::StatusChanged {
+                        status: ThreadStatus::Active {
+                            active_flags: Vec::new(),
+                        },
                     },
-                },
+                ),
             )
             .await;
 
@@ -632,14 +669,14 @@ mod tests {
         assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-live"));
         assert!(
             snapshot
-                .thread
+                .conversation
                 .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
         );
     }
 
     #[tokio::test]
     async fn external_invalidation_rejoins_thread_and_restores_running_state() {
-        let external_turn = turn("turn-external", TurnStatus::InProgress);
+        let external_turn = wire_turn("turn-external", TurnStatus::InProgress);
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok(
                 "thread/resume",
@@ -656,21 +693,21 @@ mod tests {
                 ),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let snapshot = sessions
-            .refresh_subscription(&client, 1, "thread-1")
+            .refresh_subscription(&client.driver(), 1, "thread-1")
             .await
             .expect("refresh external task");
 
         assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-external"));
         assert!(
             snapshot
-                .thread
+                .conversation
                 .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
         );
         assert_eq!(
@@ -681,15 +718,15 @@ mod tests {
 
     #[tokio::test]
     async fn external_invalidation_reopens_the_same_completed_turn() {
-        let completed_turn = turn("turn-external", TurnStatus::Completed);
-        let running_turn = turn("turn-external", TurnStatus::InProgress);
+        let completed_turn = wire_turn("turn-external", TurnStatus::Completed);
+        let running_turn = wire_turn("turn-external", TurnStatus::InProgress);
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), vec![completed_turn]),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
@@ -708,37 +745,35 @@ mod tests {
         .await;
 
         assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-external"));
-        let thread = snapshot.thread.as_ref().expect("canonical thread");
+        let thread = snapshot.conversation.as_ref().expect("canonical thread");
         assert!(matches!(thread.status, ThreadStatus::Active { .. }));
         assert_eq!(
-            snapshot.turns_page.expect("history").data[0].status,
+            snapshot.turns_page.expect("history").turns[0].status,
             TurnStatus::InProgress
         );
     }
 
     #[tokio::test]
-    async fn external_running_refresh_survives_concurrent_item_notification() {
-        let external_turn = turn("turn-external", TurnStatus::InProgress);
+    async fn external_running_refresh_survives_a_concurrent_item_report() {
+        let external_turn = wire_turn("turn-external", TurnStatus::InProgress);
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let syncing = sessions.begin_external_sync("thread-1").await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ItemStarted {
-                    thread_id: "thread-1".to_string(),
-                    turn_id: "turn-external".to_string(),
-                    item: json!({ "id": "item-external", "type": "agentMessage" }),
-                    started_at_ms: 2,
-                },
+                &session_event(
+                    "thread-1",
+                    item_changed("turn-external", "item-external", 2),
+                ),
             )
             .await;
 
@@ -758,32 +793,34 @@ mod tests {
         assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-external"));
         assert!(
             snapshot
-                .thread
+                .conversation
                 .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
         );
     }
 
     #[tokio::test]
     async fn stale_turn_page_does_not_overwrite_a_concurrent_completion() {
-        let external_turn = turn("turn-external", TurnStatus::InProgress);
+        let external_turn = wire_turn("turn-external", TurnStatus::InProgress);
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let syncing = sessions.begin_external_sync("thread-1").await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::TurnCompleted {
-                    thread_id: "thread-1".to_string(),
-                    turn: turn("turn-external", TurnStatus::Completed),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnEnded {
+                        turn: turn("turn-external", TurnStatus::Completed),
+                    },
+                ),
             )
             .await;
 
@@ -803,20 +840,20 @@ mod tests {
         assert_eq!(snapshot.active_turn_id, None);
         assert!(
             snapshot
-                .thread
+                .conversation
                 .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. })),
-            "the app-server snapshot remains the canonical thread status"
+            "what the agent last said remains the canonical status"
         );
         assert_eq!(
-            snapshot.turns_page.expect("history").data[0].status,
+            snapshot.turns_page.expect("history").turns[0].status,
             TurnStatus::Completed
         );
     }
 
     #[tokio::test]
     async fn external_completion_clears_running_state_without_losing_history() {
-        let active_turn = turn("turn-external", TurnStatus::InProgress);
-        let completed_turn = turn("turn-external", TurnStatus::Completed);
+        let active_turn = wire_turn("turn-external", TurnStatus::InProgress);
+        let completed_turn = wire_turn("turn-external", TurnStatus::Completed);
         let client = CodexThreadClient::mock(vec![
             MockCodexResponse::ok(
                 "thread/resume",
@@ -833,14 +870,14 @@ mod tests {
                 resume_response(ThreadStatus::Idle, Vec::new(), vec![completed_turn]),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
         let snapshot = sessions
-            .refresh_subscription(&client, 1, "thread-1")
+            .refresh_subscription(&client.driver(), 1, "thread-1")
             .await
             .expect("refresh completion");
 
@@ -848,11 +885,11 @@ mod tests {
         assert!(!snapshot.runtime_lease);
         assert!(
             snapshot
-                .thread
+                .conversation
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle)
         );
         assert_eq!(
-            snapshot.turns_page.expect("history").data[0].status,
+            snapshot.turns_page.expect("history").turns[0].status,
             TurnStatus::Completed
         );
     }
@@ -863,9 +900,9 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
@@ -876,7 +913,7 @@ mod tests {
             resume_response(
                 ThreadStatus::Idle,
                 Vec::new(),
-                vec![turn("turn-stale", TurnStatus::InProgress)],
+                vec![wire_turn("turn-stale", TurnStatus::InProgress)],
             ),
         )
         .await;
@@ -884,12 +921,12 @@ mod tests {
         assert_eq!(snapshot.active_turn_id, None);
         assert!(
             snapshot
-                .thread
+                .conversation
                 .as_ref()
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle)
         );
         assert_eq!(
-            snapshot.turns_page.as_ref().expect("history").data[0].status,
+            snapshot.turns_page.as_ref().expect("history").turns[0].status,
             TurnStatus::InProgress
         );
     }
@@ -900,20 +937,22 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&primary, 7, "thread-1")
+            .acquire_viewer(&primary.driver(), 7, "thread-1")
             .await
             .unwrap();
 
         let syncing = sessions.begin_external_sync("thread-1").await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 7,
-                &CodexNotification::TurnStarted {
-                    thread_id: "thread-1".to_string(),
-                    turn: turn("turn-live", TurnStatus::InProgress),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnStarted {
+                        turn: turn("turn-live", TurnStatus::InProgress),
+                    },
+                ),
             )
             .await;
 
@@ -924,8 +963,8 @@ mod tests {
                 ThreadStatus::Idle,
                 Vec::new(),
                 vec![
-                    turn("turn-live", TurnStatus::Completed),
-                    turn("turn-older", TurnStatus::Completed),
+                    wire_turn("turn-live", TurnStatus::Completed),
+                    wire_turn("turn-older", TurnStatus::Completed),
                 ],
             ),
         )
@@ -934,15 +973,15 @@ mod tests {
         assert_eq!(snapshot.active_turn_id, None);
         assert!(
             snapshot
-                .thread
+                .conversation
                 .as_ref()
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle)
         );
         assert!(snapshot.turns_page.is_some_and(|page| {
-            page.data
+            page.turns
                 .iter()
                 .any(|turn| turn.id == "turn-live" && turn.status == TurnStatus::Completed)
-                && page.data.iter().any(|turn| turn.id == "turn-older")
+                && page.turns.iter().any(|turn| turn.id == "turn-older")
         }));
     }
 
@@ -952,20 +991,22 @@ mod tests {
             "thread/resume",
             resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&primary, 7, "thread-1")
+            .acquire_viewer(&primary.driver(), 7, "thread-1")
             .await
             .unwrap();
 
         let syncing = sessions.begin_external_sync("thread-1").await;
         sessions
-            .apply_notification(
+            .apply_session_event(
                 7,
-                &CodexNotification::TurnStarted {
-                    thread_id: "thread-1".to_string(),
-                    turn: turn("turn-new", TurnStatus::InProgress),
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnStarted {
+                        turn: turn("turn-new", TurnStatus::InProgress),
+                    },
+                ),
             )
             .await;
 
@@ -975,7 +1016,7 @@ mod tests {
             resume_response(
                 ThreadStatus::Idle,
                 Vec::new(),
-                vec![turn("turn-old", TurnStatus::Completed)],
+                vec![wire_turn("turn-old", TurnStatus::Completed)],
             ),
         )
         .await;
@@ -983,16 +1024,16 @@ mod tests {
         assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-new"));
         assert!(
             snapshot
-                .thread
+                .conversation
                 .as_ref()
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle),
             "a newer turn pointer must not synthesize thread status"
         );
         assert!(snapshot.turns_page.is_some_and(|page| {
-            page.data
+            page.turns
                 .iter()
                 .any(|turn| turn.id == "turn-new" && turn.status == TurnStatus::InProgress)
-                && page.data.iter().any(|turn| turn.id == "turn-old")
+                && page.turns.iter().any(|turn| turn.id == "turn-old")
         }));
     }
 
@@ -1009,9 +1050,9 @@ mod tests {
                 Duration::from_millis(150),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
@@ -1019,7 +1060,7 @@ mod tests {
         let refresh_client = client.clone();
         let refresh = tokio::spawn(async move {
             refresh_sessions
-                .refresh_subscription(&refresh_client, 1, "thread-1")
+                .refresh_subscription(&refresh_client.driver(), 1, "thread-1")
                 .await
         });
         for _ in 0..20 {
@@ -1031,7 +1072,7 @@ mod tests {
 
         let target = tokio::time::timeout(
             Duration::from_millis(50),
-            sessions.prepare_prompt(&client, 1, "thread-1"),
+            sessions.prepare_prompt(&client.driver(), 1, "thread-1"),
         )
         .await
         .expect("prompt preparation must use the subscribed snapshot")
@@ -1044,7 +1085,7 @@ mod tests {
                 "thread-1",
                 Some("/managed/worktree"),
                 turn("turn-new", TurnStatus::InProgress),
-                CodexTurnOptions::default(),
+                TurnOptions::default(),
             )
             .await;
         refresh
@@ -1059,13 +1100,16 @@ mod tests {
             Some("/managed/worktree")
         );
         assert_eq!(
-            snapshot.thread.as_ref().map(|thread| thread.cwd.as_str()),
+            snapshot
+                .conversation
+                .as_ref()
+                .map(|thread| thread.cwd.as_str()),
             Some("Workspace/rust/codger"),
             "canonical thread metadata may retain the original checkout cwd"
         );
         assert!(
             snapshot
-                .thread
+                .conversation
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle),
             "turn state must not be projected onto canonical thread status"
         );
@@ -1082,7 +1126,7 @@ mod tests {
                 resume_response(
                     active_status.clone(),
                     Vec::new(),
-                    vec![turn("turn-stale", TurnStatus::InProgress)],
+                    vec![wire_turn("turn-stale", TurnStatus::InProgress)],
                 ),
             ),
             MockCodexResponse::delayed_ok(
@@ -1090,14 +1134,14 @@ mod tests {
                 resume_response(
                     active_status,
                     Vec::new(),
-                    vec![turn("turn-stale", TurnStatus::InProgress)],
+                    vec![wire_turn("turn-stale", TurnStatus::InProgress)],
                 ),
                 Duration::from_millis(150),
             ),
         ]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
         let _viewer = sessions
-            .acquire_viewer(&client, 1, "thread-1")
+            .acquire_viewer(&client.driver(), 1, "thread-1")
             .await
             .expect("viewer");
 
@@ -1105,7 +1149,7 @@ mod tests {
         let refresh_client = client.clone();
         let refresh = tokio::spawn(async move {
             refresh_sessions
-                .refresh_subscription(&refresh_client, 1, "thread-1")
+                .refresh_subscription(&refresh_client.driver(), 1, "thread-1")
                 .await
         });
         for _ in 0..20 {
@@ -1116,12 +1160,14 @@ mod tests {
         }
 
         sessions
-            .apply_notification(
+            .apply_session_event(
                 1,
-                &CodexNotification::ThreadStatusChanged {
-                    thread_id: "thread-1".to_string(),
-                    status: ThreadStatus::Idle,
-                },
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::StatusChanged {
+                        status: ThreadStatus::Idle,
+                    },
+                ),
             )
             .await;
         refresh
@@ -1133,12 +1179,12 @@ mod tests {
         assert_eq!(snapshot.active_turn_id, None);
         assert!(
             snapshot
-                .thread
+                .conversation
                 .as_ref()
                 .is_some_and(|thread| thread.status == ThreadStatus::Idle)
         );
         assert_eq!(
-            snapshot.turns_page.as_ref().expect("history").data[0].status,
+            snapshot.turns_page.as_ref().expect("history").turns[0].status,
             TurnStatus::InProgress
         );
     }
@@ -1152,23 +1198,25 @@ mod tests {
                     active_flags: Vec::new(),
                 },
                 Vec::new(),
-                vec![turn("turn-live", TurnStatus::InProgress)],
+                vec![wire_turn("turn-live", TurnStatus::InProgress)],
             ),
         )]);
-        let sessions = CodexThreadSessions::default();
+        let sessions = TaskSessions::default();
 
         assert!(matches!(
-            sessions.prepare_prompt(&client, 1, "thread-1").await,
+            sessions.prepare_prompt(&client.driver(), 1, "thread-1").await,
             Ok(PromptTarget::Steer { turn_id }) if turn_id == "turn-live"
         ));
         assert_eq!(
             sessions
-                .apply_notification_with_outcome(
+                .apply_session_event_with_outcome(
                     1,
-                    &CodexNotification::TurnCompleted {
-                        thread_id: "thread-1".to_string(),
-                        turn: turn("turn-live", TurnStatus::Completed),
-                    },
+                    &session_event(
+                        "thread-1",
+                        SessionEventKind::TurnEnded {
+                            turn: turn("turn-live", TurnStatus::Completed)
+                        }
+                    ),
                 )
                 .await
                 .terminal,

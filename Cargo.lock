@@ -437,6 +437,7 @@ dependencies = [
  "anyhow",
  "axum",
  "base64",
+ "caffold-claude-runner",
  "chrono",
  "clap",
  "futures-util",
@@ -463,6 +464,18 @@ dependencies = [
  "uuid",
  "web-push-native",
  "whisper-rs",
+]
+
+[[package]]
+name = "caffold-claude-runner"
+version = "0.7.2"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]

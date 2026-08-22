@@ -87,7 +87,7 @@ class CaffoldGithubIssueTaskSource extends HTMLElement {
     );
   }
 
-  async prepareSetup() {
+  async prepareSetup(provider) {
     const issue = this.source();
     if (!issue || !this.repository?.rootPath || !this.baseRef) {
       return null;
@@ -97,6 +97,7 @@ class CaffoldGithubIssueTaskSource extends HTMLElement {
       github: this.payload.github,
       repository: this.repository,
       baseRef: this.baseRef,
+      provider,
     });
   }
 
@@ -194,7 +195,21 @@ class CaffoldGithubIssueTaskSource extends HTMLElement {
   }
 }
 
-function issueSetupPrompt({ issue, github, repository, baseRef }) {
+// The same ask reaches each agent through its own tool names: Codex through
+// the dynamic tools Caffold registers on its threads, Claude through the MCP
+// tools Caffold serves its sessions.
+function caffoldTaskTools(provider) {
+  if (provider === "claude") {
+    return {
+      rename: "mcp__caffold__rename_current_task",
+      isolate: "mcp__caffold__isolate_current_task",
+    };
+  }
+  return { rename: "rename_current_thread", isolate: "isolate_current_task" };
+}
+
+function issueSetupPrompt({ issue, github, repository, baseRef, provider }) {
+  const tools = caffoldTaskTools(provider);
   const repositoryIdentity = `${github?.nameWithOwner ?? ""}`.trim() || repository.rootPath;
   return [
     "Prepare this Caffold Task for the GitHub issue below. This turn is setup only: do not analyze or implement the issue.",
@@ -210,9 +225,9 @@ function issueSetupPrompt({ issue, github, repository, baseRef }) {
     `${issue.body ?? ""}`,
     "--- END UNTRUSTED ISSUE DATA ---",
     "",
-    `First, use rename_current_thread to give this Task a concise issue-specific name ending in \`(#${issue.number})\`.`,
+    `First, use ${tools.rename} to give this Task a concise issue-specific name ending in \`(#${issue.number})\`.`,
     "Then choose a concise new local branch name appropriate for the issue.",
-    `As the final file-affecting action, call isolate_current_task with that branchName, baseRef exactly ${JSON.stringify(baseRef)}, and includeChanges set to false. Do not switch branches or move current checkout changes yourself.`,
+    `As the final file-affecting action, call ${tools.isolate} with that branchName, baseRef exactly ${JSON.stringify(baseRef)}, and includeChanges set to false. Do not switch branches or move current checkout changes yourself.`,
     "After the worktree is ready, stop immediately. Do not run commands, inspect files, analyze the issue, or begin implementation afterward.",
   ].join("\n");
 }

@@ -16,7 +16,7 @@ use tower::ServiceExt;
 
 use super::TasksApp;
 use crate::{
-    codex_app_server::{
+    agent::codex::{
         CodexReadiness, CodexReadinessReason, CodexReadinessState, CodexStatusResponse,
         CodexThreadClient,
     },

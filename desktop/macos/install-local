@@ -42,6 +42,7 @@ validate_app() {
   local app_path="$1"
   test -x "${app_path}/Contents/MacOS/CaffoldServer"
   test -x "${app_path}/Contents/Resources/caffold"
+  test -x "${app_path}/Contents/Resources/caffold-claude-runner"
   codesign --verify --deep --strict "${app_path}"
   plutil -lint "${app_path}/Contents/Info.plist" >/dev/null
 }

@@ -11,6 +11,7 @@ const ITEMS = [
   { section: "notifications", label: "Notifications", icon: "Bell" },
   { section: "remote-access", label: "Remote Access", icon: "Link" },
   { section: "codex", label: "Codex", brand: true },
+  { section: "claude", label: "Claude", icon: "Zap" },
   { section: "about", label: "About Caffold", icon: "Info" },
 ];
 

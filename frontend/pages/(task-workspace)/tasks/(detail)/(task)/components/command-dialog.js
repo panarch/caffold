@@ -55,7 +55,7 @@ class CaffoldTaskCommandDialog extends HTMLElement {
       command: `${payload.command ?? ""}`.trim(),
       cwd: `${payload.cwd ?? ""}`.trim(),
       status: `${payload.status ?? ""}`.trim(),
-      output: `${payload.aggregatedOutput ?? ""}`,
+      output: `${payload.output ?? ""}`,
       exitCode: finiteNumber(payload.exitCode),
       durationMs: finiteNumber(payload.durationMs),
       createdMs: finiteNumber(event?.createdMs),

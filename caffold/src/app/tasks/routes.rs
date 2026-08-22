@@ -1,3 +1,5 @@
+mod agent;
+mod claude;
 mod codex;
 mod commands;
 mod conversation;
@@ -5,6 +7,8 @@ mod list;
 mod membership;
 mod store;
 
+use agent::*;
+use claude::*;
 use codex::*;
 use commands::*;
 use conversation::*;
@@ -24,13 +28,11 @@ use axum::{
 };
 use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
-use serde_json::Value as JsonValue;
 use tokio::sync::broadcast;
 
 use super::{
-    ApprovalResolution, ApprovalResolveError, CodexConnection, DetailFrameStream,
-    PermissionGrantScope, TaskDetailResponse, TaskDetailSync, TaskRecord, TaskState,
-    accepted_user_message_event, now_ms, task_activity_ms,
+    ApprovalResolveError, CodexConnection, DetailFrameStream, TaskAgent, TaskDetailResponse,
+    TaskDetailSync, TaskRecord, TaskState, accepted_user_message_event, now_ms, task_activity_ms,
 };
 use super::{
     lifecycle::{ActiveTaskTopPlacement, StartTask},
@@ -41,14 +43,14 @@ use super::{
 use super::generated_images::GeneratedImageError;
 
 use crate::{
-    app::error::ApiError,
-    codex_app_server::{
-        CodexDaemonInfo, CodexPermissionMode, CodexStatusResponse, CodexThreadClient,
-        CodexThreadError, CodexTurnOptions, NORMAL_SERVICE_TIER_ID, ThreadStatus,
+    agent::{
+        ApprovalDecision, Conversation, Driver, PermissionModes, Turn, TurnOptions, TurnRejected,
+        codex::{CodexDaemonInfo, CodexStatusResponse, CodexThreadClient, CodexThreadError},
     },
-    codex_thread_sessions::{PromptTarget, ThreadSessionSnapshot, ThreadSessionsDiagnostics},
+    app::error::ApiError,
+    app::tasks::sessions::{PromptTarget, SessionSnapshot, SessionsDiagnostics},
     fs::MAX_IMAGE_BYTES,
-    task_store::{ManagedThread, ManagedWorktree, ManagedWorktreeState, TaskStoreError},
+    task_store::{ManagedThread, ManagedWorktree, ManagedWorktreeState, RunBy, TaskStoreError},
 };
 
 const MAX_TASK_IMAGES: usize = 4;
@@ -58,10 +60,10 @@ const TASK_CANONICAL_READ_CONCURRENCY: usize = 8;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CodexRuntimeDiagnostics {
+struct CodexStatusDiagnostics {
     process_generation: u64,
     process_connected: bool,
-    thread_sessions: ThreadSessionsDiagnostics,
+    thread_sessions: SessionsDiagnostics,
     usage: super::runtime::CodexUsageDiagnostics,
 }
 
@@ -70,7 +72,7 @@ struct CodexRuntimeDiagnostics {
 struct CodexStatusPayload {
     #[serde(flatten)]
     status: CodexStatusResponse,
-    diagnostics: CodexRuntimeDiagnostics,
+    diagnostics: CodexStatusDiagnostics,
 }
 
 #[derive(Debug, Deserialize)]
@@ -87,22 +89,20 @@ struct TaskDetailQuery {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CodexPermissionsQuery {
-    cwd: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct CreateTaskRequest {
     prompt: String,
     #[serde(default)]
     images: Vec<String>,
     cwd: Option<String>,
+    /// Which agent should run this Task, named as the model list named it.
+    /// Absent means Codex, which is what every Task was before there was a
+    /// second agent.
+    provider: Option<String>,
     model: Option<String>,
     effort: Option<String>,
     #[serde(default)]
     fast_mode: bool,
-    permission_mode: Option<CodexPermissionMode>,
+    permission_mode: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -115,25 +115,8 @@ struct TaskPromptRequest {
     effort: Option<String>,
     #[serde(default)]
     fast_mode: bool,
-    permission_mode: Option<CodexPermissionMode>,
+    permission_mode: Option<String>,
     active_turn_id: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CodexPermissionsResponse {
-    default_mode: CodexPermissionMode,
-    options: Vec<CodexPermissionOption>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CodexPermissionOption {
-    mode: CodexPermissionMode,
-    label: &'static str,
-    description: &'static str,
-    allowed: bool,
-    dangerous: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -147,15 +130,18 @@ struct TaskPromptResponse {
 struct TaskPromptOutcome {
     turn_id: String,
     steered: bool,
-    started_turn: Option<(crate::codex_app_server::CodexTurn, CodexTurnOptions)>,
+    started_turn: Option<(Turn, TurnOptions)>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TaskApprovalRequest {
+    /// One of the decisions the approval request offered.
+    ///
+    /// How far a grant reaches is part of the decision rather than a separate
+    /// field, because each agent decides for itself what allowing something
+    /// always covers.
     decision: String,
-    #[serde(default)]
-    scope: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -328,8 +314,10 @@ pub(super) fn router(state: TaskState) -> Router {
         .merge(super::push::router())
         .route("/api/codex/status", get(codex_status))
         .route("/api/codex/restart", post(codex_restart))
-        .route("/api/codex/models", get(codex_models))
-        .route("/api/codex/permissions", get(codex_permissions))
+        .route("/api/claude/status", get(claude_status))
+        .route("/api/claude/restart", post(claude_restart))
+        .route("/api/agent/models", get(agent_models))
+        .route("/api/agent/permissions", get(agent_permissions))
         .route(
             "/api/tasks",
             get(list_managed_tasks)
@@ -444,16 +432,16 @@ pub(super) async fn test_store_update_composer_settings(
 
 #[cfg(test)]
 pub(super) mod test_support {
-    use serde_json::json;
+    use serde_json::{Value as JsonValue, json};
 
     use super::*;
     use crate::task_store::ManagedSection;
 
     pub(super) fn recovery_location_responses(
         archived_threads: Vec<JsonValue>,
-    ) -> Vec<crate::codex_app_server::MockCodexResponse> {
+    ) -> Vec<crate::agent::codex::MockCodexResponse> {
         vec![
-            crate::codex_app_server::MockCodexResponse::ok_for(
+            crate::agent::codex::MockCodexResponse::ok_for(
                 "thread/list",
                 json!({
                     "limit": 100,
@@ -468,7 +456,7 @@ pub(super) mod test_support {
                     "backwardsCursor": null,
                 }),
             ),
-            crate::codex_app_server::MockCodexResponse::ok_for(
+            crate::agent::codex::MockCodexResponse::ok_for(
                 "thread/list",
                 json!({
                     "limit": 100,
@@ -488,8 +476,8 @@ pub(super) mod test_support {
 
     pub(super) fn active_recovery_location_responses(
         active_threads: Vec<JsonValue>,
-    ) -> Vec<crate::codex_app_server::MockCodexResponse> {
-        vec![crate::codex_app_server::MockCodexResponse::ok_for(
+    ) -> Vec<crate::agent::codex::MockCodexResponse> {
+        vec![crate::agent::codex::MockCodexResponse::ok_for(
             "thread/list",
             json!({
                 "limit": 100,
@@ -536,7 +524,7 @@ pub(super) mod test_support {
                 };
                 tables.upsert_managed_section(&section)?;
                 tables.claim_managed_thread_at_top(
-                    ManagedThread::new(thread_id, Some(recency_ms), None, None),
+                    ManagedThread::new(thread_id, RunBy::Codex, Some(recency_ms), None, None),
                     display_name,
                     &section.section_id,
                     recency_ms,

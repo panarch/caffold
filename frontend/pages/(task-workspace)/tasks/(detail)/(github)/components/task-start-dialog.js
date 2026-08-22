@@ -146,7 +146,9 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
     this.error = null;
     this.patch();
     try {
-      const prompt = await sourceComponent.prepareSetup();
+      const prompt = await sourceComponent.prepareSetup(
+        this.turnOptions()?.submissionOptions().provider ?? "codex",
+      );
       if (requestId !== this.createRequestId) {
         return;
       }

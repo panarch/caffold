@@ -883,18 +883,21 @@ test("names a new Caffold task at first-turn completion and preserves it", async
   const finalAssistantMessages = tasksPage.locator(
     '.task-message[data-message-role="assistant"][data-message-phase="final"]',
   );
+  // The name Caffold gives the tool it offers Codex for renaming a Task.
+  const RENAME_TOOL_NAME = "rename_current_thread";
   const readTaskDetail = async () => {
     const response = await page.request.get(`/api/tasks/${threadId}`);
     expect(response.ok()).toBeTruthy();
     return response.json();
   };
-  const completedDynamicToolCalls = (detail) =>
-    (detail.events ?? []).filter(
-      (event) =>
-        event.type === "work_status" &&
-        event.payload?.itemType === "dynamicToolCall" &&
-        event.payload?.lifecycle === "completed",
-    );
+  // Caffold renames a Task through a tool it offers Codex, which arrives as
+  // work Caffold has no surface of its own for.
+  const isCompletedRename = (event) =>
+    event.type === "tool_call" &&
+    event.payload?.name === RENAME_TOOL_NAME &&
+    event.payload?.status === "completed";
+  const completedRenames = (detail) =>
+    (detail.events ?? []).filter(isCompletedRename);
 
   await expect(finalAssistantMessages.filter({ hasText: initialReply })).toBeVisible({
     timeout: 60_000,
@@ -907,17 +910,12 @@ test("names a new Caffold task at first-turn completion and preserves it", async
   expect(automaticName).toMatch(/[가-힣]/);
   expect(automaticName).not.toBe(firstPrompt);
   expect(automaticName).not.toContain(initialReply);
-  expect(completedDynamicToolCalls(firstDetail)).toHaveLength(1);
-  const renameCompletedIndex = firstDetail.events.findIndex(
-    (event) =>
-      event.type === "work_status" &&
-      event.payload?.itemType === "dynamicToolCall" &&
-      event.payload?.lifecycle === "completed",
-  );
+  expect(completedRenames(firstDetail)).toHaveLength(1);
+  const renameCompletedIndex = firstDetail.events.findIndex(isCompletedRename);
   const finalResponseIndex = firstDetail.events.findIndex(
     (event) =>
       event.type === "assistant_message" &&
-      ["final", "final_answer"].includes(event.payload?.phase) &&
+      event.payload?.phase === "final" &&
       event.payload?.text?.includes(initialReply),
   );
   expect(renameCompletedIndex).toBeGreaterThanOrEqual(0);
@@ -940,7 +938,7 @@ test("names a new Caffold task at first-turn completion and preserves it", async
   await expectLiveThreadIdle(page.request, threadId);
   const followUpDetail = await readTaskDetail();
   expect(followUpDetail.task?.title).toBe(automaticName);
-  expect(completedDynamicToolCalls(followUpDetail)).toHaveLength(1);
+  expect(completedRenames(followUpDetail)).toHaveLength(1);
 
   await followUpPrompt.fill(
     `Rename the current Caffold task to exactly "${requestedName}" using rename_current_thread. After the tool succeeds, reply with exactly ${renamedReply}. Do not inspect files, modify files, or run commands.`,
@@ -950,7 +948,7 @@ test("names a new Caffold task at first-turn completion and preserves it", async
   await expectLiveThreadIdle(page.request, threadId);
   const renamedDetail = await readTaskDetail();
   expect(renamedDetail.task?.title).toBe(requestedName);
-  expect(completedDynamicToolCalls(renamedDetail)).toHaveLength(2);
+  expect(completedRenames(renamedDetail)).toHaveLength(2);
   await expect(tasksPage.locator(".task-detail-heading h2")).toHaveText(requestedName);
 
   await page.goto("/tasks");

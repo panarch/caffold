@@ -9,16 +9,20 @@ mod push;
 mod recovery;
 mod routes;
 mod runtime;
+mod sessions;
 mod startup;
 mod sync;
 mod worktrees;
 
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use axum::Router;
 use tokio::sync::broadcast;
 
-use crate::{fs::RootedFs, task_store::TaskStore};
+use crate::{agent::claude::ClaudeClient, fs::RootedFs, task_store::TaskStore};
 
 use detail::{DetailContext, TaskDetailSync};
 use events::TaskEvents;
@@ -26,7 +30,7 @@ use lifecycle::TaskLifecycle;
 pub(super) use projection::TaskRecord;
 use push::{PushRuntime, PushService};
 use routes::TaskListEvents;
-use runtime::CodexRuntime;
+use runtime::TaskRuntime;
 pub(super) use startup::PersistentTasksGateway;
 use sync::TaskSync;
 use worktrees::ManagedWorktrees;
@@ -35,8 +39,8 @@ use worktrees::ManagedWorktrees;
 struct TaskState {
     fs: Arc<RootedFs>,
     default_cwd_path: String,
-    codex_runtime: CodexRuntime,
-    codex_sessions: crate::codex_thread_sessions::CodexThreadSessions,
+    task_runtime: TaskRuntime,
+    task_sessions: crate::app::tasks::sessions::TaskSessions,
     detail: DetailContext,
     task_events: TaskEvents,
     task_sync: TaskSync<TaskDetailSync>,
@@ -55,6 +59,7 @@ impl TaskState {
         shutdown: broadcast::Sender<()>,
         task_store: TaskStore,
         worktree_root: PathBuf,
+        claude: ClaudeClient,
     ) -> anyhow::Result<Self> {
         let (push, _receiver) = PushService::test_channel(task_store.clone());
         Self::new_with_push(
@@ -64,6 +69,7 @@ impl TaskState {
             task_store,
             worktree_root,
             push,
+            claude,
         )
     }
 
@@ -74,37 +80,40 @@ impl TaskState {
         task_store: TaskStore,
         worktree_root: PathBuf,
         push: PushService,
+        claude: ClaudeClient,
     ) -> anyhow::Result<Self> {
         let task_events = TaskEvents::default();
-        let codex_sessions = crate::codex_thread_sessions::CodexThreadSessions::default();
+        let task_sessions = crate::app::tasks::sessions::TaskSessions::default();
         let task_list_events = TaskListEvents::new();
         let managed_worktrees =
             ManagedWorktrees::new(fs.clone(), task_store.clone(), worktree_root)?;
         let lifecycle = TaskLifecycle::new(
             fs.clone(),
-            codex_sessions.clone(),
+            task_sessions.clone(),
             task_events.clone(),
             task_list_events.clone(),
             task_store.clone(),
             managed_worktrees,
+            claude.clone(),
         );
-        let codex_runtime = CodexRuntime::new(
-            codex_sessions.clone(),
+        let task_runtime = TaskRuntime::new(
+            claude,
+            task_sessions.clone(),
             task_events.clone(),
             task_store.clone(),
             shutdown.clone(),
         )
         .with_push_service(push.clone())
         .with_lifecycle(lifecycle.clone());
-        let codex_runtime_signals = codex_runtime.subscribe();
+        let task_runtime_signals = task_runtime.subscribe();
         let task_sync = TaskSync::new(shutdown.clone());
         let refresh_events = task_list_events.clone();
         let detail = DetailContext::new(
             fs.clone(),
             task_store.clone(),
-            codex_runtime.clone(),
-            codex_runtime_signals,
-            codex_sessions.clone(),
+            task_runtime.clone(),
+            task_runtime_signals,
+            task_sessions.clone(),
             task_events.clone(),
             task_sync.clone(),
             shutdown.clone(),
@@ -113,8 +122,8 @@ impl TaskState {
         Ok(Self {
             fs,
             default_cwd_path,
-            codex_runtime,
-            codex_sessions,
+            task_runtime,
+            task_sessions,
             detail,
             task_events,
             task_sync,
@@ -129,7 +138,7 @@ impl TaskState {
 
 pub(super) struct TasksApp {
     router: Router,
-    runtime: CodexRuntime,
+    runtime: TaskRuntime,
     push: PushRuntime,
 }
 
@@ -140,6 +149,7 @@ impl TasksApp {
         shutdown: broadcast::Sender<()>,
         task_store: TaskStore,
         worktree_root: PathBuf,
+        claude: ClaudeClient,
     ) -> anyhow::Result<Self> {
         let push = PushRuntime::new(task_store.clone())?;
         let state = TaskState::new_with_push(
@@ -149,8 +159,9 @@ impl TasksApp {
             task_store,
             worktree_root,
             push.service(),
+            claude,
         )?;
-        let runtime = state.codex_runtime.clone();
+        let runtime = state.task_runtime.clone();
         Ok(Self {
             router: routes::router(state),
             runtime,
@@ -165,12 +176,19 @@ impl TasksApp {
         database_path: PathBuf,
         worktree_root: PathBuf,
     ) -> anyhow::Result<Self> {
+        // The runner's socket lives beside the database, so an installed
+        // application and a development server each drive their own.
+        let data_dir = database_path
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| anyhow::anyhow!("the Task database has no directory"))?;
         let app = Self::new(
             fs,
             default_cwd_path,
             shutdown,
             TaskStore::redb(database_path)?,
             worktree_root,
+            ClaudeClient::in_data_dir(&data_dir),
         )?;
         app.runtime.startup();
         Ok(app)
@@ -182,12 +200,14 @@ impl TasksApp {
         shutdown: broadcast::Sender<()>,
         worktree_root: PathBuf,
     ) -> anyhow::Result<Self> {
+        let data_dir = worktree_root.clone();
         Self::new(
             fs,
             default_cwd_path,
             shutdown,
             TaskStore::memory()?,
             worktree_root,
+            ClaudeClient::in_data_dir(&data_dir),
         )
     }
 
@@ -203,9 +223,7 @@ impl TasksApp {
 pub(super) use detail::{DetailFrameStream, TaskDetailResponse};
 pub(super) use events::{TaskEventRecord, accepted_user_message_event, now_ms};
 pub(super) use projection::task_activity_ms;
-pub(super) use runtime::{
-    ApprovalResolution, ApprovalResolveError, CodexConnection, PermissionGrantScope,
-};
+pub(super) use runtime::{ApprovalResolveError, CodexConnection, TaskAgent};
 
 #[cfg(test)]
 pub(in crate::app::tasks) mod test_support {
@@ -215,7 +233,11 @@ pub(in crate::app::tasks) mod test_support {
     use tokio::sync::broadcast;
 
     use super::{TaskState, projection::*, routes::test_claim_task};
-    use crate::{codex_app_server::CodexThreadClient, fs::RootedFs, task_store::TaskStore};
+    use crate::{
+        agent::{Conversation, claude::ClaudeClient, codex::CodexThreadClient},
+        fs::RootedFs,
+        task_store::TaskStore,
+    };
 
     const MOCK_METHOD_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
     const MOCK_METHOD_POLL_INTERVAL: Duration = Duration::from_millis(5);
@@ -224,18 +246,33 @@ pub(in crate::app::tasks) mod test_support {
         fs: RootedFs,
         client: CodexThreadClient,
     ) -> TaskState {
+        let (state, _runner) = task_state_with_agents(fs, client).await;
+        state
+    }
+
+    /// The same state, keeping a hand on the Claude stand-in so a test can
+    /// speak as that agent too.
+    pub(in crate::app::tasks) async fn task_state_with_agents(
+        fs: RootedFs,
+        client: CodexThreadClient,
+    ) -> (TaskState, crate::agent::claude::MockRunnerHandle) {
         let (shutdown, _) = broadcast::channel(16);
         let worktree_root = fs.root().join(".caffold-test/worktrees");
+        // Conversations are kept under the test's own root rather than the
+        // developer's home, so a test can write one down and see it removed.
+        let (claude, runner) =
+            ClaudeClient::mock_writing_to(fs.root().join(".caffold-test/projects"));
         let state = TaskState::new(
             Arc::new(fs),
             String::new(),
             shutdown,
             TaskStore::memory().expect("in-memory task store"),
             worktree_root,
+            claude,
         )
         .expect("task state");
-        state.codex_runtime.install_test_client(1, client).await;
-        state
+        state.task_runtime.install_test_client(1, client).await;
+        (state, runner)
     }
 
     pub(in crate::app::tasks) async fn wait_for_mock_method(
@@ -292,10 +329,12 @@ pub(in crate::app::tasks) mod test_support {
         thread_id: &str,
         cwd: &Path,
     ) {
-        let thread = task_thread_list(thread_id, cwd)["data"][0].clone();
-        let resolved = resolve_thread_cwd(&state.fs, &thread);
-        let task = task_record_from_thread(&thread, &[], resolved.as_ref())
-            .expect("test thread projection");
+        let thread: crate::agent::codex::CodexThread =
+            serde_json::from_value(task_thread_list(thread_id, cwd)["data"][0].clone())
+                .expect("the fixture decodes as a Codex thread");
+        let conversation = Conversation::from(&thread);
+        let resolved = resolve_conversation_cwd(&state.fs, &conversation);
+        let task = task_record_from_conversation(&conversation, &[], resolved.as_ref());
         test_claim_task(state, &task)
             .await
             .expect("test thread is managed");
@@ -306,9 +345,13 @@ pub(in crate::app::tasks) mod test_support {
         thread_id: &str,
         cwd: &Path,
     ) {
-        let thread = serde_json::from_value(task_thread_list(thread_id, cwd)["data"][0].clone())
-            .expect("canonical test thread");
-        state.codex_sessions.observe_thread_metadata(thread).await;
+        let thread: crate::agent::codex::CodexThread =
+            serde_json::from_value(task_thread_list(thread_id, cwd)["data"][0].clone())
+                .expect("canonical test thread");
+        state
+            .task_sessions
+            .observe_thread_metadata(Conversation::from(&thread))
+            .await;
         manage_test_thread(state, thread_id, cwd).await;
     }
 

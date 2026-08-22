@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::tasks::active_list::unavailable_active_task;
 
 pub(super) async fn task_detail(
     State(state): State<TaskState>,
@@ -55,20 +56,42 @@ pub(super) fn generated_image_api_error(
     }
 }
 
+/// Record that a person has looked at a Task.
+///
+/// What is written is Caffold's own — when this Task was last seen — so the
+/// answer describes the Task as well as it can be described without waking
+/// anything. Codex is asked, because asking it is cheap and refreshes what the
+/// session store knows; Claude is not, because reaching a Claude Task that
+/// nobody is watching means starting a process, and a person clicking a row did
+/// not ask for that.
 pub(super) async fn mark_task_seen(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskRecord>, ApiError> {
-    if task_store_get(&state, &thread_id).await?.is_none() {
+    let Some(managed) = task_store_get(&state, &thread_id).await? else {
         return Err(task_not_managed_error());
-    }
-    let client = require_codex_thread_client(&state).await?;
-    let thread = client.read_thread(&thread_id).await?;
-    state
-        .codex_sessions
-        .observe_thread_metadata(thread.clone())
-        .await;
-    let mut task = state.detail.record_from_codex_thread(&thread)?;
+    };
+    let agent = state.task_runtime.task_agent(&thread_id).await?;
+    let mut task = match agent.codex() {
+        Some(connection) => {
+            let conversation =
+                Conversation::from(&connection.client.read_thread(&thread_id).await?);
+            state
+                .task_sessions
+                .observe_thread_metadata(conversation.clone())
+                .await;
+            state.detail.record_from_conversation(&conversation)?
+        }
+        None => match state
+            .task_sessions
+            .snapshot(&thread_id)
+            .await
+            .and_then(|snapshot| snapshot.conversation)
+        {
+            Some(conversation) => state.detail.record_from_conversation(&conversation)?,
+            None => unavailable_active_task(&managed),
+        },
+    };
     let activity_ms = task_activity_ms(&task);
     let Some(managed) = task_store_mark_seen(&state, &thread_id, activity_ms).await? else {
         return Err(task_not_managed_error());
@@ -114,11 +137,58 @@ mod tests {
     use super::*;
     use crate::{
         app::tasks::{
-            events::{task_event_from_thread_item, task_event_record},
+            events::{task_event_from_item, task_event_record},
             test_support::*,
         },
         fs::RootedFs,
+        task_store::{ManagedThread, RunBy},
     };
+
+    #[tokio::test]
+    async fn a_claude_task_is_marked_seen_without_asking_codex_about_it() {
+        // Codex has never heard of a Claude conversation. Asking it made the
+        // request fail, so nothing was written and the Task came back unseen on
+        // the next read.
+        let root = tempfile::tempdir().unwrap();
+        let client = CodexThreadClient::mock(Vec::new());
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        let thread_id = "claude-thread";
+        state
+            .task_store
+            .claim(
+                ManagedThread {
+                    run_by: RunBy::Claude {
+                        cwd: root.path().display().to_string(),
+                    },
+                    ..ManagedThread::new(thread_id, RunBy::Codex, Some(1_000), None, None)
+                },
+                1,
+            )
+            .unwrap();
+        // A turn that finished while nobody was looking is what makes it unseen.
+        state
+            .task_store
+            .record_completed_turn(thread_id, 4_000)
+            .unwrap();
+        assert!(
+            state.task_store.get(thread_id).unwrap().unwrap().unseen(),
+            "a Task whose turn finished unwatched starts unseen"
+        );
+
+        let Json(task) = mark_task_seen(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .expect("a Claude Task can be marked seen");
+
+        assert!(!task.unseen);
+        assert!(
+            !state.task_store.get(thread_id).unwrap().unwrap().unseen(),
+            "and it stays seen when the Task is read again"
+        );
+        assert!(
+            state.task_runtime.usage_diagnostics().threads.is_empty(),
+            "nothing woke an agent to answer a click"
+        );
+    }
 
     #[tokio::test]
     async fn task_detail_http_projects_the_canonical_file_link_contract() {
@@ -130,13 +200,12 @@ mod tests {
         let policy = task.join("docs/review/policy.md");
         std::fs::create_dir_all(policy.parent().unwrap()).unwrap();
         std::fs::write(&policy, "# Review Policy\n").unwrap();
-        let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::delayed_ok(
+        let client =
+            CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::delayed_ok(
                 "thread/resume",
                 resumed_task(thread_id, &task),
                 std::time::Duration::from_secs(1),
-            ),
-        ]);
+            )]);
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         cache_and_manage_test_thread(&state, thread_id, &task).await;
         state.task_events.publish(task_event_record(
@@ -208,13 +277,12 @@ mod tests {
         let task = root.path().join("task");
         std::fs::create_dir(&task).unwrap();
         std::fs::write(task.join("live.rs"), "pub fn live() {}\n").unwrap();
-        let client = CodexThreadClient::mock(vec![
-            crate::codex_app_server::MockCodexResponse::delayed_ok(
+        let client =
+            CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::delayed_ok(
                 "thread/resume",
                 resumed_task(thread_id, &task),
                 std::time::Duration::from_secs(1),
-            ),
-        ]);
+            )]);
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         cache_and_manage_test_thread(&state, thread_id, &task).await;
 
@@ -303,7 +371,7 @@ mod tests {
         let thread_id = "thread-seen";
         let mut thread = task_thread_list(thread_id, root.path())["data"][0].clone();
         thread["updatedAt"] = json!(10.0);
-        let client = CodexThreadClient::mock(vec![crate::codex_app_server::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
             "thread/read",
             json!({ "thread": thread }),
         )]);
@@ -365,23 +433,19 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let client = CodexThreadClient::mock(Vec::new());
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        let item = crate::agent::codex::conversation_item(
+            &json!({
+                "type": "imageGeneration",
+                "id": "image_1",
+                "status": "completed",
+                "result": ONE_PIXEL_PNG,
+                "savedPath": null
+            }),
+            crate::agent::ActivityStatus::Completed,
+        )
+        .expect("a generated image item");
         state.task_events.publish(
-            task_event_from_thread_item(
-                "thread_1",
-                1,
-                &json!({
-                    "threadId": "thread_1",
-                    "turnId": "turn_1",
-                    "item": {
-                        "type": "imageGeneration",
-                        "id": "image_1",
-                        "status": "completed",
-                        "result": ONE_PIXEL_PNG,
-                        "savedPath": null
-                    }
-                }),
-            )
-            .expect("generated image event"),
+            task_event_from_item("thread_1", "turn_1", 1, &item).expect("generated image event"),
         );
 
         let response = router(state.clone())

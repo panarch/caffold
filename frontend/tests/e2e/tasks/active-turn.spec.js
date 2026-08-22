@@ -5,7 +5,7 @@ import {
   canonicalTaskState,
   emitTaskDetailBootstrap,
   installEventSourceMock,
-  mockCodexModels,
+  mockAgentModels,
 } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
     registryKey: "__activeTurnEventSources",
     autoOpen: true,
   });
-  await mockCodexModels(page);
+  await mockAgentModels(page);
 });
 
 test("shows context compaction only while its lifecycle item is active", { tag: "@desktop" }, async ({
@@ -56,12 +56,12 @@ test("shows context compaction only while its lifecycle item is active", { tag: 
     id: `${turnId}:context-compaction-1`,
     threadId,
     turnId,
-    type: "work_status",
+    type: "tool_call",
     createdMs: startedAtMs + 1_000,
     payload: {
       itemId: "context-compaction-1",
-      itemType: "contextCompaction",
-      lifecycle: "started",
+      name: "Compacting context",
+      status: "inProgress",
     },
   });
   await emitTaskEvent(page, threadId, compactionStarted, 2);
@@ -71,10 +71,10 @@ test("shows context compaction only while its lifecycle item is active", { tag: 
 
   const compactionCompleted = {
     ...compactionStarted,
-    summary: "Context compacted",
+    summary: "Compacting context: completed",
     payload: {
       ...compactionStarted.payload,
-      lifecycle: "completed",
+      status: "completed",
     },
     updatedMs: startedAtMs + 2_000,
   };
@@ -180,7 +180,6 @@ test("preserves active-turn and spinner identity until the turn changes", { tag:
     createdMs: startedAtMs + 2_000,
     payload: {
       itemId: "command_started",
-      lifecycle: "started",
       status: "inProgress",
       command: "cargo test",
     },
@@ -199,9 +198,8 @@ test("preserves active-turn and spinner identity until the turn changes", { tag:
     createdMs: startedAtMs + 3_000,
     payload: {
       itemId: "file_change_started",
-      lifecycle: "started",
       status: "inProgress",
-      changes: [{ path: "src/lib.rs" }],
+      paths: ["src/lib.rs"],
     },
   });
   const canonicalStartedAtMs = startedAtMs - 500;
