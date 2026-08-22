@@ -332,6 +332,15 @@ pub struct Wire {
     stream: std::os::unix::net::UnixStream,
     reader: BufReader<std::os::unix::net::UnixStream>,
     next_id: u64,
+    /// Events that arrived while a reply was being awaited.
+    ///
+    /// The wire carries replies and events interleaved, written by different
+    /// tasks — a handler answers, the event pump forwards — so their relative
+    /// order is not promised: a session's output can land between a request
+    /// and that request's reply. A reader waiting for one kind has to keep
+    /// the other, or an event consumed at the wrong moment is simply gone,
+    /// which reads as the runner never having sent it.
+    events: std::collections::VecDeque<Value>,
 }
 
 impl Wire {
@@ -346,10 +355,12 @@ impl Wire {
             stream,
             reader,
             next_id: 1,
+            events: std::collections::VecDeque::new(),
         }
     }
 
-    /// Send one request and return its reply, letting events pass by.
+    /// Send one request and return its reply, keeping events that arrive in
+    /// between for [`Wire::next_event`] to hand out in order.
     pub fn request(&mut self, mut body: Value) -> Value {
         let id = self.next_id;
         self.next_id += 1;
@@ -364,11 +375,18 @@ impl Wire {
             if row.get("id").and_then(Value::as_u64) == Some(id) {
                 return row;
             }
+            if row.get("t").is_some() {
+                self.events.push_back(row);
+            }
         }
     }
 
-    /// The next event line, letting replies pass by.
+    /// The next event line, in arrival order — kept ones first — letting
+    /// replies pass by.
     pub fn next_event(&mut self) -> Value {
+        if let Some(kept) = self.events.pop_front() {
+            return kept;
+        }
         loop {
             let row = self.next_line();
             if row.get("t").is_some() {
