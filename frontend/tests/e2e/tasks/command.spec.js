@@ -163,6 +163,77 @@ test("owns active disclosure state and terminal presentation across canonical up
   );
 });
 
+test("a multi-line script reads as one line in the row and as its lines in the dialog", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  // The row shows the model's one-line form (why it exists is
+  // commandPresentation's to say); the dialog shows the script's own lines.
+  // The long first line is deliberate: it forces the ellipsis in the row and
+  // wrapped lines in the dialog, the inconvenient halves of both contracts.
+  const threadId = "thread_command_component";
+  const turnId = "turn_command_script";
+  const now = 1_767_450_000_000;
+  const script =
+    "sed -n '1,180p' docs/development/deeply/nested/runbooks/for-review-surfaces/macos-local-application-development-runbook-notes.md\nprintf 'x'\ngit status --short --branch";
+  const task = activeTask(threadId, turnId, now);
+  const started = turnEvent(
+    "event_turn_started",
+    "turn_started",
+    now,
+    turnId,
+    { status: "inProgress" },
+  );
+  const scriptCompleted = commandEvent(now + 1_000, turnId, {
+    command: script,
+    status: "completed",
+    exitCode: 0,
+    durationMs: 900,
+    output: "ok",
+  });
+
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) }),
+  );
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({ json: taskDetail(task, [started, scriptCompleted], 1) }),
+  );
+
+  await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(
+    page,
+    taskDetail(task, [started, scriptCompleted], 1),
+  );
+
+  const command = page.locator(".task-command > caffold-task-command");
+  await expect(command).toHaveAttribute("data-command-terminal", "");
+  const label = command.locator(".task-command-summary-label");
+  await expect(label).toHaveText(
+    "sed -n '1,180p' docs/development/deeply/nested/runbooks/for-review-surfaces/macos-local-application-development-runbook-notes.md printf 'x' git status --short --branch",
+  );
+  // The load-bearing assertion: toHaveText normalizes whitespace, so it would
+  // match a label still carrying the raw newlines this test exists to refuse.
+  expect(
+    await label.evaluate((element) => element.textContent.includes("\n")),
+  ).toBe(false);
+
+  await command.getByRole("button", { name: "View output" }).click();
+  const dialog = page.locator("caffold-task-command-dialog dialog");
+  await expect(dialog).toHaveAttribute("open", "");
+  const commandField = dialog
+    .locator(".task-command-dialog-details > div")
+    .filter({ has: page.getByText("Command", { exact: true }) })
+    .locator("code");
+  expect(await commandField.evaluate((element) => element.textContent)).toBe(
+    script,
+  );
+  const renderedLines = await commandField.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return element.getBoundingClientRect().height / parseFloat(style.lineHeight);
+  });
+  expect(renderedLines).toBeGreaterThanOrEqual(2.5);
+  await captureReviewScreenshot(page, testInfo, "command-script-dialog");
+});
+
 function activeTask(threadId, turnId, startedAtMs) {
   return {
     id: threadId,

@@ -136,6 +136,11 @@ caffold-task-command-dialog {
     font-size: var(--code-font-size);
     line-height: var(--code-line-height);
     user-select: text;
+    /* Every detail field keeps the whitespace it was given. The command is
+       the one that has any — a multi-line script whose newlines, collapsed,
+       would show sub-commands run together as one line that means something
+       else in a shell — and the single-line fields are unchanged by this. */
+    white-space: pre-wrap;
   }
 
   & .task-command-dialog-output {

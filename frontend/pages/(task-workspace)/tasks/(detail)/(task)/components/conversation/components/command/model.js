@@ -28,10 +28,20 @@ export function commandPresentation(event = {}) {
         result === "failed" && exitCode !== null ? `Exit ${exitCode}` : "",
       ].filter(Boolean)
     : [];
+  const unavailable = "(command unavailable)";
 
   return {
-    command: command || "(command unavailable)",
+    command: command || unavailable,
     commandKey: eventIdentityKey(event),
+    // The one-line form the summary row shows. A command is routinely a
+    // multi-line script, and engines disagree about a raw newline inside a
+    // single-line box — Safari draws a missing-glyph mark where Chrome
+    // collapses it to a space — so the line is made here rather than left to
+    // the renderer. What this trades away is the row as a faithful copy
+    // source: selecting it yields this flattened form, and the script's own
+    // whitespace survives in `command`, which the dialog and the active
+    // disclosure show.
+    commandLine: command.replace(/\s+/g, " ") || unavailable,
     cwd,
     defaultOpen: Boolean(rawStatus && !terminal),
     metadata: metadata.join(" · "),

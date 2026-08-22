@@ -19,6 +19,30 @@ const event = (status, payload = {}) => ({
   },
 });
 
+test("flattens a multi-line script into one summary line and keeps the script", () => {
+  // Why the one-line form is the model's to make is commandPresentation's to
+  // say; this pins that it is made, and that the script itself survives.
+  const script = "sed -n '1,3p' a.md\nprintf 'x'\n\tgit  status";
+  const presentation = commandPresentation(
+    event("completed", { command: script, exitCode: 0 }),
+  );
+
+  assert.equal(presentation.commandLine, "sed -n '1,3p' a.md printf 'x' git status");
+  assert.equal(
+    presentation.command,
+    script,
+    "the true shape stays for the surfaces that show it",
+  );
+
+  const blank = commandPresentation(event("completed", { command: "  \n  " }));
+  assert.equal(blank.command, "(command unavailable)");
+  assert.equal(
+    blank.commandLine,
+    "(command unavailable)",
+    "a command that is only whitespace falls back on both forms together",
+  );
+});
+
 test("presents an active command as an open disclosure", () => {
   const presentation = commandPresentation(
     event("inProgress", { output: "Compiling caffold" }),
