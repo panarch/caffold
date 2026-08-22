@@ -201,7 +201,12 @@ impl ClaudeClient {
                 // Work with no turn open belongs to nothing Caffold can show.
                 return;
             };
-            let mut items = message_items(&frame.message, &anchor, &mut state.calls);
+            let mut items = message_items(
+                &frame.message,
+                &anchor,
+                &mut state.calls,
+                frame.is_api_error_message,
+            );
             for item in &mut items {
                 if state.declined.remove(&item.id) {
                     item.status = ActivityStatus::Declined;
@@ -838,6 +843,72 @@ mod tests {
         };
         assert_eq!(ended.id, turn.id);
         assert_eq!(ended.status, TurnStatus::Completed);
+    }
+
+    #[tokio::test]
+    async fn a_failure_of_the_agents_own_is_drawn_as_a_failure_not_as_the_agent_talking() {
+        // The frames are what a session really says when the API cannot be
+        // reached: a `<synthetic>` assistant message marked
+        // `is_api_error_message`, then a result that is an error while its
+        // subtype still says success — so the turn must fail by reading
+        // `is_error`, never the subtype.
+        let (client, runner, mut events) = watching().await;
+        let turn = running_turn(&client, &mut events, "run it").await;
+
+        runner
+            .say(
+                SESSION,
+                json!({
+                    "type": "assistant",
+                    "uuid": "frame-err",
+                    "error": "server_error",
+                    "is_api_error_message": true,
+                    "message": {
+                        "id": "7a308aee-16a8-4321-b39a-a70bb8d6891f",
+                        "model": "<synthetic>",
+                        "role": "assistant",
+                        "content": [{
+                            "type": "text",
+                            "text": "API Error: Connection refused — a firewall or proxy may be blocking it (ConnectionRefused)",
+                        }],
+                    },
+                }),
+            )
+            .await;
+
+        let item = loop {
+            if let SessionEventKind::ItemChanged { item, .. } =
+                next_session_event(&mut events, "item").await
+            {
+                break item;
+            }
+        };
+        assert!(
+            matches!(&item.kind, ItemKind::Failure { text } if text.starts_with("API Error")),
+            "{item:?}"
+        );
+
+        runner
+            .say(
+                SESSION,
+                json!({
+                    "type": "result",
+                    "subtype": "success",
+                    "is_error": true,
+                    "terminal_reason": "api_error",
+                    "stop_reason": null,
+                }),
+            )
+            .await;
+        let ended = loop {
+            if let SessionEventKind::TurnEnded { turn } =
+                next_session_event(&mut events, "turn end").await
+            {
+                break turn;
+            }
+        };
+        assert_eq!(ended.id, turn.id);
+        assert_eq!(ended.status, TurnStatus::Failed);
     }
 
     #[tokio::test]

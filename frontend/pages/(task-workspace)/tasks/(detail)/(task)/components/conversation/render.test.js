@@ -150,6 +150,58 @@ test("a failed tool call reads as failed while the turn is still running", () =>
   assert.match(html, /data-tool-tone="danger"/);
 });
 
+test("an agent failure is an error card, not the agent talking", () => {
+  // The harness wrote this where an answer would have been. Drawn as a
+  // message bubble, "API Error: ..." reads as the agent's answer to what was
+  // asked; drawn as an error card, it reads as the turn failing to run.
+  const failure = turnEvent("thread-1:turn-1:item-1", "agent_failure", 2, {
+    text: "API Error: Connection refused",
+  });
+
+  const { html } = renderConversation([failure], activeTask());
+
+  assert.match(html, /data-tool-tone="danger"/);
+  assert.match(html, /<strong>Error<\/strong>/);
+  assert.match(html, /API Error: Connection refused/);
+  assert.doesNotMatch(
+    html,
+    /task-message-assistant/,
+    "a failure must not wear the agent's own bubble",
+  );
+});
+
+test("a completed turn shows its failure beside the messages, not folded away", () => {
+  // The two ways this was lost while being built: classified as work, the
+  // failure folded into the collapsed work details; classified as nothing,
+  // the completed-turn assembly dropped it entirely.
+  const idleTask = {
+    id: "thread-1",
+    threadId: "thread-1",
+    threadStatus: { type: "idle" },
+  };
+  const prompt = turnEvent("thread-1:turn-1:prompt", "user_message", 1, {
+    itemId: "prompt",
+    text: "Reply with the single word: ok.",
+  });
+  const failure = turnEvent("thread-1:turn-1:item-1", "agent_failure", 2, {
+    itemId: "item-1",
+    text: "API Error: Connection refused",
+  });
+  const ended = turnEvent("thread-1:turn-1:end", "turn_completed", 3, {
+    status: "failed",
+  });
+
+  const { html } = renderConversation([prompt, failure, ended], idleTask);
+
+  assert.match(html, /data-tool-tone="danger"/);
+  assert.match(html, /API Error: Connection refused/);
+  assert.doesNotMatch(
+    html,
+    /task-work-details[\s\S]*API Error/,
+    "the failure must not need work details expanded to be seen",
+  );
+});
+
 test("a tool call the agent did not name is still an entry", () => {
   const unnamed = turnEvent("thread-1:turn-1:tool-1", "tool_call", 2, {
     itemId: "tool-1",

@@ -79,6 +79,10 @@ struct Row {
     /// started it rather than to the one a person is reading.
     #[serde(default, rename = "isSidechain")]
     is_sidechain: bool,
+    /// The harness speaking, not the model: a turn that could not run at all,
+    /// written where an answer would have been.
+    #[serde(default, rename = "isApiErrorMessage")]
+    is_api_error_message: bool,
     /// What the agent files alongside the conversation rather than in it.
     #[serde(default)]
     attachment: Option<Attachment>,
@@ -362,7 +366,7 @@ fn turns(lines: &[&str]) -> (Vec<Turn>, usize) {
         // one identity, and the second is the first finishing rather than a
         // second thing the agent did. The live reader places items for the same
         // reason.
-        for item in message_items(message, anchor, &mut calls) {
+        for item in message_items(message, anchor, &mut calls, row.is_api_error_message) {
             super::replace_item(&mut turn.items, item);
         }
         if at_ms.is_some() {
@@ -895,6 +899,38 @@ mod tests {
 
         assert!(read_a_file.started_at_ms < answered.started_at_ms);
         assert!(read_a_file.completed_at_ms <= answered.started_at_ms);
+    }
+
+    #[test]
+    fn a_turn_the_harness_failed_reads_back_as_a_failure_rather_than_the_agent_talking() {
+        // The rows are a session that really failed this way: the API could
+        // not be reached, and the harness wrote its report where an answer
+        // would have been — `model: "<synthetic>"`, marked `isApiErrorMessage`.
+        let contents = concat!(
+            r#"{"type":"user","uuid":"ee4ec2cf-b275-4e9b-9e77-55e061d4c434","timestamp":"2026-08-22T05:35:37.244Z","promptSource":"sdk","message":{"role":"user","content":[{"type":"text","text":"Reply with the single word: ok."}]}}"#,
+            "\n",
+            r#"{"type":"assistant","uuid":"053eeb53-4162-4d3e-9bda-c0cae21036b3","timestamp":"2026-08-22T05:38:41.431Z","error":"server_error","isApiErrorMessage":true,"message":{"id":"7a308aee-16a8-4321-b39a-a70bb8d6891f","model":"<synthetic>","role":"assistant","content":[{"type":"text","text":"API Error: Connection refused"}]}}"#,
+            "\n",
+        );
+
+        let turns = read_turns(contents);
+
+        assert_eq!(turns.len(), 1);
+        assert!(
+            turns[0].items.iter().any(|item| matches!(
+                &item.kind,
+                ItemKind::Failure { text } if text.starts_with("API Error")
+            )),
+            "{:?}",
+            items_of(&turns[0])
+        );
+        assert!(
+            !turns[0]
+                .items
+                .iter()
+                .any(|item| matches!(item.kind, ItemKind::AssistantMessage { .. })),
+            "the harness's report must not read as the agent answering"
+        );
     }
 
     #[test]

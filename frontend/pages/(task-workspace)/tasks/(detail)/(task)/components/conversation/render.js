@@ -235,6 +235,9 @@ function renderCompletedTurnGroupEntries(
   const generatedImages = group.events.filter(
     (event) => event.type === "generated_image",
   );
+  // A failure stands on its own beside the messages: it is why nothing
+  // happened, and must not need work details expanded to be seen.
+  const failures = group.events.filter((event) => event.type === "agent_failure");
   const approvals = group.events.filter(
     (event) =>
       event.type === "approval_requested" &&
@@ -271,6 +274,18 @@ function renderCompletedTurnGroupEntries(
     );
   }
   for (const event of generatedImages) {
+    output.push(
+      renderedTimelineEntry(
+        [event],
+        renderConversationEvent(event, task, {
+          active: false,
+          filePathPresentationBase,
+        }),
+        eventOrder,
+      ),
+    );
+  }
+  for (const event of failures) {
     output.push(
       renderedTimelineEntry(
         [event],
@@ -333,6 +348,9 @@ function renderActiveTurnTimelineEvent(
     event.type === "user_message" ||
     event.type === "assistant_message" ||
     event.type === "generated_image" ||
+    // A failure stands beside the messages rather than folding into work
+    // details: it is why nothing happened, and must not need expanding.
+    event.type === "agent_failure" ||
     isWorkEvent(event)
   ) {
     return renderConversationEvent(event, task, {
@@ -449,6 +467,9 @@ export function renderConversationEvent(event, task, eventState) {
   if (event.type === "tool_call") {
     const tool = toolCallPresentation(payload);
     return renderToolEvent(event, tool.label, tool.text, tool.tone);
+  }
+  if (event.type === "agent_failure") {
+    return renderToolEvent(event, "Error", payload.text, "danger");
   }
   if (event.type === "task_failed") {
     return renderToolEvent(event, "Error", event.summary, "danger");

@@ -122,6 +122,10 @@ pub(crate) struct MessageFrame {
     /// own words coming home under the identity the agent filed them as.
     #[serde(default, rename = "isReplay")]
     pub(crate) is_replay: bool,
+    /// The harness speaking, not the model: a turn that could not run at all,
+    /// written where an answer would have been.
+    #[serde(default)]
+    pub(crate) is_api_error_message: bool,
 }
 
 /// The message body, shared by the stream and the transcript.

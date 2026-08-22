@@ -60,10 +60,30 @@ pub struct Backend {
     root: PathBuf,
     at: Http,
     process: Option<Child>,
+    /// Environment the backend — and through the runner, every agent — runs
+    /// with. What lets a case break the world on purpose.
+    environment: Vec<(String, String)>,
 }
 
 impl Backend {
     pub async fn start() -> Self {
+        Self::start_with_environment(&[]).await
+    }
+
+    /// A backend whose agents cannot reach the API at all.
+    ///
+    /// The endpoint is a closed local port and the retry budget is one, so a
+    /// turn fails within seconds, no model is ever reached, and the case
+    /// spends nothing.
+    pub async fn start_with_unreachable_api() -> Self {
+        Self::start_with_environment(&[
+            ("ANTHROPIC_BASE_URL", "http://127.0.0.1:9"),
+            ("CLAUDE_CODE_MAX_RETRIES", "1"),
+        ])
+        .await
+    }
+
+    async fn start_with_environment(environment: &[(&str, &str)]) -> Self {
         // Short on purpose. The runner's socket lives inside the data
         // directory, and a unix socket path may not exceed 104 bytes on macOS —
         // which the usual temporary directory very nearly spends by itself.
@@ -86,6 +106,10 @@ impl Backend {
             root,
             at: Http { port },
             process: None,
+            environment: environment
+                .iter()
+                .map(|(name, value)| (name.to_string(), value.to_string()))
+                .collect(),
         };
         backend.spawn().await;
         backend
@@ -110,6 +134,7 @@ impl Backend {
 
     async fn spawn(&mut self) {
         let process = Command::new(BINARY)
+            .envs(self.environment.iter().map(|(name, value)| (name, value)))
             .args(["serve", "--host", "127.0.0.1", "--port"])
             .arg(self.at.port.to_string())
             .arg("--root")

@@ -212,6 +212,14 @@ pub(crate) enum ItemKind {
     ToolCall {
         name: String,
     },
+    /// The agent's harness reporting that the turn could not run — an API
+    /// refusal, an expired login — written where an answer would have been.
+    ///
+    /// Its own kind because it is not the agent speaking: drawn as a message,
+    /// "Failed to authenticate" reads as the agent's answer to what was asked.
+    Failure {
+        text: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

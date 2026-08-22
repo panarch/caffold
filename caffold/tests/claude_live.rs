@@ -365,6 +365,54 @@ async fn the_agent_isolates_its_task_into_a_worktree_when_asked() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn a_turn_that_cannot_run_reads_as_a_failure_not_as_the_agent_talking() {
+    // The API is a closed port, so no model is ever reached and this case
+    // spends nothing. What only the real `claude` can prove is the frames it
+    // writes for that: a `<synthetic>` assistant message marked as an API
+    // error, and a result that is an error while its subtype says success —
+    // crossing the runner and the backend to arrive as a failure a person can
+    // read, not as the agent answering strangely.
+    let backend = Backend::start_with_unreachable_api().await;
+    let task = backend
+        .start_task("Reply with the single word: ok.", MODEL)
+        .await;
+    task.wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+
+    let detail = backend
+        .get(&format!("/api/tasks/{}", task.thread_id()))
+        .await
+        .expect("the task answers");
+    let events = detail["events"].as_array().expect("events");
+    let failure = events
+        .iter()
+        .find(|event| event["type"] == "agent_failure")
+        .unwrap_or_else(|| panic!("no failure event in {events:?}"));
+    assert!(
+        failure["payload"]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("API Error"),
+        "{failure}"
+    );
+    assert!(
+        !events.iter().any(|event| {
+            event["type"] == "assistant_message"
+                && event["payload"]["text"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .starts_with("API Error")
+        }),
+        "the harness's report must not read as the agent answering: {events:?}"
+    );
+    let row = backend
+        .wait_for_list_row(task.thread_id(), TurnState::Idle, Duration::from_secs(30))
+        .await;
+    assert_eq!(row["latestTurnStatus"], "failed", "{row}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
 async fn a_conversation_survives_the_runner_being_killed_outright() {
     // The runner is what holds the agent, and a runner killed outright runs no
     // shutdown code: its children are left running with nothing able to reach

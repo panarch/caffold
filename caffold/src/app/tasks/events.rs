@@ -457,6 +457,17 @@ pub(in crate::app) fn task_event_from_item(
             }),
             None,
         ),
+        ItemKind::Failure { text } => {
+            if text.trim().is_empty() {
+                return None;
+            }
+            (
+                "agent_failure",
+                "Agent failure".to_string(),
+                json!({ "text": text }),
+                None,
+            )
+        }
         ItemKind::FileChange { paths } => (
             "file_change",
             format!("File changes: {}", paths.len()),
@@ -1609,6 +1620,30 @@ mod tests {
         assert_eq!(
             reasoning.payload.as_ref().unwrap()["content"][0],
             "Reasoned without a summary"
+        );
+    }
+
+    #[test]
+    fn an_agent_failure_crosses_as_its_own_event_rather_than_a_message() {
+        let event = task_event_from_item(
+            "thread-1",
+            "turn-1",
+            1,
+            &ConversationItem {
+                id: "item-1".to_string(),
+                status: crate::agent::ActivityStatus::Completed,
+                kind: ItemKind::Failure {
+                    text: "API Error: Connection refused".to_string(),
+                },
+            },
+        )
+        .unwrap();
+
+        assert_eq!(event.event_type, "agent_failure");
+        assert_eq!(event.summary, "Agent failure");
+        assert_eq!(
+            event.payload.as_ref().unwrap()["text"],
+            "API Error: Connection refused"
         );
     }
 

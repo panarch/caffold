@@ -55,6 +55,7 @@ pub(crate) fn message_items(
     message: &Message,
     anchor: &str,
     calls: &mut ToolCalls,
+    failed_to_run: bool,
 ) -> Vec<ConversationItem> {
     let blocks = match &message.content {
         MessageContent::Blocks(blocks) => blocks.as_slice(),
@@ -74,12 +75,19 @@ pub(crate) fn message_items(
             ContentBlock::Text { text } => items.push(ConversationItem {
                 id,
                 status: ActivityStatus::Completed,
-                kind: ItemKind::AssistantMessage {
-                    text: text.clone(),
-                    // Claude does not mark one message as the answer, and a
-                    // guess here would put the wrong message in the place the
-                    // interface reserves for one.
-                    phase: None,
+                kind: if failed_to_run {
+                    // The harness wrote this where an answer would have been.
+                    // Drawn as the agent talking, "Failed to authenticate"
+                    // reads as its answer to what was asked.
+                    ItemKind::Failure { text: text.clone() }
+                } else {
+                    ItemKind::AssistantMessage {
+                        text: text.clone(),
+                        // Claude does not mark one message as the answer, and
+                        // a guess here would put the wrong message in the
+                        // place the interface reserves for one.
+                        phase: None,
+                    }
                 },
             }),
             ContentBlock::Thinking { thinking } => items.push(ConversationItem {
@@ -319,7 +327,7 @@ mod tests {
     }
 
     fn items(value: Value, calls: &mut ToolCalls) -> Vec<ConversationItem> {
-        message_items(&message(value), "msg_1", calls)
+        message_items(&message(value), "msg_1", calls, false)
     }
 
     #[test]
@@ -530,5 +538,23 @@ mod tests {
             calls.abandon(ActivityStatus::Failed).is_empty(),
             "a call abandoned once is not still open"
         );
+    }
+
+    #[test]
+    fn a_message_that_failed_to_run_is_a_failure_item_not_a_message() {
+        let calls = &mut ToolCalls::default();
+        let value = json!({
+            "id": "msg_1",
+            "model": "<synthetic>",
+            "content": [{ "type": "text", "text": "API Error: Connection refused" }],
+        });
+
+        let items = message_items(&message(value), "msg_1", calls, true);
+
+        assert_eq!(items.len(), 1);
+        assert!(matches!(
+            &items[0].kind,
+            ItemKind::Failure { text } if text == "API Error: Connection refused"
+        ));
     }
 }
