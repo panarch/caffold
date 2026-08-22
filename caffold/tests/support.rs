@@ -207,6 +207,35 @@ impl Backend {
         }
     }
 
+    /// Turn the notes directory into a Git repository with one commit, so a
+    /// Task working there has something a worktree can be prepared from.
+    pub fn make_notes_a_repository(&self) {
+        let notes = self.root.join("notes");
+        let git = |args: &[&str]| {
+            let output = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&notes)
+                .output()
+                .expect("git runs");
+            assert!(
+                output.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        git(&["init", "--initial-branch=main"]);
+        git(&["add", "."]);
+        git(&[
+            "-c",
+            "user.email=caffold@live",
+            "-c",
+            "user.name=Caffold Live",
+            "commit",
+            "-m",
+            "notes",
+        ]);
+    }
+
     /// The `claude` process the runner is holding for the one live session.
     pub async fn agent_process(&self) -> i32 {
         let listed = self.runner(&["session", "list"]);

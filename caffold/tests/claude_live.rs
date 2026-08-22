@@ -42,6 +42,13 @@ const NEEDS_APPROVAL: &str =
 const SLOW_WORK: &str = "Read every file in this directory one at a time, \
      and write one short sentence about each. Do not skip any.";
 
+/// The model for the cases that hang on unprompted instruction-following —
+/// the first-turn naming setup, the guide-phrase isolation. The cheapest
+/// model skips an instructed tool call often enough to make those cases
+/// flaky about the model rather than about Caffold, the same way the Codex
+/// live suite pins particular models to particular coverage.
+const INSTRUCTED_MODEL: &str = "sonnet";
+
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires an authenticated Claude CLI and spends model usage"]
 async fn a_turn_running_when_the_backend_is_replaced_is_still_running_afterwards() {
@@ -286,7 +293,7 @@ async fn a_new_task_is_named_by_the_agent_on_its_first_turn() {
     let task = backend
         .start_task(
             "Say one friendly sentence about the Rust programming language.",
-            MODEL,
+            INSTRUCTED_MODEL,
         )
         .await;
 
@@ -299,6 +306,61 @@ async fn a_new_task_is_named_by_the_agent_on_its_first_turn() {
     );
     task.wait_for(TurnState::Idle, Duration::from_secs(120))
         .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn the_agent_isolates_its_task_into_a_worktree_when_asked() {
+    // The whole loop, driven by the phrase the new-Task page suggests: the
+    // model calls the isolate tool Caffold serves, the shared worktree
+    // machinery prepares the checkout, the session is moved into it — and the
+    // proof is the next turn's `pwd` coming back from inside the worktree.
+    let backend = Backend::start().await;
+    backend.make_notes_a_repository();
+    let task = backend
+        .start_task(
+            "Prepare this task in an isolated worktree. Leave my current checkout changes \
+             in place. Stop when the worktree is ready.",
+            INSTRUCTED_MODEL,
+        )
+        .await;
+    task.wait_for(TurnState::Idle, Duration::from_secs(180))
+        .await;
+
+    // The Task now works somewhere else, and says so.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    let worktree_cwd = loop {
+        let detail = backend
+            .get(&format!("/api/tasks/{}", task.thread_id()))
+            .await;
+        let cwd = detail
+            .as_ref()
+            .and_then(|detail| detail["task"]["cwd"].as_str())
+            .unwrap_or_default()
+            .to_string();
+        if cwd.contains("worktrees") {
+            break cwd;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the Task never moved: {detail:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    };
+
+    // A relative write is the proof: it lands wherever the agent's tools
+    // actually run, and nowhere else.
+    task.say(
+        "Use the Bash tool to run exactly: pwd > caffold-live-proof.txt. \
+         Then reply with the single word: done.",
+    )
+    .await;
+    task.wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+    let proof =
+        std::fs::read_to_string(std::path::Path::new(&worktree_cwd).join("caffold-live-proof.txt"))
+            .expect("the write landed in the worktree the agent was moved to");
+    assert_eq!(proof.trim(), worktree_cwd);
 }
 
 #[tokio::test(flavor = "multi_thread")]

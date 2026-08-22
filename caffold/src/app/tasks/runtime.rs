@@ -12,7 +12,7 @@ use crate::{
     agent::codex::{CodexThreadClient, CodexThreadError},
     agent::{Driver, TokenUsage},
     app::tasks::sessions::{SessionSnapshot, TaskSessions},
-    task_store::{RunBy, TaskStore},
+    task_store::{ManagedThread, RunBy, TaskStore},
 };
 
 mod bridge;
@@ -40,6 +40,9 @@ pub(in crate::app) struct TaskRuntime {
     lifecycle: Option<TaskLifecycle>,
     push: Option<PushService>,
     approvals: Arc<Mutex<HashMap<String, PendingApproval>>>,
+    /// Claude sessions waiting to move into their worktree the moment the
+    /// turn that asked for the isolation ends: thread id to worktree path.
+    pending_claude_moves: Arc<Mutex<HashMap<String, String>>>,
     usage: Arc<StdMutex<BTreeMap<String, ThreadUsageDiagnostics>>>,
     signals: broadcast::Sender<TaskRuntimeSignal>,
     shutdown: broadcast::Sender<()>,
@@ -180,6 +183,7 @@ impl TaskRuntime {
             lifecycle: None,
             push: None,
             approvals: Arc::new(Mutex::new(HashMap::new())),
+            pending_claude_moves: Arc::new(Mutex::new(HashMap::new())),
             usage: Arc::new(StdMutex::new(BTreeMap::new())),
             signals,
             shutdown,
@@ -232,7 +236,7 @@ impl TaskRuntime {
             .map_err(|error| CodexThreadError::Agent(format!("task store worker failed: {error}")))?
             .map_err(|error| CodexThreadError::Agent(error.to_string()))?;
         match managed {
-            Some(managed) => self.agent_for(&managed.run_by).await,
+            Some(managed) => self.agent_for(&managed).await,
             // A Task Caffold does not have a row for is not one it can route,
             // and every Task it does have a row for predating a second agent is
             // Codex's.
@@ -247,14 +251,36 @@ impl TaskRuntime {
     /// listing what has been archived — already holds the row and asks with it.
     /// Asking by name there would find nothing and fall back to Codex, which
     /// for a Claude Task is the wrong agent rather than no answer.
+    ///
+    /// A Claude Task that has been isolated moved: its session runs in the
+    /// managed worktree and the agent keeps the transcript there. The
+    /// worktree's path stands whatever state its record is in — an archive
+    /// removes the directory, not the transcript the path names — so the
+    /// driver is built on it whenever a record exists, and on the row's own
+    /// directory only for a Task that never moved.
     pub(in crate::app) async fn agent_for(
         &self,
-        run_by: &RunBy,
+        managed: &ManagedThread,
     ) -> Result<TaskAgent, CodexThreadError> {
-        match run_by {
-            RunBy::Claude { cwd } => Ok(TaskAgent::Claude {
-                driver: self.claude.driver(cwd.clone()),
-            }),
+        match &managed.run_by {
+            RunBy::Claude { cwd } => {
+                let home = cwd.clone();
+                let store = self.task_store.clone();
+                let thread_id = managed.thread_id.clone();
+                let worktree =
+                    tokio::task::spawn_blocking(move || store.worktree_for_thread(&thread_id))
+                        .await
+                        .map_err(|error| {
+                            CodexThreadError::Agent(format!("task store worker failed: {error}"))
+                        })?
+                        .map_err(|error| CodexThreadError::Agent(error.to_string()))?;
+                let cwd = worktree
+                    .map(|worktree| worktree.worktree_path)
+                    .unwrap_or(home);
+                Ok(TaskAgent::Claude {
+                    driver: self.claude.driver(cwd),
+                })
+            }
             RunBy::Codex => Ok(TaskAgent::Codex(self.connection().await?)),
         }
     }

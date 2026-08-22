@@ -38,8 +38,8 @@ pub(crate) const MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION: &str = "2.1.236";
 /// taking it is what makes a turn watched live and the same turn read from
 /// disk one turn rather than two.
 ///
-/// `--allowedTools` grants the one tool Caffold itself serves: the agent
-/// calling it is already the user asking, so it takes no approval — exactly as
+/// `--allowedTools` grants the tools Caffold itself serves: the agent calling
+/// one is already the user asking, so they take no approval — exactly as
 /// Codex's dynamic tools answer without one.
 pub(crate) const BASE_ARGUMENTS: &[&str] = &[
     "-p",
@@ -53,6 +53,8 @@ pub(crate) const BASE_ARGUMENTS: &[&str] = &[
     "--replay-user-messages",
     "--allowedTools",
     RENAME_CURRENT_TASK_QUALIFIED_NAME,
+    "--allowedTools",
+    ISOLATE_CURRENT_TASK_QUALIFIED_NAME,
 ];
 
 // ---------------------------------------------------------------------------
@@ -469,6 +471,9 @@ pub(crate) const CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS: &str = concat!(
     "Do not copy response-format instructions, verification markers, or the eventual answer ",
     "into the name. ",
     "If the user specifies an exact task name or format, honor it in that same call. ",
+    "If mcp__caffold__isolate_current_task is needed on the first turn, call ",
+    "mcp__caffold__rename_current_task immediately before isolation, and end the turn once the ",
+    "worktree is ready. ",
     "On later turns, call mcp__caffold__rename_current_task only when the user explicitly asks ",
     "to rename the task."
 );
@@ -477,6 +482,24 @@ pub(crate) const CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS: &str = concat!(
 /// name the agent's own surfaces show.
 pub(crate) fn rename_session_request(title: &str) -> Value {
     serde_json::json!({ "subtype": "rename_session", "title": title })
+}
+
+/// Move the session's working directory — where its tools run, and where the
+/// agent keeps its transcript from then on.
+pub(crate) fn set_cwd_request(path: &str) -> Value {
+    serde_json::json!({ "subtype": "set_cwd", "path": path })
+}
+
+/// The second half of moving somewhere the agent does not yet trust: echo the
+/// directory its `needs_trust` answer named, accepted on the user's behalf —
+/// Caffold made the worktree it is asking the session into.
+pub(crate) fn set_cwd_trusted_request(path: &str, trusted_directory: &str) -> Value {
+    serde_json::json!({
+        "subtype": "set_cwd",
+        "path": path,
+        "trust_accepted": true,
+        "trusted_directory": trusted_directory,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -495,6 +518,12 @@ pub(crate) const RENAME_CURRENT_TASK_TOOL_NAME: &str = "rename_current_task";
 /// The rename tool under the name the model calls it by, for granting it up
 /// front in [`BASE_ARGUMENTS`].
 pub(crate) const RENAME_CURRENT_TASK_QUALIFIED_NAME: &str = "mcp__caffold__rename_current_task";
+
+/// Move the current Task into a Caffold-managed worktree.
+pub(crate) const ISOLATE_CURRENT_TASK_TOOL_NAME: &str = "isolate_current_task";
+
+/// The isolate tool under the name the model calls it by.
+pub(crate) const ISOLATE_CURRENT_TASK_QUALIFIED_NAME: &str = "mcp__caffold__isolate_current_task";
 
 /// Answer one MCP request with its result.
 pub(crate) fn mcp_result(request_id: &str, mcp_id: &Value, result: Value) -> Value {
@@ -574,6 +603,31 @@ pub(crate) fn mcp_tool_listing() -> Value {
                         },
                     },
                     "required": ["name"],
+                },
+                "_meta": { "anthropic/alwaysLoad": true },
+            },
+            {
+                "name": ISOLATE_CURRENT_TASK_TOOL_NAME,
+                "description": "Prepare the current Caffold task in a Caffold-managed Git worktree only when the user explicitly asks to isolate the current task or prepare a worktree. By default, leave staged, unstaged, and untracked source checkout changes in place. An optional baseRef creates a new branch from that ref without handing off the current branch and cannot be combined with includeChanges. Set includeChanges to true only when the user explicitly asks to move current or uncommitted changes too. Call this as the final file-affecting action of the current turn. After it succeeds, do not call command or file tools; end the turn so the user's next request can continue in the managed worktree.",
+                "inputSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "branchName": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Optional local branch name. Without baseRef, a current non-default branch is always handed off unchanged. With baseRef, this names the new branch created from that ref.",
+                        },
+                        "baseRef": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Optional existing branch, tag, or commit ref to use as the new branch starting point. When provided, the current checkout remains unchanged and includeChanges must be false.",
+                        },
+                        "includeChanges": {
+                            "type": "boolean",
+                            "description": "Whether to move staged, unstaged, and untracked changes into the worktree. Defaults to false and must be true only when the user explicitly requests that transfer.",
+                        },
+                    },
                 },
                 "_meta": { "anthropic/alwaysLoad": true },
             },
@@ -835,19 +889,28 @@ mod tests {
     }
 
     #[test]
-    fn every_session_grants_the_tool_caffold_serves_under_the_name_the_model_calls_it_by() {
-        let granted = BASE_ARGUMENTS
+    fn every_session_grants_the_tools_caffold_serves_under_the_names_the_model_calls_them_by() {
+        let granted: Vec<&str> = BASE_ARGUMENTS
             .windows(2)
-            .find(|pair| pair[0] == "--allowedTools");
+            .filter(|pair| pair[0] == "--allowedTools")
+            .map(|pair| pair[1])
+            .collect();
         assert_eq!(
-            granted.map(|pair| pair[1]),
-            Some(RENAME_CURRENT_TASK_QUALIFIED_NAME)
+            granted,
+            [
+                RENAME_CURRENT_TASK_QUALIFIED_NAME,
+                ISOLATE_CURRENT_TASK_QUALIFIED_NAME
+            ]
         );
-        // The qualified name is derived by the CLI, not chosen by Caffold, so
-        // the grant only holds while the three names actually compose.
+        // The qualified names are derived by the CLI, not chosen by Caffold,
+        // so a grant only holds while the three names actually compose.
         assert_eq!(
             RENAME_CURRENT_TASK_QUALIFIED_NAME,
             format!("mcp__{MCP_SERVER_NAME}__{RENAME_CURRENT_TASK_TOOL_NAME}")
+        );
+        assert_eq!(
+            ISOLATE_CURRENT_TASK_QUALIFIED_NAME,
+            format!("mcp__{MCP_SERVER_NAME}__{ISOLATE_CURRENT_TASK_TOOL_NAME}")
         );
     }
 
@@ -866,9 +929,10 @@ mod tests {
         let setup = hello["appendSystemPrompt"]
             .as_str()
             .expect("the once-only session setup rides the first hello");
-        // The instruction names the tool the way the model calls it, or the
-        // model is told to call something it cannot find.
+        // The instructions name the tools the way the model calls them, or
+        // the model is told to call something it cannot find.
         assert!(setup.contains(RENAME_CURRENT_TASK_QUALIFIED_NAME));
+        assert!(setup.contains(ISOLATE_CURRENT_TASK_QUALIFIED_NAME));
         assert!(setup.contains("first user turn"));
         // A resumed conversation is not a newly created Task, so its hello
         // must not claim it is.
@@ -914,6 +978,39 @@ mod tests {
         // Without this marker the CLI defers the tool to its search pool and
         // the instructed first-turn rename becomes a coin toss.
         assert_eq!(tool["_meta"]["anthropic/alwaysLoad"], true);
+    }
+
+    #[test]
+    fn the_listing_serves_the_isolate_tool_with_every_argument_optional() {
+        let listing = mcp_tool_listing();
+        let tool = &listing["tools"][1];
+        assert_eq!(tool["name"], ISOLATE_CURRENT_TASK_TOOL_NAME);
+        let schema = &tool["inputSchema"];
+        assert!(schema["properties"]["branchName"].is_object());
+        assert!(schema["properties"]["baseRef"].is_object());
+        assert!(schema["properties"]["includeChanges"].is_object());
+        assert!(
+            schema.get("required").is_none(),
+            "a bare call isolates with the defaults"
+        );
+        assert_eq!(tool["_meta"]["anthropic/alwaysLoad"], true);
+    }
+
+    #[test]
+    fn moving_a_session_asks_in_two_halves_when_trust_is_demanded() {
+        assert_eq!(
+            set_cwd_request("/work/tree"),
+            json!({ "subtype": "set_cwd", "path": "/work/tree" })
+        );
+        assert_eq!(
+            set_cwd_trusted_request("/work/tree", "/work/tree"),
+            json!({
+                "subtype": "set_cwd",
+                "path": "/work/tree",
+                "trust_accepted": true,
+                "trusted_directory": "/work/tree",
+            })
+        );
     }
 
     #[test]

@@ -43,6 +43,13 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const START_TIMEOUT: Duration = Duration::from_secs(10);
 const START_POLL: Duration = Duration::from_millis(50);
 
+/// How long a stopping runner may take to go quiet.
+///
+/// A stop ends every held session gracefully — up to the runner's own
+/// per-child escalation timeout, paid once since children are ended together
+/// — before the socket is removed, and a loaded machine stretches all of it.
+const STOP_TIMEOUT: Duration = Duration::from_secs(20);
+
 /// The runner, and the socket it answers on.
 #[derive(Clone)]
 pub(crate) struct RunnerClient {
@@ -459,7 +466,7 @@ impl RunnerClient {
             // The reply may be cut off by the stop it asks for; gone is gone.
             let _ = client.request(Request::DaemonStop).await;
         }
-        let deadline = tokio::time::Instant::now() + START_TIMEOUT;
+        let deadline = tokio::time::Instant::now() + STOP_TIMEOUT;
         while Client::connect(self.socket()).await.is_ok() {
             if tokio::time::Instant::now() >= deadline {
                 return Err(ClaudeError::Runner(
@@ -623,6 +630,8 @@ struct MockSession {
     /// Keep prompts rather than handing them back, standing in for an agent
     /// that took a prompt and never said what it filed it as.
     swallow_prompts: bool,
+    distrusts_moves: bool,
+    refuses_moves: u32,
 }
 
 /// What a test speaks to a stand-in runner through.
@@ -651,6 +660,8 @@ impl MockRunner {
                 heard: Vec::new(),
                 replays: 0,
                 swallow_prompts: false,
+                distrusts_moves: false,
+                refuses_moves: 0,
             },
         );
         Ok(RunnerSession {
@@ -682,6 +693,30 @@ impl MockRunner {
         {
             let mut body = if frame["request"]["subtype"] == "initialize" {
                 existing.hello.clone()
+            } else if frame["request"]["subtype"] == "set_cwd" {
+                // The real agent moves only between turns and demands trust
+                // for a directory it has not seen; a stand-in that always
+                // moved would leave both halves of the dance untested.
+                if existing.refuses_moves > 0 {
+                    existing.refuses_moves -= 1;
+                    serde_json::json!({ "response": {
+                        "status": "rejected",
+                        "reason": "busy",
+                        "message": "A turn is in progress.",
+                    } })
+                } else if existing.distrusts_moves && frame["request"]["trust_accepted"] != true {
+                    serde_json::json!({ "response": {
+                        "status": "needs_trust",
+                        "directory": frame["request"]["path"],
+                    } })
+                } else {
+                    serde_json::json!({ "response": {
+                        "status": "ok",
+                        "cwd": frame["request"]["path"],
+                        "changed": true,
+                        "transcript_relocated": true,
+                    } })
+                }
             } else {
                 serde_json::json!({ "response": {} })
             };
@@ -762,6 +797,24 @@ impl MockRunnerHandle {
         let mut state = self.0.state.lock().await;
         if let Some(held) = state.sessions.get_mut(session) {
             held.swallow_prompts = true;
+        }
+    }
+
+    /// Demand trust before the next move, the way the real agent does for a
+    /// directory it has not seen.
+    pub(crate) async fn demand_trust_for_moves(&self, session: &str) {
+        let mut state = self.0.state.lock().await;
+        if let Some(held) = state.sessions.get_mut(session) {
+            held.distrusts_moves = true;
+        }
+    }
+
+    /// Refuse the next `times` moves as mid-turn, the way the real agent does
+    /// while a turn is running.
+    pub(crate) async fn refuse_moves_while_busy(&self, session: &str, times: u32) {
+        let mut state = self.0.state.lock().await;
+        if let Some(held) = state.sessions.get_mut(session) {
+            held.refuses_moves = times;
         }
     }
 

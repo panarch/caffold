@@ -24,14 +24,24 @@ worktrees are never adopted or removed.
 
 ## Isolation Preparation
 
-The `isolate_current_task` Codex dynamic tool is available only inside a Task
-already managed by Caffold. It is an explicit preparation operation, intended
-for requests such as "prepare a worktree for this PR review". It does not start
-a child Task and does not automatically continue the review or other work.
+The `isolate_current_task` tool is available only inside a Task already managed
+by Caffold — as a Codex dynamic tool on Codex Tasks and as the
+`mcp__caffold__isolate_current_task` MCP tool Caffold serves on Claude Tasks.
+It is an explicit preparation operation, intended for requests such as "prepare
+a worktree for this PR review". It does not start a child Task and does not
+automatically continue the review or other work.
 
 The tool must be the final file-affecting action of its turn. After it succeeds,
 that turn ends. The user's next request starts a new turn on the same Codex
 thread with the managed worktree as `cwd` and runtime workspace root.
+
+A Claude Task reaches the same state by moving rather than by per-turn `cwd`:
+the agent only changes directory between turns, so the session is moved into
+the worktree the moment the isolating turn ends, and every later opening of the
+Task starts its session in the worktree directly. The agent keeps its
+transcript where its session runs, and the CLI relocates the file with the
+move, so a Task that has a worktree record — whatever state that record is in —
+is read, resumed, and erased at the worktree's path.
 
 The branch behavior follows the source checkout:
 
@@ -57,7 +67,8 @@ cannot safely represent those cases.
 
 Codex accepts Caffold's dynamic tools only on `thread/start`. Threads started by
 Caffold receive `isolate_current_task`; resuming or forking another thread does
-not add the tool to it.
+not add the tool to it. Claude declares Caffold's MCP server on every hello, so
+a Claude Task serves the tool on resumed and re-attached sessions as well.
 
 ## Dirty-State Transfer And Recovery
 

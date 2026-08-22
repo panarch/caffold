@@ -30,7 +30,14 @@ pub(crate) struct ToolAsk {
 /// as a string.
 #[derive(Debug, Clone)]
 pub(crate) enum AskedTool {
-    RenameTask { name: String },
+    RenameTask {
+        name: String,
+    },
+    IsolateTask {
+        branch_name: Option<String>,
+        base_ref: Option<String>,
+        include_changes: bool,
+    },
 }
 
 impl ClaudeClient {
@@ -147,6 +154,29 @@ fn tool_ask(message: &Value, request_id: &str, mcp_id: &Value) -> Result<ToolAsk
                 name: name.to_string(),
             }
         }
+        protocol::ISOLATE_CURRENT_TASK_TOOL_NAME => {
+            let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
+            let malformed = || {
+                "Arguments must use optional non-empty `branchName` and `baseRef` values plus \
+                 a boolean `includeChanges`."
+                    .to_string()
+            };
+            let optional_text = |field: &str| match arguments.get(field) {
+                None | Some(Value::Null) => Ok(None),
+                Some(Value::String(text)) => Ok(Some(text.clone())),
+                Some(_) => Err(malformed()),
+            };
+            let include_changes = match arguments.get("includeChanges") {
+                None | Some(Value::Null) => false,
+                Some(Value::Bool(include_changes)) => *include_changes,
+                Some(_) => return Err(malformed()),
+            };
+            AskedTool::IsolateTask {
+                branch_name: optional_text("branchName")?,
+                base_ref: optional_text("baseRef")?,
+                include_changes,
+            }
+        }
         tool => return Err(format!("Caffold does not serve the tool `{tool}`.")),
     };
     Ok(ToolAsk {
@@ -238,7 +268,9 @@ mod tests {
         })
         .await
         .expect("the ask reaches the application");
-        let AskedTool::RenameTask { name } = &ask.asked;
+        let AskedTool::RenameTask { name } = &ask.asked else {
+            panic!("a rename call asks for a rename: {:?}", ask.asked);
+        };
         assert_eq!(name, "A better name");
 
         client
@@ -341,5 +373,79 @@ mod tests {
             .find(|frame| frame["request"]["subtype"] == "rename_session")
             .expect("the title change is asked of the agent");
         assert_eq!(asked["request"]["title"], "A better name");
+    }
+
+    #[tokio::test]
+    async fn an_isolate_call_is_published_with_what_was_asked_for() {
+        let (_client, runner, mut events) = watching().await;
+
+        runner
+            .say(
+                SESSION,
+                mcp_frame(
+                    6,
+                    "tools/call",
+                    json!({
+                        "name": "isolate_current_task",
+                        "arguments": {
+                            "branchName": "fix/limit-offset",
+                            "baseRef": "origin/main",
+                        },
+                    }),
+                ),
+            )
+            .await;
+
+        let ask = tokio::time::timeout(REPORT_TIMEOUT, async {
+            loop {
+                if let Ok(ClaudeRuntimeEvent::ToolAsked { ask, .. }) = events.recv().await {
+                    return ask;
+                }
+            }
+        })
+        .await
+        .expect("the ask reaches the application");
+        let AskedTool::IsolateTask {
+            branch_name,
+            base_ref,
+            include_changes,
+        } = &ask.asked
+        else {
+            panic!("an isolate call asks for isolation: {:?}", ask.asked);
+        };
+        assert_eq!(branch_name.as_deref(), Some("fix/limit-offset"));
+        assert_eq!(base_ref.as_deref(), Some("origin/main"));
+        assert!(!include_changes, "unasked, changes stay where they are");
+    }
+
+    #[tokio::test]
+    async fn an_isolate_call_with_arguments_of_the_wrong_shape_is_refused() {
+        let (_client, runner, _events) = watching().await;
+
+        runner
+            .say(
+                SESSION,
+                mcp_frame(
+                    7,
+                    "tools/call",
+                    json!({
+                        "name": "isolate_current_task",
+                        "arguments": { "includeChanges": "yes" },
+                    }),
+                ),
+            )
+            .await;
+
+        let refused = wrote(&runner, |frame| {
+            frame["response"]["response"]["mcp_response"]["id"] == 7
+        })
+        .await;
+        let result = &refused["response"]["response"]["mcp_response"]["result"];
+        assert_eq!(result["isError"], true);
+        assert_eq!(
+            result["content"][0]["text"],
+            "Arguments must use optional non-empty `branchName` and `baseRef` values plus \
+             a boolean `includeChanges`."
+        );
     }
 }

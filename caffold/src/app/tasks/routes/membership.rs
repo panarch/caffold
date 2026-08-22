@@ -83,7 +83,7 @@ pub(super) async fn task_archive(
     let Some(managed) = task_store_get(&state, &thread_id).await? else {
         return Err(task_not_managed_error());
     };
-    let agent = state.task_runtime.agent_for(&managed.run_by).await?;
+    let agent = state.task_runtime.agent_for(&managed).await?;
     let driver = agent.driver();
     let task = described_task(&state, &driver, &managed).await?;
     // A turn still running would be archived out from under itself, and the
@@ -415,7 +415,7 @@ pub(super) async fn task_restore(
     let Some(archived) = task_store_get_archived(&state, &thread_id).await? else {
         return Err(task_not_archived_error());
     };
-    let agent = state.task_runtime.agent_for(&archived.run_by).await?;
+    let agent = state.task_runtime.agent_for(&archived).await?;
     let driver = agent.driver();
     let restored = driver.restore_conversation(&thread_id).await?;
     let took_it_back_out = restored.is_some();
@@ -478,7 +478,7 @@ pub(super) async fn task_delete(
         });
     }
 
-    let agent = state.task_runtime.agent_for(&archived.run_by).await?;
+    let agent = state.task_runtime.agent_for(&archived).await?;
     // The agent goes first and the row second, so that a delete which fails
     // part way through leaves the Task still there to be deleted again.
     // Removing a conversation is idempotent for both agents — one that is

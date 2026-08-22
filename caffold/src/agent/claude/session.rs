@@ -22,6 +22,16 @@ use super::{
     TurnStatus, now_ms, protocol,
 };
 
+/// What asking a session to move came to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WorkingDirectoryMove {
+    /// The session runs in the new directory now.
+    Moved,
+    /// The agent moves only between turns, and one is running. The same ask
+    /// succeeds once it ends.
+    TurnRunning,
+}
+
 /// How a session is being started.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SessionStart {
@@ -59,7 +69,7 @@ impl ClaudeClient {
         }
         let session = Arc::new(Session {
             id: id.to_string(),
-            cwd: cwd.to_string(),
+            cwd: AsyncMutex::new(cwd.to_string()),
             frames: AsyncMutex::new(frames),
             state: AsyncMutex::new(SessionState {
                 opened_at_ms: now_ms(),
@@ -110,6 +120,63 @@ impl ClaudeClient {
         Ok(session)
     }
 
+    /// Move a watched conversation's session into another directory.
+    ///
+    /// Where a session runs is also where the agent keeps its transcript —
+    /// the CLI relocates the file with the move — so from here on the
+    /// conversation is read, resumed, and erased where it now lives, which
+    /// the application accounts for by asking for the worktree path whenever
+    /// a Task has one.
+    ///
+    /// The agent may not trust the destination yet. It answers `needs_trust`
+    /// with the directory it wants accepted, and the acceptance is echoed
+    /// back on the user's behalf: the only directories Caffold moves a
+    /// session into are worktrees Caffold itself made.
+    pub(crate) async fn move_working_directory(
+        &self,
+        conversation_id: &str,
+        path: &str,
+    ) -> Result<WorkingDirectoryMove, ClaudeError> {
+        let session = self.require_session(conversation_id).await?;
+        let mut answer = session.control(protocol::set_cwd_request(path)).await?;
+        if answer.payload.get("status").and_then(Value::as_str) == Some("needs_trust") {
+            let directory = answer
+                .payload
+                .get("directory")
+                .and_then(Value::as_str)
+                .unwrap_or(path)
+                .to_string();
+            answer = session
+                .control(protocol::set_cwd_trusted_request(path, &directory))
+                .await?;
+        }
+        match answer.payload.get("status").and_then(Value::as_str) {
+            Some("ok") => {
+                *session.cwd.lock().await = path.to_string();
+                Ok(WorkingDirectoryMove::Moved)
+            }
+            // The agent moves only between turns. Not a refusal: the same ask
+            // succeeds the moment the running turn ends.
+            Some("rejected")
+                if answer.payload.get("reason").and_then(Value::as_str) == Some("busy") =>
+            {
+                Ok(WorkingDirectoryMove::TurnRunning)
+            }
+            answered => {
+                let explanation = answer
+                    .payload
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                Err(ClaudeError::Protocol(format!(
+                    "the agent did not move to {path}: set_cwd answered {}{}{explanation}",
+                    answered.unwrap_or("nothing"),
+                    if explanation.is_empty() { "" } else { " — " },
+                )))
+            }
+        }
+    }
+
     /// Learn what this session was doing before Caffold was here.
     ///
     /// A session the runner held across a restart of this process has a past
@@ -132,7 +199,11 @@ impl ClaudeClient {
             }
         };
         let working = hello.payload.get("session_state").and_then(Value::as_str) == Some("running");
-        if working && let Some(turn) = self.turn_left_running(&session.id, &session.cwd).await {
+        if working
+            && let Some(turn) = self
+                .turn_left_running(&session.id, &session.cwd.lock().await.clone())
+                .await
+        {
             let mut state = session.state.lock().await;
             state.active_turn = Some(turn.id.clone());
             state.turns = vec![turn];
@@ -460,5 +531,75 @@ mod tests {
         // But not the new-Task setup: this conversation is not newly created,
         // and its first turn has long since happened.
         assert!(hello["request"].get("appendSystemPrompt").is_none());
+    }
+
+    #[tokio::test]
+    async fn moving_a_session_accepts_the_trust_the_agent_demands() {
+        // The agent has never seen the worktree, so it answers `needs_trust`
+        // before it moves. The acceptance is echoed on the user's behalf —
+        // the destination is a directory Caffold itself made — and only the
+        // `ok` that follows counts as having moved.
+        let (client, runner, _events) = watching().await;
+        runner.demand_trust_for_moves(SESSION).await;
+
+        client
+            .move_working_directory(SESSION, "/somewhere/worktrees/task-1")
+            .await
+            .expect("the session moves");
+
+        let moves: Vec<Value> = runner
+            .heard(SESSION)
+            .await
+            .into_iter()
+            .filter(|frame| frame["request"]["subtype"] == "set_cwd")
+            .collect();
+        assert_eq!(moves.len(), 2, "asked plainly, then with trust accepted");
+        assert!(moves[0]["request"].get("trust_accepted").is_none());
+        assert_eq!(moves[1]["request"]["trust_accepted"], true);
+        assert_eq!(
+            moves[1]["request"]["trusted_directory"], "/somewhere/worktrees/task-1",
+            "the trusted directory is the one the agent's answer named"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_move_asked_mid_turn_reports_the_turn_rather_than_failing() {
+        // `busy` is not a refusal: the same ask succeeds the moment the
+        // running turn ends, and the caller decides when to ask again.
+        let (client, runner, _events) = watching().await;
+        runner.refuse_moves_while_busy(SESSION, 1).await;
+
+        assert_eq!(
+            client
+                .move_working_directory(SESSION, "/somewhere/worktrees/task-1")
+                .await
+                .unwrap(),
+            WorkingDirectoryMove::TurnRunning
+        );
+        assert_eq!(
+            client
+                .move_working_directory(SESSION, "/somewhere/worktrees/task-1")
+                .await
+                .unwrap(),
+            WorkingDirectoryMove::Moved
+        );
+    }
+
+    #[tokio::test]
+    async fn moving_a_trusted_session_asks_once_and_is_done() {
+        let (client, runner, _events) = watching().await;
+
+        client
+            .move_working_directory(SESSION, "/somewhere/worktrees/task-1")
+            .await
+            .expect("the session moves");
+
+        let moves = runner
+            .heard(SESSION)
+            .await
+            .into_iter()
+            .filter(|frame| frame["request"]["subtype"] == "set_cwd")
+            .count();
+        assert_eq!(moves, 1);
     }
 }

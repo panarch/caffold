@@ -35,7 +35,8 @@ impl ClaudeClient {
     /// read ahead of a prompt not yet flushed, and is refused — new work must
     /// not be filed into a turn that already ended.
     async fn filed_prompt_name(&self, session: &Arc<Session>) -> Option<String> {
-        let candidate = self.newest_filed_turn(&session.cwd, &session.id).await?.id;
+        let cwd = session.cwd.lock().await.clone();
+        let candidate = self.newest_filed_turn(&cwd, &session.id).await?.id;
         let state = session.state.lock().await;
         if state.turns.iter().any(|turn| turn.id == candidate) {
             return None;

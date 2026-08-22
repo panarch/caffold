@@ -70,6 +70,7 @@ use crate::agent::{
 };
 
 pub(crate) use self::served_tools::{AskedTool, ToolAsk};
+pub(crate) use self::session::WorkingDirectoryMove;
 
 #[cfg(test)]
 pub(crate) use self::runner::MockRunnerHandle;
@@ -159,7 +160,10 @@ pub(crate) enum ClaudeRuntimeEvent {
 /// One session, and everything Caffold knows about it.
 struct Session {
     id: String,
-    cwd: String,
+    /// Where the session runs — and so where the agent keeps its transcript,
+    /// which follows a moved session. Moves once at most, when the Task is
+    /// isolated into a worktree.
+    cwd: AsyncMutex<String>,
 
     frames: AsyncMutex<SessionFrames>,
     state: AsyncMutex<SessionState>,
@@ -661,6 +665,7 @@ impl ClaudeClient {
     // -----------------------------------------------------------------------
 
     async fn conversation_of(&self, session: &Arc<Session>) -> Conversation {
+        let session_cwd = session.cwd.lock().await.clone();
         let state = session.state.lock().await;
         let introduction = state.introduction.clone().unwrap_or_default();
         Conversation {
@@ -676,7 +681,7 @@ impl ClaudeClient {
             cwd: introduction
                 .cwd
                 .clone()
-                .unwrap_or_else(|| session.cwd.clone()),
+                .unwrap_or_else(|| session_cwd.clone()),
             transcript_path: None,
             created_at_ms: state.opened_at_ms,
             updated_at_ms: state.moved_at_ms,

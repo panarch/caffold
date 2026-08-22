@@ -116,9 +116,19 @@ impl Runner {
 
         // Children do not outlive the runner that supervises them: nothing
         // would be able to reach them afterwards, and they would hold a
-        // conversation open that no client could join.
-        for session in self.sessions.lock().await.values() {
-            self.close_and_forget(session).await;
+        // conversation open that no client could join. Ended together, so
+        // stopping costs one graceful shutdown however many sessions are
+        // held, not one per session.
+        let sessions: Vec<_> = self.sessions.lock().await.values().cloned().collect();
+        let closing: Vec<_> = sessions
+            .into_iter()
+            .map(|session| {
+                let runner = Arc::clone(&self);
+                tokio::spawn(async move { runner.close_and_forget(&session).await })
+            })
+            .collect();
+        for closed in closing {
+            let _ = closed.await;
         }
         let _ = tokio::fs::remove_file(&self.socket).await;
         Ok(())

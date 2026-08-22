@@ -50,11 +50,7 @@ pub(super) async fn list_archived_tasks(
 /// still has the conversation written down, which costs a look at the
 /// filesystem.
 async fn archived_task(state: &TaskState, managed: &ManagedThread) -> Result<TaskRecord, ApiError> {
-    let driver = state
-        .task_runtime
-        .agent_for(&managed.run_by)
-        .await?
-        .driver();
+    let driver = state.task_runtime.agent_for(managed).await?.driver();
     let described = match driver.describe(&managed.thread_id).await {
         Ok(described) => described,
         // A conversation the agent no longer has is a Task that can be listed
