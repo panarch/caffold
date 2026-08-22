@@ -137,6 +137,9 @@ impl Session {
         matches!(*self.state.lock().await, State::Running { .. })
     }
 
+    /// This session described as it stands. Describing starts nothing, so
+    /// `spawned` is false here; the create path that actually started the
+    /// child says so on the answer it returns.
     pub async fn info(&self) -> SessionInfo {
         let state = *self.state.lock().await;
         let attached = self.subscriber.lock().await.is_some();
@@ -146,6 +149,7 @@ impl Session {
                 state: SessionState::Running,
                 pid: Some(pid),
                 attached,
+                spawned: false,
                 exit_code: None,
             },
             State::Exited { code } => SessionInfo {
@@ -153,6 +157,7 @@ impl Session {
                 state: SessionState::Exited,
                 pid: None,
                 attached,
+                spawned: false,
                 exit_code: code,
             },
         }

@@ -31,9 +31,10 @@
 //!
 //! This file is the client's surface — its types, its turns, its approvals —
 //! and each larger concern lives with its own module: [`session`] opens and
-//! takes back up, [`reading`] interprets everything the agent says,
-//! [`served_tools`] answers for the tools Caffold serves it, and [`settings`]
-//! carries what a person chose to a running session.
+//! takes back up, [`starting`] paces every authenticating start, [`reading`]
+//! interprets everything the agent says, [`served_tools`] answers for the
+//! tools Caffold serves it, and [`settings`] carries what a person chose to a
+//! running session.
 
 pub(crate) mod protocol;
 mod reading;
@@ -41,6 +42,7 @@ pub(crate) mod runner;
 mod served_tools;
 mod session;
 mod settings;
+mod starting;
 pub(crate) mod status;
 pub(crate) mod transcript;
 pub(crate) mod translate;
@@ -120,6 +122,10 @@ pub(crate) struct ClaudeClient {
 
 struct ClaudeClientInner {
     runner: RunnerClient,
+    /// The one door every authenticating start passes through — a session the
+    /// runner spawns, or a one-off question asked directly. Why one:
+    /// [`starting`].
+    starts: starting::StartGate,
     /// Where the agent keeps every project's conversations. Absent when this
     /// installation's environment names no home, in which case a conversation
     /// can be neither read nor removed and neither is reported as done.
@@ -301,6 +307,12 @@ impl ClaudeClient {
         )
     }
 
+    /// Hold the start door shut, the way a start mid-passage holds it.
+    #[cfg(test)]
+    async fn hold_starts_for_tests(&self) -> starting::Starting<'_> {
+        self.inner.starts.one_at_a_time().await
+    }
+
     fn with_runner(runner: RunnerClient) -> Self {
         Self::with_runner_and_projects(runner, transcript::projects_root())
     }
@@ -310,9 +322,19 @@ impl ClaudeClient {
         projects: Option<std::path::PathBuf>,
     ) -> Self {
         let (events, _) = broadcast::channel(256);
+        let starts = starting::StartGate::spaced();
+        // A stand-in runner spawns nothing, so its door needs no spacing —
+        // and a spaced one would slow every test that opens two sessions.
+        #[cfg(test)]
+        let starts = if runner.is_mock() {
+            starting::StartGate::unspaced()
+        } else {
+            starts
+        };
         Self {
             inner: Arc::new(ClaudeClientInner {
                 runner,
+                starts,
                 projects,
                 sessions: AsyncMutex::new(HashMap::new()),
                 events,
@@ -1308,6 +1330,68 @@ mod tests {
 
     use super::test_support::*;
     use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn a_session_does_not_start_while_another_start_is_in_the_door() {
+        // Two young processes can race the account's stored credentials — see
+        // [`starting`] — so every start, however it is asked for, waits for
+        // the one already going.
+        let (client, runner) = ClaudeClient::mock();
+        runner
+            .greet_next_session_with(vec![init_frame(SESSION)])
+            .await;
+        let held = client.hold_starts_for_tests().await;
+
+        let mut opening = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .open_conversation(SESSION, CWD, &options("opus"))
+                    .await
+            }
+        });
+        tokio::time::timeout(Duration::from_millis(10), &mut opening)
+            .await
+            .expect_err("the open waits at the door");
+
+        drop(held);
+        opening
+            .await
+            .expect("the task finishes")
+            .expect("the conversation opens once the door is free");
+    }
+
+    #[tokio::test]
+    async fn taking_up_a_live_session_is_not_spaced_as_a_start() {
+        // A backend restart builds a fresh client over the same runner, and
+        // every conversation it takes back up is a hand-back, not a spawn.
+        // Spacing those would delay recovery by the spacing per Task, for
+        // processes that were never young.
+        let (first, runner) = ClaudeClient::mock();
+        runner
+            .greet_next_session_with(vec![init_frame(SESSION)])
+            .await;
+        first
+            .open_conversation(SESSION, CWD, &options("opus"))
+            .await
+            .expect("the first backend opens the conversation");
+        assert!(
+            first.inner.starts.stamped_at_for_tests().await.is_some(),
+            "the open that spawned the session counts as a start"
+        );
+
+        let second = ClaudeClient::with_runner(first.inner.runner.clone());
+        second
+            .open_conversation(SESSION, CWD, &options("opus"))
+            .await
+            .expect("the second backend takes the session up");
+
+        assert_eq!(
+            second.inner.starts.stamped_at_for_tests().await,
+            None,
+            "a session handed back started nothing, so nothing is spaced behind it"
+        );
+    }
 
     #[tokio::test]
     async fn a_turn_that_is_stopped_leaves_nothing_still_running() {

@@ -38,6 +38,10 @@ fn asking_for_a_live_session_again_returns_the_same_one() {
 
     assert_eq!(first["pid"], second["pid"]);
     assert_eq!(runner.sessions().len(), 1);
+    // The caller spaces genuine starts apart, so the answer has to say which
+    // this was: only the create that began the child counts as a start.
+    assert_eq!(first["spawned"], true);
+    assert_eq!(second["spawned"], false);
 }
 
 #[test]
@@ -235,6 +239,10 @@ fn asking_for_an_exited_session_starts_a_replacement() {
 
     assert_eq!(replacement["state"], "running");
     assert_eq!(runner.sessions().len(), 1);
+    assert_eq!(
+        replacement["spawned"], true,
+        "a replacement is a genuine start, and the answer says so"
+    );
 }
 
 #[test]

@@ -144,9 +144,19 @@ pub struct SessionInfo {
     pub state: SessionState,
     pub pid: Option<u32>,
     pub attached: bool,
+    /// Whether answering this request started the child, as opposed to
+    /// describing or handing back one that already existed. Only a create can
+    /// say true. Absent in answers from a runner that predates the field,
+    /// which reads as true — a start that cannot be ruled out.
+    #[serde(default = "assume_spawned")]
+    pub spawned: bool,
     /// Present once the child has exited and the process reported a code.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exit_code: Option<i32>,
+}
+
+fn assume_spawned() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]

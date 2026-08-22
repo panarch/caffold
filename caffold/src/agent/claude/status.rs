@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use super::{ANSWER_TIMEOUT, ClaudeClient, settings};
+use super::{ANSWER_TIMEOUT, ClaudeClient};
 
 /// The whole report, one block per source. A block a source could not fill is
 /// absent, and why it is absent is under `problems` by the block's name.
@@ -103,10 +103,14 @@ struct RunnerReport {
 impl ClaudeClient {
     /// What this installation is right now, every source asked at once.
     ///
-    /// Each source gets [`ANSWER_TIMEOUT`] — the same patience any question
-    /// to the agent gets — and the report waits for the slowest one. A source
-    /// still silent past it is reported as unable, and the processes behind
-    /// the asking are killed with the wait, not left running.
+    /// Every source is bounded and the report waits for the slowest one. The
+    /// local probes get [`ANSWER_TIMEOUT`] apiece, and a source still silent
+    /// past its bound is reported as unable, its process killed with the
+    /// wait. The usage question bounds itself instead — its wait at the start
+    /// door and its wait for the answer each carry the same deadline —
+    /// because a cutoff from out here would kill a process that may be
+    /// mid-way through refreshing the account's credentials, the very thing
+    /// starts are spaced to protect.
     pub(crate) async fn introspect(&self) -> ClaudeStatus {
         #[cfg(test)]
         if self.inner.runner.is_mock() {
@@ -115,9 +119,9 @@ impl ClaudeClient {
         let (executable, auth, usage, runner) = tokio::join!(
             probe(executable_report()),
             probe(auth_report()),
-            // Not probed twice: the one-off process it asks through already
-            // holds the same deadline, and says which question went dark.
-            usage_report(),
+            // Not probed twice: the one-off holds its own deadlines, door
+            // and answer both, and says which question went dark.
+            usage_report(self),
             // The runner is asked over its socket, where a wedged daemon
             // could otherwise hold this report open forever.
             tokio::time::timeout(ANSWER_TIMEOUT, self.inner.runner.status()),
@@ -192,6 +196,11 @@ async fn executable_report() -> Result<Executable, String> {
 }
 
 /// The account, in the agent's own `auth status --json` words.
+///
+/// Read from what is already on this machine, not asked of the service —
+/// measured against CLI 2.1.239: it answers in ~0.2s, no time for a
+/// credential refresh's round trip — which is why it does not pass the
+/// start door the authenticating starts do.
 async fn auth_report() -> Result<Auth, String> {
     let output = run("claude", &["auth", "status", "--json"]).await?;
     // Parsed regardless of the exit code: logged out is a report, not an
@@ -206,8 +215,9 @@ async fn auth_report() -> Result<Auth, String> {
 }
 
 /// The plan's windows, asked of the agent the way its own screen asks.
-async fn usage_report() -> Result<Usage, String> {
-    let answer = settings::ask_one_off(json!({ "subtype": "get_usage" }))
+async fn usage_report(client: &ClaudeClient) -> Result<Usage, String> {
+    let answer = client
+        .ask_one_off(json!({ "subtype": "get_usage" }))
         .await
         .map_err(|error| error.to_string())?;
     Ok(usage_of(&answer))

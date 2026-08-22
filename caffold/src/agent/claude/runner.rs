@@ -647,6 +647,9 @@ struct MockSession {
     hello: Value,
     agent: mpsc::UnboundedSender<RunnerEvent>,
     heard: Vec<Value>,
+    /// Whether the agent behind it has exited. The daemon keeps an exited
+    /// session listed, and asking for it again spawns a replacement.
+    exited: bool,
     /// How many prompts have been handed back, which is what names the next
     /// one. The real agent uses identifiers of its own; what matters to a
     /// caller is that each is different and that the same one reaches the
@@ -676,6 +679,13 @@ impl MockRunner {
             let _ = sender.send(RunnerEvent::Frame(frame.to_string()));
         }
         let hello = std::mem::replace(&mut state.hello, default_hello());
+        // The way the daemon answers it: only the open that brought the
+        // session into being says it started something, and an exited one is
+        // replaced, which is a beginning again.
+        let spawned = match state.sessions.get(session) {
+            Some(held) => held.exited,
+            None => true,
+        };
         state.sessions.insert(
             session.to_string(),
             MockSession {
@@ -683,6 +693,7 @@ impl MockRunner {
                 hello,
                 agent: sender,
                 heard: Vec::new(),
+                exited: false,
                 replays: 0,
                 swallow_prompts: false,
                 distrusts_moves: false,
@@ -695,6 +706,7 @@ impl MockRunner {
                 state: protocol::SessionState::Running,
                 pid: Some(4242),
                 attached: true,
+                spawned,
                 exit_code: None,
             },
             frames: SessionFrames::Mock {
@@ -859,8 +871,9 @@ impl MockRunnerHandle {
 
     /// End the session as the agent exiting.
     pub(crate) async fn exit(&self, session: &str, code: Option<i32>) {
-        let state = self.0.state.lock().await;
-        if let Some(held) = state.sessions.get(session) {
+        let mut state = self.0.state.lock().await;
+        if let Some(held) = state.sessions.get_mut(session) {
+            held.exited = true;
             let _ = held.agent.send(RunnerEvent::Exit(code));
         }
     }

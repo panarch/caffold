@@ -103,9 +103,11 @@ caffold/src/agent/claude.rs            the Claude client's surface: its types, t
 caffold/src/agent/claude/
   protocol.rs                          the stream-json and control wire types
   session.rs                           opening a session, and what a reopened one already was
+  starting.rs                          starting the agent, one process at a time
   reading.rs                           interpreting everything the agent says, as it says it
   served_tools.rs                      the in-process MCP tools Caffold serves the agent
   settings.rs                          models and modes, and carrying choices to a running session
+  status.rs                            what this installation is, asked without a Task
   translate.rs                         one translator from Claude content blocks to Caffold items
   transcript.rs                        reading a conversation back from the file the agent writes
   runner.rs                            reaching the runner, and the stand-in a test drives instead
@@ -147,6 +149,22 @@ The runner is deliberately ignorant. It does not know which argument selects a
 model or enables the permission callback, and it keeps no history. It outlives
 the backend, which is what lets a turn survive a restart, and it is given its
 own process group so a signal to Caffold does not take it along.
+
+Starting `claude` is paced by the backend. A freshly started process refreshes
+the account's stored credentials when they are expiring, and two young
+processes can refresh the same token twice — which the service reads as theft
+and answers by revoking the login everywhere. Every authenticating start this
+backend makes — a session the runner spawns or a one-off question asked
+directly — passes one gate that lets starts begin one at a time, spaced
+apart. The runner's create answer says whether it began a process or handed
+back one already running, and only a beginning shuts the gate behind it, so
+taking live sessions back up after a backend restart is not spaced. A runner
+from before that answer says nothing either way, and every hand-back counts
+as a start until the runner is next replaced. Questions
+answered from what is already on this machine, such as `--version` and
+`auth status`, refresh nothing and do not pass the gate. The gate is per
+backend: a second backend on the same account, or `claude` run by hand,
+starts outside its ordering.
 
 ### Git Worktree
 

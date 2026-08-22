@@ -113,15 +113,19 @@ impl ClaudeClient {
     ///
     /// The agent answers this over the control protocol, which means a process.
     /// There is no daemon to ask, so one is started for the question and the
-    /// answer is kept.
+    /// answer is kept. The cache lock is held while asking, so callers that
+    /// arrive together cost one process rather than one each.
     pub(crate) async fn models(&self) -> Result<Vec<ModelOption>, ClaudeError> {
-        if let Some(cached) = self.inner.models.lock().await.clone() {
+        let mut models = self.inner.models.lock().await;
+        if let Some(cached) = models.clone() {
             return Ok(cached);
         }
-        let answer = ask_one_off(json!({ "subtype": "list_models" })).await?;
-        let models = model_options(&answer);
-        *self.inner.models.lock().await = Some(models.clone());
-        Ok(models)
+        let answer = self
+            .ask_one_off(json!({ "subtype": "list_models" }))
+            .await?;
+        let listed = model_options(&answer);
+        *models = Some(listed.clone());
+        Ok(listed)
     }
 
     /// Whether the model a person chose can decide permissions for itself.
@@ -227,6 +231,111 @@ impl ClaudeClient {
             return BTreeMap::new();
         };
         self.settings_of_session(&session).await
+    }
+
+    /// Ask a question that needs no conversation.
+    ///
+    /// The model list and the usage report are the ones so far. Each costs a
+    /// process start and no tokens, and there is no daemon holding the answer,
+    /// so a process is started for the question — through the start door, like
+    /// every authenticating start — and ended with it.
+    pub(super) async fn ask_one_off(&self, body: Value) -> Result<Value, ClaudeError> {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+        let mut child = {
+            // The door is held to the spawn and no further. Holding it for
+            // the answer would let one wedged question stand in front of
+            // every Task somebody creates; the spacing behind the stamp is
+            // what carries the protection.
+            let starting =
+                match tokio::time::timeout(ANSWER_TIMEOUT, self.inner.starts.one_at_a_time()).await
+                {
+                    Ok(starting) => starting,
+                    Err(_) => {
+                        return Err(ClaudeError::Runner(format!(
+                            "another Claude start held the door for {} seconds",
+                            ANSWER_TIMEOUT.as_secs()
+                        )));
+                    }
+                };
+            match tokio::process::Command::new("claude")
+                .args(BASE_ARGUMENTS.iter().filter(|argument| {
+                    // The permission callback needs a conversation to belong to.
+                    !matches!(**argument, "--permission-prompt-tool" | "stdio")
+                }))
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .kill_on_drop(true)
+                .spawn()
+            {
+                Ok(child) => child,
+                Err(error) => {
+                    // Nothing began, so nothing needs spacing behind it.
+                    starting.nothing_started();
+                    return Err(ClaudeError::Runner(format!(
+                        "could not start claude: {error}"
+                    )));
+                }
+            }
+        };
+
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| ClaudeError::Runner("claude has no stdin".to_string()))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| ClaudeError::Runner("claude has no stdout".to_string()))?;
+
+        let request_id = "caffold-ask";
+        let line = format!("{}\n", protocol::control_request(request_id, body));
+        stdin
+            .write_all(line.as_bytes())
+            .await
+            .map_err(|error| ClaudeError::Runner(error.to_string()))?;
+        stdin
+            .flush()
+            .await
+            .map_err(|error| ClaudeError::Runner(error.to_string()))?;
+
+        let mut lines = BufReader::new(stdout).lines();
+        let answer = tokio::time::timeout(ANSWER_TIMEOUT, async {
+            loop {
+                let Some(line) = lines
+                    .next_line()
+                    .await
+                    .map_err(|error| ClaudeError::Runner(error.to_string()))?
+                else {
+                    break Err(ClaudeError::Protocol(
+                        "claude ended without answering".to_string(),
+                    ));
+                };
+                let Ok(StreamFrame::ControlResponse(response)) =
+                    serde_json::from_str::<StreamFrame>(&line)
+                else {
+                    continue;
+                };
+                if response.response.request_id != request_id {
+                    continue;
+                }
+                break response
+                    .response
+                    .into_result()
+                    .map(|answer| answer.payload)
+                    .map_err(ClaudeError::Agent);
+            }
+        })
+        .await
+        .unwrap_or_else(|_| {
+            Err(ClaudeError::Protocol(format!(
+                "claude did not answer within {} seconds",
+                ANSWER_TIMEOUT.as_secs()
+            )))
+        });
+        let _ = child.start_kill();
+        answer
     }
 }
 
@@ -334,84 +443,6 @@ fn model_options(answer: &Value) -> Vec<ModelOption> {
             })
         })
         .collect()
-}
-
-/// Ask a question that needs no conversation.
-///
-/// The model list and the usage report are the ones so far. Each costs a
-/// process start and no tokens, and there is no daemon holding the answer, so
-/// a process is started for the question and ended with it.
-pub(super) async fn ask_one_off(body: Value) -> Result<Value, ClaudeError> {
-    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-
-    let mut child = tokio::process::Command::new("claude")
-        .args(BASE_ARGUMENTS.iter().filter(|argument| {
-            // The permission callback needs a conversation to belong to.
-            !matches!(**argument, "--permission-prompt-tool" | "stdio")
-        }))
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|error| ClaudeError::Runner(format!("could not start claude: {error}")))?;
-
-    let mut stdin = child
-        .stdin
-        .take()
-        .ok_or_else(|| ClaudeError::Runner("claude has no stdin".to_string()))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| ClaudeError::Runner("claude has no stdout".to_string()))?;
-
-    let request_id = "caffold-ask";
-    let line = format!("{}\n", protocol::control_request(request_id, body));
-    stdin
-        .write_all(line.as_bytes())
-        .await
-        .map_err(|error| ClaudeError::Runner(error.to_string()))?;
-    stdin
-        .flush()
-        .await
-        .map_err(|error| ClaudeError::Runner(error.to_string()))?;
-
-    let mut lines = BufReader::new(stdout).lines();
-    let answer = tokio::time::timeout(ANSWER_TIMEOUT, async {
-        loop {
-            let Some(line) = lines
-                .next_line()
-                .await
-                .map_err(|error| ClaudeError::Runner(error.to_string()))?
-            else {
-                break Err(ClaudeError::Protocol(
-                    "claude ended without answering".to_string(),
-                ));
-            };
-            let Ok(StreamFrame::ControlResponse(response)) =
-                serde_json::from_str::<StreamFrame>(&line)
-            else {
-                continue;
-            };
-            if response.response.request_id != request_id {
-                continue;
-            }
-            break response
-                .response
-                .into_result()
-                .map(|answer| answer.payload)
-                .map_err(ClaudeError::Agent);
-        }
-    })
-    .await
-    .unwrap_or_else(|_| {
-        Err(ClaudeError::Protocol(format!(
-            "claude did not answer within {} seconds",
-            ANSWER_TIMEOUT.as_secs()
-        )))
-    });
-    let _ = child.start_kill();
-    answer
 }
 
 #[cfg(test)]

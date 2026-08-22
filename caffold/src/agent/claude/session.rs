@@ -18,8 +18,8 @@ use caffold_claude_runner::protocol::SessionState as RunnerSessionState;
 use super::protocol::BASE_ARGUMENTS;
 use super::runner::RunnerSession;
 use super::{
-    ClaudeClient, ClaudeError, ClaudeRuntimeEvent, ClaudeTurnOptions, Session, SessionState, Turn,
-    TurnStatus, now_ms, protocol,
+    ANSWER_TIMEOUT, ClaudeClient, ClaudeError, ClaudeRuntimeEvent, ClaudeTurnOptions, Session,
+    SessionState, Turn, TurnStatus, now_ms, protocol,
 };
 
 /// What asking a session to move came to.
@@ -54,11 +54,39 @@ impl ClaudeClient {
             cwd: cwd.to_string(),
             env: Default::default(),
         };
+        // Every open passes the start door alone. The runner's create is
+        // idempotent, and its answer says whether it began a process or handed
+        // back one already running — only a beginning shuts the door behind
+        // it, so sessions taken back up after a backend restart are not spaced
+        // out as though each were a cold start. A failed open is counted all
+        // the same: its reply may have been lost after a spawn, and the doubt
+        // costs the next start the spacing, not a login.
+        let starting =
+            match tokio::time::timeout(ANSWER_TIMEOUT, self.inner.starts.one_at_a_time()).await {
+                Ok(starting) => starting,
+                Err(_) => {
+                    return Err(ClaudeError::Runner(format!(
+                        "another Claude start held the door for {} seconds",
+                        ANSWER_TIMEOUT.as_secs()
+                    )));
+                }
+            };
+        let opened = self.inner.runner.open(id, spawn).await;
         let RunnerSession {
             info,
             frames,
             events,
-        } = self.inner.runner.open(id, spawn).await?;
+        } = match opened {
+            Ok(session) => {
+                if session.info.spawned {
+                    drop(starting);
+                } else {
+                    starting.nothing_started();
+                }
+                session
+            }
+            Err(error) => return Err(error),
+        };
         if matches!(info.state, RunnerSessionState::Exited) {
             // The runner keeps an exited session listed so a client that
             // reconnects can see that it happened. Watching one would be

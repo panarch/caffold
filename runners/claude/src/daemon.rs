@@ -379,7 +379,11 @@ impl Runner {
                 .await
                 .map_err(session_error)?,
         );
-        let info = session.info().await;
+        let mut info = session.info().await;
+        // This answer is the one that started the child, and the only one
+        // that may say so: the caller spaces genuine starts apart, and a
+        // hand-back mislabelled as a start would be spaced for nothing.
+        info.spawned = true;
         // Written down before the session is handed out, so a runner that dies
         // in the next instant still leaves a child its successor knows to end.
         if let Some(pid) = info.pid {
