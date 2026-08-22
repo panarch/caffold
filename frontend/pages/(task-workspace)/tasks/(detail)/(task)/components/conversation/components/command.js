@@ -133,7 +133,7 @@ class CaffoldTaskCommand extends HTMLElement {
     patchText(status, this.presentation.statusLabel);
     patchText(
       this.querySelector(".task-command-summary-label"),
-      this.presentation.command,
+      this.presentation.commandLine,
     );
     const metadata = this.querySelector(".task-command-summary-meta");
     metadata.hidden = !this.presentation.metadata;
@@ -246,7 +246,7 @@ function renderTerminalCommand(presentation) {
   return `
     <div class="task-command-summary">
       <span class="task-command-summary-status" data-command-result="${escapeHtml(presentation.result)}">${escapeHtml(presentation.statusLabel)}</span>
-      <code class="task-command-summary-label">${escapeHtml(presentation.command)}</code>
+      <code class="task-command-summary-label">${escapeHtml(presentation.commandLine)}</code>
       <span class="task-command-summary-meta"${presentation.metadata ? "" : " hidden"}>${escapeHtml(presentation.metadata)}</span>
       <button
         type="button"
