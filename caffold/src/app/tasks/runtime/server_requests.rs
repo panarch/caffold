@@ -142,7 +142,12 @@ impl TaskRuntime {
                 self.claude()
                     .resolve_approval(thread_id, approval_id, decision)
                     .await
-                    .map_err(|error| ApprovalResolveError::Codex(error.into()))?;
+                    .map_err(|error| match error {
+                        crate::agent::claude::ClaudeError::NoSuchApproval(_) => {
+                            ApprovalResolveError::NotFound
+                        }
+                        error => ApprovalResolveError::Agent(error.into()),
+                    })?;
             }
             // The Task's agent changed under an answer in flight, which means
             // the request being answered is not the one that was asked.

@@ -1181,7 +1181,7 @@ mod tests {
 
         assert!(matches!(
             task_archive(State(state.clone()), AxumPath(thread_id.to_string())).await,
-            Err(ApiError::CodexThread(_))
+            Err(ApiError::Agent(_))
         ));
         assert!(state.task_store.get(thread_id).unwrap().is_some());
         assert!(state.task_store.get_archived(thread_id).unwrap().is_none());
@@ -1251,7 +1251,7 @@ mod tests {
 
         assert!(matches!(
             task_restore(State(state.clone()), AxumPath(thread_id.to_string())).await,
-            Err(ApiError::CodexThread(_))
+            Err(ApiError::Agent(_))
         ));
         assert!(state.task_store.get(thread_id).unwrap().is_none());
         assert!(state.task_store.get_archived(thread_id).unwrap().is_some());
@@ -1411,10 +1411,7 @@ mod tests {
 
         let refused = task_restore(State(state.clone()), AxumPath(thread_id.to_string())).await;
 
-        assert!(
-            matches!(refused, Err(ApiError::CodexThread(_))),
-            "{refused:?}"
-        );
+        assert!(matches!(refused, Err(ApiError::Agent(_))), "{refused:?}");
         assert!(
             task_store_get_archived(&state, thread_id)
                 .await
@@ -1896,7 +1893,7 @@ mod tests {
 
         let result = task_archive(State(state.clone()), AxumPath(thread_id.to_string())).await;
 
-        assert!(matches!(result, Err(ApiError::CodexThread(_))));
+        assert!(matches!(result, Err(ApiError::Agent(_))));
         assert!(task_store_get(&state, thread_id).await.unwrap().is_some());
         assert!(
             task_store_get_archived(&state, thread_id)
@@ -1923,7 +1920,7 @@ mod tests {
 
         let result = task_restore(State(state.clone()), AxumPath(thread_id.to_string())).await;
 
-        assert!(matches!(result, Err(ApiError::CodexThread(_))));
+        assert!(matches!(result, Err(ApiError::Agent(_))));
         assert!(task_store_get(&state, thread_id).await.unwrap().is_none());
         assert!(
             task_store_get_archived(&state, thread_id)
@@ -2049,7 +2046,7 @@ mod tests {
 
         assert!(matches!(
             task_delete(State(state.clone()), AxumPath(thread_id.to_string())).await,
-            Err(ApiError::CodexThread(_))
+            Err(ApiError::Agent(_))
         ));
         assert!(state.task_store.get_archived(thread_id).unwrap().is_some());
         assert_eq!(

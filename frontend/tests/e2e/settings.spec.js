@@ -162,7 +162,7 @@ test("keeps Codex Settings actionable when runtime restart fails", { tag: "@all-
       contentType: "application/json",
       body: JSON.stringify({
         error: {
-          code: "codex_app_server_error",
+          code: "agent_error",
           message: "Codex runtime could not be restarted.",
         },
       }),

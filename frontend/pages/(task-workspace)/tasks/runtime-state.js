@@ -97,8 +97,7 @@ export function classifyPromptFailure(error) {
     !Number.isFinite(status) ||
     status === 0 ||
     status >= 500 ||
-    code === "request_timeout" ||
-    code === "codex_app_server_timeout";
+    code === "agent_timeout";
   return outcomeUnknown
     ? PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN
     : PROMPT_SUBMISSION_STATE.REJECTED;

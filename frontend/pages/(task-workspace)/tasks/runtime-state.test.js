@@ -84,7 +84,7 @@ test("classifies only explicit client rejection as safe to roll back", () => {
     PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN,
   );
   assert.equal(
-    classifyPromptFailure({ code: "request_timeout", status: 0 }),
+    classifyPromptFailure({ code: "agent_timeout", status: 0 }),
     PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN,
   );
   assert.equal(

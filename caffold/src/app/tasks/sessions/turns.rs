@@ -1,4 +1,4 @@
-use crate::agent::codex::CodexThreadError;
+use crate::agent::AgentError;
 use crate::agent::{Conversation, Driver, ThreadStatus, Turn, TurnPage, TurnStatus};
 
 use super::{INITIAL_TURNS_PAGE_SIZE, SessionSnapshot, SessionState, TaskSessions, snapshot};
@@ -11,14 +11,14 @@ impl TaskSessions {
         thread_id: &str,
         cursor: &str,
         limit: usize,
-    ) -> Result<(SessionSnapshot, TurnPage), CodexThreadError> {
+    ) -> Result<(SessionSnapshot, TurnPage), AgentError> {
         self.ensure_subscribed(driver, generation, thread_id)
             .await?;
         let page = driver.read_turns(thread_id, Some(cursor), limit).await?;
         let entry = self.entry(thread_id).await;
         let state = entry.state.lock().await;
         if state.generation != generation {
-            return Err(CodexThreadError::SubscriptionLost(format!(
+            return Err(AgentError::Failed(format!(
                 "conversation {thread_id} changed connection while reading its history"
             )));
         }
@@ -509,10 +509,7 @@ mod tests {
             .expect_err("older history request should time out");
         assert!(matches!(
             error,
-            CodexThreadError::RequestTimeout {
-                method: "thread/turns/list",
-                ..
-            }
+            AgentError::TimedOut(ref message) if message.contains("thread/turns/list")
         ));
 
         let after = sessions.snapshot("thread-1").await.expect("snapshot");

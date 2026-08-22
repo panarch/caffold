@@ -1,6 +1,6 @@
 use futures_util::{StreamExt, stream};
 
-use crate::agent::codex::CodexThreadError;
+use crate::agent::AgentError;
 use crate::agent::{Driver, ThreadStatus};
 
 use super::{SessionLifecycle, SessionSnapshot, TaskSessions};
@@ -77,7 +77,7 @@ impl TaskSessions {
         &self,
         driver: &Driver,
         generation: u64,
-    ) -> Vec<(String, CodexThreadError)> {
+    ) -> Vec<(String, AgentError)> {
         let entries = self
             .entries
             .lock()
@@ -126,7 +126,7 @@ impl TaskSessions {
         driver: &Driver,
         generation: u64,
         thread_id: &str,
-    ) -> Result<Option<SessionSnapshot>, CodexThreadError> {
+    ) -> Result<Option<SessionSnapshot>, AgentError> {
         self.ensure_subscribed(driver, generation, thread_id)
             .await
             .map(Some)
@@ -137,7 +137,7 @@ impl TaskSessions {
         driver: &Driver,
         generation: u64,
         thread_id: &str,
-    ) -> Result<Option<SessionSnapshot>, CodexThreadError> {
+    ) -> Result<Option<SessionSnapshot>, AgentError> {
         let entry = self.entry(thread_id).await;
         entry.state.lock().await.runtime_lease = true;
 

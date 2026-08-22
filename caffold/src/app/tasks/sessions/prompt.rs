@@ -1,4 +1,4 @@
-use crate::agent::codex::CodexThreadError;
+use crate::agent::AgentError;
 use crate::agent::{Driver, ThreadStatus, Turn, TurnOptions, TurnStatus};
 
 use super::{
@@ -16,7 +16,7 @@ impl TaskSessions {
         driver: &Driver,
         generation: u64,
         thread_id: &str,
-    ) -> Result<PromptTarget, CodexThreadError> {
+    ) -> Result<PromptTarget, AgentError> {
         let entry = self.entry(thread_id).await;
         let current = {
             let mut state = entry.state.lock().await;
@@ -61,13 +61,13 @@ impl TaskSessions {
 
         if current.generation != generation {
             self.cancel_runtime(thread_id).await;
-            return Err(CodexThreadError::SubscriptionLost(format!(
+            return Err(AgentError::Failed(format!(
                 "conversation {thread_id} changed connection before its prompt"
             )));
         }
 
         let thread = current.conversation.ok_or_else(|| {
-            CodexThreadError::SubscriptionLost(format!(
+            AgentError::Failed(format!(
                 "conversation {thread_id} did not come back while preparing a prompt"
             ))
         })?;
@@ -94,7 +94,7 @@ impl TaskSessions {
                     .map(|turn| turn.id.clone())
                 else {
                     self.cancel_runtime(thread_id).await;
-                    return Err(CodexThreadError::SubscriptionLost(format!(
+                    return Err(AgentError::Failed(format!(
                         "active thread {thread_id} did not expose its active turn"
                     )));
                 };
@@ -116,7 +116,7 @@ impl TaskSessions {
             Ok(PromptTarget::Start { cwd: thread.cwd })
         } else {
             self.cancel_runtime(thread_id).await;
-            Err(CodexThreadError::SubscriptionLost(format!(
+            Err(AgentError::Failed(format!(
                 "conversation {thread_id} cannot take a prompt"
             )))
         }
@@ -127,7 +127,7 @@ impl TaskSessions {
         driver: &Driver,
         generation: u64,
         thread_id: &str,
-    ) -> Result<SessionSnapshot, CodexThreadError> {
+    ) -> Result<SessionSnapshot, AgentError> {
         let entry = self.entry(thread_id).await;
         let _operation = entry.operation.lock().await;
         {
@@ -154,7 +154,7 @@ impl TaskSessions {
         };
         let mut state = entry.state.lock().await;
         if state.generation > generation {
-            return Err(CodexThreadError::SubscriptionLost(format!(
+            return Err(AgentError::Failed(format!(
                 "conversation {thread_id} changed connection while preparing a prompt"
             )));
         }
@@ -215,7 +215,7 @@ impl TaskSessions {
         driver: &Driver,
         generation: u64,
         thread_id: &str,
-    ) -> Result<Option<String>, CodexThreadError> {
+    ) -> Result<Option<String>, AgentError> {
         let snapshot = self
             .ensure_subscribed(driver, generation, thread_id)
             .await?;
@@ -420,7 +420,7 @@ mod tests {
             ),
             MockCodexResponse::error(
                 "thread/resume",
-                CodexThreadError::RequestTimeout {
+                crate::agent::codex::CodexThreadError::RequestTimeout {
                     method: "thread/resume",
                     request_id: 2,
                     timeout_ms: 120_000,
@@ -437,7 +437,7 @@ mod tests {
             sessions
                 .prepare_prompt(&client.driver(), 1, "thread-1")
                 .await,
-            Err(CodexThreadError::RequestTimeout { .. })
+            Err(AgentError::TimedOut(_))
         ));
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
         assert!(!snapshot.runtime_lease);
@@ -646,7 +646,7 @@ mod tests {
             sessions
                 .prepare_prompt(&client.driver(), 1, "thread-1")
                 .await,
-            Err(CodexThreadError::RequestTimeout { .. })
+            Err(AgentError::TimedOut(_))
         ));
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
         assert!(!snapshot.runtime_lease);

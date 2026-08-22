@@ -1,4 +1,5 @@
 use super::*;
+use crate::agent::AgentError;
 
 pub(super) async fn list_managed_tasks(
     State(state): State<TaskState>,
@@ -58,9 +59,9 @@ async fn archived_task(state: &TaskState, managed: &ManagedThread) -> Result<Tas
         // one held agent must not take the whole list down with it. The row
         // says why it cannot be asked about, because held is not gone: a row
         // reading as lost invites deleting a Task that is fine.
-        Err(CodexThreadError::Readiness(readiness)) => {
+        Err(AgentError::Held(diagnostic)) => {
             let mut task = unavailable_archived_task(managed);
-            task.preview = readiness.diagnostic_message;
+            task.preview = diagnostic;
             return Ok(task);
         }
         Err(error) => return Err(error.into()),
@@ -70,7 +71,7 @@ async fn archived_task(state: &TaskState, managed: &ManagedThread) -> Result<Tas
         // A conversation the agent no longer has is a Task that can be listed
         // but not gone back to, which the row says for itself. Anything else
         // going wrong is the list failing rather than one row being empty.
-        Err(error) if error.is_thread_unavailable() => {
+        Err(AgentError::ConversationGone(_)) => {
             return Ok(unavailable_archived_task(managed));
         }
         Err(error) => return Err(error.into()),
@@ -462,7 +463,7 @@ mod tests {
         let result =
             list_archived_tasks(State(state.clone()), Query(TasksQuery { cursor: None })).await;
 
-        assert!(matches!(result, Err(ApiError::CodexThread(_))));
+        assert!(matches!(result, Err(ApiError::Agent(_))));
         assert_eq!(
             task_store_get_archived(&state, good_id)
                 .await
@@ -736,7 +737,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(ApiError::CodexThread(message)) if message.contains("repeated")
+            Err(ApiError::Agent(message)) if message.contains("repeated")
         ));
         assert_eq!(cached_projection_rows(&state), before);
     }

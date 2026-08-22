@@ -7,6 +7,7 @@ use serde::Serialize;
 use tokio::sync::{Mutex, broadcast};
 
 use super::{events::TaskEvents, lifecycle::TaskLifecycle, push::PushService};
+use crate::agent::AgentError;
 use crate::{
     agent::claude::ClaudeClient,
     agent::codex::{CodexThreadClient, CodexThreadError},
@@ -156,12 +157,12 @@ pub(in crate::app) enum ApprovalResolveError {
     NotFound,
     ThreadMismatch,
     ResolutionMismatch,
-    Codex(CodexThreadError),
+    Agent(AgentError),
 }
 
 impl From<CodexThreadError> for ApprovalResolveError {
     fn from(error: CodexThreadError) -> Self {
-        Self::Codex(error)
+        Self::Agent(error.into())
     }
 }
 
@@ -228,13 +229,13 @@ impl TaskRuntime {
     pub(in crate::app) async fn task_agent(
         &self,
         thread_id: &str,
-    ) -> Result<TaskAgent, CodexThreadError> {
+    ) -> Result<TaskAgent, AgentError> {
         let store = self.task_store.clone();
         let wanted = thread_id.to_string();
         let managed = tokio::task::spawn_blocking(move || store.get(&wanted))
             .await
-            .map_err(|error| CodexThreadError::Agent(format!("task store worker failed: {error}")))?
-            .map_err(|error| CodexThreadError::Agent(error.to_string()))?;
+            .map_err(|error| AgentError::Failed(format!("task store worker failed: {error}")))?
+            .map_err(|error| AgentError::Failed(error.to_string()))?;
         match managed {
             Some(managed) => self.agent_for(&managed).await,
             // A Task Caffold does not have a row for is not one it can route,
@@ -261,7 +262,7 @@ impl TaskRuntime {
     pub(in crate::app) async fn agent_for(
         &self,
         managed: &ManagedThread,
-    ) -> Result<TaskAgent, CodexThreadError> {
+    ) -> Result<TaskAgent, AgentError> {
         match &managed.run_by {
             RunBy::Claude { cwd } => {
                 let home = cwd.clone();
@@ -271,9 +272,9 @@ impl TaskRuntime {
                     tokio::task::spawn_blocking(move || store.worktree_for_thread(&thread_id))
                         .await
                         .map_err(|error| {
-                            CodexThreadError::Agent(format!("task store worker failed: {error}"))
+                            AgentError::Failed(format!("task store worker failed: {error}"))
                         })?
-                        .map_err(|error| CodexThreadError::Agent(error.to_string()))?;
+                        .map_err(|error| AgentError::Failed(error.to_string()))?;
                 let cwd = worktree
                     .map(|worktree| worktree.worktree_path)
                     .unwrap_or(home);

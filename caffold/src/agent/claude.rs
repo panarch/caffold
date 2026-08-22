@@ -59,7 +59,6 @@ use self::protocol::{
 use self::runner::{RunnerClient, SessionFrames};
 use self::session::SessionStart;
 use self::translate::ToolCalls;
-use crate::agent::codex::CodexThreadError;
 use crate::agent::driver::{
     ClaudeConversation, Driver, ModelOption, PermissionModeOption, PermissionModes, TurnOptions,
     TurnRejected, bounded,
@@ -104,8 +103,13 @@ pub(crate) enum ClaudeError {
     /// The agent answered, and the answer was a refusal.
     #[error("Claude refused: {0}")]
     Agent(String),
+    /// No session is being watched under that conversation's name.
     #[error("Caffold is not watching Claude conversation {0}.")]
     NotWatching(String),
+    /// The question was no longer waiting — answered already, or overtaken
+    /// by the turn ending.
+    #[error("Nothing is waiting on approval {0}.")]
+    NoSuchApproval(String),
 }
 
 /// The agent Caffold drives when a Task belongs to Claude.
@@ -759,7 +763,7 @@ impl ClaudeClient {
             let pending = state
                 .pending_approvals
                 .remove(approval_id)
-                .ok_or_else(|| ClaudeError::NotWatching(conversation_id.to_string()))?;
+                .ok_or_else(|| ClaudeError::NoSuchApproval(approval_id.to_string()))?;
             if matches!(
                 decision,
                 ApprovalDecision::Deny | ApprovalDecision::DenyAndStop
@@ -878,18 +882,22 @@ pub(crate) async fn claude_turn_options(
     })
 }
 
-/// A Claude failure, as the rest of the application reads failures.
+/// A Claude failure, in the words every agent shares.
 ///
-/// The vocabulary is still Codex's, so a Claude failure arrives under the one
-/// variant that writes its own message. Which agent failed is already plain
-/// from the message, because Claude wrote it.
-impl From<ClaudeError> for CodexThreadError {
+/// The runner gone is the agent unreachable; a conversation nobody is
+/// watching is a conversation that is not there to be asked about; the rest
+/// is carried as what happened, in Claude's own words.
+impl From<ClaudeError> for crate::agent::AgentError {
     fn from(error: ClaudeError) -> Self {
+        use crate::agent::AgentError;
         match error {
-            ClaudeError::Runner(_) | ClaudeError::NotWatching(_) => {
-                Self::AgentUnavailable(error.to_string())
+            ClaudeError::Runner(_) => AgentError::Unreachable(error.to_string()),
+            // Not watching is not unreachable: the runner is fine and the
+            // conversation is simply not there to be asked about.
+            ClaudeError::NotWatching(_) => AgentError::ConversationGone(error.to_string()),
+            ClaudeError::Protocol(_) | ClaudeError::Agent(_) | ClaudeError::NoSuchApproval(_) => {
+                AgentError::Failed(error.to_string())
             }
-            ClaudeError::Protocol(_) | ClaudeError::Agent(_) => Self::Agent(error.to_string()),
         }
     }
 }
@@ -1387,6 +1395,15 @@ mod tests {
                 active_flags: vec![ThreadActiveFlag::WaitingOnApproval]
             },
             "a turn waiting on a person is not a turn that is working"
+        );
+
+        let overtaken = client
+            .resolve_approval(SESSION, "req-gone", ApprovalDecision::Allow)
+            .await;
+        assert!(
+            matches!(overtaken, Err(ClaudeError::NoSuchApproval(_))),
+            "a question no longer waiting reads as that, not as an unwatched \
+             conversation: {overtaken:?}"
         );
 
         client

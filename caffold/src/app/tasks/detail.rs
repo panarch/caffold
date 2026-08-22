@@ -21,6 +21,7 @@ use super::{
     sync::{DeferredTaskRolloutSubscription, TaskSync, TaskSyncJob, TaskSyncOutcome},
     worktrees::inspect_ready_worktree,
 };
+use crate::agent::AgentError;
 use crate::{
     agent::{
         Conversation, TurnPage,
@@ -163,10 +164,7 @@ impl DetailContext {
     }
 
     /// The agent that owns this Task, ready to be asked about it.
-    pub(in crate::app) async fn agent(
-        &self,
-        thread_id: &str,
-    ) -> Result<TaskAgent, CodexThreadError> {
+    pub(in crate::app) async fn agent(&self, thread_id: &str) -> Result<TaskAgent, AgentError> {
         self.ensure_runtime_signal_driver().await;
         self.runtime.task_agent(thread_id).await
     }
@@ -428,7 +426,7 @@ impl DetailContext {
             return Ok((loading_detail(thread_id, 0, stored.as_ref()), 0));
         };
         if let Some(error) = snapshot.last_error.as_ref() {
-            return Err(ApiError::CodexThread(format!(
+            return Err(ApiError::Agent(format!(
                 "canonical Codex task state is unavailable: {error}"
             )));
         }
@@ -453,7 +451,7 @@ impl DetailContext {
             Err(error) => {
                 self.sessions.fail_external_sync(thread_id, &error).await;
                 self.broadcast_error(thread_id, error.to_string()).await;
-                if error.is_thread_unavailable() {
+                if matches!(error, AgentError::ConversationGone(_)) {
                     (self.refresh_task_list)();
                 }
                 return;
@@ -468,7 +466,7 @@ impl DetailContext {
             Err(error) => {
                 self.sessions.fail_external_sync(thread_id, &error).await;
                 self.broadcast_error(thread_id, error.to_string()).await;
-                if error.is_thread_unavailable() {
+                if matches!(error, AgentError::ConversationGone(_)) {
                     (self.refresh_task_list)();
                 }
                 return;
@@ -495,9 +493,7 @@ impl DetailContext {
             .conversation
             .as_ref()
             .map(|thread| thread.id.clone())
-            .ok_or_else(|| {
-                ApiError::CodexThread("subscribed thread metadata is missing".to_string())
-            })?;
+            .ok_or_else(|| ApiError::Agent("subscribed thread metadata is missing".to_string()))?;
         let page = response_page.or_else(|| snapshot.turns_page.clone());
         let history_loading = page.is_none();
         let mut turns = page
@@ -640,9 +636,9 @@ impl DetailContext {
         let syncing = self.sessions.begin_external_sync(&thread_id).await;
         let Ok(connection) = self.connection().await else {
             self.sessions
-                .fail_external_sync(&thread_id, &CodexThreadError::ProcessUnavailable)
+                .fail_external_sync(&thread_id, &Self::unreachable_codex())
                 .await;
-            self.broadcast_error(&thread_id, CodexThreadError::ProcessUnavailable.to_string())
+            self.broadcast_error(&thread_id, Self::unreachable_codex().to_string())
                 .await;
             job.complete(TaskSyncOutcome::Retry);
             return;
@@ -656,14 +652,18 @@ impl DetailContext {
         let (thread, latest_turns) = match response {
             Ok(response) => response,
             Err(error) if error.is_thread_unavailable() => {
-                self.sessions.fail_external_sync(&thread_id, &error).await;
+                self.sessions
+                    .fail_external_sync(&thread_id, &error.clone().into())
+                    .await;
                 self.broadcast_error(&thread_id, error.to_string()).await;
                 (self.refresh_task_list)();
                 job.complete(TaskSyncOutcome::Synchronized);
                 return;
             }
             Err(error) => {
-                self.sessions.fail_external_sync(&thread_id, &error).await;
+                self.sessions
+                    .fail_external_sync(&thread_id, &error.clone().into())
+                    .await;
                 self.broadcast_error(&thread_id, error.to_string()).await;
                 job.complete(TaskSyncOutcome::Retry);
                 return;
@@ -706,6 +706,11 @@ impl DetailContext {
             reason,
             error: None,
         });
+    }
+
+    /// Codex gone quiet, in the words every agent shares.
+    fn unreachable_codex() -> crate::agent::AgentError {
+        crate::agent::codex::CodexThreadError::ProcessUnavailable.into()
     }
 
     async fn broadcast_error(&self, thread_id: &str, error: String) {
@@ -1479,7 +1484,7 @@ mod request_tests {
         assert!(matches!(
             error,
             ApiError::Timeout {
-                code: "codex_app_server_timeout",
+                code: "agent_timeout",
                 ..
             }
         ));
@@ -1747,7 +1752,7 @@ mod request_tests {
         let error = test_task_detail(state, thread_id.to_string(), None)
             .await
             .expect_err("stale task detail must not survive a canonical resume failure");
-        assert!(matches!(error, ApiError::CodexThread(_)));
+        assert!(matches!(error, ApiError::Agent(_)));
     }
 
     #[tokio::test]
@@ -1819,7 +1824,7 @@ mod request_tests {
         let second = test_task_detail(state.clone(), thread_id.to_string(), None)
             .await
             .expect_err("task re-entry exposes the canonical source timeout");
-        assert!(matches!(second, ApiError::CodexThread(_)));
+        assert!(matches!(second, ApiError::Agent(_)));
 
         let snapshot = state
             .task_sessions
@@ -2353,7 +2358,7 @@ mod sync_tests {
         let error = test_task_detail(state.clone(), thread_id.to_string(), None)
             .await
             .expect_err("stale detail is rejected after a background sync timeout");
-        assert!(matches!(error, ApiError::CodexThread(_)));
+        assert!(matches!(error, ApiError::Agent(_)));
 
         let snapshot = state
             .task_sessions

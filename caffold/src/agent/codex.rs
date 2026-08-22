@@ -282,9 +282,6 @@ pub enum CodexThreadError {
     ThreadUnavailable(String),
     #[error("Codex app-server active turn is unavailable: {0}")]
     TurnUnavailable(String),
-    #[allow(dead_code)]
-    #[error("Codex app-server subscription was lost: {0}")]
-    SubscriptionLost(String),
     #[error("Codex app-server rejected invalid parameters: {0}")]
     InvalidParams(String),
     #[error("Codex app-server protocol error: {0}")]
@@ -297,32 +294,50 @@ pub enum CodexThreadError {
     },
     #[error("Codex app-server is unavailable.")]
     ProcessUnavailable,
-    /// A failure an agent other than Codex reported, in that agent's own
-    /// words.
-    ///
-    /// The failure vocabulary is still Codex's — sixty places across the
-    /// application read it by variant — so a second agent's failures arrive
-    /// under one variant that writes its own message rather than wearing
-    /// Codex's. Giving the failures a shared vocabulary is its own change.
-    #[error("{0}")]
-    Agent(String),
-    /// The agent could not be reached at all, in that agent's own words.
-    #[error("{0}")]
-    AgentUnavailable(String),
+}
+
+/// Codex's failures, in the words the application shares.
+///
+/// The application never reads a Codex variant: it asks the shared questions,
+/// and everything Codex-specific — which protocol phase, which request id —
+/// stays in the message.
+impl From<CodexThreadError> for super::AgentError {
+    fn from(error: CodexThreadError) -> Self {
+        use super::AgentError;
+        match &error {
+            CodexThreadError::ThreadUnavailable(_) => {
+                AgentError::ConversationGone(error.to_string())
+            }
+            CodexThreadError::TurnUnavailable(_) => AgentError::TurnGone(error.to_string()),
+            CodexThreadError::ProcessUnavailable => AgentError::Unreachable(error.to_string()),
+            CodexThreadError::Readiness(readiness) => {
+                AgentError::Held(readiness.diagnostic_message.clone())
+            }
+            CodexThreadError::RequestTimeout { .. } | CodexThreadError::StartupTimeout { .. } => {
+                AgentError::TimedOut(error.to_string())
+            }
+            CodexThreadError::StartFailed(_)
+            | CodexThreadError::InitializationFailed { .. }
+            | CodexThreadError::InvalidParams(_)
+            | CodexThreadError::Protocol(_) => AgentError::Failed(error.to_string()),
+        }
+    }
+}
+
+/// Codex could not agree to a turn's options for a reason of its own.
+impl From<CodexThreadError> for super::driver::TurnRejected {
+    fn from(error: CodexThreadError) -> Self {
+        Self::Unavailable(error.into())
+    }
 }
 
 impl CodexThreadError {
-    #[allow(dead_code)]
     pub fn is_thread_unavailable(&self) -> bool {
         matches!(self, Self::ThreadUnavailable(_))
     }
 
     pub fn is_connection_failure(&self) -> bool {
-        matches!(self, Self::ProcessUnavailable | Self::AgentUnavailable(_))
-    }
-
-    pub fn is_turn_unavailable(&self) -> bool {
-        matches!(self, Self::TurnUnavailable(_))
+        matches!(self, Self::ProcessUnavailable)
     }
 }
 

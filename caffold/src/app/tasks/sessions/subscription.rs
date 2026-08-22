@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::agent::codex::CodexThreadError;
+use crate::agent::AgentError;
 use crate::agent::{Conversation, Driver};
 
 use super::{
@@ -30,7 +30,7 @@ impl TaskSessions {
         driver: &Driver,
         generation: u64,
         thread_id: &str,
-    ) -> Result<ViewerLease, CodexThreadError> {
+    ) -> Result<ViewerLease, AgentError> {
         let viewer = self.reserve_viewer(thread_id).await;
         if let Err(error) = self.ensure_subscribed(driver, generation, thread_id).await {
             let entry = self.entry(thread_id).await;
@@ -61,7 +61,7 @@ impl TaskSessions {
         driver: &Driver,
         generation: u64,
         thread_id: &str,
-    ) -> Result<SessionSnapshot, CodexThreadError> {
+    ) -> Result<SessionSnapshot, AgentError> {
         let entry = self.entry(thread_id).await;
         let _operation = entry.operation.lock().await;
         {
@@ -83,7 +83,7 @@ impl TaskSessions {
             Ok(opened) => {
                 let mut state = entry.state.lock().await;
                 if state.generation != generation {
-                    return Err(CodexThreadError::SubscriptionLost(format!(
+                    return Err(AgentError::Failed(format!(
                         "conversation {thread_id} changed connection while being opened"
                     )));
                 }
@@ -108,7 +108,7 @@ impl TaskSessions {
         driver: &Driver,
         generation: u64,
         thread_id: &str,
-    ) -> Result<SessionSnapshot, CodexThreadError> {
+    ) -> Result<SessionSnapshot, AgentError> {
         self.ensure_subscribed(driver, generation, thread_id).await
     }
 
@@ -117,7 +117,7 @@ impl TaskSessions {
         driver: &Driver,
         generation: u64,
         thread_id: &str,
-    ) -> Result<SessionSnapshot, CodexThreadError> {
+    ) -> Result<SessionSnapshot, AgentError> {
         let entry = self.entry(thread_id).await;
         let _operation = entry.operation.lock().await;
         let (preserve_subscription, base_revision, fast_mode) = {
@@ -141,7 +141,7 @@ impl TaskSessions {
             Ok(opened) => {
                 let mut state = entry.state.lock().await;
                 if preserve_subscription && state.generation != generation {
-                    return Err(CodexThreadError::SubscriptionLost(format!(
+                    return Err(AgentError::Failed(format!(
                         "conversation {thread_id} changed connection while being reopened"
                     )));
                 }

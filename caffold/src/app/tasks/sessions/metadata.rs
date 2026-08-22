@@ -1,4 +1,4 @@
-use crate::agent::codex::CodexThreadError;
+use crate::agent::AgentError;
 use crate::agent::{Conversation, TurnPage};
 
 use super::{SessionLifecycle, SessionSnapshot, TaskSessions, now_unix_ms, snapshot};
@@ -153,7 +153,7 @@ impl TaskSessions {
     pub(in crate::app::tasks) async fn fail_external_sync(
         &self,
         thread_id: &str,
-        error: &CodexThreadError,
+        error: &AgentError,
     ) {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;

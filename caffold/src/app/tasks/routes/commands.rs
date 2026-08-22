@@ -1,4 +1,5 @@
 use super::*;
+use crate::agent::AgentError;
 
 pub(super) async fn create_task(
     State(state): State<TaskState>,
@@ -119,7 +120,9 @@ pub(super) async fn task_prompt(
         match result {
             Ok(result) => break result,
             Err(error)
-                if attempted_steer && !refreshed_stale_turn && error.is_turn_unavailable() =>
+                if attempted_steer
+                    && !refreshed_stale_turn
+                    && matches!(error, AgentError::TurnGone(_)) =>
             {
                 refreshed_stale_turn = true;
                 if let Err(refresh_error) = state
@@ -347,7 +350,7 @@ pub(super) async fn task_approval(
                 message: "approval decision does not match the pending request".to_string(),
             });
         }
-        Err(ApprovalResolveError::Codex(error)) => return Err(error.into()),
+        Err(ApprovalResolveError::Agent(error)) => return Err(error.into()),
     }
 
     Ok(Json(state.detail.read(&agent, &thread_id, None).await?))
@@ -391,7 +394,7 @@ async fn new_task_agent(
 }
 
 /// Tell the runtime a connection failed, when the agent has one to lose.
-async fn recover_agent_connection(state: &TaskState, agent: &TaskAgent, error: &CodexThreadError) {
+async fn recover_agent_connection(state: &TaskState, agent: &TaskAgent, error: &AgentError) {
     state
         .task_runtime
         .recover_connection_error_for(agent, error)

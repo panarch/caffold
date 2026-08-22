@@ -282,7 +282,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
         contentType: "application/json",
         body: JSON.stringify({
           error: {
-            code: "codex_app_server_timeout",
+            code: "agent_timeout",
             message: "Codex app-server request timed out.",
           },
         }),

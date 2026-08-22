@@ -242,22 +242,19 @@ impl TaskRuntime {
     pub(in crate::app) async fn recover_connection_error_for(
         &self,
         agent: &super::TaskAgent,
-        error: &CodexThreadError,
+        error: &crate::agent::AgentError,
     ) {
-        if let Some(connection) = agent.codex() {
-            self.recover_connection_error(connection, error).await;
+        if let Some(connection) = agent.codex()
+            && let crate::agent::AgentError::Unreachable(message) = error
+        {
+            self.connection_unreachable(connection, message.clone())
+                .await;
         }
     }
 
-    pub(in crate::app) async fn recover_connection_error(
-        &self,
-        connection: &CodexConnection,
-        error: &CodexThreadError,
-    ) {
-        if !error.is_connection_failure() {
-            return;
-        }
-        let message = error.to_string();
+    /// The agent behind this connection cannot be reached: release every
+    /// session standing on it and let the readiness check rebuild.
+    async fn connection_unreachable(&self, connection: &CodexConnection, message: String) {
         let affected = self
             .sessions
             .codex_connection_lost(connection.generation, message.clone())
@@ -269,7 +266,7 @@ impl TaskRuntime {
             });
         }
         self.process
-            .invalidate_after_error(connection.generation, error)
+            .invalidate_unreachable(connection.generation)
             .await;
     }
 
@@ -330,10 +327,7 @@ impl CodexProcess {
         }
     }
 
-    async fn invalidate_after_error(&self, generation: u64, error: &CodexThreadError) -> bool {
-        if !error.is_connection_failure() {
-            return false;
-        }
+    async fn invalidate_unreachable(&self, generation: u64) -> bool {
         let client = {
             let mut process = self.state.lock().await;
             if process.generation != generation {
@@ -376,17 +370,14 @@ mod tests {
         let runtime = test_runtime();
         let client = CodexThreadClient::mock(Vec::new());
         runtime.install_test_client(7, client.clone()).await;
+        let agent = super::super::TaskAgent::Codex(CodexConnection {
+            client,
+            generation: 7,
+        });
         runtime
-            .recover_connection_error(
-                &CodexConnection {
-                    client,
-                    generation: 7,
-                },
-                &CodexThreadError::RequestTimeout {
-                    method: "thread/resume",
-                    request_id: 1,
-                    timeout_ms: 120_000,
-                },
+            .recover_connection_error_for(
+                &agent,
+                &crate::agent::AgentError::TimedOut("thread/resume timed out".to_string()),
             )
             .await;
         assert_eq!(runtime.diagnostics().await, (7, true));
@@ -398,13 +389,16 @@ mod tests {
         let runtime = test_runtime();
         let client = CodexThreadClient::mock(Vec::new());
         runtime.install_test_client(8, client.clone()).await;
+        let agent = super::super::TaskAgent::Codex(CodexConnection {
+            client,
+            generation: 8,
+        });
         runtime
-            .recover_connection_error(
-                &CodexConnection {
-                    client,
-                    generation: 8,
-                },
-                &CodexThreadError::ProcessUnavailable,
+            .recover_connection_error_for(
+                &agent,
+                &crate::agent::AgentError::Unreachable(
+                    "Codex app-server is unavailable.".to_string(),
+                ),
             )
             .await;
         assert_eq!(runtime.diagnostics().await, (8, false));
@@ -415,13 +409,14 @@ mod tests {
         let runtime = test_runtime();
         let client = CodexThreadClient::mock(Vec::new());
         runtime.install_test_client(9, client.clone()).await;
+        let agent = super::super::TaskAgent::Codex(CodexConnection {
+            client,
+            generation: 9,
+        });
         runtime
-            .recover_connection_error(
-                &CodexConnection {
-                    client,
-                    generation: 9,
-                },
-                &CodexThreadError::InvalidParams("invalid fixture".to_string()),
+            .recover_connection_error_for(
+                &agent,
+                &crate::agent::AgentError::Failed("invalid fixture".to_string()),
             )
             .await;
         assert_eq!(runtime.diagnostics().await, (9, true));

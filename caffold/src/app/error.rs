@@ -8,6 +8,7 @@ use serde::Serialize;
 use crate::{
     agent::TurnRejected,
     agent::codex::CodexThreadError,
+    agent::driver::AgentError,
     fs::FsError,
     watch::{WatchError, WatchError::Unavailable},
 };
@@ -15,7 +16,7 @@ use crate::{
 #[derive(Debug)]
 pub(super) enum ApiError {
     Fs(FsError),
-    CodexThread(String),
+    Agent(String),
     Watch(String),
     Internal(String),
     Unavailable { code: &'static str, message: String },
@@ -30,7 +31,7 @@ impl std::fmt::Display for ApiError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Fs(error) => error.fmt(formatter),
-            Self::CodexThread(message) | Self::Watch(message) | Self::Internal(message) => {
+            Self::Agent(message) | Self::Watch(message) | Self::Internal(message) => {
                 formatter.write_str(message)
             }
             Self::Timeout { message, .. }
@@ -62,21 +63,25 @@ impl From<FsError> for ApiError {
     }
 }
 
+impl From<AgentError> for ApiError {
+    fn from(error: AgentError) -> Self {
+        match error {
+            AgentError::Held(message) => Self::Unavailable {
+                code: "codex_readiness_blocked",
+                message,
+            },
+            AgentError::TimedOut(message) => Self::Timeout {
+                code: "agent_timeout",
+                message,
+            },
+            error => Self::Agent(error.to_string()),
+        }
+    }
+}
+
 impl From<CodexThreadError> for ApiError {
     fn from(error: CodexThreadError) -> Self {
-        match error {
-            CodexThreadError::Readiness(readiness) => Self::Unavailable {
-                code: "codex_readiness_blocked",
-                message: readiness.diagnostic_message,
-            },
-            CodexThreadError::RequestTimeout { .. } | CodexThreadError::StartupTimeout { .. } => {
-                Self::Timeout {
-                    code: "codex_app_server_timeout",
-                    message: error.to_string(),
-                }
-            }
-            error => Self::CodexThread(error.to_string()),
-        }
+        AgentError::from(error).into()
     }
 }
 
@@ -240,9 +245,7 @@ impl IntoResponse for ApiError {
                 "filesystem_error",
                 format!("filesystem error while trying to {action}: {path}"),
             ),
-            ApiError::CodexThread(message) => {
-                (StatusCode::BAD_GATEWAY, "codex_app_server_error", message)
-            }
+            ApiError::Agent(message) => (StatusCode::BAD_GATEWAY, "agent_error", message),
             ApiError::Watch(message) => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 "watch_unavailable",
@@ -285,7 +288,7 @@ mod tests {
 
         match error {
             ApiError::Timeout { code, message } => {
-                assert_eq!(code, "codex_app_server_timeout");
+                assert_eq!(code, "agent_timeout");
                 assert!(message.contains("thread/resume"));
                 assert!(message.contains("request 42"));
                 assert!(message.contains("120000ms"));

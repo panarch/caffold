@@ -18,10 +18,10 @@
 //! Claude — so that a third agent adds a match arm here rather than a third
 //! pile of internals.
 //!
-//! The failures are still Codex's, for a reason of the same kind: sixty places
-//! across the application read a `CodexThreadError` by variant, and giving the
-//! failures a shared vocabulary is its own change rather than a detail of this
-//! one.
+//! The failures speak this vocabulary too. Each driver keeps its own rich
+//! error — Codex's app-server protocol, Claude's runner — and answers the
+//! application in [`AgentError`], which says only what the application has
+//! ever asked of a failure.
 
 use std::collections::BTreeMap;
 
@@ -30,9 +30,8 @@ use serde_json::Value;
 
 use super::claude::{ClaudeClient, ClaudeTurnOptions, claude_turn_options};
 use super::codex::{
-    CodexThreadClient, CodexThreadError, CodexTurnOptions, codex_mode_id, codex_models,
-    codex_permission_mode_name, codex_permission_modes, codex_turn_options, is_fast_service_tier,
-    service_tier_for_fast_mode,
+    CodexThreadClient, CodexTurnOptions, codex_mode_id, codex_models, codex_permission_mode_name,
+    codex_permission_modes, codex_turn_options, is_fast_service_tier, service_tier_for_fast_mode,
 };
 use super::{Conversation, Turn, TurnPage};
 
@@ -42,6 +41,36 @@ use super::{Conversation, Turn, TurnPage};
 /// answers with one, while a transcript is a file and will hand back as much of
 /// itself as it is asked for.
 const INITIAL_TURNS_PAGE: usize = 8;
+
+/// What asking an agent can fail as, in words every agent shares.
+///
+/// The application asks three questions of a failure — is the conversation
+/// gone, is the turn gone, can the agent not be reached — and HTTP answers
+/// two more kinds in their own way: an agent held by its own readiness, and
+/// waiting that ran out. Everything else is carried as what happened, said in
+/// the words of whichever agent said it. A driver's own vocabulary is richer
+/// than this on purpose, and stays behind its boundary.
+#[derive(Debug, thiserror::Error, Clone)]
+pub(crate) enum AgentError {
+    /// The conversation is not there to be asked about.
+    #[error("{0}")]
+    ConversationGone(String),
+    /// The turn asked about is no longer running.
+    #[error("{0}")]
+    TurnGone(String),
+    /// The agent cannot be reached at all.
+    #[error("{0}")]
+    Unreachable(String),
+    /// The agent is held by its own readiness, and this is why.
+    #[error("{0}")]
+    Held(String),
+    /// Waiting on the agent ran out.
+    #[error("{0}")]
+    TimedOut(String),
+    /// What happened, in the agent's own words.
+    #[error("{0}")]
+    Failed(String),
+}
 
 /// One agent, reached the way that agent is reached.
 #[derive(Clone)]
@@ -199,14 +228,14 @@ enum AgreedTurnOptions {
 }
 
 impl AcceptedTurnOptions {
-    fn codex(&self) -> Result<&CodexTurnOptions, CodexThreadError> {
+    fn codex(&self) -> Result<&CodexTurnOptions, AgentError> {
         match &self.agreed {
             AgreedTurnOptions::Codex(codex) => Ok(codex),
             AgreedTurnOptions::Claude(_) => Err(mismatched_agent()),
         }
     }
 
-    fn claude(&self) -> Result<&ClaudeTurnOptions, CodexThreadError> {
+    fn claude(&self) -> Result<&ClaudeTurnOptions, AgentError> {
         match &self.agreed {
             AgreedTurnOptions::Claude(claude) => Ok(claude),
             AgreedTurnOptions::Codex(_) => Err(mismatched_agent()),
@@ -220,8 +249,8 @@ impl AcceptedTurnOptions {
 /// within one request, against one Task, whose agent does not change. It is a
 /// programming error rather than something a person can cause, so it is
 /// reported rather than guessed past.
-fn mismatched_agent() -> CodexThreadError {
-    CodexThreadError::Agent(
+fn mismatched_agent() -> AgentError {
+    AgentError::Failed(
         "Caffold offered one agent's turn options to another. This is a defect.".to_string(),
     )
 }
@@ -252,13 +281,7 @@ pub(crate) enum TurnRejected {
     /// The chosen model does not work at that depth.
     Effort,
     /// The agent could not be reached to find out.
-    Unavailable(CodexThreadError),
-}
-
-impl From<CodexThreadError> for TurnRejected {
-    fn from(error: CodexThreadError) -> Self {
-        Self::Unavailable(error)
-    }
+    Unavailable(AgentError),
 }
 
 impl Driver {
@@ -340,9 +363,9 @@ impl Driver {
     }
 
     /// The models this agent offers, in the order to show them.
-    pub(crate) async fn models(&self) -> Result<Vec<ModelOption>, CodexThreadError> {
+    pub(crate) async fn models(&self) -> Result<Vec<ModelOption>, AgentError> {
         match self {
-            Self::Codex(client) => codex_models(client).await,
+            Self::Codex(client) => Ok(codex_models(client).await?),
             Self::Claude(claude) => Ok(claude.client.models().await?),
         }
     }
@@ -352,7 +375,7 @@ impl Driver {
         &self,
         cwd: &str,
         options: &AcceptedTurnOptions,
-    ) -> Result<StartedConversation, CodexThreadError> {
+    ) -> Result<StartedConversation, AgentError> {
         match self {
             Self::Codex(client) => {
                 let codex = options.codex()?;
@@ -395,7 +418,7 @@ impl Driver {
         prompt: &str,
         images: &[String],
         options: &AcceptedTurnOptions,
-    ) -> Result<StartedTurn, CodexThreadError> {
+    ) -> Result<StartedTurn, AgentError> {
         match self {
             Self::Codex(client) => {
                 let started = client
@@ -432,12 +455,14 @@ impl Driver {
         turn_id: &str,
         prompt: &str,
         images: &[String],
-    ) -> Result<(), CodexThreadError> {
+    ) -> Result<(), AgentError> {
         match self {
-            Self::Codex(client) => client
-                .steer_turn(conversation_id, turn_id, prompt, images)
-                .await
-                .map(|_| ()),
+            Self::Codex(client) => {
+                client
+                    .steer_turn(conversation_id, turn_id, prompt, images)
+                    .await?;
+                Ok(())
+            }
             Self::Claude(claude) => Ok(claude
                 .client
                 .steer_turn(conversation_id, turn_id, prompt, images)
@@ -450,9 +475,9 @@ impl Driver {
         &self,
         conversation_id: &str,
         turn_id: &str,
-    ) -> Result<(), CodexThreadError> {
+    ) -> Result<(), AgentError> {
         match self {
-            Self::Codex(client) => client.interrupt_turn(conversation_id, turn_id).await,
+            Self::Codex(client) => Ok(client.interrupt_turn(conversation_id, turn_id).await?),
             Self::Claude(claude) => Ok(claude.client.interrupt_turn(conversation_id).await?),
         }
     }
@@ -466,7 +491,7 @@ impl Driver {
         &self,
         cwd: &str,
         model: Option<&str>,
-    ) -> Result<PermissionModes, CodexThreadError> {
+    ) -> Result<PermissionModes, AgentError> {
         match self {
             Self::Codex(client) => {
                 let (default_mode, options) = codex_permission_modes(client, cwd).await?;
@@ -494,7 +519,7 @@ impl Driver {
         conversation_id: &str,
         with_turns: bool,
         fast_mode: bool,
-    ) -> Result<OpenedConversation, CodexThreadError> {
+    ) -> Result<OpenedConversation, AgentError> {
         match self {
             Self::Codex(client) => {
                 let response = client
@@ -545,7 +570,7 @@ impl Driver {
         conversation_id: &str,
         cursor: Option<&str>,
         limit: usize,
-    ) -> Result<TurnPage, CodexThreadError> {
+    ) -> Result<TurnPage, AgentError> {
         match self {
             Self::Codex(client) => Ok(TurnPage::from(
                 &client
@@ -569,9 +594,9 @@ impl Driver {
     pub(crate) async fn archive_conversation(
         &self,
         conversation_id: &str,
-    ) -> Result<(), CodexThreadError> {
+    ) -> Result<(), AgentError> {
         match self {
-            Self::Codex(client) => client.archive_thread(conversation_id).await,
+            Self::Codex(client) => Ok(client.archive_thread(conversation_id).await?),
             Self::Claude(claude) => Ok(claude.client.close_conversation(conversation_id).await?),
         }
     }
@@ -586,12 +611,12 @@ impl Driver {
     pub(crate) async fn restore_conversation(
         &self,
         conversation_id: &str,
-    ) -> Result<Option<Conversation>, CodexThreadError> {
+    ) -> Result<Option<Conversation>, AgentError> {
         match self {
-            Self::Codex(client) => client
+            Self::Codex(client) => Ok(client
                 .unarchive_thread(conversation_id)
                 .await
-                .map(|thread| Some(Conversation::from(&thread))),
+                .map(|thread| Some(Conversation::from(&thread)))?),
             // Codex refuses to take back out a thread it no longer has, and a
             // Task restored onto a conversation that is gone is one that can
             // never be opened again. So the same refusal is made here, by
@@ -603,10 +628,7 @@ impl Driver {
                     .await
                 {
                     true => Ok(None),
-                    // The neutral variant, because the failure vocabulary is
-                    // still Codex's and the words it prints are Codex's too:
-                    // this one prints what it is given.
-                    false => Err(CodexThreadError::Agent(format!(
+                    false => Err(AgentError::ConversationGone(format!(
                         "the agent no longer has conversation {conversation_id}"
                     ))),
                 }
@@ -622,9 +644,9 @@ impl Driver {
     pub(crate) async fn delete_conversation(
         &self,
         conversation_id: &str,
-    ) -> Result<(), CodexThreadError> {
+    ) -> Result<(), AgentError> {
         match self {
-            Self::Codex(client) => client.delete_thread(conversation_id).await,
+            Self::Codex(client) => Ok(client.delete_thread(conversation_id).await?),
             Self::Claude(claude) => Ok(claude.client.erase(conversation_id, &claude.cwd).await?),
         }
     }
@@ -659,23 +681,23 @@ impl Driver {
     pub(crate) async fn describe(
         &self,
         conversation_id: &str,
-    ) -> Result<Option<Conversation>, CodexThreadError> {
+    ) -> Result<Option<Conversation>, AgentError> {
         match self {
-            Self::Codex(client) => client
+            Self::Codex(client) => Ok(client
                 .read_thread(conversation_id)
                 .await
-                .map(|thread| Some(Conversation::from(&thread))),
+                .map(|thread| Some(Conversation::from(&thread)))?),
             Self::Claude(claude) => Ok(claude.client.watched_conversation(conversation_id).await),
         }
     }
 
     /// Stop watching a conversation. It carries on without an audience.
-    pub(crate) async fn stop_watching(
-        &self,
-        conversation_id: &str,
-    ) -> Result<(), CodexThreadError> {
+    pub(crate) async fn stop_watching(&self, conversation_id: &str) -> Result<(), AgentError> {
         match self {
-            Self::Codex(client) => client.unsubscribe_thread(conversation_id).await.map(|_| ()),
+            Self::Codex(client) => {
+                client.unsubscribe_thread(conversation_id).await?;
+                Ok(())
+            }
             Self::Claude(claude) => Ok(claude.client.stop_watching(conversation_id).await?),
         }
     }
