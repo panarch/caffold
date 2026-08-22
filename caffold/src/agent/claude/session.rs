@@ -320,7 +320,7 @@ mod tests {
                         "subtype": "can_use_tool",
                         "tool_name": "Bash",
                         "input": { "command": "rm -rf build" },
-                        "toolUseID": "toolu_7",
+                        "tool_use_id": "toolu_7",
                     },
                 }],
             }))
@@ -370,7 +370,7 @@ mod tests {
                         "subtype": "can_use_tool",
                         "tool_name": "Bash",
                         "input": { "command": "rm -rf build" },
-                        "toolUseID": "toolu_7",
+                        "tool_use_id": "toolu_7",
                     },
                 }],
             }))

@@ -297,14 +297,17 @@ pub(crate) struct ControlRequestBody {
     pub(crate) tool_name: Option<String>,
     #[serde(default)]
     pub(crate) input: Value,
-    /// The agent's own proposal for what allowing this always would mean.
-    /// Caffold hands it straight back rather than composing a grant of its
-    /// own.
+    /// The agent's own proposal for what allowing this always means.
+    /// Answering hands it back whole rather than composing a grant of
+    /// Caffold's own — a subset was probed and does not stop the re-ask.
     #[serde(default)]
     pub(crate) permission_suggestions: Value,
     #[serde(default)]
     pub(crate) decision_reason: Value,
-    #[serde(default, rename = "toolUseID")]
+    /// The tool call a `can_use_tool` request interrupts. Named
+    /// `tool_use_id` on the wire — measured; the SDK's `toolUseID` spelling
+    /// is its own callback surface, not this protocol's.
+    #[serde(default)]
     pub(crate) tool_use_id: Option<String>,
     /// Which SDK-hosted MCP server an `mcp_message` request is for.
     #[serde(default)]

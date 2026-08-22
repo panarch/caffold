@@ -239,9 +239,9 @@ struct SessionState {
 /// One question the agent is blocked on, and what answering it needs.
 #[derive(Debug, Clone)]
 struct PendingApproval {
-    /// The grant the agent proposed for allowing this always. Caffold keeps it
-    /// rather than reading it, so that answering hands back what the harness
-    /// asked for rather than a rule Caffold invented.
+    /// The grants the agent proposed for allowing this always, kept as
+    /// proposed so that answering reads from them rather than from a rule
+    /// Caffold invented.
     suggestions: Value,
     /// The tool call this interrupts, so that refusing it can be drawn as a
     /// refusal rather than as a failure.
@@ -751,27 +751,29 @@ impl ClaudeClient {
         decision: ApprovalDecision,
     ) -> Result<(), ClaudeError> {
         let session = self.require_session(conversation_id).await?;
-        let (suggestions, declined_item) = {
+        // Marked declined before the answer goes out: the agent's report of
+        // the refused call races this future once the answer is on the wire.
+        let suggestions = {
             let mut state = session.state.lock().await;
             let pending = state
                 .pending_approvals
                 .remove(approval_id)
                 .ok_or_else(|| ClaudeError::NotWatching(conversation_id.to_string()))?;
-            (pending.suggestions, pending.item_id)
+            if matches!(
+                decision,
+                ApprovalDecision::Deny | ApprovalDecision::DenyAndStop
+            ) && let Some(item_id) = pending.item_id
+            {
+                state.declined.insert(item_id);
+            }
+            pending.suggestions
         };
         session
             .send(protocol::control_response(
                 approval_id,
-                approval_answer(decision, suggestions),
+                approval_answer(decision, &suggestions),
             ))
             .await?;
-        if matches!(
-            decision,
-            ApprovalDecision::Deny | ApprovalDecision::DenyAndStop
-        ) && let Some(item_id) = declined_item
-        {
-            session.state.lock().await.declined.insert(item_id);
-        }
         self.report_status(&session).await;
         if matches!(decision, ApprovalDecision::DenyAndStop) {
             self.interrupt_turn(conversation_id).await?;
@@ -991,17 +993,29 @@ fn preview_of(item: &ConversationItem) -> String {
 
 /// The answer, in the shape the agent's permission callback expects.
 ///
-/// Allowing always hands back the grant the agent itself proposed. Caffold does
-/// not compose one: what a rule covers is the harness's model, and writing one
-/// here would be Caffold deciding what a permission means.
-fn approval_answer(decision: ApprovalDecision, suggestions: Value) -> Value {
+/// Optional means absent. The agent validates `updatedInput?: object` and
+/// rejects `null` — measured, as a tool failing with "invalid permission
+/// result" after a person allowed it — so a field with nothing to say is
+/// omitted rather than sent empty. `updatedInput` is never sent at all: it
+/// replaces the input the agent already holds, and a person allowing a call
+/// changed nothing, so absence is the truthful answer.
+///
+/// Allowing always hands back the whole grant the agent proposed. The
+/// proposal is the agent's own "don't ask this again" — a bundle whose parts
+/// carry it together, and a subset does not: keeping only its rule entries
+/// was probed against the real agent, which then asked about the identical
+/// command again. Composing a narrower grant here would be Caffold deciding
+/// what a permission means, and one that does not work.
+fn approval_answer(decision: ApprovalDecision, suggestions: &Value) -> Value {
     match decision {
-        ApprovalDecision::Allow => json!({ "behavior": "allow", "updatedInput": null }),
-        ApprovalDecision::AllowAlways => json!({
-            "behavior": "allow",
-            "updatedInput": null,
-            "updatedPermissions": suggestions,
-        }),
+        ApprovalDecision::Allow => json!({ "behavior": "allow" }),
+        ApprovalDecision::AllowAlways => {
+            let mut answer = json!({ "behavior": "allow" });
+            if !suggestions.is_null() {
+                answer["updatedPermissions"] = suggestions.clone();
+            }
+            answer
+        }
         ApprovalDecision::Deny | ApprovalDecision::DenyAndStop => json!({
             "behavior": "deny",
             "message": "A person declined this.",
@@ -1342,9 +1356,13 @@ mod tests {
                         "subtype": "can_use_tool",
                         "tool_name": "Bash",
                         "input": { "command": "rm -rf build" },
-                        "toolUseID": "toolu_7",
+                        "tool_use_id": "toolu_7",
                         "decision_reason": { "reason": "destructive command" },
-                        "permission_suggestions": [{ "type": "addRules", "rules": ["Bash(rm:*)"] }],
+                        "permission_suggestions": [
+                            { "type": "addRules", "rules": ["Bash(rm:*)"] },
+                            { "type": "setMode", "mode": "acceptEdits", "destination": "session" },
+                            { "type": "addDirectories", "directories": ["/tmp"], "destination": "session" },
+                        ],
                     },
                 }),
             )
@@ -1382,11 +1400,34 @@ mod tests {
             .find(|frame| frame["type"] == "control_response")
             .expect("an answer was written");
         assert_eq!(answer["response"]["request_id"], "req-9");
-        assert_eq!(answer["response"]["response"]["behavior"], "allow");
         assert_eq!(
-            answer["response"]["response"]["updatedPermissions"],
-            json!([{ "type": "addRules", "rules": ["Bash(rm:*)"] }]),
-            "allowing always hands back the grant the agent proposed, not one Caffold wrote"
+            answer["response"]["response"],
+            json!({
+                "behavior": "allow",
+                "updatedPermissions": [
+                    { "type": "addRules", "rules": ["Bash(rm:*)"] },
+                    { "type": "setMode", "mode": "acceptEdits", "destination": "session" },
+                    { "type": "addDirectories", "directories": ["/tmp"], "destination": "session" },
+                ],
+            }),
+            "always hands the whole proposed grant back — a subset was probed \
+             and does not stop the agent asking again — and no echoed or null \
+             input rides along"
+        );
+    }
+
+    #[test]
+    fn an_allowance_never_carries_a_null_where_the_agent_expects_an_absence() {
+        // The agent validates `updatedInput?: object` and rejects null — a
+        // tool a person allowed then fails with "invalid permission result".
+        let bare = approval_answer(ApprovalDecision::Allow, &Value::Null);
+        assert_eq!(bare, json!({ "behavior": "allow" }));
+
+        let always_unproposed = approval_answer(ApprovalDecision::AllowAlways, &Value::Null);
+        assert_eq!(
+            always_unproposed,
+            json!({ "behavior": "allow" }),
+            "no proposal from the agent, no invented grant and no null in its place"
         );
     }
 
@@ -1480,7 +1521,7 @@ mod tests {
                         "subtype": "can_use_tool",
                         "tool_name": "Bash",
                         "input": { "command": "rm -rf build" },
-                        "toolUseID": "toolu_19",
+                        "tool_use_id": "toolu_19",
                     },
                 }),
             )

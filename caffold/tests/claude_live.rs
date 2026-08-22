@@ -365,6 +365,149 @@ async fn the_agent_isolates_its_task_into_a_worktree_when_asked() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn a_command_a_person_allows_actually_runs() {
+    // Allowing is only real if the tool then runs. The regression this pins:
+    // the answer carried `updatedInput: null` where the agent validates
+    // `updatedInput?: object`, so every allowed tool failed with "invalid
+    // permission result" — while the old assertion, which only watched the
+    // question get resolved, stayed green.
+    let backend = Backend::start().await;
+    let task = backend
+        .start_task_asking_permission(NEEDS_APPROVAL, MODEL)
+        .await;
+    let asked = task.wait_for_a_question(Duration::from_secs(120)).await;
+
+    task.answer(&asked, "allow").await;
+    task.wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+
+    let detail = task.detail().await;
+    let text = detail.to_string();
+    assert!(
+        detail["events"]
+            .as_array()
+            .expect("events")
+            .iter()
+            .any(|event| {
+                event["type"] == "command_execution" && event["summary"] == "Command completed"
+            }),
+        "the allowed command ran: {text}"
+    );
+    assert!(
+        !text.contains("canUseTool callback returned"),
+        "and the answer was a shape the agent accepts: {text}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn a_command_allowed_always_runs_and_is_not_asked_about_again() {
+    // Allowing always carries the grant the agent proposed, so the same
+    // command asked a second time runs without stopping anyone.
+    let backend = Backend::start().await;
+    let task = backend
+        .start_task_asking_permission(NEEDS_APPROVAL, MODEL)
+        .await;
+    let asked = task.wait_for_a_question(Duration::from_secs(120)).await;
+
+    task.answer(&asked, "allowAlways").await;
+    task.wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+    task.say("Run the exact same command once more, then reply done.")
+        .await;
+    task.wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+
+    let detail = task.detail().await;
+    let text = detail.to_string();
+    assert!(!text.contains("canUseTool callback returned"), "{text}");
+    let events = detail["events"].as_array().expect("events");
+    let ran = events
+        .iter()
+        .filter(|event| {
+            event["type"] == "command_execution" && event["summary"] == "Command completed"
+        })
+        .count();
+    assert!(ran >= 2, "the command ran both times: {text}");
+    let questions = events
+        .iter()
+        .filter(|event| event["type"] == "approval_requested")
+        .count();
+    assert_eq!(
+        questions, 1,
+        "the grant covered the second run, so nobody was asked again: {text}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn a_command_a_person_declines_reads_as_declined_and_does_not_run() {
+    let backend = Backend::start().await;
+    let task = backend
+        .start_task_asking_permission(NEEDS_APPROVAL, MODEL)
+        .await;
+    let asked = task.wait_for_a_question(Duration::from_secs(120)).await;
+
+    task.answer(&asked, "deny").await;
+    task.wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+
+    let detail = task.detail().await;
+    let text = detail.to_string();
+    let events = detail["events"].as_array().expect("events");
+    assert!(
+        events.iter().any(|event| {
+            event["type"] == "command_execution" && event["summary"] == "Command declined"
+        }),
+        "a refusal reads as a refusal: {text}"
+    );
+    assert!(
+        !events.iter().any(|event| {
+            event["type"] == "command_execution" && event["summary"] == "Command completed"
+        }),
+        "and the declined command never ran: {text}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn declining_and_stopping_ends_the_turn_instead_of_letting_it_argue() {
+    // The rider invites a retry on purpose: a plain decline leaves the agent
+    // free to ask again, and stopping is only proven by that not happening.
+    let backend = Backend::start().await;
+    let task = backend
+        .start_task_asking_permission(
+            &format!("{NEEDS_APPROVAL} If it is declined or fails, run it once more."),
+            MODEL,
+        )
+        .await;
+    let asked = task.wait_for_a_question(Duration::from_secs(120)).await;
+
+    task.answer(&asked, "denyAndStop").await;
+    task.wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+
+    let detail = task.detail().await;
+    let text = detail.to_string();
+    let events = detail["events"].as_array().expect("events");
+    assert!(
+        !events.iter().any(|event| {
+            event["type"] == "command_execution" && event["summary"] == "Command completed"
+        }),
+        "nothing ran after the refusal: {text}"
+    );
+    let questions = events
+        .iter()
+        .filter(|event| event["type"] == "approval_requested")
+        .count();
+    assert_eq!(
+        questions, 1,
+        "the turn was stopped before it could ask again: {text}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
 async fn a_turn_that_cannot_run_reads_as_a_failure_not_as_the_agent_talking() {
     // The API is a closed port, so no model is ever reached and this case
     // spends nothing. What only the real `claude` can prove is the frames it
@@ -379,10 +522,7 @@ async fn a_turn_that_cannot_run_reads_as_a_failure_not_as_the_agent_talking() {
     task.wait_for(TurnState::Idle, Duration::from_secs(120))
         .await;
 
-    let detail = backend
-        .get(&format!("/api/tasks/{}", task.thread_id()))
-        .await
-        .expect("the task answers");
+    let detail = task.detail().await;
     let events = detail["events"].as_array().expect("events");
     let failure = events
         .iter()

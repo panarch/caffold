@@ -511,6 +511,14 @@ impl Task {
         );
     }
 
+    /// The Task as the API answers it right now.
+    pub async fn detail(&self) -> Value {
+        self.at
+            .get(&format!("/api/tasks/{}", self.thread_id))
+            .await
+            .expect("the task answers")
+    }
+
     pub async fn answer(&self, question: &str, decision: &str) {
         self.at
             .post(
