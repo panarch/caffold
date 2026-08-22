@@ -7,8 +7,13 @@ import {
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
+  emitTaskDetailBootstrap,
   installEventSourceMock,
 } from "../support/task-fixtures.js";
+import {
+  installTaskApiFixture,
+  taskDetailFixture,
+} from "../support/task-api-fixture.js";
 
 const BLOCKING_STATES = [
   ["missing", "Install Codex to start Tasks", "Codex setup required."],
@@ -92,45 +97,35 @@ test.beforeEach(async ({ context, page }) => {
   );
 });
 
-for (const [state, heading, navigatorMessage] of BLOCKING_STATES) {
+for (const [state, heading] of BLOCKING_STATES) {
   test(`shows the canonical ${state} Task setup surface`, { tag: "@all-viewports" }, async ({ page }) => {
-    let taskRequests = 0;
-    const cached = cachedTask();
     await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
       route.fulfill({
         contentType: "application/json",
         body: JSON.stringify(statusFor(state)),
       }),
     );
-    await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
-      taskRequests += 1;
-      return route.fulfill({ json: activeTaskProjection([cached]) });
-    });
 
-    await page.goto("/");
-
+    // The setup card sits beside the new-Task surface — over nothing, and
+    // however much it has to say, the composer below stays reachable.
+    await page.goto("/tasks/new");
     const setup = page.locator(`.codex-readiness-card[data-readiness-state="${state}"]`);
     await expect(setup).toBeVisible();
     await expect(setup.getByRole("heading", { name: heading })).toBeVisible();
     await expect(setup.getByRole("button", { name: "Retry" })).toBeEnabled();
     await expect(setup.getByRole("button", { name: "Open Settings" })).toBeEnabled();
-    await expect(page.locator("caffold-task-new")).toBeHidden();
-    const newTask = page.locator("caffold-task-navigator .task-list-new-task");
-    await expect(newTask).toBeDisabled();
-    await expect(newTask).toHaveAttribute(
-      "title",
-      navigatorMessage.replace(/\.$/, ""),
+    await expect(page.locator("caffold-codex-readiness-recovery")).toHaveAttribute(
+      "data-presentation",
+      "beside",
     );
-    const cachedRow = page.locator(
-      `caffold-active-task-list .task-row[data-thread-id="${cached.threadId}"]`,
+    const composerField = page.locator("caffold-task-new textarea");
+    await expect(composerField).toBeVisible();
+    await expect(composerField).toBeEnabled();
+    const viewport = page.viewportSize();
+    const composerBox = await composerField.boundingBox();
+    expect(composerBox.y + composerBox.height).toBeLessThanOrEqual(
+      viewport.height,
     );
-    await expect(cachedRow).toContainText("Cached Task identity");
-    await expect(cachedRow).toBeDisabled();
-    await expect(cachedRow).toHaveAttribute(
-      "title",
-      navigatorMessage.replace(/\.$/, ""),
-    );
-    await expect.poll(() => taskRequests).toBe(1);
     await expect
       .poll(() => page.locator("caffold-task-navigator").evaluate(
         (navigator) => navigator.listState().loading,
@@ -168,6 +163,33 @@ for (const [state, heading, navigatorMessage] of BLOCKING_STATES) {
     }
   });
 }
+
+test("a blocked Codex holds nothing on the Tasks home", { tag: "@all-viewports" }, async ({ page }) => {
+  let taskRequests = 0;
+  const cached = cachedTask();
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(statusFor("updateRequired")),
+    }),
+  );
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
+    taskRequests += 1;
+    return route.fulfill({ json: activeTaskProjection([cached]) });
+  });
+
+  await page.goto("/");
+
+  const newTask = page.locator("caffold-task-navigator .task-list-new-task");
+  await expect(newTask).toBeEnabled();
+  await expect(newTask).toHaveAttribute("title", "New Task");
+  const cachedRow = page.locator(
+    `caffold-active-task-list .task-row[data-thread-id="${cached.threadId}"]`,
+  );
+  await expect(cachedRow).toContainText("Cached Task identity");
+  await expect(cachedRow).toBeEnabled();
+  await expect.poll(() => taskRequests).toBe(1);
+});
 
 test("identifies a standalone install without required daemon commands", { tag: "@all-viewports" }, async ({ page }) => {
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
@@ -233,8 +255,11 @@ test("keeps the stable Task shell while readiness is checking", { tag: "@all-vie
   );
   await expect(navigatorMessage).toHaveText("Loading...");
   const newTask = page.locator("caffold-task-navigator .task-list-new-task");
-  await expect(newTask).toBeDisabled();
-  await expect(newTask).toHaveAttribute("title", "Checking Codex readiness…");
+  // A status nobody has loaded yet blocks nothing: the other agent is not
+  // Codex's to hold, and an operation tried too early is the server's to
+  // refuse.
+  await expect(newTask).toBeEnabled();
+  await expect(newTask).toHaveAttribute("title", "New Task");
   await expect(
     page.getByText("Codex setup required.", { exact: true }),
   ).toHaveCount(0);
@@ -308,6 +333,10 @@ test("a readiness load failure is not presented as a setup requirement", { tag: 
   await expect(
     page.locator('[data-readiness-state="checkFailed"]'),
   ).toBeVisible();
+  await expect(page.locator("caffold-codex-readiness-recovery")).toHaveAttribute(
+    "data-presentation",
+    "beside",
+  );
   await expect(
     page.getByRole("heading", { name: "Codex readiness could not be checked" }),
   ).toBeVisible();
@@ -315,12 +344,14 @@ test("a readiness load failure is not presented as a setup requirement", { tag: 
     page.locator("caffold-active-task-list .task-section-message"),
   ).toHaveText("No Caffold tasks yet.");
   const newTask = page.locator("caffold-task-navigator .task-list-new-task");
-  await expect(newTask).toBeDisabled();
-  await expect(newTask).toHaveAttribute("title", "Codex readiness check failed");
+  await expect(newTask).toBeEnabled();
+  await expect(newTask).toHaveAttribute("title", "New Task");
   await expect(
     page.getByText("Codex setup required.", { exact: true }),
   ).toHaveCount(0);
-  await expect.poll(() => taskRequests).toBe(1);
+  // The shell keeps retrying the failed status check, and each pass may
+  // reload the list — the list is no longer held while status is unknown.
+  await expect.poll(() => taskRequests).toBeGreaterThan(0);
 });
 
 test("a failed Task-store migration has its own explicit retry lifecycle", { tag: "@all-viewports" }, async ({
@@ -569,30 +600,183 @@ test("a blocking transition releases the Task list and disables existing actions
     });
   }, statusFor("updateRequired"));
 
-  await expect(page.locator('[data-readiness-state="updateRequired"]')).toBeVisible();
-  await expect(activeRow).toBeDisabled();
-  await expect(activeRow).toHaveAttribute("title", "Codex update required");
+  // Codex blocking is Codex's alone: the list keeps working, its stream
+  // stays open, and archived actions go to the server, whose refusal is the
+  // true answer rather than a guess made here.
+  await expect(activeRow).toBeEnabled();
   await expect(
     archivedRow.locator('[data-task-action="restore-archived-task"]'),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await expect(
     archivedRow.locator('[data-task-action="delete-archived-task"]'),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await expect
     .poll(() =>
       page.evaluate(() =>
         window.__readinessEventSources
           .filter((source) => source.url.includes("/api/tasks/stream"))
-          .every((source) => source.readyState === 2),
+          .some((source) => source.readyState !== 2),
       ),
     )
     .toBe(true);
 
+  await page.route(/\/api\/tasks\/thread_ready_archived\/restore$/, (route) =>
+    route.fulfill({
+      status: 503,
+      json: {
+        error: {
+          code: "codex_readiness_blocked",
+          message: "updateRequired diagnostic",
+        },
+      },
+    }),
+  );
   await navigator.evaluate(async (element) => {
     await element.restoreThread("thread_ready_archived");
-    await element.deleteThread("thread_ready_archived");
   });
-  expect(mutationRequests).toEqual([]);
+  await expect.poll(() => mutationRequests.length).toBeGreaterThan(0);
+  await expect(archivedRow).toContainText("updateRequired diagnostic");
+});
+
+test("a Task-store takeover hands the open Task back when it clears", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const detail = taskDetailFixture();
+  await installTaskApiFixture(page);
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+  const composer = page.locator(".task-follow-up-form textarea");
+  await expect(composer).toBeVisible();
+
+  const takeover = mockCodexStatus();
+  takeover.taskStoreReadiness = {
+    state: "failed",
+    blocksTaskOperations: true,
+    diagnosticMessage: "Staged v5 validation failed.",
+  };
+  await page.evaluate((status) => {
+    document.querySelector("caffold-task-workspace").setCodexStatusSnapshot({
+      phase: "loaded",
+      status,
+      error: "",
+    });
+  }, takeover);
+  await expect(
+    page.locator('[data-readiness-state="taskStore-failed"]'),
+  ).toBeVisible();
+  await expect(composer).toBeHidden();
+
+  await page.evaluate((status) => {
+    document.querySelector("caffold-task-workspace").setCodexStatusSnapshot({
+      phase: "loaded",
+      status,
+      error: "",
+    });
+  }, mockCodexStatus());
+
+  await expect(
+    page.locator('[data-readiness-state="taskStore-failed"]'),
+  ).toBeHidden();
+  await expect(composer).toBeVisible();
+  await expect(composer).toBeEnabled();
+});
+
+test("a Codex-run submit surfaces the server's refusal and keeps the draft", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  // No surface pre-guesses the submit's fate from the snapshot: the server
+  // refuses a Codex-run prompt while Codex is blocked, and that refusal is
+  // what the composer shows — with the draft kept for after recovery.
+  const detail = taskDetailFixture();
+  await installTaskApiFixture(page);
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(statusFor("updateRequired")),
+    }),
+  );
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+  await page.route("**/api/tasks/thread-1/prompt*", (route) =>
+    route.fulfill({
+      status: 503,
+      json: {
+        error: {
+          code: "codex_readiness_blocked",
+          message: "updateRequired diagnostic",
+        },
+      },
+    }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+
+  const composer = page.locator(".task-follow-up-form textarea");
+  await expect(composer).toBeVisible();
+  await expect(composer).toBeEnabled();
+  await composer.fill("carry on with the plan");
+  await page
+    .locator(".task-follow-up-form")
+    .getByRole("button", { name: "Send prompt" })
+    .click();
+
+  await expect(
+    page.locator(".task-follow-up-form .task-composer-request-error"),
+  ).toContainText("updateRequired diagnostic");
+  await expect(composer).toHaveValue("carry on with the plan");
+});
+
+test("a Claude Task never looks at Codex readiness", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const detail = { ...taskDetailFixture(), provider: "claude" };
+  await installTaskApiFixture(page);
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(statusFor("updateRequired")),
+    }),
+  );
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+
+  let promptRequests = 0;
+  await page.route("**/api/tasks/thread-1/prompt*", (route) => {
+    promptRequests += 1;
+    return route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-claude-1",
+        steered: false,
+        startedTurn: null,
+      },
+    });
+  });
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+
+  const composer = page.locator(".task-follow-up-form textarea");
+  await expect(composer).toBeVisible();
+  await expect(composer).toBeEnabled();
+  await composer.fill("keep going");
+  await page
+    .locator(".task-follow-up-form")
+    .getByRole("button", { name: "Send prompt" })
+    .click();
+
+  // The submit reaches the server: nothing in front of it consulted Codex.
+  await expect.poll(() => promptRequests).toBe(1);
+  await expect(
+    page.locator(".task-follow-up-form .task-composer-request-error"),
+  ).toHaveCount(0);
 });
 
 test("Settings stays reachable while Codex setup blocks Tasks", { tag: "@all-viewports" }, async ({ page }) => {

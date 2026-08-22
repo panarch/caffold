@@ -5,7 +5,7 @@ import {
 } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
-import { PENDING_CODEX_TASK_OPERATIONS } from "../../codex-status.js";
+import { taskStoreOperationsPresentation } from "../../codex-status.js";
 import {
   TASK_TRANSPORT_STATE,
   isTaskTransportStale,
@@ -63,7 +63,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
     this.initialRequestSettled = false;
     this.revealed = false;
     this.transportState = TASK_TRANSPORT_STATE.IDLE;
-    this.codexTaskOperations = PENDING_CODEX_TASK_OPERATIONS;
+    this.taskOperations = taskStoreOperationsPresentation(null);
     this.restoringThreadIds = new Set();
     this.restoreErrors = new Map();
     this.deletingThreadIds = new Set();
@@ -75,24 +75,24 @@ class CaffoldArchivedTaskList extends HTMLElement {
 
   async activate({ force = false } = {}) {
     this.ensureState();
-    if (this.codexOperationsBlocked) {
+    if (this.taskOperationsBlocked) {
       return null;
     }
     return await this.loadArchived({ force });
   }
 
-  get codexOperationsBlocked() {
-    return this.codexTaskOperations?.blocked !== false;
+  get taskOperationsBlocked() {
+    return this.taskOperations?.blocked !== false;
   }
 
-  setCodexTaskOperations(presentation) {
+  setTaskOperations(presentation) {
     this.ensureState();
-    if (this.codexTaskOperations?.key === presentation.key) {
+    if (this.taskOperations?.key === presentation.key) {
       return;
     }
     const becameBlocked =
-      this.codexTaskOperations?.blocked === false && presentation.blocked;
-    this.codexTaskOperations = presentation;
+      this.taskOperations?.blocked === false && presentation.blocked;
+    this.taskOperations = presentation;
     if (becameBlocked) {
       this.archivedTaskRequestId += 1;
       this.archivedTaskLoadPromise = null;
@@ -155,7 +155,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
       this.restoringThreadIds.has(threadId) ||
       this.deletingThreadIds.has(threadId) ||
       isTaskTransportStale(this.transportState) ||
-      this.codexOperationsBlocked
+      this.taskOperationsBlocked
     ) {
       return null;
     }
@@ -202,7 +202,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
       this.deletingThreadIds.has(threadId) ||
       this.restoringThreadIds.has(threadId) ||
       isTaskTransportStale(this.transportState) ||
-      this.codexOperationsBlocked
+      this.taskOperationsBlocked
     ) {
       return null;
     }
@@ -232,7 +232,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
       return;
     }
     event.stopPropagation();
-    if (this.codexOperationsBlocked) {
+    if (this.taskOperationsBlocked) {
       return;
     }
     const threadId = `${action.dataset.threadId ?? ""}`;
@@ -263,7 +263,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
   }
 
   async loadArchived({ force = false } = {}) {
-    if (this.codexOperationsBlocked) {
+    if (this.taskOperationsBlocked) {
       return null;
     }
     if (this.archivedTaskLoaded && !force) {
@@ -324,7 +324,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
   async loadMoreArchived() {
     const cursor = this.archivedTaskNextCursor;
     if (
-      this.codexOperationsBlocked ||
+      this.taskOperationsBlocked ||
       !cursor ||
       this.archivedTaskLoading ||
       this.archivedTaskLoadingMore
@@ -383,7 +383,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
     return {
       count: this.archivedTasks.length,
       loaded: this.archivedTaskLoaded,
-      loading: !this.codexOperationsBlocked &&
+      loading: !this.taskOperationsBlocked &&
         (this.archivedTaskLoading || !this.initialRequestSettled),
       error: this.archivedTaskError?.message ?? "",
     };
@@ -418,15 +418,15 @@ class CaffoldArchivedTaskList extends HTMLElement {
     this.setAttribute("aria-label", "Archived Caffold Tasks");
     const tasks = sortTasksByRecency(this.archivedTasks);
     let content;
-    if (this.codexOperationsBlocked && !tasks.length) {
-      content = `<p class="task-section-message">${escapeHtml(this.codexTaskOperations.message)}</p>`;
+    if (this.taskOperationsBlocked && !tasks.length) {
+      content = `<p class="task-section-message">${escapeHtml(this.taskOperations.message)}</p>`;
     } else if (this.archivedTaskLoading && !tasks.length) {
       content = `<p class="task-section-message">Loading...</p>`;
     } else if (this.archivedTaskError && !tasks.length) {
       content = `
         <div class="task-section-message" role="alert">
           <p>${escapeHtml(this.archivedTaskError.message)}</p>
-          <button type="button" class="task-secondary-button" data-task-action="retry-archived-task-list" ${this.codexOperationsBlocked ? "disabled" : ""}>Retry</button>
+          <button type="button" class="task-secondary-button" data-task-action="retry-archived-task-list" ${this.taskOperationsBlocked ? "disabled" : ""}>Retry</button>
         </div>
       `;
     } else if (!tasks.length) {
@@ -464,7 +464,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
     return `
       <div class="task-list-pagination">
         ${this.archivedTaskLoadMoreError ? `<p class="task-list-pagination-error">${escapeHtml(this.archivedTaskLoadMoreError.message)}</p>` : ""}
-        <button type="button" class="task-secondary-button" data-task-action="load-more-archived-tasks" ${this.archivedTaskLoadingMore || this.codexOperationsBlocked ? "disabled" : ""}>${label}</button>
+        <button type="button" class="task-secondary-button" data-task-action="load-more-archived-tasks" ${this.archivedTaskLoadingMore || this.taskOperationsBlocked ? "disabled" : ""}>${label}</button>
       </div>
     `;
   }
@@ -493,7 +493,7 @@ class CaffoldArchivedTaskList extends HTMLElement {
     const mutating = restoring || deleting;
     const transportBlocked =
       isTaskTransportStale(this.transportState) ||
-      this.codexOperationsBlocked;
+      this.taskOperationsBlocked;
     const restoreError = this.restoreErrors.get(threadId);
     const deleteError = this.deleteErrors.get(threadId);
     const conversationAvailable = task?.conversationAvailable !== false;

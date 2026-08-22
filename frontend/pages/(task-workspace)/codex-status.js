@@ -5,11 +5,9 @@ import {
 } from "../../api.js";
 import {
   INITIAL_CODEX_STATUS_SNAPSHOT,
-  PENDING_CODEX_TASK_OPERATIONS,
   codexBlocksTaskOperations,
+  codexSetupVisible,
   codexState,
-  codexTaskRecoveryVisible,
-  codexTaskOperationsPresentation,
   findRateWindow,
   formatCodexAccount,
   formatCodexPlan,
@@ -18,6 +16,9 @@ import {
   formatRateWindowLabel,
   formatRemainingPercent,
   formatResetCredits,
+  taskStoreBlocksTaskOperations,
+  taskStoreOperationsPresentation,
+  taskStoreRecoveryVisible,
 } from "./codex-status/model.js";
 import {
   CodexStatusLifecycle,
@@ -30,11 +31,9 @@ export const CODEX_RUNTIME_RESTART_REQUEST_EVENT =
 
 export {
   INITIAL_CODEX_STATUS_SNAPSHOT,
-  PENDING_CODEX_TASK_OPERATIONS,
   codexBlocksTaskOperations,
+  codexSetupVisible,
   codexState,
-  codexTaskRecoveryVisible,
-  codexTaskOperationsPresentation,
   findRateWindow,
   formatCodexAccount,
   formatCodexPlan,
@@ -43,6 +42,9 @@ export {
   formatRateWindowLabel,
   formatRemainingPercent,
   formatResetCredits,
+  taskStoreBlocksTaskOperations,
+  taskStoreOperationsPresentation,
+  taskStoreRecoveryVisible,
 };
 
 export function createCodexStatusLifecycle({

@@ -91,4 +91,9 @@ test("classifies only explicit client rejection as safe to roll back", () => {
     classifyPromptFailure(new TypeError("Failed to fetch")),
     PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN,
   );
+  assert.equal(
+    classifyPromptFailure({ status: 503, code: "codex_readiness_blocked" }),
+    PROMPT_SUBMISSION_STATE.REJECTED,
+    "a refusal made before any turn exists is certain, 503 or not",
+  );
 });

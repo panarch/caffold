@@ -165,6 +165,18 @@ impl TaskRuntime {
         self.connection().await.map(|connection| connection.client)
     }
 
+    /// Make Codex answer as blocked, so a test can watch what a held agent
+    /// costs at the boundary that consults it.
+    #[cfg(test)]
+    pub(in crate::app) async fn hold_codex_readiness_for_tests(&self) {
+        self.process.state.lock().await.readiness = Some(CodexReadiness::blocking(
+            crate::agent::codex::CodexReadinessState::Error,
+            crate::agent::codex::CodexReadinessReason::ReadyRuntimeUnavailable,
+            "Codex is held for this test.",
+            None,
+        ));
+    }
+
     #[cfg(test)]
     pub(in crate::app) async fn diagnostics(&self) -> (u64, bool) {
         let process = self.process.state.lock().await;

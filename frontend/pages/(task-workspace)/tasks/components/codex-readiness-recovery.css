@@ -18,6 +18,25 @@ caffold-codex-readiness-recovery {
     line-height: var(--interface-line-height);
   }
 
+  /* Beside the Task surface rather than over it: the card takes its own
+     height at the top — scrolling within itself past the cap the pane sets —
+     and the surface below stays live and reachable. */
+  &[data-presentation="beside"] {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+
+    & > .codex-readiness-surface {
+      flex: 1 1 auto;
+      height: auto;
+      min-height: 0;
+    }
+
+    & .codex-readiness-card {
+      margin-top: 0;
+    }
+  }
+
   & .codex-readiness-card {
     display: grid;
     gap: var(--interface-space-6);

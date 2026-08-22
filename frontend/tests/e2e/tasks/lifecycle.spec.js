@@ -502,7 +502,7 @@ test("BFCache pageshow and top-level focus use the shared foreground recovery", 
   );
 });
 
-test("notification activation refreshes stale readiness and opens its pending Task route", { tag: "@desktop" }, async ({
+test("notification activation refreshes stale readiness and opens its Task route", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, {
@@ -539,7 +539,6 @@ test("notification activation refreshes stale readiness and opens its pending Ta
   });
   let ready = false;
   let statusReads = 0;
-  let detailReads = 0;
   const detail = {
     threadId,
     syncState: "ready",
@@ -572,16 +571,16 @@ test("notification activation refreshes stale readiness and opens its pending Ta
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({ json: activeTaskProjection([task]) })
   );
-  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) => {
-    detailReads += 1;
-    return route.fulfill({ json: detail });
-  });
+  await page.route(new RegExp(`/api/tasks/${threadId}(?:\\?|$)`), (route) =>
+    route.fulfill({ json: detail }),
+  );
 
-  await page.goto(`/tasks/${threadId}`);
+  await page.goto("/");
+  // A blocked Codex holds nothing: the list is live, and the notification
+  // below opens its Task route directly while refreshing readiness.
   await expect(
-    page.locator('[data-readiness-state="updateRequired"]'),
+    page.locator(`caffold-active-task-list .task-row[data-thread-id="${threadId}"]`),
   ).toBeVisible();
-  expect(detailReads).toBe(0);
   const readsBeforeActivation = statusReads;
 
   ready = true;
@@ -596,7 +595,6 @@ test("notification activation refreshes stale readiness and opens its pending Ta
 
   await expect.poll(() => statusReads).toBeGreaterThan(readsBeforeActivation);
   await expect(page.locator(".codex-readiness-surface")).toBeHidden();
-  expect(detailReads).toBe(0);
   await expect(page.locator("caffold-task-detail")).toContainText(
     "Pending Task opened after notification foreground recovery.",
   );
@@ -616,7 +614,7 @@ test("notification activation refreshes stale readiness and opens its pending Ta
     .toBe(2);
 });
 
-test("foreground recovery retries a blocking readiness snapshot with bounded backoff", { tag: "@desktop" }, async ({
+test("foreground recovery retries a blocking Task-store snapshot with bounded backoff", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
   await installEventSourceMock(page, {
@@ -624,15 +622,14 @@ test("foreground recovery retries a blocking readiness snapshot with bounded bac
     autoOpen: true,
   });
   await mockAgentModels(page);
-  const blockedStatus = mockCodexStatus({
-    readiness: {
-      ...mockCodexStatus().readiness,
-      state: "updateRequired",
-      blocksTaskOperations: true,
-      reasonCode: "versionBelowMinimum",
-      diagnosticMessage: "Foreground readiness has not recovered yet.",
-    },
-  });
+  // Only the Task store still earns the retry loop: it gates every agent,
+  // where a blocked Codex gates only its own surfaces and is not waited on.
+  const blockedStatus = mockCodexStatus();
+  blockedStatus.taskStoreReadiness = {
+    state: "failed",
+    blocksTaskOperations: true,
+    diagnosticMessage: "Foreground Task store has not recovered yet.",
+  };
   let recoveryBlockedReads = 0;
   let foregroundRecovery = false;
   let statusReads = 0;
@@ -658,7 +655,7 @@ test("foreground recovery retries a blocking readiness snapshot with bounded bac
   });
 
   await expect(
-    page.locator('[data-readiness-state="updateRequired"]'),
+    page.locator('[data-readiness-state="taskStore-failed"]'),
   ).toBeVisible();
   await expect.poll(() => recoveryBlockedReads).toBe(2);
   await expect.poll(() => statusReads).toBe(readsBeforeRecovery + 3);

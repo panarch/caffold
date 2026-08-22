@@ -51,15 +51,24 @@ A New Task intent from an existing Task starts at that Task's repository root,
 not its managed worktree root. The bootstrap initial path and `.` are later
 fallbacks. The current New Task owns directory selection and its route value.
 
-Before New Task is available, a blocking canonical Codex readiness state
-replaces the Tasks content with persistent install, update, sign-in, restart,
-or recovery guidance. A stale runtime exposes the same explicit restart
-confirmation available from Codex Settings. Retry rechecks the backend
-diagnosis and Settings stays available throughout setup.
+Codex readiness gates only Codex surfaces. A blocking canonical Codex
+readiness state shows the install, update, sign-in, restart, or recovery
+guidance card beside the New Task surface — never over an open Task. A
+Codex Task stays readable and its composer usable; a Codex-run submit is
+refused by the server with the blocking cause, shown in the composer. Claude
+Tasks and Claude creation never consult Codex readiness. A
+stale runtime exposes the same explicit restart confirmation available from
+Codex Settings; Retry rechecks the backend diagnosis and Settings stays
+available throughout setup. On compact viewports whose home shows the Task
+list, the workspace navigation's Codex attention state carries the signal and
+the card is read from the New Task surface.
 
-Task creation starts a Codex thread in the selected cwd. Managed-worktree
-preparation happens explicitly from the resulting Task; it is not an implicit
-side effect of task creation.
+Only the Task store — shared by every agent — takes the Tasks surface over
+while its migration blocks operations, with its own retry lifecycle.
+
+Task creation starts a thread with the chosen agent in the selected cwd.
+Managed-worktree preparation happens explicitly from the resulting Task; it is
+not an implicit side effect of task creation.
 
 Global New and Section New provide the same Composer, turn options, and error
 behavior. Section New fixes cwd to the Section's managed logical path, omits
@@ -82,7 +91,7 @@ shared repository surfaces.
 
 ### Conversation
 
-Conversation renders the canonical Codex thread as a review timeline:
+Conversation renders the canonical conversation thread as a review timeline:
 
 - prompts and agent responses;
 - reasoning summaries and tool activity;
@@ -92,7 +101,7 @@ Conversation renders the canonical Codex thread as a review timeline:
 - follow-up Start or Steer behavior derived from canonical thread state.
 
 The Composer owns its draft, attachments, selection, and voice capture. Task
-child switching does not interrupt the selected Task's Codex stream.
+child switching does not interrupt the selected Task's stream.
 
 ### Integrated Review
 
@@ -197,10 +206,10 @@ for context but disables Serve controls until a later status response
 revalidates them. The surface does not administer accounts, tailnet membership,
 ACLs, arbitrary targets, or Funnel.
 
-Tasks and Codex Settings present the same backend readiness and restart outcome.
-Only refreshed readiness restores Task actions. The browser is the complete
-settings surface, while the macOS menu may expose a compact control when both
-surfaces use the same server state and action.
+Tasks and Codex Settings present the same backend readiness and restart
+outcome, and refreshed readiness releases the Codex surfaces it holds. The
+browser is the complete settings surface, while the macOS menu may expose a
+compact control when both surfaces use the same server state and action.
 
 ## Product boundaries
 

@@ -50,7 +50,21 @@ pub(super) async fn list_archived_tasks(
 /// still has the conversation written down, which costs a look at the
 /// filesystem.
 async fn archived_task(state: &TaskState, managed: &ManagedThread) -> Result<TaskRecord, ApiError> {
-    let driver = state.task_runtime.agent_for(managed).await?.driver();
+    let driver = match state.task_runtime.agent_for(managed).await {
+        Ok(agent) => agent.driver(),
+        // An agent held by its own readiness cannot be asked about this row,
+        // and the row is still Caffold's to list. Whether it can be gone back
+        // to is unknown, so restoring is withheld until the agent can say —
+        // one held agent must not take the whole list down with it. The row
+        // says why it cannot be asked about, because held is not gone: a row
+        // reading as lost invites deleting a Task that is fine.
+        Err(CodexThreadError::Readiness(readiness)) => {
+            let mut task = unavailable_archived_task(managed);
+            task.preview = readiness.diagnostic_message;
+            return Ok(task);
+        }
+        Err(error) => return Err(error.into()),
+    };
     let described = match driver.describe(&managed.thread_id).await {
         Ok(described) => described,
         // A conversation the agent no longer has is a Task that can be listed
@@ -380,6 +394,37 @@ mod tests {
                 .unwrap(),
             before,
             "archived GET must not persist canonical observations"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_agent_held_by_readiness_costs_its_rows_answer_and_not_the_list() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-archived-held";
+        let client = CodexThreadClient::mock(Vec::new());
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        task_store_archive(&state, thread_id)
+            .await
+            .unwrap()
+            .unwrap();
+        state.task_runtime.hold_codex_readiness_for_tests().await;
+
+        let response = list_archived_tasks(State(state), Query(TasksQuery { cursor: None }))
+            .await
+            .expect("the list answers")
+            .0;
+
+        assert_eq!(response.tasks.len(), 1);
+        assert_eq!(response.tasks[0].thread_id, thread_id);
+        assert!(
+            !response.tasks[0].conversation_available,
+            "an unaskable agent cannot promise the conversation is there: {:?}",
+            response.tasks[0]
+        );
+        assert_eq!(
+            response.tasks[0].preview, "Codex is held for this test.",
+            "held reads as held, not as a conversation that is gone"
         );
     }
 

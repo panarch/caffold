@@ -516,7 +516,9 @@ Sections without active Tasks afterward. The v7-to-v8 migration adds nullable
 Section composer fields without backfilling historical selections; Sections
 begin recording them only after a later turn starts successfully. While Codex
 is unavailable or incompatible, the HTTP server remains available with explicit
-Task-store/Codex readiness and retry controls, but Task operations stay blocked.
+Task-store/Codex readiness and retry controls; Codex-run operations answer
+with the blocking readiness, while Task reads and the other agent's operations
+continue.
 
 Archived Tasks remain Caffold-owned and independent of Sections. They continue
 to read 30 managed IDs at a time from the archived Redb membership, resolve the

@@ -2,7 +2,7 @@ import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import "../../components/workspace-brand.js";
 import {
-  codexTaskOperationsPresentation,
+  taskStoreOperationsPresentation,
 } from "../../codex-status.js";
 import {
   TASK_TRANSPORT_STATE,
@@ -111,7 +111,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.reorderMode = "none";
     taskNavigatorInstanceId += 1;
     this.reorderPopoverId = `task-list-reorder-${taskNavigatorInstanceId}`;
-    this.codexTaskOperations = codexTaskOperationsPresentation(null);
+    this.taskOperations = taskStoreOperationsPresentation(null);
     this.lastPublishedListState = "";
     this.boundClick = (event) => this.handleClick(event);
     this.boundIconsReady = () => this.syncPrimaryHeader();
@@ -159,7 +159,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.render();
     this.active = true;
     const tasksRequest = this.activeTaskList.activate({ force });
-    const archivedRequest = this.codexTaskOperations.blocked
+    const archivedRequest = this.taskOperations.blocked
       ? Promise.resolve(null)
       : this.archivedTaskList.activate({ force });
     const [tasks, archived] = await Promise.all([
@@ -307,13 +307,16 @@ class CaffoldTaskNavigator extends HTMLElement {
 
   setCodexStatusSnapshot(snapshot) {
     this.ensureChildren();
-    const presentation = codexTaskOperationsPresentation(snapshot);
-    if (this.codexTaskOperations.key === presentation.key) {
+    // The store's own gate is the only one the whole navigator shares.
+    // Codex being unready locks nothing here: rows open for reading, and a
+    // new Task can always be started with the other agent.
+    const presentation = taskStoreOperationsPresentation(snapshot);
+    if (this.taskOperations.key === presentation.key) {
       return;
     }
-    this.codexTaskOperations = presentation;
-    this.activeTaskList.setCodexTaskOperations(presentation);
-    this.archivedTaskList.setCodexTaskOperations(presentation);
+    this.taskOperations = presentation;
+    this.activeTaskList.setTaskOperations(presentation);
+    this.archivedTaskList.setTaskOperations(presentation);
     this.render();
   }
 
@@ -336,7 +339,7 @@ class CaffoldTaskNavigator extends HTMLElement {
       this.setReorderMode(action.dataset.reorderMode);
       return;
     }
-    if (this.codexTaskOperations.blocked) {
+    if (this.taskOperations.blocked) {
       return;
     }
     if (action.dataset.taskAction === "open-new") {
@@ -468,9 +471,9 @@ class CaffoldTaskNavigator extends HTMLElement {
         <caffold-archived-task-list hidden></caffold-archived-task-list>
       </div>
     `;
-    this.activeTaskList.setCodexTaskOperations(this.codexTaskOperations);
+    this.activeTaskList.setTaskOperations(this.taskOperations);
     this.activeTaskList.setReorderMode(this.reorderMode);
-    this.archivedTaskList.setCodexTaskOperations(this.codexTaskOperations);
+    this.archivedTaskList.setTaskOperations(this.taskOperations);
   }
 
   syncPrimaryHeader() {
@@ -483,10 +486,10 @@ class CaffoldTaskNavigator extends HTMLElement {
         "Plus",
         "New task",
       );
-      newTaskButton.title = this.codexTaskOperations.blocked
-        ? this.codexTaskOperations.title
+      newTaskButton.title = this.taskOperations.blocked
+        ? this.taskOperations.title
         : "New Task";
-      newTaskButton.disabled = this.codexTaskOperations.blocked;
+      newTaskButton.disabled = this.taskOperations.blocked;
     }
     const reorderButton = this.reorderButton;
     if (reorderButton) {
@@ -509,8 +512,8 @@ class CaffoldTaskNavigator extends HTMLElement {
   }
 
   renderPrimaryHeader() {
-    const blocked = this.codexTaskOperations.blocked;
-    const title = blocked ? this.codexTaskOperations.title : "New Task";
+    const blocked = this.taskOperations.blocked;
+    const title = blocked ? this.taskOperations.title : "New Task";
     return `
       <header class="task-list-section-header task-list-primary-header">
         <caffold-workspace-brand></caffold-workspace-brand>

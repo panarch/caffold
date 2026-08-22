@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CodexStatusLifecycle } from "./lifecycle.js";
 import {
-  codexTaskRecoveryVisible,
-  codexTaskOperationsPresentation,
+  taskStoreRecoveryVisible,
+  codexBlocksTaskOperations,
   createCodexStatusSnapshot,
 } from "./model.js";
 
@@ -211,8 +211,8 @@ test("a failed foreground status refresh preserves the last useful readiness", a
 
   assert.equal(lifecycle.snapshot().phase, "failed");
   assert.equal(lifecycle.snapshot().status?.readiness?.state, "ready");
-  assert.equal(codexTaskOperationsPresentation(lifecycle.snapshot()).blocked, false);
-  assert.equal(codexTaskRecoveryVisible(lifecycle.snapshot()), false);
+  assert.equal(codexBlocksTaskOperations(lifecycle.snapshot().status), false);
+  assert.equal(taskStoreRecoveryVisible(lifecycle.snapshot()), false);
   lifecycle.disconnect();
 });
 

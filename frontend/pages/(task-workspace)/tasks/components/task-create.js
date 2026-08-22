@@ -1,7 +1,7 @@
 import { createTask } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
-import { codexBlocksTaskOperations } from "../../codex-status.js";
+import { taskStoreBlocksTaskOperations } from "../../codex-status.js";
 import { cleanLogicalPath } from "../task-format.js";
 import "./composer.js";
 
@@ -42,7 +42,7 @@ class CaffoldTaskCreate extends HTMLElement {
     this.browseCwd = true;
     this.composerSettings = null;
     this.transportAvailable = true;
-    this.codexOperationsBlocked = true;
+    this.taskOperationsBlocked = false;
     this.error = null;
     this.requestGeneration = 0;
     this.activeSubmissionId = "";
@@ -127,11 +127,13 @@ class CaffoldTaskCreate extends HTMLElement {
 
   setCodexStatusSnapshot(snapshot) {
     this.ensureState();
-    const blocked = codexBlocksTaskOperations(snapshot?.status);
-    if (this.codexOperationsBlocked === blocked) {
+    // Only the store gates creating — it is shared by every agent. Codex
+    // being unready costs the picker its Codex models and nothing more.
+    const blocked = taskStoreBlocksTaskOperations(snapshot?.status);
+    if (this.taskOperationsBlocked === blocked) {
       return;
     }
-    this.codexOperationsBlocked = blocked;
+    this.taskOperationsBlocked = blocked;
     this.syncComposer();
   }
 
@@ -242,7 +244,7 @@ class CaffoldTaskCreate extends HTMLElement {
       className: "task-new-form",
       cwd: this.selectedContextPath(),
       browseCwd: this.browseCwd,
-      placeholder: "Ask Codex to work from the current directory",
+      placeholder: "Ask an agent to work from the current directory",
       ariaLabel: "New task prompt",
       submitLabel: "Start task",
       cancel: false,
@@ -251,7 +253,7 @@ class CaffoldTaskCreate extends HTMLElement {
       fastMode: Boolean(settings.fastMode),
       disabled:
         !this.transportAvailable ||
-        this.codexOperationsBlocked ||
+        this.taskOperationsBlocked ||
         Boolean(this.activeSubmissionId),
       requestError: this.error?.message ?? "",
     });
@@ -264,7 +266,7 @@ class CaffoldTaskCreate extends HTMLElement {
     }
     region.innerHTML = this.error
       ? `<div class="task-create-error" role="alert">
-          ${renderInlineIcon("TriangleAlert", "Codex unavailable", "task-create-error-icon")}
+          ${renderInlineIcon("TriangleAlert", "Task creation failed", "task-create-error-icon")}
           <span>${escapeHtml(this.error.message)}</span>
         </div>`
       : "";

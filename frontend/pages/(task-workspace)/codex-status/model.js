@@ -99,73 +99,55 @@ export function codexState(snapshot) {
   return "unavailable";
 }
 
+// Two axes, deliberately apart. The Task store is shared by every agent, so
+// its readiness gates every Task operation. Codex readiness is one agent's,
+// and gates only Codex's own surfaces — never a route, never another agent.
 export function codexBlocksTaskOperations(status) {
-  return (
-    status?.taskStoreReadiness?.blocksTaskOperations === true ||
-    status?.readiness?.blocksTaskOperations !== false
-  );
+  return status?.readiness?.blocksTaskOperations === true;
 }
 
-export const PENDING_CODEX_TASK_OPERATIONS = taskOperationsPresentation({
-  phase: "pending",
-  blocked: true,
-  title: "Checking Codex readiness…",
-  message: "Checking Codex readiness…",
+export function taskStoreBlocksTaskOperations(status) {
+  return status?.taskStoreReadiness?.blocksTaskOperations === true;
+}
+
+const READY_TASK_OPERATIONS = taskOperationsPresentation({
+  phase: "ready",
+  blocked: false,
+  title: "New Task",
+  message: "",
 });
 
-export function codexTaskOperationsPresentation(snapshot) {
-  const status = snapshot?.status;
-  if (snapshot?.phase === "failed" && !status) {
-    return taskOperationsPresentation({
-      phase: "checkFailed",
-      blocked: true,
-      title: "Codex readiness check failed",
-      message: "Codex readiness check failed.",
-    });
+/// What every Task operation shares: the store's own gate, and nothing else.
+/// A store nobody has heard from yet is not a blocked store — an operation
+/// tried too early is refused by the server, which is the true answer.
+export function taskStoreOperationsPresentation(snapshot) {
+  const taskStore = snapshot?.status?.taskStoreReadiness;
+  if (!taskStore?.blocksTaskOperations) {
+    return READY_TASK_OPERATIONS;
   }
-
-  if (!codexBlocksTaskOperations(status)) {
-    return taskOperationsPresentation({
-      phase: "ready",
-      blocked: false,
-      title: "New Task",
-      message: "",
-    });
-  }
-
-  const taskStore = status?.taskStoreReadiness;
-  if (taskStore?.blocksTaskOperations) {
-    const content = taskStoreReadinessContent(taskStore, snapshot);
-    return taskOperationsPresentation({
-      phase: `taskStore:${taskStore.state ?? "blocked"}`,
-      blocked: true,
-      title: content.title,
-      message: content.message,
-    });
-  }
-
-  if (!status?.readiness) {
-    return PENDING_CODEX_TASK_OPERATIONS;
-  }
-
-  const title = `Codex ${formatCodexReadiness(snapshot).toLowerCase()}`;
+  const content = taskStoreReadinessContent(taskStore, snapshot);
   return taskOperationsPresentation({
-    phase: "blocking",
+    phase: `taskStore:${taskStore.state ?? "blocked"}`,
     blocked: true,
-    title,
-    message: `${title}.`,
+    title: content.title,
+    message: content.message,
   });
 }
 
-export function codexTaskRecoveryVisible(snapshot) {
+/// Whether the store's own card takes the Task surface over. Only the store
+/// earns that: nothing else may hold every Task hostage.
+export function taskStoreRecoveryVisible(snapshot) {
+  return taskStoreBlocksTaskOperations(snapshot?.status);
+}
+
+/// Whether the Codex setup card has something to say — shown beside the Task
+/// surface, never over it: Codex blocked, or a status nobody could load.
+export function codexSetupVisible(snapshot) {
   if (snapshot?.phase === "failed" && !snapshot?.status) {
     return true;
   }
   const status = snapshot?.status;
-  return Boolean(
-    status?.taskStoreReadiness?.blocksTaskOperations ||
-      (status?.readiness && codexBlocksTaskOperations(status)),
-  );
+  return Boolean(status?.readiness && codexBlocksTaskOperations(status));
 }
 
 function taskOperationsPresentation({ phase, blocked, title, message }) {
