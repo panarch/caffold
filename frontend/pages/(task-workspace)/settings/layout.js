@@ -30,6 +30,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.detachResponsiveListener();
     this.querySelector("caffold-settings-codex-page")?.deactivate();
+    this.querySelector("caffold-settings-claude-page")?.deactivate();
     this.querySelector("caffold-settings-notifications-page")?.deactivate();
     this.querySelector("caffold-settings-remote-access-page")?.deactivate();
   }
@@ -176,6 +177,11 @@ class CaffoldSettingsWorkspace extends HTMLElement {
       pages.codex?.activate();
     } else {
       pages.codex?.deactivate();
+    }
+    if (presentedSection === "claude") {
+      pages.claude?.activate();
+    } else {
+      pages.claude?.deactivate();
     }
     if (presentedSection === "notifications") {
       pages.notifications?.activate();

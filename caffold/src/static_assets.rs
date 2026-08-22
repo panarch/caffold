@@ -189,6 +189,9 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/claude/page.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/settings/claude/page.js"
         ))),
+        "pages/(task-workspace)/settings/claude/display.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/claude/display.js"
+        ))),
         "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css"
@@ -1045,6 +1048,7 @@ mod tests {
             "pages/(task-workspace)/settings/remote-access/tailscale.js",
             "pages/(task-workspace)/settings/codex/page.js",
             "pages/(task-workspace)/settings/claude/page.js",
+            "pages/(task-workspace)/settings/claude/display.js",
             "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
             "pages/(task-workspace)/settings/about/page.js",
         ] {

@@ -508,6 +508,40 @@ async fn declining_and_stopping_ends_the_turn_instead_of_letting_it_argue() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn the_installation_reports_itself_without_spending_anything() {
+    // The Settings page's data: the binary by running it, the account and the
+    // plan's usage windows in the agent's own name over `get_usage`. No model
+    // is called, so this spends nothing — and what only the real thing can
+    // prove is that every source actually answers.
+    let backend = Backend::start().await;
+
+    let status = backend
+        .get("/api/claude/status")
+        .await
+        .expect("the status answers");
+
+    assert_eq!(
+        status.get("problems"),
+        None,
+        "every source answered: {status}"
+    );
+    assert!(
+        status["executable"]["version"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Claude Code"),
+        "{status}"
+    );
+    assert_eq!(status["auth"]["loggedIn"], true, "{status}");
+    assert!(status["usage"].is_object(), "{status}");
+    assert_eq!(
+        status["runner"]["running"], false,
+        "nothing here started a runner: {status}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
 async fn a_turn_that_cannot_run_reads_as_a_failure_not_as_the_agent_talking() {
     // The API is a closed port, so no model is ever reached and this case
     // spends nothing. What only the real `claude` can prove is the frames it

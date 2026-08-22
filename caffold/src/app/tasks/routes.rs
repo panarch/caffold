@@ -314,6 +314,7 @@ pub(super) fn router(state: TaskState) -> Router {
         .merge(super::push::router())
         .route("/api/codex/status", get(codex_status))
         .route("/api/codex/restart", post(codex_restart))
+        .route("/api/claude/status", get(claude_status))
         .route("/api/claude/restart", post(claude_restart))
         .route("/api/agent/models", get(agent_models))
         .route("/api/agent/permissions", get(agent_permissions))

@@ -338,10 +338,10 @@ fn model_options(answer: &Value) -> Vec<ModelOption> {
 
 /// Ask a question that needs no conversation.
 ///
-/// The model list is the only one so far. It costs a process start and no
-/// tokens, and there is no daemon holding the answer, so a process is started
-/// for the question and ended with it.
-async fn ask_one_off(body: Value) -> Result<Value, ClaudeError> {
+/// The model list and the usage report are the ones so far. Each costs a
+/// process start and no tokens, and there is no daemon holding the answer, so
+/// a process is started for the question and ended with it.
+pub(super) async fn ask_one_off(body: Value) -> Result<Value, ClaudeError> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     let mut child = tokio::process::Command::new("claude")

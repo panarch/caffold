@@ -91,6 +91,7 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/settings/codex/page.js",
   "/assets/pages/(task-workspace)/settings/claude/page.css",
   "/assets/pages/(task-workspace)/settings/claude/page.js",
+  "/assets/pages/(task-workspace)/settings/claude/display.js",
   "/assets/pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css",
   "/assets/pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
   "/assets/pages/(task-workspace)/settings/about/page.css",

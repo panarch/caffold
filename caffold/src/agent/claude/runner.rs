@@ -426,6 +426,31 @@ impl RunnerClient {
         Ok(wire)
     }
 
+    /// What the runner is right now, from the one that is listening.
+    ///
+    /// A runner that is not listening is not started to answer: not running
+    /// is itself the answer, and starting one would change the very thing
+    /// being asked about.
+    pub(crate) async fn status(&self) -> Option<protocol::DaemonStatus> {
+        #[cfg(test)]
+        if let Some(mock) = &self.mock {
+            return Some(mock.status().await);
+        }
+        let Ok(mut client) = self.connect().await else {
+            return None;
+        };
+        match client.request(Request::DaemonStatus).await {
+            Ok(ReplyBody::Daemon(status)) => Some(status),
+            _ => None,
+        }
+    }
+
+    /// Whether this client stands on a mock rather than a socket.
+    #[cfg(test)]
+    pub(super) fn is_mock(&self) -> bool {
+        self.mock.is_some()
+    }
+
     /// The conversations the runner is still holding a process for.
     ///
     /// A runner that is not listening is not started to answer this. It would
@@ -752,12 +777,18 @@ impl MockRunner {
         for (_, session) in state.sessions.drain() {
             let _ = session.agent.send(RunnerEvent::Exit(Some(0)));
         }
+        drop(state);
+        self.status().await
+    }
+
+    /// Answer as the real runner answers, holding whatever the test opened.
+    async fn status(&self) -> protocol::DaemonStatus {
         protocol::DaemonStatus {
             protocol_version: protocol::PROTOCOL_VERSION,
             runner_version: "stand-in".to_string(),
             pid: 4242,
             socket: "stand-in".to_string(),
-            sessions: 0,
+            sessions: self.state.lock().await.sessions.len(),
             idle_timeout_secs: Some(600),
             unsubscribed_for_secs: None,
         }

@@ -41,6 +41,7 @@ pub(crate) mod runner;
 mod served_tools;
 mod session;
 mod settings;
+pub(crate) mod status;
 pub(crate) mod transcript;
 pub(crate) mod translate;
 
