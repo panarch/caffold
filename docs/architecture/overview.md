@@ -99,9 +99,13 @@ caffold/src/app/tasks/runtime/
 caffold/src/agent.rs                   the agents Caffold drives and the vocabulary they report in
 caffold/src/agent/driver.rs            which agent is being asked, and the questions that are the same for all
 caffold/src/agent/codex.rs             Codex app-server transport, protocol, readiness, and contract
-caffold/src/agent/claude.rs            Claude sessions, their control protocol, and their contract
+caffold/src/agent/claude.rs            the Claude client's surface: its types, turns, and approvals
 caffold/src/agent/claude/
   protocol.rs                          the stream-json and control wire types
+  session.rs                           opening a session, and what a reopened one already was
+  reading.rs                           interpreting everything the agent says, as it says it
+  served_tools.rs                      the in-process MCP tools Caffold serves the agent
+  settings.rs                          models and modes, and carrying choices to a running session
   translate.rs                         one translator from Claude content blocks to Caffold items
   transcript.rs                        reading a conversation back from the file the agent writes
   runner.rs                            reaching the runner, and the stand-in a test drives instead

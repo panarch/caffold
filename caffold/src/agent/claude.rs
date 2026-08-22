@@ -28,13 +28,23 @@
 //! as long as the session is watched, because that is what a viewer arriving
 //! mid-turn needs, and it is thrown away with the session. The record that
 //! outlives a restart is the one the agent writes, which [`transcript`] reads.
+//!
+//! This file is the client's surface — its types, its turns, its approvals —
+//! and each larger concern lives with its own module: [`session`] opens and
+//! takes back up, [`reading`] interprets everything the agent says,
+//! [`served_tools`] answers for the tools Caffold serves it, and [`settings`]
+//! carries what a person chose to a running session.
 
 pub(crate) mod protocol;
+mod reading;
 pub(crate) mod runner;
+mod served_tools;
+mod session;
+mod settings;
 pub(crate) mod transcript;
 pub(crate) mod translate;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -42,11 +52,12 @@ use serde_json::{Value, json};
 use tokio::sync::{Mutex as AsyncMutex, broadcast, oneshot};
 
 use self::protocol::{
-    BASE_ARGUMENTS, ControlRequestFrame, MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION, MessageFrame,
-    ResultFrame, StreamFrame, SystemFrame,
+    ControlRequestFrame, MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION, MessageFrame, ResultFrame,
+    StreamFrame, SystemFrame,
 };
-use self::runner::{RunnerClient, RunnerEvent, RunnerSession, SessionFrames};
-use self::translate::{ToolCalls, message_items};
+use self::runner::{RunnerClient, SessionFrames};
+use self::session::SessionStart;
+use self::translate::ToolCalls;
 use crate::agent::codex::CodexThreadError;
 use crate::agent::driver::{
     ClaudeConversation, Driver, ModelOption, PermissionModeOption, PermissionModes, TurnOptions,
@@ -57,7 +68,8 @@ use crate::agent::{
     ConversationItem, ItemKind, MessageContent, SessionEvent, SessionEventKind, ThreadActiveFlag,
     ThreadStatus, TokenCount, TokenUsage, Turn, TurnPage, TurnStatus,
 };
-use caffold_claude_runner::protocol::SessionState as RunnerSessionState;
+
+pub(crate) use self::served_tools::{AskedTool, ToolAsk};
 
 #[cfg(test)]
 pub(crate) use self::runner::MockRunnerHandle;
@@ -142,26 +154,6 @@ pub(crate) enum ClaudeRuntimeEvent {
     },
     /// Something worth writing down that nothing acts on.
     Diagnostic { message: String },
-}
-
-/// One call of a Caffold-served tool, carrying everything answering it needs.
-#[derive(Debug, Clone)]
-pub(crate) struct ToolAsk {
-    /// The control frame the answer closes.
-    request_id: String,
-    /// The MCP request inside it, echoed back in the answer.
-    mcp_id: Value,
-    pub(crate) asked: AskedTool,
-}
-
-/// The closed set of things an agent may ask Caffold to do.
-///
-/// A set rather than a name: like [`Driver`], a tool one release serves and
-/// another does not should fail as a missing arm where the doing is, not pass
-/// as a string.
-#[derive(Debug, Clone)]
-pub(crate) enum AskedTool {
-    RenameTask { name: String },
 }
 
 /// One session, and everything Caffold knows about it.
@@ -497,137 +489,6 @@ impl ClaudeClient {
             .ok_or_else(|| ClaudeError::NotWatching(conversation_id.to_string()))
     }
 
-    async fn open_session(
-        &self,
-        id: &str,
-        cwd: &str,
-        start: SessionStart,
-        options: &ClaudeTurnOptions,
-    ) -> Result<Arc<Session>, ClaudeError> {
-        let spawn = caffold_claude_runner::protocol::SpawnRequest {
-            argv: session_argv(id, start, options),
-            cwd: cwd.to_string(),
-            env: Default::default(),
-        };
-        let RunnerSession {
-            info,
-            frames,
-            events,
-        } = self.inner.runner.open(id, spawn).await?;
-        if matches!(info.state, RunnerSessionState::Exited) {
-            // The runner keeps an exited session listed so a client that
-            // reconnects can see that it happened. Watching one would be
-            // watching a process that is already gone.
-            return Err(ClaudeError::Runner(format!(
-                "the Claude session for {id} has already exited"
-            )));
-        }
-        let session = Arc::new(Session {
-            id: id.to_string(),
-            cwd: cwd.to_string(),
-            frames: AsyncMutex::new(frames),
-            state: AsyncMutex::new(SessionState {
-                opened_at_ms: now_ms(),
-                moved_at_ms: now_ms(),
-                model: options.model.clone(),
-                permission_mode: options.permission_mode.clone(),
-                effort: options.effort.clone(),
-                // Nothing was asked at start: there is no argument for speed,
-                // only a request a running session answers. The first turn
-                // asks, if speed is wanted.
-                fast_mode_requested: false,
-                ..SessionState::default()
-            }),
-            pending: AsyncMutex::new(HashMap::new()),
-            next_control_id: AtomicU64::new(1),
-        });
-        self.inner
-            .sessions
-            .lock()
-            .await
-            .insert(id.to_string(), session.clone());
-        self.spawn_reader(session.clone(), events);
-        match start {
-            SessionStart::Fresh => {
-                // Declaring what Caffold serves — and the once-only session
-                // setup asking the agent to name the new Task — must land
-                // before the first prompt, and needs nothing back: an answer
-                // nobody registered for is dropped by the reader. Waiting for
-                // it would put the agent's cold start in front of every Task
-                // somebody creates, for a reply that says nothing a fresh
-                // session needs.
-                if let Err(error) = session
-                    .send(protocol::control_request(
-                        "caffold-hello",
-                        protocol::initialize_request_for_a_new_task(),
-                    ))
-                    .await
-                {
-                    // A conversation whose open failed is not one this client
-                    // holds; leaving it in would answer for a session nobody
-                    // was ever handed.
-                    self.inner.sessions.lock().await.remove(id);
-                    return Err(error);
-                }
-            }
-            SessionStart::Resume => self.take_up_what_was_already_happening(&session).await,
-        }
-        Ok(session)
-    }
-
-    /// Learn what this session was doing before Caffold was here.
-    ///
-    /// A session the runner held across a restart of this process has a past
-    /// that nothing in this process remembers: a prompt may still be
-    /// outstanding, and questions may be waiting on an answer that the client
-    /// which was asked them is no longer around to give. The agent keeps both
-    /// and hands them over when a client says hello, which is what this is.
-    ///
-    /// Only for a conversation that had a past. A session started here and now
-    /// has nothing outstanding by construction, and asking anyway would put the
-    /// wait for an agent to come up in front of every Task somebody creates.
-    async fn take_up_what_was_already_happening(&self, session: &Arc<Session>) {
-        let hello = match session.control(protocol::initialize_request()).await {
-            Ok(hello) => hello,
-            Err(error) => {
-                self.publish(ClaudeRuntimeEvent::Diagnostic {
-                    message: format!("claude {} did not say hello: {error}", session.id),
-                });
-                return;
-            }
-        };
-        let working = hello.payload.get("session_state").and_then(Value::as_str) == Some("running");
-        if working && let Some(turn) = self.turn_left_running(&session.id, &session.cwd).await {
-            let mut state = session.state.lock().await;
-            state.active_turn = Some(turn.id.clone());
-            state.turns = vec![turn];
-        }
-        // Asked again exactly as they were first asked, so a question the agent
-        // is held up by reaches the reader by the path every other question
-        // takes. Nothing here decides what any of them means.
-        for question in hello.unanswered {
-            self.handle_line(session, &question.to_string()).await;
-        }
-    }
-
-    /// The turn a session is in the middle of, once the agent has said it is
-    /// in one.
-    ///
-    /// The agent answers *that* a prompt is outstanding and not *which* turn it
-    /// belongs to, so which one is read from the conversation the agent writes
-    /// for itself: a prompt still being answered opened the newest turn there.
-    ///
-    /// Without this, work arriving for a turn nothing knows about is dropped as
-    /// belonging to nothing, and the Task reads as idle for as long as the turn
-    /// runs — which is exactly as long as there is something to watch.
-    async fn turn_left_running(&self, id: &str, cwd: &str) -> Option<Turn> {
-        // The newest turn the conversation holds, which is the one the prompt
-        // the runner is still waiting on opened.
-        let mut turn = self.newest_filed_turn(cwd, id).await?;
-        turn.status = TurnStatus::InProgress;
-        Some(turn)
-    }
-
     /// The newest turn the conversation on disk holds.
     ///
     /// Both recoveries read the file the same way — the turn a resumed session
@@ -641,67 +502,6 @@ impl ClaudeClient {
             .await
             .ok()?;
         reading.page.turns.into_iter().next()
-    }
-
-    /// Whether a written prompt is still waiting to learn its turn's name.
-    async fn awaiting_a_turn_name(&self, session: &Arc<Session>) -> bool {
-        let state = session.state.lock().await;
-        state.pending_prompt.is_some() && state.active_turn.is_none()
-    }
-
-    /// The name the agent filed the pending prompt under.
-    ///
-    /// Asked of the conversation on disk when the prompt has not come home: the
-    /// agent files a prompt the moment it takes one, so the newest turn there
-    /// is the one the pending prompt opened, under the name every later reader
-    /// of the file will use. A name this session already knows is an older turn
-    /// read ahead of a prompt not yet flushed, and is refused — new work must
-    /// not be filed into a turn that already ended.
-    async fn filed_prompt_name(&self, session: &Arc<Session>) -> Option<String> {
-        let candidate = self.newest_filed_turn(&session.cwd, &session.id).await?.id;
-        let state = session.state.lock().await;
-        if state.turns.iter().any(|turn| turn.id == candidate) {
-            return None;
-        }
-        Some(candidate)
-    }
-
-    /// Read one session for as long as it says anything.
-    fn spawn_reader(&self, session: Arc<Session>, mut events: runner::SessionEvents) {
-        let client = self.clone();
-        tokio::spawn(async move {
-            let mut said_goodbye = false;
-            while let Some(event) = events.next().await {
-                match event {
-                    RunnerEvent::Frame(line) => client.handle_line(&session, &line).await,
-                    RunnerEvent::Stderr(line) => {
-                        client.publish(ClaudeRuntimeEvent::Diagnostic {
-                            message: format!("claude {}: {line}", session.id),
-                        });
-                    }
-                    RunnerEvent::Exit(code) => {
-                        client.handle_exit(&session, code).await;
-                        said_goodbye = true;
-                        break;
-                    }
-                }
-            }
-            // A session that stops speaking is no longer one Caffold can drive,
-            // whether it exited or the connection went away.
-            client.inner.sessions.lock().await.remove(&session.id);
-            if !said_goodbye {
-                // Nothing said it was ending, so the runner went away under it.
-                // Said out loud rather than dropped: everything Caffold last
-                // heard would otherwise stand as the current state of a
-                // conversation nothing can reach, and the way back to it is to
-                // open it again — which nobody does for a Task that looks like
-                // it is already being watched.
-                client.publish(ClaudeRuntimeEvent::Unreachable {
-                    conversation_id: session.id.clone(),
-                    message: "the Claude runner went away".to_string(),
-                });
-            }
-        });
     }
 
     fn publish(&self, event: ClaudeRuntimeEvent) {
@@ -817,97 +617,6 @@ impl ClaudeClient {
             .unwrap_or_else(|| open_turn(&mut state, &uuid::Uuid::new_v4().to_string(), Vec::new()))
     }
 
-    /// Bring the session to the settings a person has chosen.
-    ///
-    /// A Claude session takes its settings as arguments when it starts, so a
-    /// choice made afterwards has to reach the running agent — otherwise the
-    /// composer would show one thing and the conversation would run another.
-    ///
-    /// Most are control requests, which answer and are done with. Depth is a
-    /// command the agent runs, so it takes a turn of its own, and that turn has
-    /// to end before the person's begins. There is always room for it: settings
-    /// are locked while a turn is running, so a choice can only have been made
-    /// between turns.
-    ///
-    /// Speed is asked for rather than set. The agent reports what it actually
-    /// reached in every `system/init`, and an installation whose account has no
-    /// extra usage stays at its ordinary speed however often it is asked.
-    async fn apply_settings(
-        &self,
-        session: &Arc<Session>,
-        options: &ClaudeTurnOptions,
-    ) -> Result<(), ClaudeError> {
-        let (model_change, mode_change, effort_change, fast_mode_change) = {
-            let state = session.state.lock().await;
-            (
-                changed(&state.model, &options.model),
-                changed(&state.permission_mode, &options.permission_mode),
-                changed(&state.effort, &options.effort),
-                (state.fast_mode_requested != options.fast_mode).then_some(options.fast_mode),
-            )
-        };
-        let changed_anything = model_change.is_some()
-            || mode_change.is_some()
-            || effort_change.is_some()
-            || fast_mode_change.is_some();
-        if let Some(model) = model_change {
-            session
-                .control(json!({ "subtype": "set_model", "model": model }))
-                .await?;
-            session.state.lock().await.model = Some(model);
-        }
-        if let Some(mode) = mode_change {
-            session
-                .control(json!({ "subtype": "set_permission_mode", "mode": mode }))
-                .await?;
-            session.state.lock().await.permission_mode = Some(mode);
-        }
-        if let Some(effort) = effort_change {
-            self.ask_quietly(session, &format!("/effort {effort}"))
-                .await?;
-            session.state.lock().await.effort = Some(effort);
-        }
-        if let Some(fast_mode) = fast_mode_change {
-            session
-                .control(json!({
-                    "subtype": "apply_flag_settings",
-                    "settings": { "fastMode": fast_mode },
-                }))
-                .await?;
-            session.state.lock().await.fast_mode_requested = fast_mode;
-        }
-        if changed_anything {
-            let settings = self.settings_of_session(session).await;
-            self.report(&session.id, SessionEventKind::SettingsChanged { settings });
-        }
-        Ok(())
-    }
-
-    /// Ask the agent something the conversation should not show.
-    ///
-    /// The answer is a turn like any other, and it is waited for: what follows
-    /// is the person's turn, and a `result` arriving late would close theirs
-    /// instead of this one.
-    async fn ask_quietly(&self, session: &Arc<Session>, text: &str) -> Result<(), ClaudeError> {
-        let (sender, receiver) = oneshot::channel();
-        session.state.lock().await.quiet_turn = Some(sender);
-        if let Err(error) = session.send(protocol::user_message(text, &[])).await {
-            // Left standing, it would swallow the answer to the next turn.
-            session.state.lock().await.quiet_turn = None;
-            return Err(error);
-        }
-        match tokio::time::timeout(ANSWER_TIMEOUT, receiver).await {
-            Ok(_) => Ok(()),
-            Err(_) => {
-                session.state.lock().await.quiet_turn = None;
-                Err(ClaudeError::Protocol(format!(
-                    "claude did not answer {text} within {} seconds",
-                    ANSWER_TIMEOUT.as_secs()
-                )))
-            }
-        }
-    }
-
     /// Add to a turn already running.
     ///
     /// The agent takes this at its next tool-call boundary rather than at once,
@@ -948,120 +657,8 @@ impl ClaudeClient {
     }
 
     // -----------------------------------------------------------------------
-    // Settings
-    // -----------------------------------------------------------------------
-
-    /// The models this installation offers.
-    ///
-    /// The agent answers this over the control protocol, which means a process.
-    /// There is no daemon to ask, so one is started for the question and the
-    /// answer is kept.
-    pub(crate) async fn models(&self) -> Result<Vec<ModelOption>, ClaudeError> {
-        if let Some(cached) = self.inner.models.lock().await.clone() {
-            return Ok(cached);
-        }
-        let answer = ask_one_off(json!({ "subtype": "list_models" })).await?;
-        let models = model_options(&answer);
-        *self.inner.models.lock().await = Some(models.clone());
-        Ok(models)
-    }
-
-    /// Whether the model a person chose can decide permissions for itself.
-    ///
-    /// Read from the list the agent published. An installation whose list could
-    /// not be read offers no such model, so the mode is withheld rather than
-    /// offered and refused at the moment a turn starts.
-    async fn model_supports_auto_mode(&self, model: Option<&str>) -> bool {
-        let Some(model) = model else {
-            return false;
-        };
-        self.models()
-            .await
-            .unwrap_or_default()
-            .iter()
-            .any(|offered| offered.model == model && offered.supports_auto_mode)
-    }
-
-    /// Answer the model list from here rather than from a process.
-    ///
-    /// The cache is the real field, so a test that fills it exercises the same
-    /// path a second call in production takes.
-    #[cfg(test)]
-    pub(crate) async fn offer_models(&self, models: Vec<ModelOption>) {
-        *self.inner.models.lock().await = Some(models);
-    }
-
-    /// The ways a person can let this agent work, with this model.
-    ///
-    /// Named here rather than asked, because the agent does not offer a list:
-    /// the modes are a fixed part of its permission model, and what each one
-    /// gives up is knowledge that belongs to whoever drives it.
-    ///
-    /// All but one are fixed. Letting the model decide for itself is something
-    /// only some models can do, so it is offered when the chosen one can and
-    /// withheld — visibly — when it cannot. A model this installation does not
-    /// list is treated as unable, which is the safe direction: the mode that
-    /// asks a person is the one that stays.
-    ///
-    /// That mode is also what this agent works under by default, the way it
-    /// does when a person runs it themselves. A model that cannot falls back to
-    /// asking, because a default nobody can use is not a default.
-    pub(crate) async fn permission_modes(&self, model: Option<&str>) -> PermissionModes {
-        let auto = self.model_supports_auto_mode(model).await;
-        PermissionModes {
-            default_mode: if auto { "auto" } else { "default" }.to_string(),
-            options: vec![
-                {
-                    let mut mode = option(
-                        "auto",
-                        "Automatic",
-                        "The model decides what needs asking about, and asks only for that.",
-                        false,
-                    );
-                    mode.allowed = auto;
-                    mode.unavailable_reason = (!auto)
-                        .then(|| "This model cannot decide permissions for itself.".to_string());
-                    mode
-                },
-                option(
-                    "default",
-                    "Ask each time",
-                    "Stops for permission before every tool call it is not sure about.",
-                    false,
-                ),
-                option(
-                    "acceptEdits",
-                    "Accept edits",
-                    "Edits files without asking. Still stops for commands and anything reaching outside the workspace.",
-                    false,
-                ),
-                option(
-                    "plan",
-                    "Plan only",
-                    "Reads and reasons, and changes nothing until you accept a plan.",
-                    false,
-                ),
-                option(
-                    "bypassPermissions",
-                    "Full access",
-                    "Never asks. Every tool call runs, including ones that reach outside the workspace.",
-                    true,
-                ),
-            ],
-        }
-    }
-
-    // -----------------------------------------------------------------------
     // Reading a session
     // -----------------------------------------------------------------------
-
-    /// What the agent says its settings for this conversation are, with the
-    /// model and mode named the way they were chosen.
-    async fn settings_of_session(&self, session: &Arc<Session>) -> BTreeMap<String, Value> {
-        let state = session.state.lock().await;
-        let introduction = state.introduction.clone().unwrap_or_default();
-        settings_map(&introduction, &state)
-    }
 
     async fn conversation_of(&self, session: &Arc<Session>) -> Conversation {
         let state = session.state.lock().await;
@@ -1137,15 +734,6 @@ impl ClaudeClient {
         page
     }
 
-    /// What the agent says its settings for this conversation are, in its own
-    /// words.
-    pub(crate) async fn settings_of(&self, conversation_id: &str) -> BTreeMap<String, Value> {
-        let Some(session) = self.session(conversation_id).await else {
-            return BTreeMap::new();
-        };
-        self.settings_of_session(&session).await
-    }
-
     // -----------------------------------------------------------------------
     // Approvals
     // -----------------------------------------------------------------------
@@ -1184,399 +772,6 @@ impl ClaudeClient {
             self.interrupt_turn(conversation_id).await?;
         }
         Ok(())
-    }
-
-    // -----------------------------------------------------------------------
-    // The tools Caffold serves
-    // -----------------------------------------------------------------------
-
-    /// Answer a tool the agent called, after the application did the thing —
-    /// or could not.
-    pub(crate) async fn answer_tool_ask(
-        &self,
-        conversation_id: &str,
-        ask: &ToolAsk,
-        outcome: &Result<String, String>,
-    ) -> Result<(), ClaudeError> {
-        let session = self.require_session(conversation_id).await?;
-        session
-            .send(protocol::mcp_tool_outcome(
-                &ask.request_id,
-                &ask.mcp_id,
-                outcome,
-            ))
-            .await
-    }
-
-    /// Retitle the agent's own session, so the name Caffold keeps is also the
-    /// name the agent's own surfaces show.
-    pub(crate) async fn rename_conversation(
-        &self,
-        conversation_id: &str,
-        title: &str,
-    ) -> Result<(), ClaudeError> {
-        let session = self.require_session(conversation_id).await?;
-        session
-            .control(protocol::rename_session_request(title))
-            .await
-            .map(|_| ())
-    }
-
-    // -----------------------------------------------------------------------
-    // Reading what the agent said
-    // -----------------------------------------------------------------------
-
-    async fn handle_line(&self, session: &Arc<Session>, line: &str) {
-        let frame = match serde_json::from_str::<StreamFrame>(line) {
-            Ok(frame) => frame,
-            Err(error) => {
-                self.publish(ClaudeRuntimeEvent::Diagnostic {
-                    message: format!("unreadable Claude frame on {}: {error}", session.id),
-                });
-                return;
-            }
-        };
-        match frame {
-            StreamFrame::System(system) => self.handle_system(session, system).await,
-            StreamFrame::Assistant(message) => self.handle_message(session, message, false).await,
-            StreamFrame::User(message) => self.handle_message(session, message, true).await,
-            StreamFrame::Result(result) => self.handle_result(session, result).await,
-            StreamFrame::ControlRequest(request) => {
-                self.handle_control_request(session, request).await;
-            }
-            StreamFrame::ControlResponse(response) => {
-                let body = response.response;
-                let request_id = body.request_id.clone();
-                if let Some(waiting) = session.pending.lock().await.remove(&request_id) {
-                    let _ = waiting.send(body.into_result());
-                }
-            }
-            StreamFrame::Other => {}
-        }
-    }
-
-    async fn handle_system(&self, session: &Arc<Session>, system: SystemFrame) {
-        if system.subtype.as_deref() != Some("init") {
-            return;
-        }
-        let introduction = Introduction {
-            session_id: system.session_id,
-            permission_mode: system.permission_mode,
-            fast_mode: system.fast_mode_state.as_deref() == Some("on"),
-            fast_mode_blocked: system.fast_mode_disabled_reason,
-            cwd: system.cwd,
-            version: system.claude_code_version,
-            capabilities: system.capabilities,
-        };
-        {
-            let mut state = session.state.lock().await;
-            state.introduction = Some(introduction.clone());
-        }
-        for message in introduction_complaints(&session.id, &introduction) {
-            self.publish(ClaudeRuntimeEvent::Diagnostic { message });
-        }
-        let settings = self.settings_of_session(session).await;
-        self.report(&session.id, SessionEventKind::SettingsChanged { settings });
-    }
-
-    async fn handle_message(
-        &self,
-        session: &Arc<Session>,
-        frame: MessageFrame,
-        spoken_by_user: bool,
-    ) {
-        // A subagent's messages belong to the tool call that started it, which
-        // the conversation already shows. Folding them in would interleave two
-        // conversations under one turn.
-        if frame.parent_tool_use_id.is_some() {
-            return;
-        }
-        if frame.is_replay {
-            self.handle_replayed_prompt(session, frame).await;
-            return;
-        }
-        let awaiting_name = self.awaiting_a_turn_name(session).await;
-        if awaiting_name && spoken_by_user {
-            // A user frame between the prompt going in and the prompt coming
-            // home is the prompt's own reflection — the resize note a large
-            // image earns, or a replay that lost its marking — not new work.
-            // Taken as the agent answering unprompted, it would name the turn
-            // with an invented id while the file names it something else, and
-            // the same answer would then stand twice, once under each name.
-            // The file keeps whatever the reflection said, so nothing is lost
-            // by not drawing it live.
-            return;
-        }
-        // The name the turn will be known by, read from the conversation on
-        // disk when the prompt has not come home. Some sessions never hand one
-        // back — a session started before Caffold began asking still has the
-        // arguments it was started with — and the file names their turns too.
-        let filed = if awaiting_name {
-            self.filed_prompt_name(session).await
-        } else {
-            None
-        };
-        // The frame, not the message. One assistant message is streamed as
-        // several frames — thinking in one, its answer in the next — all
-        // carrying the same message identifier and each numbering its own
-        // blocks from zero. Anchoring on the message would make the answer
-        // overwrite the thinking that preceded it. The transcript writes one
-        // row per message and identifies rows the same way, so the frame
-        // identifier is what both readers can agree on.
-        let anchor = frame
-            .uuid
-            .clone()
-            .or_else(|| frame.message.id.clone())
-            .unwrap_or_else(|| format!("{}:{}", session.id, now_ms()));
-        let at_ms = frame
-            .timestamp
-            .as_deref()
-            .and_then(parse_timestamp_ms)
-            .unwrap_or_else(now_ms);
-
-        let (turn_id, items) = {
-            let mut state = session.state.lock().await;
-            // The agent answering a prompt it never handed back. Waiting for a
-            // handback that will never come would let this answer, and the
-            // `result` that ends it, arrive before the turn they belong to
-            // existed.
-            open_pending_turn(&mut state, filed.as_deref());
-            let Some(turn_id) = state.active_turn.clone() else {
-                // Work with no turn open belongs to nothing Caffold can show.
-                return;
-            };
-            let mut items = message_items(&frame.message, &anchor, &mut state.calls);
-            for item in &mut items {
-                if state.declined.remove(&item.id) {
-                    item.status = ActivityStatus::Declined;
-                }
-            }
-            (turn_id, items)
-        };
-        for item in items {
-            self.record_item(session, &turn_id, item.clone()).await;
-            self.report(
-                &session.id,
-                SessionEventKind::ItemChanged {
-                    turn_id: turn_id.clone(),
-                    item: item.clone(),
-                    at_ms,
-                },
-            );
-            if matches!(item.kind, ItemKind::FileChange { .. }) {
-                self.report(&session.id, SessionEventKind::DiffChanged);
-            }
-        }
-    }
-
-    /// A prompt coming home, which is the agent saying what it filed it as.
-    ///
-    /// The turn opens here rather than where the prompt was written, because
-    /// this is the last moment before the agent starts answering: everything
-    /// the agent says next arrives on this same stream, in order, and finds a
-    /// turn already waiting for it.
-    ///
-    /// A prompt nobody is waiting on is one Caffold sent on its own account — a
-    /// depth change, a message steering a running turn — and opens nothing.
-    async fn handle_replayed_prompt(&self, session: &Arc<Session>, frame: MessageFrame) {
-        let Some(anchor) = frame.uuid.as_deref() else {
-            return;
-        };
-        let mut state = session.state.lock().await;
-        open_pending_turn(&mut state, Some(anchor));
-    }
-
-    async fn handle_result(&self, session: &Arc<Session>, result: ResultFrame) {
-        let status = if result.was_interrupted() {
-            TurnStatus::Interrupted
-        } else if result.is_error {
-            TurnStatus::Failed
-        } else {
-            TurnStatus::Completed
-        };
-        let completed_at_ms = now_ms();
-
-        // A turn that began and ended without the agent handing its prompt
-        // back, which is a short answer on a session that cannot hand one back
-        // at all. Its name is read from the file like any other unhanded turn.
-        let filed = if self.awaiting_a_turn_name(session).await {
-            self.filed_prompt_name(session).await
-        } else {
-            None
-        };
-        let (turn, abandoned) = {
-            let mut state = session.state.lock().await;
-            if let Some(waiting) = state.quiet_turn.take() {
-                // Something Caffold asked for on its own account, answered.
-                let _ = waiting.send(());
-                return;
-            }
-            open_pending_turn(&mut state, filed.as_deref());
-            let Some(turn_id) = state.active_turn.take() else {
-                return;
-            };
-            // Whatever the agent left open, it will not answer now.
-            let abandoned = state.calls.abandon(match status {
-                TurnStatus::Completed => ActivityStatus::Completed,
-                _ => ActivityStatus::Failed,
-            });
-            state.pending_approvals.clear();
-            state.declined.clear();
-            let Some(turn) = state.turns.iter_mut().find(|turn| turn.id == turn_id) else {
-                return;
-            };
-            for item in &abandoned {
-                replace_item(&mut turn.items, item.clone());
-            }
-            turn.status = status;
-            turn.completed_at_ms = Some(completed_at_ms);
-            let turn = turn.clone();
-            state.moved_at_ms = completed_at_ms;
-            (turn, abandoned)
-        };
-
-        for item in abandoned {
-            self.report(
-                &session.id,
-                SessionEventKind::ItemChanged {
-                    turn_id: turn.id.clone(),
-                    item,
-                    at_ms: completed_at_ms,
-                },
-            );
-        }
-        if let Some(usage) = token_usage(&result) {
-            self.report(
-                &session.id,
-                SessionEventKind::UsageReported {
-                    turn_id: turn.id.clone(),
-                    usage,
-                },
-            );
-        }
-        self.report(&session.id, SessionEventKind::TurnEnded { turn });
-        self.report_status(session).await;
-    }
-
-    async fn handle_control_request(&self, session: &Arc<Session>, frame: ControlRequestFrame) {
-        match frame.request.subtype.as_deref() {
-            Some("can_use_tool") => {}
-            Some("mcp_message") => {
-                self.handle_mcp_message(session, frame).await;
-                return;
-            }
-            _ => {
-                // Hooks are asked for over this channel too. Caffold registers
-                // none, so anything unrecognized is answered empty rather than
-                // left to block the turn forever.
-                let _ = session
-                    .send(protocol::control_response(&frame.request_id, json!({})))
-                    .await;
-                return;
-            }
-        }
-        let turn_id = {
-            let mut state = session.state.lock().await;
-            state.pending_approvals.insert(
-                frame.request_id.clone(),
-                PendingApproval {
-                    suggestions: frame.request.permission_suggestions.clone(),
-                    item_id: frame.request.tool_use_id.clone(),
-                },
-            );
-            state.active_turn.clone()
-        };
-        let request = approval_request(&frame, turn_id);
-        self.publish(ClaudeRuntimeEvent::Approval {
-            conversation_id: session.id.clone(),
-            request: Box::new(request),
-        });
-        self.report_status(session).await;
-    }
-
-    /// One message for the MCP server Caffold hosts in this process.
-    ///
-    /// The chatter — handshake, discovery, notifications — is answered here,
-    /// because it has one true answer and no meaning to anyone else. A tool
-    /// call is the agent asking Caffold to do something, so it is published
-    /// for the application to do and to answer through
-    /// [`ClaudeClient::answer_tool_ask`].
-    async fn handle_mcp_message(&self, session: &Arc<Session>, frame: ControlRequestFrame) {
-        let request_id = frame.request_id;
-        if frame.request.server_name.as_deref() != Some(protocol::MCP_SERVER_NAME) {
-            // A server Caffold never declared. There is nothing sensible to
-            // say for it, only something to unblock.
-            let _ = session
-                .send(protocol::control_response(&request_id, json!({})))
-                .await;
-            return;
-        }
-        let message = frame.request.message;
-        let method = message.get("method").and_then(Value::as_str);
-        let mcp_id = message.get("id").cloned().unwrap_or(Value::Null);
-        let (Some(method), false) = (method, mcp_id.is_null()) else {
-            // A notification — or a reply, which a server is not sent — asks
-            // for nothing back beyond the acknowledgement.
-            let _ = session
-                .send(protocol::mcp_notification_ack(&request_id))
-                .await;
-            return;
-        };
-        let answered = match method {
-            "initialize" => protocol::mcp_result(
-                &request_id,
-                &mcp_id,
-                protocol::mcp_initialize_result(&message),
-            ),
-            "tools/list" => {
-                protocol::mcp_result(&request_id, &mcp_id, protocol::mcp_tool_listing())
-            }
-            "tools/call" => match tool_ask(&message, &request_id, &mcp_id) {
-                Ok(ask) => {
-                    self.publish(ClaudeRuntimeEvent::ToolAsked {
-                        conversation_id: session.id.clone(),
-                        ask,
-                    });
-                    return;
-                }
-                Err(trouble) => protocol::mcp_tool_outcome(&request_id, &mcp_id, &Err(trouble)),
-            },
-            method => protocol::mcp_method_refused(&request_id, &mcp_id, method),
-        };
-        let _ = session.send(answered).await;
-    }
-
-    async fn handle_exit(&self, session: &Arc<Session>, code: Option<i32>) {
-        {
-            let mut state = session.state.lock().await;
-            state.ended = true;
-            state.active_turn = None;
-        }
-        self.publish(ClaudeRuntimeEvent::Diagnostic {
-            message: match code {
-                Some(code) => format!("claude {} exited with status {code}", session.id),
-                None => format!("claude {} exited", session.id),
-            },
-        });
-        self.report(
-            &session.id,
-            SessionEventKind::StatusChanged {
-                status: ThreadStatus::Idle,
-            },
-        );
-    }
-
-    async fn record_item(&self, session: &Arc<Session>, turn_id: &str, item: ConversationItem) {
-        let mut state = session.state.lock().await;
-        state.moved_at_ms = now_ms();
-        if let Some(turn) = state.turns.iter_mut().find(|turn| turn.id == turn_id) {
-            replace_item(&mut turn.items, item);
-        }
-    }
-
-    async fn report_status(&self, session: &Arc<Session>) {
-        let status = status_of(&*session.state.lock().await);
-        self.report(&session.id, SessionEventKind::StatusChanged { status });
     }
 }
 
@@ -1697,15 +892,6 @@ impl From<ClaudeError> for TurnRejected {
     }
 }
 
-/// How a session is being started.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SessionStart {
-    /// A conversation that does not exist yet.
-    Fresh,
-    /// One the agent wrote to its own transcript and can pick up.
-    Resume,
-}
-
 /// What a person chose, in the agent's own words.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ClaudeTurnOptions {
@@ -1713,136 +899,6 @@ pub(crate) struct ClaudeTurnOptions {
     pub(crate) effort: Option<String>,
     pub(crate) fast_mode: bool,
     pub(crate) permission_mode: Option<String>,
-}
-
-/// The command that starts one session.
-fn session_argv(id: &str, start: SessionStart, options: &ClaudeTurnOptions) -> Vec<String> {
-    let mut argv = vec!["claude".to_string()];
-    argv.extend(BASE_ARGUMENTS.iter().map(|argument| argument.to_string()));
-    match start {
-        SessionStart::Fresh => {
-            argv.push("--session-id".to_string());
-            argv.push(id.to_string());
-        }
-        SessionStart::Resume => {
-            argv.push("--resume".to_string());
-            argv.push(id.to_string());
-        }
-    }
-    if let Some(model) = &options.model {
-        argv.push("--model".to_string());
-        argv.push(model.clone());
-    }
-    if let Some(effort) = &options.effort {
-        argv.push("--effort".to_string());
-        argv.push(effort.clone());
-    }
-    if let Some(mode) = &options.permission_mode {
-        argv.push("--permission-mode".to_string());
-        argv.push(mode.clone());
-    }
-    argv
-}
-
-fn option(mode: &str, label: &str, description: &str, dangerous: bool) -> PermissionModeOption {
-    PermissionModeOption {
-        mode: mode.to_string(),
-        label: label.to_string(),
-        description: description.to_string(),
-        allowed: true,
-        unavailable_reason: None,
-        dangerous,
-    }
-}
-
-/// What is wrong with the agent that just introduced itself.
-///
-/// Both of these are the kind of failure that otherwise shows up much later as
-/// behaviour nobody can explain — an approval that never arrives because the
-/// installed CLI predates the flag, or a Task quietly writing to a conversation
-/// that is not its own. Saying so at the moment the agent speaks is what makes
-/// them findable.
-fn introduction_complaints(expected_id: &str, introduction: &Introduction) -> Vec<String> {
-    let mut complaints = Vec::new();
-    if let Some(reported) = introduction.session_id.as_deref()
-        && reported != expected_id
-    {
-        complaints.push(format!(
-            "claude answered for session {reported} when Caffold asked for {expected_id}; \
-             this conversation belongs to another Task"
-        ));
-    }
-    if let Some(version) = introduction.version.as_deref()
-        && is_below_minimum(version)
-    {
-        complaints.push(format!(
-            "claude {version} is below the {MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION} Caffold \
-             drives; approvals and the model list may be missing"
-        ));
-    }
-    complaints
-}
-
-/// Whether an installed CLI is older than the one Caffold was built against.
-///
-/// A version that cannot be read is not treated as too old: refusing to drive
-/// an installation over an unparseable string would be worse than the risk it
-/// guards against.
-fn is_below_minimum(version: &str) -> bool {
-    let Ok(installed) = semver::Version::parse(version) else {
-        return false;
-    };
-    let Ok(minimum) = semver::Version::parse(MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION) else {
-        return false;
-    };
-    installed < minimum
-}
-
-/// What the agent says about itself, left in its own words.
-fn settings_map(introduction: &Introduction, state: &SessionState) -> BTreeMap<String, Value> {
-    let mut settings = BTreeMap::new();
-    // The name it was chosen by, and nothing when Caffold did not choose. The
-    // agent answers with what it resolved the choice to, which is the same
-    // model under a name the list a person picked from does not contain — so
-    // saying it would replace their choice with something the picker cannot
-    // find. A session Caffold resumed rather than started has no such name, and
-    // what the Task last ran under is the store's to remember.
-    // What a person chose. A session Caffold resumed rather than started has no
-    // such name, and the agent's own answer would be the resolved one — a model
-    // under a name the list a person picked from does not contain — so nothing
-    // is said and what the Task last ran under is the store's to remember.
-    if let Some(model) = &state.model {
-        settings.insert("model".to_string(), json!(model));
-    }
-    // What a person chose, and the agent's own answer only until they have.
-    if let Some(mode) = state
-        .permission_mode
-        .as_ref()
-        .or(introduction.permission_mode.as_ref())
-    {
-        settings.insert("permissionMode".to_string(), json!(mode));
-    }
-    if let Some(effort) = &state.effort {
-        settings.insert("reasoningEffort".to_string(), json!(effort));
-    }
-    // What the agent reached, not what was asked for.
-    settings.insert("fastMode".to_string(), json!(introduction.fast_mode));
-    if let Some(reason) = &introduction.fast_mode_blocked {
-        settings.insert("fastModeBlockedReason".to_string(), json!(reason));
-    }
-    if let Some(version) = &introduction.version {
-        settings.insert("version".to_string(), json!(version));
-    }
-    if !introduction.capabilities.is_empty() {
-        settings.insert("capabilities".to_string(), json!(introduction.capabilities));
-    }
-    settings
-}
-
-/// What a session has to be told, or nothing when it already runs that way.
-fn changed(current: &Option<String>, wanted: &Option<String>) -> Option<String> {
-    let wanted = wanted.as_deref()?;
-    (current.as_deref() != Some(wanted)).then(|| wanted.to_string())
 }
 
 /// Open the turn a written prompt is waiting for, if one is waiting.
@@ -1919,93 +975,12 @@ fn status_of(state: &SessionState) -> ThreadStatus {
     }
 }
 
-/// Put an item in its place, replacing the earlier report of the same one.
-fn replace_item(items: &mut Vec<ConversationItem>, item: ConversationItem) {
-    match items.iter_mut().find(|existing| existing.id == item.id) {
-        Some(existing) => *existing = item,
-        None => items.push(item),
-    }
-}
-
 fn preview_of(item: &ConversationItem) -> String {
     match &item.kind {
         ItemKind::UserMessage { text, .. } | ItemKind::AssistantMessage { text, .. } => {
             text.chars().take(120).collect()
         }
         _ => String::new(),
-    }
-}
-
-/// What the agent counted for a turn.
-fn token_usage(result: &ResultFrame) -> Option<TokenUsage> {
-    let usage = result.usage.as_ref()?;
-    let context_window = result
-        .model_usage
-        .values()
-        .find_map(|model| model.context_window);
-    let last = TokenCount {
-        total_tokens: usage.input_tokens + usage.output_tokens,
-        input_tokens: usage.input_tokens,
-        cached_input_tokens: usage.cache_read_input_tokens,
-        cache_write_input_tokens: usage.cache_creation_input_tokens,
-        output_tokens: usage.output_tokens,
-        // The agent reports thinking tokens inside its output count rather than
-        // beside it, so counting them again here would double them.
-        reasoning_output_tokens: 0,
-    };
-    Some(TokenUsage {
-        total: last.clone(),
-        last,
-        model_context_window: context_window,
-    })
-}
-
-/// One question the agent is blocked on, written for a person to read.
-fn approval_request(frame: &ControlRequestFrame, turn_id: Option<String>) -> ApprovalRequest {
-    let tool = frame.request.tool_name.clone().unwrap_or_default();
-    let command = frame
-        .request
-        .input
-        .get("command")
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    let path = frame
-        .request
-        .input
-        .get("file_path")
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    let title = match (&command, &path) {
-        (Some(command), _) => format!("Run {command}"),
-        (None, Some(path)) => format!("Edit {path}"),
-        (None, None) if tool.is_empty() => "Run a tool".to_string(),
-        (None, None) => format!("Use {tool}"),
-    };
-    ApprovalRequest {
-        id: frame.request_id.clone(),
-        turn_id,
-        item_id: frame.request.tool_use_id.clone(),
-        title,
-        reason: frame
-            .request
-            .decision_reason
-            .get("reason")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        detail: ApprovalDetail {
-            command,
-            cwd: None,
-            network_endpoint: None,
-            permissions: Vec::new(),
-            grant_root: path,
-            environment: None,
-        },
-        decisions: vec![
-            ApprovalDecision::Allow,
-            ApprovalDecision::AllowAlways,
-            ApprovalDecision::Deny,
-            ApprovalDecision::DenyAndStop,
-        ],
     }
 }
 
@@ -2029,93 +1004,20 @@ fn approval_answer(decision: ApprovalDecision, suggestions: Value) -> Value {
     }
 }
 
-/// What a `tools/call` asks for, in Caffold's words.
-///
-/// The shape is checked here — a call to a tool Caffold serves, with the
-/// arguments its schema promises — and what the ask means is judged where it
-/// is done, by the application.
-fn tool_ask(message: &Value, request_id: &str, mcp_id: &Value) -> Result<ToolAsk, String> {
-    let params = message.get("params").cloned().unwrap_or(Value::Null);
-    let tool = params
-        .get("name")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let asked = match tool {
-        protocol::RENAME_CURRENT_TASK_TOOL_NAME => {
-            let Some(name) = params
-                .get("arguments")
-                .and_then(|arguments| arguments.get("name"))
-                .and_then(Value::as_str)
-            else {
-                return Err("The new task name must be a non-empty string.".to_string());
-            };
-            AskedTool::RenameTask {
-                name: name.to_string(),
-            }
-        }
-        tool => return Err(format!("Caffold does not serve the tool `{tool}`.")),
-    };
-    Ok(ToolAsk {
-        request_id: request_id.to_string(),
-        mcp_id: mcp_id.clone(),
-        asked,
-    })
-}
-
-/// The models the agent listed, in Caffold's words.
-fn model_options(answer: &Value) -> Vec<ModelOption> {
-    let Some(models) = answer.get("models").and_then(Value::as_array) else {
-        return Vec::new();
-    };
-    models
-        .iter()
-        .filter_map(|model| {
-            let value = model.get("value")?.as_str()?.to_string();
-            let efforts = model
-                .get("supportedEffortLevels")
-                .and_then(Value::as_array)
-                .map(|levels| {
-                    levels
-                        .iter()
-                        .filter_map(|level| level.as_str().map(str::to_string))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            Some(ModelOption {
-                display_name: model
-                    .get("displayName")
-                    .and_then(Value::as_str)
-                    .unwrap_or(&value)
-                    .to_string(),
-                description: model
-                    .get("description")
-                    .and_then(Value::as_str)
-                    .map(str::to_string),
-                // The agent names its recommendation `default` rather than
-                // marking one, so that name is the mark.
-                is_default: value == "default",
-                default_effort: None,
-                supports_fast_mode: model
-                    .get("supportsFastMode")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false),
-                supports_auto_mode: model
-                    .get("supportsAutoMode")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false),
-                efforts,
-                model: value,
-            })
-        })
-        .collect()
-}
-
 /// Now, as the conversation counts time.
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|elapsed| elapsed.as_millis() as u64)
         .unwrap_or_default()
+}
+
+/// Put an item in its place, replacing the earlier report of the same one.
+fn replace_item(items: &mut Vec<ConversationItem>, item: ConversationItem) {
+    match items.iter_mut().find(|existing| existing.id == item.id) {
+        Some(existing) => *existing = item,
+        None => items.push(item),
+    }
 }
 
 /// When the agent says something happened, in milliseconds.
@@ -2125,86 +1027,8 @@ fn parse_timestamp_ms(timestamp: &str) -> Option<u64> {
         .and_then(|moment| u64::try_from(moment.timestamp_millis()).ok())
 }
 
-/// Ask a question that needs no conversation.
-///
-/// The model list is the only one so far. It costs a process start and no
-/// tokens, and there is no daemon holding the answer, so a process is started
-/// for the question and ended with it.
-async fn ask_one_off(body: Value) -> Result<Value, ClaudeError> {
-    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-
-    let mut child = tokio::process::Command::new("claude")
-        .args(BASE_ARGUMENTS.iter().filter(|argument| {
-            // The permission callback needs a conversation to belong to.
-            !matches!(**argument, "--permission-prompt-tool" | "stdio")
-        }))
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|error| ClaudeError::Runner(format!("could not start claude: {error}")))?;
-
-    let mut stdin = child
-        .stdin
-        .take()
-        .ok_or_else(|| ClaudeError::Runner("claude has no stdin".to_string()))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| ClaudeError::Runner("claude has no stdout".to_string()))?;
-
-    let request_id = "caffold-ask";
-    let line = format!("{}\n", protocol::control_request(request_id, body));
-    stdin
-        .write_all(line.as_bytes())
-        .await
-        .map_err(|error| ClaudeError::Runner(error.to_string()))?;
-    stdin
-        .flush()
-        .await
-        .map_err(|error| ClaudeError::Runner(error.to_string()))?;
-
-    let mut lines = BufReader::new(stdout).lines();
-    let answer = tokio::time::timeout(ANSWER_TIMEOUT, async {
-        loop {
-            let Some(line) = lines
-                .next_line()
-                .await
-                .map_err(|error| ClaudeError::Runner(error.to_string()))?
-            else {
-                break Err(ClaudeError::Protocol(
-                    "claude ended without answering".to_string(),
-                ));
-            };
-            let Ok(StreamFrame::ControlResponse(response)) =
-                serde_json::from_str::<StreamFrame>(&line)
-            else {
-                continue;
-            };
-            if response.response.request_id != request_id {
-                continue;
-            }
-            break response
-                .response
-                .into_result()
-                .map(|answer| answer.payload)
-                .map_err(ClaudeError::Agent);
-        }
-    })
-    .await
-    .unwrap_or_else(|_| {
-        Err(ClaudeError::Protocol(format!(
-            "claude did not answer within {} seconds",
-            ANSWER_TIMEOUT.as_secs()
-        )))
-    });
-    let _ = child.start_kill();
-    answer
-}
-
 #[cfg(test)]
-mod tests {
+mod test_support {
     use std::time::Duration;
 
     use serde_json::json;
@@ -2212,14 +1036,12 @@ mod tests {
 
     use super::*;
 
-    const SESSION: &str = "conversation-1";
-    const CWD: &str = "/Users/example/project";
-
+    pub(super) const SESSION: &str = "conversation-1";
+    pub(super) const CWD: &str = "/Users/example/project";
     /// Long enough for a report to cross a channel, short enough that a report
     /// that never comes fails the test instead of stalling it.
-    const REPORT_TIMEOUT: Duration = Duration::from_secs(2);
-
-    fn init_frame(session_id: &str) -> Value {
+    pub(super) const REPORT_TIMEOUT: Duration = Duration::from_secs(2);
+    pub(super) fn init_frame(session_id: &str) -> Value {
         json!({
             "type": "system",
             "subtype": "init",
@@ -2233,8 +1055,7 @@ mod tests {
             "fast_mode_disabled_reason": "extra_usage_disabled",
         })
     }
-
-    fn assistant_frame(id: &str, content: Value) -> Value {
+    pub(super) fn assistant_frame(id: &str, content: Value) -> Value {
         json!({
             "type": "assistant",
             "uuid": "frame-1",
@@ -2242,8 +1063,7 @@ mod tests {
             "message": { "id": id, "role": "assistant", "content": content },
         })
     }
-
-    fn result_frame(stop_reason: Option<&str>) -> Value {
+    pub(super) fn result_frame(stop_reason: Option<&str>) -> Value {
         json!({
             "type": "result",
             "subtype": "success",
@@ -2258,72 +1078,11 @@ mod tests {
             "modelUsage": { "claude-opus-5": { "contextWindow": 200_000 } },
         })
     }
-
-    fn options(model: &str) -> ClaudeTurnOptions {
+    pub(super) fn options(model: &str) -> ClaudeTurnOptions {
         ClaudeTurnOptions {
             model: Some(model.to_string()),
             ..ClaudeTurnOptions::default()
         }
-    }
-
-    #[tokio::test]
-    async fn a_session_that_stops_speaking_without_ending_is_one_to_open_again() {
-        // The runner killed outright. Nothing says the agent ended, because
-        // nothing is left to say it, and what Caffold last heard would go on
-        // standing as the state of a conversation it can no longer reach. Said
-        // out loud instead, because opening it again is the whole repair — and
-        // nothing opens a Task that already looks like one being watched.
-        let (client, runner, mut events) = watching().await;
-
-        runner.vanish(SESSION).await;
-
-        let reported = tokio::time::timeout(REPORT_TIMEOUT, async {
-            loop {
-                if let Ok(ClaudeRuntimeEvent::Unreachable {
-                    conversation_id, ..
-                }) = events.recv().await
-                {
-                    return conversation_id;
-                }
-            }
-        })
-        .await
-        .expect("the session says it can no longer be reached");
-        assert_eq!(reported, SESSION);
-        assert!(
-            client.session(SESSION).await.is_none(),
-            "and it is no longer one this client holds"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_session_the_agent_ended_says_so_rather_than_asking_to_be_opened_again() {
-        // The other half. An agent that exits has said what happened, and a
-        // conversation with no process behind it is not one to re-open behind
-        // a person's back.
-        let (_client, runner, mut events) = watching().await;
-
-        runner.exit(SESSION, Some(0)).await;
-
-        let ended = tokio::time::timeout(REPORT_TIMEOUT, async {
-            loop {
-                match events.recv().await {
-                    Ok(ClaudeRuntimeEvent::Unreachable { .. }) => return false,
-                    Ok(ClaudeRuntimeEvent::Session(SessionEvent {
-                        kind:
-                            SessionEventKind::StatusChanged {
-                                status: ThreadStatus::Idle,
-                            },
-                        ..
-                    })) => return true,
-                    Ok(_) => continue,
-                    Err(_) => return false,
-                }
-            }
-        })
-        .await
-        .expect("the exit is reported");
-        assert!(ended, "an exit is reported as an exit");
     }
 
     /// A conversation the agent has already written, where it writes them.
@@ -2331,7 +1090,7 @@ mod tests {
     /// A session Caffold restarted under is one whose whole history is on
     /// disk, so a case about picking one up has to start from a file rather
     /// than from what a stand-in says next.
-    fn written_conversation() -> tempfile::TempDir {
+    pub(super) fn written_conversation() -> tempfile::TempDir {
         let projects = tempfile::tempdir().expect("a projects directory");
         transcript::plant(
             projects.path(),
@@ -2342,234 +1101,9 @@ mod tests {
         projects
     }
 
-    #[tokio::test]
-    async fn a_session_still_working_is_picked_up_in_the_turn_it_is_working_on() {
-        // Caffold restarted while the agent was answering. The agent kept
-        // working and says so when it is greeted; the turn that prompt opened is
-        // read from what the agent has written so far. Without both, the rest of
-        // that turn arrives for a turn nothing knows about and is dropped, and
-        // the Task reads as idle for exactly as long as there is something to
-        // watch.
-        let projects = written_conversation();
-        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
-        runner
-            .greet_next_session_as(json!({ "response": { "session_state": "running" } }))
-            .await;
-        runner
-            .greet_next_session_with(vec![init_frame(SESSION)])
-            .await;
-
-        client
-            .open_conversation(SESSION, CWD, &options("opus"))
-            .await
-            .expect("the conversation opens");
-
-        let page = client.read_turns(SESSION, CWD, None, 8).await;
-        let running = page.turns.first().expect("the turn it was working on");
-        assert_eq!(running.id, "e848560b-26f6-4bcf-92e2-86539d420ab9");
-        assert_eq!(running.status, TurnStatus::InProgress);
-    }
-
-    #[tokio::test]
-    async fn a_prompts_reflection_does_not_take_the_turn_from_the_name_the_agent_filed() {
-        // A large image earns a resize note: an extra user row the agent adds
-        // beside the prompt, and on some models an extra user frame ahead of
-        // the prompt coming home. Taken as the agent answering unprompted, that
-        // frame named the turn with an invented id — and the file names it
-        // something else, so the same answer stood twice, once under each name.
-        let projects = tempfile::tempdir().expect("a projects directory");
-        transcript::plant(
-            projects.path(),
-            CWD,
-            SESSION,
-            concat!(
-                r#"{"type":"user","uuid":"filed-prompt","timestamp":"2026-08-21T13:38:40.000Z","promptSource":"sdk","message":{"role":"user","content":[{"type":"text","text":"do you see it?"}]}}"#,
-                "\n",
-                r#"{"type":"user","uuid":"note-row","timestamp":"2026-08-21T13:38:40.500Z","message":{"role":"user","content":[{"type":"text","text":"[Image: original 2004x410, displayed at 2000x409]"}]}}"#,
-                "\n",
-            ),
-        );
-        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
-        runner
-            .greet_next_session_with(vec![init_frame(SESSION)])
-            .await;
-        client
-            .open_conversation(SESSION, CWD, &options("opus"))
-            .await
-            .expect("the conversation opens");
-        runner.swallow_prompts(SESSION).await;
-
-        let starting = tokio::spawn({
-            let client = client.clone();
-            async move {
-                client
-                    .start_turn(SESSION, "do you see it?", &[], &options("opus"))
-                    .await
-            }
-        });
-        heard_the_prompt(&runner).await;
-
-        // The reflection arrives before the prompt comes home: a user frame
-        // with no replay marking.
-        runner
-            .say(
-                SESSION,
-                json!({
-                    "type": "user",
-                    "uuid": "note-row",
-                    "timestamp": "2026-08-21T13:38:40.500Z",
-                    "message": { "role": "user", "content": [{
-                        "type": "text",
-                        "text": "[Image: original 2004x410, displayed at 2000x409]",
-                    }]},
-                }),
-            )
-            .await;
-        // And the agent starts answering before any replay has arrived.
-        runner
-            .say(
-                SESSION,
-                assistant_frame("msg_1", json!([{ "type": "text", "text": "I see it." }])),
-            )
-            .await;
-
-        let turn = tokio::time::timeout(REPORT_TIMEOUT, starting)
-            .await
-            .expect("the turn opens without waiting out the handback")
-            .expect("the task finishes")
-            .expect("the turn starts");
-        assert_eq!(
-            turn.id, "filed-prompt",
-            "the turn is named what the agent filed the prompt as"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_conversation_waiting_on_a_person_is_not_idle_without_a_turn_to_show() {
-        // A conversation taken up while the agent was already blocked has the
-        // question before it has the turn the question belongs to. Read as idle
-        // in that moment, the Task withdraws the very question it just
-        // recovered, and the agent waits for an answer nobody can give.
-        let projects = written_conversation();
-        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
-        runner
-            .greet_next_session_as(json!({
-                "response": { "session_state": "running" },
-                "pending_permission_requests": [{
-                    "type": "control_request",
-                    "request_id": "req-left-waiting",
-                    "request": {
-                        "subtype": "can_use_tool",
-                        "tool_name": "Bash",
-                        "input": { "command": "rm -rf build" },
-                        "toolUseID": "toolu_7",
-                    },
-                }],
-            }))
-            .await;
-        runner
-            .greet_next_session_with(vec![init_frame(SESSION)])
-            .await;
-        client
-            .open_conversation(SESSION, CWD, &options("opus"))
-            .await
-            .expect("the conversation opens");
-
-        let session = client.session(SESSION).await.expect("the session");
-        {
-            // The turn it belongs to is not always recoverable, and the
-            // question is outstanding either way.
-            let mut state = session.state.lock().await;
-            state.active_turn = None;
-        }
-
-        let status = status_of(&*session.state.lock().await);
-        assert_eq!(
-            status,
-            ThreadStatus::Active {
-                active_flags: vec![ThreadActiveFlag::WaitingOnApproval],
-            },
-        );
-    }
-
-    #[tokio::test]
-    async fn a_question_the_agent_is_held_up_by_comes_back_when_it_is_greeted() {
-        // The client that was asked is gone, and the agent is waiting on an
-        // answer only a client can give. It hands the question back, as it
-        // asked it, to whichever client says hello next — so the question
-        // arrives here by the path every other question takes, and nothing has
-        // to be kept anywhere in the meantime.
-        let projects = written_conversation();
-        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
-        let events = client.subscribe();
-        runner
-            .greet_next_session_as(json!({
-                "response": { "session_state": "running" },
-                "pending_permission_requests": [{
-                    "type": "control_request",
-                    "request_id": "req-left-waiting",
-                    "request": {
-                        "subtype": "can_use_tool",
-                        "tool_name": "Bash",
-                        "input": { "command": "rm -rf build" },
-                        "toolUseID": "toolu_7",
-                    },
-                }],
-            }))
-            .await;
-        runner
-            .greet_next_session_with(vec![init_frame(SESSION)])
-            .await;
-
-        client
-            .open_conversation(SESSION, CWD, &options("opus"))
-            .await
-            .expect("the conversation opens");
-
-        let mut events = events;
-        let asked = tokio::time::timeout(REPORT_TIMEOUT, async {
-            loop {
-                if let Ok(ClaudeRuntimeEvent::Approval { request, .. }) = events.recv().await {
-                    return request;
-                }
-            }
-        })
-        .await
-        .expect("the question is put to somebody who can answer it");
-        assert_eq!(asked.id, "req-left-waiting");
-    }
-
-    #[tokio::test]
-    async fn a_session_working_on_nothing_is_picked_up_with_no_turn_open() {
-        // The half that keeps the other half honest. Taken as running without
-        // asking, every conversation would show its last turn as never having
-        // ended.
-        let projects = written_conversation();
-        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
-        runner
-            .greet_next_session_with(vec![init_frame(SESSION)])
-            .await;
-
-        client
-            .open_conversation(SESSION, CWD, &options("opus"))
-            .await
-            .expect("the conversation opens");
-
-        let page = client.read_turns(SESSION, CWD, None, 8).await;
-        assert!(
-            page.turns
-                .iter()
-                .all(|turn| turn.status == TurnStatus::Completed),
-            "nothing is outstanding: {:?}",
-            page.turns
-                .iter()
-                .map(|turn| turn.status)
-                .collect::<Vec<_>>()
-        );
-    }
-
     /// A client watching one conversation the stand-in has already greeted.
-    async fn watching() -> (ClaudeClient, MockRunnerHandle, Receiver<ClaudeRuntimeEvent>) {
+    pub(super) async fn watching() -> (ClaudeClient, MockRunnerHandle, Receiver<ClaudeRuntimeEvent>)
+    {
         let (client, runner) = ClaudeClient::mock();
         let events = client.subscribe();
         runner
@@ -2585,7 +1119,7 @@ mod tests {
     }
 
     /// Start a turn and consume the prompt, which is its own first item.
-    async fn running_turn(
+    pub(super) async fn running_turn(
         client: &ClaudeClient,
         events: &mut Receiver<ClaudeRuntimeEvent>,
         prompt: &str,
@@ -2618,7 +1152,7 @@ mod tests {
     }
 
     /// Every user message written to the session, in order.
-    async fn spoken(runner: &MockRunnerHandle) -> Vec<String> {
+    pub(super) async fn spoken(runner: &MockRunnerHandle) -> Vec<String> {
         runner
             .heard(SESSION)
             .await
@@ -2634,7 +1168,7 @@ mod tests {
 
     /// The next report of the kind this asks for, or a failure saying it never
     /// came.
-    async fn next_session_event(
+    pub(super) async fn next_session_event(
         events: &mut Receiver<ClaudeRuntimeEvent>,
         wanted: &str,
     ) -> SessionEventKind {
@@ -2652,8 +1186,9 @@ mod tests {
             }
         }
     }
-
-    async fn next_approval(events: &mut Receiver<ClaudeRuntimeEvent>) -> ApprovalRequest {
+    pub(super) async fn next_approval(
+        events: &mut Receiver<ClaudeRuntimeEvent>,
+    ) -> ApprovalRequest {
         let deadline = tokio::time::Instant::now() + REPORT_TIMEOUT;
         loop {
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
@@ -2666,8 +1201,7 @@ mod tests {
             }
         }
     }
-
-    async fn next_diagnostic(events: &mut Receiver<ClaudeRuntimeEvent>) -> String {
+    pub(super) async fn next_diagnostic(events: &mut Receiver<ClaudeRuntimeEvent>) -> String {
         let deadline = tokio::time::Instant::now() + REPORT_TIMEOUT;
         loop {
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
@@ -2680,8 +1214,7 @@ mod tests {
             }
         }
     }
-
-    fn kind_name(kind: &SessionEventKind) -> &'static str {
+    pub(super) fn kind_name(kind: &SessionEventKind) -> &'static str {
         match kind {
             SessionEventKind::ConversationStarted { .. } => "conversation started",
             SessionEventKind::StatusChanged { .. } => "status change",
@@ -2696,275 +1229,9 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn a_conversation_is_started_under_the_identifier_caffold_chose() {
-        // One name for the Task, the runner session, and the agent's own
-        // session is what keeps them from drifting apart.
-        let (client, runner) = ClaudeClient::mock();
-        runner
-            .greet_next_session_with(vec![json!({
-                "type": "system",
-                "subtype": "init",
-                "session_id": "the-agent-answers-here",
-                "cwd": CWD,
-            })])
-            .await;
-
-        let conversation = client
-            .start_conversation(CWD, &options("opus"))
-            .await
-            .expect("the conversation starts");
-
-        let spawn = runner
-            .spawned(&conversation.id)
-            .await
-            .expect("the session was created");
-        assert_eq!(spawn.cwd, CWD);
-        let session_flag = spawn.argv.windows(2).find(|pair| pair[0] == "--session-id");
-        assert_eq!(
-            session_flag.map(|pair| pair[1].as_str()),
-            Some(conversation.id.as_str()),
-            "the agent is told the identifier rather than asked for one"
-        );
-        assert!(
-            spawn
-                .argv
-                .windows(2)
-                .any(|pair| pair[0] == "--model" && pair[1] == "opus"),
-            "{:?}",
-            spawn.argv
-        );
-        assert!(
-            spawn
-                .argv
-                .windows(2)
-                .any(|pair| pair[0] == "--permission-prompt-tool" && pair[1] == "stdio"),
-            "without this the agent never asks before it acts"
-        );
-    }
-
-    #[tokio::test]
-    async fn opening_a_conversation_resumes_the_one_the_agent_already_has() {
-        let (client, runner) = ClaudeClient::mock();
-        runner
-            .greet_next_session_with(vec![init_frame(SESSION)])
-            .await;
-
-        client
-            .open_conversation(SESSION, CWD, &ClaudeTurnOptions::default())
-            .await
-            .expect("the conversation opens");
-
-        let spawn = runner.spawned(SESSION).await.expect("a session");
-        assert!(
-            spawn
-                .argv
-                .windows(2)
-                .any(|pair| pair[0] == "--resume" && pair[1] == SESSION),
-            "{:?}",
-            spawn.argv
-        );
-        assert_eq!(
-            spawn.cwd, CWD,
-            "resuming does not restore where the conversation ran, so Caffold says"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_turn_carries_the_prompt_and_ends_on_the_agents_answer() {
-        let (client, runner, mut events) = watching().await;
-
-        let turn = client
-            .start_turn(SESSION, "fix the test", &[], &options("opus"))
-            .await
-            .expect("the turn starts");
-
-        let heard = runner.prompts(SESSION).await;
-        assert_eq!(heard.len(), 1, "one prompt, written once");
-        assert_eq!(
-            heard[0]["message"]["content"][0]["text"], "fix the test",
-            "{:?}",
-            heard[0]
-        );
-        assert_eq!(turn.status, TurnStatus::InProgress);
-
-        runner.say(SESSION, result_frame(Some("end_turn"))).await;
-
-        let SessionEventKind::TurnEnded { turn: ended } =
-            next_session_event(&mut events, "turn end").await
-        else {
-            unreachable!("asked for a turn end");
-        };
-        assert_eq!(
-            ended.id, turn.id,
-            "the turn that ended is the one that began"
-        );
-        assert_eq!(ended.status, TurnStatus::Completed);
-        assert!(ended.completed_at_ms.is_some());
-    }
-
-    #[tokio::test]
-    async fn a_turn_is_called_what_the_agent_filed_the_prompt_as() {
-        // The name is the whole point: it is what the transcript will know this
-        // turn by, so a Caffold that restarts reads this turn back as this turn
-        // rather than as one more just like it.
-        let (client, runner, _events) = watching().await;
-
-        let turn = client
-            .start_turn(SESSION, "fix the test", &[], &options("opus"))
-            .await
-            .expect("the turn starts");
-
-        assert_eq!(turn.id, format!("{SESSION}-prompt-1"));
-        assert_eq!(turn.items[0].id, format!("{SESSION}-prompt-1:prompt"));
-        assert!(matches!(
-            &turn.items[0].kind,
-            ItemKind::UserMessage { text, .. } if text == "fix the test"
-        ));
-        let heard = runner.prompts(SESSION).await;
-        assert_eq!(heard.len(), 1, "the prompt was written once, not twice");
-    }
-
-    #[tokio::test]
-    async fn a_picture_sent_with_a_prompt_belongs_to_the_turn_it_started() {
-        // Until now Caffold showed one from an event of its own, which lives in
-        // the backend rather than in the conversation and dies with it. The
-        // turn carrying it is what survives being read back.
-        let (client, runner, _events) = watching().await;
-        let picture = "data:image/png;base64,aGVsbG8=".to_string();
-
-        let turn = client
-            .start_turn(
-                SESSION,
-                "what is this",
-                std::slice::from_ref(&picture),
-                &options("opus"),
-            )
-            .await
-            .expect("the turn starts");
-
-        let ItemKind::UserMessage { text, content } = &turn.items[0].kind else {
-            panic!("the prompt is what a person said: {:?}", turn.items[0].kind);
-        };
-        assert_eq!(text, "what is this", "the words are the words");
-        assert_eq!(
-            content,
-            &vec![
-                MessageContent::Text {
-                    text: "what is this".to_string()
-                },
-                MessageContent::Image {
-                    url: picture.clone()
-                },
-            ]
-        );
-
-        // And it reached the agent as a picture rather than as its data URL.
-        let heard = runner.prompts(SESSION).await;
-        let blocks = heard[0]["message"]["content"]
-            .as_array()
-            .expect("content")
-            .clone();
-        assert_eq!(blocks[1]["type"], "image");
-        assert_eq!(blocks[1]["source"]["media_type"], "image/png");
-    }
-
-    #[tokio::test]
-    async fn a_session_that_never_hands_a_prompt_back_still_runs_and_ends_its_turn() {
-        // A session the runner held from before Caffold began asking to be
-        // handed prompts back cannot hand one back, and its arguments are fixed
-        // for as long as it lives. Waiting for one let the answer — and the
-        // `result` that ends the turn — go by before the turn existed, and what
-        // was opened afterwards had nothing left to close it.
-        let (client, runner, mut events) = watching().await;
-        runner.swallow_prompts(SESSION).await;
-
-        let starting = tokio::spawn({
-            let client = client.clone();
-            async move {
-                client
-                    .start_turn(SESSION, "fix the test", &[], &options("opus"))
-                    .await
-            }
-        });
-        heard_the_prompt(&runner).await;
-
-        // The agent answers as though nothing had to be acknowledged.
-        runner
-            .say(
-                SESSION,
-                assistant_frame("msg_1", json!([{ "type": "text", "text": "done" }])),
-            )
-            .await;
-        let turn = tokio::time::timeout(REPORT_TIMEOUT, starting)
-            .await
-            .expect("the turn does not wait out the handback")
-            .expect("the task finishes")
-            .expect("the turn starts");
-        assert_eq!(turn.status, TurnStatus::InProgress);
-
-        runner.say(SESSION, result_frame(Some("end_turn"))).await;
-
-        let ended = loop {
-            if let SessionEventKind::TurnEnded { turn } =
-                next_session_event(&mut events, "turn end").await
-            {
-                break turn;
-            }
-        };
-        assert_eq!(
-            ended.id, turn.id,
-            "the turn that ended is the one that began"
-        );
-        assert_eq!(ended.status, TurnStatus::Completed);
-        assert!(
-            ended.items.iter().any(|item| matches!(
-                &item.kind,
-                ItemKind::AssistantMessage { text, .. } if text == "done"
-            )),
-            "the answer belongs to the turn: {:?}",
-            ended.items
-        );
-    }
-
-    #[tokio::test]
-    async fn a_turn_answered_only_by_its_result_is_still_a_turn() {
-        // The shortest way for the answer to outrun the handback: nothing to
-        // say, and the turn over.
-        let (client, runner, mut events) = watching().await;
-        runner.swallow_prompts(SESSION).await;
-
-        let starting = tokio::spawn({
-            let client = client.clone();
-            async move {
-                client
-                    .start_turn(SESSION, "fix the test", &[], &options("opus"))
-                    .await
-            }
-        });
-        heard_the_prompt(&runner).await;
-        runner.say(SESSION, result_frame(Some("end_turn"))).await;
-
-        let turn = tokio::time::timeout(REPORT_TIMEOUT, starting)
-            .await
-            .expect("the turn does not wait out the handback")
-            .expect("the task finishes")
-            .expect("the turn starts");
-
-        let ended = loop {
-            if let SessionEventKind::TurnEnded { turn } =
-                next_session_event(&mut events, "turn end").await
-            {
-                break turn;
-            }
-        };
-        assert_eq!(ended.id, turn.id);
-        assert_eq!(ended.status, TurnStatus::Completed);
-    }
-
     /// Wait until the prompt has reached the agent, so what the agent says next
     /// is said to a session that is waiting for it.
-    async fn heard_the_prompt(runner: &MockRunnerHandle) {
+    pub(super) async fn heard_the_prompt(runner: &MockRunnerHandle) {
         tokio::time::timeout(REPORT_TIMEOUT, async {
             loop {
                 if runner
@@ -2983,7 +1250,10 @@ mod tests {
     }
 
     /// Wait until the driver has written a frame the predicate accepts.
-    async fn wrote(runner: &MockRunnerHandle, accepted: impl Fn(&Value) -> bool) -> Value {
+    pub(super) async fn wrote(
+        runner: &MockRunnerHandle,
+        accepted: impl Fn(&Value) -> bool,
+    ) -> Value {
         tokio::time::timeout(REPORT_TIMEOUT, async {
             loop {
                 if let Some(frame) = runner
@@ -3000,330 +1270,16 @@ mod tests {
         .await
         .expect("the driver answers")
     }
+}
 
-    fn mcp_frame(id: u64, method: &str, params: Value) -> Value {
-        json!({
-            "type": "control_request",
-            "request_id": format!("agent-{id}"),
-            "request": {
-                "subtype": "mcp_message",
-                "server_name": "caffold",
-                "message": { "jsonrpc": "2.0", "id": id, "method": method, "params": params },
-            },
-        })
-    }
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
 
-    fn mcp_response_in(frame: &Value) -> &Value {
-        &frame["response"]["response"]["mcp_response"]
-    }
+    use serde_json::json;
 
-    #[tokio::test]
-    async fn a_fresh_session_declares_what_caffold_serves_before_anything_else() {
-        let (client, runner) = ClaudeClient::mock();
-        let conversation = client
-            .start_conversation(CWD, &options("opus"))
-            .await
-            .expect("the conversation opens");
-
-        let heard = runner.heard(&conversation.id).await;
-        let hello = heard.first().expect("the declaration is the first word");
-        assert_eq!(hello["type"], "control_request");
-        assert_eq!(hello["request"]["subtype"], "initialize");
-        assert_eq!(hello["request"]["sdkMcpServers"], json!(["caffold"]));
-        // A fresh session is a newly created Task, so its hello also carries
-        // the once-only setup asking the agent to name it on the first turn.
-        assert!(hello["request"]["appendSystemPrompt"].is_string());
-    }
-
-    #[tokio::test]
-    async fn a_session_taken_back_up_declares_the_same_way_it_greets() {
-        // `sdkMcpServers` is processed on every initialize, so the greeting a
-        // re-attached session already sends is also its declaration.
-        let (_client, runner, _events) = watching().await;
-
-        let heard = runner.heard(SESSION).await;
-        let hello = heard.first().expect("the greeting is the first word");
-        assert_eq!(hello["request"]["subtype"], "initialize");
-        assert_eq!(hello["request"]["sdkMcpServers"], json!(["caffold"]));
-        // But not the new-Task setup: this conversation is not newly created,
-        // and its first turn has long since happened.
-        assert!(hello["request"].get("appendSystemPrompt").is_none());
-    }
-
-    #[tokio::test]
-    async fn the_mcp_chatter_is_answered_where_it_arrives() {
-        // Handshake and discovery have one true answer each; nothing should
-        // wait on the application to give it.
-        let (_client, runner, _events) = watching().await;
-
-        runner
-            .say(
-                SESSION,
-                mcp_frame(1, "initialize", json!({ "protocolVersion": "2031-01-01" })),
-            )
-            .await;
-        let shaken = wrote(&runner, |frame| mcp_response_in(frame)["id"] == 1).await;
-        let result = &mcp_response_in(&shaken)["result"];
-        assert_eq!(result["protocolVersion"], "2031-01-01");
-        assert_eq!(result["serverInfo"]["name"], "caffold");
-
-        runner
-            .say(SESSION, mcp_frame(2, "tools/list", json!({})))
-            .await;
-        let listed = wrote(&runner, |frame| mcp_response_in(frame)["id"] == 2).await;
-        assert_eq!(
-            mcp_response_in(&listed)["result"]["tools"][0]["name"],
-            "rename_current_task"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_tool_call_is_published_for_the_application_and_answered_through_the_client() {
-        let (client, runner, mut events) = watching().await;
-
-        runner
-            .say(
-                SESSION,
-                mcp_frame(
-                    3,
-                    "tools/call",
-                    json!({
-                        "name": "rename_current_task",
-                        "arguments": { "name": "A better name" },
-                    }),
-                ),
-            )
-            .await;
-        let ask = tokio::time::timeout(REPORT_TIMEOUT, async {
-            loop {
-                if let Ok(ClaudeRuntimeEvent::ToolAsked {
-                    conversation_id,
-                    ask,
-                }) = events.recv().await
-                {
-                    assert_eq!(conversation_id, SESSION);
-                    return ask;
-                }
-            }
-        })
-        .await
-        .expect("the ask reaches the application");
-        let AskedTool::RenameTask { name } = &ask.asked;
-        assert_eq!(name, "A better name");
-
-        client
-            .answer_tool_ask(SESSION, &ask, &Ok("Renamed.".to_string()))
-            .await
-            .expect("the answer goes back");
-        let answered = wrote(&runner, |frame| mcp_response_in(frame)["id"] == 3).await;
-        let result = &mcp_response_in(&answered)["result"];
-        assert_eq!(result["content"][0]["text"], "Renamed.");
-        assert!(result.get("isError").is_none());
-    }
-
-    #[tokio::test]
-    async fn a_tool_caffold_does_not_serve_is_refused_with_nobody_asked() {
-        let (_client, runner, _events) = watching().await;
-
-        runner
-            .say(
-                SESSION,
-                mcp_frame(4, "tools/call", json!({ "name": "drop_all_tables" })),
-            )
-            .await;
-        let refused = wrote(&runner, |frame| mcp_response_in(frame)["id"] == 4).await;
-        let result = &mcp_response_in(&refused)["result"];
-        assert_eq!(result["isError"], true);
-        assert_eq!(
-            result["content"][0]["text"],
-            "Caffold does not serve the tool `drop_all_tables`."
-        );
-    }
-
-    #[tokio::test]
-    async fn an_mcp_notification_is_acknowledged_and_asks_nothing_of_anyone() {
-        let (_client, runner, _events) = watching().await;
-
-        runner
-            .say(
-                SESSION,
-                json!({
-                    "type": "control_request",
-                    "request_id": "agent-10",
-                    "request": {
-                        "subtype": "mcp_message",
-                        "server_name": "caffold",
-                        "message": { "jsonrpc": "2.0", "method": "notifications/initialized" },
-                    },
-                }),
-            )
-            .await;
-        let acknowledged = wrote(&runner, |frame| {
-            frame["type"] == "control_response" && frame["response"]["request_id"] == "agent-10"
-        })
-        .await;
-        assert_eq!(mcp_response_in(&acknowledged)["result"], json!({}));
-    }
-
-    #[tokio::test]
-    async fn a_message_for_a_server_caffold_never_declared_is_unblocked_and_no_more() {
-        let (_client, runner, _events) = watching().await;
-
-        runner
-            .say(
-                SESSION,
-                json!({
-                    "type": "control_request",
-                    "request_id": "agent-11",
-                    "request": {
-                        "subtype": "mcp_message",
-                        "server_name": "somebody-else",
-                        "message": { "jsonrpc": "2.0", "id": 11, "method": "tools/list" },
-                    },
-                }),
-            )
-            .await;
-        let unblocked = wrote(&runner, |frame| {
-            frame["type"] == "control_response" && frame["response"]["request_id"] == "agent-11"
-        })
-        .await;
-        assert!(
-            unblocked["response"]["response"]
-                .get("mcp_response")
-                .is_none(),
-            "an undeclared server gets an unblocking nothing, not an answer"
-        );
-    }
-
-    #[tokio::test]
-    async fn renaming_the_agents_session_asks_the_agent_in_its_own_subtype() {
-        let (client, runner, _events) = watching().await;
-
-        client
-            .rename_conversation(SESSION, "A better name")
-            .await
-            .expect("the agent accepts the title");
-
-        let asked = runner
-            .heard(SESSION)
-            .await
-            .into_iter()
-            .find(|frame| frame["request"]["subtype"] == "rename_session")
-            .expect("the title change is asked of the agent");
-        assert_eq!(asked["request"]["title"], "A better name");
-    }
-
-    #[tokio::test]
-    async fn what_the_agent_says_and_does_reaches_the_conversation_as_it_happens() {
-        let (client, runner, mut events) = watching().await;
-        let turn = running_turn(&client, &mut events, "run it").await;
-
-        runner
-            .say(
-                SESSION,
-                assistant_frame(
-                    "msg_1",
-                    json!([
-                        { "type": "thinking", "thinking": "considering" },
-                        { "type": "tool_use", "id": "toolu_1", "name": "Bash",
-                          "input": { "command": "cargo test" } },
-                    ]),
-                ),
-            )
-            .await;
-
-        let SessionEventKind::ItemChanged { turn_id, item, .. } =
-            next_session_event(&mut events, "item").await
-        else {
-            unreachable!("asked for an item");
-        };
-        assert_eq!(
-            turn_id, turn.id,
-            "an item belongs to the turn that was running"
-        );
-        assert!(matches!(item.kind, ItemKind::Reasoning { .. }));
-
-        let SessionEventKind::ItemChanged { item, .. } =
-            next_session_event(&mut events, "item").await
-        else {
-            unreachable!("asked for an item");
-        };
-        assert_eq!(item.id, "toolu_1");
-        assert_eq!(item.status, ActivityStatus::InProgress);
-    }
-
-    #[tokio::test]
-    async fn one_message_split_across_frames_keeps_every_part_it_said() {
-        // Measured against CLI 2.1.236: thinking arrives in one frame and the
-        // answer in the next, both under one message identifier and both
-        // numbering their blocks from zero. Numbering from the message would
-        // let the answer take the place of the thinking.
-        let (client, runner, mut events) = watching().await;
-        running_turn(&client, &mut events, "run it").await;
-
-        let mut thinking = assistant_frame(
-            "msg_1",
-            json!([{ "type": "thinking", "thinking": "considering" }]),
-        );
-        thinking["uuid"] = json!("frame-thinking");
-        let mut answer = assistant_frame("msg_1", json!([{ "type": "text", "text": "ok" }]));
-        answer["uuid"] = json!("frame-answer");
-        runner.say(SESSION, thinking).await;
-        runner.say(SESSION, answer).await;
-
-        let SessionEventKind::ItemChanged { item: first, .. } =
-            next_session_event(&mut events, "item").await
-        else {
-            unreachable!("asked for an item");
-        };
-        let SessionEventKind::ItemChanged { item: second, .. } =
-            next_session_event(&mut events, "item").await
-        else {
-            unreachable!("asked for an item");
-        };
-
-        assert_ne!(
-            first.id, second.id,
-            "two things the agent said are two items, not one said twice"
-        );
-        assert!(matches!(first.kind, ItemKind::Reasoning { .. }));
-        let ItemKind::AssistantMessage { text, .. } = &second.kind else {
-            panic!("an assistant message");
-        };
-        assert_eq!(text, "ok");
-    }
-
-    #[tokio::test]
-    async fn a_subagents_work_does_not_join_the_turn_a_person_is_watching() {
-        // A subagent writes a conversation of its own. Folding it in would
-        // interleave two conversations under one turn.
-        let (client, runner, mut events) = watching().await;
-        running_turn(&client, &mut events, "delegate it").await;
-
-        let mut nested =
-            assistant_frame("msg_nested", json!([{ "type": "text", "text": "inner" }]));
-        nested["parent_tool_use_id"] = json!("toolu_task");
-        runner.say(SESSION, nested).await;
-        runner
-            .say(
-                SESSION,
-                assistant_frame("msg_own", json!([{ "type": "text", "text": "outer" }])),
-            )
-            .await;
-
-        let SessionEventKind::ItemChanged { item, .. } =
-            next_session_event(&mut events, "item").await
-        else {
-            unreachable!("asked for an item");
-        };
-        let ItemKind::AssistantMessage { text, .. } = &item.kind else {
-            panic!("an assistant message");
-        };
-        assert_eq!(
-            text, "outer",
-            "the first item to arrive is the one this conversation said"
-        );
-    }
+    use super::test_support::*;
+    use super::*;
 
     #[tokio::test]
     async fn a_turn_that_is_stopped_leaves_nothing_still_running() {
@@ -3430,77 +1386,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn work_a_person_refused_reads_as_refused_rather_than_as_failed() {
-        // The agent reports a refusal as a failed tool result, which is what it
-        // is from where the agent stands. Caffold is what refused, so Caffold
-        // is what can tell the two apart.
-        let (client, runner, mut events) = watching().await;
-        running_turn(&client, &mut events, "run it").await;
-        runner
-            .say(
-                SESSION,
-                assistant_frame(
-                    "msg_1",
-                    json!([{ "type": "tool_use", "id": "toolu_7", "name": "Bash",
-                            "input": { "command": "rm -rf build" } }]),
-                ),
-            )
-            .await;
-        let _started = next_session_event(&mut events, "item").await;
-        runner
-            .say(
-                SESSION,
-                json!({
-                    "type": "control_request",
-                    "request_id": "req-1",
-                    "request": {
-                        "subtype": "can_use_tool",
-                        "tool_name": "Bash",
-                        "input": { "command": "rm -rf build" },
-                        "toolUseID": "toolu_7",
-                    },
-                }),
-            )
-            .await;
-        next_approval(&mut events).await;
-
-        client
-            .resolve_approval(SESSION, "req-1", ApprovalDecision::Deny)
-            .await
-            .expect("the approval is answered");
-        runner
-            .say(
-                SESSION,
-                json!({
-                    "type": "user",
-                    "uuid": "frame-result",
-                    "message": {
-                        "role": "user",
-                        "content": [{
-                            "type": "tool_result",
-                            "tool_use_id": "toolu_7",
-                            "content": "A person declined this.",
-                            "is_error": true,
-                        }],
-                    },
-                }),
-            )
-            .await;
-
-        let SessionEventKind::ItemChanged { item, .. } =
-            next_session_event(&mut events, "item").await
-        else {
-            unreachable!("asked for an item");
-        };
-        assert_eq!(item.id, "toolu_7");
-        assert_eq!(
-            item.status,
-            ActivityStatus::Declined,
-            "the work did not fail; a person refused it"
-        );
-    }
-
-    #[tokio::test]
     async fn letting_go_of_a_conversation_keeps_the_session_it_is_reached_on() {
         // Detaching means the runner refuses the next attach while the old
         // connection is still closing, and a prompt would fail for a reason
@@ -3517,47 +1402,6 @@ mod tests {
             runner.prompts(SESSION).await.len(),
             1,
             "the prompt reached the same session, without attaching again"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_request_caffold_did_not_register_for_is_answered_rather_than_left_to_block() {
-        // Hooks and in-process tools ask on the same channel. Caffold registers
-        // neither, and silence would hang the turn forever.
-        let (client, runner, _events) = watching().await;
-        client
-            .start_turn(SESSION, "run it", &[], &options("opus"))
-            .await
-            .unwrap();
-
-        runner
-            .say(
-                SESSION,
-                json!({
-                    "type": "control_request",
-                    "request_id": "hook-1",
-                    "request": { "subtype": "hook_callback" },
-                }),
-            )
-            .await;
-
-        let answered = tokio::time::timeout(REPORT_TIMEOUT, async {
-            loop {
-                if runner
-                    .heard(SESSION)
-                    .await
-                    .iter()
-                    .any(|frame| frame["response"]["request_id"] == "hook-1")
-                {
-                    return;
-                }
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
-        })
-        .await;
-        assert!(
-            answered.is_ok(),
-            "an unregistered request must still be answered"
         );
     }
 
@@ -3612,264 +1456,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn what_a_turn_cost_is_reported_in_caffolds_words() {
+    async fn refusing_and_stopping_answers_the_agent_and_interrupts_its_turn() {
+        // One decision, two promises: the agent hears the refusal, and the
+        // turn it was refused in is told to stop rather than left to try the
+        // next thing anyway.
         let (client, runner, mut events) = watching().await;
-        let turn = running_turn(&client, &mut events, "run it").await;
-
-        runner.say(SESSION, result_frame(Some("end_turn"))).await;
-
-        let SessionEventKind::UsageReported { turn_id, usage } =
-            next_session_event(&mut events, "usage").await
-        else {
-            unreachable!("asked for usage");
-        };
-        assert_eq!(turn_id, turn.id);
-        assert_eq!(usage.last.input_tokens, 10);
-        assert_eq!(usage.last.output_tokens, 40);
-        assert_eq!(usage.last.cached_input_tokens, 100);
-        assert_eq!(usage.model_context_window, Some(200_000));
-        assert_eq!(
-            usage.last.reasoning_output_tokens, 0,
-            "the agent counts thinking inside its output, so counting it again would double it"
-        );
-    }
-
-    #[tokio::test]
-    async fn an_agent_answering_for_another_conversation_is_reported() {
-        // Forcing the identifier is what keeps a Task, a runner session, and a
-        // Claude session one name. An agent that answers under a different one
-        // means this Task is watching somebody else's conversation.
-        let (client, runner) = ClaudeClient::mock();
-        let mut events = client.subscribe();
+        client
+            .start_turn(SESSION, "run it", &[], &options("opus"))
+            .await
+            .unwrap();
         runner
-            .greet_next_session_with(vec![init_frame("a-different-conversation")])
+            .say(
+                SESSION,
+                json!({
+                    "type": "control_request",
+                    "request_id": "req-19",
+                    "request": {
+                        "subtype": "can_use_tool",
+                        "tool_name": "Bash",
+                        "input": { "command": "rm -rf build" },
+                        "toolUseID": "toolu_19",
+                    },
+                }),
+            )
             .await;
+        let request = next_approval(&mut events).await;
 
         client
-            .open_conversation(SESSION, CWD, &ClaudeTurnOptions::default())
+            .resolve_approval(SESSION, &request.id, ApprovalDecision::DenyAndStop)
             .await
-            .expect("the conversation opens");
+            .expect("the refusal is answered");
 
-        let complaint = next_diagnostic(&mut events).await;
-        assert!(
-            complaint.contains("a-different-conversation"),
-            "{complaint}"
-        );
-        assert!(complaint.contains(SESSION), "{complaint}");
-    }
-
-    #[tokio::test]
-    async fn an_installation_below_the_minimum_says_so() {
-        let (client, runner) = ClaudeClient::mock();
-        let mut events = client.subscribe();
-        let mut greeting = init_frame(SESSION);
-        greeting["claude_code_version"] = json!("2.0.1");
-        runner.greet_next_session_with(vec![greeting]).await;
-
-        client
-            .open_conversation(SESSION, CWD, &ClaudeTurnOptions::default())
-            .await
-            .expect("the conversation opens");
-
-        let complaint = next_diagnostic(&mut events).await;
-        assert!(complaint.contains("2.0.1"), "{complaint}");
-        assert!(
-            complaint.contains(MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION),
-            "{complaint}"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_model_chosen_after_the_session_started_is_told_to_the_agent() {
-        // The session took its model as an argument when it started, so a
-        // later choice reaches it only by being said. Without this the composer
-        // shows one model and the conversation runs another.
-        let (client, runner, mut events) = watching().await;
-
-        client
-            .start_turn(SESSION, "run it", &[], &options("haiku"))
-            .await
-            .expect("the turn starts");
-
-        let told = runner
-            .heard(SESSION)
-            .await
-            .into_iter()
-            .find(|frame| frame["request"]["subtype"] == "set_model")
-            .expect("the agent is told");
-        assert_eq!(told["request"]["model"], "haiku");
-        let SessionEventKind::SettingsChanged { settings } =
-            next_session_event(&mut events, "settings").await
-        else {
-            unreachable!("asked for settings");
-        };
-        assert_eq!(
-            settings["model"], "haiku",
-            "and the conversation reports the name it was chosen by, not the one the agent resolved"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_depth_chosen_after_the_session_started_is_asked_for_and_waited_on() {
-        // Depth is a command the agent runs, so it takes a turn of its own.
-        // Opening the person's turn before that one ends would let its answer
-        // close theirs.
-        let (client, runner, mut events) = watching().await;
-
-        let turn = tokio::spawn({
-            let client = client.clone();
-            async move {
-                client
-                    .start_turn(
-                        SESSION,
-                        "run it",
-                        &[],
-                        &ClaudeTurnOptions {
-                            effort: Some("xhigh".to_string()),
-                            ..options("opus")
-                        },
-                    )
-                    .await
-            }
-        });
-
-        let asked = tokio::time::timeout(REPORT_TIMEOUT, async {
-            loop {
-                if let Some(frame) = runner
-                    .heard(SESSION)
-                    .await
-                    .into_iter()
-                    .find(|frame| frame["type"] == "user")
-                {
-                    return frame;
-                }
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
-        })
-        .await
-        .expect("the agent is asked");
-        assert_eq!(asked["message"]["content"][0]["text"], "/effort xhigh");
-        assert!(!turn.is_finished(), "the prompt waits for the answer");
-
-        runner.say(SESSION, result_frame(Some("end_turn"))).await;
-        let started = tokio::time::timeout(REPORT_TIMEOUT, turn)
-            .await
-            .expect("the turn stops waiting")
-            .expect("the task finishes")
-            .expect("the turn starts");
-
-        let prompts = spoken(&runner).await;
-        assert_eq!(prompts, ["/effort xhigh", "run it"], "in that order");
-
-        // The answer to the command is not the answer to the turn.
-        assert_eq!(started.status, TurnStatus::InProgress);
-        let SessionEventKind::TurnStarted { turn } =
-            next_session_event(&mut events, "turn start").await
-        else {
-            unreachable!("asked for a turn start");
-        };
-        assert_eq!(turn.id, started.id);
-    }
-
-    #[tokio::test]
-    async fn asking_for_speed_reaches_the_agent_and_reports_what_it_reached() {
-        // Asking is not getting. An installation whose account has no extra
-        // usage stays at its ordinary speed however often it is asked, and the
-        // conversation should say what the agent reached rather than what was
-        // wanted.
-        let (client, runner, mut events) = watching().await;
-
-        client
-            .start_turn(
-                SESSION,
-                "run it",
-                &[],
-                &ClaudeTurnOptions {
-                    fast_mode: true,
-                    ..options("opus")
-                },
-            )
-            .await
-            .expect("the turn starts");
-
-        let asked = runner
-            .heard(SESSION)
-            .await
-            .into_iter()
-            .find(|frame| frame["request"]["subtype"] == "apply_flag_settings")
-            .expect("the agent is asked");
-        assert_eq!(asked["request"]["settings"]["fastMode"], true);
-
-        let SessionEventKind::SettingsChanged { settings } =
-            next_session_event(&mut events, "settings").await
-        else {
-            unreachable!("asked for settings");
-        };
-        assert_eq!(
-            settings["fastMode"], false,
-            "the greeting said this session is not fast, and that is what stands"
-        );
-        assert_eq!(
-            settings["fastModeBlockedReason"], "extra_usage_disabled",
-            "and why, so it does not read as a choice that was ignored"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_depth_the_session_already_works_at_is_not_asked_for_again() {
-        let (client, runner, _events) = watching().await;
-
-        client
-            .start_turn(SESSION, "run it", &[], &options("opus"))
-            .await
-            .expect("the turn starts");
-
-        assert_eq!(spoken(&runner).await, ["run it"]);
-    }
-
-    #[tokio::test]
-    async fn a_model_the_session_already_runs_is_not_told_again() {
-        let (client, runner, _events) = watching().await;
-
-        client
-            .start_turn(SESSION, "run it", &[], &options("opus"))
-            .await
-            .expect("the turn starts");
-
-        assert!(
-            !runner
-                .heard(SESSION)
-                .await
-                .iter()
-                .any(|frame| frame["request"]["subtype"] == "set_model"),
-            "a session already running that model has nothing to be told"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_permission_mode_chosen_after_the_session_started_is_told_to_the_agent() {
-        let (client, runner, _events) = watching().await;
-
-        client
-            .start_turn(
-                SESSION,
-                "run it",
-                &[],
-                &ClaudeTurnOptions {
-                    permission_mode: Some("acceptEdits".to_string()),
-                    ..options("opus")
-                },
-            )
-            .await
-            .expect("the turn starts");
-
-        let told = runner
-            .heard(SESSION)
-            .await
-            .into_iter()
-            .find(|frame| frame["request"]["subtype"] == "set_permission_mode")
-            .expect("the agent is told");
-        assert_eq!(told["request"]["mode"], "acceptEdits");
+        let denied = wrote(&runner, |frame| frame["response"]["request_id"] == "req-19").await;
+        assert_eq!(denied["response"]["response"]["behavior"], "deny");
+        wrote(&runner, |frame| frame["request"]["subtype"] == "interrupt").await;
     }
 
     #[tokio::test]
@@ -3918,272 +1538,5 @@ mod tests {
             moved.created_at_ms, opened.created_at_ms,
             "when it began does not move"
         );
-    }
-
-    #[tokio::test]
-    async fn an_agent_that_exits_leaves_the_conversation_idle_and_unwatched() {
-        // The process is the conversation. When it goes, so does the turn it
-        // was running, and a Task still shown as working would be waiting on
-        // nobody.
-        let (client, runner, mut events) = watching().await;
-        running_turn(&client, &mut events, "run it").await;
-
-        runner.exit(SESSION, Some(1)).await;
-
-        let SessionEventKind::StatusChanged { status } =
-            next_session_event(&mut events, "status change").await
-        else {
-            unreachable!("asked for a status change");
-        };
-        assert_eq!(status, ThreadStatus::Idle);
-        assert!(
-            matches!(
-                client
-                    .start_turn(SESSION, "again", &[], &options("opus"))
-                    .await,
-                Err(ClaudeError::NotWatching(_))
-            ),
-            "a session nobody holds is not one a prompt can reach"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_frame_this_release_cannot_read_does_not_end_the_session() {
-        // The union grows on minor releases, and a session that fell over on
-        // the first unknown line would take the conversation with it.
-        let (client, runner, mut events) = watching().await;
-        running_turn(&client, &mut events, "run it").await;
-
-        runner
-            .say(SESSION, json!({ "type": "memory_recall", "detail": {} }))
-            .await;
-        runner
-            .say(
-                SESSION,
-                assistant_frame("msg_1", json!([{ "type": "text", "text": "still here" }])),
-            )
-            .await;
-
-        let SessionEventKind::ItemChanged { item, .. } =
-            next_session_event(&mut events, "item").await
-        else {
-            unreachable!("asked for an item");
-        };
-        let ItemKind::AssistantMessage { text, .. } = &item.kind else {
-            panic!("an assistant message");
-        };
-        assert_eq!(text, "still here");
-    }
-
-    #[tokio::test]
-    async fn a_model_the_agent_does_not_offer_is_refused_before_a_session_exists() {
-        // Agreeing first is what stops a conversation being created under a
-        // model that never existed and then left behind.
-        let (client, _runner) = ClaudeClient::mock();
-        client
-            .offer_models(vec![ModelOption {
-                model: "opus".to_string(),
-                display_name: "Opus".to_string(),
-                description: None,
-                is_default: true,
-                default_effort: None,
-                efforts: vec!["low".to_string(), "high".to_string()],
-                supports_fast_mode: true,
-                supports_auto_mode: true,
-            }])
-            .await;
-
-        let wrong_model = claude_turn_options(
-            &client,
-            &TurnOptions {
-                model: Some("gpt-5.6-sol".to_string()),
-                ..TurnOptions::default()
-            },
-        )
-        .await;
-        let wrong_effort = claude_turn_options(
-            &client,
-            &TurnOptions {
-                model: Some("opus".to_string()),
-                effort: Some("glacial".to_string()),
-                ..TurnOptions::default()
-            },
-        )
-        .await;
-
-        assert!(matches!(wrong_model, Err(TurnRejected::Model)));
-        assert!(matches!(wrong_effort, Err(TurnRejected::Effort)));
-    }
-
-    #[tokio::test]
-    async fn asking_for_speed_a_model_does_not_have_settles_for_what_it_does() {
-        let (client, _runner) = ClaudeClient::mock();
-        client
-            .offer_models(vec![ModelOption {
-                model: "haiku".to_string(),
-                display_name: "Haiku".to_string(),
-                description: None,
-                is_default: false,
-                default_effort: None,
-                efforts: Vec::new(),
-                supports_fast_mode: false,
-                supports_auto_mode: false,
-            }])
-            .await;
-
-        let accepted = claude_turn_options(
-            &client,
-            &TurnOptions {
-                model: Some("haiku".to_string()),
-                fast_mode: true,
-                ..TurnOptions::default()
-            },
-        )
-        .await
-        .expect("the model is real, so the turn is accepted");
-
-        assert!(
-            !accepted.fast_mode,
-            "a model with no faster tier answers a request for speed with its ordinary one"
-        );
-    }
-
-    /// A client whose list holds one model that can decide for itself and one
-    /// that cannot.
-    async fn client_offering_both_kinds() -> ClaudeClient {
-        let (client, _runner) = ClaudeClient::mock();
-        client
-            .offer_models(vec![
-                ModelOption {
-                    model: "sonnet".to_string(),
-                    display_name: "Sonnet".to_string(),
-                    description: None,
-                    is_default: true,
-                    default_effort: None,
-                    efforts: vec!["high".to_string()],
-                    supports_fast_mode: false,
-                    supports_auto_mode: true,
-                },
-                ModelOption {
-                    model: "haiku".to_string(),
-                    display_name: "Haiku".to_string(),
-                    description: None,
-                    is_default: false,
-                    default_effort: None,
-                    efforts: Vec::new(),
-                    supports_fast_mode: false,
-                    supports_auto_mode: false,
-                },
-            ])
-            .await;
-        client
-    }
-
-    #[tokio::test]
-    async fn every_permission_mode_reaches_the_interface_already_named() {
-        let modes = client_offering_both_kinds()
-            .await
-            .permission_modes(Some("sonnet"))
-            .await;
-
-        assert!(
-            modes
-                .options
-                .iter()
-                .any(|option| option.mode == modes.default_mode && option.allowed),
-            "the default has to be one of the choices, and one that can be used"
-        );
-        assert!(
-            modes
-                .options
-                .iter()
-                .all(|option| !option.label.is_empty() && !option.description.is_empty())
-        );
-        assert!(
-            modes
-                .options
-                .iter()
-                .any(|option| option.dangerous && option.mode == "bypassPermissions"),
-            "the mode that gives up a protection has to read as one"
-        );
-    }
-
-    #[tokio::test]
-    async fn letting_the_model_decide_is_offered_only_by_a_model_that_can() {
-        // Measured against CLI 2.1.236: `set_permission_mode auto` is refused
-        // with "auto mode unavailable for this model", and the model list says
-        // in advance which models can. Offering it regardless would fail at the
-        // moment a turn starts, which is the worst place to find out.
-        let client = client_offering_both_kinds().await;
-
-        let able = client.permission_modes(Some("sonnet")).await;
-        let unable = client.permission_modes(Some("haiku")).await;
-        let unknown = client.permission_modes(None).await;
-
-        let auto = |modes: &PermissionModes| {
-            modes
-                .options
-                .iter()
-                .find(|option| option.mode == "auto")
-                .map(|option| option.allowed)
-        };
-        assert_eq!(auto(&able), Some(true));
-        assert_eq!(able.default_mode, "auto", "it is also how this agent works");
-        assert_eq!(
-            unable.default_mode, "default",
-            "a default nobody can use is not a default"
-        );
-        assert_eq!(
-            auto(&unable),
-            Some(false),
-            "withheld reads as withheld, not as missing"
-        );
-        assert_eq!(
-            auto(&unknown),
-            Some(false),
-            "a model nobody named cannot be known to manage its own permissions"
-        );
-        assert_eq!(
-            unable.options.len(),
-            able.options.len(),
-            "the same choices are shown either way"
-        );
-    }
-
-    #[test]
-    fn the_models_the_agent_lists_arrive_in_caffolds_words() {
-        // Measured against CLI 2.1.236: the recommendation is named `default`
-        // rather than marked, and only some models carry effort levels.
-        let answer = json!({
-            "models": [
-                {
-                    "value": "default",
-                    "resolvedModel": "claude-opus-5[1m]",
-                    "displayName": "Default (recommended)",
-                    "description": "Opus 5 with 1M context",
-                    "supportsEffort": true,
-                    "supportedEffortLevels": ["low", "medium", "high", "xhigh", "max"],
-                    "supportsFastMode": true
-                },
-                {
-                    "value": "haiku",
-                    "resolvedModel": "claude-haiku-4-5-20251001",
-                    "displayName": "Haiku",
-                    "description": "Fastest for quick answers"
-                }
-            ]
-        });
-
-        let models = model_options(&answer);
-
-        assert_eq!(models.len(), 2);
-        assert_eq!(models[0].model, "default");
-        assert!(models[0].is_default);
-        assert!(models[0].supports_fast_mode);
-        assert_eq!(models[0].efforts, ["low", "medium", "high", "xhigh", "max"]);
-        assert_eq!(models[1].model, "haiku");
-        assert!(!models[1].is_default);
-        assert!(models[1].efforts.is_empty());
-        assert!(!models[1].supports_fast_mode);
     }
 }
