@@ -133,12 +133,7 @@ impl ClaudeClient {
             usage: keep("usage", usage, &mut problems),
             runner: keep(
                 "runner",
-                runner.map(runner_report).map_err(|_| {
-                    format!(
-                        "the runner did not answer within {} seconds",
-                        ANSWER_TIMEOUT.as_secs()
-                    )
-                }),
+                runner_block(self.inner.runner.socket_problem(), runner.ok()),
                 &mut problems,
             ),
             problems,
@@ -279,6 +274,25 @@ fn window_of(row: &Value) -> Option<UsageWindow> {
         model: row["scope"]["model"]["display_name"]
             .as_str()
             .map(str::to_string),
+    })
+}
+
+/// The runner block's answer. A path no socket can live at is a problem to
+/// name — over whatever the socket said, because starting a runner there can
+/// never work — and silence past the deadline is its own; a runner that is
+/// simply not running stays an ordinary answer.
+fn runner_block(
+    socket_problem: Option<String>,
+    answered: Option<Option<caffold_claude_runner::protocol::DaemonStatus>>,
+) -> Result<RunnerReport, String> {
+    if let Some(problem) = socket_problem {
+        return Err(problem);
+    }
+    answered.map(runner_report).ok_or_else(|| {
+        format!(
+            "the runner did not answer within {} seconds",
+            ANSWER_TIMEOUT.as_secs()
+        )
     })
 }
 
@@ -456,6 +470,21 @@ mod tests {
 
         let value = serde_json::to_value(&report).unwrap();
         assert_eq!(value, serde_json::json!({ "running": false }));
+    }
+
+    #[test]
+    fn a_socket_no_runner_can_listen_at_is_named_over_whatever_it_said() {
+        let named = runner_block(Some("the path is too deep".to_string()), Some(None));
+        assert_eq!(
+            named.expect_err("an unusable address is a problem"),
+            "the path is too deep"
+        );
+
+        let silent = runner_block(None, None).expect_err("silence past the deadline");
+        assert!(silent.contains("did not answer"), "{silent}");
+
+        let absent = runner_block(None, Some(None)).expect("no runner is an answer");
+        assert!(!absent.running);
     }
 
     #[test]

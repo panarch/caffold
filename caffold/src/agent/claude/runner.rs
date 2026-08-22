@@ -50,6 +50,16 @@ const START_POLL: Duration = Duration::from_millis(50);
 /// — before the socket is removed, and a loaded machine stretches all of it.
 const STOP_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// The longest path a unix socket can be opened at, imposed by the OS: the
+/// address lives in `sockaddr_un`'s fixed array with its terminator — 104
+/// bytes on macOS and 108 on Linux, the two targets Caffold builds for. A
+/// target whose array is smaller would merely fall back to the timed-out
+/// start, since the daemon's own bind enforces the real limit either way.
+#[cfg(target_os = "macos")]
+const MAX_SOCKET_PATH_BYTES: usize = 103;
+#[cfg(not(target_os = "macos"))]
+const MAX_SOCKET_PATH_BYTES: usize = 107;
+
 /// The runner, and the socket it answers on.
 #[derive(Clone)]
 pub(crate) struct RunnerClient {
@@ -292,6 +302,12 @@ impl RunnerClient {
         if self.mock.is_some() {
             return Ok(());
         }
+        if let Some(complaint) = self.socket_problem() {
+            // Said before anything is started: a daemon asked anyway would
+            // die without listening, and the wait for it would time out
+            // without ever naming the problem.
+            return Err(ClaudeError::Runner(complaint));
+        }
         let socket = self.socket().to_path_buf();
         if Client::connect(&socket).await.is_ok() {
             return Ok(());
@@ -449,6 +465,32 @@ impl RunnerClient {
     #[cfg(test)]
     pub(super) fn is_mock(&self) -> bool {
         self.mock.is_some()
+    }
+
+    /// Why no runner can ever listen where this client looks, or nothing
+    /// when the address is usable.
+    ///
+    /// The socket lives in the data directory, and the data directory goes
+    /// where the person put their checkout — which is how a deeply nested one
+    /// walks into the OS limit. A daemon asked to bind past it dies without
+    /// listening, and without this check what a person would see is a start
+    /// that timed out, which says nothing about the actual problem: where
+    /// the directory sits.
+    pub(super) fn socket_problem(&self) -> Option<String> {
+        #[cfg(test)]
+        if self.mock.is_some() {
+            return None;
+        }
+        let socket = self.socket();
+        let bytes = socket.as_os_str().as_encoded_bytes().len();
+        (bytes > MAX_SOCKET_PATH_BYTES).then(|| {
+            format!(
+                "no runner can listen at {}: the path is {bytes} bytes and the OS \
+                 caps a unix socket address at {MAX_SOCKET_PATH_BYTES}; move the \
+                 checkout or the data directory somewhere shorter",
+                socket.display()
+            )
+        })
     }
 
     /// The conversations the runner is still holding a process for.
@@ -904,5 +946,52 @@ impl MockRunnerHandle {
     pub(crate) async fn spawned(&self, session: &str) -> Option<SpawnRequest> {
         let state = self.0.state.lock().await;
         state.sessions.get(session).map(|held| held.spawn.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A data directory whose socket path comes to exactly `bytes`.
+    fn data_dir_with_socket_of(bytes: usize) -> PathBuf {
+        let name_length = bytes - "/".len() - "/".len() - SOCKET_NAME.len();
+        PathBuf::from(format!("/{}", "a".repeat(name_length)))
+    }
+
+    #[test]
+    fn a_socket_path_at_the_limit_is_usable_and_one_past_it_is_named() {
+        let at_limit = RunnerClient::in_data_dir(&data_dir_with_socket_of(MAX_SOCKET_PATH_BYTES));
+        assert_eq!(at_limit.socket_problem(), None);
+
+        let past_limit =
+            RunnerClient::in_data_dir(&data_dir_with_socket_of(MAX_SOCKET_PATH_BYTES + 1));
+        let complaint = past_limit
+            .socket_problem()
+            .expect("one byte past the limit");
+        assert!(
+            complaint.contains(&format!("{} bytes", MAX_SOCKET_PATH_BYTES + 1))
+                && complaint.contains(&MAX_SOCKET_PATH_BYTES.to_string())
+                && complaint.contains("somewhere shorter"),
+            "the complaint names the length, the limit, and the way out: {complaint}"
+        );
+
+        let (mock, _handle) = RunnerClient::mock();
+        assert_eq!(mock.socket_problem(), None, "a mock has no socket to cap");
+    }
+
+    #[tokio::test]
+    async fn a_data_directory_too_deep_for_a_socket_is_refused_before_anything_starts() {
+        // The daemon would die without listening, and the wait for it would
+        // time out saying nothing. The refusal has to be immediate and name
+        // the actual problem: where the directory sits.
+        let runner = RunnerClient::in_data_dir(&data_dir_with_socket_of(MAX_SOCKET_PATH_BYTES + 1));
+
+        let refused = runner.ensure_running().await.expect_err("no socket fits");
+
+        assert!(
+            refused.to_string().contains("caps a unix socket address"),
+            "{refused}"
+        );
     }
 }

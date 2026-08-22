@@ -85,8 +85,9 @@ impl Backend {
 
     async fn start_with_environment(environment: &[(&str, &str)]) -> Self {
         // Short on purpose. The runner's socket lives inside the data
-        // directory, and a unix socket path may not exceed 104 bytes on macOS —
-        // which the usual temporary directory very nearly spends by itself.
+        // directory, and a unix socket path must stay short of 104 bytes on
+        // macOS — which the usual temporary directory very nearly spends by
+        // itself.
         let root = PathBuf::from(format!(
             "/tmp/cf-{}-{}",
             std::process::id(),
