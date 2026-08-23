@@ -86,7 +86,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.permissionLoaded = false;
     this.permissionError = null;
     this.permissionRequestId = 0;
-    this.defaultPermissionMode = "askForApproval";
+    this.defaultPermissionMode = "";
     this.boundClick = (event) => this.handleClick(event);
     this.boundBeforeToggle = (event) => this.handleBeforeToggle(event);
     this.boundToggle = (event) => this.handleToggle(event);
@@ -250,9 +250,15 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       options.effort = effort;
     }
     options.fastMode = this.selectedFastMode();
-    if (this.selection.permissionExplicit) {
-      options.permissionMode =
-        this.selection.permissionMode || this.defaultPermissionMode;
+    // The mode the picker shows is the mode the turn runs under, so it is sent
+    // whether or not a person touched it. It is sent only while the list that
+    // offered it is the one in hand: a list still arriving describes the agent
+    // or model chosen before, and a mode this one cannot work under would be
+    // refused at the moment the turn starts. Sending nothing then leaves the
+    // agent's own default standing, which is what the picker says it will.
+    const permission = this.permissionLoading ? null : this.selectedPermission();
+    if (permission?.allowed) {
+      options.permissionMode = permission.mode;
     }
     return options;
   }
@@ -280,8 +286,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       model: this.selectedModel()?.model ?? "",
       effort: this.selectedEffort(),
       fastMode: this.selectedFastMode(),
-      permissionMode:
-        this.selection.permissionMode || this.defaultPermissionMode,
+      permissionMode: this.selectedPermissionMode(),
       modelExplicit: this.selection.modelExplicit,
       fastModeExplicit: this.selection.fastModeExplicit,
       permissionExplicit: this.selection.permissionExplicit,
@@ -362,7 +367,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
         this.permissionOptions.find(
           (option) => option.mode === requestedDefault && option.allowed,
         ) ?? this.permissionOptions.find((option) => option.allowed);
-      this.defaultPermissionMode = defaultOption?.mode ?? "askForApproval";
+      this.defaultPermissionMode = defaultOption?.mode ?? "";
       this.applyDefaultPermissionSelection();
       this.permissionLoaded = true;
     } catch (error) {
@@ -372,8 +377,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       this.permissionOptions = [];
       this.permissionError = error;
       this.permissionLoaded = true;
-      this.defaultPermissionMode = "askForApproval";
-      this.selection.permissionMode ||= this.defaultPermissionMode;
+      this.defaultPermissionMode = "";
     } finally {
       if (requestId === this.permissionRequestId) {
         this.permissionLoading = false;
@@ -421,11 +425,18 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     const selected = this.permissionOptions.find(
       (option) => option.mode === selection.permissionMode,
     );
-    const canonicalMode = !selection.permissionExplicit
-      ? `${this.context.initialSelection?.permissionMode ?? ""}`.trim()
-      : "";
-    if (canonicalMode) {
-      selection.permissionMode = canonicalMode;
+    // What the Task last ran under, unless this list withholds it. A model
+    // change can leave the remembered mode one the chosen model cannot work
+    // under, and showing it then would name a mode no turn could start under.
+    const canonical = selection.permissionExplicit
+      ? null
+      : this.permissionOptions.find(
+          (option) =>
+            option.mode ===
+            `${this.context.initialSelection?.permissionMode ?? ""}`.trim(),
+        );
+    if (canonical?.allowed) {
+      selection.permissionMode = canonical.mode;
     } else if (!selection.permissionExplicit || !selected?.allowed) {
       selection.permissionMode = this.defaultPermissionMode;
       selection.permissionExplicit = false;
@@ -457,6 +468,22 @@ class CaffoldTaskTurnOptions extends HTMLElement {
   selectedFastMode() {
     return Boolean(
       this.selection.fastMode && this.selectedModel()?.supportsFast,
+    );
+  }
+
+  // The mode a turn would run under: what a person chose, or what the agent
+  // said it does when nobody has. Empty until a list of modes has said one.
+  selectedPermissionMode() {
+    return this.selection.permissionMode || this.defaultPermissionMode;
+  }
+
+  // That mode as the list of modes describes it, and nothing when no list
+  // describes it. A list still arriving is the previous one, which keeps the
+  // control steady across a refresh rather than blinking through every model
+  // change; whether it is current enough to send is asked where it is sent.
+  selectedPermission() {
+    return this.permissionOptions.find(
+      (option) => option.mode === this.selectedPermissionMode(),
     );
   }
 
@@ -628,11 +655,8 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     const model = this.selectedModel();
     const effort = this.selectedEffort();
     const fastMode = this.selectedFastMode();
-    const permissionMode =
-      this.selection.permissionMode || this.defaultPermissionMode;
-    const permission = this.permissionOptions.find(
-      (option) => option.mode === permissionMode,
-    );
+    const permissionMode = this.selectedPermissionMode();
+    const permission = this.selectedPermission();
     const locked = this.context.locked;
     this.dataset.placement = this.context.placement;
 
@@ -721,16 +745,16 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       permission?.label ??
       (this.permissionLoading
         ? "Loading permissions"
-        : this.permissionError
-          ? "Codex default"
-          : permissionModeLabel(permissionMode));
+        : permissionMode
+          ? permissionModeLabel(permissionMode)
+          : "Agent default");
     const compactPermission = permission
       ? compactPermissionModeLabel(permissionMode, permission.label)
       : this.permissionLoading
         ? "Loading"
-        : this.permissionError
-          ? "Codex default"
-          : compactPermissionModeLabel(permissionMode);
+        : permissionMode
+          ? compactPermissionModeLabel(permissionMode)
+          : "Agent default";
     const permissionButton = this.permissionButton();
     permissionButton.classList.toggle("is-dangerous", Boolean(permission?.dangerous));
     permissionButton.disabled = locked;
@@ -968,7 +992,7 @@ function renderPermissionFallback(loading, error) {
     return `<p class="task-model-note">Loading permission modes...</p>`;
   }
   if (error) {
-    return `<p class="task-model-note">Permission modes are unavailable. Current Codex settings will be kept.</p>`;
+    return `<p class="task-model-note">Permission modes are unavailable. The agent's own default will be used.</p>`;
   }
   return `<p class="task-model-note">Open this menu after Codex is connected.</p>`;
 }
