@@ -10,6 +10,8 @@ const packageApp = resolve(repoRoot, "desktop/macos/package-app");
 const release = resolve(repoRoot, "desktop/macos/release");
 const renderCask = resolve(repoRoot, "desktop/macos/render-cask");
 const releaseWorkflow = resolve(repoRoot, ".github/workflows/release.yml");
+const bundlePlist = resolve(repoRoot, "desktop/macos/Info.plist");
+const menuBarWrapper = resolve(repoRoot, "desktop/macos/CaffoldServer.swift");
 const rootReadme = resolve(repoRoot, "README.md");
 const macosReadme = resolve(repoRoot, "desktop/macos/README.md");
 const productInstallGuide = resolve(repoRoot, "docs/product/installation.md");
@@ -51,6 +53,23 @@ test(
     assert.equal(metadata.checksum, `${metadata.archive}.sha256`);
   },
 );
+
+test("macOS bundle identity separates a monotonic build number from a readable commit", () => {
+  const source = readFileSync(packageApp, "utf8");
+
+  assert.match(source, /^BUILD_NUMBER="\$\(date '\+%s'\)"$/m);
+  assert.doesNotMatch(source, /rev-list --count/);
+  assert.doesNotMatch(source, /--expected-build-number/);
+  assert.match(source, /'\+%Y-%m-%d %H:%M:%S %Z'/);
+  assert.match(source, /Set :CaffoldBuildCommit \$\{BUILD_COMMIT\}/);
+  assert.match(source, /CFBundleVersion '\^\[0-9\]\{10\}\$'/);
+
+  assert.match(readFileSync(bundlePlist, "utf8"), /<key>CaffoldBuildCommit<\/key>/);
+
+  const wrapper = readFileSync(menuBarWrapper, "utf8");
+  assert.match(wrapper, /forInfoDictionaryKey: "CaffoldBuildCommit"/);
+  assert.match(wrapper, /\.version: buildCommit \?\? ""/);
+});
 
 test("macOS release preparation is syntax-valid and dry-run only", () => {
   run("bash", ["-n", packageApp]);
@@ -233,9 +252,7 @@ test("manual release workflow isolates versioning, verification, and publication
   assert.match(releaseJob, /gh release create/);
   assert.match(releaseJob, /gh release download/);
   assert.match(releaseJob, /package-app verify-archive/);
-  assert.match(releaseJob, /git rev-list --count "\$\{tag_sha\}"/);
   assert.match(releaseJob, /--expected-version "\$\{RELEASE_VERSION\}"/);
-  assert.match(releaseJob, /--expected-build-number "\$\{tag_build_number\}"/);
   assert.match(releaseJob, /shasum -a 256 -c/);
   const existingReleaseIndex = releaseJob.indexOf(
     'if gh release view "${tag}"',
@@ -252,6 +269,7 @@ test("manual release workflow isolates versioning, verification, and publication
       newReleaseIndex > existingReleaseIndex &&
       tagMismatchIndex > newReleaseIndex,
   );
+  assert.doesNotMatch(releaseJob, /rev-list --count/);
   assert.doesNotMatch(releaseJob, /cmp --/);
   assert.doesNotMatch(releaseJob, /HOMEBREW_TAP_TOKEN/);
   assert.doesNotMatch(releaseJob, /brew install|git push/);

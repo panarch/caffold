@@ -950,26 +950,33 @@ final class CaffoldServer: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
+        // CFBundleVersion is a build time that only LaunchServices reads, so the
+        // panel identifies this build by its source commit instead.
+        let buildCommit = Bundle.main.object(
+            forInfoDictionaryKey: "CaffoldBuildCommit"
+        ) as? String
+        var options: [NSApplication.AboutPanelOptionKey: Any] = [
+            .version: buildCommit ?? ""
+        ]
+
         let buildTimestamp = Bundle.main.object(
             forInfoDictionaryKey: "CaffoldBuildTimestamp"
         ) as? String
-        guard let buildTimestamp, !buildTimestamp.isEmpty else {
-            NSApp.orderFrontStandardAboutPanel(nil)
-            return
+        if let buildTimestamp, !buildTimestamp.isEmpty {
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.alignment = .center
+            let updateStatus = updater?.aboutStatusText.map { "\n\($0)" } ?? ""
+            options[.credits] = NSAttributedString(
+                string: "Built \(buildTimestamp)\(updateStatus)",
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                    .foregroundColor: NSColor.secondaryLabelColor,
+                    .paragraphStyle: paragraphStyle,
+                ]
+            )
         }
 
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.alignment = .center
-        let updateStatus = updater?.aboutStatusText.map { "\n\($0)" } ?? ""
-        let buildDetails = NSAttributedString(
-            string: "Built \(buildTimestamp)\(updateStatus)",
-            attributes: [
-                .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
-                .foregroundColor: NSColor.secondaryLabelColor,
-                .paragraphStyle: paragraphStyle,
-            ]
-        )
-        NSApp.orderFrontStandardAboutPanel(options: [.credits: buildDetails])
+        NSApp.orderFrontStandardAboutPanel(options: options)
     }
 
     @objc private func quit() {

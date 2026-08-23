@@ -15,9 +15,12 @@ The manual Release workflow creates a local `Release v<version>` candidate commi
 The app bundle uses:
 
 - `CFBundleShortVersionString`: the application version
-- `CFBundleVersion`: the repository commit count
-- `CaffoldBuildTimestamp`: the local package date and time
+- `CFBundleVersion`: the build time in Unix epoch seconds
+- `CaffoldBuildCommit`: the source commit, suffixed `-dirty` for an unclean tree
+- `CaffoldBuildTimestamp`: the same build time as a local date and time
 - the Rust build ID: the source commit plus its build timestamp
+
+`CFBundleVersion` must never decrease between builds on one machine, because macOS resolves a bundle identifier partly by that value and one machine installs from several branches and worktrees. Commit depth is neither ordered nor unique across them; build time is. That value identifies a build for macOS only, so nothing derives it from a commit and no verification recomputes it.
 
 ## Local preparation
 
@@ -33,7 +36,7 @@ The command performs no publication or repository mutation. Cargo may download l
 2. builds the Rust backend and Claude runner with
    `cargo build --release --locked`;
 3. builds and ad-hoc signs `Caffold Server.app`;
-4. checks the bundle identifier, version, build number, build timestamp, and macOS 14 minimum;
+4. checks the bundle identifier, version, build number, source commit, build timestamp, and macOS 14 minimum;
 5. checks that the Swift wrapper and Rust server both contain arm64 code;
 6. verifies the bundle signature;
 7. creates a versioned zip, extracts it into a temporary directory, and repeats the bundle checks on that copy;
@@ -69,12 +72,12 @@ With `action: dry-run`, no publication job runs. The artifact is for inspecting 
 With any `release-*` action or `resume`, two narrower publication jobs run after verification and, for a new release, the verified source push. `publish_release` receives `contents: write` only for `panarch/caffold`; it creates or reconciles the GitHub Release without receiving the tap token. After that succeeds, `publish_homebrew` uses the `release` environment, keeps only `contents: read` for Caffold, and receives the `HOMEBREW_TAP_TOKEN` environment secret, whose fine-grained access is limited to `panarch/homebrew-tap`. Together they:
 
 1. download and recheck the exact artifact produced by the verification job;
-2. create the immutable version tag and GitHub Release, or on `resume` verify the existing tag, download the already-published assets, and revalidate their checksum, release-tag version and build number, bundle, architecture, and signature;
+2. create the immutable version tag and GitHub Release, or on `resume` verify the existing tag, download the already-published assets, and revalidate their checksum, release version, bundle, architecture, and signature;
 3. pass those canonical published assets to the Homebrew job, then render `Casks/caffold.rb` with their verified version and SHA-256;
 4. create an unpublished local tap commit when the rendered Cask changed, register that exact commit with Homebrew, trust only the generated Caffold Cask, run Homebrew style and strict Cask audit, install the app and bundled CLI, check that quarantine was removed, and uninstall the smoke-test copy; and
 5. push the already-verified tap commit only after the release and Homebrew installation checks pass.
 
-The GitHub Release and Homebrew publication jobs never edit or commit Caffold source. After a GitHub Release exists, its tag and validated assets remain canonical, so a later workflow-fix commit with the same application version can `resume` a failed tap update without replacing the release. Archive verification derives `CFBundleVersion` from the release tag's commit count rather than the later workflow commit. When no release exists yet, an existing version tag must still point to the selected release commit before assets can be published.
+The GitHub Release and Homebrew publication jobs never edit or commit Caffold source. After a GitHub Release exists, its tag and validated assets remain canonical, so a later workflow-fix commit with the same application version can `resume` a failed tap update without replacing the release. Archive verification checks the published version rather than a value derived from the verifying commit, so a later workflow commit revalidates the same assets. When no release exists yet, an existing version tag must still point to the selected release commit before assets can be published.
 
 `resume` is desired-state reconciliation, not continuation from a stored step number. Completed external state is validated and reused; missing state is created in order. Conflicting tag ownership, invalid or missing canonical assets, or mismatched release metadata stop with an error instead of being overwritten.
 

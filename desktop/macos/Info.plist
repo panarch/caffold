@@ -22,6 +22,8 @@
   <string>0.0.0</string>
   <key>CFBundleVersion</key>
   <string>0</string>
+  <key>CaffoldBuildCommit</key>
+  <string></string>
   <key>CaffoldBuildTimestamp</key>
   <string></string>
   <key>LSMinimumSystemVersion</key>

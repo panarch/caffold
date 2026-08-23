@@ -344,7 +344,6 @@ jobs:
       - name: Check out the release source
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
           ref: ${{ needs.macos.outputs.release_sha }}
 
@@ -369,7 +368,7 @@ jobs:
           artifact_dir="${GITHUB_WORKSPACE}/target/caffold-server"
 
           if gh release view "${tag}" >/dev/null 2>&1; then
-            if ! tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${tag}" --jq .sha 2>/dev/null)"; then
+            if ! gh api "repos/${GITHUB_REPOSITORY}/commits/${tag}" --jq .sha >/dev/null 2>&1; then
               echo "${tag} has a release without a matching tag." >&2
               exit 1
             fi
@@ -383,11 +382,9 @@ jobs:
               cd "${existing_dir}"
               shasum -a 256 -c "${RELEASE_CHECKSUM}"
             )
-            tag_build_number="$(git rev-list --count "${tag_sha}")"
             desktop/macos/package-app verify-archive \
               "${existing_dir}/${RELEASE_ARCHIVE}" \
-              --expected-version "${RELEASE_VERSION}" \
-              --expected-build-number "${tag_build_number}"
+              --expected-version "${RELEASE_VERSION}"
             cp "${existing_dir}/${RELEASE_ARCHIVE}" "${artifact_dir}/${RELEASE_ARCHIVE}"
             cp "${existing_dir}/${RELEASE_CHECKSUM}" "${artifact_dir}/${RELEASE_CHECKSUM}"
             echo "${tag} already contains valid release artifacts; reusing them."
