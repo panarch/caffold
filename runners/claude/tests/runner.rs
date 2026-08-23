@@ -337,7 +337,14 @@ fn a_child_left_by_a_crashed_runner_is_ended_by_the_next_one() {
     let mut runner = Runner::start();
     // Busy rather than waiting to be spoken to: a process reading stdin ends
     // when the pipe to it closes, and an agent in the middle of a turn does not.
-    runner.create("s1", &fake_agent(&["--busy-for", "60"]));
+    let mut attached = runner.create_attached("s1", &fake_agent(&["--busy-for", "60"]));
+    // What a child writes goes into a pipe the runner holds the other end of,
+    // so a child that has not written yet when the runner dies is killed by
+    // the write it was about to make rather than left behind by it. A frame
+    // that has come out the far side is the child saying it is past that, and
+    // the case here is a child that was already running.
+    assert_eq!(attached.next_frame()["type"], "ready");
+    attached.disconnect();
     let orphan = runner.sessions()[0]["pid"].as_u64().expect("pid") as i32;
     runner.kill_without_cleanup();
     assert!(
@@ -361,7 +368,7 @@ fn a_runner_nobody_subscribes_to_ends_itself_after_its_timeout() {
     // the configured stretch is itself the signal — the runner takes the same
     // way out a deliberate stop takes, so nothing lingers as a zombie for a
     // client that is never coming back.
-    let runner = Runner::start_with_args(&["--idle-timeout", "1"]);
+    let mut runner = Runner::start_with_args(&["--idle-timeout", "1"]);
     let socket = runner.socket();
     let status = runner.run(&["daemon", "status"]);
     assert_eq!(
@@ -383,7 +390,7 @@ fn a_subscriber_holds_the_runner_open_past_its_timeout() {
     // one is held the clock never starts. Its end starts the clock, and the
     // end that follows is the graceful one: the child is closed rather than
     // orphaned, and the book of children is emptied.
-    let runner = Runner::start_with_args(&["--idle-timeout", "1"]);
+    let mut runner = Runner::start_with_args(&["--idle-timeout", "1"]);
     let mut attached = runner.create_attached("s1", &fake_agent(&["--busy-for", "60"]));
     assert_eq!(attached.next_frame()["type"], "ready");
     let child = runner.sessions()[0]["pid"].as_u64().expect("pid") as i32;
