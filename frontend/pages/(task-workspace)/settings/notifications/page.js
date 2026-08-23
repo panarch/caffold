@@ -286,8 +286,8 @@ class CaffoldSettingsNotificationsPage extends HTMLElement {
         <div class="settings-content-section">
           <header>
             <div>
-              <p>Receive a system notification when a managed task turn completes, fails, or is interrupted.</p>
-              <p class="settings-notification-privacy">Notifications include only the current task name and terminal status—never prompts, generated content, repository paths, or working directories.</p>
+              <p>Receive a system notification when a managed task turn completes, fails, or is interrupted, and when a task waits for you to answer an approval.</p>
+              <p class="settings-notification-privacy">Notifications include only the current task name with its terminal status or that an approval is required—never what was asked, prompts, generated content, repository paths, or working directories.</p>
             </div>
             <button type="button" data-action="refresh" ${busy ? "disabled" : ""}>Refresh</button>
           </header>

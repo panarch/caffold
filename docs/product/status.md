@@ -33,7 +33,8 @@ boundaries.
 - archive/restore of Tasks and verified clean managed worktrees, plus explicit
   permanent deletion of an archived Task and its agent conversation;
 - explicit per-browser Web Push subscription and system notifications when a
-  managed Task turn completes, fails, or is interrupted; and
+  managed Task turn completes, fails, or is interrupted, or when a Task stops
+  to wait for an approval; and
 - responsive desktop, foldable, tablet, and phone layouts.
 
 ## Current boundaries

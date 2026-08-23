@@ -158,11 +158,11 @@ until no handoff target or prepared generation remains and the active worker
 controls the page. About Caffold copy diagnostics includes the handoff node,
 target and observed worker build IDs, and navigation-attempt count.
 
-The service worker also validates terminal Web Push payloads, presents system
-notifications in foreground and background states, and limits notification
-click navigation to canonical same-origin Task routes. It does not infer Task
-completion or subscription state; those remain backend and Settings lifecycle
-responsibilities. When an already displayed matching Task client is focused,
+The service worker also validates finished-turn and waiting-Task Web Push
+payloads, presents system notifications in foreground and background states, and
+limits notification click navigation to canonical same-origin Task routes. It
+does not infer Task completion, a pending approval, or subscription state; those
+remain backend and Settings lifecycle responsibilities. When an already displayed matching Task client is focused,
 the worker posts its validated route to that page; the page applies it if needed
 and uses the same foreground recovery entrypoint. Navigated and newly opened
 documents continue through normal bootstrap.

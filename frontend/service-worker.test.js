@@ -355,6 +355,68 @@ test("falls back to Caffold and status-only copy when the task name is unavailab
   assert.equal(options.body, "Task failed");
 });
 
+test("shows a waiting task under its own name and generic copy", async () => {
+  const harness = createHarness({
+    controlledClients: [{ url: "https://caffold.test/tasks/thread-1" }],
+  });
+  await harness.dispatchExtendable("push", {
+    data: {
+      json: () => ({
+        kind: "actionRequired",
+        threadId: "thread-1",
+        taskName: "Review Web Push",
+        tag: "topic_456",
+      }),
+    },
+  });
+  await harness.dispatchExtendable("push", {
+    data: {
+      json: () => ({
+        kind: "actionRequired",
+        threadId: "thread-2",
+        taskName: null,
+        tag: "topic_789",
+      }),
+    },
+  });
+
+  assert.deepEqual(harness.notifications.map(([title, options]) => [
+    title,
+    options.body,
+    options.tag,
+    { ...options.data },
+  ]), [
+    [
+      "Review Web Push",
+      "Approval required",
+      "topic_456",
+      { route: "/tasks/thread-1", threadId: "thread-1" },
+    ],
+    [
+      "Caffold",
+      "Approval required",
+      "topic_789",
+      { route: "/tasks/thread-2", threadId: "thread-2" },
+    ],
+  ]);
+});
+
+test("drops malformed, content-bearing, and unsafe-route waiting payloads", async () => {
+  const harness = createHarness();
+  for (const payload of [
+    { kind: "actionRequired", threadId: "../settings", tag: "tag" },
+    { kind: "actionRequired", threadId: "thread", tag: "not a tag" },
+    { kind: "actionRequired", threadId: "thread", taskName: "unsafe\nname", tag: "tag" },
+    { kind: "unknownNotice", threadId: "thread", tag: "tag" },
+    { kind: "actionRequired", tag: "tag" },
+  ]) {
+    await harness.dispatchExtendable("push", {
+      data: { json: () => payload },
+    });
+  }
+  assert.deepEqual(harness.notifications, []);
+});
+
 test("drops malformed, content-bearing, and unsafe-route Push payloads", async () => {
   const harness = createHarness();
   for (const payload of [

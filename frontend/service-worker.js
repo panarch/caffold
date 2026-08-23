@@ -9,6 +9,10 @@ const PRUNE_SHELL_CACHES_MESSAGE = "caffold:prune-shell-caches";
 const UPDATE_CONTROLLED_MESSAGE = "caffold:update-controlled";
 const UPDATE_READY_MESSAGE = "caffold:update-ready";
 const NOTIFICATION_ACTIVATION_MESSAGE = "caffold:notification-activation";
+// The kind a waiting Task's notice carries; a finished turn's notice carries a
+// terminal status and no kind. A notice this worker cannot read is dropped
+// rather than shown.
+const ACTION_REQUIRED_KIND = "actionRequired";
 
 const APP_SHELL_ASSETS = [
   "/",
@@ -272,7 +276,7 @@ self.addEventListener("message", (event) => {
 });
 
 self.addEventListener("push", (event) => {
-  event.waitUntil(showTerminalNotification(event.data));
+  event.waitUntil(showTaskNotification(event.data));
 });
 
 self.addEventListener("notificationclick", (event) => {
@@ -375,53 +379,87 @@ async function claimPreparedBuild(client) {
   client?.postMessage({ type: UPDATE_CONTROLLED_MESSAGE, buildId: BUILD_ID });
 }
 
-async function showTerminalNotification(data) {
-  const payload = parseTerminalPushPayload(data);
-  if (!payload) {
-    return;
-  }
-  const route = taskRoute(payload.threadId);
-  if (!route) {
-    return;
-  }
-  const status = terminalStatusCopy(payload.status);
-  const title = payload.taskName || "Caffold";
-  const body = payload.taskName ? status : `Task ${status.toLowerCase()}`;
-  await self.registration.showNotification(title, {
-    body,
-    tag: payload.tag,
-    icon: "/assets/icons/icon-192.png",
-    badge: "/assets/icons/favicon-32.png",
-    data: { route, threadId: payload.threadId },
-  });
-}
-
-function parseTerminalPushPayload(data) {
+async function showTaskNotification(data) {
   let payload;
   try {
     payload = data?.json();
   } catch {
-    return null;
+    return;
   }
   if (!payload || typeof payload !== "object") {
-    return null;
+    return;
   }
+  const notice = payload.kind === ACTION_REQUIRED_KIND
+    ? readActionRequiredPayload(payload)
+    : readTerminalPayload(payload);
+  if (!notice) {
+    return;
+  }
+  const route = taskRoute(notice.threadId);
+  if (!route) {
+    return;
+  }
+  await self.registration.showNotification(notice.title, {
+    body: notice.body,
+    tag: notice.tag,
+    icon: "/assets/icons/icon-192.png",
+    badge: "/assets/icons/favicon-32.png",
+    data: { route, threadId: notice.threadId },
+  });
+}
+
+function readTerminalPayload(payload) {
   const threadId = typeof payload.threadId === "string" ? payload.threadId : "";
   const turnId = typeof payload.turnId === "string" ? payload.turnId : "";
-  const taskName = typeof payload.taskName === "string" && payload.taskName.trim()
-    ? [...payload.taskName.trim()].slice(0, 120).join("")
-    : "";
+  const taskName = safeTaskName(payload.taskName);
   const tag = typeof payload.tag === "string" ? payload.tag : "";
   if (
     !safeTaskId(threadId) ||
     !safeTaskId(turnId) ||
     !["completed", "failed", "interrupted"].includes(payload.status) ||
-    !/^[A-Za-z0-9_-]{1,64}$/.test(tag) ||
-    [...taskName].some((character) => isControlCharacter(character))
+    !safeNotificationTag(tag) ||
+    taskName === null
   ) {
     return null;
   }
-  return { threadId, turnId, status: payload.status, taskName, tag };
+  const status = terminalStatusCopy(payload.status);
+  return {
+    threadId,
+    tag,
+    title: taskName || "Caffold",
+    body: taskName ? status : `Task ${status.toLowerCase()}`,
+  };
+}
+
+// A Task stopped for a person. Which question it stopped on is not sent, so
+// the copy says only that one is waiting.
+function readActionRequiredPayload(payload) {
+  const threadId = typeof payload.threadId === "string" ? payload.threadId : "";
+  const taskName = safeTaskName(payload.taskName);
+  const tag = typeof payload.tag === "string" ? payload.tag : "";
+  if (!safeTaskId(threadId) || !safeNotificationTag(tag) || taskName === null) {
+    return null;
+  }
+  return {
+    threadId,
+    tag,
+    title: taskName || "Caffold",
+    body: "Approval required",
+  };
+}
+
+function safeNotificationTag(tag) {
+  return /^[A-Za-z0-9_-]{1,64}$/.test(tag);
+}
+
+// The bounded name, "" when the notice carries none, and null when it carries
+// one that no notification should show.
+function safeTaskName(taskName) {
+  if (typeof taskName !== "string" || !taskName.trim()) {
+    return "";
+  }
+  const name = [...taskName.trim()].slice(0, 120).join("");
+  return [...name].some((character) => isControlCharacter(character)) ? null : name;
 }
 
 async function openNotificationRoute(route) {

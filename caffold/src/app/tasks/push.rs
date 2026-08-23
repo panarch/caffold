@@ -46,6 +46,14 @@ const PUSH_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 const PUSH_DRAIN_TIMEOUT: Duration = Duration::from_secs(3);
 const VAPID_CONTACT: &str = "https://github.com/panarch/caffold";
 
+/// What tells a waiting Task's notice apart from a finished turn's.
+///
+/// A finished turn's notice carries a terminal status and no kind, which is
+/// the only shape a browser running an older service worker knows how to
+/// read. That browser drops what it cannot read rather than showing it, so
+/// the older notice needs no version of its own.
+const ACTION_REQUIRED_KIND: &str = "actionRequired";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub(super) enum TerminalPushStatus {
@@ -64,12 +72,28 @@ impl TerminalPushStatus {
     }
 }
 
+/// What a finished turn tells a browser.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct PushPayload {
+struct TerminalPayload {
     thread_id: String,
     turn_id: String,
     status: TerminalPushStatus,
+    task_name: Option<String>,
+    tag: String,
+}
+
+/// What a Task waiting on a person tells a browser.
+///
+/// It names the Task and says nothing of the question. Which question is
+/// waiting lives only inside the hash the tag is made of, because routing
+/// needs the Task and the browser needs one notification per question, and
+/// neither needs the agent's name for what it asked.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ActionRequiredPayload {
+    kind: &'static str,
+    thread_id: String,
     task_name: Option<String>,
     tag: String,
 }
@@ -120,6 +144,7 @@ impl PushService {
         &self.inner.public_key
     }
 
+    /// Tell every subscribed browser that a turn ended.
     pub(super) fn notify_terminal(
         &self,
         thread_id: &str,
@@ -131,25 +156,66 @@ impl PushService {
             eprintln!("Web Push route identifiers were invalid; terminal delivery skipped");
             return 0;
         }
+        let topic = delivery_topic(&[thread_id, turn_id, status.as_str()]);
+        self.enqueue(
+            topic.clone(),
+            &TerminalPayload {
+                thread_id: thread_id.to_owned(),
+                turn_id: turn_id.to_owned(),
+                status,
+                task_name: truncated_task_name(task_name),
+                tag: topic,
+            },
+        )
+    }
+
+    /// Tell every subscribed browser that a Task is waiting on a person.
+    ///
+    /// The approval identity decides the tag and nothing else. A second
+    /// question therefore raises a second notification, and the same question
+    /// asked again replaces the one already on screen instead of stacking
+    /// beside it — which is what a connection replaced mid-question produces,
+    /// because the agent asks again with the identity it asked under.
+    pub(super) fn notify_action_required(
+        &self,
+        thread_id: &str,
+        approval_id: &str,
+        task_name: &str,
+    ) -> usize {
+        if !safe_push_id(thread_id) {
+            eprintln!("Web Push route identifier was invalid; waiting delivery skipped");
+            return 0;
+        }
+        let topic = delivery_topic(&[thread_id, approval_id, ACTION_REQUIRED_KIND]);
+        self.enqueue(
+            topic.clone(),
+            &ActionRequiredPayload {
+                kind: ACTION_REQUIRED_KIND,
+                thread_id: thread_id.to_owned(),
+                task_name: truncated_task_name(task_name),
+                tag: topic,
+            },
+        )
+    }
+
+    /// One independent job per subscribed browser, dropped rather than waited
+    /// on.
+    ///
+    /// Nothing that calls this waits for queue capacity or for a provider. A
+    /// browser that cannot be reached loses its notification, and the Task it
+    /// was about carries on either way.
+    fn enqueue(&self, topic: String, payload: &impl Serialize) -> usize {
         let installations = match self.inner.task_store.active_push_installations() {
             Ok(installations) => installations,
             Err(_) => {
-                eprintln!("Web Push recipients could not be loaded; terminal delivery skipped");
+                eprintln!("Web Push recipients could not be loaded; delivery skipped");
                 return 0;
             }
         };
-        let topic = delivery_topic(thread_id, turn_id, status);
-        let payload = PushPayload {
-            thread_id: thread_id.to_owned(),
-            turn_id: turn_id.to_owned(),
-            status,
-            task_name: truncated_task_name(task_name),
-            tag: topic.clone(),
-        };
-        let payload = match serde_json::to_vec(&payload) {
+        let payload = match serde_json::to_vec(payload) {
             Ok(payload) => payload,
             Err(_) => {
-                eprintln!("Web Push payload encoding failed; terminal delivery skipped");
+                eprintln!("Web Push payload encoding failed; delivery skipped");
                 return 0;
             }
         };
@@ -455,13 +521,17 @@ impl RecentDeliveries {
     }
 }
 
-fn delivery_topic(thread_id: &str, turn_id: &str, status: TerminalPushStatus) -> String {
+/// One deterministic name for one notice, for the provider and the browser.
+///
+/// What the notice is about is hashed rather than written out, so an
+/// identifier Caffold does not send a browser can still tell two notices
+/// apart.
+fn delivery_topic(parts: &[&str]) -> String {
     let mut hash = Sha256::new();
-    hash.update(thread_id.as_bytes());
-    hash.update([0]);
-    hash.update(turn_id.as_bytes());
-    hash.update([0]);
-    hash.update(status.as_str().as_bytes());
+    for part in parts {
+        hash.update(part.as_bytes());
+        hash.update([0]);
+    }
     URL_SAFE_NO_PAD.encode(&hash.finalize()[..24])
 }
 
@@ -893,16 +963,27 @@ mod tests {
 
     #[test]
     fn topic_and_payload_name_are_deterministic_bounded_and_unicode_safe() {
-        let first = delivery_topic("thread", "turn", TerminalPushStatus::Completed);
-        assert_eq!(first.len(), 32);
+        let ended = delivery_topic(&["thread", "turn", TerminalPushStatus::Completed.as_str()]);
+        assert_eq!(ended.len(), 32);
         assert_eq!(
-            first,
-            delivery_topic("thread", "turn", TerminalPushStatus::Completed)
+            ended,
+            delivery_topic(&["thread", "turn", TerminalPushStatus::Completed.as_str()])
         );
         assert_ne!(
-            first,
-            delivery_topic("thread", "turn", TerminalPushStatus::Failed)
+            ended,
+            delivery_topic(&["thread", "turn", TerminalPushStatus::Failed.as_str()])
         );
+        let waiting = delivery_topic(&["thread", "approval-1", ACTION_REQUIRED_KIND]);
+        assert_eq!(
+            waiting,
+            delivery_topic(&["thread", "approval-1", ACTION_REQUIRED_KIND])
+        );
+        assert_ne!(
+            waiting,
+            delivery_topic(&["thread", "approval-2", ACTION_REQUIRED_KIND]),
+            "two questions on one Task are two notifications"
+        );
+        assert_ne!(waiting, ended);
         let long = "작".repeat(MAX_TASK_NAME_CHARS + 20);
         let truncated = truncated_task_name(&long).unwrap();
         assert_eq!(truncated.chars().count(), MAX_TASK_NAME_CHARS);
@@ -1038,6 +1119,54 @@ mod tests {
             1
         );
         assert_eq!(sent.len(), 3);
+    }
+
+    /// What a waiting Task sends is the Task, and not the question.
+    #[test]
+    fn a_waiting_task_notifies_every_installation_without_naming_the_question() {
+        let store = TaskStore::memory().unwrap();
+        let first_id = "00000000-0000-4000-8000-000000000001";
+        let second_id = "00000000-0000-4000-8000-000000000002";
+        for (client_id, endpoint) in [
+            (first_id, "https://push.example.test/first"),
+            (second_id, "https://push.example.test/second"),
+        ] {
+            store
+                .upsert_push_installation(subscription(client_id, endpoint), 1_000)
+                .unwrap();
+        }
+        let (sender, mut receiver) = mpsc::channel(8);
+        let service = PushService::new(store, "public-key".to_owned(), sender);
+
+        assert_eq!(
+            service.notify_action_required("thread", "approval-1", "Review Web Push"),
+            2
+        );
+
+        let first = receiver.try_recv().unwrap();
+        let payload: JsonValue = serde_json::from_slice(&first.payload).unwrap();
+        assert_eq!(
+            payload,
+            json!({
+                "kind": "actionRequired",
+                "threadId": "thread",
+                "taskName": "Review Web Push",
+                "tag": first.topic,
+            }),
+            "the payload carries the Task and the tag, and nothing of the question"
+        );
+        let second = receiver.try_recv().unwrap();
+        assert_eq!(second.client_id, second_id);
+        assert_eq!(first.client_id, first_id);
+        assert_eq!(second.topic, first.topic);
+        assert!(receiver.try_recv().is_err());
+
+        assert_eq!(
+            service.notify_action_required("../thread", "approval-1", "Review Web Push"),
+            0,
+            "a thread id that cannot be routed to is not sent anywhere"
+        );
+        assert!(receiver.try_recv().is_err());
     }
 
     #[test]
