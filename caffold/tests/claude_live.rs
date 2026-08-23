@@ -23,7 +23,7 @@
 
 mod support;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use support::{Backend, TurnState};
 
@@ -42,8 +42,39 @@ const NEEDS_APPROVAL: &str =
 const SLOW_WORK: &str = "Read every file in this directory one at a time, \
      and write one short sentence about each. Do not skip any.";
 
+/// How long the work below runs for.
+///
+/// Longer than the turn that starts it takes, twice over: a report that lands
+/// while that turn is still running is queued into it rather than opening one,
+/// and a turn that lasted this long is one the agent waited out in the
+/// foreground instead of backgrounding — which leaves nothing running to report
+/// back at all.
+const COMMAND_RUNS: Duration = Duration::from_secs(45);
+
+/// Work the agent starts and does not wait for. The command outlives the turn
+/// that started it, and the agent is handed the result when it lands rather
+/// than going back for it.
+///
+/// Built rather than written down, because the case measures a turn against
+/// [`COMMAND_RUNS`] and a prompt naming a different number would leave it
+/// measuring against a command nobody ran.
+fn background_work() -> String {
+    format!(
+        "Use the Bash tool with run_in_background set to true to run exactly: sleep {}; \
+         echo done. Then say STARTED and stop. Do not wait for it, do not read its output, \
+         and do not check on it.",
+        COMMAND_RUNS.as_secs()
+    )
+}
+
+/// When the work above has reported back and been answered, measured from the
+/// prompt that starts it: the command's own run, and then enough for the agent
+/// to be handed the result and do something about it.
+const REPORT_HAS_LANDED: Duration = Duration::from_secs(COMMAND_RUNS.as_secs() + 45);
+
 /// The model for the cases that hang on unprompted instruction-following —
-/// the first-turn naming setup, the guide-phrase isolation. The cheapest
+/// the first-turn naming setup, the guide-phrase isolation, the command that
+/// has to be started in the background rather than waited on. The cheapest
 /// model skips an instructed tool call often enough to make those cases
 /// flaky about the model rather than about Caffold, the same way the Codex
 /// live suite pins particular models to particular coverage.
@@ -583,6 +614,109 @@ async fn a_turn_that_cannot_run_reads_as_a_failure_not_as_the_agent_talking() {
         .wait_for_list_row(task.thread_id(), TurnState::Idle, Duration::from_secs(30))
         .await;
     assert_eq!(row["latestTurnStatus"], "failed", "{row}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn a_background_command_reporting_back_is_not_read_as_somebody_talking() {
+    // A background command that finishes reports back into the conversation in
+    // the shape of a prompt, because that is how the agent is made to answer
+    // it. The report is machine text — a task identifier, a path, an exit code
+    // — and shown as a message it is a line nobody typed, sitting in the
+    // conversation under the name of the person who never wrote it. Only the
+    // real agent writes one, and it writes it into the file Caffold reads the
+    // conversation back from.
+    let mut backend = Backend::start().await;
+    let mut started = Instant::now();
+    let task = backend
+        .start_task(&background_work(), INSTRUCTED_MODEL)
+        .await;
+    // Only the agent can start a background command, and a turn that lasted as
+    // long as the command is one it waited out in the foreground instead,
+    // leaving nothing running to report back. Asked again rather than failed:
+    // what is under test is what Caffold does with a report, not whether a
+    // model takes an instruction the first time. Asking again when it did
+    // background one and this misread a slow turn costs a second command that
+    // reports back the same way.
+    let mut prompts = 1;
+    loop {
+        // Watched from working to done, because what is being measured is how
+        // long the turn took: a Task read as idle before its turn has opened
+        // would time a turn that had not started.
+        task.wait_for(TurnState::Running, Duration::from_secs(60))
+            .await;
+        task.wait_for(TurnState::Idle, Duration::from_secs(180))
+            .await;
+        if started.elapsed() < COMMAND_RUNS {
+            break;
+        }
+        assert!(
+            prompts < 3,
+            "the agent never left a command running to report back; it did {}",
+            task.what_happened().await
+        );
+        prompts += 1;
+        started = Instant::now();
+        task.say(&background_work()).await;
+    }
+    // Waited out rather than watched for. A report lands on the session and not
+    // on Caffold — the stream says only that a background task changed, the
+    // Task goes on reading idle while the agent answers, and the conversation
+    // on disk is read when a backend subscribes rather than when it is asked.
+    // So there is nothing to poll, and the wait is timed from the command
+    // rather than from the turn: measured from the turn, a slow turn would move
+    // the report into the turn that started it, where it is queued instead and
+    // opens no turn of its own.
+    tokio::time::sleep(REPORT_HAS_LANDED.saturating_sub(started.elapsed())).await;
+
+    // Read as a Task that outlived its backend reads: from the file, which is
+    // the only place the report and the answer to it are written down.
+    backend.replace().await;
+
+    // A backend that has just started answers for the Task before it has read
+    // the conversation, so this is the read arriving rather than the work.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let events = loop {
+        let events = task.detail().await["events"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        if events
+            .iter()
+            .any(|event| event["type"] == "command_execution")
+        {
+            break events;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the conversation came back with the command in it; it came back as {}",
+            task.what_happened().await
+        );
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    };
+    let turns = events
+        .iter()
+        .filter_map(|event| event["payload"]["turnId"].as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let said = events
+        .iter()
+        .filter(|event| event["type"] == "user_message")
+        .filter_map(|event| event["payload"]["text"].as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        turns.len() > said.len(),
+        "a turn nobody asked for, which is the report opening one and the \
+         agent's answer to it going in: {turns:?} against {said:?}"
+    );
+    assert_eq!(
+        said.len(),
+        prompts,
+        "everything shown as somebody talking was sent by somebody: {said:?}"
+    );
+    assert!(
+        said.iter().all(|text| text.contains("run_in_background")),
+        "{said:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
