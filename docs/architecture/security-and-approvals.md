@@ -54,6 +54,22 @@ carries a protocol id, and taking that pairing is what retires the approval —
 whether a person answered it here or the agent resolved it first. Each pairing
 is taken once, so an approval is never answered or withdrawn twice.
 
+## The Mode a Turn Runs Under
+
+A turn runs under the mode its composer shows. The modes on offer are the
+driver's answer for the agent and the model that were chosen, and the one on
+display travels back with the prompt whether or not a person touched the
+control, so a Task never starts under something the composer did not say.
+
+Caffold names no mode of its own, and sends one only while the list that
+offered it is the list in hand and still allows it. A first list still being
+fetched, a model change still being answered, or an agent that could not be
+reached leaves the prompt carrying no mode, and the control says the agent's
+own default will be used. A mode the current list withholds — one the chosen
+model cannot work under — is replaced by the one that list names instead.
+Sending a name the list does not stand behind would be refused at the moment
+the turn starts.
+
 ## Codex Execution Approvals
 
 Codex app-server owns command execution and permission requests. Caffold

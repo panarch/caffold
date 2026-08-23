@@ -11,6 +11,87 @@ import {
   pasteImage,
 } from "../support/task-fixtures.js";
 
+// A Claude installation: the agent names its own modes, and only some of its
+// models can work under the one it prefers.
+const CLAUDE_MODELS = [
+  {
+    provider: "claude",
+    model: "sonnet",
+    displayName: "Sonnet",
+    description: "Decides for itself",
+    isDefault: true,
+    defaultEffort: "high",
+    efforts: ["high"],
+    supportsFastMode: false,
+  },
+  {
+    provider: "claude",
+    model: "haiku",
+    displayName: "Haiku",
+    description: "Does not",
+    isDefault: false,
+    defaultEffort: null,
+    efforts: [],
+    supportsFastMode: false,
+  },
+];
+
+// A model that cannot decide for itself is offered the mode withheld rather
+// than missing, and is left under the one that asks — which is how the driver
+// answers, because a default nobody can use is not a default.
+function claudePermissions(model) {
+  const auto = model === "sonnet";
+  return {
+    defaultMode: auto ? "auto" : "default",
+    options: [
+      {
+        mode: "auto",
+        label: "Automatic",
+        description: "The model decides what needs asking about.",
+        allowed: auto,
+        dangerous: false,
+      },
+      {
+        mode: "default",
+        label: "Ask each time",
+        description: "Stops for permission.",
+        allowed: true,
+        dangerous: false,
+      },
+    ],
+  };
+}
+
+// `answer` receives the model the list was asked for and the route to answer
+// on, so a test can delay or refuse one list without restating the agent.
+async function installClaudeAgent(page, answer) {
+  await page.unroute("**/api/agent/models");
+  await page.route("**/api/agent/models", (route) =>
+    route.fulfill({ json: { models: CLAUDE_MODELS, unavailable: [] } }),
+  );
+  await page.unroute("**/api/agent/permissions*");
+  await page.route("**/api/agent/permissions*", (route) => {
+    const model = new URL(route.request().url()).searchParams.get("model");
+    return answer
+      ? answer(model, route)
+      : route.fulfill({ json: claudePermissions(model) });
+  });
+}
+
+// Records the body of the one POST that creates a Task.
+async function captureTaskCreation(page) {
+  const captured = { body: null };
+  await page.unroute("**/api/tasks");
+  await page.route("**/api/tasks", (route) => {
+    if (route.request().method() === "POST") {
+      captured.body = route.request().postDataJSON();
+      return route.fulfill({ json: taskDetailFixture() });
+    }
+    return route.fulfill({ json: activeTaskProjection() });
+  });
+  return captured;
+}
+
 async function switchWorkspaceMode(page, mode) {
   const button = page.locator(
     `caffold-task-workspace-navigation button[data-workspace-mode="${mode}"]`,
@@ -169,17 +250,13 @@ test("model options use native popover dismissal and return focus to their trigg
   await expect(popover).toBeHidden();
 });
 
-test("untouched approval mode preserves the effective Codex default", { tag: "@all-viewports" }, async ({ page }) => {
+test("an untouched approval mode is the mode a new task starts under", { tag: "@all-viewports" }, async ({ page }) => {
+  // The picker shows the mode the agent said it works under, and a person who
+  // accepts it never touches the control. Leaving it out of the request would
+  // start the Task under whatever the agent falls back to when nobody says,
+  // which is not what the composer showed.
   await installTaskApiFixture(page);
-  await page.unroute("**/api/tasks");
-  let submittedBody = null;
-  await page.route("**/api/tasks", (route) => {
-    if (route.request().method() === "POST") {
-      submittedBody = route.request().postDataJSON();
-      return route.fulfill({ json: taskDetailFixture() });
-    }
-    return route.fulfill({ json: activeTaskProjection() });
-  });
+  const created = await captureTaskCreation(page);
 
   await page.goto("/tasks/new?cwd=src");
   const form = page.locator('.task-new-form[data-task-form="create"]');
@@ -189,9 +266,9 @@ test("untouched approval mode preserves the effective Codex default", { tag: "@a
   await form.getByRole("textbox", { name: "New task prompt" }).fill("Inspect the task");
   await form.getByRole("textbox", { name: "New task prompt" }).press("Enter");
 
-  await expect.poll(() => submittedBody).not.toBeNull();
-  expect(submittedBody).not.toHaveProperty("permissionMode");
-  expect(submittedBody.fastMode).toBe(false);
+  await expect.poll(() => created.body).not.toBeNull();
+  expect(created.body).toMatchObject({ permissionMode: "approveForMe" });
+  expect(created.body.fastMode).toBe(false);
 });
 
 test("explicit approval mode is sent with a new task prompt", { tag: "@all-viewports" }, async ({ page }) => {
@@ -654,61 +731,7 @@ test("approval modes follow the model, not only the agent", { tag: "@all-viewpor
   // refuses the mode at the moment a turn starts. The list has to change with
   // the choice rather than offer something that will fail later.
   await installTaskApiFixture(page);
-  await page.unroute("**/api/agent/models");
-  await page.route("**/api/agent/models", (route) =>
-    route.fulfill({
-      json: {
-        models: [
-          {
-            provider: "claude",
-            model: "sonnet",
-            displayName: "Sonnet",
-            description: "Decides for itself",
-            isDefault: true,
-            defaultEffort: "high",
-            efforts: ["high"],
-            supportsFastMode: false,
-          },
-          {
-            provider: "claude",
-            model: "haiku",
-            displayName: "Haiku",
-            description: "Does not",
-            isDefault: false,
-            defaultEffort: null,
-            efforts: [],
-            supportsFastMode: false,
-          },
-        ],
-        unavailable: [],
-      },
-    }),
-  );
-  await page.unroute("**/api/agent/permissions*");
-  await page.route("**/api/agent/permissions*", (route) => {
-    const model = new URL(route.request().url()).searchParams.get("model");
-    return route.fulfill({
-      json: {
-        defaultMode: "default",
-        options: [
-          {
-            mode: "auto",
-            label: "Automatic",
-            description: "The model decides what needs asking about.",
-            allowed: model === "sonnet",
-            dangerous: false,
-          },
-          {
-            mode: "default",
-            label: "Ask each time",
-            description: "Stops for permission.",
-            allowed: true,
-            dangerous: false,
-          },
-        ],
-      },
-    });
-  });
+  await installClaudeAgent(page);
 
   await page.goto("/tasks/new?cwd=src");
   const form = page.locator('.task-new-form[data-task-form="create"]');
@@ -730,6 +753,114 @@ test("approval modes follow the model, not only the agent", { tag: "@all-viewpor
     "a model that cannot shows it withheld rather than missing",
   ).toBeVisible();
   await expect(auto).toBeDisabled();
+});
+
+test("the mode a new task starts under follows the model, not the agent's own default", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  // The agent withholds its preferred mode from a model that cannot work under
+  // it and names the one that asks instead. A request carrying the withheld
+  // name would be refused at the moment the turn starts.
+  await installTaskApiFixture(page);
+  await installClaudeAgent(page);
+  const created = await captureTaskCreation(page);
+
+  await page.goto("/tasks/new?cwd=src");
+  const form = page.locator('.task-new-form[data-task-form="create"]');
+  const permissionPicker = form.getByRole("button", { name: "Choose approval mode" });
+  await expect(permissionPicker).toContainText("Automatic");
+
+  await form.getByRole("button", { name: /Choose model/ }).click();
+  await form.locator('.task-model-popover [data-model="haiku"]').click();
+  await expect(permissionPicker).toContainText("Ask each time");
+
+  await form.getByRole("textbox", { name: "New task prompt" }).fill("Inspect the task");
+  await form.getByRole("textbox", { name: "New task prompt" }).press("Enter");
+
+  await expect.poll(() => created.body).not.toBeNull();
+  expect(created.body).toMatchObject({
+    model: "haiku",
+    permissionMode: "default",
+  });
+});
+
+test("an unreadable mode list leaves the agent's own default standing", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  // Nothing here knows what the agent would do, so nothing is claimed and
+  // nothing is sent. Naming a mode anyway would send one this agent may not
+  // have, and the control would promise a mode the Task never started under.
+  await installTaskApiFixture(page);
+  await installClaudeAgent(page, (model, route) =>
+    route.fulfill({
+      status: 503,
+      json: { code: "no_agent_available", message: "No agent offered a model." },
+    }),
+  );
+  const created = await captureTaskCreation(page);
+
+  await page.goto("/tasks/new?cwd=src");
+  const form = page.locator('.task-new-form[data-task-form="create"]');
+  const permissionPicker = form.getByRole("button", { name: "Choose approval mode" });
+  await expect(permissionPicker).toContainText("Agent default");
+  // A label this toolbar has not had to fit before, at every width.
+  await expect
+    .poll(() =>
+      form
+        .locator(".task-composer-toolbar")
+        .evaluate((toolbar) => toolbar.scrollWidth <= toolbar.clientWidth + 1),
+    )
+    .toBe(true);
+  await permissionPicker.click();
+  await expect(form.locator(".task-permission-popover")).toContainText(
+    "The agent's own default will be used.",
+  );
+  await page.keyboard.press("Escape");
+
+  await form.getByRole("textbox", { name: "New task prompt" }).fill("Inspect the task");
+  await form.getByRole("textbox", { name: "New task prompt" }).press("Enter");
+
+  await expect.poll(() => created.body).not.toBeNull();
+  expect(created.body).not.toHaveProperty("permissionMode");
+});
+
+test("a mode list still arriving is not the mode a new task starts under", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  // A list in flight describes the model chosen before this one. Sending what
+  // it said would name a mode the chosen model may not work under, so the
+  // agent's own default stands until the list that describes it arrives.
+  await installTaskApiFixture(page);
+  let releaseSecondList;
+  const secondList = new Promise((resolve) => {
+    releaseSecondList = resolve;
+  });
+  let haikuRequests = 0;
+  await installClaudeAgent(page, async (model, route) => {
+    if (model === "haiku") {
+      haikuRequests += 1;
+      await secondList;
+    }
+    return route.fulfill({ json: claudePermissions(model) });
+  });
+  const created = await captureTaskCreation(page);
+
+  await page.goto("/tasks/new?cwd=src");
+  const form = page.locator('.task-new-form[data-task-form="create"]');
+  const permissionPicker = form.getByRole("button", { name: "Choose approval mode" });
+  await expect(permissionPicker).toContainText("Automatic");
+
+  await form.getByRole("button", { name: /Choose model/ }).click();
+  await form.locator('.task-model-popover [data-model="haiku"]').click();
+  await expect.poll(() => haikuRequests).toBe(1);
+
+  await form.getByRole("textbox", { name: "New task prompt" }).fill("Inspect the task");
+  await form.getByRole("textbox", { name: "New task prompt" }).press("Enter");
+
+  await expect.poll(() => created.body).not.toBeNull();
+  expect(created.body).toMatchObject({ model: "haiku" });
+  expect(created.body).not.toHaveProperty("permissionMode");
+  releaseSecondList();
 });
 
 test("switching to a model without Fast support normalizes to Normal and hides Speed", { tag: "@all-viewports" }, async ({
@@ -897,6 +1028,58 @@ test("explicit approval mode is sent with a follow-up prompt", { tag: "@all-view
   expect(submittedBody).toMatchObject({
     prompt: "Continue the task",
     permissionMode: "approveForMe",
+  });
+});
+
+test("a remembered mode the chosen model cannot use is replaced rather than sent", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  // A Task remembers the mode it last ran under, and a model change can leave
+  // that mode one the new model cannot work under. The picker settles on what
+  // this model can do, because the turn would be refused under the other.
+  await installTaskApiFixture(page);
+  await installClaudeAgent(page);
+  const detail = {
+    ...taskDetailFixture(),
+    provider: "claude",
+    model: "sonnet",
+    reasoningEffort: "high",
+    permissionMode: "auto",
+  };
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+  await page.route("**/api/tasks/thread-1/stream*", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: ": ready\n\n",
+    }),
+  );
+  let submittedBody = null;
+  await page.route("**/api/tasks/thread-1/prompts", (route) => {
+    submittedBody = route.request().postDataJSON();
+    return route.fulfill({
+      json: { threadId: "thread-1", turnId: "turn-2", steered: false },
+    });
+  });
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+  const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
+  const picker = form.getByRole("button", { name: "Choose approval mode" });
+  await expect(picker).toContainText("Automatic");
+
+  await form.getByRole("button", { name: /Choose model/ }).click();
+  await form.locator('.task-model-popover [data-model="haiku"]').click();
+  await expect(picker).toContainText("Ask each time");
+
+  await form.getByRole("textbox", { name: "Follow-up prompt" }).fill("Continue the task");
+  await form.getByRole("textbox", { name: "Follow-up prompt" }).press("Enter");
+
+  await expect.poll(() => submittedBody).not.toBeNull();
+  expect(submittedBody).toMatchObject({
+    model: "haiku",
+    permissionMode: "default",
   });
 });
 
