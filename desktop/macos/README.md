@@ -86,7 +86,7 @@ setup fails.
 - Startup keeps the server in the menu bar without opening the default browser.
 - `Open Caffold` in the menu opens the browser; reopening the running app does the same.
 - The menu bar icon also configures the server, exposes logs, retries Tailscale Serve, and quits the server.
-- The About panel shows the version, build number, and local package date and time.
+- The About panel shows the version, source commit, and local package date and time.
 - The app checks the latest stable GitHub Release at launch and when its menu is reopened after six hours.
 - `Check for Updates…` installs an approved update through Homebrew, then relaunches Caffold and confirms that its owned local server becomes ready.
 - Data is stored in `~/Library/Application Support/Caffold/data`.

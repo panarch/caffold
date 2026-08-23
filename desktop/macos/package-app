@@ -21,8 +21,15 @@ RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 ARCH="$(uname -m)"
 VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' "${REPO_DIR}/caffold/Cargo.toml" | head -n 1)"
 WEB_VERSION="$(sed -n 's/^[[:space:]]*"version": "\([^"]*\)",/\1/p' "${REPO_DIR}/frontend/package.json" | head -n 1)"
-BUILD_NUMBER="$(git -C "${REPO_DIR}" rev-list --count HEAD)"
-BUILD_TIMESTAMP="${CAFFOLD_BUILD_TIMESTAMP:-$(date '+%Y-%m-%d %H:%M %Z')}"
+# LaunchServices resolves a bundle identifier partly by CFBundleVersion, and one
+# machine installs from several branches and worktrees, so this number must never
+# decrease between builds. Build time is monotonic across them; commit depth is not.
+BUILD_NUMBER="$(date '+%s')"
+BUILD_TIMESTAMP="$(date -r "${BUILD_NUMBER}" '+%Y-%m-%d %H:%M:%S %Z')"
+BUILD_COMMIT="$(git -C "${REPO_DIR}" rev-parse --short=8 HEAD)"
+if [[ -n "$(git -C "${REPO_DIR}" status --porcelain --untracked-files=no)" ]]; then
+  BUILD_COMMIT="${BUILD_COMMIT}-dirty"
+fi
 ARCHIVE_BASENAME="Caffold-Server-${VERSION}-macos-${ARCH}.zip"
 ARCHIVE="${DIST_DIR}/${ARCHIVE_BASENAME}"
 CHECKSUM="${ARCHIVE}.sha256"
@@ -90,6 +97,7 @@ install_info_plist() {
   /usr/libexec/PlistBuddy \
     -c "Set :CFBundleShortVersionString ${VERSION}" \
     -c "Set :CFBundleVersion ${BUILD_NUMBER}" \
+    -c "Set :CaffoldBuildCommit ${BUILD_COMMIT}" \
     -c "Set :CaffoldBuildTimestamp ${BUILD_TIMESTAMP}" \
     "${CONTENTS_DIR}/Info.plist"
 }
@@ -117,12 +125,11 @@ verify_bundle() {
   local app_dir="${1:-${APP_DIR}}"
   local expected_build_timestamp="${2-${BUILD_TIMESTAMP}}"
   local expected_version="${3:-${VERSION}}"
-  local expected_build_number="${4:-${BUILD_NUMBER}}"
+  local expected_build_number="${4-${BUILD_NUMBER}}"
   local contents_dir="${app_dir}/Contents"
   local macos_dir="${contents_dir}/MacOS"
   local resources_dir="${contents_dir}/Resources"
   local plist="${contents_dir}/Info.plist"
-  local actual_build_timestamp
 
   require_executable "${macos_dir}/CaffoldServer"
   require_executable "${resources_dir}/caffold"
@@ -132,18 +139,20 @@ verify_bundle() {
   require_file "${plist}"
   assert_plist_value "${plist}" CFBundleIdentifier "${BUNDLE_IDENTIFIER}"
   assert_plist_value "${plist}" CFBundleShortVersionString "${expected_version}"
-  assert_plist_value "${plist}" CFBundleVersion "${expected_build_number}"
+  assert_plist_matches "${plist}" CFBundleVersion '^[0-9]{10}$' \
+    "a build time in Unix epoch seconds"
+  if [[ -n "${expected_build_number}" ]]; then
+    assert_plist_value "${plist}" CFBundleVersion "${expected_build_number}"
+  fi
+  assert_plist_matches "${plist}" CaffoldBuildCommit '^[0-9a-f]{8}(-dirty)?$' \
+    "an abbreviated source commit"
+  assert_plist_matches "${plist}" CaffoldBuildTimestamp \
+    '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} .+$' \
+    "a local build date and time in seconds"
+  if [[ -n "${expected_build_timestamp}" ]]; then
+    assert_plist_value "${plist}" CaffoldBuildTimestamp "${expected_build_timestamp}"
+  fi
   assert_plist_value "${plist}" LSMinimumSystemVersion "${MINIMUM_MACOS_VERSION}"
-  actual_build_timestamp="$(/usr/libexec/PlistBuddy -c 'Print :CaffoldBuildTimestamp' "${plist}")"
-  if [[ -z "${actual_build_timestamp}" ]]; then
-    echo "${plist} has an empty CaffoldBuildTimestamp." >&2
-    return 1
-  fi
-  if [[ -n "${expected_build_timestamp}" && \
-    "${actual_build_timestamp}" != "${expected_build_timestamp}" ]]; then
-    echo "${plist} has CaffoldBuildTimestamp=${actual_build_timestamp}; expected ${expected_build_timestamp}." >&2
-    return 1
-  fi
   verify_binary_architecture "${macos_dir}/CaffoldServer"
   verify_binary_architecture "${resources_dir}/caffold"
   verify_binary_architecture "${resources_dir}/caffold-claude-runner"
@@ -182,6 +191,19 @@ assert_plist_value() {
   fi
 }
 
+assert_plist_matches() {
+  local plist="$1"
+  local key="$2"
+  local pattern="$3"
+  local expectation="$4"
+  local actual
+  actual="$(/usr/libexec/PlistBuddy -c "Print :${key}" "${plist}")"
+  if [[ ! "${actual}" =~ ${pattern} ]]; then
+    echo "${plist} has ${key}=${actual}; expected ${expectation}." >&2
+    return 1
+  fi
+}
+
 verify_binary_architecture() {
   local binary="$1"
   local architectures
@@ -213,7 +235,7 @@ verify_archive() {
   local archive="${1:-${ARCHIVE}}"
   local expected_build_timestamp="${2-}"
   local expected_version="${3:-${VERSION}}"
-  local expected_build_number="${4:-${BUILD_NUMBER}}"
+  local expected_build_number="${4-${BUILD_NUMBER}}"
   local extract_dir
   extract_dir="$(mktemp -d "${TMPDIR:-/tmp}/caffold-release.XXXXXX")"
 
@@ -231,7 +253,6 @@ verify_archive() {
 verify_archive_command() {
   local archive="${ARCHIVE}"
   local expected_version="${VERSION}"
-  local expected_build_number="${BUILD_NUMBER}"
 
   if [[ $# -gt 0 && "$1" != --* ]]; then
     archive="$1"
@@ -247,14 +268,6 @@ verify_archive_command() {
         expected_version="$2"
         shift 2
         ;;
-      --expected-build-number)
-        [[ $# -ge 2 ]] || {
-          echo "--expected-build-number requires a value" >&2
-          return 2
-        }
-        expected_build_number="$2"
-        shift 2
-        ;;
       *)
         echo "Unknown verify-archive argument: $1" >&2
         return 2
@@ -266,11 +279,7 @@ verify_archive_command() {
     echo "Expected version must be a release version such as 0.1.0." >&2
     return 2
   }
-  [[ "${expected_build_number}" =~ ^[1-9][0-9]*$ ]] || {
-    echo "Expected build number must be a positive integer." >&2
-    return 2
-  }
-  verify_archive "${archive}" "" "${expected_version}" "${expected_build_number}"
+  verify_archive "${archive}" "" "${expected_version}" ""
 }
 
 write_checksum() {
@@ -289,7 +298,7 @@ build() {
   verify_bundle
 
   echo "app:     ${APP_DIR}"
-  echo "version: ${VERSION} (${BUILD_NUMBER})"
+  echo "version: ${VERSION} (${BUILD_COMMIT})"
   echo "built:   ${BUILD_TIMESTAMP}"
   echo "arch:    ${ARCH}"
 }
@@ -338,7 +347,7 @@ usage: desktop/macos/package-app {build|archive|verify-archive|status|metadata}
 Commands:
   build           build and verify the release app bundle
   archive         build, archive, re-extract, verify, and checksum the app
-  verify-archive [archive] [--expected-version <version>] [--expected-build-number <number>]
+  verify-archive [archive] [--expected-version <version>]
                   re-extract and verify an archive against explicit release identity
   status          print the current bundle and archive paths
   metadata        print the release identity as key=value pairs
