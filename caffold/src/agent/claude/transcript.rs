@@ -35,9 +35,21 @@
 //! a session's depth by asking it to run `/effort`, and reading that back as
 //! something a person said would put it in their conversation.
 //!
+//! Not every prompt is somebody talking either. A background command that
+//! finishes reports back into the conversation as a prompt, because that is how
+//! the agent is made to answer it, and `origin` is what says so: a report is
+//! marked `task-notification`, where a prompt somebody sent is marked `human`
+//! or marked nothing at all. So what is asked of a prompt is whether it is a
+//! report, not whether it is a person's — asking the other way round would take
+//! every prompt Caffold sends, which carries no `origin`, and lose it. A report
+//! opens a turn like any prompt, because the work the agent does about it has
+//! to belong somewhere, but the report itself is drawn as nothing: nobody said
+//! it.
+//!
 //! A message sent into a turn already running is not a `user` row at all: it is
 //! an attachment the agent files as a queued command, which is why it is read
-//! from there.
+//! from there. A report that arrives while the agent is working is queued the
+//! same way, and there it is `commandMode` that tells the two apart.
 //!
 //! The turns here are finished ones. A turn still running is described by the
 //! session running it, which knows what the file cannot say — that the agent is
@@ -72,6 +84,11 @@ struct Row {
     /// queue. Present only on a message that is somebody's prompt.
     #[serde(default, rename = "promptSource")]
     prompt_source: Option<String>,
+    /// What put a prompt in the conversation, when the agent has anything to
+    /// say about it. It says nothing about the prompts Caffold sends and
+    /// everything about the ones nobody sent.
+    #[serde(default)]
+    origin: Option<Marking>,
     /// What a tool answered. Present only on a message carrying one.
     #[serde(default, rename = "toolUseResult")]
     tool_use_result: Option<serde::de::IgnoredAny>,
@@ -98,7 +115,46 @@ struct Attachment {
     kind: String,
     #[serde(default)]
     prompt: MessageContent,
+    /// What was queued: a message, or a background command reporting back while
+    /// the agent was too busy to be told.
+    #[serde(default, rename = "commandMode")]
+    mode: Option<Marking>,
 }
+
+/// What the agent says something of its own is.
+///
+/// A prompt is marked in an object and a queued command in a word, and either
+/// may one day be marked in a shape this release has never seen. That has to
+/// cost the marking and nothing else: a marking refused fails the row it is
+/// written on, and that row is a message — the prompt somebody sent, gone from
+/// their conversation because the agent labelled it in a way Caffold did not
+/// know.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum Marking {
+    /// A word, which is how a queued command is marked.
+    Word(String),
+    /// A word inside an object, which is how a prompt is marked.
+    Kind { kind: String },
+    /// A shape this release does not read, which marks nothing.
+    Unreadable(serde::de::IgnoredAny),
+}
+
+impl Marking {
+    /// Whether this is the agent's own name for the thing named.
+    fn says(&self, name: &str) -> bool {
+        match self {
+            Self::Word(marking) | Self::Kind { kind: marking } => marking == name,
+            Self::Unreadable(_) => false,
+        }
+    }
+}
+
+/// What the agent calls a background command reporting back.
+///
+/// One name for both ways it arrives: as a prompt when the agent is idle, as a
+/// queued command when it is working.
+const TASK_NOTIFICATION: &str = "task-notification";
 
 /// Where the agent keeps every project's conversations.
 ///
@@ -334,15 +390,19 @@ fn turns(lines: &[&str]) -> (Vec<Turn>, usize) {
         }
 
         if row.kind == "user" && row.prompt_source.is_some() {
+            // A background command reporting back opens a turn like any other
+            // prompt, because what the agent does about it is work that belongs
+            // somewhere, and it opens on that work: the report is the agent
+            // writing to itself, and drawing it as words would put a line
+            // nobody wrote where what somebody said belongs.
+            let said = (!reports_a_background_command(&row))
+                .then(|| user_message_item(&format!("{anchor}:prompt"), prompt_content(message)));
             turns.push(Turn {
                 id: anchor.to_string(),
                 status: TurnStatus::Completed,
                 started_at_ms: at_ms,
                 completed_at_ms: at_ms,
-                items: vec![user_message_item(
-                    &format!("{anchor}:prompt"),
-                    prompt_content(message),
-                )],
+                items: said.into_iter().collect(),
             });
             continue;
         }
@@ -376,6 +436,17 @@ fn turns(lines: &[&str]) -> (Vec<Turn>, usize) {
     (turns, unreadable)
 }
 
+/// Whether a prompt is a background command reporting back rather than
+/// somebody asking for something.
+///
+/// Asked this way round because a prompt Caffold sends says nothing about where
+/// it came from: only the report is marked, so only the report can be found.
+fn reports_a_background_command(row: &Row) -> bool {
+    row.origin
+        .as_ref()
+        .is_some_and(|origin| origin.says(TASK_NOTIFICATION))
+}
+
 /// What a person said into a turn that was already running, if that is what
 /// this row is.
 ///
@@ -385,6 +456,16 @@ fn turns(lines: &[&str]) -> (Vec<Turn>, usize) {
 fn steered_message(row: &Row) -> Option<Vec<CaffoldContent>> {
     let attachment = row.attachment.as_ref()?;
     if attachment.kind != "queued_command" {
+        return None;
+    }
+    // The queue is where a report waits when the agent is working, and it
+    // waits there beside what a person said. Neither the turn it lands in nor
+    // the shape it lands in makes it somebody talking.
+    if attachment
+        .mode
+        .as_ref()
+        .is_some_and(|mode| mode.says(TASK_NOTIFICATION))
+    {
         return None;
     }
     let said = prompt_content(&Message {
@@ -606,6 +687,212 @@ mod tests {
         assert_eq!(turns[0].items.len(), 1, "{:?}", items_of(&turns[0]));
     }
 
+    /// What the agent writes into a conversation when a background command it
+    /// started has finished.
+    fn a_report(task: &str) -> String {
+        format!(
+            "<task-notification>\n<task-id>{task}</task-id>\n\
+             <tool-use-id>toolu_1</tool-use-id>\n\
+             <output-file>/tmp/claude/{task}.output</output-file>\n\
+             <status>completed</status>\n\
+             <summary>Background command \"Build the app\" completed (exit code 0)</summary>\n\
+             </task-notification>"
+        )
+    }
+
+    /// Everything somebody said in a turn, in the order they said it.
+    fn said_in(turn: &Turn) -> Vec<&str> {
+        turn.items
+            .iter()
+            .filter_map(|item| match &item.kind {
+                ItemKind::UserMessage { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn a_conversation_a_background_command_reported_into() -> String {
+        [
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "timestamp": "2026-08-23T06:20:00.000Z",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "build the app in the background"},
+            })),
+            line(serde_json::json!({
+                "type": "assistant",
+                "uuid": "answer-1",
+                "timestamp": "2026-08-23T06:20:01.000Z",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "started"}]},
+            })),
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "report-1",
+                "timestamp": "2026-08-23T06:25:55.000Z",
+                "promptSource": "sdk",
+                "origin": {"kind": "task-notification"},
+                "message": {"role": "user", "content": a_report("bgxe14776")},
+            })),
+            line(serde_json::json!({
+                "type": "assistant",
+                "uuid": "answer-2",
+                "timestamp": "2026-08-23T06:25:57.000Z",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "the build is done"}]},
+            })),
+        ]
+        .join("\n")
+    }
+
+    #[test]
+    fn a_background_command_reporting_back_is_not_shown_as_something_somebody_said() {
+        let turns = read_turns(&a_conversation_a_background_command_reported_into());
+
+        assert_eq!(
+            turns.len(),
+            2,
+            "the report opens a turn, because the agent's answer to it is work \
+             that has to belong somewhere: {:?}",
+            turns.iter().map(|turn| &turn.id).collect::<Vec<_>>()
+        );
+        let reported = &turns[1];
+        assert_eq!(said_in(reported), Vec::<&str>::new(), "nobody said it");
+        assert!(
+            reported.items.iter().any(|item| matches!(
+                &item.kind,
+                ItemKind::AssistantMessage { text, .. } if text == "the build is done"
+            )),
+            "the work the agent did about it is the turn: {:?}",
+            items_of(reported)
+        );
+    }
+
+    #[test]
+    fn a_prompt_that_says_nothing_about_where_it_came_from_is_somebody_talking() {
+        // Every prompt Caffold sends is one of these. The agent marks a report
+        // and marks what a person typed, and marks nothing on what arrives over
+        // the SDK — so a reader that asked for the mark instead of asking for
+        // the report would hand back a conversation with nobody in it.
+        let contents = [
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "what Caffold sent"},
+            })),
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-2",
+                "promptSource": "typed",
+                "origin": {"kind": "human"},
+                "message": {"role": "user", "content": "what somebody typed"},
+            })),
+        ]
+        .join("\n");
+
+        let turns = read_turns(&contents);
+
+        assert_eq!(turns.len(), 2, "both opened a turn");
+        assert_eq!(said_in(&turns[0]), ["what Caffold sent"]);
+        assert_eq!(said_in(&turns[1]), ["what somebody typed"]);
+    }
+
+    #[test]
+    fn a_prompt_that_only_reads_like_a_report_is_still_somebody_talking() {
+        // What makes a report a report is the agent marking it as one, not the
+        // words in it. Somebody who pastes one in to ask about it has said
+        // something, and a reader that went looking for the words instead
+        // would take their message out of their own conversation.
+        let contents = line(serde_json::json!({
+            "type": "user",
+            "uuid": "prompt-1",
+            "promptSource": "sdk",
+            "message": {"role": "user", "content": a_report("bgxe14776")},
+        }));
+
+        let turns = read_turns(&contents);
+
+        assert_eq!(said_in(&turns[0]).len(), 1, "{:?}", items_of(&turns[0]));
+    }
+
+    #[test]
+    fn a_report_queued_while_the_agent_worked_is_not_shown_beside_what_was_said() {
+        // Both wait in the same queue and both are filed as queued commands.
+        // What tells them apart is the mode they were queued under.
+        let contents = [
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "go"},
+            })),
+            line(serde_json::json!({
+                "type": "attachment",
+                "uuid": "queued-1",
+                "attachment": {
+                    "type": "queued_command",
+                    "commandMode": "task-notification",
+                    "prompt": a_report("b579lzr25"),
+                },
+            })),
+            line(serde_json::json!({
+                "type": "attachment",
+                "uuid": "queued-2",
+                "attachment": {
+                    "type": "queued_command",
+                    "commandMode": "prompt",
+                    "prompt": [{"type": "text", "text": "stop reading"}],
+                },
+            })),
+        ]
+        .join("\n");
+
+        let turns = read_turns(&contents);
+
+        assert_eq!(turns.len(), 1);
+        assert_eq!(said_in(&turns[0]), ["go", "stop reading"]);
+    }
+
+    #[test]
+    fn a_marking_in_a_shape_this_release_cannot_read_costs_the_marking_and_not_the_message() {
+        // What the agent marks its own prompts with is the agent's to change.
+        // A release that writes a marking differently should cost Caffold the
+        // ability to tell a report apart — not the prompts around it, which is
+        // what refusing the row would take.
+        let contents = [
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptSource": "sdk",
+                "origin": "human",
+                "message": {"role": "user", "content": "still what somebody said"},
+            })),
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-2",
+                "promptSource": "sdk",
+                "origin": {"kind": 42},
+                "message": {"role": "user", "content": "and so is this"},
+            })),
+            line(serde_json::json!({
+                "type": "attachment",
+                "uuid": "queued-1",
+                "attachment": {
+                    "type": "queued_command",
+                    "commandMode": {"written": "as an object"},
+                    "prompt": [{"type": "text", "text": "and this"}],
+                },
+            })),
+        ]
+        .join("\n");
+
+        let (turns, unreadable) = all_turns(&contents);
+
+        assert_eq!(unreadable, 0, "no line was lost to a marking");
+        assert_eq!(said_in(&turns[0]), ["still what somebody said"]);
+        assert_eq!(said_in(&turns[1]), ["and so is this", "and this"]);
+    }
+
     #[test]
     fn a_message_whose_body_cannot_be_read_is_counted_as_missing() {
         // The line reads and the body does not, which is a message gone from a
@@ -742,6 +1029,30 @@ mod tests {
     }
 
     #[test]
+    fn a_turn_a_background_command_opened_is_a_turn_a_page_begins_at() {
+        // Both readers have to agree on what opens a turn: one finds the lines
+        // a page is made of, the other builds the turns from those lines, and a
+        // line that opens a turn for only one of them leaves a page starting on
+        // work with no turn to belong to and a cursor naming a turn nobody can
+        // find.
+        let contents = a_conversation_a_background_command_reported_into();
+
+        let newest = page_of(&contents, None, 1);
+
+        assert_eq!(ids(&newest), ["report-1"]);
+        assert_eq!(said_in(&newest.turns[0]), Vec::<&str>::new());
+        assert_eq!(newest.next_cursor.as_deref(), Some("report-1"));
+
+        let older = page_of(&contents, newest.next_cursor.as_deref(), 8);
+
+        assert_eq!(ids(&older), ["prompt-1"]);
+        assert_eq!(
+            said_in(&older.turns[0]),
+            ["build the app in the background"]
+        );
+    }
+
+    #[test]
     fn a_cursor_that_names_no_turn_here_reads_as_nothing_further() {
         let contents = conversation();
         let lines: Vec<&str> = contents.lines().collect();
@@ -839,6 +1150,17 @@ mod tests {
     /// as a queued command rather than as a message.
     const RECORDED_WITH_A_COMMAND: &str =
         include_str!("transcript/a-session-with-a-command-and-a-steer.jsonl");
+
+    /// A session a background command reported into, twice over.
+    ///
+    /// The first report arrived while the agent was working and waited in the
+    /// queue until it stopped; the second arrived while it was idle and went
+    /// straight in as a prompt. Both are the agent writing to itself. The two
+    /// prompts around them are the ones Caffold sent, which carry no `origin`
+    /// at all — so one file holds both what must not be shown and what must not
+    /// be hidden along with it.
+    const RECORDED_WITH_A_BACKGROUND_COMMAND: &str =
+        include_str!("transcript/a-session-a-background-command-reported-into.jsonl");
 
     /// A session somebody put a picture in.
     ///
@@ -997,6 +1319,44 @@ mod tests {
             )),
             "{:?}",
             items_of(&turns[0])
+        );
+    }
+
+    #[test]
+    fn a_session_a_background_command_reported_into_shows_the_work_and_not_the_report() {
+        let turns = read_turns(RECORDED_WITH_A_BACKGROUND_COMMAND);
+
+        assert_eq!(
+            turns.len(),
+            3,
+            "two prompts and the report the agent answered: {:?}",
+            turns.iter().map(|turn| &turn.id).collect::<Vec<_>>()
+        );
+        // What Caffold sent is still what somebody said, and the report that
+        // waited in the queue through the first turn is not beside it.
+        for asked in &turns[..2] {
+            let said = said_in(asked);
+            assert_eq!(said.len(), 1, "{said:?}");
+            assert!(said[0].contains("run_in_background"), "{said:?}");
+        }
+        // The report that arrived while the agent was idle opened the last
+        // turn, and what is in that turn is what the agent did about it.
+        let reported = &turns[2];
+        assert_eq!(said_in(reported), Vec::<&str>::new());
+        assert!(
+            reported.items.iter().any(|item| matches!(
+                &item.kind,
+                ItemKind::AssistantMessage { text, .. } if text.contains("Background task finished")
+            )),
+            "{:?}",
+            items_of(reported)
+        );
+        assert!(
+            turns
+                .iter()
+                .flat_map(said_in)
+                .all(|said| !said.contains("task-notification")),
+            "nothing the agent wrote to itself is in the conversation"
         );
     }
 
