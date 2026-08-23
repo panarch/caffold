@@ -33,7 +33,7 @@ pub(super) struct PendingApproval {
 
 /// Which agent is blocked on this answer.
 #[derive(Debug, Clone)]
-enum AskedBy {
+pub(super) enum AskedBy {
     Codex {
         /// Which of the three methods asked.
         kind: ApprovalKind,
@@ -43,23 +43,6 @@ enum AskedBy {
     },
     /// Claude keeps what it proposed itself, so nothing is needed here.
     Claude,
-}
-
-impl PendingApproval {
-    /// One Claude asked, recorded beside the ones Codex asked.
-    pub(super) fn claude(
-        thread_id: String,
-        request: ApprovalRequest,
-        event: &TaskEventRecord,
-    ) -> Self {
-        Self {
-            thread_id,
-            request,
-            asked_by: AskedBy::Claude,
-            created_ms: event.created_ms,
-            sort_index: event.sort_index,
-        }
-    }
 }
 
 #[derive(Deserialize)]
@@ -213,30 +196,83 @@ impl TaskRuntime {
         };
         let approval_id = approval_id_from_request(&request_id, &params);
         client.track_approval(&approval_id, request_id).await;
-        let asked_by = AskedBy::Codex { kind, params };
-        let AskedBy::Codex { params, .. } = &asked_by else {
-            unreachable!("a Codex server request is asked by Codex");
-        };
         let created_ms = params
             .get("startedAtMs")
             .and_then(JsonValue::as_u64)
             .filter(|started_at_ms| *started_at_ms > 0)
             .unwrap_or_else(now_ms);
-        let request = approval_request(approval_id.clone(), kind, params);
+        let request = approval_request(approval_id, kind, &params);
+        self.record_pending_approval(
+            &thread_id,
+            request,
+            created_ms,
+            AskedBy::Codex { kind, params },
+        )
+        .await;
+    }
+
+    /// Put a question on the waiting list, show it, and tell a phone the once.
+    ///
+    /// Both agents' questions arrive here, and the same question can arrive
+    /// more than once: app-server replays what is still pending whenever a
+    /// connection is replaced. The waiting list answers to the identity the
+    /// question was asked under, so a replay lands on the question it already
+    /// is, and only the arrival that made a Task wait reaches a phone.
+    pub(super) async fn record_pending_approval(
+        &self,
+        thread_id: &str,
+        request: ApprovalRequest,
+        created_ms: u64,
+        asked_by: AskedBy,
+    ) {
+        let approval_id = request.id.clone();
         let event = self
             .events
-            .record(approval_requested_event(&thread_id, &request, created_ms));
-        self.approvals.lock().await.insert(
-            approval_id,
-            PendingApproval {
-                thread_id,
-                request,
-                asked_by,
-                created_ms: event.created_ms,
-                sort_index: event.sort_index,
-            },
-        );
+            .record(approval_requested_event(thread_id, &request, created_ms));
+        let newly_pending = self
+            .approvals
+            .lock()
+            .await
+            .insert(
+                approval_id.clone(),
+                PendingApproval {
+                    thread_id: thread_id.to_owned(),
+                    request,
+                    asked_by,
+                    created_ms: event.created_ms,
+                    sort_index: event.sort_index,
+                },
+            )
+            .is_none();
         self.events.broadcast(event);
+        if newly_pending {
+            self.notify_action_required(thread_id, &approval_id);
+        }
+    }
+
+    /// Tell a phone that a Task is waiting on a person.
+    ///
+    /// The name it carries is the one Caffold keeps for the Task, as a
+    /// finished turn's notification carries. A question asked by a session
+    /// Caffold does not manage is nobody's to answer here, and nothing is
+    /// sent for it.
+    fn notify_action_required(&self, thread_id: &str, approval_id: &str) {
+        let Some(push) = self.push.as_ref() else {
+            return;
+        };
+        match self.task_store.get(thread_id) {
+            Ok(Some(managed)) => {
+                let queued =
+                    push.notify_action_required(thread_id, approval_id, &managed.display_name);
+                eprintln!("Web Push waiting delivery queued for {queued} active installation(s)");
+            }
+            Ok(None) => eprintln!(
+                "Web Push waiting delivery skipped because the question is not managed by Caffold"
+            ),
+            Err(_) => eprintln!(
+                "managed task state could not be checked; waiting Web Push delivery skipped"
+            ),
+        }
     }
 
     async fn handle_dynamic_tool_call(
@@ -721,6 +757,109 @@ mod tests {
             "cargo test"
         );
         assert_eq!(events.for_thread("thread_1"), vec![event]);
+    }
+
+    /// A Task that starts waiting tells a phone once, however often it is
+    /// asked, and tells it nothing of what was asked.
+    #[tokio::test]
+    async fn a_task_that_starts_waiting_notifies_once_and_says_only_which_task() {
+        let store = TaskStore::memory().unwrap();
+        store
+            .claim(
+                ManagedThread::new("thread_1", RunBy::Codex, None, None, None),
+                1_000,
+            )
+            .unwrap();
+        store
+            .update_display_name("thread_1", "Review Web Push")
+            .unwrap();
+        store
+            .upsert_push_installation(
+                crate::task_store::PushSubscriptionInput {
+                    client_id: "00000000-0000-4000-8000-000000000001".to_owned(),
+                    installation_label: "Chrome on macOS · 00000000".to_owned(),
+                    endpoint: "https://push.example.test/subscription".to_owned(),
+                    p256dh: "test-public-key".to_owned(),
+                    auth: "test-auth".to_owned(),
+                    expiration_time_ms: None,
+                },
+                1_000,
+            )
+            .unwrap();
+        let (push, mut deliveries) =
+            crate::app::tasks::push::PushService::test_channel(store.clone());
+        let runtime = test_runtime_with_store(TaskEvents::default(), store).with_push_service(push);
+        let client = CodexThreadClient::mock(Vec::new());
+
+        runtime
+            .handle_server_request(&client, 1, command_approval_request(11))
+            .await;
+
+        let asked = deliveries.try_recv().expect("a waiting Task is announced");
+        let payload: JsonValue = serde_json::from_slice(&asked.payload).unwrap();
+        assert_eq!(
+            payload,
+            json!({
+                "kind": "actionRequired",
+                "threadId": "thread_1",
+                "taskName": "Review Web Push",
+                "tag": asked.topic,
+            }),
+            "the command, its cwd, and the agent's reason stay out of the payload"
+        );
+
+        // A replaced connection replays what is still pending, under the
+        // identity it was asked under.
+        runtime
+            .handle_server_request(&client, 1, command_approval_request(11))
+            .await;
+        assert!(deliveries.try_recv().is_err());
+
+        for (request, kind) in [
+            (
+                codex::decode_server_request(
+                    json!(12),
+                    "item/fileChange/requestApproval",
+                    json!({
+                        "threadId": "thread_1",
+                        "turnId": "turn_1",
+                        "itemId": "item_2",
+                        "changes": [{ "path": "/workspace/project/src/main.rs" }]
+                    }),
+                )
+                .unwrap(),
+                "a file change",
+            ),
+            (permission_approval_request(13), "a permission profile"),
+        ] {
+            runtime.handle_server_request(&client, 1, request).await;
+            let next = deliveries
+                .try_recv()
+                .unwrap_or_else(|_| panic!("{kind} is a question like any other"));
+            assert_ne!(next.topic, asked.topic);
+        }
+
+        runtime
+            .handle_server_request(
+                &client,
+                1,
+                codex::decode_server_request(
+                    json!(13),
+                    "item/commandExecution/requestApproval",
+                    json!({
+                        "threadId": "outside-caffold",
+                        "turnId": "turn_1",
+                        "command": "cargo test",
+                        "availableDecisions": ["accept", "decline"]
+                    }),
+                )
+                .unwrap(),
+            )
+            .await;
+        assert!(
+            deliveries.try_recv().is_err(),
+            "a question asked of a session Caffold does not manage notifies nobody"
+        );
     }
 
     #[tokio::test]

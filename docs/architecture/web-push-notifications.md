@@ -1,7 +1,8 @@
 # Web Push Notifications
 
 Caffold can send a best-effort system notification when a managed task's
-canonical active turn becomes `completed`, `failed`, or `interrupted`.
+canonical active turn becomes `completed`, `failed`, or `interrupted`, and when
+a managed task stops to wait for a person to answer the agent's question.
 Notifications are disabled by default. The browser asks for permission only in
 response to the user's explicit **Enable** action in **Settings →
 Notifications**.
@@ -73,6 +74,15 @@ active are rejected. The runtime then verifies that the conversation still
 belongs to an active Caffold-managed Task in Redb and maps only the three
 terminal statuses.
 
+A question the agent is blocked on reaches the same delivery path from the
+waiting list both drivers register on, whichever agent asked and whatever it
+asked for. The list answers to the identity the question was asked under, so a
+question that arrives again — which app-server replays for everything still
+pending on `thread/resume`, and which a Claude session reports when it is taken
+up again — lands on the question already waiting and sends nothing. Only the
+arrival that made a Task wait is delivered, and only for a conversation that
+still belongs to an active Caffold-managed Task.
+
 One bounded in-memory job is attempted per active subscription. Task and SSE
 processing never waits for queue capacity or a provider response. The current
 delivery bounds are four concurrent provider calls, a five-second connect
@@ -80,8 +90,10 @@ timeout, a fifteen-second overall timeout, no redirects, normal urgency, and a
 24-hour TTL.
 
 The deterministic Push `Topic` and notification `tag` are derived from the Task
-conversation ID, turn ID, and terminal status. A bounded in-process
-recent-delivery set suppresses common replays. HTTP 404 and 410 delete the
+conversation ID with the turn ID and terminal status, or with the approval
+identity for a waiting Task. A second question therefore raises a second
+notification, while the same question replaces the one already on screen. A
+bounded in-process recent-delivery set suppresses common replays. HTTP 404 and 410 delete the
 subscription only when the stored client ID and endpoint still match the
 attempted job; a replacement subscription cannot be deleted by an older
 in-flight response. Other Push-provider, network, encoding, queue-capacity, and
@@ -94,17 +106,26 @@ window.
 
 ## Notification privacy and navigation
 
-The encrypted payload contains only:
+A finished turn's encrypted payload contains only:
 
 - Task conversation and turn IDs;
 - terminal status;
 - the Task's Redb display name, truncated at a Unicode boundary;
 - the deterministic notification tag.
 
-It never contains prompts, generated content, repository paths, or working
-directories. A display name carrying a control character is omitted, and the
-service worker then uses Caffold and status-only fallback copy. Notifications
-are shown even when a foreground Caffold client is open.
+A waiting Task's encrypted payload contains only its kind, the Task
+conversation ID, the same bounded display name, and the same deterministic tag.
+Which question is waiting is not sent at all: the approval identity travels
+only inside the hash the tag is made of, which is enough to tell two questions
+apart and cannot be read back. The notification says `Approval required`
+without naming the tool, command, requested path, working directory, network
+destination, or the agent's reason.
+
+Neither payload contains prompts, generated content, repository paths, or
+working directories. A display name carrying a control character is omitted,
+and the service worker then uses Caffold and copy naming only the status or the
+waiting itself. Notifications are shown even when a foreground Caffold client
+is open.
 
 Click handling accepts only a same-origin `/tasks/<conversation-id>` route. It
 first focuses a window already showing that Task, otherwise navigates an
@@ -117,13 +138,18 @@ to either supported agent.
 
 Delivery is deliberately best-effort:
 
-- a terminal turn can be missed while the Caffold backend is stopped;
+- a terminal turn or a question can be missed while the Caffold backend is
+  stopped;
 - a transient provider or network failure is not retried;
 - there is no durable queue, outbox, dead-letter state, startup catch-up, or
   persistent per-turn delivery history;
 - an unexpected replay that cannot be matched to retained canonical turn history
   can produce a duplicate because recent-delivery suppression is process-local,
   despite the deterministic provider/browser identifiers;
+- a question still waiting when the backend is replaced is announced again for
+  the same reason, because the waiting list it is recovered onto is also
+  process-local. The deterministic tag means the browser replaces the earlier
+  notification rather than showing a second one;
 - VAPID rotation and reliable background subscription renewal are not
   implemented. Opening Notifications remains the explicit reconciliation path.
 

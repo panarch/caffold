@@ -92,7 +92,8 @@ running Caffold, and reachable for remote use.
    and continue the same Task.
 
 For longer turns, each browser can opt in to system notifications under
-**Settings → Notifications**.
+**Settings → Notifications**, for a turn that ends and for a Task waiting on an
+approval.
 
 Caffold also keeps the Task connected to its repository, optional managed
 worktree, Git history, and read-only GitHub Issue or Pull Request context.

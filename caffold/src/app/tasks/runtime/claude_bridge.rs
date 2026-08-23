@@ -2,10 +2,10 @@ use tokio::sync::broadcast;
 
 use futures_util::{StreamExt, stream};
 
-use super::{TaskRuntime, TaskRuntimeSignal, server_requests::PendingApproval};
+use super::{TaskRuntime, TaskRuntimeSignal, server_requests::AskedBy};
 use crate::agent::SessionEventKind;
 use crate::agent::claude::{AskedTool, ClaudeRuntimeEvent, ToolAsk, WorkingDirectoryMove};
-use crate::app::tasks::events::{approval_requested_event, now_ms};
+use crate::app::tasks::events::now_ms;
 use crate::app::tasks::worktrees::IsolateOutcome;
 use crate::task_store::RunBy;
 
@@ -449,14 +449,8 @@ impl TaskRuntime {
         thread_id: &str,
         request: crate::agent::ApprovalRequest,
     ) {
-        let event = self
-            .events
-            .record(approval_requested_event(thread_id, &request, now_ms()));
-        self.approvals.lock().await.insert(
-            request.id.clone(),
-            PendingApproval::claude(thread_id.to_string(), request, &event),
-        );
-        self.events.broadcast(event);
+        self.record_pending_approval(thread_id, request, now_ms(), AskedBy::Claude)
+            .await;
     }
 }
 
@@ -591,6 +585,52 @@ mod tests {
         })
         .await
         .expect("the tool call is answered")
+    }
+
+    /// A question Claude asks joins the list Codex's questions join.
+    ///
+    /// Which matters beyond the conversation view: the waiting list is what
+    /// tells a phone that a Task has stopped for a person, so a question that
+    /// arrived beside it rather than on it would be answered by nobody who
+    /// had walked away.
+    #[tokio::test]
+    async fn a_question_claude_asks_joins_the_shared_waiting_list() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, runner) = watched(root.path()).await;
+
+        runner
+            .say(
+                SESSION,
+                json!({
+                    "type": "control_request",
+                    "request_id": "req-1",
+                    "request": {
+                        "subtype": "can_use_tool",
+                        "tool_name": "Bash",
+                        "input": { "command": "cargo test" },
+                        "tool_use_id": "toolu_1",
+                    },
+                }),
+            )
+            .await;
+
+        let waiting = tokio::time::timeout(WAIT, async {
+            loop {
+                let waiting = state.task_runtime.approval_events(SESSION).await;
+                if !waiting.is_empty() {
+                    return waiting;
+                }
+                tokio::time::sleep(POLL).await;
+            }
+        })
+        .await
+        .expect("the question waits for an answer");
+        assert_eq!(waiting.len(), 1);
+        assert_eq!(waiting[0].event_type, "approval_requested");
+        assert_eq!(
+            waiting[0].payload.as_ref().unwrap()["command"],
+            "cargo test"
+        );
     }
 
     #[tokio::test]

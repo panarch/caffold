@@ -128,17 +128,23 @@ system settings.
    notification contains only the task name and terminal status. If both
    agents are installed, exercise one Codex Task and one Claude Task. Repeat
    while Caffold is foregrounded; the notification should still appear.
-4. Start another managed turn, close the PWA before the turn finishes, and keep
+4. Ask a Task for work the agent must request approval for, and close the PWA
+   while the request is pending. Verify that one `Approval required`
+   notification names the Task and nothing of the request, and that tapping it
+   opens the Task with the request still waiting. Answer it from another
+   browser, then reopen the Task from the notification and verify that it shows
+   the answered request rather than a pending one.
+5. Start another managed turn, close the PWA before the turn finishes, and keep
    the backend running. Verify that the notification still arrives and clicking
    it opens the matching `/tasks/<conversation-id>` route.
-5. Restart the Caffold backend, reopen Notifications, and verify that the same
+6. Restart the Caffold backend, reopen Notifications, and verify that the same
    installation and subscription remain active.
-6. Subscribe another browser, remove it from the first browser's installation
+7. Subscribe another browser, remove it from the first browser's installation
    list, then open Notifications on the removed browser. It should reconcile to
    Disabled and unsubscribe locally rather than silently registering again.
-7. Select **Disable** on the current browser and verify that its active row is
+8. Select **Disable** on the current browser and verify that its active row is
    removed. Reopening Notifications must remain Disabled until another explicit
    Enable action.
 
-Provider delivery is best-effort. A turn completed while the backend is stopped
-is intentionally not caught up after restart.
+Provider delivery is best-effort. A turn completed or a question asked while the
+backend is stopped is intentionally not caught up after restart.

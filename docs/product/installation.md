@@ -146,17 +146,20 @@ If you run more than one Caffold host, set a distinct installed PWA name under
 `Server Settings...` before installing it on a device. An existing PWA may
 need to be reinstalled after that name changes.
 
-## Completion notifications
+## Task notifications
 
 Each browser can opt in separately under **Settings → Notifications**. Choose
 **Enable** and approve the browser permission to receive a system notification
-when a managed Task turn completes, fails, or is interrupted. On iOS, add
+when a managed Task turn completes, fails, or is interrupted, and when a Task
+stops to wait for you to answer the agent's approval request. On iOS, add
 Caffold to the Home Screen before enabling notifications.
 
-Notifications contain only the Task name and terminal status, never prompts,
-generated content, repository paths, or working directories. Delivery is
-best-effort while the Caffold backend is running; missed notifications are not
-sent later when the backend restarts.
+A notification contains only the Task name with its terminal status or
+`Approval required`. It never contains what the agent asked to do, prompts,
+generated content, repository paths, or working directories; open the Task to
+read the request and answer it. Delivery is best-effort while the Caffold
+backend is running; missed notifications are not sent later when the backend
+restarts.
 
 ## Optional GitHub views
 

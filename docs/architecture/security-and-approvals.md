@@ -188,5 +188,10 @@ are not exposed.
   The provider receives the endpoint and Web Push headers, while the payload is
   encrypted and contains only Task/turn identifiers, terminal status, a bounded
   Task name when available, and the deterministic notification tag.
+- A notification that a Task is waiting for an answer carries the same Task
+  identifier, name, and tag, and nothing of the request itself. The command,
+  tool, requested profile, cwd, network destination, and reason a person reads
+  in the conversation are never sent to a Push provider or shown on a lock
+  screen.
 - Push delivery failure never changes canonical Task state or foreground SSE
-  behavior.
+  behavior, and never resolves, withdraws, or delays an approval.
