@@ -185,7 +185,10 @@ persist a second task ledger.
 - After the managed claim succeeds, the create response and Active-list SSE
   carry the same backend-authored Section placement. The navigator can insert
   the row immediately without reconstructing grouping or reloading every
-  Section.
+  Section. That response is sent before `turn/start`, so a created thread is
+  answered for while its first turn is still being taken. A `turn/start` that
+  fails afterwards releases the runtime lease and publishes the failure on the
+  thread's own event stream; the managed row stays claimed.
 - Caffold injects the experimental `rename_current_thread` dynamic tool only
   when it creates a new thread. App-server persists that tool with the thread
   and restores it on resume; existing threads are not retrofitted. When

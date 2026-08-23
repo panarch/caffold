@@ -606,6 +606,23 @@ pub(in crate::app) fn accepted_user_message_event(
     )
 }
 
+/// A first turn that could not begin, said in the Task it was meant for.
+///
+/// Creating a Task answers as soon as the Task exists, so a first turn that
+/// the agent never took has nobody left to fail to. The conversation is where
+/// the prompt already is, and this is what stands beside it in place of the
+/// answer that never came.
+pub(in crate::app) fn first_turn_failed_event(thread_id: &str, reason: &str) -> TaskEventRecord {
+    task_event_record(
+        thread_id,
+        &format!("first-turn-failed:{}", uuid::Uuid::new_v4()),
+        "task_failed",
+        &format!("The first turn could not be started: {reason}"),
+        Some(json!({ "threadId": thread_id })),
+        now_ms(),
+    )
+}
+
 pub(in crate::app) fn is_pending_canonical_user_message(event: &TaskEventRecord) -> bool {
     event.event_type == "user_message"
         && event
@@ -1532,6 +1549,38 @@ mod tests {
         let canonical = cache.record(canonical);
 
         assert_eq!(cache.for_thread("thread_1"), vec![canonical]);
+    }
+
+    #[test]
+    fn a_first_turn_failure_stands_in_the_conversation_beside_its_prompt() {
+        let cache = LiveTaskEventCache::default();
+        let prompt = cache.record(accepted_user_message_event(
+            "thread_1",
+            "turn_1",
+            "Read the planner",
+            &[],
+        ));
+        let failure = cache.record(first_turn_failed_event(
+            "thread_1",
+            "the agent could not be reached",
+        ));
+
+        assert_eq!(failure.event_type, "task_failed");
+        assert_eq!(
+            failure.summary,
+            "The first turn could not be started: the agent could not be reached"
+        );
+        assert!(failure.id.starts_with("thread_1:"));
+        // No turn names it, so it reads with the prompt it was for rather than
+        // opening a turn of its own.
+        assert!(
+            failure
+                .payload
+                .as_ref()
+                .and_then(|payload| payload.get("turnId"))
+                .is_none()
+        );
+        assert_eq!(cache.for_thread("thread_1"), vec![prompt, failure]);
     }
 
     #[test]

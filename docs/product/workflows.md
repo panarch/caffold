@@ -38,13 +38,18 @@ lifecycle.
 1. Open Global New or select a managed Section and start a New Task.
 2. For Global New, confirm or choose the cwd. Section New uses its managed
    logical path. Choose the model and reasoning effort, then send a prompt.
-3. Caffold starts a Codex thread in that cwd and records managed membership.
-4. Near the end of the first turn, Codex is instructed to replace the initial
+3. Caffold starts a thread in that cwd, records managed membership, and answers
+   the creation with the Task. The first turn begins after that answer, so the
+   wait for the agent to take the prompt is spent in the opened Task.
+4. A first turn the agent never takes is reported in that Task's conversation,
+   beside the prompt it was for. The Task keeps its place, so the prompt can be
+   sent again or the Task archived.
+5. Near the end of the first turn, Codex is instructed to replace the initial
    display name with a concise name based on the understood goal. This is
    model-followed behavior rather than a completion gate.
-5. Repository and worktree context are derived live from the thread cwd.
-6. Follow-up prompts start or steer a turn from canonical app-server state.
-7. Approvals, completion, interruption, and failures remain visible in the
+6. Repository and worktree context are derived live from the thread cwd.
+7. Follow-up prompts start or steer a turn from canonical app-server state.
+8. Approvals, completion, interruption, and failures remain visible in the
    thread-backed conversation.
 
 ### Open an existing Task

@@ -181,10 +181,10 @@ class CaffoldDetailLayout extends HTMLElement {
     return result;
   }
 
-  adoptCreatedDetail(detail) {
+  adoptCreatedDetail(detail, submission) {
     this.ensureRendered();
     this.activateSubject("task");
-    this.taskDetail()?.adoptCreatedDetail(detail);
+    this.taskDetail()?.adoptCreatedDetail(detail, submission);
     this.captureTaskSnapshot();
     this.syncTaskPresentation();
   }

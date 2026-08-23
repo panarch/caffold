@@ -573,6 +573,48 @@ test("creates a task with responsive composer controls and canonical approval st
 
 });
 
+test("says that a new task is starting until creation is answered", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const scenario = await installTaskLoopFixture(page, { holdCreateResponse: true });
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
+
+  const tasksPage = page.locator("caffold-tasks-page");
+  const composer = tasksPage.locator(".task-new-form");
+  await expect(composer).toBeVisible();
+  await composer.locator(".task-model-button").click();
+  await composer.locator('.task-model-popover [data-effort="xhigh"]').click();
+  const prompt = composer.locator('textarea[name="prompt"]');
+  await prompt.fill("Inspect the planner changes");
+  await pasteImage(prompt, "planner-layout.png");
+  await expect(composer.locator(".task-composer-attachment")).toHaveCount(1);
+  await prompt.press("Enter");
+
+  await scenario.createRequested;
+  const status = tasksPage.locator("caffold-task-create .task-create-status");
+  await expect(status).toHaveAttribute("data-status-tone", "starting");
+  await expect(status).toHaveText("Starting the task...");
+  await expect(prompt).toBeDisabled();
+  await expect(tasksPage).toHaveAttribute("data-tasks-view", "new");
+  // The notice shares the composer's width rule, so it has to stay inside the
+  // surface and unclipped at every width the New Task surface is used at.
+  expect(
+    await status.evaluate((element) => ({
+      clipped: element.scrollWidth > element.clientWidth,
+      overflowing:
+        element.getBoundingClientRect().right >
+        document.documentElement.clientWidth,
+    })),
+  ).toEqual({ clipped: false, overflowing: false });
+  await captureReviewScreenshot(page, testInfo, "tasks-new-task-starting");
+
+  scenario.releaseCreateResponse();
+
+  await expect(page).toHaveURL(`/tasks/${scenario.threadId}`);
+  await expect(status).toHaveCount(0);
+  expect(scenario.pageErrors).toEqual([]);
+});
+
 function expectCssSpacing(cssValue, expected) {
   const actual = cssValue.split(" ").map((value) => Number.parseFloat(value));
   expect(actual).toHaveLength(expected.length);

@@ -247,6 +247,16 @@ snapshot and live event application, Conversation, Command dialog, follow-up
 Composer, and Task mutations. It publishes a subject snapshot upward; it does
 not mount Integrated Review, Git, GitHub, or their Summary controls.
 
+One pending prompt per Task belongs to Detail, whether it was submitted from the
+follow-up Composer or handed over with a newly created Task. Detail shows it
+optimistically and resolves it from canonical events, which reach it as a
+canonical detail or as a single stream event: the agent's own copy of the prompt
+accepts it, and a reported turn failure marks its delivery unconfirmed. A prompt
+sent into a conversation that already had prompts is accepted only by its own
+words returning, so another client's prompt cannot answer for it; a
+conversation that had none is a Task being started, whose first canonical prompt
+is that submission however the agent writes it down.
+
 The adjacent task-scoped Detail session owns snapshot acquisition while Detail
 keeps canonical Task, event, revision, and rendering state.
 
@@ -390,8 +400,10 @@ repository context from the navigator projection. See
 
 Global New owns its editable cwd and Directory Picker. Section New owns a fixed
 cwd and exposes no picker. Both mount the same Tasks-owned Task Create behavior,
-which owns the Composer, request, and error lifecycle. Only Global New represents
-its selected directory in `/tasks/new?cwd=...`.
+which owns the Composer, request, status, and error lifecycle. It reports a
+creation still in flight in its own status region and hands the submitted prompt
+to the Task the answer opens. Only Global New represents its selected directory
+in `/tasks/new?cwd=...`.
 
 Reusable RootedFs capabilities remain shared:
 

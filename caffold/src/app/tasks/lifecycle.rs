@@ -4,8 +4,8 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
-    agent::TurnOptions,
     agent::claude::ClaudeClient,
+    agent::{AcceptedTurnOptions, TurnOptions},
     app::error::ApiError,
     app::tasks::sessions::{StartedSettings, TaskSessions},
     fs::RootedFs,
@@ -15,7 +15,7 @@ use crate::{
 use super::{
     TaskAgent, TaskRecord,
     composer_settings::persist_started_turn_composer_settings,
-    events::{TaskEvents, accepted_user_message_event, now_ms},
+    events::{TaskEvents, accepted_user_message_event, first_turn_failed_event, now_ms},
     projection::{resolve_conversation_cwd, task_activity_ms, task_record_from_conversation},
     routes::TaskListEvents,
     worktrees::{
@@ -36,6 +36,23 @@ pub(in crate::app) struct StartTask {
 pub(in crate::app) struct StartedTask {
     pub(in crate::app) task: TaskRecord,
     pub(in crate::app) placement: ActiveTaskTopPlacement,
+    /// The turn this Task was created for, waiting to be set going.
+    pub(in crate::app) first_turn: FirstTurn,
+}
+
+/// The prompt a claimed Task was created for, and what to ask it with.
+///
+/// Everything here was settled while the Task was being made, so the turn it
+/// describes can begin without asking the agent anything twice.
+pub(in crate::app) struct FirstTurn {
+    conversation_id: String,
+    cwd: String,
+    prompt: String,
+    images: Vec<String>,
+    accepted: AcceptedTurnOptions,
+    model: Option<String>,
+    reasoning_effort: Option<String>,
+    fast_mode: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -102,6 +119,14 @@ impl TaskLifecycle {
         }
     }
 
+    /// Make a Task the agent holds a conversation for.
+    ///
+    /// The answer is the Task itself: a conversation the agent agreed to open,
+    /// a record claimed at the top of its Section, and the placement every list
+    /// is told about. The turn it was created for comes back unstarted, for
+    /// whoever answers for the Task to begin once they have — so the wait for
+    /// the agent to take the prompt is spent in the Task rather than in front
+    /// of the form that sent it.
     pub(in crate::app) async fn start_task(
         &self,
         agent: &TaskAgent,
@@ -191,14 +216,66 @@ impl TaskLifecycle {
                 },
             )
             .await;
-        let turn = match driver
+        Ok(StartedTask {
+            task,
+            placement,
+            first_turn: FirstTurn {
+                conversation_id,
+                cwd,
+                prompt,
+                images,
+                accepted,
+                model: effective_model,
+                reasoning_effort: effective_reasoning_effort,
+                fast_mode: requested_fast_mode,
+            },
+        })
+    }
+
+    /// Ask the agent for a Task's first turn, once the Task is answered for.
+    ///
+    /// The turn opens on the agent's own first word, which is a process start
+    /// and a model's first thought away. Holding creation for it would hold the
+    /// interface on a form that has already sent everything it had, so the turn
+    /// begins here instead, in the Task the person is now watching. Begin it
+    /// after the answer is assembled: a turn that fails releases the session
+    /// the answer is still being read from.
+    pub(in crate::app) fn begin_first_turn(&self, agent: &TaskAgent, first: FirstTurn) {
+        let lifecycle = self.clone();
+        let agent = agent.clone();
+        tokio::spawn(async move { lifecycle.start_first_turn(agent, first).await });
+    }
+
+    /// A first turn that never began, told where the prompt it was for is.
+    ///
+    /// Nobody is waiting on an answer any more, so what went wrong is published
+    /// into the conversation rather than returned. The Task stays where it was
+    /// claimed: it exists, the agent holds a conversation for it, and a person
+    /// who reads why nothing followed can send the prompt again or archive it.
+    async fn start_first_turn(&self, agent: TaskAgent, first: FirstTurn) {
+        let FirstTurn {
+            conversation_id,
+            cwd,
+            prompt,
+            images,
+            accepted,
+            model,
+            reasoning_effort,
+            fast_mode,
+        } = first;
+        let turn = match agent
+            .driver()
             .start_turn(&conversation_id, &cwd, &prompt, &images, &accepted)
             .await
         {
             Ok(turn) => turn,
             Err(error) => {
                 self.sessions.cancel_runtime(&conversation_id).await;
-                return Err(error.into());
+                self.events.publish(first_turn_failed_event(
+                    &conversation_id,
+                    &error.to_string(),
+                ));
+                return;
             }
         };
         self.sessions
@@ -213,9 +290,9 @@ impl TaskLifecycle {
         if let Err(error) = self
             .update_composer_settings(
                 &conversation_id,
-                effective_model.as_deref(),
-                effective_reasoning_effort.as_deref(),
-                requested_fast_mode,
+                model.as_deref(),
+                reasoning_effort.as_deref(),
+                fast_mode,
             )
             .await
         {
@@ -230,7 +307,6 @@ impl TaskLifecycle {
             &prompt,
             &images,
         ));
-        Ok(StartedTask { task, placement })
     }
 
     pub(in crate::app) async fn place_active_task(

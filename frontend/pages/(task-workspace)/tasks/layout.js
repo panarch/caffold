@@ -99,7 +99,7 @@ class CaffoldTasksPage extends HTMLElement {
     });
     this.addEventListener("caffold:task-created", (event) => {
       event.stopPropagation();
-      this.adoptCreatedDetail(event.detail?.detail);
+      this.adoptCreatedDetail(event.detail?.detail, event.detail?.submission);
     });
     this.addEventListener("caffold:task-snapshot", (event) => {
       event.stopPropagation();
@@ -373,14 +373,14 @@ class CaffoldTasksPage extends HTMLElement {
     return await this.taskNavigator()?.activate({ force: true });
   }
 
-  adoptCreatedDetail(detail) {
+  adoptCreatedDetail(detail, submission) {
     const threadId = taskDetailThreadId(detail);
     if (!threadId || !detail?.task) {
       return;
     }
     this.adoptedThreadId = threadId;
     this.selectedThreadId = threadId;
-    this.taskDetail()?.adoptCreatedDetail(detail);
+    this.taskDetail()?.adoptCreatedDetail(detail, submission);
     this.taskNavigator()?.placeCanonicalTaskAtTop(
       detail.task,
       detail.activeTopPlacement,
