@@ -1629,7 +1629,7 @@ test("archives and restores an idle Caffold task through the grouped Archived se
     1,
   );
   expect(archivedTreeLayout.titleFontSize).toBeCloseTo(
-    archivedTreeLayout.rootFontSize * 0.8125,
+    archivedTreeLayout.rootFontSize * 0.75,
     2,
   );
   expect(archivedTreeLayout.restoreCenterDelta).toBeLessThanOrEqual(0.5);
@@ -2230,7 +2230,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
   expect(
     rowLayout.every(
       ({ titleFontSize }) =>
-        Math.abs(titleFontSize - rootFontSize * 0.8125) <= 0.01,
+        Math.abs(titleFontSize - rootFontSize * 0.75) <= 0.01,
     ),
   ).toBe(true);
   expect(rowLayout.every(({ titleCenterDelta }) => titleCenterDelta <= 0.5)).toBe(true);

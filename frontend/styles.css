@@ -205,7 +205,7 @@
   --file-status-type-changed-fg: var(--file-status-renamed-fg);
   --file-status-unmerged-fg: var(--file-status-deleted-fg);
   --file-status-unknown-fg: var(--muted-subtle);
-  --task-list-font-size: 0.8125rem;
+  --task-list-font-size: 0.75rem;
   --task-list-row-height: 2rem;
   --task-group-font-size: 0.75rem;
   --task-group-row-height: max(1.75rem, var(--interface-target-floor));
