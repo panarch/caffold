@@ -156,19 +156,13 @@ impl TaskRuntime {
             .sessions
             .apply_session_event_with_outcome(generation, &event)
             .await;
-        let turn_ended = matches!(event.kind, SessionEventKind::TurnEnded { .. });
-        let snapshot = if outcome.canonical_state_changed || turn_ended {
+        let snapshot = if outcome.canonical_state_changed {
             self.sessions.snapshot(&event.thread_id).await
         } else {
             None
         };
-        let task_name = snapshot
-            .as_ref()
-            .and_then(|snapshot| snapshot.conversation.as_ref())
-            .and_then(|conversation| conversation.title.as_deref());
         self.handle_terminal_push(
             &event,
-            task_name,
             outcome
                 .terminal
                 .is_some_and(|terminal| terminal.first_current_transition),
@@ -176,9 +170,7 @@ impl TaskRuntime {
         self.withdraw_unanswerable_approvals(&event).await;
         self.record_reported_usage(&event);
         self.publish_session_event(&event);
-        if outcome.canonical_state_changed
-            && let Some(snapshot) = snapshot
-        {
+        if let Some(snapshot) = snapshot {
             let _ = self.signals.send(TaskRuntimeSignal::SessionChanged {
                 thread_id: event.thread_id,
                 snapshot: Box::new(snapshot),
@@ -286,12 +278,12 @@ impl TaskRuntime {
     }
 
     /// Tell a phone that a turn ended, the once.
-    fn handle_terminal_push(
-        &self,
-        event: &SessionEvent,
-        task_name: Option<&str>,
-        terminal_turn_is_first_current: bool,
-    ) {
+    ///
+    /// The name it carries is the one Caffold keeps for the Task. A session
+    /// title is the agent's own, and not every agent reports one back, so a
+    /// name read from the session would be whatever the agent running this
+    /// Task happens to say — or nothing at all.
+    fn handle_terminal_push(&self, event: &SessionEvent, terminal_turn_is_first_current: bool) {
         let SessionEventKind::TurnEnded { turn } = &event.kind else {
             return;
         };
@@ -312,8 +304,9 @@ impl TaskRuntime {
         };
         let thread_id = event.thread_id.as_str();
         match self.task_store.get(thread_id) {
-            Ok(Some(_)) => {
-                let queued = push.notify_terminal(thread_id, &turn.id, status, task_name);
+            Ok(Some(managed)) => {
+                let queued =
+                    push.notify_terminal(thread_id, &turn.id, status, &managed.display_name);
                 eprintln!("Web Push terminal delivery queued for {queued} active installation(s)");
             }
             Ok(None) => eprintln!(
@@ -412,6 +405,19 @@ mod tests {
         session_event(&notification, &CodexThreadClient::mock(Vec::new()))
             .await
             .expect("the notification says something Caffold acts on")
+    }
+
+    /// One installation subscribed to this Caffold, so that a terminal turn
+    /// has somewhere to be delivered.
+    fn subscribed_installation() -> PushSubscriptionInput {
+        PushSubscriptionInput {
+            client_id: "00000000-0000-4000-8000-000000000001".to_owned(),
+            installation_label: "Chrome on macOS · 00000000".to_owned(),
+            endpoint: "https://push.example.test/subscription".to_owned(),
+            p256dh: "test-public-key".to_owned(),
+            auth: "test-auth".to_owned(),
+            expiration_time_ms: None,
+        }
     }
 
     fn active_resume(thread_id: &str) -> JsonValue {
@@ -586,17 +592,10 @@ mod tests {
             )
             .unwrap();
         store
-            .upsert_push_installation(
-                PushSubscriptionInput {
-                    client_id: "00000000-0000-4000-8000-000000000001".to_owned(),
-                    installation_label: "Chrome on macOS · 00000000".to_owned(),
-                    endpoint: "https://push.example.test/subscription".to_owned(),
-                    p256dh: "test-public-key".to_owned(),
-                    auth: "test-auth".to_owned(),
-                    expiration_time_ms: None,
-                },
-                1_000,
-            )
+            .update_display_name("managed", "Current task name")
+            .unwrap();
+        store
+            .upsert_push_installation(subscribed_installation(), 1_000)
             .unwrap();
         let (push, mut deliveries) =
             crate::app::tasks::push::PushService::test_channel(store.clone());
@@ -616,7 +615,7 @@ mod tests {
                 }),
             )
             .await;
-            runtime.handle_terminal_push(&ended, Some("Current task name"), true);
+            runtime.handle_terminal_push(&ended, true);
             let delivery = deliveries.try_recv().unwrap();
             let payload: JsonValue = serde_json::from_slice(&delivery.payload).unwrap();
             assert_eq!(payload["threadId"], "managed");
@@ -633,7 +632,7 @@ mod tests {
             }),
         )
         .await;
-        runtime.handle_terminal_push(&outside, Some("Outside task"), true);
+        runtime.handle_terminal_push(&outside, true);
 
         let nonterminal = reported(
             "turn/completed",
@@ -643,7 +642,7 @@ mod tests {
             }),
         )
         .await;
-        runtime.handle_terminal_push(&nonterminal, Some("Current task name"), true);
+        runtime.handle_terminal_push(&nonterminal, true);
 
         let unsafe_turn = reported(
             "turn/completed",
@@ -653,7 +652,7 @@ mod tests {
             }),
         )
         .await;
-        runtime.handle_terminal_push(&unsafe_turn, Some("Current task name"), true);
+        runtime.handle_terminal_push(&unsafe_turn, true);
 
         let stale_completion = reported(
             "turn/completed",
@@ -663,8 +662,77 @@ mod tests {
             }),
         )
         .await;
-        runtime.handle_terminal_push(&stale_completion, Some("Current task name"), false);
+        runtime.handle_terminal_push(&stale_completion, false);
         assert!(deliveries.try_recv().is_err());
+    }
+
+    /// A session that reports no title of its own still names its Task.
+    ///
+    /// This is every Claude Task — a Claude session's title describes the
+    /// agent's own surfaces and is never reported back — and it is any thread
+    /// an agent has not named. The Task is named either way, because the name
+    /// is read from the managed row rather than from the session.
+    #[tokio::test]
+    async fn terminal_push_names_a_task_whose_session_reports_no_title() {
+        let store = TaskStore::memory().unwrap();
+        let thread_id = "thread-untitled";
+        store
+            .claim(
+                ManagedThread::new(thread_id, RunBy::Codex, None, None, None),
+                1_000,
+            )
+            .unwrap();
+        store
+            .update_display_name(thread_id, "The name Caffold keeps")
+            .unwrap();
+        store
+            .upsert_push_installation(subscribed_installation(), 1_000)
+            .unwrap();
+        let (push, mut deliveries) =
+            crate::app::tasks::push::PushService::test_channel(store.clone());
+        let runtime =
+            runtime_with_events_and_store(TaskEvents::default(), store).with_push_service(push);
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            active_resume(thread_id),
+        )]);
+        let _viewer = runtime
+            .sessions
+            .acquire_viewer(&client.driver(), 1, thread_id)
+            .await
+            .expect("viewer");
+        assert!(
+            runtime
+                .sessions
+                .snapshot(thread_id)
+                .await
+                .expect("subscribed session")
+                .conversation
+                .expect("canonical thread")
+                .title
+                .is_none(),
+            "the session under test reports no title"
+        );
+
+        runtime
+            .handle_session_event(
+                1,
+                reported(
+                    "turn/completed",
+                    json!({
+                        "threadId": thread_id,
+                        "turn": { "id": "turn-active", "status": "completed" }
+                    }),
+                )
+                .await,
+            )
+            .await;
+
+        let delivery = deliveries
+            .try_recv()
+            .expect("the terminal turn reaches the subscribed installation");
+        let payload: JsonValue = serde_json::from_slice(&delivery.payload).unwrap();
+        assert_eq!(payload["taskName"], "The name Caffold keeps");
     }
 
     #[tokio::test]

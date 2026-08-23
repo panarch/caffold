@@ -125,7 +125,7 @@ impl PushService {
         thread_id: &str,
         turn_id: &str,
         status: TerminalPushStatus,
-        task_name: Option<&str>,
+        task_name: &str,
     ) -> usize {
         if !safe_push_id(thread_id) || !safe_push_id(turn_id) {
             eprintln!("Web Push route identifiers were invalid; terminal delivery skipped");
@@ -465,8 +465,8 @@ fn delivery_topic(thread_id: &str, turn_id: &str, status: TerminalPushStatus) ->
     URL_SAFE_NO_PAD.encode(&hash.finalize()[..24])
 }
 
-fn truncated_task_name(task_name: Option<&str>) -> Option<String> {
-    let name = task_name?.trim();
+fn truncated_task_name(task_name: &str) -> Option<String> {
+    let name = task_name.trim();
     if name.is_empty() || name.chars().any(char::is_control) {
         return None;
     }
@@ -904,10 +904,10 @@ mod tests {
             delivery_topic("thread", "turn", TerminalPushStatus::Failed)
         );
         let long = "작".repeat(MAX_TASK_NAME_CHARS + 20);
-        let truncated = truncated_task_name(Some(&long)).unwrap();
+        let truncated = truncated_task_name(&long).unwrap();
         assert_eq!(truncated.chars().count(), MAX_TASK_NAME_CHARS);
         assert!(truncated.ends_with('…'));
-        assert_eq!(truncated_task_name(Some("unsafe\nname")), None);
+        assert_eq!(truncated_task_name("unsafe\nname"), None);
         assert!(safe_push_id("thread-id"));
         assert!(!safe_push_id("../thread"));
         assert!(!safe_push_id("thread\nsecret"));
@@ -1060,12 +1060,7 @@ mod tests {
         let (sender, mut receiver) = mpsc::channel(1);
         let service = PushService::new(store, "public-key".to_owned(), sender);
 
-        service.notify_terminal(
-            "thread",
-            "turn",
-            TerminalPushStatus::Completed,
-            Some("Task"),
-        );
+        service.notify_terminal("thread", "turn", TerminalPushStatus::Completed, "Task");
 
         assert!(receiver.try_recv().is_ok());
         assert!(receiver.try_recv().is_err());
@@ -1098,12 +1093,7 @@ mod tests {
             service: service.clone(),
             worker: Some(worker),
         };
-        service.notify_terminal(
-            "thread",
-            "turn",
-            TerminalPushStatus::Completed,
-            Some("Task"),
-        );
+        service.notify_terminal("thread", "turn", TerminalPushStatus::Completed, "Task");
 
         runtime.shutdown().await;
 

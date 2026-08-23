@@ -98,13 +98,13 @@ The encrypted payload contains only:
 
 - Task conversation and turn IDs;
 - terminal status;
-- the current canonical task name, truncated at a Unicode boundary;
+- the Task's Redb display name, truncated at a Unicode boundary;
 - the deterministic notification tag.
 
 It never contains prompts, generated content, repository paths, or working
-directories. If a task name is unavailable, the service worker uses Caffold and
-status-only fallback copy. Notifications are shown even when a foreground
-Caffold client is open.
+directories. A display name carrying a control character is omitted, and the
+service worker then uses Caffold and status-only fallback copy. Notifications
+are shown even when a foreground Caffold client is open.
 
 Click handling accepts only a same-origin `/tasks/<conversation-id>` route. It
 first focuses a window already showing that Task, otherwise navigates an
