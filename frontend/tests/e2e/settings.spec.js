@@ -317,6 +317,34 @@ test("keeps the Claude Settings item actionable when the restart fails", { tag: 
   await expect(settings.getByRole("button", { name: "Restart runtime" })).toBeEnabled();
 });
 
+test("shows the Claude brand mark and tints it with the theme", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/appearance");
+
+  const claudeMark = page.locator(
+    'caffold-settings-navigator button[data-settings-section="claude"] img',
+  );
+
+  await expect(claudeMark).toHaveAttribute(
+    "src",
+    "/assets/brand/claude-template.png",
+  );
+  await expect
+    .poll(() => claudeMark.evaluate((image) => image.naturalWidth))
+    .toBeGreaterThan(0);
+  await expect(claudeMark).toHaveCSS("filter", "none");
+
+  await page
+    .locator("caffold-settings-appearance-page")
+    .getByRole("radio", { name: "Dark" })
+    .check();
+
+  // The mark is published in one color, so Dark tints it in place instead of
+  // switching to a second file.
+  await expect(claudeMark).toHaveCSS("filter", "invert(1)");
+});
+
 test("enables, lists, removes, and explicitly revokes notification installations", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {

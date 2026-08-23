@@ -38,6 +38,7 @@ const APP_SHELL_ASSETS = [
   "/assets/brand/github-invertocat-dark.svg",
   "/assets/brand/codex-template.png",
   "/assets/brand/codex-template@2x.png",
+  "/assets/brand/claude-template.png",
   "/assets/pages/layout.css",
   "/assets/pages/layout.js",
   "/assets/pages/foreground-recovery.js",

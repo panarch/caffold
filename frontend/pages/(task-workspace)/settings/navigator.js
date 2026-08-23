@@ -5,13 +5,15 @@ import {
 } from "../codex-status.js";
 import "../components/workspace-brand.js";
 
+// Each brand mark is published in a single color so it can be tinted, and the
+// theme tints it through --brand-monochrome-filter.
 const ITEMS = [
   { section: "appearance", label: "Appearance", icon: "Settings" },
   { section: "files", label: "Files", icon: "File" },
   { section: "notifications", label: "Notifications", icon: "Bell" },
   { section: "remote-access", label: "Remote Access", icon: "Link" },
-  { section: "codex", label: "Codex", brand: true },
-  { section: "claude", label: "Claude", icon: "Zap" },
+  { section: "codex", label: "Codex", brand: "codex-template@2x.png" },
+  { section: "claude", label: "Claude", brand: "claude-template.png" },
   { section: "about", label: "About Caffold", icon: "Info" },
 ];
 
@@ -67,7 +69,7 @@ class CaffoldSettingsNavigator extends HTMLElement {
             data-settings-section="${item.section}"
           >
             ${item.brand
-              ? `<img class="settings-navigator-brand" src="/assets/brand/codex-template@2x.png" alt="" />`
+              ? `<img class="settings-navigator-brand" src="/assets/brand/${item.brand}" alt="" />`
               : renderInlineIcon(item.icon, "", "settings-navigator-icon")}
             <span>${item.label}</span>
           </button>
