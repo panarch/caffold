@@ -160,6 +160,10 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
     }
 
     schema.assert_declares(
+        "ClientInfo.ts",
+        &["name: string", "title: string | null", "version: string"],
+    );
+    schema.assert_declares(
         "v2/ThreadResumeParams.ts",
         &[
             "excludeTurns",
@@ -304,6 +308,7 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
             "permissions",
             "developerInstructions",
             "dynamicTools",
+            "serviceName?: string | null",
         ],
     );
 

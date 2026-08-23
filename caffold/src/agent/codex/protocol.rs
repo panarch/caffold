@@ -48,6 +48,13 @@ pub(crate) const PERMISSION_PROFILE_LIST: &str = "permissionProfile/list";
 pub(crate) const CONFIG_READ: &str = "config/read";
 pub(crate) const RENAME_CURRENT_THREAD_TOOL_NAME: &str = "rename_current_thread";
 pub(crate) const ISOLATE_CURRENT_TASK_TOOL_NAME: &str = "isolate_current_task";
+
+/// How Caffold names itself to Codex. The app-server sends `CAFFOLD_CLIENT_NAME`
+/// as the `originator` header on upstream requests and records it on every
+/// session it starts, so it is an identifier on the wire rather than a label;
+/// `CAFFOLD_CLIENT_TITLE` is the human-readable form beside it.
+pub(crate) const CAFFOLD_CLIENT_NAME: &str = "caffold";
+pub(crate) const CAFFOLD_CLIENT_TITLE: &str = "Caffold";
 pub(crate) const CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS: &str = concat!(
     "This thread is a newly created Caffold task. ",
     "On its first user turn, after you understand the user's underlying goal and immediately ",
@@ -511,6 +518,7 @@ pub struct ThreadStartParams<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub permissions: Option<&'static str>,
     pub service_tier: Option<&'a str>,
+    service_name: &'static str,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -1116,6 +1124,7 @@ pub(crate) fn thread_start_params<'a>(
         approvals_reviewer: permission_mode.map(CodexPermissionMode::approvals_reviewer),
         permissions: permission_mode.map(CodexPermissionMode::profile_id),
         service_tier,
+        service_name: CAFFOLD_CLIENT_NAME,
     }
 }
 
@@ -1629,6 +1638,7 @@ mod tests {
                         }
                     }],
                     "serviceTier": "priority",
+                    "serviceName": "caffold",
                     "approvalPolicy": "on-request",
                     "approvalsReviewer": "auto_review",
                     "permissions": ":workspace"
@@ -1924,7 +1934,8 @@ mod tests {
                         }
                     }
                 }],
-                "serviceTier": "default"
+                "serviceTier": "default",
+                "serviceName": "caffold"
             })
         );
         assert_eq!(

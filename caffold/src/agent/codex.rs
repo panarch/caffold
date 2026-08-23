@@ -36,14 +36,14 @@ pub use protocol::ThreadStatus;
 pub use protocol::TurnStatus;
 use protocol::{
     ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse,
-    CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS, CONFIG_READ, ConfigReadResponse, EmptyResponse,
-    INITIALIZE, INITIALIZED, JsonRpcError, MODEL_LIST, PERMISSION_PROFILE_LIST,
-    PermissionProfileListResponse, THREAD_ARCHIVE, THREAD_DELETE, THREAD_LIST, THREAD_NAME_SET,
-    THREAD_READ, THREAD_RESUME, THREAD_SECTION_CREATE, THREAD_SECTION_LIST, THREAD_SECTION_MOVE,
-    THREAD_START, THREAD_TURNS_LIST, THREAD_UNARCHIVE, THREAD_UNSUBSCRIBE, TURN_INTERRUPT,
-    TURN_START, TURN_STEER, ThreadReadResponse, ThreadSectionCreateResponse,
-    ThreadSectionMoveResponse, ThreadStartResponse, TurnStartResponse, TurnSteerResponse,
-    account_read_params, config_read_params, decode_response, model_list_params,
+    CAFFOLD_CLIENT_NAME, CAFFOLD_CLIENT_TITLE, CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS, CONFIG_READ,
+    ConfigReadResponse, EmptyResponse, INITIALIZE, INITIALIZED, JsonRpcError, MODEL_LIST,
+    PERMISSION_PROFILE_LIST, PermissionProfileListResponse, THREAD_ARCHIVE, THREAD_DELETE,
+    THREAD_LIST, THREAD_NAME_SET, THREAD_READ, THREAD_RESUME, THREAD_SECTION_CREATE,
+    THREAD_SECTION_LIST, THREAD_SECTION_MOVE, THREAD_START, THREAD_TURNS_LIST, THREAD_UNARCHIVE,
+    THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadReadResponse,
+    ThreadSectionCreateResponse, ThreadSectionMoveResponse, ThreadStartResponse, TurnStartResponse,
+    TurnSteerResponse, account_read_params, config_read_params, decode_response, model_list_params,
     permission_profile_list_params, section_thread_list_params, thread_archive_params,
     thread_delete_params, thread_list_params, thread_read_params, thread_resume_params,
     thread_section_create_params, thread_section_list_params, thread_section_move_params,
@@ -387,13 +387,13 @@ impl CodexThreadClient {
                 INITIALIZE,
                 json!({
                     "clientInfo": {
-                        "name": "caffold",
+                        "name": CAFFOLD_CLIENT_NAME,
+                        "title": CAFFOLD_CLIENT_TITLE,
                         "version": env!("CARGO_PKG_VERSION")
                     },
                     "capabilities": {
                         "experimentalApi": true
-                    },
-                    "title": "Caffold"
+                    }
                 }),
             )
             .await
