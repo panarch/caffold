@@ -45,6 +45,7 @@ canonical query route; Task URLs use path routes:
 /settings/files
 /settings/notifications
 /settings/codex
+/settings/claude
 /settings/about
 ```
 
@@ -62,9 +63,10 @@ navigator first while either the active or Archived list contains Tasks. Once
 both lists finish loading and are empty, the same `/` route shows New Task
 instead of requiring a separate empty-state action.
 
-Codex availability does not select the top-level surface. Connection failures
-remain visible inside Tasks and must not cause a transient or automatic switch
-to another workspace.
+Agent availability does not select the top-level surface. Codex readiness and
+Claude operation failures remain visible inside their own Task or Settings
+surfaces and must not cause a transient or automatic switch to another
+workspace.
 
 Selecting a managed Section opens its fixed-context New Task surface. Recovery
 group headings are not selectable. A Managed Section ID that is absent after
@@ -73,11 +75,13 @@ route with Tasks home.
 
 ## Canonical Task context
 
-Every Git and GitHub route includes the selected Codex `threadId`. Task Detail
-loads that canonical Task independently of navigator pagination and derives
-the repository/worktree context from its Task snapshot. Git and GitHub routes
-never carry `cwd` and must not borrow another selected Task or an app-level
-fallback when context resolution fails.
+Every Git and GitHub route includes the selected Task's `threadId`. The field
+name is the stable browser/API name for the Task's agent conversation ID; it
+does not imply that every Task is a Codex thread. Task Detail loads that
+canonical Task independently of navigator pagination and derives the
+repository/worktree context from its Task snapshot. Git and GitHub routes never
+carry `cwd` and must not borrow another selected Task or an app-level fallback
+when context resolution fails.
 
 `/tasks/new` is the sole route whose `cwd` query has application meaning. New
 Task owns that selected directory. Its precedence is:

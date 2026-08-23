@@ -63,14 +63,21 @@ documents backup, shutdown, health verification, and rollback behavior.
 
 ## Runtime dependencies
 
-- the [official standalone Codex install](https://chatgpt.com/codex/install.sh),
-  version `0.147.0` or newer and already authenticated (the daemon command
-  requires this installation layout)
+- at least one supported authenticated agent:
+  - the [official standalone Codex install](https://chatgpt.com/codex/install.sh),
+    version `0.147.0` or newer (the daemon command requires this installation
+    layout); or
+  - Claude Code `2.1.236` or newer, available as `claude` on the wrapper's
+    augmented `PATH`
 - Git
 - GitHub CLI for GitHub views
 - Tailscale for private remote access
 
-Missing optional dependencies do not prevent the server from starting. The menu status reports when Tailscale is unavailable or its Serve setup fails.
+The bundle contains the Caffold backend and `caffold-claude-runner`; it does not
+bundle either vendor's agent CLI. Missing integrations do not prevent the
+server from starting. Agent-specific creation fails only for the unavailable
+agent, and the menu status reports when Tailscale is unavailable or its Serve
+setup fails.
 
 ## Runtime behavior
 
@@ -96,6 +103,9 @@ Missing optional dependencies do not prevent the server from starting. The menu 
 - Caffold ensures the persistent Codex app-server daemon is running, then owns
   only a disposable proxy connection. Caffold restarts and app replacements do
   not stop the daemon or its active turns.
+- Caffold starts the bundled Claude runner on demand. The runner holds active
+  `claude` processes across a backend replacement, then stops itself and its
+  children after ten minutes without a backend subscriber.
 
 `Server Settings...` controls the installed PWA name, bind mode, port, and automatic Tailscale Serve startup. Use a distinct name before installing the PWA to distinguish multiple Caffold servers; existing installations may need to be reinstalled after a name change. Local-only binding is the default. LAN binding is an explicit opt-in and is not required for Tailscale Serve.
 

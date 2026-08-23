@@ -42,6 +42,41 @@ rules when a Rust implementation expands beyond one file.
   narrowest visibility required by the owning module. Do not widen visibility
   to make an extracted implementation appear shared.
 
+## Agent Integration Review
+
+Caffold preserves each supported agent's native harness behind the shared Task
+surface. Review an agent change against the ownership described in
+[Agent Runtimes](../architecture/agent-runtimes.md), not against an assumed
+provider-neutral protocol.
+
+- Keep provider protocols, payloads, models, permission details, readiness,
+  and process behavior inside `caffold/src/agent/<provider>/` and its owning
+  entry point. Task and frontend code should consume Caffold conversation and
+  operation types rather than branch on raw provider messages.
+- Add a shared agent type or driver operation only when the product consumes a
+  stable meaning that the participating drivers can implement honestly. Do
+  not move a provider feature into shared vocabulary merely to make two APIs
+  look alike.
+- Keep the driver set closed and exhaustive. An unsupported capability needs
+  an explicit decision at the match site; it must not inherit another
+  provider's default or disappear behind a catch-all branch.
+- Preserve source-of-truth ownership. Do not copy an agent transcript, infer
+  live status from browser state, or turn Caffold persistence into an
+  alternate writer for agent-owned conversation state.
+- Keep process-survival infrastructure narrow. A runner or proxy may own the
+  lifetime and transport needed across backend replacement, but protocol
+  parsing, account policy, approvals, and Task behavior stay with the driver.
+- Treat a Task's recorded provider as immutable. Conversation identifiers,
+  cwd behavior, history, permissions, and recovery are not interchangeable
+  across agents even when their rendered turns look similar.
+
+Protocol fixtures and deterministic integration tests must cover translation,
+unknown optional events, malformed load-bearing fields, approvals, and
+recovery. Changes to installation checks, authentication, live process
+survival, or real provider compatibility also require the corresponding
+ignored live suite before release; a stand-in transport cannot establish
+those external contracts.
+
 ## Rust Test And Coverage Ownership
 
 Rust unit tests should follow the implementation owner closely enough that a

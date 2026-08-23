@@ -58,8 +58,8 @@ PWA is backgrounded.
    select a review file when the Task has review content.
 2. Switch to another Android application without closing Caffold. From the
    second client, rename or reorder the managed Task and advance its active
-   turn so both the Caffold navigator ledger and Codex runtime projection
-   change.
+   turn so both the Caffold navigator ledger and the selected agent's runtime
+   projection change.
 3. Return through the Android recent-apps screen. Without tapping Retry or any
    Caffold control, verify that readiness is current, the renamed/reordered list
    appears, and the Task status, final response, list transport, and detail
@@ -125,11 +125,12 @@ system settings.
    not already been granted. Verify that the page shows **Subscribed**, marks the
    row as **This browser**, and displays a stable short installation ID.
 3. Complete, fail, or interrupt a managed task turn. Verify that the
-   notification contains only the task name and terminal status. Repeat while
-   Caffold is foregrounded; the notification should still appear.
+   notification contains only the task name and terminal status. If both
+   agents are installed, exercise one Codex Task and one Claude Task. Repeat
+   while Caffold is foregrounded; the notification should still appear.
 4. Start another managed turn, close the PWA before the turn finishes, and keep
    the backend running. Verify that the notification still arrives and clicking
-   it opens the matching `/tasks/<thread-id>` route.
+   it opens the matching `/tasks/<conversation-id>` route.
 5. Restart the Caffold backend, reopen Notifications, and verify that the same
    installation and subscription remain active.
 6. Subscribe another browser, remove it from the first browser's installation

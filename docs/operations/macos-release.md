@@ -30,7 +30,8 @@ desktop/macos/release --dry-run
 The command performs no publication or repository mutation. Cargo may download locked dependencies when they are not already cached. The command:
 
 1. rejects a dirty worktree, a non-`main` branch, a version mismatch, or a non-arm64 host;
-2. builds the Rust binary with `cargo build --release --locked`;
+2. builds the Rust backend and Claude runner with
+   `cargo build --release --locked`;
 3. builds and ad-hoc signs `Caffold Server.app`;
 4. checks the bundle identifier, version, build number, build timestamp, and macOS 14 minimum;
 5. checks that the Swift wrapper and Rust server both contain arm64 code;
@@ -86,7 +87,9 @@ Public distribution is a separately approved operation. Once started, the follow
 3. confirm the workflow produced the version tag, GitHub Release assets, and matching `Casks/caffold.rb` commit in `panarch/homebrew-tap`;
 4. confirm the tap's own `Homebrew audit` workflow passed;
 5. install with `brew install --cask panarch/tap/caffold` on the target Mac;
-6. launch the installed app and verify `/api/health`, the build ID, Codex connectivity, CLI link, and existing Caffold data; and
+6. launch the installed app and verify `/api/health`, the build ID, agent
+   status for the installed CLIs, the bundled Claude runner, the Caffold CLI
+   link, and existing Caffold data; and
 7. confirm the user-facing Homebrew command still matches the tested installation path and record the release as verified only after the smoke test passes.
 
 Published version tags and assets are not overwritten. If installation reveals a defect, fix it in source and release the next patch version.
@@ -97,7 +100,7 @@ The menu app uses this update lifecycle:
 
 1. the menu app requests the latest stable `panarch/caffold` GitHub Release at launch and refreshes a stale result when the menu opens;
 2. GitHub provides only version discovery and the release-page fallback;
-3. before installation, the app verifies that the Cask is Homebrew-managed, refuses to replace an app connected to an externally managed server, and reads every managed-task page to warn about canonical `active` threads;
+3. before installation, the app verifies that the Cask is Homebrew-managed, refuses to replace an app connected to an externally managed server, and reads every managed-Task page to warn about canonical `active` conversations;
 4. explicit user approval runs `brew upgrade --cask panarch/tap/caffold` without downloading or replacing executable content directly;
 5. the running app verifies the installed bundle version, records a pending health receipt, schedules a detached relaunch, and terminates the server process it owns;
 6. the replacement app clears that receipt only after its own server becomes ready, and reports an externally managed port instead of claiming successful validation.

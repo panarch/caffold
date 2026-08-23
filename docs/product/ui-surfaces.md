@@ -42,7 +42,7 @@ without requiring the Task to appear in the currently loaded navigator page.
 Global New owns:
 
 - its selected cwd and route representation;
-- model, reasoning, speed, and approval choices;
+- model and agent selection, reasoning or effort, speed, and approval choices;
 - the prompt draft, attachments, and voice input;
 - its scoped Directory Picker;
 - the setup-only isolated-worktree guide.
@@ -66,10 +66,12 @@ the card is read from the New Task surface.
 Only the Task store — shared by every agent — takes the Tasks surface over
 while its migration blocks operations, with its own retry lifecycle.
 
-Task creation starts a thread with the chosen agent in the selected cwd.
-New Task reports that the task is starting until creation is answered, and the
-answer opens the Task. Managed-worktree preparation happens explicitly from the
-resulting Task; it is not an implicit side effect of task creation.
+Each offered model identifies its agent. Task creation starts a conversation
+with that agent in the selected cwd and binds the Task to it; later turns can
+choose only models from the same agent. New Task reports that the task is
+starting until creation is answered, and the answer opens the Task.
+Managed-worktree preparation happens explicitly from the resulting Task; it
+is not an implicit side effect of task creation.
 
 Global New and Section New provide the same Composer, turn options, and error
 behavior. Section New fixes cwd to the Section's managed logical path, omits
@@ -86,20 +88,20 @@ repository capability, it returns to New Task.
 
 ## Task Detail
 
-Task Detail presents the selected thread, Conversation, command requests,
+Task Detail presents the selected conversation, command requests,
 follow-up Composer, and Task actions. Integrated Review, Git, and GitHub remain
 shared repository surfaces.
 
 ### Conversation
 
-Conversation renders the canonical conversation thread as a review timeline:
+Conversation renders the canonical agent conversation as a review timeline:
 
 - prompts and agent responses;
 - reasoning summaries and tool activity;
 - commands, output, and file-change records;
 - approvals and canonical outcomes;
 - interruption, failure, reconnect, completion, and unavailable states;
-- follow-up Start or Steer behavior derived from canonical thread state.
+- follow-up Start or Steer behavior derived from canonical conversation state.
 
 A Task opened straight from creation shows the prompt it was created with while
 the agent takes it, and the agent's own copy replaces it once the turn begins. A
@@ -181,10 +183,10 @@ Settings includes:
   restart, and diagnostics;
 - Claude installation status, shown and never gated on: the binary's version
   and path, the signed-in account and plan, the plan's usage windows as the
-  agent itself reports them, and the runner's process state — plus the
-  explicit, confirmed restart that stops the runner — ending every Claude
-  session it holds — and starts a fresh one on the installed binary;
-  conversations resume as their Tasks are opened;
+  agent itself reports them, and the runner's process state; plus an explicit,
+  confirmed restart that stops the runner and every Claude session it holds,
+  starts a fresh runner on the installed binary, and lets conversations resume
+  when their Tasks are opened;
 - About Caffold application and build information, including shared
   checking/ready/settled update status and a **Reload to update** action while
   a prepared PWA generation remains ready. Copied diagnostics also include the
@@ -230,7 +232,8 @@ The browser UI does not provide:
 - external-worktree adoption or force cleanup;
 - force deletion of dirty managed worktrees;
 - split diff, hunk comments, or durable review annotations;
-- a Caffold-owned duplicate of the Codex transcript.
+- a Caffold-owned duplicate of either agent's transcript;
+- switching an existing Task between agents.
 
 Planned additions belong in the [Roadmap](roadmap.md), not in this description
 of implemented surfaces.

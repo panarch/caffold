@@ -1,23 +1,23 @@
 # Architecture
 
-This document describes Caffold's current architecture. It is not a
-compatibility contract.
+This document maps Caffold's current components and ownership boundaries. It is
+not a compatibility contract.
 
-Caffold is organized around one control instance per trusted host.
-
-That instance serves the UI, drives the agents a Task can belong to, talks to the local filesystem and git, and exposes task/review APIs to the browser.
+Caffold runs one control instance per trusted host. That instance serves the
+UI, drives the native agent selected for each Task, reads the local filesystem
+and Git, and exposes Task and review APIs to the browser.
 
 ```mermaid
 flowchart TD
     PWA["Browser / PWA / Service Worker"]
     MacWrapper["macOS menu bar wrapper"]
-    Backend["Caffold Rust Backend"]
+    Backend["Caffold Rust backend"]
     PushService["Browser vendor Push Service"]
     Proxy["Codex proxy child"]
     AppServer["Persistent Codex app-server daemon"]
-    Runner["Claude runner"]
+    Runner["Caffold Claude runner"]
     ClaudeSession["claude session process"]
-    Git["git worktree"]
+    Git["Git checkout / worktree"]
     Whisper["Host-local Whisper model"]
     Tailscale["Tailscale CLI / Serve"]
 
@@ -26,225 +26,171 @@ flowchart TD
     MacWrapper -->|"HTTP"| Backend
     Backend -->|"JSON-RPC / WebSocket"| Proxy
     Proxy --> AppServer
-    Backend -->|"unix socket, one subscribed connection"| Runner
-    Runner --> ClaudeSession
+    Backend -->|"Unix socket"| Runner
+    Runner -->|"stdio"| ClaudeSession
     Backend --> Git
     Backend --> Whisper
     Backend -->|"fixed status and Serve commands"| Tailscale
     Backend -->|"encrypted Web Push"| PushService
     PushService -->|"Push API delivery"| PWA
-    AppServer -->|"agent events / approvals / thread data"| Proxy
-    ClaudeSession -->|"stream-json frames / permission callbacks"| Runner
+    AppServer -->|"events / approvals / thread data"| Proxy
+    ClaudeSession -->|"stream-json / control requests"| Runner
 ```
 
 ## Components
 
-### PWA
+### Browser and PWA
 
-The PWA is the primary and most complete review and control surface. It should
-be usable from desktop and mobile browsers. It does not own the source of
-truth.
+The PWA is the primary and most complete review and control surface. It is
+usable from desktop and mobile browsers and owns presentation, selection, and
+request state rather than durable product or agent state.
 
-### macOS Wrapper
+### macOS wrapper
 
-The macOS menu bar wrapper is a native host launcher, status surface, and
-compact control surface. The PWA being primary does not make it the exclusive
-client of Caffold capabilities. A setting or action may remain available in
-Swift after it gains a browser surface, provided both clients consume the same
-backend-owned state and mutation contract.
+The menu-bar wrapper starts and controls the local backend, reports compact
+host status, and participates in application update and recovery. The PWA and
+Swift wrapper may expose the same backend-owned setting or action, but they
+must not separately infer its state or implement different mutation semantics.
+Platform failures before the backend is available, macOS lifecycle, and native
+launch behavior remain wrapper-owned.
 
-The non-duplication boundary applies to product logic, not to useful entry
-points or presentation. Swift and the PWA may both expose the same setting or
-action; they must not separately infer its state, persist competing values, or
-implement different operational semantics. Platform failures before the
-backend is available, macOS application lifecycle, and native launch behavior
-remain wrapper-owned.
-
-### Rust Backend
+### Rust backend
 
 The backend owns:
 
-- host instance lifecycle
-- live file, git, and worktree-context lookup
-- Codex app-server daemon connection and disposable proxy lifecycle
-- Claude runner supervision and one attached session per Claude Task
-- JSON-RPC adapter
-- git status, diff, log, and file APIs
-- host-local Whisper model installation, verification, and transcription
-- canonical Tailscale status classification, private URL derivation,
-  constrained Caffold Serve operations, and SVG QR encoding limited to a
-  canonical private Tailnet URL
-- browser Push subscription persistence and isolated outbound delivery
-- shared server-backed product settings and capability APIs consumed by
-  browser and platform clients
-- PWA asset serving
+- host instance and HTTP/SSE lifecycle;
+- Task membership, routing, and per-Task agent selection;
+- the Codex proxy connection and Claude runner supervision;
+- translation from each agent into Caffold's conversation, event, approval,
+  and failure vocabulary;
+- live file, Git, GitHub, and managed-worktree operations;
+- host-local Whisper model installation, verification, and transcription;
+- canonical Tailscale status, constrained Serve operations, and private URL/QR
+  derivation;
+- browser Push subscription persistence and delivery; and
+- shared server settings, PWA assets, and capabilities consumed by browser and
+  platform clients.
 
-The application layer is split by the state and transport boundary it owns:
+It does not own either agent's model harness or transcript. The architecture
+and rationale for that boundary belongs to
+[Agent Runtimes](agent-runtimes.md).
+
+### Agent runtimes
+
+A Task is bound to either Codex or Claude. Codex app-server owns Codex thread,
+turn, approval, cwd, and event behavior. Claude Code owns its transcript,
+stream-json/control behavior, tools, and permission model. Caffold's Claude
+runner supplies process survival and frame relay without parsing the agent
+protocol.
+
+The shared Task application works only in Caffold's small product vocabulary.
+Provider wire methods and payloads stop in the driver. See
+[Codex App Server](codex-app-server.md) and
+[caffold-claude-runner](../../runners/claude/README.md) for the provider and
+transport details.
+
+### Git checkout and worktree
+
+Git is the source of truth for code changes. Caffold derives repository and
+worktree context live and presents review surfaces from Git and file contents.
+It may create and later remove only worktrees recorded under its managed
+ownership contract.
+
+### Voice input
+
+The shared Task composer captures a bounded 16 kHz mono 16-bit PCM WAV and sends
+it over the existing same-origin Caffold connection. The backend validates and
+decodes it in memory, lazily loads the pinned multilingual Whisper
+`large-v3-turbo` model, serializes inference, and returns text for insertion at
+the saved selection. It never stores recordings or calls an external
+speech-to-text service.
+
+## Application ownership
+
+The backend application is split by state and transport owner:
 
 ```text
 caffold/src/app.rs                     dependency construction and router composition
 caffold/src/app/error.rs               shared JSON HTTP error contract
 caffold/src/app/shell.rs               shell, health, settings, manifest, static assets
-caffold/src/app/workspace.rs           Files, images, watches, Git, and GitHub HTTP adapters
-caffold/src/app/tasks.rs               private Tasks state assembly and runtime shutdown
-caffold/src/app/tasks/routes.rs        Tasks/Codex HTTP DTOs, validation, handlers, REST/SSE routes
-caffold/src/app/tasks/push.rs          Push subscription HTTP API, persistence adapter, and delivery runtime
-caffold/src/app/tasks/detail.rs        canonical task detail, session, history, and sync application
-caffold/src/app/tasks/runtime.rs       runtime composition, per-Task agent routing, cross-role orchestration
+caffold/src/app/workspace.rs           Files, images, watches, Git, and GitHub adapters
+caffold/src/app/tasks.rs               private Tasks state and runtime shutdown
+caffold/src/app/tasks/routes.rs        Task/agent HTTP DTOs, handlers, REST/SSE routes
+caffold/src/app/tasks/detail.rs        canonical Task detail and history application
+caffold/src/app/tasks/sessions.rs      ephemeral viewer, revision, and live-session state
+caffold/src/app/tasks/runtime.rs       per-Task driver routing and orchestration
 caffold/src/app/tasks/runtime/
-  process.rs                           readiness, connection, generation, restart, and shutdown
-  bridge.rs                            app-server event bridging and managed session recovery
-  claude_bridge.rs                     Claude session reports, approvals, and Caffold-served tool calls routed into the Task application
-  server_requests.rs                   approvals and Caffold-owned dynamic tool requests
-caffold/src/agent.rs                   the agents Caffold drives and the vocabulary they report in
-caffold/src/agent/driver.rs            which agent is being asked, and the questions that are the same for all
-caffold/src/agent/codex.rs             Codex app-server transport, protocol, readiness, and contract
-caffold/src/agent/claude.rs            the Claude client's surface: its types, turns, and approvals
-caffold/src/agent/claude/
-  protocol.rs                          the stream-json and control wire types
-  session.rs                           opening a session, and what a reopened one already was
-  starting.rs                          starting the agent, one process at a time
-  reading.rs                           interpreting everything the agent says, as it says it
-  served_tools.rs                      the in-process MCP tools Caffold serves the agent
-  settings.rs                          models and modes, and carrying choices to a running session
-  status.rs                            what this installation is, asked without a Task
-  translate.rs                         one translator from Claude content blocks to Caffold items
-  transcript.rs                        reading a conversation back from the file the agent writes
-  runner.rs                            reaching the runner, and the stand-in a test drives instead
-caffold/src/app/tasks/sync.rs          rollout invalidation scheduling and retry timing
-caffold/src/app/tasks/projection.rs    pure thread/turn to browser task projection
-caffold/src/app/tasks/events.rs        event normalization, merge, cache, and publication
-caffold/src/app/voice.rs               model lifecycle, WAV validation, and local transcription
-caffold/src/app/tailscale.rs           Tailscale HTTP routes, service orchestration, and fixed Serve control
-caffold/src/app/tailscale/status.rs    canonical status model, Serve classification, and private URL validation
-caffold/src/app/tailscale/cli.rs       bounded Tailscale CLI discovery and process execution
+  process.rs                           Codex readiness, connection, generation, restart
+  bridge.rs                            Codex event bridge and managed-session recovery
+  claude_bridge.rs                     Claude reports, approvals, and served-tool routing
+  server_requests.rs                   Codex approvals and dynamic-tool requests
+caffold/src/app/tasks/sync.rs          invalidation scheduling and retry timing
+caffold/src/app/tasks/projection.rs    pure conversation-to-browser Task projection
+caffold/src/app/tasks/events.rs        event normalization, merge, cache, publication
+caffold/src/agent.rs                   shared agent vocabulary
+caffold/src/agent/driver.rs            closed driver choice and shared operations
+caffold/src/agent/codex.rs             Codex app-server boundary
+caffold/src/agent/claude.rs            Claude CLI boundary
+caffold/src/app/voice.rs               model lifecycle, WAV validation, transcription
+caffold/src/app/tailscale.rs           status and constrained Serve orchestration
+caffold/src/task_store.rs              Caffold-owned durable Task and recovery data
+runners/claude/                         transport-only Claude process supervisor
 ```
 
-`caffold/src/app.rs` does not own feature state. It constructs the Shell,
-Workspace, Tasks, Voice, and Tailscale applications and merges their completed
-routers. Each HTTP owner keeps its route state and DTOs private. Tasks lower
-modules receive only the capabilities they use; they do not depend on Axum
-extractors or the full Tasks route state. Within Tasks, Projection and Events
-are the stateless or bounded-memory base, Runtime owns app-server transport,
-Sync owns scheduling, Detail applies canonical reads, and Routes adapts those
-owners to HTTP.
+`caffold/src/app.rs` constructs completed feature applications; it does not own
+their state. Route modules own HTTP adaptation. Lower application modules
+receive only the capability they use and do not depend on Axum extractors or a
+complete route state. Projection and event modules do not become alternate
+writers for provider state.
 
-### Codex App Server
+## Sources of truth
 
-Codex app-server owns Codex thread, turn, approval, and event stream behavior.
-Caffold treats it as an external integration boundary and does not embed Codex
-internal crates.
+| State | Owner |
+| --- | --- |
+| Codex conversations, turns, activity, and cwd | Codex app-server |
+| Claude conversation history | Claude transcript files |
+| Live Claude process and control requests | Claude process held by the Caffold runner |
+| Task membership, provider, stable navigator name, Section placement, composer state, Push subscriptions, and managed-worktree recovery | Caffold Redb |
+| Files, diffs, branches, commits, and worktree contents | Git and the filesystem |
+| Tailscale connection, Serve mapping, and Tailnet address | Tailscale CLI and Serve configuration |
+| Browser presentation, selection, and local Push identity | Browser/PWA |
 
-### Claude Runner
+Caffold does not persist provider transcripts, active-turn state, or derived
+Git presentation as replacements for their owners. A cache, event, or browser
+request may coordinate delivery but does not become canonical domain state.
 
-Claude ships no daemon, so Caffold runs one: `caffold-claude-runner`, a
-workspace member that holds `claude` child processes and relays their frames
-without reading them. It listens on a unix socket beside the database, so an
-installed application and a development server drive their own. The OS caps a
-unix socket address at about a hundred bytes, so a data directory nested too
-deeply cannot host one; the backend refuses such a path by name — length,
-limit, and the way out — before starting anything, and the installation's
-status report carries the same problem, rather than letting a start time out
-saying nothing. One session per Claude Task, and one subscribed connection carrying
-every session's output with each event naming its session; a second client
-asking to subscribe is refused rather than splitting the stream.
+## Process model
 
-The runner is deliberately ignorant. It does not know which argument selects a
-model or enables the permission callback, and it keeps no history. It outlives
-the backend, which is what lets a turn survive a restart, and it is given its
-own process group so a signal to Caffold does not take it along.
+One Caffold backend serves one trusted host and one data directory.
 
-Starting `claude` is paced by the backend. A freshly started process refreshes
-the account's stored credentials when they are expiring, and two young
-processes can refresh the same token twice — which the service reads as theft
-and answers by revoking the login everywhere. Every authenticating start this
-backend makes — a session the runner spawns or a one-off question asked
-directly — passes one gate that lets starts begin one at a time, spaced
-apart. The runner's create answer says whether it began a process or handed
-back one already running, and only a beginning shuts the gate behind it, so
-taking live sessions back up after a backend restart is not spaced. A runner
-from before that answer says nothing either way, and every hand-back counts
-as a start until the runner is next replaced. Questions
-answered from what is already on this machine, such as `--version` and
-`auth status`, refresh nothing and do not pass the gate. The gate is per
-backend: a second backend on the same account, or `claude` run by hand,
-starts outside its ordering.
+Codex uses one persistent app-server daemon per user. Caffold ensures it is
+available and connects through a disposable proxy child. Caffold owns and stops
+the proxy, not the daemon.
 
-### Git Worktree
+Claude uses one Caffold runner per data directory and one `claude` child per
+live session. The runner outlives a backend replacement so active work and
+pending approvals can be recovered. It shuts down after its bounded
+no-subscriber interval or an explicit restart. The runner keeps no history;
+Claude's transcript does.
 
-The worktree is the source of truth for code changes. Caffold reads from git and file contents to present review surfaces.
+The browser can disconnect without stopping either runtime. Task viewer leases
+and runtime leases determine which live subscriptions Caffold maintains, but
+they do not redefine agent status.
 
-### Voice Input
+## Task and repository context
 
-The shared task composer captures microphone samples with an AudioWorklet and
-creates a bounded 16 kHz mono 16-bit PCM WAV in the browser. It sends that WAV
-over the existing same-origin Caffold connection. The backend validates and
-decodes it in memory, lazily loads the pinned multilingual Whisper `large-v3-turbo`
-model, serializes inference, and returns text for insertion at the selection
-saved when recording began. It never stores raw recordings or calls an external
-speech-to-text service. The model remains loaded for the backend process
-lifetime; Tailscale is transport for remote browsers, not part of inference.
+Caffold persists which agent runs each Task. A Claude Task also persists its
+working directory because a resumed CLI process must be told where to start;
+Codex reports the cwd from its own thread. For a managed worktree, the ownership
+record supplies the active Task root for both drivers.
 
-## Source of Truth
+Repository and worktree presentation is derived live from that Task context.
+The navigator groups a main checkout and linked worktrees by their common Git
+repository while each Task retains its actual worktree root for Integrated
+Review, Git, and GitHub.
 
-- Codex thread/session: conversation, turns, agent activity
-- Claude session: conversation, turns, agent activity, and the transcript the
-  agent writes for itself
-- Caffold Redb: managed-thread membership, stable Active navigator names and
-  Section placement, observed recency, persistent Web Push subscriptions and
-  the stable server VAPID keypair, Task composer/seen state, each Section's
-  composer selection from its last successfully started turn, and
-  Caffold-managed worktree ownership and recovery
-- git worktree: actual file and code changes
-- Tailscale CLI and Serve configuration: live connection, mapping, and private
-  Tailnet address state
-- browser/PWA: presentation and controller state, plus the browser-owned Web
-  Push subscription and local installation identity
-
-## Process Model
-
-The current model is one persistent Codex app-server daemon per user. A Caffold
-backend ensures that daemon is running and connects through a proxy child that
-may be replaced independently. Caffold owns and stops the proxy, not the daemon.
-
-Claude has the same shape one level down: one runner per data directory, started
-by the backend if it is not already listening, and one `claude` process per
-Claude Task the runner holds. Caffold starts the runner and does not stop it,
-because it is what carries a running turn across a backend restart. A Claude
-session is held for as long as it lives rather than released when the last
-viewer leaves — detaching and re-attaching costs a process, where dropping a
-Codex subscription costs nothing.
-
-Codex remains the source of truth for thread content and runtime state. Caffold
-keeps local Caffold-owned tables for managed membership, the stable Active
-navigator projection, and managed worktree ownership/recovery. Managed-thread
-metadata includes the display name, nullable Section placement, observed
-recency, Caffold timestamps, optional model/reasoning settings, and which agent
-runs the Task. It does not store preview, agent timestamps, status, active turn,
-transcript, or event summary.
-
-A Claude Task also stores its working directory, because nothing else can answer
-for it: a Claude session is a process, resuming one starts a new process, and
-that process works wherever it is started, and the conversation the agent writes
-down is filed under the directory the session was created in. Codex holds a
-thread's working directory and answers for it, so a Codex Task stores none.
-
-A Claude conversation is read from that file rather than from anything Caffold
-keeps, so a Task the backend has forgotten comes back whole. Every session runs
-with `--replay-user-messages`, which hands a prompt back under the identity the
-agent filed it as; that identity names the turn, and it is the same identity the
-file uses, so a turn watched live and the same turn read from disk are one turn
-rather than two. What a running session knows is laid over the top, because only
-it can say a turn is still running or that a refusal was a refusal. Active list identity and placement come directly from this local
-projection; runtime state arrives independently after Codex connects. Caffold
-derives repository and worktree presentation live from each thread cwd or
-persisted logical Section path and does not keep a project registry. Tasks
-globally groups the main checkout and linked worktrees by their shared Git
-repository while each Task keeps its actual worktree root for Integrated
-Review, Git, and GitHub context.
-
-An eligible managed Task can explicitly move the same Codex thread into a new
+An eligible Task can explicitly move its same conversation into a
 Caffold-managed worktree. The ownership record permits bounded recovery,
 archive removal, and restore only for paths Caffold created and verified. An
-external worktree may be used as cwd but is never adopted or removed from path
-inference alone.
+external worktree may be used as a cwd but is never adopted or removed from
+path inference alone. See [Managed Worktree Lifecycle](worktree-lifecycle.md).

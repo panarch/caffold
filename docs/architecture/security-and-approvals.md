@@ -132,7 +132,7 @@ Current rules:
 ## Git Mutations
 
 Caffold does not expose direct Git mutation controls. Git mutations happen
-through Codex instructions or manual terminal work.
+through instructions to the Task's agent or manual terminal work.
 
 ## Worktree Deletion
 

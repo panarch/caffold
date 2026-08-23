@@ -428,6 +428,14 @@ runtime-restart request snapshots, repair guidance, diagnostics, and intents
 for Refresh or restart. The workspace Codex status lifecycle remains active
 across Tasks and Settings route changes and owns the HTTP request generations.
 
+Settings Claude owns a route-scoped diagnostic request for the installed
+binary, account, usage windows, and runner. Each block can fail independently
+without turning the report into a readiness gate. Its confirmed Restart intent
+is forwarded to the workspace's single Claude restart dialog; that mutation
+ends every runner-held session, starts a replacement runner, and refreshes the
+diagnostic report. The page does not read credentials or call provider APIs
+itself.
+
 Remote Access owns a route-scoped Tailscale request lifecycle. Server responses
 are the only writers of canonical status, `canManage`, diagnostics, and the
 Tailnet URL. The browser retains the last canonical status while tracking its
