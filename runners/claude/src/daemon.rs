@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::unix::OwnedWriteHalf;
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::{Mutex, Notify, mpsc};
+use tokio::sync::{Mutex, mpsc, watch};
 
 use crate::protocol::{
     DaemonStatus, ErrorBody, ErrorCode, Event, Outcome, PROTOCOL_VERSION, ReplyBody, Request,
@@ -48,7 +48,15 @@ pub struct Runner {
     idle_timeout: Option<std::time::Duration>,
     /// When the subscription was last seen absent, while it stays absent.
     unsubscribed_since: Mutex<Option<tokio::time::Instant>>,
-    shutdown: Notify,
+    /// Whether a stop has been asked for.
+    ///
+    /// Kept as state rather than sent as a wakeup. The loop below is not
+    /// watching for a stop at every instant — it leaves that branch to take
+    /// the connection the request arrives on — and a signal that reached only
+    /// whoever was waiting at the moment it was sent would fall into that gap.
+    /// The client would be told the runner is stopping while it went on
+    /// serving, holding children nothing can reach.
+    stopping: watch::Sender<bool>,
 }
 
 struct Subscription {
@@ -65,6 +73,14 @@ struct Subscription {
 struct Connection {
     id: u64,
     writer: Arc<Mutex<OwnedWriteHalf>>,
+    /// A stop this connection asked for, held until its answer has been
+    /// written.
+    ///
+    /// Stopping ends this connection along with everything else, so a runner
+    /// that began it while answering would race its own reply out of the
+    /// socket: the client that asked would see the connection end instead of
+    /// the acknowledgement it is waiting for.
+    stop_when_answered: bool,
 }
 
 impl Runner {
@@ -77,7 +93,7 @@ impl Runner {
             next_connection: std::sync::atomic::AtomicU64::new(1),
             idle_timeout,
             unsubscribed_since: Mutex::new(None),
-            shutdown: Notify::new(),
+            stopping: watch::Sender::new(false),
         })
     }
 
@@ -89,6 +105,7 @@ impl Runner {
         // is still writing to would put a second agent on it.
         self.leftovers.clear().await;
 
+        let mut stopping = self.stopping.subscribe();
         // The idle clock, kept here so a deliberate stop and an unattended one
         // leave through the same door below.
         let mut ticker = tokio::time::interval(std::time::Duration::from_millis(500));
@@ -110,7 +127,11 @@ impl Runner {
                         break;
                     }
                 }
-                () = self.shutdown.notified() => break,
+                // Read from the value rather than from a change since the
+                // last look: this branch is made again on every turn round the
+                // loop, and a stop asked for while it was gone has to still be
+                // there when it comes back.
+                _ = stopping.wait_for(|asked| *asked) => break,
             }
         }
 
@@ -134,6 +155,11 @@ impl Runner {
         Ok(())
     }
 
+    /// Ask the runner to stop serving, from wherever the asking happens.
+    fn ask_to_stop(&self) {
+        self.stopping.send_replace(true);
+    }
+
     async fn serve_connection(self: Arc<Self>, stream: UnixStream) -> anyhow::Result<()> {
         let (reader, writer) = stream.into_split();
         let mut connection = Connection {
@@ -141,6 +167,7 @@ impl Runner {
                 .next_connection
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             writer: Arc::new(Mutex::new(writer)),
+            stop_when_answered: false,
         };
         let mut reader = BufReader::new(reader);
 
@@ -155,7 +182,13 @@ impl Runner {
                 continue;
             }
             let response = self.answer(trimmed, &mut connection).await;
-            write_response(&connection.writer, response).await?;
+            let answered = write_response(&connection.writer, response).await;
+            // The answer first, the stopping after it. A client that has gone
+            // by now does not un-ask, so the request is acted on either way.
+            if std::mem::take(&mut connection.stop_when_answered) {
+                self.ask_to_stop();
+            }
+            answered?;
         }
 
         self.release_subscription_of(connection.id).await;
@@ -274,7 +307,7 @@ impl Runner {
         match request {
             Request::DaemonStatus => Outcome::Ok(ReplyBody::Daemon(self.status().await)),
             Request::DaemonStop => {
-                self.shutdown.notify_waiters();
+                connection.stop_when_answered = true;
                 Outcome::Ok(ReplyBody::Empty {})
             }
             Request::SessionList => {
@@ -560,6 +593,63 @@ mod tests {
         let refused = bind(&socket).await.expect_err("second bind");
 
         assert!(refused.to_string().contains("already listening"));
+        let _ = tokio::fs::remove_dir_all(&directory).await;
+    }
+
+    #[tokio::test]
+    async fn a_stop_is_held_until_its_answer_has_been_written() {
+        // Stopping ends the connection the request came in on, so a runner
+        // that began stopping while answering would race its own reply out of
+        // the socket, and the client that asked would see the connection end
+        // instead of the acknowledgement. Answering marks the request; the
+        // connection acts on it once the answer is out.
+        let socket = std::env::temp_dir().join(format!("runner-answer-{}", std::process::id()));
+        let runner = Runner::new(socket, None);
+        let (_client, server) = UnixStream::pair().expect("a pair of ends");
+        let (_reader, writer) = server.into_split();
+        let mut connection = Connection {
+            id: 1,
+            writer: Arc::new(Mutex::new(writer)),
+            stop_when_answered: false,
+        };
+
+        let response = runner
+            .answer(r#"{"id":1,"m":"daemon_stop"}"#, &mut connection)
+            .await;
+
+        assert!(
+            matches!(response.outcome, Outcome::Ok(_)),
+            "the stop is taken"
+        );
+        assert!(
+            connection.stop_when_answered,
+            "and held for after the answer"
+        );
+        assert!(
+            !*runner.stopping.borrow(),
+            "the runner is not stopping while its answer is still unwritten"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_stop_asked_for_before_the_loop_looks_still_ends_the_runner() {
+        // The loop looks for a stop between one turn and the next, and the
+        // request asking for one is answered on a connection it took in an
+        // earlier turn — so the asking and the looking do not line up. Asking
+        // before the loop has begun is that gap at its widest, and the one
+        // form of it a test can hold still.
+        let directory = std::env::temp_dir().join(format!("runner-stop-{}", std::process::id()));
+        tokio::fs::create_dir_all(&directory).await.expect("create");
+        let socket = directory.join("claude-runner.sock");
+        let listener = bind(&socket).await.expect("bind");
+        let runner = Runner::new(socket, None);
+
+        runner.ask_to_stop();
+
+        tokio::time::timeout(std::time::Duration::from_secs(5), runner.serve(listener))
+            .await
+            .expect("the runner went on serving after it was asked to stop")
+            .expect("serve");
         let _ = tokio::fs::remove_dir_all(&directory).await;
     }
 

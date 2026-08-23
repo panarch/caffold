@@ -530,7 +530,9 @@ impl RunnerClient {
             return Ok(mock.restart().await);
         }
         if let Ok(mut client) = self.connect().await {
-            // The reply may be cut off by the stop it asks for; gone is gone.
+            // A runner answers before it acts on the stop, so a request that
+            // goes unanswered means it had already gone — which is what was
+            // being asked for.
             let _ = client.request(Request::DaemonStop).await;
         }
         let deadline = tokio::time::Instant::now() + STOP_TIMEOUT;

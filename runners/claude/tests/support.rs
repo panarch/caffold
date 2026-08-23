@@ -203,25 +203,24 @@ impl Runner {
             .find(|session| session["session"] == id)
     }
 
-    /// Poll until the runner stops answering, so a test does not depend on how
+    /// Wait for a runner that ends itself, so a test does not depend on how
     /// promptly it acts on its own timeout.
-    pub fn wait_until_gone(&self) {
-        let deadline = Instant::now() + TIMEOUT;
-        while Instant::now() < deadline {
-            let answering = Command::new(BINARY)
-                .args(["daemon", "status", "--data-dir"])
-                .arg(&self.data_dir)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .map(|status| status.success())
-                .unwrap_or(false);
-            if !answering {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(50));
+    ///
+    /// The harness holds the process, so its end is an event to wait for
+    /// rather than a state to ask after repeatedly. The waiting happens on a
+    /// thread of its own only so that a runner which never ends fails the test
+    /// instead of hanging it.
+    pub fn wait_until_gone(&mut self) {
+        let Some(mut process) = self.process.take() else {
+            return;
+        };
+        let (sender, ended) = channel();
+        std::thread::spawn(move || {
+            let _ = sender.send(process.wait());
+        });
+        if ended.recv_timeout(TIMEOUT).is_err() {
+            panic!("the runner never stopped");
         }
-        panic!("the runner never stopped answering");
     }
 
     /// Poll until the child has exited, so a test does not depend on how long a
@@ -302,12 +301,10 @@ impl Runner {
         };
         let pid = process.id() as i32;
         let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
-        // Reaping matters: an unwaited child stays a zombie, and a zombie still
-        // answers `kill -0`, so the wait below would never settle.
+        // Waiting is what makes the runner gone rather than a zombie, and it
+        // is also what says so: an unwaited child stays in the process table,
+        // and a zombie still answers `kill -0`. Nothing to poll for after it.
         let _ = process.wait();
-        if !wait_for_process_exit(pid) {
-            panic!("the runner did not die");
-        }
     }
 }
 
