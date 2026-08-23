@@ -174,7 +174,7 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
         new CustomEvent("caffold:task-created", {
           bubbles: true,
           composed: true,
-          detail: { detail },
+          detail: { detail, submission: { prompt, attachments: [] } },
         }),
       );
     } catch (error) {

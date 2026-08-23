@@ -67,8 +67,9 @@ Only the Task store — shared by every agent — takes the Tasks surface over
 while its migration blocks operations, with its own retry lifecycle.
 
 Task creation starts a thread with the chosen agent in the selected cwd.
-Managed-worktree preparation happens explicitly from the resulting Task; it is
-not an implicit side effect of task creation.
+New Task reports that the task is starting until creation is answered, and the
+answer opens the Task. Managed-worktree preparation happens explicitly from the
+resulting Task; it is not an implicit side effect of task creation.
 
 Global New and Section New provide the same Composer, turn options, and error
 behavior. Section New fixes cwd to the Section's managed logical path, omits
@@ -99,6 +100,13 @@ Conversation renders the canonical conversation thread as a review timeline:
 - approvals and canonical outcomes;
 - interruption, failure, reconnect, completion, and unavailable states;
 - follow-up Start or Steer behavior derived from canonical thread state.
+
+A Task opened straight from creation shows the prompt it was created with while
+the agent takes it, and the agent's own copy replaces it once the turn begins. A
+first turn the agent never took is reported beside that prompt, whose delivery
+then reads as unconfirmed. Either way the prompt holds the Composer the way any
+submitted prompt does, so a second one is refused until the turn it was sent
+into has begun.
 
 The Composer owns its draft, attachments, selection, and voice capture. Task
 child switching does not interrupt the selected Task's stream.

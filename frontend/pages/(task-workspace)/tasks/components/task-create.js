@@ -44,13 +44,19 @@ class CaffoldTaskCreate extends HTMLElement {
     this.transportAvailable = true;
     this.taskOperationsBlocked = false;
     this.error = null;
+    this.renderedStatus = null;
     this.requestGeneration = 0;
     this.activeSubmissionId = "";
     this.boundComposerIntent = (event) => this.handleComposerIntent(event);
     this.boundComposerSubmit = (event) => {
       void this.handleComposerSubmit(event);
     };
-    this.boundIconsReady = () => this.renderError();
+    this.boundIconsReady = () => {
+      // The error card gains its icon once the icon set loads, which the key
+      // below cannot see.
+      this.renderedStatus = null;
+      this.renderStatus();
+    };
     warmIcons();
   }
 
@@ -60,10 +66,11 @@ class CaffoldTaskCreate extends HTMLElement {
       return;
     }
     this.innerHTML = `
-      <div class="task-create-error-region"></div>
+      <div class="task-create-status-region"></div>
       <caffold-task-composer></caffold-task-composer>
     `;
-    this.renderError();
+    this.renderedStatus = null;
+    this.renderStatus();
     this.syncComposer();
   }
 
@@ -87,7 +94,7 @@ class CaffoldTaskCreate extends HTMLElement {
     if (changed) {
       this.error = null;
     }
-    this.renderError();
+    this.renderStatus();
     this.syncComposer();
     return changed;
   }
@@ -95,7 +102,7 @@ class CaffoldTaskCreate extends HTMLElement {
   activate({ autofocus = false } = {}) {
     this.ensureRendered();
     this.hidden = false;
-    this.renderError();
+    this.renderStatus();
     this.syncComposer();
     if (autofocus) {
       this.composer()?.focus();
@@ -111,7 +118,7 @@ class CaffoldTaskCreate extends HTMLElement {
     this.cancelActiveSubmission();
     this.error = null;
     this.composer()?.endEditingLifetime();
-    this.renderError();
+    this.renderStatus();
     this.syncComposer();
   }
 
@@ -172,16 +179,19 @@ class CaffoldTaskCreate extends HTMLElement {
     if (!submissionId || this.activeSubmissionId) {
       return;
     }
+    const prompt = `${event.detail?.prompt ?? ""}`;
+    const attachments = [...(event.detail?.attachments ?? [])];
     this.activeSubmissionId = submissionId;
     this.error = null;
     this.syncComposer();
+    this.renderStatus();
     const generation = ++this.requestGeneration;
     try {
       const detail = await createTask({
         ...(this.selectedContextPath()
           ? { cwd: this.selectedContextPath() }
           : {}),
-        prompt: `${event.detail?.prompt ?? ""}`,
+        prompt,
         images: event.detail?.images ?? [],
         ...(event.detail?.options ?? {}),
       });
@@ -193,15 +203,19 @@ class CaffoldTaskCreate extends HTMLElement {
       }
       this.activeSubmissionId = "";
       this.syncComposer();
+      this.renderStatus();
       this.composer()?.resolveSubmission(submissionId, {
         status: "accepted",
         resetOptions: true,
       });
+      // The prompt travels with the Task it created. Its first turn begins
+      // after this answer, so the Task being opened is where the prompt has to
+      // be shown until the agent reports it back.
       this.dispatchEvent(
         new CustomEvent("caffold:task-created", {
           bubbles: true,
           composed: true,
-          detail: { detail },
+          detail: { detail, submission: { prompt, attachments } },
         }),
       );
     } catch (error) {
@@ -218,7 +232,7 @@ class CaffoldTaskCreate extends HTMLElement {
         status: "rejected",
         error: this.error,
       });
-      this.renderError();
+      this.renderStatus();
     }
   }
 
@@ -259,15 +273,37 @@ class CaffoldTaskCreate extends HTMLElement {
     });
   }
 
-  renderError() {
-    const region = this.querySelector(":scope > .task-create-error-region");
+  // What this surface has to say about the request it is holding.
+  //
+  // Creating answers once the Task exists, and the agent takes the prompt after
+  // that. The wait in between is the person's to see: an emptied composer on
+  // its own says only that something was sent somewhere. The region is left
+  // alone while it already says this, so a live region is not re-announced for
+  // an unchanged state.
+  renderStatus() {
+    const region = this.querySelector(":scope > .task-create-status-region");
     if (!region) {
       return;
     }
-    region.innerHTML = this.error
-      ? `<div class="task-create-error" role="alert">
-          ${renderInlineIcon("TriangleAlert", "Task creation failed", "task-create-error-icon")}
+    const status = this.error
+      ? `error:${this.error.message}`
+      : this.activeSubmissionId
+        ? "starting"
+        : "";
+    if (this.renderedStatus === status) {
+      return;
+    }
+    this.renderedStatus = status;
+    if (this.error) {
+      region.innerHTML = `<div class="task-create-status" data-status-tone="error" role="alert">
+          ${renderInlineIcon("TriangleAlert", "Task creation failed", "task-create-status-icon")}
           <span>${escapeHtml(this.error.message)}</span>
+        </div>`;
+      return;
+    }
+    region.innerHTML = this.activeSubmissionId
+      ? `<div class="task-create-status" data-status-tone="starting" role="status">
+          <span>Starting the task...</span>
         </div>`
       : "";
   }

@@ -10,7 +10,9 @@ export async function installTaskLoopFixture(
   {
     completedAssistantResponse: completedAssistantResponseOverride,
     contextPath = "src",
+    deferFirstTurn = false,
     fileLinks = [],
+    holdCreateResponse = false,
     threadId = "thread_12345678",
   } = {},
 ) {
@@ -83,10 +85,19 @@ export async function installTaskLoopFixture(
   let taskDetailReadRequests = 0;
   let approvalRequests = 0;
   let omitCompletedCommandFromDetail = false;
+  let startFirstTurn = () => {};
+  let resolveCreateRequest;
+  let releaseCreateResponse;
   let resolveFollowUpRequest;
   let releaseFollowUpResponse;
   let resolveCanonicalFollowUpRequest;
   let releaseCanonicalFollowUpResponse;
+  const createRequested = new Promise((resolve) => {
+    resolveCreateRequest = resolve;
+  });
+  const createResponseReleased = new Promise((resolve) => {
+    releaseCreateResponse = resolve;
+  });
   const followUpRequested = new Promise((resolve) => {
     resolveFollowUpRequest = resolve;
   });
@@ -222,14 +233,9 @@ export async function installTaskLoopFixture(
       expect(body.effort).toBe("xhigh");
       expect(body.images).toHaveLength(1);
       expect(body.images[0]).toMatch(/^data:image\/png;base64,/);
-      task = {
+      const createdTask = {
         id: threadId,
         threadId,
-        ...canonicalTaskState("active", {
-          activeFlags: ["waitingOnApproval"],
-          turnId: "turn_1",
-          latestTurnStatus: "inProgress",
-        }),
         title: "Inspect the planner changes",
         preview: "Inspect the planner changes",
         cwd: contextPath,
@@ -245,9 +251,15 @@ export async function installTaskLoopFixture(
         createdMs: now,
         updatedMs: now + 4,
         recencyMs: now + 4,
-        lastEventSummary: "Command approval requested",
       };
-      events = [
+      // Creation answers with a Task whose first turn has not begun: no turn,
+      // no prompt of its own, and nothing the agent has said yet.
+      task = {
+        ...createdTask,
+        ...canonicalTaskState("idle"),
+        lastEventSummary: null,
+      };
+      const firstTurnEvents = [
         eventRecord("event_1", "prompt_sent", "Prompt sent", { prompt: body.prompt }, 1),
         eventRecord(
           "event_1_user",
@@ -306,20 +318,39 @@ export async function installTaskLoopFixture(
           5,
         ),
       ];
+      startFirstTurn = () => {
+        task = {
+          ...createdTask,
+          ...canonicalTaskState("active", {
+            activeFlags: ["waitingOnApproval"],
+            turnId: "turn_1",
+            latestTurnStatus: "inProgress",
+          }),
+          lastEventSummary: "Command approval requested",
+        };
+        events = firstTurnEvents;
+      };
+      const created = detailResponse({
+        events: [],
+        activeTopPlacement: {
+          section: {
+            id: "fixture-section-created-task",
+            name: contextPath,
+            repository: true,
+          },
+        },
+      });
+      resolveCreateRequest();
+      if (holdCreateResponse) {
+        await createResponseReleased;
+      }
+      if (!deferFirstTurn) {
+        startFirstTurn();
+      }
 
       return route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify(
-          detailResponse({
-            activeTopPlacement: {
-              section: {
-                id: "fixture-section-created-task",
-                name: contextPath,
-                repository: true,
-              },
-            },
-          }),
-        ),
+        body: JSON.stringify(created),
       });
     }
 
@@ -648,6 +679,61 @@ export async function installTaskLoopFixture(
     return route.fallback();
   });
 
+  const emitToDetailStream = async (type, payload) => {
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (streamUrl) =>
+            window.__caffoldMockEventSources.filter(
+              (candidate) =>
+                candidate.url === streamUrl && candidate.readyState !== 2,
+            ).length,
+          `/api/tasks/${threadId}/stream`,
+        ),
+      )
+      .toBeGreaterThan(0);
+    await page.evaluate(
+      ({ streamUrl, type, payload }) => {
+        const source = window.__caffoldMockEventSources.find(
+          (candidate) => candidate.url === streamUrl && candidate.readyState !== 2,
+        );
+        source.emit(type, payload);
+      },
+      { streamUrl: `/api/tasks/${threadId}/stream`, type, payload },
+    );
+  };
+
+  // The agent takes the first prompt, and the Task's own stream carries what
+  // it said — the same way the server reports a turn that began after its
+  // creation was already answered.
+  const releaseFirstTurn = async () => {
+    startFirstTurn();
+    await emitToDetailStream("task-sync", {
+      threadId,
+      revision: 2,
+      reason: "canonical-sync",
+      detail: detailResponse({ revision: 2 }),
+    });
+  };
+
+  const failFirstTurn = async (
+    reason = "The first turn could not be started: the agent could not be reached.",
+  ) => {
+    const failure = eventRecord(
+      "event_first_turn_failed",
+      "task_failed",
+      reason,
+      { threadId },
+      2,
+    );
+    events = [...events, failure];
+    await emitToDetailStream("task-event", {
+      threadId,
+      revision: 2,
+      event: failure,
+    });
+  };
+
   const seedCompletedTask = async () => {
     await page.goto("/tasks");
     const image =
@@ -692,6 +778,10 @@ export async function installTaskLoopFixture(
     threadId,
     now,
     pageErrors,
+    createRequested,
+    releaseCreateResponse,
+    releaseFirstTurn,
+    failFirstTurn,
     followUpRequested,
     releaseFollowUpResponse,
     canonicalFollowUpRequested,
