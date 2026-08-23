@@ -72,6 +72,9 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "brand/codex-template@2x.png" => Some(png(include_bytes!(
             "../../frontend/assets/brand/codex-template@2x.png"
         ))),
+        "brand/claude-template.png" => Some(png(include_bytes!(
+            "../../frontend/assets/brand/claude-template.png"
+        ))),
         "pages/layout.css" => Some(css(include_str!("../../frontend/pages/layout.css"))),
         "pages/layout.js" => Some(js(include_str!("../../frontend/pages/layout.js"))),
         "pages/foreground-recovery.js" => Some(js(include_str!(
@@ -912,9 +915,11 @@ mod tests {
         assert_eq!(brand_svg.content_type, "image/svg+xml");
         assert!(brand_svg.body.starts_with(b"<svg"));
 
-        let codex_brand = get("brand/codex-template@2x.png").expect("codex brand asset");
-        assert_eq!(codex_brand.content_type, "image/png");
-        assert!(codex_brand.body.starts_with(b"\x89PNG\r\n\x1a\n"));
+        for path in ["brand/codex-template@2x.png", "brand/claude-template.png"] {
+            let agent_brand = get(path).expect("agent brand asset");
+            assert_eq!(agent_brand.content_type, "image/png");
+            assert!(agent_brand.body.starts_with(b"\x89PNG\r\n\x1a\n"));
+        }
 
         let codex_status_model =
             get("pages/(task-workspace)/codex-status/model.js").expect("Codex status model asset");
