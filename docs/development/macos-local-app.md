@@ -8,7 +8,8 @@ application's Redb data.
 Replacement restarts the macOS wrapper and its bundled Caffold backend. It
 closes only Caffold's disposable Codex proxy connection; the persistent Codex
 app-server daemon and its active turns continue while the new backend
-reconnects.
+reconnects. The separate Claude runner also remains available for the new
+backend to reattach to any sessions it still holds.
 
 ## Install a local build
 
@@ -21,7 +22,8 @@ desktop/macos/install-local
 The installer:
 
 1. cleans Caffold's release build metadata and builds the application bundle;
-2. validates the executable, plist, and code signature;
+2. validates the backend and Claude runner executables, plist, and code
+   signature;
 3. stages the bundle next to the installation target;
 4. asks the installed application to quit;
 5. waits for the wrapper, its bundled `caffold` server, and the configured port

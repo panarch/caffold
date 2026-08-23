@@ -12,7 +12,12 @@ The supported contributor baseline is:
 - Node.js 22 and npm;
 - Git;
 - CMake and the Xcode Command Line Tools on macOS;
-- the authenticated standalone Codex CLI for live app-server work.
+- the authenticated standalone Codex CLI for Codex live work; and
+- an authenticated supported Claude Code CLI for Claude live work.
+
+Neither agent is required for the deterministic unit, contract, or browser
+suites. Install the one whose real runtime boundary you are changing; the
+ignored live suites may consume that account's model usage.
 
 On macOS:
 

@@ -54,19 +54,23 @@ system.
 
 ## Delivery path
 
-The Codex notification bridge observes the existing canonical
-`turn/completed` notification. While applying that notification under the
-session lock, the session reports whether it is the first terminal transition
-for the current in-progress turn. A canonical resume response establishes the
-initial terminal-transition candidate; replayed lifecycle notifications received
-before that baseline cannot create one. A live turn start replaces the candidate,
-and an early idle status clears the UI-facing active turn while retaining the
-candidate until its completion arrives. Terminal turn projections cannot regress
-to in-progress. Keeping these rules in the canonical session makes the bridge
-independent of notification ordering details. Known terminal replays, stale
-app-server generations, non-terminal updates, and completions for an older turn
-while a newer turn is active are rejected. The bridge then verifies that the
-thread is still an active Caffold-managed task in Redb and maps only the three
+Each native driver translates its live protocol into Caffold's shared session
+events before Push sees it. Codex derives a terminal event from app-server
+notifications; Claude derives the same event from the live CLI stream. The
+shared Task runtime therefore handles one agent-neutral `TurnEnded` path.
+
+While applying that event under the session lock, the session reports whether
+it is the first terminal transition for the current in-progress turn. A
+canonical open or resume establishes the initial terminal-transition
+candidate; replayed lifecycle events received before that baseline cannot
+create one. A live turn start replaces the candidate, and an early idle status
+clears the UI-facing active turn while retaining the candidate until its
+completion arrives. Terminal turn projections cannot regress to in-progress.
+Keeping these rules in the canonical session makes delivery independent of
+provider ordering details. Known terminal replays, stale runtime generations,
+non-terminal updates, and completions for an older turn while a newer turn is
+active are rejected. The runtime then verifies that the conversation still
+belongs to an active Caffold-managed Task in Redb and maps only the three
 terminal statuses.
 
 One bounded in-memory job is attempted per active subscription. Task and SSE
@@ -75,13 +79,14 @@ delivery bounds are four concurrent provider calls, a five-second connect
 timeout, a fifteen-second overall timeout, no redirects, normal urgency, and a
 24-hour TTL.
 
-The deterministic Push `Topic` and notification `tag` are derived from thread
-ID, turn ID, and terminal status. A bounded in-process recent-delivery set
-suppresses common replays. HTTP 404 and 410 delete the subscription only when
-the stored client ID and endpoint still match the attempted job; a replacement
-subscription cannot be deleted by an older in-flight response. Other provider,
-network, encoding, queue-capacity, and shutdown failures are sanitized,
-reported, and dropped without changing canonical task state.
+The deterministic Push `Topic` and notification `tag` are derived from the Task
+conversation ID, turn ID, and terminal status. A bounded in-process
+recent-delivery set suppresses common replays. HTTP 404 and 410 delete the
+subscription only when the stored client ID and endpoint still match the
+attempted job; a replacement subscription cannot be deleted by an older
+in-flight response. Other Push-provider, network, encoding, queue-capacity, and
+shutdown failures are sanitized, reported, and dropped without changing
+canonical Task state.
 
 On graceful shutdown the sender closes and the current dispatcher drain bound is
 three seconds, staying within the macOS wrapper's five-second termination
@@ -91,7 +96,7 @@ window.
 
 The encrypted payload contains only:
 
-- thread and turn IDs;
+- Task conversation and turn IDs;
 - terminal status;
 - the current canonical task name, truncated at a Unicode boundary;
 - the deterministic notification tag.
@@ -101,10 +106,12 @@ directories. If a task name is unavailable, the service worker uses Caffold and
 status-only fallback copy. Notifications are shown even when a foreground
 Caffold client is open.
 
-Click handling accepts only a same-origin `/tasks/<thread-id>` route. It first
-focuses a window already showing that task, otherwise navigates an existing
-Caffold window, and finally opens a new task window. Cross-origin, malformed,
-query-bearing, and non-task routes are ignored.
+Click handling accepts only a same-origin `/tasks/<conversation-id>` route. It
+first focuses a window already showing that Task, otherwise navigates an
+existing Caffold window, and finally opens a new Task window. Cross-origin,
+malformed, query-bearing, and non-Task routes are ignored. The JSON and route
+field remain named `threadId` for API compatibility; the identifier can belong
+to either supported agent.
 
 ## Accepted reliability limits
 

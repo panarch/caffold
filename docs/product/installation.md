@@ -10,28 +10,34 @@ Source builds and development servers are separate contributor workflows. See
 ## How the installation fits together
 
 Only the host Mac needs the native `Caffold Server.app`. That Mac runs the
-Caffold backend, keeps the Codex app-server connection available, and reads the
-Git checkouts and worktrees stored on the Mac.
+Caffold backend, reaches the installed coding agents, and reads the Git
+checkouts and worktrees stored there.
 
 The user interface is a web app served by that host:
 
 - on the same Mac, open its local URL;
-- on another desktop, foldable, phone, or tablet, open its private Tailscale
+- on another desktop, foldable, tablet, or phone, open its private Tailscale
   HTTPS URL; and
-- on any supported browser, optionally install that page as a PWA for an
+- on a supported browser, optionally install that page as a PWA for an
   app-like window, launcher icon, and home-screen entry.
 
-An installed PWA is still a client of the host Mac. It does not contain Codex,
-clone the repository, or run Tasks on the device. The Mac must be awake,
+An installed PWA is still a client of the host Mac. It does not contain an
+agent, clone the repository, or run Tasks on the device. The Mac must be awake,
 Caffold Server must be running, and the chosen URL must be reachable. Closing
-the PWA does not end an active Codex turn on the host.
+the PWA does not end an active turn on the host.
 
 ## Requirements
 
 Caffold supports Apple silicon Macs running macOS 14 or later. Installation and
-updates use [Homebrew](https://brew.sh/).
+updates use [Homebrew](https://brew.sh/). Git is required for repository and
+worktree features.
 
-Caffold requires the official standalone Codex CLI `0.147.0` or newer at
+Install and authenticate at least one supported coding agent. Installing both
+makes both agents' available models selectable when a Task is created.
+
+### Codex
+
+Caffold supports the official standalone Codex CLI `0.147.0` or newer at
 `~/.local/bin/codex`. Install it, run `codex`, and complete sign-in:
 
 ```sh
@@ -39,11 +45,33 @@ curl -fsSL https://chatgpt.com/codex/install.sh | sh
 codex
 ```
 
-Caffold shows persistent setup guidance if the supported Codex installation is
-missing, outdated, signed out, or needs to be restarted.
+**Settings → Codex** reports installation, authentication, app-server runtime,
+and protocol readiness. A blocking Codex problem disables only Codex creation
+and execution; existing readable Tasks and Claude remain available.
 
-Git is required for repository and worktree features. These integrations are
-optional and disable only their own surfaces when absent:
+### Claude Code
+
+Caffold supports Claude Code `2.1.236` or newer. Install Claude Code using its
+official setup, make `claude` available on the Mac app's `PATH`, then run it and
+complete sign-in. The released wrapper searches the common executable paths
+including `~/.local/bin`, `/opt/homebrew/bin`, and `/usr/local/bin`.
+
+**Settings → Claude** reports the detected binary and version, signed-in
+account and plan, usage windows as Claude reports them, and the Caffold runner
+state. The report is diagnostic rather than a separate permission gate: if a
+Claude operation cannot run, that operation returns the agent's actual error.
+
+Caffold uses the CLI's existing authentication context. It does not read or
+store Claude credentials, call the provider service with copied credentials,
+or install Claude Code itself.
+
+The Caffold application bundles `caffold-claude-runner`, not the `claude` CLI.
+The runner is a transport and process supervisor for the installed CLI. See
+[Agent runtimes](../architecture/agent-runtimes.md) for the ownership boundary.
+
+### Optional integrations
+
+These integrations disable only their own surfaces when absent:
 
 - an authenticated [GitHub CLI](https://cli.github.com/) for GitHub Issue and
   Pull Request views; and
@@ -66,23 +94,24 @@ Choose `Open Caffold` from the menu to open `http://127.0.0.1:5178`. The
 menu-bar app starts and controls the local backend; the browser or installed PWA
 contains the complete Caffold workspace.
 
-Start a Task by choosing its directory and sending a prompt. A Task keeps the
-Codex conversation and work associated with that directory together. It can
-start in an ordinary checkout and explicitly prepare a Caffold-managed
-worktree later when isolation is useful.
+Start a Task by choosing its directory, a model, and the first prompt. The
+model identifies which agent runs the Task. That Task remains with the same
+agent while later turns may change the model, effort, speed, or permission mode
+among the choices that agent offers.
 
-A Section is an optional fixed-directory workspace for a repository or another
-location you return to often. It can start Tasks without choosing the directory
-again. Repository-backed Tasks and Sections expose Working Tree, Branch, Git,
-and read-only GitHub surfaces from the same workspace; each Task also keeps its
-own Conversation.
+A Task can start in an ordinary checkout and explicitly prepare a
+Caffold-managed worktree later when isolation is useful. A Section is an
+optional fixed-directory workspace for a repository or another location you
+return to often. Repository-backed Tasks and Sections expose Working Tree,
+Branch, Git, and read-only GitHub surfaces from the same workspace; each Task
+also keeps its own agent Conversation.
 
 ## Private access with Tailscale
 
 Install Tailscale on the Mac and connect it to the tailnet used by the reviewing
 device. Open local Caffold, then choose **Settings → Remote Access**. The page
-distinguishes installation, connection, Serve, transition, conflict, and failure
-states. When Tailscale is connected, choose **Enable** to configure only
+distinguishes installation, connection, Serve, transition, conflict, and
+failure states. When Tailscale is connected, choose **Enable** to configure only
 Caffold's tailnet-only Serve mapping.
 
 When access is ready, the page reports the private HTTPS Tailnet URL and offers
@@ -157,7 +186,7 @@ for the first transcription. Voice recordings are sent only to the same
 Caffold host, processed in memory, and never persisted or sent to an external
 speech service.
 
-## Updates
+## Updates and runtime continuity
 
 The menu-bar app checks the latest stable GitHub Release for version discovery.
 For a Homebrew-managed installation, choose `Check for Updates…`, approve the
@@ -170,17 +199,26 @@ The equivalent command is:
 brew upgrade --cask panarch/tap/caffold
 ```
 
-Active Codex turns run in the persistent app-server daemon. Replacing or
-quitting the Caffold wrapper closes its proxy connection but does not stop the
-daemon's active turns.
+An active Codex turn lives in Codex's persistent app-server daemon; replacing
+the Caffold backend closes its proxy and reconnects without stopping that turn.
+An active Claude turn lives in the `claude` process held by Caffold's separate
+runner; a normal backend replacement reconnects to that runner. If no backend
+subscribes for ten minutes, the runner stops itself and the sessions it holds.
+An explicit **Settings → Claude → Restart** also ends every held Claude session
+before starting a fresh runner; their conversations resume from Claude's own
+transcripts when the Tasks are opened again.
 
 ## Data and removal
 
-Caffold stores runtime data and downloaded models under:
+Caffold stores its runtime data and downloaded models under:
 
 ```text
 ~/Library/Application Support/Caffold/data
 ```
+
+Caffold keeps Task membership and its own UI/recovery metadata there. Codex
+and Claude remain responsible for their own conversation records; Caffold does
+not persist a second transcript.
 
 Logs are stored under `~/Library/Logs/Caffold`. Remove the installed app and
 CLI with:

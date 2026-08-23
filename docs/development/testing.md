@@ -1,9 +1,9 @@
 # Testing Caffold
 
 Run the smallest test that exercises the changed owner first. Before handoff,
-expand to every boundary affected by the change. A mocked browser test, protocol
-schema check, live Codex run, and installed macOS application check provide
-different evidence and must be reported separately.
+expand to every boundary affected by the change. A mocked browser test,
+protocol/schema check, live agent run, and installed macOS application check
+provide different evidence and must be reported separately.
 
 ## Setup
 
@@ -30,7 +30,7 @@ cargo clippy --all-targets -- -D warnings
 ```
 
 Prefer an owner-focused `cargo test <name>` while iterating. Run the full suite
-when the change crosses storage, process, HTTP, Git, or Codex integration
+when the change crosses storage, process, HTTP, Git, or agent integration
 boundaries.
 
 Coverage is supporting evidence, not a replacement for boundary tests. When
@@ -261,6 +261,32 @@ Use `node scripts/dev/probe-codex-app-server.mjs THREAD_ID` for an explicit
 maintainer probe of resume/read/page latency and payload size. The probe does
 not send a prompt, but it does resume the supplied thread through a temporary
 app-server connection.
+
+## Claude compatibility and live tests
+
+The runner's deterministic suite uses a stand-in process and spends no model
+usage. Its ignored live check verifies the one boundary a stand-in cannot:
+whether the installed Claude CLI redelivers an unanswered permission request
+after the client reattaches.
+
+```sh
+cargo test -p caffold-claude-runner --test live -- --ignored
+```
+
+The backend live suite drives the shipped Caffold server and runner against an
+authenticated Claude CLI:
+
+```sh
+cargo test -p caffold --test claude_live -- --ignored --test-threads=1
+```
+
+It covers Task execution and approvals, transcript recovery, backend
+replacement during a turn, stale-child cleanup after a runner is killed,
+Caffold-served tools, managed-worktree movement, and installation status. It
+spends model usage and is serialized because the scenarios share the installed
+account and exercise process-start ordering. Re-run it when changing the
+minimum Claude version, protocol reader, runner lifecycle, approval mapping, or
+served tools.
 
 ## macOS application tests
 

@@ -87,6 +87,8 @@ Caffold should present state without pretending to own state it does not own.
 - git is the source of truth for file changes, diffs, logs, and repository
   state.
 - Codex app-server is the source of truth for Codex thread and turn behavior.
+- Claude's transcript is the source of conversation history for Claude Tasks;
+  the live Claude process owns its active turn and pending control requests.
 - Caffold storage is for Caffold-owned metadata, indexes, recovery data, and
   UI-facing summaries.
 - The browser UI is a view and control surface, not durable state.

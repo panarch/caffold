@@ -22,6 +22,7 @@ These documents define implemented system boundaries and detailed ownership
 contracts.
 
 - [Architecture Overview](architecture/overview.md)
+- [Agent Runtimes](architecture/agent-runtimes.md)
 - [Codex App Server](architecture/codex-app-server.md)
 - [Managed Worktree Lifecycle](architecture/worktree-lifecycle.md)
 - [Live Updates](architecture/live-updates.md)

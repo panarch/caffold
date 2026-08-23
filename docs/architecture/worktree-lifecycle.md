@@ -7,7 +7,7 @@ worktrees are never adopted or removed.
 ## Ownership Boundary
 
 - A managed worktree has one stable UUID, one repository common Git directory,
-  one UUID-derived owned path, and one bound Codex thread.
+  one UUID-derived owned path, and one bound Task conversation.
 - Its filesystem path is `<managed-root>/<worktree-id>` and does not change when
   a Task or branch is renamed.
 - While the record is `ready`, the user may switch the owned worktree between
@@ -32,8 +32,13 @@ a worktree for this PR review". It does not start a child Task and does not
 automatically continue the review or other work.
 
 The tool must be the final file-affecting action of its turn. After it succeeds,
-that turn ends. The user's next request starts a new turn on the same Codex
-thread with the managed worktree as `cwd` and runtime workspace root.
+that turn ends. The user's next request starts a new turn in the same agent
+conversation with the managed worktree as `cwd` and runtime workspace root.
+
+For Codex, the dynamic tool result moves the thread's workspace for the next
+turn. Codex accepts Caffold's dynamic tools only on `thread/start`; threads
+started by Caffold receive `isolate_current_task`, while resuming or forking a
+thread created elsewhere does not add the tool.
 
 A Claude Task reaches the same state by moving rather than by per-turn `cwd`:
 the agent only changes directory between turns, so the session is moved into
@@ -65,10 +70,8 @@ artifacts remain in the source checkout. Caffold rejects unresolved Git
 operations and dirty submodule or nested-repository state because Git stash
 cannot safely represent those cases.
 
-Codex accepts Caffold's dynamic tools only on `thread/start`. Threads started by
-Caffold receive `isolate_current_task`; resuming or forking another thread does
-not add the tool to it. Claude declares Caffold's MCP server on every hello, so
-a Claude Task serves the tool on resumed and re-attached sessions as well.
+Claude declares Caffold's MCP server on every hello, so a Claude Task serves
+the tool on resumed and re-attached sessions as well.
 
 ## Dirty-State Transfer And Recovery
 
@@ -99,9 +102,10 @@ protected ref are retained.
 
 ## Archive And Restore
 
-Archive coordinates the Codex thread, Task membership, and managed worktree:
+Archive coordinates the selected agent's conversation, Task membership, and
+managed worktree:
 
-- an active Codex turn still blocks archive;
+- an active agent turn blocks archive;
 - a dirty managed worktree blocks archive with
   `managed_worktree_dirty`;
 - archive inspects the actual named branch and HEAD, then atomically records
@@ -111,7 +115,7 @@ Archive coordinates the Codex thread, Task membership, and managed worktree:
 - the record transitions from `ready` through `removing` to `archived`.
 
 Restore recreates the same UUID path from the branch recorded when archive
-began before the Codex thread and Task return to the active list. The record
+began before the conversation and Task return to the active list. The record
 transitions through `restoring` back to `ready`, where the checkout anchor is
 cleared again.
 
@@ -121,7 +125,7 @@ record. The local branch remains in the repository and no external worktree or
 Git ref is removed.
 
 If a later coordinated step fails, Caffold attempts the inverse worktree and
-Codex transition so the visible Task state and filesystem state remain aligned.
+agent transition so the visible Task state and filesystem state remain aligned.
 Interrupted transfer, `removing`, and `restoring` states are reconciled on
 startup from the ownership record and actual filesystem state. A mismatched or
 otherwise unsafe target remains in its persisted non-ready state without
@@ -129,8 +133,8 @@ preventing unrelated Tasks or the Caffold server from starting.
 
 ## Coordination And Recovery Limits
 
-Coordination across Git, the Codex app-server, and the Caffold task store is not
-an atomic transaction. Caffold protects user changes, but clean orphan
+Coordination across Git, the selected agent runtime, and the Caffold task store
+is not an atomic transaction. Caffold protects user changes, but clean orphan
 branches, worktrees, transfer refs, or a temporarily detached source checkout
 can remain after a failed best-effort cleanup. The lifecycle does not provide
 exactly-once execution, full rollback, automatic orphan collection, or

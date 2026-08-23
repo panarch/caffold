@@ -42,6 +42,12 @@ asking to subscribe is refused while the first still reads. That one connection
 is what "the backend" means to the runner, which is what its lifecycle rules
 are stated against.
 
+The runner starts in its own process group so a signal sent to Caffold does not
+take it along. Its socket is `<data-dir>/claude-runner.sock`; the backend checks
+the operating system's Unix-socket path limit before starting it and reports
+the path, measured byte length, limit, and corrective action when the configured
+data directory is too deep.
+
 The runner ends itself after ten minutes with no subscriber (`daemon run
 --idle-timeout`, in seconds; zero disables it). It outlives the backend on
 purpose, so a backend that dies without ceremony cannot say so — going
