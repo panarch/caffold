@@ -68,10 +68,10 @@ while its migration blocks operations, with its own retry lifecycle.
 
 Each offered model identifies its agent. Task creation starts a conversation
 with that agent in the selected cwd and binds the Task to it; later turns can
-choose only models from the same agent.
-
-Managed-worktree preparation happens explicitly from the resulting Task; it is
-not an implicit side effect of task creation.
+choose only models from the same agent. New Task reports that the task is
+starting until creation is answered, and the answer opens the Task.
+Managed-worktree preparation happens explicitly from the resulting Task; it
+is not an implicit side effect of task creation.
 
 Global New and Section New provide the same Composer, turn options, and error
 behavior. Section New fixes cwd to the Section's managed logical path, omits
@@ -102,6 +102,13 @@ Conversation renders the canonical agent conversation as a review timeline:
 - approvals and canonical outcomes;
 - interruption, failure, reconnect, completion, and unavailable states;
 - follow-up Start or Steer behavior derived from canonical conversation state.
+
+A Task opened straight from creation shows the prompt it was created with while
+the agent takes it, and the agent's own copy replaces it once the turn begins. A
+first turn the agent never took is reported beside that prompt, whose delivery
+then reads as unconfirmed. Either way the prompt holds the Composer the way any
+submitted prompt does, so a second one is refused until the turn it was sent
+into has begun.
 
 The Composer owns its draft, attachments, selection, and voice capture. Task
 child switching does not interrupt the selected Task's stream.

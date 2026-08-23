@@ -245,7 +245,7 @@ class CaffoldTaskDetail extends HTMLElement {
     return await this.openTask(targetThreadId);
   }
 
-  adoptCreatedDetail(detail) {
+  adoptCreatedDetail(detail, submission) {
     const threadId = taskDetailThreadId(detail);
     if (!threadId || !detail?.task) {
       return false;
@@ -264,8 +264,52 @@ class CaffoldTaskDetail extends HTMLElement {
     ) {
       return false;
     }
+    this.showSubmittedPrompt(threadId, submission);
     void this.detailSession.attach(threadId);
     return true;
+  }
+
+  // The prompt a Task was created with, until the agent reports it back.
+  // Creation answers as soon as the Task exists, so its first turn — and the
+  // agent's own copy of the prompt — arrive afterwards. The optimistic message
+  // a follow-up uses stands in until then, and the same pending submission
+  // keeps a second prompt from being sent into a turn that has not begun.
+  showSubmittedPrompt(threadId, { prompt = "", attachments = [] } = {}) {
+    const images = [...attachments];
+    if (!`${prompt}`.trim() && !images.length) {
+      return;
+    }
+    const events = this.eventsByThread.get(threadId) ?? [];
+    // A Task answered before its first turn has no prompt of its own yet. One
+    // already there means the turn began before this answer arrived, and the
+    // conversation is already showing what was asked.
+    if (
+      events.some(
+        (event) => event?.type === "user_message" && !event.payload?.optimistic,
+      )
+    ) {
+      return;
+    }
+    const optimisticEvent = optimisticUserMessageEvent(
+      threadId,
+      `${prompt}`,
+      images,
+      ++this.promptSubmissionSequence,
+    );
+    this.followUpRequests.set(threadId, {
+      submissionId: "",
+      composer: null,
+      threadId,
+      fingerprint: userMessageFingerprint(optimisticEvent),
+      canonicalEventIds: new Set(),
+      state: PROMPT_SUBMISSION_STATE.SENDING,
+      canonicalConfirmed: false,
+      resetOverridesOnCanonical: null,
+      overridesReleased: false,
+    });
+    this.setThreadEvents(threadId, mergeEvents(events, [optimisticEvent]));
+    this.conversationUpdateKind = "bottom";
+    this.render();
   }
 
   deactivate({ retainComposerDom = false } = {}) {
@@ -448,6 +492,7 @@ class CaffoldTaskDetail extends HTMLElement {
       return;
     }
     this.setThreadEvents(threadId, upsertEvent(this.events, entry));
+    this.reconcilePendingPrompt(threadId, [entry]);
     this.conversationUpdateKind = this.liveConversationUpdateKind(threadId);
     this.render();
   }
@@ -481,7 +526,7 @@ class CaffoldTaskDetail extends HTMLElement {
       return false;
     }
     if (reconcilePrompt) {
-      this.acknowledgeFollowUpFromCanonicalDetail(threadId, detail);
+      this.reconcilePendingPrompt(threadId, detail?.events ?? []);
     }
     const currentTask =
       taskDetailThreadId(this.taskDetail) === threadId
@@ -565,28 +610,57 @@ class CaffoldTaskDetail extends HTMLElement {
       });
   }
 
-  acknowledgeFollowUpFromCanonicalDetail(threadId, detail) {
+  // What arriving events say about the prompt this Task is still holding.
+  //
+  // Canonical detail and single stream events are delivered independently, and
+  // either one can carry the agent's own copy of the prompt or the news that
+  // its turn never began. Both are read here so the pending submission has one
+  // reader whichever way its answer arrives.
+  reconcilePendingPrompt(threadId, events) {
     const request = this.followUpRequests.get(threadId);
     if (!request) {
       return;
     }
 
-    const confirmedEvent = (detail?.events ?? []).find((event) => {
-      if (
-        event?.type !== "user_message" ||
-        event.payload?.optimistic ||
-        userMessageFingerprint(event) !== request.fingerprint
-      ) {
+    // A prompt sent into a conversation that already had some is confirmed by
+    // its own words coming back, so another client's prompt cannot answer for
+    // it. A conversation that had none is a Task being started, whose first
+    // prompt is this one however the agent writes it down.
+    const confirmedEvent = events.find((event) => {
+      if (event?.type !== "user_message" || event.payload?.optimistic) {
         return false;
       }
-      return !request.canonicalEventIds.has(event.id);
+      if (request.canonicalEventIds.has(event.id)) {
+        return false;
+      }
+      return (
+        request.canonicalEventIds.size === 0 ||
+        userMessageFingerprint(event) === request.fingerprint
+      );
     });
-    if (!confirmedEvent) {
+    if (confirmedEvent) {
+      this.acknowledgePendingPrompt(threadId, request);
       return;
     }
+    if (
+      request.state === PROMPT_SUBMISSION_STATE.SENDING &&
+      events.some((event) => event?.type === "task_failed")
+    ) {
+      this.unconfirmPendingPrompt(threadId, request);
+    }
+  }
 
+  acknowledgePendingPrompt(threadId, request) {
     request.state = PROMPT_SUBMISSION_STATE.ACCEPTED;
     request.canonicalConfirmed = true;
+    this.setThreadEvents(
+      threadId,
+      (this.eventsByThread.get(threadId) ?? []).filter(
+        (event) =>
+          !event.payload?.optimistic ||
+          userMessageFingerprint(event) !== request.fingerprint,
+      ),
+    );
     this.releaseConfirmedFollowUpOverrides(request);
     request.composer?.resolveSubmission(request.submissionId, {
       status: "accepted",
@@ -594,6 +668,27 @@ class CaffoldTaskDetail extends HTMLElement {
     if (this.followUpRequests.get(threadId) === request) {
       this.followUpRequests.delete(threadId);
     }
+  }
+
+  // A turn the agent never took leaves its prompt undelivered.
+  //
+  // The prompt stays in the conversation beside what went wrong, marked as the
+  // unconfirmed delivery it is, so it can be read and sent again rather than
+  // disappearing with the turn that was supposed to carry it.
+  unconfirmPendingPrompt(threadId, request) {
+    request.state = PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN;
+    this.setThreadEvents(
+      threadId,
+      (this.eventsByThread.get(threadId) ?? []).map((event) =>
+        event.payload?.optimistic &&
+        userMessageFingerprint(event) === request.fingerprint
+          ? withPromptSubmissionState(
+              event,
+              PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN,
+            )
+          : event,
+      ),
+    );
   }
 
   releaseConfirmedFollowUpOverrides(request) {

@@ -617,3 +617,88 @@ test("runs a minimal task from creation through follow-up", { tag: "@all-viewpor
   await expect(followUp).toHaveValue("");
   expect(scenario.pageErrors).toEqual([]);
 });
+
+test("shows the submitted prompt until the first turn reports it", { tag: "@desktop" }, async ({ page }) => {
+  const scenario = await installTaskLoopFixture(page, { deferFirstTurn: true });
+  const tasksPage = page.locator("caffold-tasks-page");
+  await startTaskFromNewSurface(page, scenario);
+
+  await expect(page).toHaveURL(`/tasks/${scenario.threadId}`);
+  const userMessage = tasksPage.locator('.task-message[data-message-role="user"]');
+  await expect(userMessage).toHaveCount(1);
+  await expect(userMessage).toContainText("Inspect the planner changes");
+  await expect(userMessage).toHaveAttribute("data-delivery-state", "sending");
+  await expect(userMessage.locator(".task-message-attachment img")).toHaveAttribute(
+    "src",
+    /^data:image\/png;base64,/,
+  );
+
+  await scenario.releaseFirstTurn();
+
+  await expect(userMessage).toHaveCount(1);
+  await expect(userMessage).not.toHaveAttribute("data-delivery-state", /.+/);
+  await expect(tasksPage).toContainText("Command approval requested");
+  expect(scenario.pageErrors).toEqual([]);
+});
+
+test("keeps a second prompt out of a first turn that has not begun", { tag: "@desktop" }, async ({ page }) => {
+  const scenario = await installTaskLoopFixture(page, { deferFirstTurn: true });
+  const tasksPage = page.locator("caffold-tasks-page");
+  await startTaskFromNewSurface(page, scenario);
+  await expect(page).toHaveURL(`/tasks/${scenario.threadId}`);
+
+  const followUp = tasksPage.locator('.task-follow-up-form textarea[name="prompt"]');
+  await followUp.fill("Second prompt before the first turn");
+  await followUp.press("Enter");
+
+  await expect(
+    tasksPage.locator(".task-follow-up-form .task-composer-request-error"),
+  ).toHaveText("A prompt is already being submitted for this task.");
+  expect(scenario.followUpRequests).toBe(0);
+  await expect(followUp).toHaveValue("Second prompt before the first turn");
+
+  await scenario.releaseFirstTurn();
+
+  await expect(
+    tasksPage.locator('.task-message[data-message-role="user"]'),
+  ).toHaveCount(1);
+  expect(scenario.pageErrors).toEqual([]);
+});
+
+test("says in the conversation when the first turn could not be started", { tag: "@desktop" }, async ({ page }) => {
+  const scenario = await installTaskLoopFixture(page, { deferFirstTurn: true });
+  const tasksPage = page.locator("caffold-tasks-page");
+  await startTaskFromNewSurface(page, scenario);
+  await expect(page).toHaveURL(`/tasks/${scenario.threadId}`);
+
+  await scenario.failFirstTurn();
+
+  await expect(
+    tasksPage.locator('.task-event[data-event-type="task_failed"]'),
+  ).toContainText(
+    "The first turn could not be started: the agent could not be reached.",
+  );
+  const userMessage = tasksPage.locator('.task-message[data-message-role="user"]');
+  await expect(userMessage).toHaveCount(1);
+  await expect(userMessage).toContainText("Inspect the planner changes");
+  await expect(userMessage).toHaveAttribute(
+    "data-delivery-state",
+    "outcomeUnknown",
+  );
+  expect(scenario.pageErrors).toEqual([]);
+});
+
+// The New Task surface's own submission, performed the way a person performs
+// it, so each test above starts from a Task that was created through the UI.
+async function startTaskFromNewSurface(page, scenario) {
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
+  const composer = page.locator("caffold-tasks-page .task-new-form");
+  await expect(composer).toBeVisible();
+  await composer.locator(".task-model-button").click();
+  await composer.locator('.task-model-popover [data-effort="xhigh"]').click();
+  const prompt = composer.locator('textarea[name="prompt"]');
+  await prompt.fill("Inspect the planner changes");
+  await pasteImage(prompt, "planner-layout.png");
+  await expect(composer.locator(".task-composer-attachment")).toHaveCount(1);
+  await prompt.press("Enter");
+}

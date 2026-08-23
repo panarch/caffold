@@ -42,16 +42,21 @@ implemented outer lifecycle.
    binds the new Task to Codex or Claude. Choose the available effort, speed,
    and permission mode, then send a prompt.
 4. Caffold starts the chosen agent's conversation in that cwd and records the
-   Task's managed membership, agent, and current composer settings.
-5. Near the end of the first turn, the agent is instructed to replace the
+   Task's managed membership, agent, and current composer settings. Creation is
+   answered with the Task before its first turn begins, so the wait for the
+   agent to take the prompt is spent in the opened Task.
+5. A first turn the agent never takes is reported in that Task's conversation,
+   beside the prompt it was for. The Task keeps its place, so the prompt can be
+   sent again or the Task archived.
+6. Near the end of the first turn, the agent is instructed to replace the
    initial display name with a concise name based on the understood goal.
    Codex receives a dynamic tool and Claude receives the equivalent
    Caffold-served MCP tool. This remains model-followed behavior rather than a
    completion gate.
-6. Repository and worktree context is derived from the Task's current cwd.
-7. Follow-up prompts start a new turn or steer an active one through the same
+7. Repository and worktree context is derived from the Task's current cwd.
+8. Follow-up prompts start a new turn or steer an active one through the same
    agent. The Task cannot switch agents in place.
-8. Approvals, completion, interruption, and failures remain visible in the
+9. Approvals, completion, interruption, and failures remain visible in the
    agent-owned conversation projected into Caffold.
 
 ### Open an existing Task
