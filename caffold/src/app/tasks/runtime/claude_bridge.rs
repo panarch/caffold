@@ -36,6 +36,16 @@ impl TaskRuntime {
                             .handle_session_event(super::CLAUDE_GENERATION, reported)
                             .await;
                     }
+                    Ok(ClaudeRuntimeEvent::TranscriptChanged { conversation_id }) => {
+                        // A transcript read walks the agent's history and may
+                        // wait on filesystem work. Keep it off the one loop
+                        // carrying every Claude session; refreshes for one
+                        // thread serialize inside TaskSessions.
+                        let runtime = runtime.clone();
+                        tokio::spawn(async move {
+                            runtime.refresh_claude_transcript(&conversation_id).await;
+                        });
+                    }
                     Ok(ClaudeRuntimeEvent::Approval {
                         conversation_id,
                         request,
@@ -76,6 +86,28 @@ impl TaskRuntime {
                 }
             }
         });
+    }
+
+    /// Carry agent-owned work that had no live Caffold turn into the canonical
+    /// Task snapshot. The transcript decides what the work belongs to; this
+    /// bridge only asks for that answer and tells existing viewers it changed.
+    async fn refresh_claude_transcript(&self, thread_id: &str) {
+        match self
+            .sessions
+            .refresh_latest_turns(super::CLAUDE_GENERATION, thread_id)
+            .await
+        {
+            Ok(Some(snapshot)) => {
+                let _ = self.signals.send(TaskRuntimeSignal::SessionChanged {
+                    thread_id: thread_id.to_string(),
+                    snapshot: Box::new(snapshot),
+                });
+            }
+            Ok(None) => {}
+            Err(error) => {
+                eprintln!("failed to refresh Claude transcript for {thread_id}: {error}");
+            }
+        }
     }
 
     /// Take up the conversations that outlived this process.
@@ -505,6 +537,127 @@ mod tests {
             display_name: "The name before".to_string(),
             ..ManagedThread::new(SESSION, RunBy::Codex, Some(1_000), None, None)
         }
+    }
+
+    #[tokio::test]
+    async fn unowned_claude_work_reaches_task_detail_from_canonical_history() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().display().to_string();
+        let (state, runner) = watched(root.path()).await;
+        state
+            .task_store
+            .claim(managed_claude_row(root.path()), 1)
+            .unwrap();
+        let driver = state.task_runtime.claude().driver(cwd.clone());
+        let _viewer = state
+            .task_sessions
+            .acquire_viewer(&driver, super::super::CLAUDE_GENERATION, SESSION)
+            .await
+            .expect("the Claude Task is subscribed");
+        state
+            .detail
+            .agent(SESSION)
+            .await
+            .expect("the Task detail signal driver starts");
+        let mut detail_syncs = state.task_sync.subscribe_updates();
+
+        state.task_runtime.claude().write_test_transcript(
+            &cwd,
+            SESSION,
+            concat!(
+                r#"{"type":"user","uuid":"report-1","timestamp":"2026-08-23T06:25:55.000Z","promptSource":"sdk","origin":{"kind":"task-notification"},"message":{"role":"user","content":"<task-notification>\n<task-id>bgxe14776</task-id>\n<tool-use-id>toolu_1</tool-use-id>\n<status>completed</status>\n</task-notification>"}}"#,
+                "\n",
+                r#"{"type":"assistant","uuid":"answer-2","timestamp":"2026-08-23T06:25:57.000Z","message":{"id":"message-2","role":"assistant","content":[{"type":"text","text":"the build is done"}]}}"#,
+                "\n",
+            ),
+        );
+
+        // These are real stream frames, but there is no Caffold-owned turn to
+        // assign them to. Their transcript row is the only evidence that says
+        // what opened the work.
+        runner
+            .say(
+                SESSION,
+                json!({
+                    "type": "assistant",
+                    "uuid": "answer-2",
+                    "timestamp": "2026-08-23T06:25:57.000Z",
+                    "message": {
+                        "id": "message-2",
+                        "role": "assistant",
+                        "content": [{ "type": "text", "text": "the build is done" }],
+                    },
+                }),
+            )
+            .await;
+        runner
+            .say(
+                SESSION,
+                json!({
+                    "type": "result",
+                    "subtype": "success",
+                    "is_error": false,
+                    "stop_reason": "end_turn",
+                }),
+            )
+            .await;
+
+        let detail = tokio::time::timeout(WAIT, async {
+            loop {
+                let sync = detail_syncs
+                    .recv()
+                    .await
+                    .expect("the Task detail sync channel stays open");
+                if sync.thread_id == SESSION
+                    && sync.detail.events.iter().any(|event| {
+                        event.event_type == "assistant_message"
+                            && event
+                                .payload
+                                .as_ref()
+                                .is_some_and(|payload| payload["text"] == "the build is done")
+                    })
+                {
+                    return sync.detail;
+                }
+            }
+        })
+        .await
+        .expect("canonical history reaches the subscribed Task detail");
+        let user_messages = detail
+            .events
+            .iter()
+            .filter(|event| event.event_type == "user_message")
+            .collect::<Vec<_>>();
+        let answers = detail
+            .events
+            .iter()
+            .filter(|event| {
+                event.event_type == "assistant_message"
+                    && event
+                        .payload
+                        .as_ref()
+                        .is_some_and(|payload| payload["text"] == "the build is done")
+            })
+            .collect::<Vec<_>>();
+        let started = detail
+            .events
+            .iter()
+            .find(|event| event.event_type == "turn_started")
+            .expect("the canonical turn start");
+
+        assert!(
+            user_messages.is_empty(),
+            "the machine report is not a person speaking"
+        );
+        assert_eq!(
+            answers.len(),
+            1,
+            "the background answer reaches the UI once"
+        );
+        assert_eq!(
+            started.payload.as_ref().expect("turn payload")["origin"]["type"],
+            "backgroundTask"
+        );
     }
 
     fn isolate_call(id: u64, arguments: Value) -> Value {

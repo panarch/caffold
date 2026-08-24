@@ -8,8 +8,8 @@ use serde_json::{Value as JsonValue, json};
 use tokio::sync::broadcast;
 
 use crate::agent::{
-    ActivityStatus, ApprovalOutcome, ApprovalRequest, Conversation, ConversationItem, ItemKind,
-    MessageContent, Turn, TurnStatus,
+    ActivityStatus, ApprovalOutcome, ApprovalRequest, BackgroundTask, Conversation,
+    ConversationItem, ItemKind, MessageContent, Turn, TurnOrigin, TurnStatus,
 };
 
 use super::generated_images::{GeneratedImageObservation, GeneratedImageStore};
@@ -298,7 +298,7 @@ pub(in crate::app) fn thread_events(conversation: &Conversation) -> Vec<TaskEven
             .unwrap_or(fallback_ms)
             .max(minimum_turn_ms);
         if turn.started_at_ms.is_some() {
-            events.push(turn_started_event(thread_id, turn_id, timeline_ms));
+            events.push(turn_started_event(thread_id, turn, timeline_ms));
         }
         for (index, item) in turn.items.iter().enumerate() {
             if let Some(mut event) = task_event_from_item(thread_id, turn_id, timeline_ms, item) {
@@ -323,15 +323,20 @@ pub(in crate::app) fn thread_events(conversation: &Conversation) -> Vec<TaskEven
 /// are one record however the turn was observed.
 pub(in crate::app) fn turn_started_event(
     thread_id: &str,
-    turn_id: &str,
+    turn: &Turn,
     started_ms: u64,
 ) -> TaskEventRecord {
+    let turn_id = turn.id.as_str();
     let mut event = task_event_record(
         thread_id,
         &format!("{turn_id}:started"),
         "turn_started",
         "Turn started",
-        Some(json!({ "threadId": thread_id, "turnId": turn_id })),
+        Some(json!({
+            "threadId": thread_id,
+            "turnId": turn_id,
+            "origin": turn_origin_payload(&turn.origin),
+        })),
         started_ms,
     );
     // A turn's own start opens the group the turn's items sort into.
@@ -359,6 +364,7 @@ pub(in crate::app) fn turn_completed_event(
             "threadId": thread_id,
             "turnId": turn.id,
             "status": turn.status,
+            "origin": turn_origin_payload(&turn.origin),
         })),
         completed_ms,
     )
@@ -445,18 +451,29 @@ pub(in crate::app) fn task_event_from_item(
                 None,
             )
         }
-        ItemKind::CommandExecution(command) => (
-            "command_execution",
-            format!("Command {}", activity_word(item.status)),
-            json!({
+        ItemKind::CommandExecution(command) => {
+            let mut payload = json!({
                 "command": command.command,
                 "cwd": command.cwd,
                 "output": command.output,
                 "exitCode": command.exit_code,
                 "durationMs": command.duration_ms,
-            }),
-            None,
-        ),
+            });
+            if let Some(background_task) = command.background_task.as_ref()
+                && let Some(payload) = payload.as_object_mut()
+            {
+                payload.insert(
+                    "backgroundTask".to_string(),
+                    background_task_payload(background_task),
+                );
+            }
+            (
+                "command_execution",
+                format!("Command {}", activity_word(item.status)),
+                payload,
+                None,
+            )
+        }
         ItemKind::Failure { text } => {
             if text.trim().is_empty() {
                 return None;
@@ -505,6 +522,38 @@ pub(in crate::app) fn task_event_from_item(
     );
     event.generated_image = generated_image;
     Some(event)
+}
+
+/// Turn provenance as internal event metadata.
+///
+/// The raw agent prompt deliberately stops at the agent model boundary. It is
+/// retained there so an unsupported field does not destroy evidence, but an
+/// event consumed by the interface carries only what is already understood.
+fn turn_origin_payload(origin: &TurnOrigin) -> JsonValue {
+    match origin {
+        TurnOrigin::User => json!({ "type": "user" }),
+        TurnOrigin::BackgroundTask(task) => merged_payload(
+            json!({ "type": "backgroundTask" }),
+            background_task_payload(task),
+        ),
+        TurnOrigin::Unknown => json!({ "type": "unknown" }),
+    }
+}
+
+fn background_task_payload(task: &BackgroundTask) -> JsonValue {
+    let mut payload = serde_json::Map::new();
+    for (name, value) in [
+        ("taskId", &task.task_id),
+        ("toolUseId", &task.tool_use_id),
+        ("status", &task.status),
+        ("outputFile", &task.output_file),
+        ("summary", &task.summary),
+    ] {
+        if let Some(value) = value {
+            payload.insert(name.to_string(), JsonValue::String(value.clone()));
+        }
+    }
+    JsonValue::Object(payload)
 }
 
 /// An approval the agent is waiting on, as the interface asks it.
@@ -786,6 +835,7 @@ pub(in crate::app) fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::{CommandExecution, ThreadStatus};
 
     /// A conversation decoded the way the adapter decodes a real response, so a
     /// test cannot assert against a shape the adapter would have rejected.
@@ -1151,6 +1201,15 @@ mod tests {
             command.payload.as_ref().unwrap()["output"],
             "test result: ok"
         );
+        assert!(
+            command
+                .payload
+                .as_ref()
+                .unwrap()
+                .get("backgroundTask")
+                .is_none(),
+            "absence is not projected as a background fact"
+        );
         let assistant = events
             .iter()
             .find(|event| event.event_type == "assistant_message")
@@ -1158,6 +1217,95 @@ mod tests {
         assert_eq!(
             assistant.payload.as_ref().unwrap()["text"],
             "The change is ready to review."
+        );
+    }
+
+    #[test]
+    fn background_task_evidence_reaches_internal_events_without_its_raw_prompt() {
+        let evidence = BackgroundTask {
+            task_id: Some("task-1".to_string()),
+            tool_use_id: Some("toolu_1".to_string()),
+            status: Some("completed".to_string()),
+            output_file: Some("/tmp/task-1.output".to_string()),
+            summary: Some("Background command completed".to_string()),
+            raw: Some("UNIQUE_RAW_TASK_NOTIFICATION".to_string()),
+        };
+        let conversation = Conversation {
+            id: "thread_1".to_string(),
+            title: None,
+            preview: String::new(),
+            status: ThreadStatus::Idle,
+            cwd: "/tmp".to_string(),
+            transcript_path: None,
+            created_at_ms: 1,
+            updated_at_ms: 3,
+            recency_at_ms: Some(3),
+            turns: vec![Turn {
+                id: "turn_1".to_string(),
+                origin: TurnOrigin::BackgroundTask(evidence.clone()),
+                status: TurnStatus::Completed,
+                started_at_ms: Some(2),
+                completed_at_ms: Some(3),
+                items: vec![ConversationItem {
+                    id: "toolu_1".to_string(),
+                    status: ActivityStatus::Completed,
+                    kind: ItemKind::CommandExecution(CommandExecution {
+                        command: Some("sleep 1".to_string()),
+                        cwd: None,
+                        output: Some("done".to_string()),
+                        exit_code: None,
+                        duration_ms: None,
+                        background_task: Some(evidence),
+                    }),
+                }],
+            }],
+        };
+
+        let events = thread_events(&conversation);
+        let started = events
+            .iter()
+            .find(|event| event.event_type == "turn_started")
+            .expect("turn start");
+        let completed = events
+            .iter()
+            .find(|event| event.event_type == "turn_completed")
+            .expect("turn completion");
+        let command = events
+            .iter()
+            .find(|event| event.event_type == "command_execution")
+            .expect("command");
+
+        for event in [started, completed] {
+            let origin = &event.payload.as_ref().expect("turn payload")["origin"];
+            assert_eq!(origin["type"], "backgroundTask");
+            assert_eq!(origin["taskId"], "task-1");
+            assert_eq!(origin["toolUseId"], "toolu_1");
+        }
+        let background = &command.payload.as_ref().expect("command payload")["backgroundTask"];
+        assert_eq!(background["taskId"], "task-1");
+        assert_eq!(background["status"], "completed");
+        assert_eq!(background["outputFile"], "/tmp/task-1.output");
+
+        let serialized = serde_json::to_string(&events).expect("serialize events");
+        assert!(
+            !serialized.contains("UNIQUE_RAW_TASK_NOTIFICATION"),
+            "the machine prompt stays in the agent model, not the UI event stream"
+        );
+    }
+
+    #[test]
+    fn an_unknown_turn_origin_is_not_rewritten_as_a_user_turn() {
+        assert_eq!(turn_origin_payload(&TurnOrigin::Unknown)["type"], "unknown");
+        assert_eq!(turn_origin_payload(&TurnOrigin::User)["type"], "user");
+
+        let partial = turn_origin_payload(&TurnOrigin::BackgroundTask(BackgroundTask {
+            task_id: Some("task-1".to_string()),
+            ..BackgroundTask::default()
+        }));
+        assert_eq!(partial["taskId"], "task-1");
+        assert!(
+            partial.get("status").is_none(),
+            "missing evidence stays absent"
         );
     }
 

@@ -30,7 +30,8 @@ use crate::agent::driver::{ModelOption, PermissionModeOption, TurnOptions, TurnR
 use crate::agent::{
     ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, CommandExecution,
     Conversation, ConversationItem, GeneratedImage, ItemKind, MessageContent, MessagePhase,
-    PermissionRow, SessionEvent, SessionEventKind, TokenCount, TokenUsage, Turn, TurnPage,
+    PermissionRow, SessionEvent, SessionEventKind, TokenCount, TokenUsage, Turn, TurnOrigin,
+    TurnPage,
 };
 
 impl From<&CodexThread> for Conversation {
@@ -67,6 +68,9 @@ impl From<&CodexTurn> for Turn {
     fn from(turn: &CodexTurn) -> Self {
         Self {
             id: turn.id.clone(),
+            // Codex's turn record does not say what opened it. Most are user
+            // prompts, but that expectation is not evidence carried here.
+            origin: TurnOrigin::Unknown,
             status: turn.status.into(),
             started_at_ms: turn.started_at.map(seconds_to_ms_value).filter(is_a_time),
             completed_at_ms: turn.completed_at.map(seconds_to_ms_value).filter(is_a_time),
@@ -281,6 +285,7 @@ pub(crate) fn conversation_item(
             output: text_field(item, "aggregatedOutput"),
             exit_code: item.get("exitCode").and_then(Value::as_i64),
             duration_ms: item.get("durationMs").and_then(Value::as_u64),
+            background_task: None,
         }),
         "fileChange" => ItemKind::FileChange {
             paths: changed_paths(item),

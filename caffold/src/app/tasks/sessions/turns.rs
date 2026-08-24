@@ -1,7 +1,10 @@
 use crate::agent::AgentError;
 use crate::agent::{Conversation, Driver, ThreadStatus, Turn, TurnPage, TurnStatus};
 
-use super::{INITIAL_TURNS_PAGE_SIZE, SessionSnapshot, SessionState, TaskSessions, snapshot};
+use super::{
+    INITIAL_TURNS_PAGE_SIZE, SessionLifecycle, SessionSnapshot, SessionState, TaskSessions,
+    now_unix_ms, snapshot,
+};
 
 impl TaskSessions {
     pub(in crate::app::tasks) async fn load_older_turns(
@@ -23,6 +26,50 @@ impl TaskSessions {
             )));
         }
         Ok((snapshot(&state), page))
+    }
+
+    /// Re-read the latest canonical turns for a session already being shown.
+    ///
+    /// Some agents can add work to their transcript without opening a turn on
+    /// Caffold's live stream. This reads the agent-owned history and merges
+    /// only what that source actually names. An unsubscribed session needs no
+    /// eager read: its next subscription reads the same history as bootstrap.
+    pub(in crate::app::tasks) async fn refresh_latest_turns(
+        &self,
+        generation: u64,
+        thread_id: &str,
+    ) -> Result<Option<SessionSnapshot>, AgentError> {
+        let Some(entry) = self.existing_entry(thread_id).await else {
+            return Ok(None);
+        };
+        let _operation = entry.operation.lock().await;
+        let Some(driver) = ({
+            let state = entry.state.lock().await;
+            if state.generation == generation && state.lifecycle == SessionLifecycle::Subscribed {
+                state.driver.clone()
+            } else {
+                None
+            }
+        }) else {
+            return Ok(None);
+        };
+
+        let latest = driver
+            .read_turns(thread_id, None, INITIAL_TURNS_PAGE_SIZE)
+            .await?;
+        let mut state = entry.state.lock().await;
+        if state.generation != generation || state.lifecycle != SessionLifecycle::Subscribed {
+            return Ok(None);
+        }
+        let before = state.turns_page.clone();
+        merge_latest_turns_page(&mut state.turns_page, latest);
+        if state.turns_page == before {
+            return Ok(None);
+        }
+        state.revision = state.revision.saturating_add(1);
+        state.last_sync_ms = Some(now_unix_ms());
+        state.last_error = None;
+        Ok(Some(snapshot(&state)))
     }
 }
 

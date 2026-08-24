@@ -149,6 +149,116 @@ test("structured canonical duplicates beat sparse notifications", () => {
   assert.deepEqual(dedupeCanonicalEvents([sparse, canonical]), [canonical]);
 });
 
+test("distinct structured messages survive even when their text is identical", () => {
+  const first = event("canonical-1", "assistant_message", 100, {
+    threadId: "thread-1",
+    turnId: "turn-1",
+    itemId: "message-1",
+    text: "Same words",
+    phase: "progress",
+  });
+  const second = event("canonical-2", "assistant_message", 101, {
+    threadId: "thread-1",
+    turnId: "turn-1",
+    itemId: "message-2",
+    text: "Same words",
+    phase: "progress",
+  });
+
+  assert.deepEqual(
+    reconcileCanonicalEvents([], [first, second]).map(({ id }) => id),
+    ["canonical-1", "canonical-2"],
+    "two stable item identities are two messages, whatever their text says",
+  );
+});
+
+test("an ambiguous sparse copy is not assigned to either identical structured message", () => {
+  const sparse = event("notification", "assistant_message", 99, {
+    turnId: "turn-1",
+    text: "Same words",
+    phase: "progress",
+  });
+  const first = event("canonical-1", "assistant_message", 100, {
+    turnId: "turn-1",
+    itemId: "message-1",
+    text: "Same words",
+    phase: "progress",
+  });
+  const second = event("canonical-2", "assistant_message", 101, {
+    turnId: "turn-1",
+    itemId: "message-2",
+    text: "Same words",
+    phase: "progress",
+  });
+
+  assert.deepEqual(
+    dedupeCanonicalEvents([sparse, first, second]).map(({ id }) => id),
+    ["notification", "canonical-1", "canonical-2"],
+    "content alone cannot say which structured item a sparse event repeats",
+  );
+});
+
+test("two sparse equal messages keep their event identities", () => {
+  const first = event("notification-1", "assistant_message", 100, {
+    turnId: "turn-1",
+    text: "Same words",
+    phase: "progress",
+  });
+  const second = event("notification-2", "assistant_message", 101, {
+    turnId: "turn-1",
+    text: "Same words",
+    phase: "progress",
+  });
+
+  assert.deepEqual(
+    mergeEvents([first], [second]).map(({ id }) => id),
+    ["notification-1", "notification-2"],
+    "matching content is not evidence that two unstructured events are one",
+  );
+});
+
+test("a background answer stays once and in order across live and canonical refreshes", () => {
+  const earlier = event("earlier", "assistant_message", 10, {
+    turnId: "turn-1",
+    itemId: "earlier-message",
+    text: "The command was started.",
+    phase: "final",
+  });
+  const live = event("live-background", "assistant_message", 21, {
+    turnId: "background-turn",
+    text: "The build is done.",
+    phase: "final",
+  });
+  const canonical = event(
+    "canonical-background",
+    "assistant_message",
+    20,
+    {
+      turnId: "background-turn",
+      itemId: "background-answer",
+      text: "The build is done.",
+      phase: "final",
+    },
+    { sortIndex: 1 },
+  );
+
+  const liveState = mergeEvents([earlier], [live]);
+  const refreshed = reconcileCanonicalEvents(liveState, [earlier, canonical]);
+  const refreshedAgain = reconcileCanonicalEvents(refreshed, [earlier, canonical]);
+  const reloaded = reconcileCanonicalEvents([], [earlier, canonical]);
+
+  for (const state of [refreshed, refreshedAgain, reloaded]) {
+    assert.deepEqual(
+      state.map((candidate) => candidate.payload.text),
+      ["The command was started.", "The build is done."],
+    );
+    assert.equal(
+      state.filter((candidate) => candidate.payload.text === "The build is done.").length,
+      1,
+    );
+  }
+});
+
 test("an approval and the command it asks about are separate entries", () => {
   const identity = { threadId: "thread-1", turnId: "turn-1", itemId: "item-1" };
   const command = event("thread-1:turn-1:item-1", "command_execution", 100, {

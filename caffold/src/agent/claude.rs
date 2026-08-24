@@ -68,7 +68,7 @@ use crate::agent::driver::{
 use crate::agent::{
     ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, Conversation,
     ConversationItem, ItemKind, MessageContent, SessionEvent, SessionEventKind, ThreadActiveFlag,
-    ThreadStatus, TokenCount, TokenUsage, Turn, TurnPage, TurnStatus,
+    ThreadStatus, TokenCount, TokenUsage, Turn, TurnOrigin, TurnPage, TurnStatus,
 };
 
 pub(crate) use self::served_tools::{AskedTool, ToolAsk};
@@ -133,6 +133,12 @@ struct ClaudeClientInner {
 pub(crate) enum ClaudeRuntimeEvent {
     /// The conversation moved, in the vocabulary every agent reports in.
     Session(SessionEvent),
+    /// Claude completed work that no Caffold-owned live turn can contain.
+    ///
+    /// The stream does not say what opened that work. The transcript does, so
+    /// this asks the application to read that canonical evidence rather than
+    /// making a turn up from the frames around it.
+    TranscriptChanged { conversation_id: String },
     /// The agent is blocked until someone answers.
     Approval {
         conversation_id: String,
@@ -302,6 +308,17 @@ impl ClaudeClient {
             Self::with_runner_and_projects(runner, Some(projects)),
             handle,
         )
+    }
+
+    /// Put canonical history where this test client's Claude installation
+    /// keeps it. Tests outside the transcript module use this instead of
+    /// copying Claude's project-directory encoding.
+    #[cfg(test)]
+    pub(crate) fn write_test_transcript(&self, cwd: &str, conversation_id: &str, contents: &str) {
+        let projects = self
+            .projects()
+            .expect("the test client has a projects directory");
+        transcript::plant(projects, cwd, conversation_id, contents);
     }
 
     /// Hold the start door shut, the way a start mid-passage holds it.
@@ -968,6 +985,7 @@ fn open_turn(state: &mut SessionState, turn_id: &str, said: Vec<MessageContent>)
     let started_at_ms = now_ms();
     let turn = Turn {
         id: turn_id.to_string(),
+        origin: TurnOrigin::User,
         status: TurnStatus::InProgress,
         started_at_ms: Some(started_at_ms),
         completed_at_ms: None,

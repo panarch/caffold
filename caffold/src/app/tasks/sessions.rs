@@ -371,7 +371,7 @@ pub(super) mod test_support {
     pub(super) use serde_json::json;
 
     pub(super) use super::{
-        INITIAL_TURNS_PAGE_SIZE, PromptTarget, SessionLifecycle, SessionSnapshot, TaskSessions,
+        INITIAL_TURNS_PAGE_SIZE, PromptTarget, SessionSnapshot, TaskSessions,
         TerminalTurnApplyOutcome,
     };
     pub(super) use crate::agent::codex::{

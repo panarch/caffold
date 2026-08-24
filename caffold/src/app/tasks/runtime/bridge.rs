@@ -197,7 +197,7 @@ impl TaskRuntime {
                     }
                 }
                 self.events
-                    .publish(turn_started_event(thread_id, &turn.id, started_ms));
+                    .publish(turn_started_event(thread_id, turn, started_ms));
             }
             SessionEventKind::StatusChanged { status } => {
                 let task_status = match status {

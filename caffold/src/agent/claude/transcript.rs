@@ -60,9 +60,12 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use super::protocol::{Message, MessageContent};
+use super::protocol::{ContentBlock, Message, MessageContent};
 use super::translate::{ToolCalls, message_items, prompt_content, user_message_item};
-use crate::agent::{MessageContent as CaffoldContent, Turn, TurnPage, TurnStatus};
+use crate::agent::{
+    BackgroundTask, ItemKind, MessageContent as CaffoldContent, Turn, TurnOrigin, TurnPage,
+    TurnStatus,
+};
 
 /// One line of the transcript.
 ///
@@ -76,6 +79,13 @@ struct Row {
     /// What this message is known by, in the file and on the live stream alike.
     #[serde(default)]
     uuid: Option<String>,
+    /// The row this one names as its parent in Claude's transcript graph.
+    #[serde(default, rename = "parentUuid")]
+    parent_uuid: Option<TranscriptString>,
+    /// The provider's identity for the prompt this row belongs to. Unlike a
+    /// row UUID, it is repeated on attachments delivered into that prompt.
+    #[serde(default, rename = "promptId")]
+    prompt_id: Option<TranscriptString>,
     #[serde(default)]
     timestamp: Option<String>,
     #[serde(default)]
@@ -91,7 +101,7 @@ struct Row {
     origin: Option<Marking>,
     /// What a tool answered. Present only on a message carrying one.
     #[serde(default, rename = "toolUseResult")]
-    tool_use_result: Option<serde::de::IgnoredAny>,
+    tool_use_result: Option<ToolUseResult>,
     /// A subagent's own conversation, which belongs to the tool call that
     /// started it rather than to the one a person is reading.
     #[serde(default, rename = "isSidechain")]
@@ -119,6 +129,54 @@ struct Attachment {
     /// the agent was too busy to be told.
     #[serde(default, rename = "commandMode")]
     mode: Option<Marking>,
+    /// When this was put into the queue. An attachment carries its own time;
+    /// the row around it commonly does not.
+    #[serde(default)]
+    timestamp: Option<TranscriptString>,
+}
+
+/// An ancillary string whose shape must never decide whether its row survives.
+///
+/// Claude's row UUID is essential to drawing a message, but prompt links and
+/// attachment timestamps only add evidence. A future shape for one costs that
+/// link or time and nothing else on the row.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum TranscriptString {
+    Text(String),
+    Unreadable(serde::de::IgnoredAny),
+}
+
+impl TranscriptString {
+    fn text(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) => Some(text),
+            Self::Unreadable(_) => None,
+        }
+    }
+}
+
+/// The small part of a tool's transcript metadata this reader understands.
+///
+/// Kept open with an unreadable fallback because most tool results carry other
+/// shapes, and a new one must not make the message containing it disappear.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum ToolUseResult {
+    Fields {
+        #[serde(default, rename = "backgroundTaskId")]
+        background_task_id: Option<String>,
+    },
+    Unreadable(serde::de::IgnoredAny),
+}
+
+impl ToolUseResult {
+    fn background_task_id(&self) -> Option<&str> {
+        match self {
+            Self::Fields { background_task_id } => background_task_id.as_deref(),
+            Self::Unreadable(_) => None,
+        }
+    }
 }
 
 /// What the agent says something of its own is.
@@ -155,6 +213,26 @@ impl Marking {
 /// One name for both ways it arrives: as a prompt when the agent is idle, as a
 /// queued command when it is working.
 const TASK_NOTIFICATION: &str = "task-notification";
+const HUMAN_ORIGIN: &str = "human";
+
+/// One explicitly marked background report found while reading the file.
+///
+/// A prompt delivery opens its own turn. A queued delivery belongs beside a
+/// turn already running and must not manufacture another one. Keeping both in
+/// the transcript reading preserves that distinction even before a product
+/// surface decides what to do with it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BackgroundTaskObservation {
+    pub(crate) task: BackgroundTask,
+    pub(crate) delivery: BackgroundTaskDelivery,
+    pub(crate) at_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum BackgroundTaskDelivery {
+    Turn { turn_id: String },
+    Queued { turn_id: Option<String> },
+}
 
 /// Where the agent keeps every project's conversations.
 ///
@@ -222,6 +300,9 @@ fn project_directory(cwd: &str) -> String {
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct Reading {
     pub(crate) page: TurnPage,
+    /// Agent-owned background reports in this page, including ones queued
+    /// inside a turn and therefore absent from its visible messages.
+    pub(crate) background_tasks: Vec<BackgroundTaskObservation>,
     /// Lines this release could not read at all.
     ///
     /// Each is a message missing from a conversation shown as though it were
@@ -291,15 +372,16 @@ pub(crate) fn read(path: &Path, before: Option<&str>, limit: usize) -> Reading {
     let Some(window) = window(&lines, before, limit) else {
         return Reading::default();
     };
-    let (turns, unreadable) = turns(&lines[window.lines]);
+    let parsed = turns(&lines[window.lines]);
     Reading {
         page: TurnPage {
             // Newest first, which is the order history is read in.
-            turns: turns.into_iter().rev().collect(),
+            turns: parsed.turns.into_iter().rev().collect(),
             next_cursor: window.older,
             backwards_cursor: None,
         },
-        unreadable,
+        background_tasks: parsed.background_tasks,
+        unreadable: parsed.unreadable,
     }
 }
 
@@ -342,10 +424,28 @@ fn window(lines: &[&str], before: Option<&str>, limit: usize) -> Option<Window> 
     })
 }
 
-/// Every turn on these lines, oldest first, and how much of them went unread.
-fn turns(lines: &[&str]) -> (Vec<Turn>, usize) {
+/// What one transcript window says, before its turns are put newest first.
+#[derive(Default)]
+struct ParsedTurns {
+    turns: Vec<Turn>,
+    background_tasks: Vec<BackgroundTaskObservation>,
+    unreadable: usize,
+}
+
+/// Every turn and marked background report on these lines, oldest first.
+fn turns(lines: &[&str]) -> ParsedTurns {
     let mut turns: Vec<Turn> = Vec::new();
+    let mut background_tasks = Vec::new();
     let mut unreadable = 0;
+    // An attachment names the provider prompt it was delivered into, while a
+    // Caffold turn is named by the prompt row's UUID. Keep the explicit bridge
+    // between those two identities; never replace a missing bridge with the
+    // nearest turn in the file.
+    let mut prompt_turns: Vec<(String, String)> = Vec::new();
+    // Rows inside a prompt repeat its prompt id or name a parent that already
+    // did. This follows only that explicit graph, so an attachment whose link
+    // is absent or ambiguous remains unassigned.
+    let mut row_prompts: Vec<(String, String)> = Vec::new();
     // Held across the window, because a tool call is drawn from where it
     // started and answered somewhere later. A call never outlives the turn it
     // was made in, so a window of whole turns holds both ends of every one.
@@ -367,6 +467,47 @@ fn turns(lines: &[&str]) -> (Vec<Turn>, usize) {
             continue;
         };
         let at_ms = row.timestamp.as_deref().and_then(super::parse_timestamp_ms);
+        let opens_prompt = row.kind == "user" && row.prompt_source.is_some();
+        let own_prompt_id = row
+            .prompt_id
+            .as_ref()
+            .and_then(TranscriptString::text)
+            .map(str::to_string);
+        let parent_prompt_id = if opens_prompt {
+            None
+        } else {
+            exact_row_prompt(
+                &row_prompts,
+                row.parent_uuid.as_ref().and_then(TranscriptString::text),
+            )
+            .map(str::to_string)
+        };
+        let linked_prompt_id = match (own_prompt_id, parent_prompt_id) {
+            (Some(own), Some(parent)) if own != parent => None,
+            (Some(own), _) => Some(own),
+            (None, parent) => parent,
+        };
+        if let Some(prompt_id) = linked_prompt_id.as_deref() {
+            row_prompts.push((anchor.to_string(), prompt_id.to_string()));
+        }
+
+        if let Some(attachment) = queued_background_task(&row) {
+            let task = background_task(&attachment.prompt);
+            apply_background_task(&mut turns, &task);
+            background_tasks.push(BackgroundTaskObservation {
+                task,
+                delivery: BackgroundTaskDelivery::Queued {
+                    turn_id: exact_prompt_turn(&prompt_turns, linked_prompt_id.as_deref()),
+                },
+                at_ms: attachment
+                    .timestamp
+                    .as_ref()
+                    .and_then(TranscriptString::text)
+                    .and_then(super::parse_timestamp_ms)
+                    .or(at_ms),
+            });
+            continue;
+        }
 
         // A message sent into a turn already running, which the agent files
         // beside the conversation rather than in it.
@@ -389,21 +530,36 @@ fn turns(lines: &[&str]) -> (Vec<Turn>, usize) {
             continue;
         }
 
-        if row.kind == "user" && row.prompt_source.is_some() {
+        if opens_prompt {
             // A background command reporting back opens a turn like any other
             // prompt, because what the agent does about it is work that belongs
             // somewhere, and it opens on that work: the report is the agent
             // writing to itself, and drawing it as words would put a line
             // nobody wrote where what somebody said belongs.
-            let said = (!reports_a_background_command(&row))
+            let origin = prompt_origin(&row, message);
+            let said = (!matches!(origin, TurnOrigin::BackgroundTask(_)))
                 .then(|| user_message_item(&format!("{anchor}:prompt"), prompt_content(message)));
+            if let TurnOrigin::BackgroundTask(task) = &origin {
+                apply_background_task(&mut turns, task);
+                background_tasks.push(BackgroundTaskObservation {
+                    task: task.clone(),
+                    delivery: BackgroundTaskDelivery::Turn {
+                        turn_id: anchor.to_string(),
+                    },
+                    at_ms,
+                });
+            }
             turns.push(Turn {
                 id: anchor.to_string(),
+                origin,
                 status: TurnStatus::Completed,
                 started_at_ms: at_ms,
                 completed_at_ms: at_ms,
                 items: said.into_iter().collect(),
             });
+            if let Some(prompt_id) = row.prompt_id.as_ref().and_then(TranscriptString::text) {
+                prompt_turns.push((prompt_id.to_string(), anchor.to_string()));
+            }
             continue;
         }
         if row.kind == "user" && row.tool_use_result.is_none() {
@@ -426,25 +582,188 @@ fn turns(lines: &[&str]) -> (Vec<Turn>, usize) {
         // one identity, and the second is the first finishing rather than a
         // second thing the agent did. The live reader places items for the same
         // reason.
-        for item in message_items(message, anchor, &mut calls, row.is_api_error_message) {
+        let background_task_id = row
+            .tool_use_result
+            .as_ref()
+            .and_then(ToolUseResult::background_task_id);
+        for mut item in message_items(message, anchor, &mut calls, row.is_api_error_message) {
+            if let Some(task_id) = background_task_id
+                && let ItemKind::CommandExecution(command) = &mut item.kind
+            {
+                command.background_task = Some(BackgroundTask {
+                    task_id: Some(task_id.to_string()),
+                    tool_use_id: Some(item.id.clone()),
+                    ..BackgroundTask::default()
+                });
+            }
             super::replace_item(&mut turn.items, item);
         }
         if at_ms.is_some() {
             turn.completed_at_ms = at_ms;
         }
     }
-    (turns, unreadable)
+    ParsedTurns {
+        turns,
+        background_tasks,
+        unreadable,
+    }
 }
 
-/// Whether a prompt is a background command reporting back rather than
-/// somebody asking for something.
+/// The Caffold turn named by exactly one occurrence of a provider prompt id.
+fn exact_prompt_turn(prompt_turns: &[(String, String)], prompt_id: Option<&str>) -> Option<String> {
+    let prompt_id = prompt_id?;
+    let mut matches = prompt_turns
+        .iter()
+        .filter(|(known, _)| known == prompt_id)
+        .map(|(_, turn_id)| turn_id);
+    let turn_id = matches.next()?;
+    matches.next().is_none().then(|| turn_id.clone())
+}
+
+fn exact_row_prompt<'a>(
+    row_prompts: &'a [(String, String)],
+    row_id: Option<&str>,
+) -> Option<&'a str> {
+    let row_id = row_id?;
+    let mut matches = row_prompts
+        .iter()
+        .filter(|(known, _)| known == row_id)
+        .map(|(_, prompt_id)| prompt_id.as_str());
+    let prompt_id = matches.next()?;
+    matches.next().is_none().then_some(prompt_id)
+}
+
+/// What opened a prompt row, to the extent the row says.
 ///
-/// Asked this way round because a prompt Caffold sends says nothing about where
-/// it came from: only the report is marked, so only the report can be found.
-fn reports_a_background_command(row: &Row) -> bool {
-    row.origin
-        .as_ref()
-        .is_some_and(|origin| origin.says(TASK_NOTIFICATION))
+/// A prompt sent through Caffold carries no origin and one typed by a person is
+/// explicitly `human`; both are user work. Everything else stays unknown
+/// unless the agent marks the one autonomous source this release understands.
+fn prompt_origin(row: &Row, message: &Message) -> TurnOrigin {
+    match row.origin.as_ref() {
+        None => TurnOrigin::User,
+        Some(Marking::Kind { kind }) if kind == HUMAN_ORIGIN => TurnOrigin::User,
+        Some(Marking::Kind { kind }) if kind == TASK_NOTIFICATION => {
+            TurnOrigin::BackgroundTask(background_task(&message.content))
+        }
+        Some(_) => TurnOrigin::Unknown,
+    }
+}
+
+/// A marked report queued beside a turn already running, if this row is one.
+fn queued_background_task(row: &Row) -> Option<&Attachment> {
+    let attachment = row.attachment.as_ref()?;
+    (attachment.kind == "queued_command"
+        && attachment
+            .mode
+            .as_ref()
+            .is_some_and(|mode| mode.says(TASK_NOTIFICATION)))
+    .then_some(attachment)
+}
+
+/// The facts inside a marked background report.
+///
+/// This is only called after the outer structured marking identified the
+/// payload. The same words pasted by a person never reach this parser. Fields
+/// are accepted only when each named tag occurs exactly once; ambiguity costs
+/// that field rather than being resolved by position or preference.
+fn background_task(content: &MessageContent) -> BackgroundTask {
+    let raw = notification_text(content).map(str::to_string);
+    let field = |name| raw.as_deref().and_then(|raw| one_tag(raw, name));
+    BackgroundTask {
+        task_id: field("task-id"),
+        tool_use_id: field("tool-use-id"),
+        status: field("status"),
+        output_file: field("output-file"),
+        summary: field("summary"),
+        raw,
+    }
+}
+
+/// Text in the two message shapes Claude has used for a task notification.
+fn notification_text(content: &MessageContent) -> Option<&str> {
+    match content {
+        MessageContent::Text(text) => Some(text),
+        MessageContent::Blocks(blocks) => match blocks.as_slice() {
+            [ContentBlock::Text { text }] => Some(text),
+            _ => None,
+        },
+        MessageContent::Unreadable(_) => None,
+    }
+}
+
+fn one_tag(text: &str, name: &str) -> Option<String> {
+    let opening = format!("<{name}>");
+    let closing = format!("</{name}>");
+    let mut openings = text.match_indices(&opening);
+    let (opening_at, _) = openings.next()?;
+    if openings.next().is_some() {
+        return None;
+    }
+    let mut closings = text.match_indices(&closing);
+    let (closing_at, _) = closings.next()?;
+    if closings.next().is_some() {
+        return None;
+    }
+    let value_at = opening_at + opening.len();
+    if closing_at < value_at {
+        return None;
+    }
+    let value = text[value_at..closing_at].trim();
+    (!value.is_empty()).then(|| value.to_string())
+}
+
+/// Enrich the one command a marked report names, if that command is in this
+/// transcript window.
+///
+/// A tool id absent from the page, repeated, or disagreeing with the task id
+/// already reported is not repaired with chronology. The notification remains
+/// preserved on its own turn or observation; only the unsafe link is omitted.
+fn apply_background_task(turns: &mut [Turn], task: &BackgroundTask) {
+    let Some(tool_use_id) = task.tool_use_id.as_deref() else {
+        return;
+    };
+    let mut found = None;
+    for (turn_index, turn) in turns.iter().enumerate() {
+        for (item_index, item) in turn.items.iter().enumerate() {
+            if item.id == tool_use_id && matches!(item.kind, ItemKind::CommandExecution(_)) {
+                if found.is_some() {
+                    return;
+                }
+                found = Some((turn_index, item_index));
+            }
+        }
+    }
+    let Some((turn_index, item_index)) = found else {
+        return;
+    };
+    let ItemKind::CommandExecution(command) = &mut turns[turn_index].items[item_index].kind else {
+        return;
+    };
+    if let (Some(known), Some(reported)) = (
+        command
+            .background_task
+            .as_ref()
+            .and_then(|background| background.task_id.as_deref()),
+        task.task_id.as_deref(),
+    ) && known != reported
+    {
+        return;
+    }
+    let background = command
+        .background_task
+        .get_or_insert_with(BackgroundTask::default);
+    overlay(&mut background.task_id, &task.task_id);
+    overlay(&mut background.tool_use_id, &task.tool_use_id);
+    overlay(&mut background.status, &task.status);
+    overlay(&mut background.output_file, &task.output_file);
+    overlay(&mut background.summary, &task.summary);
+    overlay(&mut background.raw, &task.raw);
+}
+
+fn overlay(current: &mut Option<String>, reported: &Option<String>) {
+    if let Some(reported) = reported {
+        *current = Some(reported.clone());
+    }
 }
 
 /// What a person said into a turn that was already running, if that is what
@@ -499,7 +818,7 @@ pub(super) fn plant(projects: &Path, cwd: &str, session_id: &str, contents: &str
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::{ItemKind, TurnStatus};
+    use crate::agent::{CommandExecution, ItemKind, TurnOrigin, TurnStatus};
 
     /// Measured against CLI 2.1.236: `/Users/x/a_b.c d` is filed as
     /// `-Users-x-a-b-c-d`.
@@ -522,7 +841,12 @@ mod tests {
     /// Every turn a written-down conversation holds, for a test that wants all
     /// of them rather than a page.
     fn all_turns(contents: &str) -> (Vec<Turn>, usize) {
-        turns(&contents.lines().collect::<Vec<_>>())
+        let parsed = turns(&contents.lines().collect::<Vec<_>>());
+        (parsed.turns, parsed.unreadable)
+    }
+
+    fn background_tasks(contents: &str) -> Vec<BackgroundTaskObservation> {
+        turns(&contents.lines().collect::<Vec<_>>()).background_tasks
     }
 
     /// The turns of a conversation, for a test with nothing to say about what
@@ -756,6 +1080,25 @@ mod tests {
             turns.iter().map(|turn| &turn.id).collect::<Vec<_>>()
         );
         let reported = &turns[1];
+        let TurnOrigin::BackgroundTask(background) = &reported.origin else {
+            panic!(
+                "the marked report is a background turn: {:?}",
+                reported.origin
+            );
+        };
+        assert_eq!(background.task_id.as_deref(), Some("bgxe14776"));
+        assert_eq!(background.tool_use_id.as_deref(), Some("toolu_1"));
+        assert_eq!(background.status.as_deref(), Some("completed"));
+        assert_eq!(
+            background.output_file.as_deref(),
+            Some("/tmp/claude/bgxe14776.output")
+        );
+        assert_eq!(
+            background.summary.as_deref(),
+            Some("Background command \"Build the app\" completed (exit code 0)")
+        );
+        let raw = a_report("bgxe14776");
+        assert_eq!(background.raw.as_deref(), Some(raw.as_str()));
         assert_eq!(said_in(reported), Vec::<&str>::new(), "nobody said it");
         assert!(
             reported.items.iter().any(|item| matches!(
@@ -793,6 +1136,8 @@ mod tests {
         let turns = read_turns(&contents);
 
         assert_eq!(turns.len(), 2, "both opened a turn");
+        assert_eq!(turns[0].origin, TurnOrigin::User);
+        assert_eq!(turns[1].origin, TurnOrigin::User);
         assert_eq!(said_in(&turns[0]), ["what Caffold sent"]);
         assert_eq!(said_in(&turns[1]), ["what somebody typed"]);
     }
@@ -812,6 +1157,7 @@ mod tests {
 
         let turns = read_turns(&contents);
 
+        assert_eq!(turns[0].origin, TurnOrigin::User);
         assert_eq!(said_in(&turns[0]).len(), 1, "{:?}", items_of(&turns[0]));
     }
 
@@ -819,6 +1165,56 @@ mod tests {
     fn a_report_queued_while_the_agent_worked_is_not_shown_beside_what_was_said() {
         // Both wait in the same queue and both are filed as queued commands.
         // What tells them apart is the mode they were queued under.
+        let contents = [
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptId": "provider-prompt-1",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "go"},
+            })),
+            line(serde_json::json!({
+                "type": "attachment",
+                "uuid": "queued-1",
+                "promptId": "provider-prompt-1",
+                "attachment": {
+                    "type": "queued_command",
+                    "commandMode": "task-notification",
+                    "prompt": a_report("b579lzr25"),
+                    "timestamp": "2026-08-23T06:25:55.000Z",
+                },
+            })),
+            line(serde_json::json!({
+                "type": "attachment",
+                "uuid": "queued-2",
+                "attachment": {
+                    "type": "queued_command",
+                    "commandMode": "prompt",
+                    "prompt": [{"type": "text", "text": "stop reading"}],
+                },
+            })),
+        ]
+        .join("\n");
+
+        let turns = read_turns(&contents);
+        let observations = background_tasks(&contents);
+
+        assert_eq!(turns.len(), 1);
+        assert_eq!(said_in(&turns[0]), ["go", "stop reading"]);
+        assert_eq!(observations.len(), 1);
+        assert_eq!(observations[0].task.task_id.as_deref(), Some("b579lzr25"));
+        assert_eq!(observations[0].task.tool_use_id.as_deref(), Some("toolu_1"));
+        assert_eq!(observations[0].at_ms, Some(1_787_466_355_000));
+        assert_eq!(
+            observations[0].delivery,
+            BackgroundTaskDelivery::Queued {
+                turn_id: Some("prompt-1".to_string())
+            }
+        );
+    }
+
+    #[test]
+    fn a_queued_report_without_an_exact_prompt_link_is_not_assigned_by_position() {
         let contents = [
             line(serde_json::json!({
                 "type": "user",
@@ -835,22 +1231,291 @@ mod tests {
                     "prompt": a_report("b579lzr25"),
                 },
             })),
+        ]
+        .join("\n");
+
+        let observations = background_tasks(&contents);
+
+        assert_eq!(observations.len(), 1);
+        assert_eq!(
+            observations[0].delivery,
+            BackgroundTaskDelivery::Queued { turn_id: None },
+            "chronological proximity is not a causal link"
+        );
+    }
+
+    #[test]
+    fn a_new_prompt_does_not_inherit_the_previous_prompts_identity() {
+        let contents = [
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptId": "provider-prompt-1",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "first"},
+            })),
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-2",
+                "parentUuid": "prompt-1",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "second"},
+            })),
             line(serde_json::json!({
                 "type": "attachment",
-                "uuid": "queued-2",
+                "uuid": "queued-1",
+                "parentUuid": "prompt-2",
                 "attachment": {
                     "type": "queued_command",
-                    "commandMode": "prompt",
-                    "prompt": [{"type": "text", "text": "stop reading"}],
+                    "commandMode": "task-notification",
+                    "prompt": a_report("b579lzr25"),
                 },
             })),
         ]
         .join("\n");
 
+        let observations = background_tasks(&contents);
+
+        assert_eq!(observations.len(), 1);
+        assert_eq!(
+            observations[0].delivery,
+            BackgroundTaskDelivery::Queued { turn_id: None },
+            "a parent row cannot carry an old prompt identity across a new prompt"
+        );
+    }
+
+    #[test]
+    fn conflicting_prompt_links_are_not_resolved_by_preference() {
+        let contents = [
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptId": "provider-prompt-1",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "first"},
+            })),
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-2",
+                "promptId": "provider-prompt-2",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "second"},
+            })),
+            line(serde_json::json!({
+                "type": "attachment",
+                "uuid": "queued-1",
+                "parentUuid": "prompt-1",
+                "promptId": "provider-prompt-2",
+                "attachment": {
+                    "type": "queued_command",
+                    "commandMode": "task-notification",
+                    "prompt": a_report("b579lzr25"),
+                },
+            })),
+        ]
+        .join("\n");
+
+        let observations = background_tasks(&contents);
+
+        assert_eq!(observations.len(), 1);
+        assert_eq!(
+            observations[0].delivery,
+            BackgroundTaskDelivery::Queued { turn_id: None },
+            "neither explicit link wins when they disagree"
+        );
+    }
+
+    #[test]
+    fn unreadable_link_metadata_costs_only_the_link() {
+        let contents = [
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptId": 42,
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "go"},
+            })),
+            line(serde_json::json!({
+                "type": "attachment",
+                "uuid": "queued-1",
+                "parentUuid": {"future": "shape"},
+                "timestamp": "2026-08-23T06:25:55.000Z",
+                "attachment": {
+                    "type": "queued_command",
+                    "commandMode": "task-notification",
+                    "prompt": a_report("b579lzr25"),
+                    "timestamp": 42,
+                },
+            })),
+        ]
+        .join("\n");
+
+        let parsed = turns(&contents.lines().collect::<Vec<_>>());
+
+        assert_eq!(parsed.unreadable, 0, "both rows survive");
+        assert_eq!(said_in(&parsed.turns[0]), ["go"]);
+        assert_eq!(
+            parsed.background_tasks.len(),
+            1,
+            "the marked report survives"
+        );
+        assert_eq!(
+            parsed.background_tasks[0].delivery,
+            BackgroundTaskDelivery::Queued { turn_id: None }
+        );
+        assert_eq!(
+            parsed.background_tasks[0].at_ms,
+            Some(1_787_466_355_000),
+            "the valid row timestamp remains usable"
+        );
+    }
+
+    #[test]
+    fn an_explicit_report_with_an_unreadable_body_stays_agent_owned_and_raw_unknown() {
+        let contents = line(serde_json::json!({
+            "type": "user",
+            "uuid": "report-1",
+            "promptSource": "sdk",
+            "origin": {"kind": "task-notification"},
+            "message": {"role": "user", "content": [
+                {"type": "text", "text": "first"},
+                {"type": "text", "text": "second"},
+            ]},
+        }));
+
         let turns = read_turns(&contents);
 
-        assert_eq!(turns.len(), 1);
-        assert_eq!(said_in(&turns[0]), ["go", "stop reading"]);
+        let TurnOrigin::BackgroundTask(task) = &turns[0].origin else {
+            panic!(
+                "the structured outer mark is still evidence: {:?}",
+                turns[0].origin
+            );
+        };
+        assert_eq!(task, &BackgroundTask::default());
+        assert_eq!(said_in(&turns[0]), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn duplicate_report_tags_make_only_that_field_unknown() {
+        let raw = concat!(
+            "<task-notification>\n",
+            "<task-id>task-1</task-id>\n",
+            "<tool-use-id>toolu_1</tool-use-id>\n",
+            "<tool-use-id>toolu_2</tool-use-id>\n",
+            "<status>completed</status>\n",
+            "</task-notification>"
+        );
+        let contents = line(serde_json::json!({
+            "type": "user",
+            "uuid": "report-1",
+            "promptSource": "sdk",
+            "origin": {"kind": "task-notification"},
+            "message": {"role": "user", "content": raw},
+        }));
+
+        let turns = read_turns(&contents);
+
+        let TurnOrigin::BackgroundTask(task) = &turns[0].origin else {
+            panic!("the report remains typed: {:?}", turns[0].origin);
+        };
+        assert_eq!(task.task_id.as_deref(), Some("task-1"));
+        assert_eq!(task.tool_use_id, None, "an ambiguous id is not selected");
+        assert_eq!(task.status.as_deref(), Some("completed"));
+        assert_eq!(task.raw.as_deref(), Some(raw));
+    }
+
+    fn a_background_command_followed_by(report: String, started_task_id: &str) -> String {
+        [
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "go"},
+            })),
+            line(serde_json::json!({
+                "type": "assistant",
+                "uuid": "call-1",
+                "message": {"role": "assistant", "content": [{
+                    "type": "tool_use",
+                    "id": "toolu_1",
+                    "name": "Bash",
+                    "input": {"command": "sleep 1", "run_in_background": true},
+                }]},
+            })),
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "result-1",
+                "toolUseResult": {"backgroundTaskId": started_task_id},
+                "message": {"role": "user", "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_1",
+                    "content": "running",
+                }]},
+            })),
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "report-1",
+                "promptSource": "sdk",
+                "origin": {"kind": "task-notification"},
+                "message": {"role": "user", "content": report},
+            })),
+        ]
+        .join("\n")
+    }
+
+    fn command_in(turn: &Turn) -> &CommandExecution {
+        turn.items
+            .iter()
+            .find_map(|item| match &item.kind {
+                ItemKind::CommandExecution(command) => Some(command),
+                _ => None,
+            })
+            .expect("the turn has a command")
+    }
+
+    #[test]
+    fn a_report_enriches_the_command_named_by_both_exact_ids() {
+        let raw = a_report("task-1");
+        let turns = read_turns(&a_background_command_followed_by(raw.clone(), "task-1"));
+
+        let task = command_in(&turns[0])
+            .background_task
+            .as_ref()
+            .expect("the command carries its background evidence");
+        assert_eq!(task.task_id.as_deref(), Some("task-1"));
+        assert_eq!(task.tool_use_id.as_deref(), Some("toolu_1"));
+        assert_eq!(task.status.as_deref(), Some("completed"));
+        assert_eq!(task.raw.as_deref(), Some(raw.as_str()));
+    }
+
+    #[test]
+    fn a_report_with_a_conflicting_task_id_is_preserved_but_not_linked() {
+        let raw = a_report("reported-task");
+        let turns = read_turns(&a_background_command_followed_by(
+            raw.clone(),
+            "started-task",
+        ));
+
+        let command_task = command_in(&turns[0])
+            .background_task
+            .as_ref()
+            .expect("the tool result identified the background task");
+        assert_eq!(command_task.task_id.as_deref(), Some("started-task"));
+        assert_eq!(command_task.tool_use_id.as_deref(), Some("toolu_1"));
+        assert_eq!(
+            command_task.status, None,
+            "the conflicting report was not overlaid"
+        );
+        assert_eq!(command_task.raw, None);
+
+        let TurnOrigin::BackgroundTask(reported) = &turns[1].origin else {
+            panic!(
+                "the unlinked report is still preserved: {:?}",
+                turns[1].origin
+            );
+        };
+        assert_eq!(reported.task_id.as_deref(), Some("reported-task"));
+        assert_eq!(reported.raw.as_deref(), Some(raw.as_str()));
     }
 
     #[test]
@@ -889,6 +1554,8 @@ mod tests {
         let (turns, unreadable) = all_turns(&contents);
 
         assert_eq!(unreadable, 0, "no line was lost to a marking");
+        assert_eq!(turns[0].origin, TurnOrigin::Unknown);
+        assert_eq!(turns[1].origin, TurnOrigin::Unknown);
         assert_eq!(said_in(&turns[0]), ["still what somebody said"]);
         assert_eq!(said_in(&turns[1]), ["and so is this", "and this"]);
     }
@@ -974,10 +1641,13 @@ mod tests {
     fn page_of(contents: &str, before: Option<&str>, limit: usize) -> TurnPage {
         let lines: Vec<&str> = contents.lines().collect();
         let window = window(&lines, before, limit).expect("the window is found");
-        let (turns, unreadable) = turns(&lines[window.lines]);
-        assert_eq!(unreadable, 0, "every line was expected to be readable");
+        let parsed = turns(&lines[window.lines]);
+        assert_eq!(
+            parsed.unreadable, 0,
+            "every line was expected to be readable"
+        );
         TurnPage {
-            turns: turns.into_iter().rev().collect(),
+            turns: parsed.turns.into_iter().rev().collect(),
             next_cursor: window.older,
             backwards_cursor: None,
         }
@@ -1008,8 +1678,8 @@ mod tests {
         let lines: Vec<&str> = contents.lines().collect();
         let window = window(&lines, None, 1).expect("the window is found");
 
-        let (turns, _) = turns(&lines[window.lines.clone()]);
-        assert_eq!(turns.len(), 1);
+        let parsed = turns(&lines[window.lines.clone()]);
+        assert_eq!(parsed.turns.len(), 1);
         assert!(
             !lines[window.lines]
                 .iter()
@@ -1325,6 +1995,7 @@ mod tests {
     #[test]
     fn a_session_a_background_command_reported_into_shows_the_work_and_not_the_report() {
         let turns = read_turns(RECORDED_WITH_A_BACKGROUND_COMMAND);
+        let observations = background_tasks(RECORDED_WITH_A_BACKGROUND_COMMAND);
 
         assert_eq!(
             turns.len(),
@@ -1342,6 +2013,18 @@ mod tests {
         // The report that arrived while the agent was idle opened the last
         // turn, and what is in that turn is what the agent did about it.
         let reported = &turns[2];
+        let TurnOrigin::BackgroundTask(report) = &reported.origin else {
+            panic!(
+                "the recorded mark identifies the source: {:?}",
+                reported.origin
+            );
+        };
+        assert_eq!(report.task_id.as_deref(), Some("bogb4v2iq"));
+        assert_eq!(
+            report.tool_use_id.as_deref(),
+            Some("toolu_018MFR3zvEj25sB6Bb92UnRz")
+        );
+        assert_eq!(report.status.as_deref(), Some("completed"));
         assert_eq!(said_in(reported), Vec::<&str>::new());
         assert!(
             reported.items.iter().any(|item| matches!(
@@ -1358,6 +2041,33 @@ mod tests {
                 .all(|said| !said.contains("task-notification")),
             "nothing the agent wrote to itself is in the conversation"
         );
+
+        assert_eq!(observations.len(), 2, "both recorded deliveries survive");
+        assert_eq!(
+            observations[0].delivery,
+            BackgroundTaskDelivery::Queued {
+                turn_id: Some(turns[0].id.clone())
+            }
+        );
+        assert_eq!(
+            observations[1].delivery,
+            BackgroundTaskDelivery::Turn {
+                turn_id: turns[2].id.clone()
+            }
+        );
+
+        let first = command_in(&turns[0])
+            .background_task
+            .as_ref()
+            .expect("the first background command is identified");
+        assert_eq!(first.task_id.as_deref(), Some("bag0xyrrb"));
+        assert_eq!(first.status.as_deref(), Some("completed"));
+        let second = command_in(&turns[1])
+            .background_task
+            .as_ref()
+            .expect("the second background command is identified");
+        assert_eq!(second.task_id.as_deref(), Some("bogb4v2iq"));
+        assert_eq!(second.status.as_deref(), Some("completed"));
     }
 
     #[test]

@@ -213,7 +213,9 @@ impl ClaudeClient {
             // existed.
             open_pending_turn(&mut state, filed.as_deref());
             let Some(turn_id) = state.active_turn.clone() else {
-                // Work with no turn open belongs to nothing Caffold can show.
+                // This frame alone does not say what opened the work. Its
+                // terminal result asks the application to reconcile Claude's
+                // canonical transcript, where that relationship is recorded.
                 return;
             };
             let mut items = message_items(
@@ -280,7 +282,7 @@ impl ClaudeClient {
         } else {
             None
         };
-        let (turn, abandoned) = {
+        let completed = {
             let mut state = session.state.lock().await;
             if let Some(waiting) = state.quiet_turn.take() {
                 // Something Caffold asked for on its own account, answered.
@@ -288,27 +290,39 @@ impl ClaudeClient {
                 return;
             }
             open_pending_turn(&mut state, filed.as_deref());
-            let Some(turn_id) = state.active_turn.take() else {
-                return;
-            };
-            // Whatever the agent left open, it will not answer now.
-            let abandoned = state.calls.abandon(match status {
-                TurnStatus::Completed => ActivityStatus::Completed,
-                _ => ActivityStatus::Failed,
-            });
-            state.pending_approvals.clear();
-            state.declined.clear();
-            let Some(turn) = state.turns.iter_mut().find(|turn| turn.id == turn_id) else {
-                return;
-            };
-            for item in &abandoned {
-                replace_item(&mut turn.items, item.clone());
+            if let Some(turn_id) = state.active_turn.take() {
+                // Whatever the agent left open, it will not answer now.
+                let abandoned = state.calls.abandon(match status {
+                    TurnStatus::Completed => ActivityStatus::Completed,
+                    _ => ActivityStatus::Failed,
+                });
+                state.pending_approvals.clear();
+                state.declined.clear();
+                let Some(turn) = state.turns.iter_mut().find(|turn| turn.id == turn_id) else {
+                    return;
+                };
+                for item in &abandoned {
+                    replace_item(&mut turn.items, item.clone());
+                }
+                turn.status = status;
+                turn.completed_at_ms = Some(completed_at_ms);
+                let turn = turn.clone();
+                state.moved_at_ms = completed_at_ms;
+                Some((turn, abandoned))
+            } else {
+                None
             }
-            turn.status = status;
-            turn.completed_at_ms = Some(completed_at_ms);
-            let turn = turn.clone();
-            state.moved_at_ms = completed_at_ms;
-            (turn, abandoned)
+        };
+        let Some((turn, abandoned)) = completed else {
+            // A result is the protocol's concrete boundary for work that has
+            // finished. With no Caffold-owned turn open, the stream gives us
+            // no evidence for what opened it; Claude's transcript does. Ask
+            // the application to reconcile that source instead of assigning
+            // the frames by timing or position.
+            self.publish(ClaudeRuntimeEvent::TranscriptChanged {
+                conversation_id: session.id.clone(),
+            });
+            return;
         };
 
         for item in abandoned {
@@ -540,6 +554,44 @@ mod tests {
 
     use super::super::test_support::*;
     use super::super::*;
+
+    #[tokio::test]
+    async fn an_unowned_result_requests_history_instead_of_inventing_a_live_turn() {
+        let (_client, runner, mut events) = watching().await;
+
+        runner
+            .say(
+                SESSION,
+                assistant_frame(
+                    "background-answer",
+                    json!([{ "type": "text", "text": "the build is done" }]),
+                ),
+            )
+            .await;
+        runner.say(SESSION, result_frame(Some("end_turn"))).await;
+
+        let changed = tokio::time::timeout(REPORT_TIMEOUT, async {
+            loop {
+                match events.recv().await.expect("the report channel stays open") {
+                    ClaudeRuntimeEvent::TranscriptChanged { conversation_id } => {
+                        return conversation_id;
+                    }
+                    ClaudeRuntimeEvent::Session(SessionEvent {
+                        kind:
+                            SessionEventKind::TurnStarted { .. }
+                            | SessionEventKind::TurnEnded { .. }
+                            | SessionEventKind::ItemChanged { .. },
+                        ..
+                    }) => panic!("unattributed work must not manufacture a live turn"),
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .expect("the canonical transcript is requested");
+
+        assert_eq!(changed, SESSION);
+    }
 
     #[tokio::test]
     async fn a_session_that_stops_speaking_without_ending_is_one_to_open_again() {

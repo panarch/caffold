@@ -251,6 +251,7 @@ fn tool_kind(name: &str, input: &Value, result: Option<&Value>) -> ItemKind {
             // would report a success it never claimed.
             exit_code: None,
             duration_ms: None,
+            background_task: None,
         }),
         "Write" | "Edit" | "NotebookEdit" => ItemKind::FileChange {
             paths: string_field(input, "file_path")

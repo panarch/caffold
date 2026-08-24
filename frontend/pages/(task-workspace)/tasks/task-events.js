@@ -313,30 +313,57 @@ export function eventIdentityKey(event) {
     return ["turn", threadId, turnId, event.type, payload.status ?? ""].join(":");
   }
 
-  if (turnId && ["user_message", "assistant_message"].includes(event.type)) {
-    const text =
-      event.type === "user_message"
-        ? userMessageText(payload)
-        : `${payload.prompt ?? payload.text ?? ""}`.trim();
-    if (text) {
-      return ["message", threadId, turnId, event.type, text].join(":");
-    }
-  }
-
+  // Text is presentation, not identity. A sparse event with no item id keeps
+  // its own event id until a unique structured counterpart can reconcile it.
+  // Two equal messages are otherwise indistinguishable from one message
+  // reported twice, and choosing either interpretation would discard data.
   return event.id ?? "";
 }
 
 export function dedupeCanonicalEvents(events) {
-  const byKey = new Map();
+  const byIdentity = new Map();
   for (const event of removeSupersededOptimisticEvents(events)) {
-    const key = canonicalEventKey(event) || eventIdentityKey(event);
-    if (!key) {
+    const identity = eventIdentityKey(event);
+    if (!identity) {
       continue;
     }
-    const existing = byKey.get(key);
-    byKey.set(key, preferStructuredEvent(existing, event));
+    const existing = byIdentity.get(identity);
+    byIdentity.set(identity, preferStructuredEvent(existing, event));
   }
-  return [...byKey.values()];
+  const candidates = [...byIdentity.values()];
+  const messageGroups = new Map();
+  for (const [index, event] of candidates.entries()) {
+    const fingerprint = canonicalEventKey(event);
+    if (!fingerprint) {
+      continue;
+    }
+    const group = messageGroups.get(fingerprint) ?? [];
+    group.push(index);
+    messageGroups.set(fingerprint, group);
+  }
+
+  const omitted = new Set();
+  for (const group of messageGroups.values()) {
+    const structured = group.filter(
+      (index) => Boolean(candidates[index]?.payload?.itemId),
+    );
+    const sparse = group.filter(
+      (index) => !candidates[index]?.payload?.itemId,
+    );
+    // One sparse projection and one structured projection can only describe
+    // each other within this canonical fingerprint. More than one candidate
+    // makes that relationship ambiguous, so all of them survive.
+    if (structured.length === 1 && sparse.length === 1) {
+      const structuredIndex = structured[0];
+      const sparseIndex = sparse[0];
+      candidates[structuredIndex] = preferStructuredEvent(
+        candidates[sparseIndex],
+        candidates[structuredIndex],
+      );
+      omitted.add(sparseIndex);
+    }
+  }
+  return candidates.filter((_, index) => !omitted.has(index));
 }
 
 function removeSupersededOptimisticEvents(events) {

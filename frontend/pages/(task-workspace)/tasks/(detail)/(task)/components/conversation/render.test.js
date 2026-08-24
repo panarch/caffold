@@ -213,6 +213,41 @@ test("a tool call the agent did not name is still an entry", () => {
   assert.match(html, /<strong>Tool call<\/strong>/);
 });
 
+test("a completed background turn renders its answer without a user message", () => {
+  const idleTask = {
+    id: "thread-1",
+    threadId: "thread-1",
+    threadStatus: { type: "idle" },
+  };
+  const answer = turnEvent(
+    "thread-1:background-turn:answer",
+    "assistant_message",
+    2,
+    {
+      turnId: "background-turn",
+      itemId: "answer",
+      text: "The background build is done.",
+      phase: "final",
+    },
+  );
+  const ended = turnEvent(
+    "thread-1:background-turn:end",
+    "turn_completed",
+    3,
+    {
+      turnId: "background-turn",
+      status: "completed",
+      origin: { type: "backgroundTask", taskId: "task-1" },
+    },
+  );
+
+  const { html } = renderConversation([answer, ended], idleTask);
+
+  assert.match(html, /The background build is done\./);
+  assert.match(html, /data-message-role="assistant"/);
+  assert.doesNotMatch(html, /data-message-role="user"/);
+});
+
 function activeTask() {
   return {
     id: "thread-1",
