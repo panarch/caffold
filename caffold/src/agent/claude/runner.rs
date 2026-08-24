@@ -123,35 +123,34 @@ impl Wire {
         }
     }
 
-    /// Write one frame to a session, without waiting on the acknowledgement.
+    /// Write one frame to a session and wait until the runner accepts it.
     ///
-    /// The reply arrives on the shared reader, which lets unclaimed replies
-    /// pass; a transport failure is the only thing this can report, exactly as
-    /// the per-session connection before it reported.
-    async fn send_frame(&self, session: &str, frame: Box<RawValue>) -> Result<(), ClaudeError> {
+    /// A successful write only says the request reached the socket. The runner
+    /// may still refuse it — for example, because this connection is no longer
+    /// attached or the child already exited — and only its reply distinguishes
+    /// those cases from a frame the agent can actually receive.
+    async fn send_frame(
+        self: &Arc<Self>,
+        session: &str,
+        frame: Box<RawValue>,
+    ) -> Result<(), ClaudeError> {
         if !self.alive.load(Ordering::Relaxed) {
             return Err(ClaudeError::Runner(
                 "the runner connection is gone".to_string(),
             ));
         }
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let encoded = encode(
-            Request::SessionSend {
+        match self
+            .request(Request::SessionSend {
                 session: session.to_string(),
                 frame,
-            },
-            id,
-        )
-        .map_err(|error| ClaudeError::Runner(error.to_string()))?;
-        let mut writer = self.writer.lock().await;
-        writer
-            .write_all(&encoded)
-            .await
-            .map_err(|error| ClaudeError::Runner(error.to_string()))?;
-        writer
-            .flush()
-            .await
-            .map_err(|error| ClaudeError::Runner(error.to_string()))
+            })
+            .await?
+        {
+            ReplyBody::Empty {} => Ok(()),
+            _ => Err(ClaudeError::Runner(
+                "the runner answered a session send with something else".to_string(),
+            )),
+        }
     }
 
     /// Read the connection for as long as it lives, routing what arrives.
@@ -602,10 +601,7 @@ impl SessionFrames {
                 wire.send_frame(session, raw).await
             }
             #[cfg(test)]
-            Self::Mock { session, runner } => {
-                runner.heard(session, frame).await;
-                Ok(())
-            }
+            Self::Mock { session, runner } => runner.heard(session, frame).await,
         }
     }
 }
@@ -702,6 +698,9 @@ struct MockSession {
     /// Keep prompts rather than handing them back, standing in for an agent
     /// that took a prompt and never said what it filed it as.
     swallow_prompts: bool,
+    /// Refuse the next frame before it reaches the agent, the way the daemon
+    /// refuses a `SessionSend` it cannot accept.
+    reject_next_send: Option<String>,
     distrusts_moves: bool,
     refuses_moves: u32,
 }
@@ -740,6 +739,7 @@ impl MockRunner {
                 exited: false,
                 replays: 0,
                 swallow_prompts: false,
+                reject_next_send: None,
                 distrusts_moves: false,
                 refuses_moves: 0,
             },
@@ -761,11 +761,16 @@ impl MockRunner {
         })
     }
 
-    async fn heard(&self, session: &str, frame: Value) {
+    async fn heard(&self, session: &str, frame: Value) -> Result<(), ClaudeError> {
         let mut state = self.state.lock().await;
         let Some(existing) = state.sessions.get_mut(session) else {
-            return;
+            return Err(ClaudeError::Runner(format!(
+                "UnknownSession: no session named {session}"
+            )));
         };
+        if let Some(message) = existing.reject_next_send.take() {
+            return Err(ClaudeError::Runner(message));
+        }
         // The agent answers what it is asked. A stand-in that stayed silent
         // would not stand in for it: every caller waiting on a control request
         // would wait out its whole timeout.
@@ -819,6 +824,7 @@ impl MockRunner {
             let _ = existing.agent.send(RunnerEvent::Frame(replay.to_string()));
         }
         existing.heard.push(frame);
+        Ok(())
     }
 
     async fn close(&self, session: &str) {
@@ -884,6 +890,14 @@ impl MockRunnerHandle {
         let mut state = self.0.state.lock().await;
         if let Some(held) = state.sessions.get_mut(session) {
             held.swallow_prompts = true;
+        }
+    }
+
+    /// Refuse the next frame before the agent hears it.
+    pub(crate) async fn reject_next_send(&self, session: &str, message: &str) {
+        let mut state = self.0.state.lock().await;
+        if let Some(held) = state.sessions.get_mut(session) {
+            held.reject_next_send = Some(message.to_string());
         }
     }
 
@@ -954,6 +968,21 @@ impl MockRunnerHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caffold_claude_runner::protocol::{ErrorBody, ErrorCode, Event, WireRequest};
+
+    fn connected_wire() -> (Arc<Wire>, UnixStream) {
+        let (ours, theirs) = UnixStream::pair().expect("a local wire pair");
+        let (reader, writer) = ours.into_split();
+        let wire = Arc::new(Wire {
+            writer: AsyncMutex::new(writer),
+            next_id: AtomicU64::new(1),
+            alive: AtomicBool::new(true),
+            pending: std::sync::Mutex::new(HashMap::new()),
+            sessions: std::sync::Mutex::new(HashMap::new()),
+        });
+        tokio::spawn(Arc::clone(&wire).route(reader));
+        (wire, theirs)
+    }
 
     /// A data directory whose socket path comes to exactly `bytes`.
     fn data_dir_with_socket_of(bytes: usize) -> PathBuf {
@@ -994,6 +1023,113 @@ mod tests {
         assert!(
             refused.to_string().contains("caps a unix socket address"),
             "{refused}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_session_send_reports_the_runners_rejection() {
+        let (wire, theirs) = connected_wire();
+
+        let runner = tokio::spawn(async move {
+            let (reader, mut writer) = theirs.into_split();
+            let mut reader = BufReader::new(reader);
+            let mut line = String::new();
+            reader
+                .read_line(&mut line)
+                .await
+                .expect("the request is readable");
+            let request: WireRequest = serde_json::from_str(line.trim()).expect("a wire request");
+            let id = request.id;
+            assert!(
+                matches!(
+                    Request::from_wire(request).expect("a valid request"),
+                    Request::SessionSend { .. }
+                ),
+                "the frame is carried as a session send"
+            );
+            let reply = Response {
+                id,
+                outcome: Outcome::Err(ErrorBody {
+                    code: ErrorCode::NotAttached,
+                    message: "subscribe before sending".to_string(),
+                }),
+            }
+            .into_wire();
+            let mut encoded = serde_json::to_vec(&reply).expect("the reply encodes");
+            encoded.push(b'\n');
+            writer
+                .write_all(&encoded)
+                .await
+                .expect("the reply is written");
+        });
+
+        let frame = RawValue::from_string(r#"{"type":"user"}"#.to_string()).expect("a raw frame");
+        let refused = wire.send_frame("conversation-1", frame).await;
+        runner.await.expect("the runner task finishes");
+
+        assert!(
+            matches!(
+                refused,
+                Err(ClaudeError::Runner(ref message))
+                    if message == "NotAttached: subscribe before sending"
+            ),
+            "a semantic rejection is not a successful write: {refused:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_event_before_a_session_send_ack_is_still_routed() {
+        let (wire, theirs) = connected_wire();
+        let (sender, mut events) = mpsc::unbounded_channel();
+        wire.sessions
+            .lock()
+            .expect("sessions lock")
+            .insert("conversation-1".to_string(), sender);
+
+        let runner = tokio::spawn(async move {
+            let (reader, mut writer) = theirs.into_split();
+            let mut reader = BufReader::new(reader);
+            let mut line = String::new();
+            reader
+                .read_line(&mut line)
+                .await
+                .expect("the request is readable");
+            let request: WireRequest = serde_json::from_str(line.trim()).expect("a wire request");
+
+            let frame = RawValue::from_string(r#"{"type":"assistant"}"#.to_string())
+                .expect("an event frame");
+            let event = Event::Frame {
+                session: "conversation-1".to_string(),
+                frame,
+            }
+            .into_wire();
+            let reply = Response {
+                id: request.id,
+                outcome: Outcome::Ok(ReplyBody::Empty {}),
+            }
+            .into_wire();
+            for message in [
+                serde_json::to_vec(&event).expect("the event encodes"),
+                serde_json::to_vec(&reply).expect("the reply encodes"),
+            ] {
+                writer
+                    .write_all(&message)
+                    .await
+                    .expect("the message is written");
+                writer.write_all(b"\n").await.expect("the line ends");
+            }
+        });
+
+        let frame = RawValue::from_string(r#"{"type":"user"}"#.to_string()).expect("a raw frame");
+        wire.send_frame("conversation-1", frame)
+            .await
+            .expect("the runner accepts the send");
+        runner.await.expect("the runner task finishes");
+
+        assert_eq!(
+            events.recv().await,
+            Some(RunnerEvent::Frame(r#"{"type":"assistant"}"#.to_string())),
+            "session output that races its acknowledgement is not discarded"
         );
     }
 }

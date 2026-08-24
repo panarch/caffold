@@ -1361,6 +1361,52 @@ mod tests {
             .expect("the conversation opens once the door is free");
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn a_rejected_prompt_never_becomes_a_turn() {
+        let (client, runner, mut events) = watching().await;
+        runner
+            .reject_next_send(SESSION, "NotAttached: subscribe before sending")
+            .await;
+
+        let sending = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .start_turn(SESSION, "run it", &[], &options("opus"))
+                    .await
+            }
+        });
+        tokio::task::yield_now().await;
+        tokio::time::advance(PROMPT_HANDBACK_TIMEOUT + Duration::from_millis(1)).await;
+        let refused = sending.await.expect("the send task finishes");
+
+        assert!(
+            matches!(
+                refused,
+                Err(ClaudeError::Runner(ref message))
+                    if message == "NotAttached: subscribe before sending"
+            ),
+            "a runner rejection must not wait ten seconds and invent a turn: {refused:?}"
+        );
+        assert!(
+            matches!(
+                events.try_recv(),
+                Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+            ),
+            "a prompt the runner refused reports no turn or active status"
+        );
+        assert!(
+            runner.prompts(SESSION).await.is_empty(),
+            "the rejected frame never reached the agent"
+        );
+
+        client
+            .start_turn(SESSION, "try again", &[], &options("opus"))
+            .await
+            .expect("a rejected prompt leaves the session retryable");
+        assert_eq!(spoken(&runner).await, vec!["try again"]);
+    }
+
     #[tokio::test]
     async fn taking_up_a_live_session_is_not_spaced_as_a_start() {
         // A backend restart builds a fresh client over the same runner, and
