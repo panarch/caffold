@@ -12,11 +12,12 @@ use serde_json::{Value, json};
 use super::runner::{self, RunnerEvent};
 use super::translate::message_items;
 use super::{
-    ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, ClaudeClient,
+    ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, ClaudeClient, ClaudeError,
     ClaudeRuntimeEvent, ControlRequestFrame, ConversationItem, Introduction, ItemKind,
     MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION, MessageFrame, PendingApproval, ResultFrame, Session,
     SessionEventKind, StreamFrame, SystemFrame, ThreadStatus, TokenCount, TokenUsage, TurnStatus,
-    now_ms, open_pending_turn, parse_timestamp_ms, protocol, replace_item, status_of,
+    end_pending_prompt, now_ms, open_pending_turn, parse_timestamp_ms, protocol, replace_item,
+    status_of,
 };
 
 impl ClaudeClient {
@@ -66,6 +67,20 @@ impl ClaudeClient {
             }
             // A session that stops speaking is no longer one Caffold can drive,
             // whether it exited or the connection went away.
+            if !said_goodbye {
+                {
+                    let mut state = session.state.lock().await;
+                    state.ended = true;
+                    state.active_turn = None;
+                    end_pending_prompt(
+                        &mut state,
+                        ClaudeError::Runner(format!(
+                            "the Claude runner went away before conversation {} identified its prompt",
+                            session.id
+                        )),
+                    );
+                }
+            }
             client.inner.sessions.lock().await.remove(&session.id);
             if !said_goodbye {
                 // Nothing said it was ending, so the runner went away under it.
@@ -360,6 +375,13 @@ impl ClaudeClient {
             let mut state = session.state.lock().await;
             state.ended = true;
             state.active_turn = None;
+            end_pending_prompt(
+                &mut state,
+                ClaudeError::Agent(format!(
+                    "Claude conversation {} exited before identifying its prompt",
+                    session.id
+                )),
+            );
         }
         self.publish(ClaudeRuntimeEvent::Diagnostic {
             message: match code {

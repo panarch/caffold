@@ -18,11 +18,11 @@
 //! own name.
 //!
 //! **A turn is bounded by what Caffold sent and what the agent answered.** It
-//! opens when a prompt is written and closes on the `result` frame that answers
-//! it. Its name comes from the agent: a prompt is handed back under the
-//! identity the agent filed it as, and that identity is what the transcript
-//! knows the turn by, so a turn watched here and the same turn read from disk
-//! are one turn.
+//! opens when the agent identifies the prompt it took and closes on the
+//! `result` frame that answers it. Its name comes from the agent: a prompt is
+//! handed back under the identity the agent filed it as, and that identity is
+//! what the transcript knows the turn by, so a turn watched here and the same
+//! turn read from disk are one turn.
 //!
 //! **History belongs to the agent.** What a session has said is kept here for
 //! as long as the session is watched, because that is what a viewer arriving
@@ -83,15 +83,6 @@ pub(crate) use self::runner::MockRunnerHandle;
 /// that has stopped answering must surface as a failure rather than as a page
 /// that never finishes loading.
 const ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-
-/// How long to wait for a prompt to be handed back before naming its turn
-/// without the agent's help.
-///
-/// The prompt has already been written by the time this starts, so waiting only
-/// delays what a person sees. The agent hands one back as soon as it reads it,
-/// and it is only ever read when nothing else is running, so this is long
-/// enough to be a fault rather than a slow moment.
-const PROMPT_HANDBACK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// Why an operation on a Claude session did not happen.
 #[derive(Debug, thiserror::Error)]
@@ -199,7 +190,7 @@ struct SessionState {
     /// call what follows. What was said is kept because the turn may end up
     /// being opened by a frame that is not the prompt coming home, and that
     /// frame does not know what was asked.
-    pending_prompt: Option<(Vec<MessageContent>, oneshot::Sender<Turn>)>,
+    pending_prompt: Option<PendingPrompt>,
     /// The turns this session has run while Caffold watched.
     turns: Vec<Turn>,
     /// Tool calls a person refused.
@@ -245,6 +236,12 @@ struct SessionState {
     /// watched — which is honest, and the only answer there is.
     opened_at_ms: u64,
     moved_at_ms: u64,
+}
+
+/// A submitted prompt waiting for Claude to establish its turn.
+struct PendingPrompt {
+    said: Vec<MessageContent>,
+    waiting: oneshot::Sender<Result<Turn, ClaudeError>>,
 }
 
 /// One question the agent is blocked on, and what answering it needs.
@@ -585,8 +582,16 @@ impl ClaudeClient {
                     "a prompt is already being sent on conversation {conversation_id}"
                 )));
             }
+            if state.ended {
+                return Err(ClaudeError::Agent(format!(
+                    "Claude conversation {conversation_id} has ended"
+                )));
+            }
             let (sender, receiver) = oneshot::channel();
-            state.pending_prompt = Some((translate::prompt_content_of(prompt, images), sender));
+            state.pending_prompt = Some(PendingPrompt {
+                said: translate::prompt_content_of(prompt, images),
+                waiting: sender,
+            });
             receiver
         };
 
@@ -596,13 +601,14 @@ impl ClaudeClient {
         }
 
         // The turn is opened by the first thing the agent says, not here, so
-        // that nothing it says arrives before there is a turn to say it in. This
-        // only waits to be told which turn that was; the timeout is for an agent
-        // that says nothing at all.
-        let turn = match tokio::time::timeout(PROMPT_HANDBACK_TIMEOUT, handed_back).await {
-            Ok(Ok(turn)) => turn,
-            _ => self.open_a_turn_unprompted(&session).await,
-        };
+        // that nothing it says arrives before there is a turn to say it in.
+        // Only Claude identifying the turn, or the session ending, can finish
+        // this wait; time passing says nothing about either.
+        let turn = handed_back.await.map_err(|_| {
+            ClaudeError::Protocol(format!(
+                "the pending prompt disappeared on conversation {conversation_id}"
+            ))
+        })??;
 
         let prompt_item = turn.items.first().cloned();
         self.report(
@@ -628,24 +634,6 @@ impl ClaudeClient {
             },
         );
         Ok(turn)
-    }
-
-    /// Open a turn for a prompt the agent has answered nothing to.
-    ///
-    /// A session that says nothing at all still has the prompt, so the turn has
-    /// to exist for the answer to arrive into. Waiting longer would only make a
-    /// person watch a conversation that shows nothing of what they asked.
-    async fn open_a_turn_unprompted(&self, session: &Arc<Session>) -> Turn {
-        let mut state = session.state.lock().await;
-        if let Some(turn) = open_pending_turn(&mut state, None) {
-            return turn;
-        }
-        // Something opened it while this was giving up on waiting.
-        let named = state.active_turn.clone();
-        named
-            .and_then(|id| state.turns.iter().find(|turn| turn.id == id))
-            .cloned()
-            .unwrap_or_else(|| open_turn(&mut state, &uuid::Uuid::new_v4().to_string(), Vec::new()))
     }
 
     /// Add to a turn already running.
@@ -943,20 +931,33 @@ pub(crate) struct ClaudeTurnOptions {
 ///
 /// `named` is what the agent filed the prompt as — said by the prompt coming
 /// home, or read back from the conversation on disk when the agent answered
-/// without handing it back. Only with no name from either source is one made
-/// up here, rather than left to a timeout the agent's own answer has already
-/// outrun — a turn opened after its `result` went by is a turn nothing will
-/// ever close.
+/// without handing it back. Only after actual output proves a turn exists can
+/// a missing name be replaced locally; silence never reaches this function.
+/// That keeps an answer from passing before there is a turn for its result to
+/// close when the transcript is unavailable.
 fn open_pending_turn(state: &mut SessionState, named: Option<&str>) -> Option<Turn> {
-    let (said, waiting) = state.pending_prompt.take()?;
+    if state.ended {
+        return None;
+    }
+    let PendingPrompt { said, waiting } = state.pending_prompt.take()?;
     let turn_id = named
         .map(str::to_string)
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let turn = open_turn(state, &turn_id, said);
-    // Nobody waiting means the prompt gave up on being told, and has taken this
-    // turn as the session's active one by another route.
-    let _ = waiting.send(turn.clone());
+    // The caller may have gone away, but actual agent output still opened this
+    // turn and remains the authority for the session state.
+    let _ = waiting.send(Ok(turn.clone()));
     Some(turn)
+}
+
+/// End a prompt that never received a turn identity from the agent.
+///
+/// The source of the terminal fact supplies the error: an ordinary agent exit
+/// is different from losing the runner underneath it.
+fn end_pending_prompt(state: &mut SessionState, error: ClaudeError) {
+    if let Some(PendingPrompt { waiting, .. }) = state.pending_prompt.take() {
+        let _ = waiting.send(Err(error));
+    }
 }
 
 /// Open a turn on a session, under the name it will be known by.
@@ -981,20 +982,14 @@ fn open_turn(state: &mut SessionState, turn_id: &str, said: Vec<MessageContent>)
     turn
 }
 
-/// What the conversation is doing, from what the session is waiting on.
+/// What the conversation is doing, from what the agent has reported.
 ///
-/// A prompt that has been written and not yet handed back has no turn to be
-/// named by, and the agent is already working on it. Reading that moment as
-/// idle would let a Task be archived — and its process ended — between a person
-/// asking for something and the agent saying what it is called.
+/// A prompt accepted by the runner but not identified by Claude is request
+/// state, not evidence of an active turn. Keeping that distinction here avoids
+/// turning transport progress into agent-owned domain state.
 fn status_of(state: &SessionState) -> ThreadStatus {
     if state.ended {
         return ThreadStatus::Idle;
-    }
-    if state.pending_prompt.is_some() {
-        return ThreadStatus::Active {
-            active_flags: Vec::new(),
-        };
     }
     if !state.pending_approvals.is_empty() {
         // Waiting on a person is not being idle, whether or not a turn is open
@@ -1361,24 +1356,16 @@ mod tests {
             .expect("the conversation opens once the door is free");
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn a_rejected_prompt_never_becomes_a_turn() {
         let (client, runner, mut events) = watching().await;
         runner
             .reject_next_send(SESSION, "NotAttached: subscribe before sending")
             .await;
 
-        let sending = tokio::spawn({
-            let client = client.clone();
-            async move {
-                client
-                    .start_turn(SESSION, "run it", &[], &options("opus"))
-                    .await
-            }
-        });
-        tokio::task::yield_now().await;
-        tokio::time::advance(PROMPT_HANDBACK_TIMEOUT + Duration::from_millis(1)).await;
-        let refused = sending.await.expect("the send task finishes");
+        let refused = client
+            .start_turn(SESSION, "run it", &[], &options("opus"))
+            .await;
 
         assert!(
             matches!(
@@ -1386,7 +1373,7 @@ mod tests {
                 Err(ClaudeError::Runner(ref message))
                     if message == "NotAttached: subscribe before sending"
             ),
-            "a runner rejection must not wait ten seconds and invent a turn: {refused:?}"
+            "a runner rejection must not invent a turn: {refused:?}"
         );
         assert!(
             matches!(
@@ -1405,6 +1392,162 @@ mod tests {
             .await
             .expect("a rejected prompt leaves the session retryable");
         assert_eq!(spoken(&runner).await, vec!["try again"]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn time_passing_does_not_report_or_activate_a_turn() {
+        let (client, runner, mut events) = watching().await;
+        runner.swallow_prompts(SESSION).await;
+
+        let mut starting = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .start_turn(SESSION, "run it", &[], &options("opus"))
+                    .await
+            }
+        });
+        heard_the_prompt(&runner).await;
+
+        tokio::time::advance(Duration::from_secs(60)).await;
+        tokio::task::yield_now().await;
+        assert!(
+            matches!(
+                events.try_recv(),
+                Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+            ),
+            "a clock is not a Claude runtime event"
+        );
+
+        assert!(
+            !starting.is_finished(),
+            "a clock says nothing about whether Claude began a turn"
+        );
+        let watched = client
+            .watched_conversation(SESSION)
+            .await
+            .expect("the conversation is still watched");
+        assert_eq!(watched.status, ThreadStatus::Idle);
+        assert!(
+            watched.turns.is_empty(),
+            "silence must not be replaced with an invented turn: {:?}",
+            watched.turns
+        );
+        runner.exit(SESSION, Some(0)).await;
+        let stopped = tokio::time::timeout(REPORT_TIMEOUT, &mut starting)
+            .await
+            .expect("the exit releases the pending request")
+            .expect("the start task finishes");
+        assert!(
+            matches!(stopped, Err(ClaudeError::Agent(ref message)) if message.contains("exited")),
+            "an exit, not the clock, explains why the turn did not begin: {stopped:?}"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_exit_cannot_be_followed_by_a_late_turn_start() {
+        let (client, runner, mut events) = watching().await;
+        runner.swallow_prompts(SESSION).await;
+
+        let mut starting = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .start_turn(SESSION, "run it", &[], &options("opus"))
+                    .await
+            }
+        });
+        heard_the_prompt(&runner).await;
+        runner.exit(SESSION, Some(0)).await;
+
+        let stopped = tokio::time::timeout(REPORT_TIMEOUT, &mut starting)
+            .await
+            .expect("the exit releases the pending request")
+            .expect("the start task finishes");
+        assert!(
+            matches!(stopped, Err(ClaudeError::Agent(ref message)) if message.contains("exited")),
+            "the request ends with the session: {stopped:?}"
+        );
+
+        let SessionEventKind::StatusChanged { status } =
+            next_session_event(&mut events, "status change").await
+        else {
+            unreachable!("asked for a status change");
+        };
+        assert_eq!(status, ThreadStatus::Idle, "the exit is terminal");
+
+        while let Ok(event) = events.try_recv() {
+            if let ClaudeRuntimeEvent::Session(SessionEvent {
+                kind:
+                    SessionEventKind::TurnStarted { .. }
+                    | SessionEventKind::StatusChanged {
+                        status: ThreadStatus::Active { .. },
+                    },
+                ..
+            }) = event
+            {
+                panic!("an ended session cannot become active again: {event:?}");
+            }
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_lost_runner_releases_a_prompt_without_inventing_its_turn() {
+        let (client, runner, mut events) = watching().await;
+        runner.swallow_prompts(SESSION).await;
+
+        let mut starting = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .start_turn(SESSION, "run it", &[], &options("opus"))
+                    .await
+            }
+        });
+        heard_the_prompt(&runner).await;
+        runner.vanish(SESSION).await;
+
+        let unreachable = tokio::time::timeout(REPORT_TIMEOUT, async {
+            loop {
+                match events.recv().await {
+                    Ok(ClaudeRuntimeEvent::Unreachable {
+                        conversation_id, ..
+                    }) => return conversation_id,
+                    Ok(ClaudeRuntimeEvent::Session(SessionEvent {
+                        kind:
+                            SessionEventKind::TurnStarted { .. }
+                            | SessionEventKind::StatusChanged {
+                                status: ThreadStatus::Active { .. },
+                            },
+                        ..
+                    })) => panic!("a lost session cannot report new work"),
+                    Ok(_) => {}
+                    Err(error) => panic!("the report channel stays open: {error}"),
+                }
+            }
+        })
+        .await
+        .expect("the lost runner is reported as unreachable");
+        assert_eq!(unreachable, SESSION);
+
+        let stopped = tokio::time::timeout(REPORT_TIMEOUT, &mut starting)
+            .await
+            .expect("losing the runner releases the pending request")
+            .expect("the start task finishes");
+        assert!(
+            matches!(stopped, Err(ClaudeError::Runner(ref message)) if message.contains("went away")),
+            "the lost transport, not an invented turn, ends the request: {stopped:?}"
+        );
+        tokio::time::timeout(REPORT_TIMEOUT, async {
+            loop {
+                if client.watched_conversation(SESSION).await.is_none() {
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the unreachable session is no longer watched");
     }
 
     #[tokio::test]
