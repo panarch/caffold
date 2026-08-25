@@ -1466,7 +1466,12 @@ mod request_tests {
         );
         assert_eq!(messages[0].position.anchor_ms, 1_000);
         assert_eq!(messages[0].position.index, 1);
-        assert_eq!(messages[0].updated_ms, Some(2_500));
+        assert!(
+            serde_json::to_value(messages[0])
+                .expect("serialize reconciled prompt")
+                .get("updatedMs")
+                .is_none()
+        );
         assert_eq!(
             messages[0].payload.as_ref().unwrap()["liveDelivery"],
             "accepted"

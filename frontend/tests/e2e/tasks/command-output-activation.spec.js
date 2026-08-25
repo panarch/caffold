@@ -103,6 +103,7 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
   ];
   const detail = {
     revision: 1,
+    eventRevision: 1,
     task,
     events,
     eventsPage: { nextCursor: null },
@@ -267,6 +268,7 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
   const reconciledDetail = {
     ...detail,
     revision: 2,
+    eventRevision: 2,
     task: {
       ...detail.task,
       updatedMs: now + 30_000,

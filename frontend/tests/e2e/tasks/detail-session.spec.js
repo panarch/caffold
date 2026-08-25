@@ -243,6 +243,20 @@ test("updates stable detail regions and preserves an active IME composition", { 
     },
     position: { anchorMs: 3, index: 0 },
   };
+  const stableSiblingEvent = {
+    id: "event-stable-sibling",
+    threadId: "thread-1",
+    type: "assistant_message",
+    summary: "Assistant response",
+    payload: {
+      turnId: "turn-0",
+      itemId: "stable-sibling",
+      text: "Stable sibling response.",
+      phase: "final",
+    },
+    position: { anchorMs: 5, index: 0 },
+  };
+  detail.events = [stableSiblingEvent];
   await page.route("**/api/tasks/thread-1", (route) =>
     route.fulfill({ json: detail }),
   );
@@ -297,6 +311,7 @@ test("updates stable detail regions and preserves an active IME composition", { 
   }, liveEvent);
 
   await expect(tasksPage).toContainText("Only the conversation changed.");
+  await expect(tasksPage).toContainText("Stable sibling response.");
   await page.evaluate((event) => {
     window.__taskDetailSource.emit("task-event", {
       threadId: "thread-1",
@@ -365,10 +380,19 @@ test("updates stable detail regions and preserves an active IME composition", { 
       conversationScroller: detailElement.querySelector(
         ".task-conversation-scroll",
       ),
+      message: detailElement.querySelector(
+        '.task-message[data-event-id="event-live-render-boundary"]',
+      ),
+      siblingMessage: detailElement.querySelector(
+        '.task-message[data-event-id="event-stable-sibling"]',
+      ),
       prompt: detailElement.querySelector(
         '.task-follow-up-form textarea[name="prompt"]',
       ),
     };
+    window.__detailRegionOrderBefore = [
+      ...detailElement.querySelectorAll(".task-message[data-event-id]"),
+    ].map((message) => message.dataset.eventId);
   });
   await page.evaluate((nextDetail) => {
     window.__taskDetailSource.emit("task-sync", {
@@ -382,11 +406,18 @@ test("updates stable detail regions and preserves an active IME composition", { 
     revision: 3,
     eventRevision: 2,
     task: { ...detail.task },
-    events: [liveEvent],
+    events: [
+      stableSiblingEvent,
+      {
+        ...liveEvent,
+        position: { anchorMs: 6, index: 1 },
+      },
+    ],
   });
   expect(
     await tasksPage.evaluate((element) => {
       const nodes = window.__detailRegionNodes;
+      const detailElement = element.querySelector("caffold-task-detail");
       return {
         summaryPreserved:
           element.querySelector("caffold-task-detail-summary h2") ===
@@ -394,6 +425,18 @@ test("updates stable detail regions and preserves an active IME composition", { 
         conversationPreserved:
           element.querySelector(".task-conversation-scroll") ===
           nodes.conversationScroller,
+        messagePreserved:
+          detailElement.querySelector(
+            '.task-message[data-event-id="event-live-render-boundary"]',
+          ) === nodes.message,
+        siblingMessagePreserved:
+          detailElement.querySelector(
+            '.task-message[data-event-id="event-stable-sibling"]',
+          ) === nodes.siblingMessage,
+        orderBefore: window.__detailRegionOrderBefore,
+        orderAfter: [
+          ...detailElement.querySelectorAll(".task-message[data-event-id]"),
+        ].map((message) => message.dataset.eventId),
         promptPreserved:
           element.querySelector(
             '.task-follow-up-form textarea[name="prompt"]',
@@ -403,6 +446,10 @@ test("updates stable detail regions and preserves an active IME composition", { 
   ).toEqual({
     summaryPreserved: true,
     conversationPreserved: true,
+    messagePreserved: true,
+    siblingMessagePreserved: true,
+    orderBefore: ["event-live-render-boundary", "event-stable-sibling"],
+    orderAfter: ["event-stable-sibling", "event-live-render-boundary"],
     promptPreserved: true,
   });
 

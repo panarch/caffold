@@ -32,6 +32,7 @@ import {
   optimisticUserMessageEvent,
   prependDetailEvents,
   projectCanonicalEvents,
+  projectHistoryLoadingEvents,
 } from "../../task-events.js";
 import { cleanLogicalPath } from "../../task-format.js";
 import {
@@ -613,11 +614,13 @@ class CaffoldTaskDetail extends HTMLElement {
       );
       this.setThreadEvents(
         threadId,
-        projectCanonicalEvents(
-          incomingEvents,
-          this.olderEventsByThread.get(threadId) ?? [],
-          optimisticEvents,
-        ),
+        detail?.historyLoading
+          ? projectHistoryLoadingEvents(incomingEvents, currentEvents)
+          : projectCanonicalEvents(
+              incomingEvents,
+              this.olderEventsByThread.get(threadId) ?? [],
+              optimisticEvents,
+            ),
       );
     }
     if (preferCurrentEvents || projectionDecision.accepted) {

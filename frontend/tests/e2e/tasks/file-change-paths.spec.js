@@ -88,6 +88,7 @@ test("renders managed Task file changes relative in live cards and Work details"
   ];
   const detail = {
     revision: 1,
+    eventRevision: 1,
     task,
     events,
     eventsPage: { nextCursor: null },
@@ -160,6 +161,7 @@ test("renders managed Task file changes relative in live cards and Work details"
 
   const equivalentDetail = structuredClone(detail);
   equivalentDetail.revision = 2;
+  equivalentDetail.eventRevision = 2;
   await emitTaskSync(page, threadId, equivalentDetail);
   await expect
     .poll(() =>
@@ -193,6 +195,7 @@ test("renders managed Task file changes relative in live cards and Work details"
 
   const revisedDetail = structuredClone(detail);
   revisedDetail.revision = 3;
+  revisedDetail.eventRevision = 3;
   const revisedStandalone = revisedDetail.events.find(
     ({ id }) => id === "standalone-file-change",
   );

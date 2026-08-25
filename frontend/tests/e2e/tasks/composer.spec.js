@@ -253,6 +253,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
   let timedOutAttempts = 0;
   const detail = () => ({
     revision,
+    eventRevision: revision,
     task,
     events: canonicalEvents,
     eventsPage: { nextCursor: null },
@@ -573,6 +574,7 @@ test("keeps exact prompt order when Detail or live content arrives before the pr
   });
   const detail = () => ({
     revision,
+    eventRevision: revision,
     task,
     events: canonicalEvents,
     eventsPage: { nextCursor: null },

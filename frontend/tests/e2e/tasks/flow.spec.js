@@ -38,6 +38,8 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
     lastEventSummary: "Assistant response",
   };
   const detail = {
+    revision: 1,
+    eventRevision: 1,
     task,
     activeTopPlacement: {
       section: {

@@ -275,6 +275,17 @@ export function projectCanonicalEvents(
   ]);
 }
 
+// A Detail snapshot produced while provider history is still loading owns
+// every exact identity it contains, but it cannot declare that retained
+// readable history disappeared. Keep absent records until a complete Detail
+// snapshot owns projection membership.
+export function projectHistoryLoadingEvents(
+  detailEvents,
+  retainedEvents = [],
+) {
+  return prependDetailEvents(detailEvents, retainedEvents);
+}
+
 // Once the prompt response or first provider projection proves which exact
 // item an optimistic submission became, keep the position already visible in
 // this browser. A later Detail reconciliation still replaces it with provider
@@ -296,13 +307,7 @@ export function handoffOptimisticSubmission(
     existingConfirmed,
     confirmedEvent,
   );
-  const latestUpdateMs = latestTaskEventUpdateMs(confirmed, optimistic);
-  const handedOff = projectPrimaryEvent(
-    confirmed,
-    null,
-    optimistic.position,
-    { updatedMs: latestUpdateMs },
-  );
+  const handedOff = projectPrimaryEvent(confirmed, null, optimistic.position);
   const remaining = events.filter(
     (event) =>
       event.id !== optimisticEventId &&
@@ -340,22 +345,10 @@ function applyCanonicalDetailRecord(existing, incoming) {
   return projectPrimaryEvent(incoming, existing, incoming.position);
 }
 
-function projectPrimaryEvent(
-  primary,
-  supplemental,
-  position,
-  { updatedMs = latestTaskEventUpdateMs(primary, supplemental) } = {},
-) {
-  const {
-    position: _primaryPosition,
-    updatedMs: _primaryUpdatedMs,
-    ...primaryFields
-  } = primary;
-  const {
-    position: _supplementalPosition,
-    updatedMs: _supplementalUpdatedMs,
-    ...supplementalFields
-  } = supplemental ?? {};
+function projectPrimaryEvent(primary, supplemental, position) {
+  const { position: _primaryPosition, ...primaryFields } = primary;
+  const { position: _supplementalPosition, ...supplementalFields } =
+    supplemental ?? {};
   const carriesObservedTime = [primary, supplemental].some(
     (event) => event && Object.prototype.hasOwnProperty.call(event, "observedMs"),
   );
@@ -367,31 +360,13 @@ function projectPrimaryEvent(
     ...(supplemental?.payload ?? {}),
     ...(primary?.payload ?? {}),
   };
-  const anchorMs = taskEventAnchorMs({ position });
-  const carriesUpdatedMs =
-    updatedMs !== null && anchorMs !== null && updatedMs > anchorMs;
   return {
     ...supplementalFields,
     ...primaryFields,
     payload,
     position,
     ...(carriesObservedTime ? { observedMs } : {}),
-    ...(carriesUpdatedMs ? { updatedMs } : {}),
   };
-}
-
-function taskEventUpdateMs(event) {
-  const updatedMs = event?.updatedMs;
-  return Number.isSafeInteger(updatedMs) && updatedMs >= 0
-    ? updatedMs
-    : taskEventAnchorMs(event);
-}
-
-function latestTaskEventUpdateMs(...events) {
-  const values = events
-    .map(taskEventUpdateMs)
-    .filter((value) => value !== null);
-  return values.length ? Math.max(...values) : null;
 }
 
 export function optimisticUserMessageEvent(threadId, prompt, images, requestId) {

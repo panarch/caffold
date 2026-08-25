@@ -242,6 +242,10 @@ test("preserves readable detail and buffers events through a loading reconnect b
     "Canonical reconnect snapshot replaced the baseline.",
     2,
   );
+  // The readable snapshot was cut before the buffered publication below.
+  // A backend snapshot watermark is strictly before a delta it does not yet
+  // contain; equal values would describe an impossible publication order.
+  recoveredDetail.eventRevision = 1;
   let detailReads = 0;
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>

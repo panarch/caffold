@@ -11,6 +11,7 @@ import {
   optimisticUserMessageEvent,
   prependDetailEvents,
   projectCanonicalEvents,
+  projectHistoryLoadingEvents,
   sortEventsChronologically,
   taskEventPosition,
 } from "./task-events.js";
@@ -111,7 +112,7 @@ test("projection deltas keep first position while the incoming patch wins", () =
       status: "completed",
       output: "done",
     },
-    { observedMs: 120, updatedMs: 140, positionIndex: 9 },
+    { observedMs: 120, positionIndex: 9 },
   );
   const earlier = event("message-1", "assistant_message", 90, {
     turnId: "turn-1",
@@ -122,7 +123,7 @@ test("projection deltas keep first position while the incoming patch wins", () =
 
   assert.deepEqual(merged.map(({ id }) => id), ["message-1", "item-1"]);
   assert.deepEqual(merged[1].position, { anchorMs: 100, index: 2 });
-  assert.equal(merged[1].updatedMs, 140);
+  assert.equal(Object.hasOwn(merged[1], "updatedMs"), false);
   assert.equal(merged[1].observedMs, 100);
   // The newer record wins where the two disagree, and what only the earlier
   // one carried survives.
@@ -145,7 +146,6 @@ test("projection deltas do not reinterpret backend lifecycle state", () => {
       command: "cargo test",
       output: "started",
     },
-    { updatedMs: 110 },
   );
   const completed = event(
     "item-1",
@@ -157,7 +157,7 @@ test("projection deltas do not reinterpret backend lifecycle state", () => {
       command: "cargo test",
       output: "done",
     },
-    { updatedMs: 120, summary: "Command completed" },
+    { summary: "Command completed" },
   );
   const replay = event(
     "item-1",
@@ -170,7 +170,7 @@ test("projection deltas do not reinterpret backend lifecycle state", () => {
       output: "replayed partial output",
       replayOnly: true,
     },
-    { updatedMs: 130, summary: "Command running again" },
+    { summary: "Command running again" },
   );
 
   const merged = applyProjectionDeltas(
@@ -467,9 +467,7 @@ test("an item's start and its finish stay one conversation entry", () => {
     exitCode: 0,
   });
 
-  const reconciled = applyProjectionDeltas([started], [
-    { ...finished, updatedMs: 200 },
-  ]);
+  const reconciled = applyProjectionDeltas([started], [finished]);
 
   assert.equal(reconciled.length, 1);
   assert.equal(reconciled[0].payload.status, "completed");
@@ -531,7 +529,7 @@ test("a canonical snapshot owns item fields and position without browser enrichm
     "a late observation cannot move a prompt behind its answer",
   );
   assert.deepEqual(reconciled[0].position, { anchorMs: 100, index: 1 });
-  assert.equal(reconciled[0].updatedMs, undefined);
+  assert.equal(Object.hasOwn(reconciled[0], "updatedMs"), false);
   assert.equal(reconciled[0].payload.liveDelivery, undefined);
   assert.deepEqual(reconciled[0].payload.content, [
     { type: "text", text: "Test the ordering" },
@@ -589,6 +587,72 @@ test("an older Detail page cannot replace the current cursor-boundary item", () 
   assert.equal(projected[1].payload.olderOnly, true);
 });
 
+test("a history-loading Detail advances exact items without deleting retained history", () => {
+  const retainedHistory = event(
+    "retained-history",
+    "assistant_message",
+    50,
+    {
+      turnId: "turn-0",
+      itemId: "message-0",
+      text: "Readable provider history",
+    },
+  );
+  const retainedCommand = event(
+    "retained-command",
+    "tool_call",
+    100,
+    {
+      turnId: "turn-1",
+      itemId: "command-1",
+      status: "inProgress",
+      output: "partial output",
+      retainedOnly: true,
+    },
+    { summary: "Retained command", positionIndex: 4 },
+  );
+  const currentCommand = event(
+    "current-command",
+    "command_execution",
+    120,
+    {
+      turnId: "turn-1",
+      itemId: "command-1",
+      status: "completed",
+      output: "complete output",
+    },
+    { summary: "Current command", positionIndex: 1 },
+  );
+  const currentMessage = event(
+    "current-message",
+    "assistant_message",
+    130,
+    {
+      turnId: "turn-1",
+      itemId: "message-1",
+      text: "Current live projection",
+    },
+  );
+
+  const projected = projectHistoryLoadingEvents(
+    [currentCommand, currentMessage],
+    [retainedHistory, retainedCommand],
+  );
+
+  assert.deepEqual(projected.map(({ id }) => id), [
+    "retained-history",
+    "current-command",
+    "current-message",
+  ]);
+  assert.equal(projected[1].type, "command_execution");
+  assert.equal(projected[1].summary, "Current command");
+  assert.deepEqual(projected[1].position, currentCommand.position);
+  assert.equal(projected[1].payload.status, "completed");
+  assert.equal(projected[1].payload.output, "complete output");
+  assert.equal(projected[1].payload.retainedOnly, true);
+  assert.equal(Object.hasOwn(projected[1], "updatedMs"), false);
+});
+
 test("canonical Detail requires no retained-live conflict arbitration", () => {
   const staleLive = event(
     "live-command",
@@ -603,11 +667,7 @@ test("canonical Detail requires no retained-live conflict arbitration", () => {
       structure: "transient",
       liveOnly: true,
     },
-    {
-      updatedMs: 300,
-      summary: "Transient command running",
-      positionIndex: 9,
-    },
+    { summary: "Transient command running", positionIndex: 9 },
   );
   const canonical = event(
     "history-command",
@@ -682,7 +742,11 @@ test("an exact submission handoff keeps its optimistic position until Detail own
   );
   assert.equal(handedOff[0].id, accepted.id);
   assert.deepEqual(handedOff[0].position, optimistic.position);
-  assert.equal(handedOff[0].updatedMs, accepted.position.anchorMs);
+  assert.equal(
+    Object.hasOwn(handedOff[0], "updatedMs"),
+    false,
+    "exact handoff must not expose a position-derived update timestamp",
+  );
   assert.equal(handedOff[0].payload.liveDelivery, "accepted");
   assert.equal(handedOff[0].payload.optimistic, undefined);
 

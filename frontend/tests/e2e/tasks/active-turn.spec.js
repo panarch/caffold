@@ -76,7 +76,6 @@ test("shows context compaction only while its lifecycle item is active", { tag: 
       ...compactionStarted.payload,
       status: "completed",
     },
-    updatedMs: startedAtMs + 2_000,
   };
   await emitTaskEvent(page, threadId, compactionCompleted, 3);
   await expect(state).toHaveText("Thinking");

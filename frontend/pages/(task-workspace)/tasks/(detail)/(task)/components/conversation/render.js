@@ -559,7 +559,6 @@ function conversationEntryAttributes(event, presentation = "") {
     event?.type,
     event?.summary,
     event?.payload,
-    event?.position,
     event?.fileLinks,
     presentation,
   ]);

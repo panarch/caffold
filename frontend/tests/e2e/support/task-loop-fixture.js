@@ -620,22 +620,19 @@ export async function installTaskLoopFixture(
           },
           10,
         ),
-        {
-          ...eventRecord(
-            "event_9_command_completed",
-            "command_execution",
-            "Command completed",
-            {
-              turnId: "turn_1",
-              itemId: "command_1",
-              command: "cargo test",
-              cwd: "src",
-              status: "completed",
-            },
-            9,
-          ),
-          updatedMs: now + 11,
-        },
+        eventRecord(
+          "event_9_command_completed",
+          "command_execution",
+          "Command completed",
+          {
+            turnId: "turn_1",
+            itemId: "command_1",
+            command: "cargo test",
+            cwd: "src",
+            status: "completed",
+          },
+          9,
+        ),
         eventRecord(
           "event_10_repeat",
           "file_change",

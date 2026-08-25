@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     sync::{Arc, Mutex},
 };
 
@@ -52,8 +52,6 @@ pub(in crate::app) struct TaskEventRecord {
     /// unknown time from a backend that only supplied conversation position.
     #[serde(default)]
     pub(in crate::app) observed_ms: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(in crate::app) updated_ms: Option<u64>,
     /// Typed lifecycle evidence retained behind the projection boundary.
     ///
     /// The rendered payload also names status, but merge policy must not infer
@@ -110,6 +108,11 @@ pub(in crate::app) struct TaskEventSnapshot {
 #[derive(Default)]
 struct LiveTaskEventCacheState {
     events: HashMap<String, Vec<TaskEventObservation>>,
+    /// Thread ids from least to most recently observed.
+    ///
+    /// This bounds backend memory only. It is not conversation placement,
+    /// provider causality, lifecycle authority, or frontend publication order.
+    threads_by_observation_recency: VecDeque<String>,
     /// Per-Task publication sequence. Entries survive cache eviction so a
     /// later empty snapshot or new event cannot move a connected browser
     /// backwards. Explicit Task removal clears the entry.
@@ -168,28 +171,15 @@ impl LiveTaskEventCache {
             return TaskEventPublication { revision: 0, event };
         };
         let thread_id = event.thread_id.clone();
-        if !state.events.contains_key(&thread_id) && state.events.len() >= LIVE_TASK_THREAD_LIMIT {
-            let oldest_thread = state
-                .events
-                .iter()
-                .min_by_key(|(_, items)| {
-                    items
-                        .iter()
-                        .map(|item| {
-                            item.event
-                                .updated_ms
-                                .unwrap_or(item.event.position.anchor_ms)
-                        })
-                        .max()
-                        .unwrap_or_default()
-                })
-                .map(|(thread_id, _)| thread_id.clone());
-            if let Some(oldest_thread) = oldest_thread {
-                state.events.remove(&oldest_thread);
-                state.invalidated_turns.remove(&oldest_thread);
-                advance_revision(&mut state.revisions, &oldest_thread);
-            }
+        if !state.events.contains_key(&thread_id)
+            && state.events.len() >= LIVE_TASK_THREAD_LIMIT
+            && let Some(oldest_thread) = state.threads_by_observation_recency.pop_front()
+        {
+            state.events.remove(&oldest_thread);
+            state.invalidated_turns.remove(&oldest_thread);
+            advance_revision(&mut state.revisions, &oldest_thread);
         }
+        observe_thread_recency(&mut state.threads_by_observation_recency, &thread_id);
         let publication_revision = advance_revision(&mut state.revisions, &thread_id);
         let thread_events = state.events.entry(thread_id).or_default();
         if let Some(existing) = thread_events
@@ -332,8 +322,16 @@ impl LiveTaskEventCache {
             state.events.remove(thread_id);
             state.invalidated_turns.remove(thread_id);
             state.revisions.remove(thread_id);
+            state
+                .threads_by_observation_recency
+                .retain(|existing| existing != thread_id);
         }
     }
+}
+
+fn observe_thread_recency(recency: &mut VecDeque<String>, thread_id: &str) {
+    recency.retain(|existing| existing != thread_id);
+    recency.push_back(thread_id.to_string());
 }
 
 fn advance_revision(revisions: &mut HashMap<String, u64>, thread_id: &str) -> u64 {
@@ -665,9 +663,7 @@ fn provider_lifecycle_regresses(existing: &TaskEventRecord, incoming: &TaskEvent
 ///
 /// `primary` owns conflicting presentation and payload fields. `supplemental`
 /// may fill fields the owner did not supply, contribute direct observation
-/// evidence, and retain a generated asset under the same identity. Update
-/// metadata is preserved for the later removal stage but never selects the
-/// owner.
+/// evidence, and retain a generated asset under the same identity.
 fn project_primary_record(
     mut primary: TaskEventRecord,
     supplemental: TaskEventRecord,
@@ -678,8 +674,6 @@ fn project_primary_record(
         (Some(observed), None) | (None, Some(observed)) => Some(observed),
         (None, None) => None,
     };
-    let updated_ms =
-        observation_update_marker(&primary).max(observation_update_marker(&supplemental));
     let supplemental_generated_image = supplemental.generated_image;
     let supplemental_activity_status = supplemental.activity_status;
     primary.payload = match (primary.payload.take(), supplemental.payload) {
@@ -696,12 +690,7 @@ fn project_primary_record(
     primary.observed_ms = observed_ms;
     primary.activity_status = primary.activity_status.or(supplemental_activity_status);
     primary.generated_image = primary.generated_image.or(supplemental_generated_image);
-    primary.updated_ms = (updated_ms > position.anchor_ms).then_some(updated_ms);
     primary
-}
-
-fn observation_update_marker(event: &TaskEventRecord) -> u64 {
-    event.updated_ms.unwrap_or(event.position.anchor_ms)
 }
 
 pub(in crate::app) fn sort_task_events(events: &mut [TaskEventRecord]) {
@@ -1139,7 +1128,6 @@ pub(in crate::app) fn task_event_record(
         payload,
         position: TaskEventPosition::at(anchor_ms),
         observed_ms: Some(anchor_ms),
-        updated_ms: None,
         activity_status: None,
         generated_image: None,
     }
@@ -1314,6 +1302,7 @@ mod tests {
         assert!(value["observedMs"].is_null());
         assert!(value.get("createdMs").is_none());
         assert!(value.get("sortIndex").is_none());
+        assert!(value.get("updatedMs").is_none());
     }
 
     /// One item from Codex's raw model-output stream, which reports work that
@@ -1511,7 +1500,12 @@ mod tests {
         let prompt = &merged[0];
         assert_eq!(prompt.position.anchor_ms, 100);
         assert_eq!(prompt.position.index, 1);
-        assert_eq!(prompt.updated_ms, Some(200));
+        assert!(
+            serde_json::to_value(prompt)
+                .expect("serialize reconciled prompt")
+                .get("updatedMs")
+                .is_none()
+        );
         assert_eq!(prompt.payload.as_ref().unwrap()["liveDelivery"], "accepted");
         assert!(
             prompt.payload.as_ref().unwrap()["content"].is_array(),
@@ -2033,8 +2027,12 @@ mod tests {
         cache.record_provider_lifecycle(started);
         let merged = cache.record_provider_lifecycle(completed);
         assert_eq!(merged.position.anchor_ms, 10);
-        assert_eq!(merged.updated_ms, Some(20));
         assert_eq!(merged.payload.as_ref().unwrap()["status"], "completed");
+        let serialized = serde_json::to_value(merged).expect("serialize merged task event");
+        assert!(
+            serialized.get("updatedMs").is_none(),
+            "same-live lifecycle bookkeeping stays behind the Task-event wire boundary"
+        );
     }
 
     #[test]
@@ -3268,7 +3266,7 @@ mod tests {
     }
 
     #[test]
-    fn live_task_event_cache_evicts_the_oldest_thread() {
+    fn live_task_event_cache_evicts_the_least_recently_observed_thread() {
         let cache = LiveTaskEventCache::default();
         for index in 0..=LIVE_TASK_THREAD_LIMIT {
             cache.record_provider_lifecycle(task_event_record(
@@ -3277,11 +3275,14 @@ mod tests {
                 "assistant_message",
                 "Answer",
                 None,
-                index as u64,
+                if index == 0 { u64::MAX } else { index as u64 },
             ));
         }
 
-        assert!(cache.for_thread("thread_0").is_empty());
+        assert!(
+            cache.for_thread("thread_0").is_empty(),
+            "conversation position cannot keep the least recently observed cache entry alive"
+        );
         assert_eq!(
             cache
                 .for_thread(&format!("thread_{LIVE_TASK_THREAD_LIMIT}"))
@@ -3292,6 +3293,74 @@ mod tests {
             cache.state.lock().unwrap().events.len(),
             LIVE_TASK_THREAD_LIMIT
         );
+    }
+
+    #[test]
+    fn live_task_event_cache_refreshes_thread_observation_recency() {
+        let cache = LiveTaskEventCache::default();
+        for index in 0..LIVE_TASK_THREAD_LIMIT {
+            cache.record_provider_lifecycle(task_event_record(
+                &format!("thread_{index}"),
+                "event_1",
+                "assistant_message",
+                "Answer",
+                None,
+                index as u64,
+            ));
+        }
+        cache.record_provider_lifecycle(task_event_record(
+            "thread_0",
+            "event_2",
+            "assistant_message",
+            "Later answer",
+            None,
+            0,
+        ));
+        cache.record_provider_lifecycle(task_event_record(
+            &format!("thread_{LIVE_TASK_THREAD_LIMIT}"),
+            "event_1",
+            "assistant_message",
+            "Overflow answer",
+            None,
+            0,
+        ));
+
+        assert_eq!(cache.for_thread("thread_0").len(), 2);
+        assert!(cache.for_thread("thread_1").is_empty());
+    }
+
+    #[test]
+    fn removing_a_thread_also_removes_its_cache_recency_entry() {
+        let cache = LiveTaskEventCache::default();
+        for index in 0..LIVE_TASK_THREAD_LIMIT {
+            cache.record_provider_lifecycle(task_event_record(
+                &format!("thread_{index}"),
+                "event_1",
+                "assistant_message",
+                "Answer",
+                None,
+                index as u64,
+            ));
+        }
+        cache.remove_thread("thread_0");
+        for index in LIVE_TASK_THREAD_LIMIT..=LIVE_TASK_THREAD_LIMIT + 1 {
+            cache.record_provider_lifecycle(task_event_record(
+                &format!("thread_{index}"),
+                "event_1",
+                "assistant_message",
+                "Replacement answer",
+                None,
+                index as u64,
+            ));
+        }
+
+        let state = cache.state.lock().unwrap();
+        assert_eq!(state.events.len(), LIVE_TASK_THREAD_LIMIT);
+        assert_eq!(
+            state.threads_by_observation_recency.len(),
+            LIVE_TASK_THREAD_LIMIT
+        );
+        assert!(!state.events.contains_key("thread_1"));
     }
 
     #[test]

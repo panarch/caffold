@@ -347,7 +347,9 @@ test("keeps the visible conversation anchor while loading older events by cursor
         reason: "session-bootstrap",
         detail: {
           revision: 2,
-          eventRevision: 1,
+          // This is a newer live-projection cut, but provider history is still
+          // loading. Its absent history entries are therefore not deletions.
+          eventRevision: 2,
           task,
           events: [],
           eventsPage: { nextCursor: null },

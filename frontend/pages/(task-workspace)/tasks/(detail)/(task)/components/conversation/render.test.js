@@ -28,7 +28,6 @@ test("delegates active-turn presentation to its component snapshot", () => {
       ...compactionStarted.payload,
       status: "completed",
     },
-    updatedMs: 3,
   };
 
   const active = renderConversation(
@@ -92,12 +91,18 @@ test("does not present a history placement anchor as an item timestamp", () => {
   assert.match(renderConversationEvent(directlyObserved, {}), /<time>/);
 });
 
-test("update metadata alone does not replace a conversation entry", () => {
+test("conversation position alone does not replace an entry's content", () => {
   const message = messageEvent("assistant_message", { phase: "final" });
 
   assert.equal(
-    renderConversationEvent({ ...message, updatedMs: 20 }, {}),
-    renderConversationEvent({ ...message, updatedMs: 30 }, {}),
+    renderConversationEvent(
+      { ...message, position: { anchorMs: 20, index: 0 } },
+      {},
+    ),
+    renderConversationEvent(
+      { ...message, position: { anchorMs: 30, index: 1 } },
+      {},
+    ),
   );
 });
 

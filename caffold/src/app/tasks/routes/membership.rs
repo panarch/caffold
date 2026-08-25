@@ -1994,7 +1994,6 @@ mod tests {
             payload: None,
             position: TaskEventPosition::at(1),
             observed_ms: Some(1),
-            updated_ms: None,
             activity_status: None,
             generated_image: None,
         });
