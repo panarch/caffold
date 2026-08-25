@@ -96,6 +96,9 @@ pub(crate) enum ClaudeError {
     /// The agent answered, and the answer was a refusal.
     #[error("Claude refused: {0}")]
     Agent(String),
+    /// The agent-owned transcript could not answer a history read.
+    #[error("Claude transcript is unavailable: {0}")]
+    History(String),
     /// No session is being watched under that conversation's name.
     #[error("Caffold is not watching Claude conversation {0}.")]
     NotWatching(String),
@@ -545,6 +548,7 @@ impl ClaudeClient {
             .and_then(|projects| transcript::locate(projects, cwd, id))?;
         let reading = tokio::task::spawn_blocking(move || transcript::read(&path, None, 1))
             .await
+            .ok()?
             .ok()?;
         reading.page.turns.into_iter().next()
     }
@@ -738,18 +742,21 @@ impl ClaudeClient {
         cwd: &str,
         cursor: Option<&str>,
         limit: usize,
-    ) -> TurnPage {
-        let Some(path) = self
+    ) -> Result<TurnPage, ClaudeError> {
+        let path = self
             .projects()
             .and_then(|projects| transcript::locate(projects, cwd, conversation_id))
-        else {
-            return TurnPage::default();
-        };
+            .ok_or_else(|| {
+                ClaudeError::History(format!(
+                    "cannot work out where conversation {conversation_id} is written down"
+                ))
+            })?;
         let cursor = cursor.map(str::to_string);
         let reading =
             tokio::task::spawn_blocking(move || transcript::read(&path, cursor.as_deref(), limit))
                 .await
-                .unwrap_or_default();
+                .map_err(|error| ClaudeError::History(format!("history reader stopped: {error}")))?
+                .map_err(|error| ClaudeError::History(error.to_string()))?;
         if reading.unreadable > 0 {
             self.publish(ClaudeRuntimeEvent::Diagnostic {
                 message: format!(
@@ -768,7 +775,7 @@ impl ClaudeClient {
                 }
             }
         }
-        page
+        Ok(page)
     }
 
     // -----------------------------------------------------------------------
@@ -922,9 +929,10 @@ impl From<ClaudeError> for crate::agent::AgentError {
             // Not watching is not unreachable: the runner is fine and the
             // conversation is simply not there to be asked about.
             ClaudeError::NotWatching(_) => AgentError::ConversationGone(error.to_string()),
-            ClaudeError::Protocol(_) | ClaudeError::Agent(_) | ClaudeError::NoSuchApproval(_) => {
-                AgentError::Failed(error.to_string())
-            }
+            ClaudeError::Protocol(_)
+            | ClaudeError::Agent(_)
+            | ClaudeError::History(_)
+            | ClaudeError::NoSuchApproval(_) => AgentError::Failed(error.to_string()),
         }
     }
 }
@@ -1892,6 +1900,80 @@ mod tests {
         assert_eq!(
             moved.created_at_ms, opened.created_at_ms,
             "when it began does not move"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_missing_transcript_is_empty_but_an_unverifiable_page_is_an_error() {
+        let projects = tempfile::tempdir().expect("a projects directory");
+        let (client, _runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
+
+        let missing = client
+            .read_turns(SESSION, CWD, None, 8)
+            .await
+            .expect("the agent has not written this transcript yet");
+        assert!(missing.turns.is_empty());
+
+        client.write_test_transcript(
+            CWD,
+            SESSION,
+            &serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "hello"},
+            })
+            .to_string(),
+        );
+        let error = client
+            .read_turns(SESSION, CWD, Some("a turn id is not a cursor"), 8)
+            .await
+            .expect_err("the cursor cannot be verified");
+
+        assert!(
+            matches!(error, ClaudeError::History(ref message) if message.contains("cursor is invalid"))
+        );
+    }
+
+    #[tokio::test]
+    async fn transcript_io_failure_does_not_become_empty_agent_history() {
+        let projects = tempfile::tempdir().expect("a projects directory");
+        let (client, _runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
+        client.write_test_transcript(
+            CWD,
+            SESSION,
+            &serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "hello"},
+            })
+            .to_string(),
+        );
+        let path = transcript::locate(projects.path(), CWD, SESSION).expect("the transcript path");
+        std::fs::remove_file(&path).expect("replace the transcript fixture");
+        std::fs::create_dir(&path).expect("an unreadable transcript stand-in");
+
+        let error = client
+            .read_turns(SESSION, CWD, None, 8)
+            .await
+            .expect_err("the canonical source is unavailable");
+
+        assert!(matches!(error, ClaudeError::History(_)));
+    }
+
+    #[tokio::test]
+    async fn an_unknown_transcript_root_is_not_an_empty_transcript() {
+        let (runner, _handle) = RunnerClient::mock();
+        let client = ClaudeClient::with_runner_and_projects(runner, None);
+
+        let error = client
+            .read_turns(SESSION, CWD, None, 8)
+            .await
+            .expect_err("there is no canonical location to read");
+
+        assert!(
+            matches!(error, ClaudeError::History(ref message) if message.contains("cannot work out where"))
         );
     }
 }

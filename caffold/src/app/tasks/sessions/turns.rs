@@ -54,21 +54,37 @@ impl TaskSessions {
             return Ok(None);
         };
 
-        let latest = driver
+        let latest = match driver
             .read_turns(thread_id, None, INITIAL_TURNS_PAGE_SIZE)
-            .await?;
+            .await
+        {
+            Ok(latest) => latest,
+            Err(error) => {
+                let mut state = entry.state.lock().await;
+                if state.generation == generation && state.lifecycle == SessionLifecycle::Subscribed
+                {
+                    let message = error.to_string();
+                    if state.last_error.as_deref() != Some(message.as_str()) {
+                        state.last_error = Some(message);
+                        state.revision = state.revision.saturating_add(1);
+                    }
+                    return Err(error);
+                }
+                return Ok(None);
+            }
+        };
         let mut state = entry.state.lock().await;
         if state.generation != generation || state.lifecycle != SessionLifecycle::Subscribed {
             return Ok(None);
         }
         let before = state.turns_page.clone();
+        let recovered = state.last_error.take().is_some();
         merge_latest_turns_page(&mut state.turns_page, latest);
-        if state.turns_page == before {
+        if state.turns_page == before && !recovered {
             return Ok(None);
         }
         state.revision = state.revision.saturating_add(1);
         state.last_sync_ms = Some(now_unix_ms());
-        state.last_error = None;
         Ok(Some(snapshot(&state)))
     }
 }
@@ -579,5 +595,59 @@ mod tests {
                 .map(|turn| turn.id.as_str()),
             Some(latest_turn.id.as_str())
         );
+    }
+
+    #[tokio::test]
+    async fn failed_canonical_history_refresh_is_visible_until_a_read_succeeds() {
+        let latest = wire_turn_at("turn-latest", TurnStatus::Completed, 2.0);
+        let latest_page = wire_page(vec![latest.clone()], None, None);
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                ThreadResumeResponse {
+                    cwd: "/tmp".to_string(),
+                    thread: thread(ThreadStatus::Idle, Vec::new()),
+                    initial_turns_page: Some(decoded(latest_page.clone())),
+                    extra: BTreeMap::new(),
+                },
+            ),
+            MockCodexResponse::error(
+                "thread/turns/list",
+                CodexThreadError::Protocol("the canonical history cannot be read".to_string()),
+            ),
+            MockCodexResponse::ok("thread/turns/list", latest_page),
+        ]);
+        let sessions = TaskSessions::default();
+        let _viewer = sessions
+            .acquire_viewer(&client.driver(), 1, "thread-1")
+            .await
+            .expect("viewer");
+        let before = sessions.snapshot("thread-1").await.expect("snapshot");
+
+        sessions
+            .refresh_latest_turns(1, "thread-1")
+            .await
+            .expect_err("a failed canonical read remains a failure");
+
+        let failed = sessions.snapshot("thread-1").await.expect("snapshot");
+        assert_eq!(failed.lifecycle, SessionLifecycle::Subscribed);
+        assert_eq!(failed.turns_page, before.turns_page, "known turns remain");
+        assert!(
+            failed
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("canonical history cannot be read"))
+        );
+        assert!(failed.revision > before.revision);
+
+        let recovered = sessions
+            .refresh_latest_turns(1, "thread-1")
+            .await
+            .expect("the next canonical read succeeds")
+            .expect("clearing an unavailable state changes the snapshot");
+
+        assert_eq!(recovered.turns_page, before.turns_page);
+        assert_eq!(recovered.last_error, None);
+        assert!(recovered.revision > failed.revision);
     }
 }

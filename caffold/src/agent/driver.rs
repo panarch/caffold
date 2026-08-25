@@ -550,7 +550,7 @@ impl Driver {
                         claude
                             .client
                             .read_turns(conversation_id, &claude.cwd, None, INITIAL_TURNS_PAGE)
-                            .await,
+                            .await?,
                     ),
                     false => None,
                 };
@@ -577,10 +577,11 @@ impl Driver {
                     .list_thread_turns(conversation_id, cursor, limit)
                     .await?,
             )),
-            Self::Claude(claude) => Ok(claude
+            Self::Claude(claude) => claude
                 .client
                 .read_turns(conversation_id, &claude.cwd, cursor, limit)
-                .await),
+                .await
+                .map_err(Into::into),
         }
     }
 

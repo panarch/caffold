@@ -67,6 +67,8 @@ use crate::agent::{
     TurnStatus,
 };
 
+mod bytes;
+
 /// One line of the transcript.
 ///
 /// Two dozen kinds are written and this reads three. The rest — the titles the
@@ -310,12 +312,23 @@ pub(crate) struct Reading {
     pub(crate) unreadable: usize,
 }
 
+/// Why the agent-owned history could not be read as the page requested.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ReadError {
+    #[error("could not read Claude's transcript: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Claude transcript cursor is invalid: {0}")]
+    InvalidCursor(String),
+    #[error("the selected Claude transcript page is not valid UTF-8: {0}")]
+    InvalidUtf8(#[source] std::string::FromUtf8Error),
+}
+
 /// Where a turn begins, without reading what it is about.
 ///
-/// Nothing but the file says which lines start turns, so finding the window a
-/// page wants means walking every line. This is what is read while doing that:
-/// the identity, and deliberately not the message. A `message` field here would
-/// have the reader decode every picture in a session to hand back eight turns.
+/// Nothing but the file says which rows start turns. This is the small shape
+/// the bounded byte reader tries while walking backwards through the needed
+/// tail: the identity, and deliberately not the message. A `message` field here
+/// would make it decode every picture it crosses just to find eight turns.
 #[derive(Debug, Deserialize)]
 struct Boundary {
     #[serde(default, rename = "type")]
@@ -353,27 +366,30 @@ pub(crate) fn erase(written: &Path) -> std::io::Result<()> {
 /// The most recent turns, newest first, and where to continue reading older
 /// ones.
 ///
-/// `before` continues from a cursor an earlier read gave out. A file that is
-/// not there is a session the agent has not written anything for yet, which is
-/// an empty history rather than a failure — and so is one that cannot be read,
-/// because a conversation that will not load is better shown as the turns that
-/// did than as an error where the conversation should be.
+/// `before` continues from an opaque, verifiable cursor an earlier read gave
+/// out. A file that is not there is a session the agent has not written
+/// anything for yet, which is empty history. Every other source failure is an
+/// error: unreadable history must not masquerade as a conversation with no
+/// history, and a cursor that cannot be verified must not masquerade as the end
+/// of it.
 ///
-/// Read in two passes. The first finds where the turns begin and reads nothing
-/// else; the second reads only the lines of the turns being handed back. One
-/// pass would mean building a whole conversation to return the end of it —
-/// for a session with pictures in it, most of the file decoded and dropped, and
-/// dropped again on every page after the first.
-pub(crate) fn read(path: &Path, before: Option<&str>, limit: usize) -> Reading {
-    let Ok(contents) = std::fs::read_to_string(path) else {
-        return Reading::default();
+/// The file length is captured once, then physical lines are read backwards in
+/// fixed-size blocks until enough prompt boundaries are found. Only that byte
+/// window is decoded and built into turns. An append during the read is left
+/// wholly for the next one.
+pub(crate) fn read(path: &Path, before: Option<&str>, limit: usize) -> Result<Reading, ReadError> {
+    let mut file = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(Reading::default());
+        }
+        Err(error) => return Err(error.into()),
     };
-    let lines: Vec<&str> = contents.lines().collect();
-    let Some(window) = window(&lines, before, limit) else {
-        return Reading::default();
-    };
-    let parsed = turns(&lines[window.lines]);
-    Reading {
+    let snapshot_len = file.metadata()?.len();
+    let window = bytes::window(&mut file, snapshot_len, before, limit)?;
+    let lines = window.contents.lines().collect::<Vec<_>>();
+    let parsed = turns(&lines);
+    Ok(Reading {
         page: TurnPage {
             // Newest first, which is the order history is read in.
             turns: parsed.turns.into_iter().rev().collect(),
@@ -382,10 +398,11 @@ pub(crate) fn read(path: &Path, before: Option<&str>, limit: usize) -> Reading {
         },
         background_tasks: parsed.background_tasks,
         unreadable: parsed.unreadable,
-    }
+    })
 }
 
 /// The lines a page is made of, and where the turns older than it begin.
+#[cfg(test)]
 struct Window {
     lines: std::ops::Range<usize>,
     older: Option<String>,
@@ -396,6 +413,7 @@ struct Window {
 /// A turn runs from the line that opens it to the line before the next one, and
 /// the last runs to the end of the file — so work the agent did before anyone
 /// asked it anything falls outside every window, which is where it belongs.
+#[cfg(test)]
 fn window(lines: &[&str], before: Option<&str>, limit: usize) -> Option<Window> {
     let opens: Vec<(usize, String)> = lines
         .iter()
@@ -1637,7 +1655,10 @@ mod tests {
         assert_eq!(unreadable, 1);
     }
 
-    /// One page of a written-down conversation, the way `read` asks for one.
+    /// One page according to the previous full-file reader.
+    ///
+    /// Kept only as a differential oracle for the bounded file reader. Its raw
+    /// turn-id continuation is deliberately not the production cursor.
     fn page_of(contents: &str, before: Option<&str>, limit: usize) -> TurnPage {
         let lines: Vec<&str> = contents.lines().collect();
         let window = window(&lines, before, limit).expect("the window is found");
@@ -1650,6 +1671,59 @@ mod tests {
             turns: parsed.turns.into_iter().rev().collect(),
             next_cursor: window.older,
             backwards_cursor: None,
+        }
+    }
+
+    fn reference_reading(contents: &str, before: Option<&str>, limit: usize) -> Reading {
+        let lines = contents.lines().collect::<Vec<_>>();
+        let Some(window) = window(&lines, before, limit) else {
+            return Reading::default();
+        };
+        let parsed = turns(&lines[window.lines]);
+        Reading {
+            page: TurnPage {
+                turns: parsed.turns.into_iter().rev().collect(),
+                next_cursor: window.older,
+                backwards_cursor: None,
+            },
+            background_tasks: parsed.background_tasks,
+            unreadable: parsed.unreadable,
+        }
+    }
+
+    fn assert_file_pages_match_reference(contents: &str, limit: usize) {
+        let (_root, path) = written(contents);
+        let mut reference_cursor = None;
+        let mut file_cursor = None;
+        let mut page_number = 0;
+        loop {
+            page_number += 1;
+            let expected = reference_reading(contents, reference_cursor.as_deref(), limit);
+            let actual = read_page(&path, file_cursor.as_deref(), limit);
+            assert_eq!(
+                actual.page.turns, expected.page.turns,
+                "turns differ on page {page_number} at limit {limit}"
+            );
+            assert_eq!(
+                actual.background_tasks, expected.background_tasks,
+                "background observations differ on page {page_number} at limit {limit}"
+            );
+            assert_eq!(
+                actual.unreadable, expected.unreadable,
+                "unreadable rows differ on page {page_number} at limit {limit}"
+            );
+            assert_eq!(
+                actual.page.next_cursor.is_some(),
+                expected.page.next_cursor.is_some(),
+                "continuation differs on page {page_number} at limit {limit}"
+            );
+            assert_eq!(actual.page.backwards_cursor, None);
+            let Some(next_reference) = expected.page.next_cursor else {
+                break;
+            };
+            reference_cursor = Some(next_reference);
+            file_cursor = actual.page.next_cursor;
+            assert!(page_number < 100, "pagination must make progress");
         }
     }
 
@@ -1723,11 +1797,48 @@ mod tests {
     }
 
     #[test]
-    fn a_cursor_that_names_no_turn_here_reads_as_nothing_further() {
-        let contents = conversation();
-        let lines: Vec<&str> = contents.lines().collect();
+    fn bounded_file_pages_match_the_previous_reader_on_every_recorded_transcript() {
+        for contents in [
+            RECORDED,
+            RECORDED_WITH_A_COMMAND,
+            RECORDED_WITH_A_BACKGROUND_COMMAND,
+            RECORDED_WITH_A_PICTURE,
+        ] {
+            for limit in [1, 2, 8] {
+                assert_file_pages_match_reference(contents, limit);
+            }
+        }
+    }
 
-        assert!(window(&lines, Some("prompt-never-written"), 8).is_none());
+    #[test]
+    fn a_malformed_row_is_counted_only_when_its_turn_is_selected() {
+        let contents = [
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "first"},
+            })),
+            "{ this completed row is not json".to_string(),
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-2",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "second"},
+            })),
+        ]
+        .join("\n");
+        let (_root, path) = written(&contents);
+
+        let newest = read_page(&path, None, 1);
+
+        assert_eq!(ids(&newest.page), ["prompt-2"]);
+        assert_eq!(newest.unreadable, 0);
+
+        let older = read_page(&path, newest.page.next_cursor.as_deref(), 1);
+
+        assert_eq!(ids(&older.page), ["prompt-1"]);
+        assert_eq!(older.unreadable, 1);
     }
 
     #[test]
@@ -1793,9 +1904,173 @@ mod tests {
 
     #[test]
     fn a_session_with_nothing_written_for_it_reads_as_no_history() {
-        let reading = read(Path::new("/nonexistent/never-written.jsonl"), None, 8);
+        let reading = read(Path::new("/nonexistent/never-written.jsonl"), None, 8)
+            .expect("a transcript the agent has not started is empty");
 
         assert_eq!(reading, Reading::default());
+    }
+
+    fn written(contents: &str) -> (tempfile::TempDir, PathBuf) {
+        let root = tempfile::tempdir().expect("a transcript directory");
+        let path = root.path().join("session.jsonl");
+        std::fs::write(&path, contents).expect("the transcript fixture");
+        (root, path)
+    }
+
+    fn read_page(path: &Path, before: Option<&str>, limit: usize) -> Reading {
+        read(path, before, limit).expect("the transcript page is readable")
+    }
+
+    #[test]
+    fn a_file_page_continues_from_an_opaque_cursor() {
+        let (_root, path) = written(&conversation());
+
+        let newest = read_page(&path, None, 1);
+
+        assert_eq!(ids(&newest.page), ["prompt-2"]);
+        let cursor = newest.page.next_cursor.expect("there is an older turn");
+        assert_ne!(cursor, "prompt-2", "the cursor is not a turn-id guess");
+
+        let older = read_page(&path, Some(&cursor), 8);
+
+        assert_eq!(ids(&older.page), ["prompt-1"]);
+        assert_eq!(older.page.next_cursor, None);
+    }
+
+    #[test]
+    fn a_cursor_keeps_its_boundary_when_new_rows_are_appended() {
+        let (_root, path) = written(&conversation());
+        let cursor = read_page(&path, None, 1)
+            .page
+            .next_cursor
+            .expect("there is an older turn");
+        let third = [
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-3",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "third"},
+            })),
+            line(serde_json::json!({
+                "type": "assistant",
+                "uuid": "answer-3",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "three"}]},
+            })),
+        ]
+        .join("\n");
+        use std::io::Write as _;
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .expect("the transcript reopens");
+        write!(file, "\n{third}").expect("the agent appends another turn");
+
+        let older = read_page(&path, Some(&cursor), 8);
+
+        assert_eq!(ids(&older.page), ["prompt-1"]);
+        assert_eq!(older.page.next_cursor, None);
+    }
+
+    #[test]
+    fn an_incomplete_last_row_waits_until_it_is_complete() {
+        let incomplete = format!(
+            "{}\n{{\"type\":\"user\",\"uuid\":\"prompt-3\"",
+            conversation()
+        );
+        let (_root, path) = written(&incomplete);
+
+        let before = read_page(&path, None, 1);
+
+        assert_eq!(ids(&before.page), ["prompt-2"]);
+        assert_eq!(before.unreadable, 0, "a partial write is not a bad row");
+
+        use std::io::Write as _;
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .expect("the transcript reopens");
+        writeln!(
+            file,
+            ",\"promptSource\":\"sdk\",\"message\":{{\"role\":\"user\",\"content\":\"third\"}}}}"
+        )
+        .expect("the agent completes the row");
+
+        let after = read_page(&path, None, 1);
+
+        assert_eq!(ids(&after.page), ["prompt-3"]);
+        assert_eq!(after.unreadable, 0);
+    }
+
+    #[test]
+    fn a_last_row_split_inside_utf8_waits_for_the_rest_of_the_codepoint() {
+        let root = tempfile::tempdir().expect("a transcript directory");
+        let path = root.path().join("session.jsonl");
+        let mut incomplete = format!(
+            "{}\n{{\"type\":\"assistant\",\"uuid\":\"answer-3\",\"message\":{{\"role\":\"assistant\",\"content\":[{{\"type\":\"text\",\"text\":\"",
+            conversation()
+        )
+        .into_bytes();
+        let thread = "🧵".as_bytes();
+        incomplete.extend_from_slice(&thread[..2]);
+        std::fs::write(&path, incomplete).expect("the partial UTF-8 row");
+
+        let before = read_page(&path, None, 1);
+
+        assert_eq!(ids(&before.page), ["prompt-2"]);
+        assert!(before.page.turns[0].items.iter().all(|item| {
+            !matches!(&item.kind, ItemKind::AssistantMessage { text, .. } if text == "🧵")
+        }));
+
+        use std::io::Write as _;
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .expect("the transcript reopens");
+        file.write_all(&thread[2..])
+            .expect("the rest of the codepoint");
+        file.write_all(b"\"}]}}\n")
+            .expect("the rest of the JSON row");
+
+        let after = read_page(&path, None, 1);
+
+        assert!(after.page.turns[0].items.iter().any(|item| {
+            matches!(&item.kind, ItemKind::AssistantMessage { text, .. } if text == "🧵")
+        }));
+    }
+
+    #[test]
+    fn invalid_utf8_in_a_completed_selected_row_is_a_source_error() {
+        let root = tempfile::tempdir().expect("a transcript directory");
+        let path = root.path().join("session.jsonl");
+        let mut contents = conversation().into_bytes();
+        contents.extend_from_slice(b"\n{\"type\":\"assistant\",\"uuid\":\"bad\",\"message\":\"");
+        contents.push(0xff);
+        contents.extend_from_slice(b"\"}\n");
+        std::fs::write(&path, contents).expect("the invalid UTF-8 fixture");
+
+        let error = read(&path, None, 1).expect_err("the selected bytes cannot be decoded");
+
+        assert!(matches!(error, ReadError::InvalidUtf8(_)));
+    }
+
+    #[test]
+    fn a_cursor_that_is_not_one_this_reader_issued_is_an_error() {
+        let (_root, path) = written(&conversation());
+
+        let error = read(&path, Some("prompt-never-written"), 8)
+            .expect_err("an unverified boundary must not mean exhausted history");
+
+        assert!(matches!(error, ReadError::InvalidCursor(_)));
+    }
+
+    #[test]
+    fn an_unreadable_transcript_is_not_reported_as_empty_history() {
+        let root = tempfile::tempdir().expect("a transcript directory");
+
+        let error = read(root.path(), None, 8)
+            .expect_err("a source that cannot be read is unavailable, not empty");
+
+        assert!(matches!(error, ReadError::Io(_)));
     }
 
     /// A session Claude actually ran, kept as it was written.

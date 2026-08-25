@@ -106,6 +106,10 @@ impl TaskRuntime {
             Ok(None) => {}
             Err(error) => {
                 eprintln!("failed to refresh Claude transcript for {thread_id}: {error}");
+                let _ = self.signals.send(TaskRuntimeSignal::SessionUnavailable {
+                    thread_id: thread_id.to_string(),
+                    message: error.to_string(),
+                });
             }
         }
     }
@@ -658,6 +662,60 @@ mod tests {
             started.payload.as_ref().expect("turn payload")["origin"]["type"],
             "backgroundTask"
         );
+    }
+
+    #[tokio::test]
+    async fn an_unreadable_canonical_transcript_reaches_session_state_and_its_viewer() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().display().to_string();
+        let (state, _runner) = watched(root.path()).await;
+        state.task_runtime.claude().write_test_transcript(
+            &cwd,
+            SESSION,
+            &json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "hello"},
+            })
+            .to_string(),
+        );
+        let driver = state.task_runtime.claude().driver(cwd);
+        let _viewer = state
+            .task_sessions
+            .acquire_viewer(&driver, super::super::CLAUDE_GENERATION, SESSION)
+            .await
+            .expect("the Claude Task is subscribed");
+        let projects = root.path().join(".caffold-test/projects");
+        let project = std::fs::read_dir(&projects)
+            .expect("Claude's project directory")
+            .next()
+            .expect("the written project")
+            .expect("the project entry")
+            .path();
+        let transcript = project.join(format!("{SESSION}.jsonl"));
+        std::fs::remove_file(&transcript).expect("replace the transcript fixture");
+        std::fs::create_dir(&transcript).expect("an unreadable transcript stand-in");
+        let mut signals = state.task_runtime.subscribe();
+
+        state.task_runtime.refresh_claude_transcript(SESSION).await;
+
+        let snapshot = state
+            .task_sessions
+            .snapshot(SESSION)
+            .await
+            .expect("the watched session");
+        assert!(
+            snapshot
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("transcript is unavailable"))
+        );
+        assert!(matches!(
+            signals.try_recv(),
+            Ok(super::super::TaskRuntimeSignal::SessionUnavailable { thread_id, message })
+                if thread_id == SESSION && message.contains("transcript is unavailable")
+        ));
     }
 
     fn isolate_call(id: u64, arguments: Value) -> Value {

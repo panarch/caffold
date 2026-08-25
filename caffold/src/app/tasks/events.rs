@@ -286,17 +286,19 @@ pub(in crate::app) fn thread_events(conversation: &Conversation) -> Vec<TaskEven
         } else {
             previous_turn_ms.saturating_add(1)
         };
-        let fallback_ms = turn.completed_at_ms.unwrap_or_else(|| {
-            if turn_index + 1 == turns.len() {
-                conversation_activity_ms
-            } else {
-                minimum_turn_ms
-            }
-        });
+        let inferred_ms = if turn_index + 1 == turns.len() {
+            conversation_activity_ms.max(minimum_turn_ms)
+        } else {
+            minimum_turn_ms
+        };
+        // A turn timestamp is direct agent evidence and may legitimately be
+        // older than the moment an adapter attached to the conversation. The
+        // conversation-level clock is only a fallback when the turn has no
+        // timestamp of its own.
         let timeline_ms = turn
             .started_at_ms
-            .unwrap_or(fallback_ms)
-            .max(minimum_turn_ms);
+            .or(turn.completed_at_ms)
+            .unwrap_or(inferred_ms);
         if turn.started_at_ms.is_some() {
             events.push(turn_started_event(thread_id, turn, timeline_ms));
         }
@@ -1315,9 +1317,9 @@ mod tests {
             "status": { "type": "idle" },
             "id": "thread_1",
             "cwd": "/tmp",
-            "createdAt": 1.0,
-            "updatedAt": 1.0,
-            "recencyAt": 20.0,
+            "createdAt": 100.0,
+            "updatedAt": 100.0,
+            "recencyAt": 100.0,
             "turns": [
                 {
                     "id": "turn_old",
@@ -1396,6 +1398,94 @@ mod tests {
             vec![
                 ("Old prompt".to_string(), 2_000),
                 ("Old answer".to_string(), 2_000),
+                ("New prompt".to_string(), 20_000),
+                ("New answer".to_string(), 20_000),
+            ]
+        );
+    }
+
+    #[test]
+    fn separately_projected_pages_keep_explicit_turn_times_before_attachment() {
+        let page = |turn: JsonValue| {
+            conversation(json!({
+                "status": { "type": "idle" },
+                "id": "thread_1",
+                "cwd": "/tmp",
+                // A resumed adapter may know only when it attached. That
+                // weaker conversation-level time must not replace timestamps
+                // read directly from the agent's transcript.
+                "createdAt": 100.0,
+                "updatedAt": 100.0,
+                "turns": [turn]
+            }))
+        };
+        let older = page(json!({
+            "id": "turn_old",
+            "status": "completed",
+            "startedAt": 10.0,
+            "completedAt": 11.0,
+            "items": [
+                {
+                    "type": "userMessage",
+                    "id": "old_user",
+                    "content": [{ "type": "text", "text": "Old prompt" }]
+                },
+                {
+                    "type": "agentMessage",
+                    "id": "old_answer",
+                    "text": "Old answer",
+                    "phase": "final"
+                }
+            ]
+        }));
+        let newer = page(json!({
+            "id": "turn_new",
+            "status": "completed",
+            "startedAt": 20.0,
+            "completedAt": 21.0,
+            "items": [
+                {
+                    "type": "userMessage",
+                    "id": "new_user",
+                    "content": [{ "type": "text", "text": "New prompt" }]
+                },
+                {
+                    "type": "agentMessage",
+                    "id": "new_answer",
+                    "text": "New answer",
+                    "phase": "final"
+                }
+            ]
+        }));
+
+        // Detail pages are projected independently and merged by the client.
+        // This reproduces a resumed Claude history spanning two cursors.
+        let mut events = merge_task_event_records(thread_events(&older), thread_events(&newer));
+        sort_task_events(&mut events);
+        let visible_messages = events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event.event_type.as_str(),
+                    "user_message" | "assistant_message"
+                )
+            })
+            .map(|event| {
+                (
+                    event.payload.as_ref().unwrap()["text"]
+                        .as_str()
+                        .unwrap()
+                        .to_string(),
+                    event.created_ms,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            visible_messages,
+            vec![
+                ("Old prompt".to_string(), 10_000),
+                ("Old answer".to_string(), 10_000),
                 ("New prompt".to_string(), 20_000),
                 ("New answer".to_string(), 20_000),
             ]

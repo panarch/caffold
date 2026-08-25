@@ -427,7 +427,7 @@ impl DetailContext {
         };
         if let Some(error) = snapshot.last_error.as_ref() {
             return Err(ApiError::Agent(format!(
-                "canonical Codex task state is unavailable: {error}"
+                "canonical task state is unavailable: {error}"
             )));
         }
         let revision = snapshot.revision;
