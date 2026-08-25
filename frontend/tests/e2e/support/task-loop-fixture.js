@@ -154,6 +154,8 @@ export async function installTaskLoopFixture(
       threadId,
       syncState: "ready",
       revision: overrides.revision ?? 1,
+      eventRevision:
+        overrides.eventRevision ?? overrides.revision ?? 1,
       task: overrides.task ?? task,
       events: responseEvents,
       fileLinks: (overrides.fileLinks ?? fileLinks).filter((link) =>
@@ -740,6 +742,7 @@ export async function installTaskLoopFixture(
     await emitToDetailStream("task-event", {
       threadId,
       revision: 2,
+      eventRevision: 2,
       event: failure,
     });
   };

@@ -291,11 +291,45 @@ test("updates stable detail regions and preserves an active IME composition", { 
     window.__taskDetailSource.emit("task-event", {
       threadId: "thread-1",
       revision: 2,
+      eventRevision: 2,
       event,
     });
   }, liveEvent);
 
   await expect(tasksPage).toContainText("Only the conversation changed.");
+  await page.evaluate((event) => {
+    window.__taskDetailSource.emit("task-event", {
+      threadId: "thread-1",
+      revision: 99,
+      eventRevision: 2,
+      event: {
+        ...event,
+        summary: "Duplicate delta must be ignored",
+        payload: {
+          ...event.payload,
+          text: "Duplicate delta must be ignored.",
+        },
+      },
+    });
+  }, liveEvent);
+  await expect(tasksPage).not.toContainText("Duplicate delta must be ignored");
+  await expect
+    .poll(() =>
+      tasksPage.evaluate((element) => {
+        const detailElement = element.querySelector("caffold-task-detail");
+        const event = detailElement.events.find(
+          (candidate) => candidate.id === "event-live-render-boundary",
+        );
+        return {
+          summary: event?.summary,
+          text: event?.payload?.text,
+        };
+      }),
+    )
+    .toEqual({
+      summary: "Assistant response",
+      text: "Only the conversation changed.",
+    });
   expect(
     await tasksPage.evaluate((element) => {
       const nodes = window.__detailRegionNodes;
@@ -346,6 +380,7 @@ test("updates stable detail regions and preserves an active IME composition", { 
   }, {
     ...detail,
     revision: 3,
+    eventRevision: 2,
     task: { ...detail.task },
     events: [liveEvent],
   });
@@ -374,6 +409,7 @@ test("updates stable detail regions and preserves an active IME composition", { 
   const completedDetail = {
     ...detail,
     revision: 4,
+    eventRevision: 2,
     task: {
       ...detail.task,
       ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
@@ -444,6 +480,7 @@ test("loading detail accepts a canonical task sync without a synthetic task", { 
     threadId: "thread-1",
     syncState: "loading",
     revision: 0,
+    eventRevision: 0,
     task: null,
     events: [],
     eventsPage: { nextCursor: null },
@@ -502,6 +539,7 @@ test("loading detail accepts a canonical task sync without a synthetic task", { 
         threadId: "thread-1",
         syncState: "loading",
         revision: 3,
+        eventRevision: 1,
         task: null,
         events: [],
         eventsPage: { nextCursor: null },
@@ -599,7 +637,10 @@ test("recovers task detail and prompt submission across bootstrap races", { tag:
     lastEventSummary: `${title} response`,
   });
   const detailFor = (task, revision, response) => ({
+    threadId: task.threadId,
+    syncState: "ready",
     revision,
+    eventRevision: revision,
     task,
     events: [
       {
@@ -825,7 +866,10 @@ test("keeps task context and retries after an initial detail timeout", { tag: "@
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
+        threadId,
+        syncState: "ready",
         revision: 2,
+        eventRevision: 2,
         task,
         events: [
           {
@@ -1746,6 +1790,7 @@ test("accepts canonical task detail after stream revisions restart", { tag: "@al
   };
   const staleDetail = {
     revision: 43,
+    eventRevision: 43,
     task: staleTask,
     events: [userEvent],
     eventsPage: { nextCursor: null },
@@ -1753,6 +1798,7 @@ test("accepts canonical task detail after stream revisions restart", { tag: "@al
   };
   const canonicalDetail = {
     revision: 1,
+    eventRevision: 1,
     task: {
       ...staleTask,
       ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
@@ -1906,6 +1952,7 @@ test("reconciles a canonical final answer over a retained transient item after r
     threadId,
     syncState: "ready",
     revision: 43,
+    eventRevision: 43,
     task,
     events: [transient],
     eventsPage: { nextCursor: null },
@@ -1953,6 +2000,34 @@ test("reconciles a canonical final answer over a retained transient item after r
     source.emitError();
     source.emitOpen();
   }, { registryKey, threadId });
+  await expect
+    .poll(() =>
+      tasksPage.evaluate((element) => {
+        const detail = element.querySelector("caffold-task-detail");
+        return {
+          phase: detail.detailSession.phase,
+          buffering: Boolean(detail.detailSession.bootstrap),
+        };
+      }),
+    )
+    .toEqual({ phase: "waiting-bootstrap", buffering: true });
+  await page.evaluate(
+    ({ registryKey, threadId, event }) => {
+      const source = window[registryKey].find((candidate) =>
+        candidate.url.includes(`/api/tasks/${threadId}/stream`),
+      );
+      source.emit("task-event", {
+        threadId,
+        revision: 1,
+        eventRevision: 1,
+        event: {
+          ...event,
+          summary: "Replayed transient item",
+        },
+      });
+    },
+    { registryKey, threadId, event: transient },
+  );
   await page.evaluate(
     ({ registryKey, threadId, canonicalTask, answer }) => {
       const source = window[registryKey].find((candidate) =>
@@ -1965,6 +2040,7 @@ test("reconciles a canonical final answer over a retained transient item after r
           threadId,
           syncState: "ready",
           revision: 1,
+          eventRevision: 2,
           task: canonicalTask,
           events: [answer],
           eventsPage: { nextCursor: null },
@@ -1975,6 +2051,27 @@ test("reconciles a canonical final answer over a retained transient item after r
     },
     { registryKey, threadId, canonicalTask, answer: canonicalAnswer },
   );
+
+  await expect
+    .poll(() =>
+      tasksPage.evaluate((element) => {
+        const detail = element.querySelector("caffold-task-detail");
+        const event = detail.events.find(
+          (candidate) =>
+            candidate.payload?.itemId === "item_canonical_item_recovery",
+        );
+        return {
+          summary: event?.summary,
+          status: event?.payload?.status ?? null,
+          position: event?.position,
+        };
+      }),
+    )
+    .toEqual({
+      summary: "Assistant response",
+      status: null,
+      position: canonicalAnswer.position,
+    });
 
   const finalAnswer = tasksPage.locator(
     `.task-message[data-event-id="${eventId}"][data-message-role="assistant"]`,
@@ -2174,7 +2271,10 @@ test("opens a running conversation at the latest message from the stream bootstr
     position: { anchorMs: now + index, index: 0 },
   }));
   const detail = (revision) => ({
+    threadId,
+    syncState: "ready",
     revision,
+    eventRevision: revision,
     task,
     events,
     eventsPage: { nextCursor: null },
@@ -2294,6 +2394,7 @@ test("makes disconnected task state unavailable and preserves an unidentifiable 
     threadId,
     syncState: "ready",
     revision,
+    eventRevision: revision,
     task,
     events,
     eventsPage: { nextCursor: null },

@@ -288,6 +288,7 @@ function taskDetail(task, events, revision) {
     threadId: task.threadId,
     syncState: "ready",
     revision,
+    eventRevision: revision,
     task,
     events,
     eventsPage: { nextCursor: null },
@@ -301,7 +302,12 @@ async function emitTaskEvent(page, threadId, event, revision) {
     const source = window.__commandEventSources.find((candidate) =>
       candidate.url.includes(`/api/tasks/${threadId}/stream`),
     );
-    source.emit("task-event", { threadId, revision, event });
+    source.emit("task-event", {
+      threadId,
+      revision,
+      eventRevision: revision,
+      event,
+    });
   }, { threadId, event, revision });
 }
 

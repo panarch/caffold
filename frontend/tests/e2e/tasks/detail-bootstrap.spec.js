@@ -37,6 +37,7 @@ function taskDetail(task, text, revision, nextCursor = null) {
     threadId: task.threadId,
     syncState: "ready",
     revision,
+    eventRevision: revision,
     task,
     events: [assistantEvent(task.threadId, text, revision)],
     eventsPage: { nextCursor },
@@ -54,6 +55,7 @@ function loadingDetail(threadId, revision) {
     threadId,
     syncState: "loading",
     revision,
+    eventRevision: 0,
     task: null,
     events: [],
     eventsPage: { nextCursor: null },
@@ -272,6 +274,7 @@ test("preserves readable detail and buffers events through a loading reconnect b
         threadId: id,
         syncState: "loading",
         revision: 1,
+        eventRevision: 0,
         task: null,
         events: [],
         eventsPage: { nextCursor: null },
@@ -282,6 +285,7 @@ test("preserves readable detail and buffers events through a loading reconnect b
     source.emit("task-event", {
       threadId: id,
       revision: 3,
+      eventRevision: 2,
       event: {
         id: "event_buffered_reconnect",
         threadId: id,

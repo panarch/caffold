@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  advanceLiveEvents,
+  applyProjectionDeltas,
   appendOptimisticEvent,
   conversationGroups,
   dedupeCanonicalEvents,
@@ -10,7 +10,7 @@ import {
   handoffOptimisticSubmission,
   optimisticUserMessageEvent,
   prependDetailEvents,
-  reconcileDetailEvents,
+  projectCanonicalEvents,
   sortEventsChronologically,
   taskEventPosition,
 } from "./task-events.js";
@@ -55,7 +55,7 @@ test("an event without canonical position preserves projection order instead of 
     sortEventsChronologically([later, unpositioned, earlier]).map(({ id }) => id),
     ["later", "unpositioned", "earlier"],
   );
-  const merged = advanceLiveEvents([unpositioned], [
+  const merged = applyProjectionDeltas([unpositioned], [
     { ...unpositioned, summary: "Later observation" },
   ]);
   assert.equal(merged[0].position, undefined);
@@ -90,7 +90,7 @@ test("file change presentation deduplicates equivalent Task-local references", (
   assert.deepEqual(fileChanges, canonicalEvents);
 });
 
-test("live advancement keeps first position while the incoming report wins", () => {
+test("projection deltas keep first position while the incoming patch wins", () => {
   const started = event(
     "item-1",
     "command_execution",
@@ -118,7 +118,7 @@ test("live advancement keeps first position while the incoming report wins", () 
     text: "Before command",
   });
 
-  const merged = advanceLiveEvents([started], [completed, earlier]);
+  const merged = applyProjectionDeltas([started], [completed, earlier]);
 
   assert.deepEqual(merged.map(({ id }) => id), ["message-1", "item-1"]);
   assert.deepEqual(merged[1].position, { anchorMs: 100, index: 2 });
@@ -134,7 +134,7 @@ test("live advancement keeps first position while the incoming report wins", () 
   });
 });
 
-test("live lifecycle replay cannot regress an exact terminal item", () => {
+test("projection deltas do not reinterpret backend lifecycle state", () => {
   const started = event(
     "item-1",
     "command_execution",
@@ -173,14 +173,14 @@ test("live lifecycle replay cannot regress an exact terminal item", () => {
     { updatedMs: 130, summary: "Command running again" },
   );
 
-  const merged = advanceLiveEvents(
-    advanceLiveEvents([started], [completed]),
+  const merged = applyProjectionDeltas(
+    applyProjectionDeltas([started], [completed]),
     [replay],
   );
 
-  assert.equal(merged[0].summary, "Command completed");
-  assert.equal(merged[0].payload.status, "completed");
-  assert.equal(merged[0].payload.output, "done");
+  assert.equal(merged[0].summary, "Command running again");
+  assert.equal(merged[0].payload.status, "inProgress");
+  assert.equal(merged[0].payload.output, "replayed partial output");
   assert.equal(merged[0].payload.replayOnly, true);
 });
 
@@ -215,7 +215,7 @@ test("an optimistic overlay remains separate until exact handoff", () => {
     appendOptimisticEvent([], matching),
     unrelated,
   );
-  const merged = advanceLiveEvents(overlays, [canonical]);
+  const merged = applyProjectionDeltas(overlays, [canonical]);
 
   assert.deepEqual(merged.map(({ id }) => id), [
     matching.id,
@@ -224,7 +224,7 @@ test("an optimistic overlay remains separate until exact handoff", () => {
   ]);
 });
 
-test("an existing canonical message does not erase a new identical overlay", () => {
+test("a canonical snapshot keeps a new identical optimistic overlay separate", () => {
   const canonical = event("canonical-1", "user_message", 100, {
     turnId: "turn-1",
     itemId: "message-1",
@@ -238,7 +238,7 @@ test("an existing canonical message does not erase a new identical overlay", () 
   );
 
   assert.deepEqual(
-    appendOptimisticEvent([canonical], optimistic).map(({ id }) => id),
+    projectCanonicalEvents([canonical], [], [optimistic]).map(({ id }) => id),
     ["canonical-1", optimistic.id],
     "presentation text cannot identify a later submission",
   );
@@ -263,7 +263,7 @@ test("accepted and later user-item projections merge by exact identity in either
     [accepted, providerProjection],
     [providerProjection, accepted],
   ]) {
-    const merged = advanceLiveEvents([first], [second]);
+    const merged = applyProjectionDeltas([first], [second]);
     assert.equal(merged.length, 1);
     assert.equal(merged[0].payload.itemId, "message-1");
     assert.deepEqual(merged[0].payload.content, [
@@ -285,7 +285,7 @@ test("two accepted user items survive identical presentation", () => {
   });
 
   assert.deepEqual(
-    advanceLiveEvents([first], [second]).map((entry) => entry.payload.itemId),
+    applyProjectionDeltas([first], [second]).map((entry) => entry.payload.itemId),
     ["message-1", "message-2"],
   );
 });
@@ -334,7 +334,7 @@ test("distinct structured messages survive even when their text is identical", (
   });
 
   assert.deepEqual(
-    reconcileDetailEvents([], [first, second]).map(({ id }) => id),
+    projectCanonicalEvents([first, second]).map(({ id }) => id),
     ["canonical-1", "canonical-2"],
     "two stable item identities are two messages, whatever their text says",
   );
@@ -379,7 +379,7 @@ test("two sparse equal messages keep their event identities", () => {
   });
 
   assert.deepEqual(
-    advanceLiveEvents([first], [second]).map(({ id }) => id),
+    applyProjectionDeltas([first], [second]).map(({ id }) => id),
     ["notification-1", "notification-2"],
     "matching content is not evidence that two unstructured events are one",
   );
@@ -409,12 +409,12 @@ test("a backend-selected background ledger stays once across refreshes", () => {
     { positionIndex: 1 },
   );
 
-  const liveState = advanceLiveEvents([earlier], [live]);
-  const refreshed = reconcileDetailEvents(liveState, [earlier, detail]);
-  const refreshedAgain = reconcileDetailEvents(refreshed, [earlier, detail]);
-  const reloaded = reconcileDetailEvents([], [earlier, detail]);
+  const liveState = applyProjectionDeltas([earlier], [live]);
+  const refreshed = projectCanonicalEvents([earlier, detail]);
+  const refreshedAgain = projectCanonicalEvents([earlier, detail]);
+  const reloaded = projectCanonicalEvents([earlier, detail]);
 
-  for (const state of [refreshed, refreshedAgain, reloaded]) {
+  for (const state of [liveState, refreshed, refreshedAgain, reloaded]) {
     assert.deepEqual(
       state.map((candidate) => candidate.payload.text),
       ["The command was started.", "The build is done."],
@@ -467,7 +467,7 @@ test("an item's start and its finish stay one conversation entry", () => {
     exitCode: 0,
   });
 
-  const reconciled = reconcileDetailEvents([started], [
+  const reconciled = applyProjectionDeltas([started], [
     { ...finished, updatedMs: 200 },
   ]);
 
@@ -480,7 +480,7 @@ test("an item's start and its finish stay one conversation entry", () => {
   );
 });
 
-test("canonical reconciliation retains unrelated current and canonical events", () => {
+test("a canonical snapshot replaces unrelated prior projection records", () => {
   const current = event("current-message", "assistant_message", 100, {
     turnId: "turn-1",
     text: "Already loaded.",
@@ -490,25 +490,13 @@ test("canonical reconciliation retains unrelated current and canonical events", 
     text: "New canonical event.",
   });
 
-  const reconciled = reconcileDetailEvents([current], [canonical]);
+  const reconciled = projectCanonicalEvents([canonical]);
 
-  assert.deepEqual(reconciled, [current, canonical]);
+  assert.deepEqual(reconciled, [canonical]);
+  assert.equal(reconciled.includes(current), false);
 });
 
-test("history reconciliation takes its item position without losing live enrichment", () => {
-  const current = event(
-    "live-user-message",
-    "user_message",
-    200,
-    {
-      threadId: "thread-1",
-      turnId: "turn-1",
-      itemId: "message-1",
-      text: "Test the ordering",
-      liveDelivery: "accepted",
-    },
-    { positionIndex: 0 },
-  );
+test("a canonical snapshot owns item fields and position without browser enrichment", () => {
   const historyPrompt = event(
     "history-user-message",
     "user_message",
@@ -535,10 +523,7 @@ test("history reconciliation takes its item position without losing live enrichm
     { positionIndex: 2 },
   );
 
-  const reconciled = reconcileDetailEvents(
-    [current],
-    [historyPrompt, historyAnswer],
-  );
+  const reconciled = projectCanonicalEvents([historyPrompt, historyAnswer]);
 
   assert.deepEqual(
     reconciled.map((entry) => entry.type),
@@ -546,8 +531,8 @@ test("history reconciliation takes its item position without losing live enrichm
     "a late observation cannot move a prompt behind its answer",
   );
   assert.deepEqual(reconciled[0].position, { anchorMs: 100, index: 1 });
-  assert.equal(reconciled[0].updatedMs, 200);
-  assert.equal(reconciled[0].payload.liveDelivery, "accepted");
+  assert.equal(reconciled[0].updatedMs, undefined);
+  assert.equal(reconciled[0].payload.liveDelivery, undefined);
   assert.deepEqual(reconciled[0].payload.content, [
     { type: "text", text: "Test the ordering" },
   ]);
@@ -604,7 +589,7 @@ test("an older Detail page cannot replace the current cursor-boundary item", () 
   assert.equal(projected[1].payload.olderOnly, true);
 });
 
-test("canonical Detail owns conflicts over a later-positioned stale live item", () => {
+test("canonical Detail requires no retained-live conflict arbitration", () => {
   const staleLive = event(
     "live-command",
     "tool_call",
@@ -639,7 +624,7 @@ test("canonical Detail owns conflicts over a later-positioned stale live item", 
     { summary: "Canonical command completed", positionIndex: 2 },
   );
 
-  const [reconciled] = reconcileDetailEvents([staleLive], [canonical]);
+  const [reconciled] = projectCanonicalEvents([canonical]);
 
   assert.equal(reconciled.type, "command_execution");
   assert.equal(reconciled.summary, "Canonical command completed");
@@ -647,7 +632,8 @@ test("canonical Detail owns conflicts over a later-positioned stale live item", 
   assert.equal(reconciled.payload.status, "completed");
   assert.equal(reconciled.payload.output, "canonical output");
   assert.deepEqual(reconciled.payload.structure, { owner: "detail" });
-  assert.equal(reconciled.payload.liveOnly, true);
+  assert.equal(reconciled.payload.liveOnly, undefined);
+  assert.equal(staleLive.payload.liveOnly, true);
 });
 
 test("an exact submission handoff keeps its optimistic position until Detail owns it", () => {
@@ -724,7 +710,7 @@ test("an exact submission handoff keeps its optimistic position until Detail own
     },
     { positionIndex: 2 },
   );
-  const reconciled = reconcileDetailEvents(handedOff, [
+  const reconciled = projectCanonicalEvents([
     historyPrompt,
     historyAnswer,
   ]);

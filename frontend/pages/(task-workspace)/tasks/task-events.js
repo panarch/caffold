@@ -201,8 +201,8 @@ export function fileChangePathPresentations(events, rootPath = "") {
   return [...presentationsByFileIdentity.values()];
 }
 
-export function upsertLiveEvent(events, event) {
-  return advanceLiveEvents(events, [event]);
+export function applyProjectionDelta(events, event) {
+  return applyProjectionDeltas(events, [event]);
 }
 
 export function sortEventsChronologically(events) {
@@ -222,38 +222,15 @@ export function sortEventsChronologically(events) {
     .map(({ event }) => event);
 }
 
-// Apply reports from the current live projection. Exact identity is the only
-// join evidence. Once an item is terminal, a conflicting live status cannot
-// replace it; a canonical Detail snapshot owns any correction between terminal
-// outcomes. Otherwise the incoming report owns conflicting mutable fields
-// while the first observed conversation position remains stable.
-export function advanceLiveEvents(currentEvents, liveEvents) {
+// Apply backend projection patches in accepted publication order. Exact
+// identity is the only join evidence. An existing item keeps its backend-owned
+// placement while the incoming patch owns conflicting projected fields.
+export function applyProjectionDeltas(currentEvents, deltas) {
   const byId = new Map();
-  for (const event of [...currentEvents, ...liveEvents]) {
+  for (const event of [...currentEvents, ...deltas]) {
     const key = eventIdentityKey(event);
     if (key) {
-      byId.set(key, advanceLiveEventRecord(byId.get(key), event));
-    }
-  }
-  return sortEventsChronologically([...byId.values()]);
-}
-
-// A refreshed Detail snapshot owns every conflicting projected field and the
-// conversation position for each exact identity it contains. Current records
-// may fill fields Detail omitted, while identities absent from Detail remain
-// visible where the backend projection last placed them.
-export function reconcileDetailEvents(currentEvents, detailEvents) {
-  const byId = new Map();
-  for (const event of currentEvents) {
-    const key = eventIdentityKey(event);
-    if (key) {
-      byId.set(key, advanceLiveEventRecord(byId.get(key), event));
-    }
-  }
-  for (const event of detailEvents) {
-    const key = eventIdentityKey(event);
-    if (key) {
-      byId.set(key, applyCanonicalDetailRecord(byId.get(key), event));
+      byId.set(key, applyProjectionDeltaRecord(byId.get(key), event));
     }
   }
   return sortEventsChronologically([...byId.values()]);
@@ -284,6 +261,20 @@ export function prependDetailEvents(currentEvents, olderDetailEvents) {
   return sortEventsChronologically([...byId.values()]);
 }
 
+// A canonical Detail snapshot is already reconciled by the backend. Older
+// cursor pages and local optimistic overlays are separate visible layers;
+// neither is allowed to arbitrate fields in the current projection.
+export function projectCanonicalEvents(
+  detailEvents,
+  olderDetailEvents = [],
+  optimisticEvents = [],
+) {
+  return sortEventsChronologically([
+    ...prependDetailEvents(detailEvents, olderDetailEvents),
+    ...optimisticEvents,
+  ]);
+}
+
 // Once the prompt response or first provider projection proves which exact
 // item an optimistic submission became, keep the position already visible in
 // this browser. A later Detail reconciliation still replaces it with provider
@@ -301,7 +292,10 @@ export function handoffOptimisticSubmission(
   const existingConfirmed = events.find(
     (event) => eventIdentityKey(event) === confirmedIdentity,
   );
-  const confirmed = advanceLiveEventRecord(existingConfirmed, confirmedEvent);
+  const confirmed = applyProjectionDeltaRecord(
+    existingConfirmed,
+    confirmedEvent,
+  );
   const latestUpdateMs = latestTaskEventUpdateMs(confirmed, optimistic);
   const handedOff = projectPrimaryEvent(
     confirmed,
@@ -332,14 +326,11 @@ export function mergeTaskEventsPage(currentPage, detail) {
   return incomingPage;
 }
 
-function advanceLiveEventRecord(existing, incoming) {
+function applyProjectionDeltaRecord(existing, incoming) {
   if (!existing) {
     return incoming;
   }
-  const incomingOwns = !liveReportConflictsWithTerminal(existing, incoming);
-  return incomingOwns
-    ? projectPrimaryEvent(incoming, existing, existing.position)
-    : projectPrimaryEvent(existing, incoming, existing.position);
+  return projectPrimaryEvent(incoming, existing, existing.position);
 }
 
 function applyCanonicalDetailRecord(existing, incoming) {
@@ -388,20 +379,6 @@ function projectPrimaryEvent(
     ...(carriesUpdatedMs ? { updatedMs } : {}),
   };
 }
-
-function liveReportConflictsWithTerminal(existing, incoming) {
-  const existingStatus = existing?.payload?.status;
-  if (!TERMINAL_ACTIVITY_STATUSES.has(existingStatus)) {
-    return false;
-  }
-  return incoming?.payload?.status !== existingStatus;
-}
-
-const TERMINAL_ACTIVITY_STATUSES = new Set([
-  "completed",
-  "failed",
-  "declined",
-]);
 
 function taskEventUpdateMs(event) {
   const updatedMs = event?.updatedMs;
@@ -485,7 +462,7 @@ export function dedupeCanonicalEvents(events) {
     }
     byIdentity.set(
       identity,
-      advanceLiveEventRecord(byIdentity.get(identity), event),
+      applyProjectionDeltaRecord(byIdentity.get(identity), event),
     );
   }
   return [...byIdentity.values()];

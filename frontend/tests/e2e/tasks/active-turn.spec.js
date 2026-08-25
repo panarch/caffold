@@ -461,6 +461,7 @@ function taskDetail(task, events, revision) {
     threadId: task.threadId,
     syncState: "ready",
     revision,
+    eventRevision: revision,
     task,
     events,
     eventsPage: { nextCursor: null },
@@ -572,7 +573,12 @@ async function emitTaskEvent(page, threadId, event, revision) {
     if (!source) {
       throw new Error(`Missing detail stream for ${threadId}`);
     }
-    source.emit("task-event", { threadId, revision, event });
+    source.emit("task-event", {
+      threadId,
+      revision,
+      eventRevision: revision,
+      event,
+    });
   }, { threadId, event, revision });
 }
 

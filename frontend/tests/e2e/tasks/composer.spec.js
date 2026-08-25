@@ -91,6 +91,8 @@ test("starts a completed task follow-up clock only from canonical turn metadata"
     threadId,
     syncState: "ready",
     revision: overrides.revision ?? 1,
+    eventRevision:
+      overrides.eventRevision ?? overrides.revision ?? 1,
     task: { ...task, ...(overrides.task ?? {}) },
     events: overrides.events ?? firstTurnEvents,
     eventsPage: { nextCursor: null },
@@ -698,11 +700,13 @@ test("keeps exact prompt order when Detail or live content arrives before the pr
     source.emit("task-event", {
       threadId: payload.threadId,
       revision: payload.liveAnswerRevision,
+      eventRevision: payload.liveAnswerRevision,
       event: payload.liveAnswer,
     });
     source.emit("task-event", {
       threadId: payload.threadId,
       revision: payload.acceptedPromptRevision,
+      eventRevision: payload.acceptedPromptRevision,
       event: payload.acceptedPrompt,
     });
   }, {
@@ -819,6 +823,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
     threadId === taskA.threadId ? taskA : taskB;
   const detailFor = (threadId) => ({
     revision: revisions.get(threadId),
+    eventRevision: revisions.get(threadId),
     task: taskFor(threadId),
     events: eventsByThread.get(threadId),
     eventsPage: { nextCursor: null },

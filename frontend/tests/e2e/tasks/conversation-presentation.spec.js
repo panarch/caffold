@@ -409,6 +409,7 @@ test("opens resolved Markdown file links through Task Review with native link se
     source.emit("task-event", {
       threadId,
       revision: 2,
+      eventRevision: 2,
       event: {
         id: "event_live_file_link",
         threadId,

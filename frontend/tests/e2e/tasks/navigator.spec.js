@@ -1269,6 +1269,7 @@ test("starts active Task navigator spinners at independent phases", { tag: "@all
       contentType: "application/json",
       body: JSON.stringify({
         revision: 1,
+        eventRevision: 1,
         threadId: tasks[0].threadId,
         syncState: "ready",
         task: tasks[0],
@@ -1282,6 +1283,7 @@ test("starts active Task navigator spinners at independent phases", { tag: "@all
   await page.goto("/tasks/thread_spinner_alpha");
   await emitTaskDetailBootstrap(page, {
     revision: 1,
+    eventRevision: 1,
     threadId: tasks[0].threadId,
     syncState: "ready",
     task: tasks[0],
@@ -1457,6 +1459,7 @@ test("archives and restores an idle Caffold task through the grouped Archived se
     threadId: activeTask.threadId,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task: activeTask,
     events: [],
     eventsPage: { nextCursor: null },
@@ -1687,6 +1690,7 @@ test("keeps an idle task active when the archive request fails", { tag: "@all-vi
     threadId: task.threadId,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task,
     events: [],
     eventsPage: { nextCursor: null },
@@ -1833,6 +1837,7 @@ test("does not offer archive while the canonical task is active", { tag: "@all-v
     threadId: task.threadId,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task,
     events: [],
     eventsPage: { nextCursor: null },
@@ -1996,6 +2001,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
     threadId: task.threadId,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task,
     events: [
       {
@@ -2626,6 +2632,7 @@ test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@al
     threadId: selectedTask.threadId,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task: tasks[0],
     events: [
       {
@@ -2790,6 +2797,7 @@ test("patches Task rows in place without reordering and preserves a running spin
       contentType: "application/json",
       body: JSON.stringify({
         revision: 1,
+        eventRevision: 1,
         threadId: runningTask.threadId,
         syncState: "ready",
         task: runningTask,
@@ -2803,6 +2811,7 @@ test("patches Task rows in place without reordering and preserves a running spin
   await page.goto("/tasks/thread_spinner_stability");
   await emitTaskDetailBootstrap(page, {
     revision: 1,
+    eventRevision: 1,
     threadId: runningTask.threadId,
     syncState: "ready",
     task: runningTask,
@@ -2850,6 +2859,7 @@ test("patches Task rows in place without reordering and preserves a running spin
       revision: 2,
       detail: {
         revision: 2,
+        eventRevision: 2,
         threadId: task.threadId,
         syncState: "ready",
         task,
@@ -3187,6 +3197,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
     threadId: "thread_gluesql_feature",
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task: tasks[0],
     events: detailEvents,
     eventsPage: { nextCursor: null },

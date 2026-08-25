@@ -65,6 +65,7 @@ test("keeps a large task usable while conversation history is loading", { tag: "
   };
   const pendingDetail = {
     revision: 1,
+    eventRevision: 0,
     task,
     events: [],
     eventsPage: { nextCursor: null },
@@ -117,6 +118,7 @@ test("keeps a large task usable while conversation history is loading", { tag: "
   const canonicalDetail = {
     ...pendingDetail,
     revision: 2,
+    eventRevision: 2,
     historyLoading: false,
     events: [
       {
@@ -287,6 +289,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
       contentType: "application/json",
       body: JSON.stringify({
         revision: cursor === "ancient_cursor" ? 4 : cursor === "older_cursor" ? 3 : 1,
+        eventRevision: cursor === "ancient_cursor" ? 4 : cursor === "older_cursor" ? 3 : 1,
         task,
         events,
         fileLinks: cursor === "older_cursor"
@@ -320,6 +323,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
     threadId,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task,
     events: latestEvents,
     eventsPage: { nextCursor: "older_cursor" },
@@ -343,6 +347,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
         reason: "session-bootstrap",
         detail: {
           revision: 2,
+          eventRevision: 1,
           task,
           events: [],
           eventsPage: { nextCursor: null },
@@ -500,6 +505,7 @@ test("keeps the latest conversation when older history times out", { tag: "@all-
   const latestDetail = {
     threadId,
     revision: 1,
+    eventRevision: 1,
     task,
     events: latestEvents,
     eventsPage: { nextCursor: "older-timeout-cursor" },
@@ -528,6 +534,7 @@ test("keeps the latest conversation when older history times out", { tag: "@all-
         contentType: "application/json",
         body: JSON.stringify({
           revision: 2,
+          eventRevision: 2,
           task,
           events: [
             {
@@ -614,6 +621,7 @@ test("renders normalized Codex user messages instead of raw ambient context", { 
   ].join("\n");
   const detail = {
     revision: 1,
+    eventRevision: 1,
     task,
     events: [
       {
@@ -715,6 +723,7 @@ test("orders separate turns by message chronology when a newer start marker is s
     threadId,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task,
     events,
     eventsPage: { nextCursor: null },
@@ -827,6 +836,7 @@ test("keeps cross-turn work chronological and the active status at the timeline 
   );
   const activeDetail = {
     revision: 1,
+    eventRevision: 1,
     task: activeTask,
     events: [user, reasoning, foreignCommand, fileChange],
     eventsPage: { nextCursor: null },
@@ -878,7 +888,12 @@ test("keeps cross-turn work chronological and the active status at the timeline 
       const source = window.__crossTurnChronologySources.find((candidate) =>
         candidate.url.includes(`/api/tasks/${threadId}/stream`),
       );
-      source.emit("task-event", { threadId, revision, event: entry });
+      source.emit("task-event", {
+        threadId,
+        revision,
+        eventRevision: revision,
+        event: entry,
+      });
     }, { threadId, entry, revision });
 
   expect(await visibleTimelineOrder()).toEqual([
@@ -950,6 +965,7 @@ test("keeps cross-turn work chronological and the active status at the timeline 
   await emitTaskSync(
     {
       revision: 4,
+      eventRevision: 4,
       task: completedTask,
       events: [
         turnCompleted,
@@ -1132,6 +1148,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
   const currentDetail = () => ({
     threadId,
     revision: detailRevision,
+    eventRevision: detailRevision,
     task: detailTask,
     events: detailEvents,
     eventsPage: { nextCursor: null },
@@ -1158,7 +1175,12 @@ test("keeps task event chronology stable through approval, completion, and reloa
       const source = window.__taskEventSources.find((candidate) =>
         candidate.url.includes(`/api/tasks/${threadId}/stream`),
       );
-      source.emit("task-event", { threadId, revision, event: entry });
+      source.emit("task-event", {
+        threadId,
+        revision,
+        eventRevision: revision,
+        event: entry,
+      });
     }, { threadId, entry, revision });
   const emitTaskSync = (detail, revision) =>
     page.evaluate(({ threadId, detail, revision }) => {
@@ -1267,6 +1289,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
   await emitTaskSync(
     {
       revision: detailRevision,
+      eventRevision: detailRevision,
       task: detailTask,
       events: detailEvents,
       eventsPage: { nextCursor: null },
@@ -1478,6 +1501,7 @@ test("keeps task conversation scroll anchored during live updates", { tag: "@all
     threadId,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task,
     events,
     eventsPage: { nextCursor: null },
@@ -1540,6 +1564,7 @@ test("keeps task conversation scroll anchored during live updates", { tag: "@all
       taskSource.emit("task-event", {
         threadId,
         revision: 2,
+        eventRevision: 2,
         event: {
           id: "event_live_bottom",
           threadId,
@@ -1570,6 +1595,7 @@ test("keeps task conversation scroll anchored during live updates", { tag: "@all
       taskSource.emit("task-event", {
         threadId,
         revision: 3,
+        eventRevision: 3,
         event: {
           id: "event_live_preserve",
           threadId,
@@ -1597,6 +1623,7 @@ test("keeps task conversation scroll anchored during live updates", { tag: "@all
         taskSource.emit("task-event", {
           threadId,
           revision: 4 + index,
+          eventRevision: 4 + index,
           event: {
             id: `event_burst_${index}`,
             threadId,
@@ -1638,6 +1665,7 @@ test("keeps task conversation scroll anchored during live updates", { tag: "@all
       detail: {
         ...taskDetail,
         revision: 7,
+        eventRevision: 7,
         events: [...taskDetail.events, canonicalEvent],
       },
     });
@@ -1652,6 +1680,7 @@ test("keeps task conversation scroll anchored during live updates", { tag: "@all
     taskSource.emit("task-event", {
       threadId,
       revision: 6,
+      eventRevision: 6,
       event: {
         id: "event_stale_revision",
         threadId,
@@ -1668,6 +1697,7 @@ test("keeps task conversation scroll anchored during live updates", { tag: "@all
       detail: {
         ...taskDetail,
         revision: 6,
+        eventRevision: 6,
         events: [
           ...taskDetail.events,
           {

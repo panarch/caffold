@@ -177,6 +177,7 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
     threadId: CREATED_THREAD_ID,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task: createdTask,
     events: [],
     eventsPage: { nextCursor: null },
@@ -190,6 +191,7 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
     threadId: THREAD_ID,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task,
     events: [],
     eventsPage: { nextCursor: null },
@@ -1480,6 +1482,7 @@ async function emitGithubTaskEvent(page, revision) {
     source.emit("task-event", {
       threadId,
       revision,
+      eventRevision: revision,
       event: {
         id: `event_domain_render_${revision}`,
         threadId,

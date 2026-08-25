@@ -121,6 +121,7 @@ async function installTaskGitFixture(
           threadId,
           syncState: "ready",
           revision: 1,
+          eventRevision: 1,
           task,
           events: [],
           eventsPage: { nextCursor: null },
@@ -143,6 +144,7 @@ async function installTaskGitFixture(
           threadId: task.threadId,
           syncState: "ready",
           revision: 1,
+          eventRevision: 1,
           task,
           events: [],
           eventsPage: { nextCursor: null },
@@ -941,6 +943,7 @@ async function emitGitTaskEvent(page, revision) {
     source.emit("task-event", {
       threadId,
       revision,
+      eventRevision: revision,
       event: {
         id: `event_git_domain_render_${revision}`,
         threadId,

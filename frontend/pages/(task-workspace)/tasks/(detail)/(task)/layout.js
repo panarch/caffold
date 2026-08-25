@@ -24,14 +24,14 @@ import {
   withPromptSubmissionState,
 } from "../../runtime-state.js";
 import {
+  applyProjectionDelta,
   appendOptimisticEvent,
   eventIdentityKey,
   handoffOptimisticSubmission,
   mergeTaskEventsPage,
   optimisticUserMessageEvent,
   prependDetailEvents,
-  reconcileDetailEvents,
-  upsertLiveEvent,
+  projectCanonicalEvents,
 } from "../../task-events.js";
 import { cleanLogicalPath } from "../../task-format.js";
 import {
@@ -60,9 +60,11 @@ class CaffoldTaskDetail extends HTMLElement {
     this.view = "detail";
     this.taskDetail = null;
     this.taskDetailRevisionByThread = new Map();
+    this.projectionRevisionByThread = new Map();
     this.events = [];
     this.eventsThreadId = "";
     this.eventsByThread = new Map();
+    this.olderEventsByThread = new Map();
     this.eventsPage = { nextCursor: null };
     this.detailLoadError = null;
     this.historyLoadError = null;
@@ -445,7 +447,11 @@ class CaffoldTaskDetail extends HTMLElement {
       taskDetailThreadId(this.taskDetail) === threadId &&
       Boolean(this.taskDetail?.task);
     const applied = preserveReadableDetail
-      ? this.applyTaskStreamBaseline(threadId, message.revision)
+      ? this.applyTaskStreamBaseline(
+          threadId,
+          message.revision,
+          detail?.eventRevision,
+        )
       : this.applyCanonicalTaskDetail(threadId, detail, {
           revision: message.revision,
           resetRevision: message.reason === "stream-bootstrap",
@@ -470,12 +476,16 @@ class CaffoldTaskDetail extends HTMLElement {
     });
   }
 
-  applyTaskStreamBaseline(threadId, revision) {
+  applyTaskStreamBaseline(threadId, revision, eventRevision) {
     if (threadId !== this.selectedThreadId) {
       return false;
     }
     this.taskDetailRevisionByThread.delete(threadId);
-    return this.acceptTaskDetailRevision(threadId, revision);
+    this.projectionRevisionByThread.delete(threadId);
+    return (
+      this.acceptTaskDetailRevision(threadId, revision) &&
+      this.acceptProjectionSnapshotRevision(threadId, eventRevision).valid
+    );
   }
 
   applyTaskStreamEvent(message) {
@@ -485,11 +495,17 @@ class CaffoldTaskDetail extends HTMLElement {
       threadId !== this.selectedThreadId ||
       !entry ||
       entry.threadId !== threadId ||
-      !this.acceptTaskDetailRevision(threadId, message.revision)
+      !this.acceptProjectionDeltaRevision(threadId, message.eventRevision)
     ) {
       return;
     }
-    this.setThreadEvents(threadId, upsertLiveEvent(this.events, entry));
+    this.setThreadEvents(threadId, applyProjectionDelta(this.events, entry));
+    if (taskDetailThreadId(this.taskDetail) === threadId) {
+      this.taskDetail = {
+        ...this.taskDetail,
+        eventRevision: this.projectionRevisionByThread.get(threadId),
+      };
+    }
     this.reconcilePendingPrompt(threadId, [entry]);
     this.conversationUpdateKind = this.liveConversationUpdateKind(threadId);
     this.render();
@@ -519,17 +535,27 @@ class CaffoldTaskDetail extends HTMLElement {
       // Session revisions are process-local, so a reconnect after a server
       // restart can authoritatively bootstrap at a lower revision.
       this.taskDetailRevisionByThread.delete(threadId);
+      this.projectionRevisionByThread.delete(threadId);
     }
     if (!this.acceptTaskDetailRevision(threadId, revision)) {
       return false;
     }
-    if (!preferCurrentEvents) {
+    const projectionDecision = preferCurrentEvents
+      ? { valid: true, accepted: true }
+      : this.acceptProjectionSnapshotRevision(
+          threadId,
+          detail?.eventRevision,
+        );
+    if (!projectionDecision.valid) {
+      return false;
+    }
+    if (!preferCurrentEvents && projectionDecision.accepted) {
       this.rememberPendingPromptDetailPositions(
         threadId,
         detail?.events ?? [],
       );
     }
-    if (reconcilePrompt) {
+    if (reconcilePrompt && projectionDecision.accepted) {
       this.reconcilePendingPrompt(threadId, detail?.events ?? []);
     }
     const currentTask =
@@ -546,8 +572,24 @@ class CaffoldTaskDetail extends HTMLElement {
     if (!isTaskActivelyWorking(stableTask) || !stableTask?.activeTurn?.id) {
       this.interruptStateValue = { loading: false, error: null };
     }
+    const previousDetail =
+      taskDetailThreadId(this.taskDetail) === threadId
+        ? this.taskDetail
+        : null;
+    const retainedProjection =
+      !preferCurrentEvents && !projectionDecision.accepted && previousDetail
+        ? {
+            eventRevision:
+              this.projectionRevisionByThread.get(threadId) ?? 0,
+            events: previousDetail.events,
+            fileLinks: previousDetail.fileLinks,
+            eventsPage: previousDetail.eventsPage,
+            historyLoading: previousDetail.historyLoading,
+          }
+        : {};
     this.taskDetail = {
       ...detail,
+      ...retainedProjection,
       task: stableTask,
     };
     const currentEvents = this.eventsByThread.get(threadId) ?? [];
@@ -555,13 +597,32 @@ class CaffoldTaskDetail extends HTMLElement {
       detail.events ?? [],
       detail.fileLinks,
     );
-    this.setThreadEvents(
-      threadId,
-      preferCurrentEvents
-        ? prependDetailEvents(currentEvents, incomingEvents)
-        : reconcileDetailEvents(currentEvents, incomingEvents),
-    );
-    this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
+    if (preferCurrentEvents) {
+      const olderEvents = prependDetailEvents(
+        this.olderEventsByThread.get(threadId) ?? [],
+        incomingEvents,
+      );
+      this.olderEventsByThread.set(threadId, olderEvents);
+      this.setThreadEvents(
+        threadId,
+        prependDetailEvents(currentEvents, incomingEvents),
+      );
+    } else if (projectionDecision.accepted) {
+      const optimisticEvents = currentEvents.filter(
+        (event) => event.payload?.optimistic,
+      );
+      this.setThreadEvents(
+        threadId,
+        projectCanonicalEvents(
+          incomingEvents,
+          this.olderEventsByThread.get(threadId) ?? [],
+          optimisticEvents,
+        ),
+      );
+    }
+    if (preferCurrentEvents || projectionDecision.accepted) {
+      this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
+    }
     const canonicalError =
       detailError instanceof Error
         ? detailError
@@ -740,6 +801,32 @@ class CaffoldTaskDetail extends HTMLElement {
 
   acceptTaskDetailRevision(threadId, revision) {
     return this.acceptTaskRevision(this.taskDetailRevisionByThread, threadId, revision);
+  }
+
+  acceptProjectionSnapshotRevision(threadId, revision) {
+    const value = normalizedProjectionRevision(revision);
+    if (!threadId || value === null) {
+      return { valid: false, accepted: false };
+    }
+    const current = this.projectionRevisionByThread.get(threadId) ?? 0;
+    if (value < current) {
+      return { valid: true, accepted: false };
+    }
+    this.projectionRevisionByThread.set(threadId, value);
+    return { valid: true, accepted: true };
+  }
+
+  acceptProjectionDeltaRevision(threadId, revision) {
+    const value = normalizedProjectionRevision(revision);
+    if (!threadId || value === null) {
+      return false;
+    }
+    const current = this.projectionRevisionByThread.get(threadId) ?? 0;
+    if (value <= current) {
+      return false;
+    }
+    this.projectionRevisionByThread.set(threadId, value);
+    return true;
   }
 
   acceptTaskRevision(revisions, threadId, revision) {
@@ -1730,6 +1817,11 @@ function sameStructuredValue(left, right) {
         sameStructuredValue(left[key], right[key]),
     )
   );
+}
+
+function normalizedProjectionRevision(revision) {
+  const value = Number(revision);
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
 function closestElement(target, selector) {
