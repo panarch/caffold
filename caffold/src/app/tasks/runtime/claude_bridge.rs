@@ -29,11 +29,11 @@ impl TaskRuntime {
                 };
                 match event {
                     Ok(ClaudeRuntimeEvent::Session(reported)) => {
-                        if matches!(reported.kind, SessionEventKind::TurnEnded { .. }) {
+                        if matches!(&reported.kind, SessionEventKind::TurnEnded { .. }) {
                             runtime.finish_pending_claude_move(&reported.thread_id);
                         }
                         runtime
-                            .handle_session_event(super::CLAUDE_GENERATION, reported)
+                            .handle_session_event(super::CLAUDE_GENERATION, *reported)
                             .await;
                     }
                     Ok(ClaudeRuntimeEvent::TranscriptChanged { conversation_id }) => {
@@ -80,6 +80,7 @@ impl TaskRuntime {
                     // already lost; saying so beats carrying on as though the
                     // conversation were whole.
                     Err(broadcast::error::RecvError::Lagged(missed)) => {
+                        runtime.events.invalidate_all_continuity();
                         eprintln!("Claude runtime dropped {missed} reports behind a slow reader");
                     }
                     Err(broadcast::error::RecvError::Closed) => return,
@@ -215,6 +216,7 @@ impl TaskRuntime {
     /// current, and whoever is watching is told, so opening it again asks the
     /// agent rather than repeating what was last heard.
     async fn lost_claude_session(&self, thread_id: &str, message: &str) {
+        self.events.invalidate_continuity(thread_id);
         self.sessions.session_needs_opening_again(thread_id).await;
         let _ = self
             .signals
@@ -498,6 +500,7 @@ mod tests {
 
     use crate::agent::claude::{ClaudeTurnOptions, MockRunnerHandle};
     use crate::app::tasks::TaskState;
+    use crate::app::tasks::events::task_event_record;
     use crate::app::tasks::test_support::task_state_with_agents;
     use crate::fs::RootedFs;
     use crate::task_store::{ManagedThread, RunBy};
@@ -541,6 +544,36 @@ mod tests {
             display_name: "The name before".to_string(),
             ..ManagedThread::new(SESSION, RunBy::Codex, Some(1_000), None, None)
         }
+    }
+
+    #[tokio::test]
+    async fn a_lost_claude_session_withdraws_live_turn_completeness() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, _runner) = watched(root.path()).await;
+        state.task_events.publish(task_event_record(
+            SESSION,
+            "turn-live:started",
+            "turn_started",
+            "Turn started",
+            Some(json!({
+                "threadId": SESSION,
+                "turnId": "turn-live",
+            })),
+            2_000,
+        ));
+        assert_eq!(state.task_events.fully_observed_turns(SESSION).len(), 1);
+
+        state
+            .task_runtime
+            .lost_claude_session(SESSION, "the runner connection closed")
+            .await;
+
+        assert!(state.task_events.fully_observed_turns(SESSION).is_empty());
+        assert_eq!(
+            state.task_events.for_thread(SESSION).len(),
+            1,
+            "the observed report remains visible after its completeness proof is withdrawn"
+        );
     }
 
     #[tokio::test]

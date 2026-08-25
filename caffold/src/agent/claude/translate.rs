@@ -74,6 +74,7 @@ pub(crate) fn message_items(
         match block {
             ContentBlock::Text { text } => items.push(ConversationItem {
                 id,
+                observed_at_ms: None,
                 status: ActivityStatus::Completed,
                 kind: if failed_to_run {
                     // The harness wrote this where an answer would have been.
@@ -92,6 +93,7 @@ pub(crate) fn message_items(
             }),
             ContentBlock::Thinking { thinking } => items.push(ConversationItem {
                 id,
+                observed_at_ms: None,
                 status: ActivityStatus::Completed,
                 kind: ItemKind::Reasoning {
                     summary: Vec::new(),
@@ -160,6 +162,7 @@ pub(crate) fn user_message_item(anchor: &str, content: Vec<CaffoldContent>) -> C
         .join("\n");
     ConversationItem {
         id: anchor.to_string(),
+        observed_at_ms: None,
         status: ActivityStatus::Completed,
         kind: ItemKind::UserMessage { text, content },
     }
@@ -202,6 +205,7 @@ impl ToolCalls {
         );
         ConversationItem {
             id: id.to_string(),
+            observed_at_ms: None,
             status: ActivityStatus::InProgress,
             kind: tool_kind(name, input, None),
         }
@@ -216,6 +220,7 @@ impl ToolCalls {
         let call = self.0.remove(id)?;
         Some(ConversationItem {
             id: id.to_string(),
+            observed_at_ms: None,
             status: if is_error {
                 ActivityStatus::Failed
             } else {
@@ -233,6 +238,7 @@ impl ToolCalls {
             .into_iter()
             .map(|(id, call)| ConversationItem {
                 id,
+                observed_at_ms: None,
                 status,
                 kind: tool_kind(&call.name, &call.input, None),
             })

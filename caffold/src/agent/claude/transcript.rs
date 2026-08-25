@@ -531,8 +531,9 @@ fn turns(lines: &[&str]) -> ParsedTurns {
         // beside the conversation rather than in it.
         if let Some(steer) = steered_message(&row) {
             if let Some(turn) = turns.last_mut() {
-                turn.items
-                    .push(user_message_item(&format!("{anchor}:steer"), steer));
+                let mut item = user_message_item(&format!("{anchor}:steer"), steer);
+                item.observed_at_ms = at_ms;
+                turn.items.push(item);
             }
             continue;
         }
@@ -555,8 +556,12 @@ fn turns(lines: &[&str]) -> ParsedTurns {
             // writing to itself, and drawing it as words would put a line
             // nobody wrote where what somebody said belongs.
             let origin = prompt_origin(&row, message);
-            let said = (!matches!(origin, TurnOrigin::BackgroundTask(_)))
-                .then(|| user_message_item(&format!("{anchor}:prompt"), prompt_content(message)));
+            let said = (!matches!(origin, TurnOrigin::BackgroundTask(_))).then(|| {
+                let mut item =
+                    user_message_item(&format!("{anchor}:prompt"), prompt_content(message));
+                item.observed_at_ms = at_ms;
+                item
+            });
             if let TurnOrigin::BackgroundTask(task) = &origin {
                 apply_background_task(&mut turns, task);
                 background_tasks.push(BackgroundTaskObservation {
@@ -605,6 +610,7 @@ fn turns(lines: &[&str]) -> ParsedTurns {
             .as_ref()
             .and_then(ToolUseResult::background_task_id);
         for mut item in message_items(message, anchor, &mut calls, row.is_api_error_message) {
+            item.observed_at_ms = at_ms;
             if let Some(task_id) = background_task_id
                 && let ItemKind::CommandExecution(command) = &mut item.kind
             {
@@ -932,6 +938,8 @@ mod tests {
         ));
         assert_eq!(turns[0].started_at_ms, Some(1_787_220_000_000));
         assert_eq!(turns[0].completed_at_ms, Some(1_787_220_001_000));
+        assert_eq!(turns[0].items[0].observed_at_ms, Some(1_787_220_000_000));
+        assert_eq!(turns[0].items[1].observed_at_ms, Some(1_787_220_001_000));
         assert_eq!(turns[1].id, "prompt-2");
     }
 

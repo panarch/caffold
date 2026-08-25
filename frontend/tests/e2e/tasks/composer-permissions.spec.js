@@ -1009,6 +1009,7 @@ test("explicit approval mode is sent with a follow-up prompt", { tag: "@all-view
       json: {
         threadId: "thread-1",
         turnId: "turn-2",
+        userMessageId: "message-permission-1",
         steered: false,
       },
     });
@@ -1059,7 +1060,12 @@ test("a remembered mode the chosen model cannot use is replaced rather than sent
   await page.route("**/api/tasks/thread-1/prompts", (route) => {
     submittedBody = route.request().postDataJSON();
     return route.fulfill({
-      json: { threadId: "thread-1", turnId: "turn-2", steered: false },
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-2",
+        userMessageId: "message-permission-2",
+        steered: false,
+      },
     });
   });
 
@@ -1111,6 +1117,7 @@ test("send button does not return focus to the prompt after submission", { tag: 
       json: {
         threadId: "thread-1",
         turnId: "turn-2",
+        userMessageId: "message-permission-3",
         steered: false,
       },
     });
@@ -1286,6 +1293,7 @@ test("managed tasks restore their last applied model, reasoning, and speed", { t
       json: {
         threadId: "thread-1",
         turnId: "turn-2",
+        userMessageId: "message-permission-4",
         steered: false,
       },
     });
@@ -1481,6 +1489,7 @@ test("active turns lock the approval mode until the next turn", { tag: "@all-vie
       json: {
         threadId: "thread-1",
         turnId: "turn-1",
+        userMessageId: "message-permission-5",
         steered: true,
       },
     });
@@ -1579,6 +1588,7 @@ test("steering an active turn preserves its existing work clock", { tag: "@all-v
       json: {
         threadId: "thread-1",
         turnId: "turn-1",
+        userMessageId: "message-permission-6",
         steered: true,
       },
     });

@@ -415,6 +415,7 @@ pub(super) mod test_support {
             turn_id: turn_id.to_string(),
             item: ConversationItem {
                 id: item_id.to_string(),
+                observed_at_ms: None,
                 status: ActivityStatus::Completed,
                 kind: ItemKind::Reasoning {
                     summary: vec!["Read the current behavior.".to_string()],

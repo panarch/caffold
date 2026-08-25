@@ -55,6 +55,7 @@ impl TaskRuntime {
                 .codex_connection_lost(generation, connection_error.clone())
                 .await;
             for thread_id in affected {
+                runtime.events.invalidate_continuity(&thread_id);
                 let _ = runtime.signals.send(TaskRuntimeSignal::SessionUnavailable {
                     thread_id,
                     message: connection_error.clone(),

@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
 };
 
@@ -23,7 +23,20 @@ pub(in crate::app) struct TaskEventRecord {
     pub(in crate::app) event_type: String,
     pub(in crate::app) summary: String,
     pub(in crate::app) payload: Option<JsonValue>,
+    /// Where this record is placed in the conversation projection.
+    ///
+    /// Provider history can give an exact item order without giving an item
+    /// timestamp. In that case this is the turn's placement anchor and
+    /// `observed_ms` is `None`; surfaces must not present this value as though
+    /// the individual item happened then.
     pub(in crate::app) created_ms: u64,
+    /// Direct time evidence for the first observation of this event.
+    ///
+    /// `None` means the provider supplied order but no per-item time. It is
+    /// deliberately serialized as `null` so a current frontend can distinguish
+    /// unknown time from an older backend that only supplied `createdMs`.
+    #[serde(default)]
+    pub(in crate::app) observed_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(in crate::app) updated_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -32,9 +45,19 @@ pub(in crate::app) struct TaskEventRecord {
     pub(in crate::app) generated_image: Option<GeneratedImageObservation>,
 }
 
+#[derive(Default)]
+struct LiveTaskEventCacheState {
+    events: HashMap<String, Vec<TaskEventRecord>>,
+    /// Turns whose live journal lost continuity after its boundary was seen.
+    ///
+    /// Their records remain useful observations, but no longer prove that the
+    /// live journal is a complete replacement for provider history.
+    invalidated_turns: HashMap<String, HashSet<String>>,
+}
+
 #[derive(Clone, Default)]
 pub(in crate::app) struct LiveTaskEventCache {
-    pub(in crate::app) events: Arc<Mutex<HashMap<String, Vec<TaskEventRecord>>>>,
+    state: Arc<Mutex<LiveTaskEventCacheState>>,
 }
 
 pub(in crate::app) const LIVE_TASK_EVENT_LIMIT_PER_THREAD: usize = 256;
@@ -49,12 +72,13 @@ impl LiveTaskEventCache {
     }
 
     pub(in crate::app) fn record(&self, mut event: TaskEventRecord) -> TaskEventRecord {
-        let Ok(mut events) = self.events.lock() else {
+        let Ok(mut state) = self.state.lock() else {
             return event;
         };
         let thread_id = event.thread_id.clone();
-        if !events.contains_key(&thread_id) && events.len() >= LIVE_TASK_THREAD_LIMIT {
-            let oldest_thread = events
+        if !state.events.contains_key(&thread_id) && state.events.len() >= LIVE_TASK_THREAD_LIMIT {
+            let oldest_thread = state
+                .events
                 .iter()
                 .min_by_key(|(_, items)| {
                     items
@@ -65,29 +89,14 @@ impl LiveTaskEventCache {
                 })
                 .map(|(thread_id, _)| thread_id.clone());
             if let Some(oldest_thread) = oldest_thread {
-                events.remove(&oldest_thread);
+                state.events.remove(&oldest_thread);
+                state.invalidated_turns.remove(&oldest_thread);
             }
         }
-        let thread_events = events.entry(thread_id).or_default();
+        let thread_events = state.events.entry(thread_id).or_default();
         if let Some(existing) = thread_events.iter_mut().find(|item| item.id == event.id) {
             *existing = merge_task_event_record(existing.clone(), event);
             return existing.clone();
-        }
-        if is_pending_canonical_user_message(&event)
-            && thread_events.iter().any(|canonical| {
-                !is_pending_canonical_user_message(canonical)
-                    && pending_user_message_matches(&event, canonical)
-            })
-        {
-            return event;
-        }
-        if event.event_type == "user_message"
-            && !is_pending_canonical_user_message(&event)
-            && let Some(index) = thread_events
-                .iter()
-                .position(|pending| pending_user_message_matches(pending, &event))
-        {
-            thread_events.remove(index);
         }
         if event.sort_index.is_none() {
             event.sort_index = Some(
@@ -107,16 +116,85 @@ impl LiveTaskEventCache {
     }
 
     pub(in crate::app) fn for_thread(&self, thread_id: &str) -> Vec<TaskEventRecord> {
-        self.events
+        self.state
             .lock()
             .ok()
-            .and_then(|events| events.get(thread_id).cloned())
+            .and_then(|state| state.events.get(thread_id).cloned())
             .unwrap_or_default()
     }
 
+    /// Turns whose live item journal is known to start at the real turn
+    /// boundary and has remained continuous since.
+    pub(in crate::app) fn fully_observed_turns(&self, thread_id: &str) -> HashSet<String> {
+        let Ok(state) = self.state.lock() else {
+            return HashSet::new();
+        };
+        let invalidated = state.invalidated_turns.get(thread_id);
+        state
+            .events
+            .get(thread_id)
+            .into_iter()
+            .flatten()
+            .filter(|event| event.event_type == "turn_started")
+            .filter_map(task_event_turn_id)
+            .filter(|turn_id| invalidated.is_none_or(|turns| !turns.contains(*turn_id)))
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// Keep the observations, but withdraw the claim that this thread's live
+    /// journal is complete. A reconnect can recover provider history; it cannot
+    /// recover reports that may have fallen between two live connections.
+    pub(in crate::app) fn invalidate_continuity(&self, thread_id: &str) {
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        let turn_ids = state
+            .events
+            .get(thread_id)
+            .into_iter()
+            .flatten()
+            .filter(|event| event.event_type == "turn_started")
+            .filter_map(task_event_turn_id)
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        state
+            .invalidated_turns
+            .entry(thread_id.to_string())
+            .or_default()
+            .extend(turn_ids);
+    }
+
+    /// The receiver cannot identify which conversation its missed reports
+    /// belonged to, so every live-ledger claim is withdrawn conservatively.
+    pub(in crate::app) fn invalidate_all_continuity(&self) {
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        let turn_ids = state
+            .events
+            .iter()
+            .flat_map(|(thread_id, events)| {
+                events
+                    .iter()
+                    .filter(|event| event.event_type == "turn_started")
+                    .filter_map(task_event_turn_id)
+                    .map(|turn_id| (thread_id.clone(), turn_id.to_string()))
+            })
+            .collect::<Vec<_>>();
+        for (thread_id, turn_id) in turn_ids {
+            state
+                .invalidated_turns
+                .entry(thread_id)
+                .or_default()
+                .insert(turn_id);
+        }
+    }
+
     pub(in crate::app) fn remove_thread(&self, thread_id: &str) {
-        if let Ok(mut events) = self.events.lock() {
-            events.remove(thread_id);
+        if let Ok(mut state) = self.state.lock() {
+            state.events.remove(thread_id);
+            state.invalidated_turns.remove(thread_id);
         }
     }
 }
@@ -160,17 +238,28 @@ impl TaskEvents {
         let _ = self.sender.send(event);
     }
 
-    pub(in crate::app) fn observe(&self, events: &[TaskEventRecord]) {
+    /// Preserve history-backed assets without turning provider history into a
+    /// second copy of the live journal.
+    pub(in crate::app) fn observe_history_assets(&self, events: &[TaskEventRecord]) {
         for event in events {
             self.generated_images.observe(event);
-            let mut cached = event.clone();
-            cached.generated_image = None;
-            self.cache.record(cached);
         }
     }
 
     pub(in crate::app) fn for_thread(&self, thread_id: &str) -> Vec<TaskEventRecord> {
         self.cache.for_thread(thread_id)
+    }
+
+    pub(in crate::app) fn fully_observed_turns(&self, thread_id: &str) -> HashSet<String> {
+        self.cache.fully_observed_turns(thread_id)
+    }
+
+    pub(in crate::app) fn invalidate_continuity(&self, thread_id: &str) {
+        self.cache.invalidate_continuity(thread_id);
+    }
+
+    pub(in crate::app) fn invalidate_all_continuity(&self) {
+        self.cache.invalidate_all_continuity();
     }
 
     pub(in crate::app) fn generated_images(&self) -> &GeneratedImageStore {
@@ -183,12 +272,18 @@ impl TaskEvents {
     }
 }
 
+/// Merge a position-owning event projection with supplemental observations.
+///
+/// An exact identity in both collections keeps the first collection's
+/// conversation position. The supplemental record may still contribute its
+/// newer payload and update time. An identity found only in the supplemental
+/// collection remains visible at its observed position.
 pub(in crate::app) fn merge_task_event_records(
-    left: Vec<TaskEventRecord>,
-    right: Vec<TaskEventRecord>,
+    positioned: Vec<TaskEventRecord>,
+    supplemental: Vec<TaskEventRecord>,
 ) -> Vec<TaskEventRecord> {
     let mut events = HashMap::<String, TaskEventRecord>::new();
-    for event in left {
+    for event in positioned {
         events
             .entry(event.id.clone())
             .and_modify(|existing| {
@@ -196,16 +291,39 @@ pub(in crate::app) fn merge_task_event_records(
             })
             .or_insert(event);
     }
-    for event in right {
+    for event in supplemental {
         events
             .entry(event.id.clone())
             .and_modify(|existing| {
-                *existing =
-                    merge_task_event_record_at_incoming_position(existing.clone(), event.clone());
+                *existing = merge_task_event_record(existing.clone(), event.clone());
             })
             .or_insert(event);
     }
     events.into_values().collect()
+}
+
+/// Join a provider-history snapshot with the live reports Caffold observed.
+///
+/// A live `turn_started` plus uninterrupted observation proves Caffold watched
+/// that turn from its boundary. That live stream therefore owns the whole item
+/// set for the turn: mixing in a second provider projection whose item ids are
+/// local to a history read would draw the same work twice and would replace
+/// direct event times with a turn-level fallback. A turn Caffold joined after
+/// it began, or whose live connection lost continuity, has no such proof, so
+/// history remains the baseline and only exact identities reconcile. No
+/// content, proximity, or arrival-order matching is involved.
+pub(in crate::app) fn merge_provider_history_with_live_events(
+    history: Vec<TaskEventRecord>,
+    live: Vec<TaskEventRecord>,
+    fully_observed_turns: &HashSet<String>,
+) -> Vec<TaskEventRecord> {
+    let history = history
+        .into_iter()
+        .filter(|event| {
+            task_event_turn_id(event).is_none_or(|turn_id| !fully_observed_turns.contains(turn_id))
+        })
+        .collect();
+    merge_task_event_records(history, live)
 }
 
 pub(in crate::app) fn merge_task_event_record(
@@ -214,6 +332,11 @@ pub(in crate::app) fn merge_task_event_record(
 ) -> TaskEventRecord {
     let created_ms = existing.created_ms;
     let sort_index = existing.sort_index;
+    let observed_ms = match (existing.observed_ms, incoming.observed_ms) {
+        (Some(existing), Some(incoming)) => Some(existing.min(incoming)),
+        (Some(observed), None) | (None, Some(observed)) => Some(observed),
+        (None, None) => None,
+    };
     let existing_updated_ms = existing.updated_ms.unwrap_or(existing.created_ms);
     let incoming_updated_ms = incoming.updated_ms.unwrap_or(incoming.created_ms);
     let (mut latest, earlier) = if incoming_updated_ms >= existing_updated_ms {
@@ -230,23 +353,12 @@ pub(in crate::app) fn merge_task_event_record(
         (_, latest) => latest,
     };
     latest.created_ms = created_ms;
+    latest.observed_ms = observed_ms;
     latest.sort_index = sort_index;
     latest.generated_image = latest.generated_image.or(earlier.generated_image);
     let updated_ms = existing_updated_ms.max(incoming_updated_ms);
     latest.updated_ms = (updated_ms > created_ms).then_some(updated_ms);
     latest
-}
-
-pub(in crate::app) fn merge_task_event_record_at_incoming_position(
-    existing: TaskEventRecord,
-    incoming: TaskEventRecord,
-) -> TaskEventRecord {
-    let created_ms = incoming.created_ms;
-    let sort_index = incoming.sort_index;
-    let mut merged = merge_task_event_record(existing, incoming);
-    merged.created_ms = created_ms;
-    merged.sort_index = sort_index;
-    merged
 }
 
 pub(in crate::app) fn sort_task_events(events: &mut [TaskEventRecord]) {
@@ -264,10 +376,10 @@ pub(in crate::app) fn sort_task_events(events: &mut [TaskEventRecord]) {
 
 /// Every event a conversation's own history implies.
 ///
-/// This is the canonical read: what the agent says happened, rendered as the
-/// records the interface shows. Live events carry the same identities, so a
-/// turn watched as it ran and the same turn read back later are one timeline
-/// rather than two.
+/// This is the provider-history read: what the agent says happened, rendered
+/// as the records the interface shows. Live events carry the same identities,
+/// so a turn watched as it ran and the same turn read back later are one
+/// timeline rather than two.
 pub(in crate::app) fn thread_events(conversation: &Conversation) -> Vec<TaskEventRecord> {
     let thread_id = conversation.id.as_str();
     let mut events = Vec::new();
@@ -304,6 +416,10 @@ pub(in crate::app) fn thread_events(conversation: &Conversation) -> Vec<TaskEven
         }
         for (index, item) in turn.items.iter().enumerate() {
             if let Some(mut event) = task_event_from_item(thread_id, turn_id, timeline_ms, item) {
+                // Provider order owns placement. An item-level provider clock,
+                // when present, is separate display evidence; without one the
+                // turn anchor must not be presented as every item's time.
+                event.observed_ms = item.observed_at_ms;
                 event.sort_index = Some(u32::try_from(index).unwrap_or(u32::MAX).saturating_add(1));
                 events.push(event);
             }
@@ -619,42 +735,20 @@ pub(in crate::app) fn approval_resolved_event(
     )
 }
 
-/// A prompt Caffold has accepted but the agent has not reported back yet.
+/// A prompt an agent adapter has accepted, under the identity it reports.
 ///
-/// It stands in for the canonical message so the conversation shows the prompt
-/// immediately, and steps aside once the real one arrives — which is what the
-/// matching below is for.
+/// Live updates and history use this same item identity, so either may arrive
+/// before this event and exact identity merging still produces one message.
+/// Its provisional position is when Caffold observed the submission; waiting
+/// for the adapter to return its identity must not move it behind the answer.
 pub(in crate::app) fn accepted_user_message_event(
     thread_id: &str,
     turn_id: &str,
-    prompt: &str,
-    images: &[String],
+    item: &ConversationItem,
+    observed_ms: u64,
 ) -> TaskEventRecord {
-    let content = prompt
-        .is_empty()
-        .then(Vec::new)
-        .unwrap_or_else(|| vec![json!({ "type": "text", "text": prompt })])
-        .into_iter()
-        .chain(
-            images
-                .iter()
-                .map(|url| json!({ "type": "image", "url": url })),
-        )
-        .collect::<Vec<_>>();
-    task_event_record(
-        thread_id,
-        &format!("{turn_id}:accepted_user_message:{}", uuid::Uuid::new_v4()),
-        "user_message",
-        "User prompt",
-        Some(json!({
-            "threadId": thread_id,
-            "turnId": turn_id,
-            "text": prompt,
-            "content": content,
-            "pendingCanonical": true,
-        })),
-        now_ms(),
-    )
+    task_event_from_item(thread_id, turn_id, observed_ms, item)
+        .expect("an accepted prompt is a displayable user message")
 }
 
 /// A first turn that could not begin, said in the Task it was meant for.
@@ -672,67 +766,6 @@ pub(in crate::app) fn first_turn_failed_event(thread_id: &str, reason: &str) -> 
         Some(json!({ "threadId": thread_id })),
         now_ms(),
     )
-}
-
-pub(in crate::app) fn is_pending_canonical_user_message(event: &TaskEventRecord) -> bool {
-    event.event_type == "user_message"
-        && event
-            .payload
-            .as_ref()
-            .and_then(|payload| payload.get("pendingCanonical"))
-            .and_then(JsonValue::as_bool)
-            .unwrap_or(false)
-}
-
-pub(in crate::app) fn pending_user_message_matches(
-    pending: &TaskEventRecord,
-    canonical: &TaskEventRecord,
-) -> bool {
-    if !is_pending_canonical_user_message(pending) || canonical.event_type != "user_message" {
-        return false;
-    }
-    let Some(pending_payload) = pending.payload.as_ref() else {
-        return false;
-    };
-    let Some(canonical_payload) = canonical.payload.as_ref() else {
-        return false;
-    };
-    pending_payload.get("turnId").and_then(JsonValue::as_str)
-        == canonical_payload.get("turnId").and_then(JsonValue::as_str)
-        && user_message_event_text(pending_payload) == user_message_event_text(canonical_payload)
-        && user_message_event_images(pending_payload)
-            == user_message_event_images(canonical_payload)
-}
-
-pub(in crate::app) fn user_message_event_text(payload: &JsonValue) -> String {
-    payload
-        .get("text")
-        .and_then(JsonValue::as_str)
-        .unwrap_or_default()
-        .trim()
-        .to_string()
-}
-
-pub(in crate::app) fn user_message_event_images(payload: &JsonValue) -> Vec<String> {
-    payload
-        .get("content")
-        .and_then(JsonValue::as_array)
-        .into_iter()
-        .flatten()
-        .filter(|item| {
-            matches!(
-                item.get("type").and_then(JsonValue::as_str),
-                Some("image" | "localImage")
-            )
-        })
-        .map(|item| {
-            item.get("url")
-                .or_else(|| item.get("path"))
-                .and_then(JsonValue::as_str)
-                .unwrap_or_default()
-                .to_string()
-        })
-        .collect()
 }
 
 /// One record, in the shape the interface reads every event in.
@@ -754,10 +787,19 @@ pub(in crate::app) fn task_event_record(
         summary: summary.to_string(),
         payload,
         created_ms,
+        observed_ms: Some(created_ms),
         updated_ms: None,
         sort_index: None,
         generated_image: None,
     }
+}
+
+fn task_event_turn_id(event: &TaskEventRecord) -> Option<&str> {
+    event
+        .payload
+        .as_ref()
+        .and_then(|payload| payload.get("turnId"))
+        .and_then(JsonValue::as_str)
 }
 
 /// The filename the browser saves a generated image under.
@@ -872,8 +914,12 @@ mod tests {
         reported: ActivityStatus,
         item: JsonValue,
     ) -> Option<TaskEventRecord> {
-        let item = crate::agent::codex::conversation_item(&item, reported)?;
+        let item = codex_item(reported, item)?;
         task_event_from_item("thread_1", turn_id, created_ms, &item)
+    }
+
+    fn codex_item(reported: ActivityStatus, item: JsonValue) -> Option<ConversationItem> {
+        crate::agent::codex::conversation_item(&item, reported)
     }
 
     /// One item from Codex's raw model-output stream, which reports work that
@@ -948,7 +994,7 @@ mod tests {
         assert_eq!(raw.id, canonical.id);
         assert_eq!(raw.event_type, canonical.event_type);
         assert_eq!(
-            merge_task_event_records(vec![raw], vec![canonical]).len(),
+            merge_task_event_records(vec![canonical], vec![raw]).len(),
             1
         );
     }
@@ -981,8 +1027,355 @@ mod tests {
         cache.record(separate.clone());
         assert_eq!(cache.for_thread("thread_1").len(), 2);
 
-        let merged = merge_task_event_records(vec![live], vec![history, separate]);
+        let merged = merge_task_event_records(vec![history], vec![live, separate]);
         assert_eq!(merged.len(), 2);
+        assert_eq!(
+            merged
+                .iter()
+                .find(|event| event.id.ends_with(":message_1"))
+                .expect("merged client item")
+                .created_ms,
+            11,
+            "provider history owns the position even when the live projection used another ID"
+        );
+    }
+
+    #[test]
+    fn agent_history_position_survives_a_late_live_projection_of_the_same_item() {
+        let mut history_prompt = task_event_record(
+            "thread_1",
+            "turn_1:message_1",
+            "user_message",
+            "User prompt",
+            Some(json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "itemId": "message_1",
+                "text": "Test the ordering",
+                "content": [{ "type": "text", "text": "Test the ordering" }]
+            })),
+            100,
+        );
+        history_prompt.sort_index = Some(1);
+        let mut history_answer = task_event_record(
+            "thread_1",
+            "turn_1:answer_1",
+            "assistant_message",
+            "Assistant message",
+            Some(json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "itemId": "answer_1",
+                "text": "The answer"
+            })),
+            100,
+        );
+        history_answer.sort_index = Some(2);
+        let mut late_live_prompt = task_event_record(
+            "thread_1",
+            "turn_1:message_1",
+            "user_message",
+            "User prompt accepted",
+            Some(json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "itemId": "message_1",
+                "text": "Test the ordering",
+                "liveDelivery": "accepted"
+            })),
+            200,
+        );
+        late_live_prompt.sort_index = Some(0);
+
+        let mut merged =
+            merge_task_event_records(vec![history_prompt, history_answer], vec![late_live_prompt]);
+        sort_task_events(&mut merged);
+
+        assert_eq!(
+            merged
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect::<Vec<_>>(),
+            vec!["user_message", "assistant_message"],
+            "a late observation cannot move a prompt behind its answer"
+        );
+        let prompt = &merged[0];
+        assert_eq!(prompt.created_ms, 100);
+        assert_eq!(prompt.sort_index, Some(1));
+        assert_eq!(prompt.updated_ms, Some(200));
+        assert_eq!(prompt.payload.as_ref().unwrap()["liveDelivery"], "accepted");
+        assert!(
+            prompt.payload.as_ref().unwrap()["content"].is_array(),
+            "the live projection enriches history without replacing its position or structure"
+        );
+    }
+
+    #[test]
+    fn a_fully_observed_turn_uses_one_live_item_ledger() {
+        let turn_id = "turn_1";
+        let history = [
+            ("turn_1:started", "turn_started", 100, None),
+            ("turn_1:item-2", "assistant_message", 100, Some("Working")),
+            ("turn_1:exec-1", "tool_call", 100, None),
+            ("turn_1:item-3", "tool_call", 100, None),
+        ]
+        .into_iter()
+        .map(|(id, event_type, created_ms, text)| {
+            let mut event = task_event_record(
+                "thread_1",
+                id,
+                event_type,
+                event_type,
+                Some(json!({
+                    "threadId": "thread_1",
+                    "turnId": turn_id,
+                    "itemId": id.rsplit(':').next().unwrap(),
+                    "text": text,
+                })),
+                created_ms,
+            );
+            event.observed_ms = None;
+            event
+        })
+        .collect::<Vec<_>>();
+        let live = [
+            ("turn_1:started", "turn_started", 100, None),
+            (
+                "turn_1:msg_response_1",
+                "assistant_message",
+                110,
+                Some("Working"),
+            ),
+            ("turn_1:exec-1", "tool_call", 120, None),
+            ("turn_1:context-live-1", "tool_call", 130, None),
+        ]
+        .into_iter()
+        .map(|(id, event_type, created_ms, text)| {
+            task_event_record(
+                "thread_1",
+                id,
+                event_type,
+                event_type,
+                Some(json!({
+                    "threadId": "thread_1",
+                    "turnId": turn_id,
+                    "itemId": id.rsplit(':').next().unwrap(),
+                    "text": text,
+                })),
+                created_ms,
+            )
+        })
+        .collect::<Vec<_>>();
+
+        let mut merged = merge_provider_history_with_live_events(
+            history,
+            live,
+            &HashSet::from([turn_id.to_string()]),
+        );
+        sort_task_events(&mut merged);
+
+        assert_eq!(
+            merged
+                .iter()
+                .map(|event| event.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "thread_1:turn_1:started",
+                "thread_1:turn_1:msg_response_1",
+                "thread_1:turn_1:exec-1",
+                "thread_1:turn_1:context-live-1",
+            ],
+            "history-local item ids cannot create a second copy of a turn Caffold watched from its start"
+        );
+        assert_eq!(
+            merged
+                .iter()
+                .map(|event| (event.created_ms, event.observed_ms))
+                .collect::<Vec<_>>(),
+            vec![
+                (100, Some(100)),
+                (110, Some(110)),
+                (120, Some(120)),
+                (130, Some(130)),
+            ],
+            "direct live times must not collapse onto the history turn anchor"
+        );
+    }
+
+    #[test]
+    fn a_partially_observed_turn_does_not_guess_across_distinct_item_ids() {
+        let history = task_event_record(
+            "thread_1",
+            "turn_1:item-2",
+            "assistant_message",
+            "Assistant response",
+            Some(json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "itemId": "item-2",
+                "text": "Same presentation",
+            })),
+            100,
+        );
+        let live = task_event_record(
+            "thread_1",
+            "turn_1:msg_response_1",
+            "assistant_message",
+            "Assistant response",
+            Some(json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "itemId": "msg_response_1",
+                "text": "Same presentation",
+            })),
+            110,
+        );
+
+        let merged =
+            merge_provider_history_with_live_events(vec![history], vec![live], &HashSet::new());
+
+        assert_eq!(
+            merged.len(),
+            2,
+            "without a live turn boundary or exact identity, Caffold cannot claim two provider records are one"
+        );
+    }
+
+    #[test]
+    fn a_connection_gap_withdraws_live_ledger_ownership_without_erasing_evidence() {
+        let cache = LiveTaskEventCache::default();
+        let turn_started = task_event_record(
+            "thread_1",
+            "turn_1:started",
+            "turn_started",
+            "Turn started",
+            Some(json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+            })),
+            100,
+        );
+        let live_item = task_event_record(
+            "thread_1",
+            "turn_1:live-item",
+            "assistant_message",
+            "Assistant response",
+            Some(json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "itemId": "live-item",
+                "text": "Visible live evidence",
+            })),
+            110,
+        );
+        cache.observe(&[turn_started, live_item]);
+        assert_eq!(
+            cache.fully_observed_turns("thread_1"),
+            HashSet::from(["turn_1".to_string()])
+        );
+
+        cache.invalidate_continuity("thread_1");
+
+        assert!(cache.fully_observed_turns("thread_1").is_empty());
+        assert_eq!(
+            cache.for_thread("thread_1").len(),
+            2,
+            "a transport gap invalidates completeness, not the reports already observed"
+        );
+        let history_item = task_event_record(
+            "thread_1",
+            "turn_1:history-item",
+            "assistant_message",
+            "Assistant response",
+            Some(json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1",
+                "itemId": "history-item",
+                "text": "Provider history evidence",
+            })),
+            100,
+        );
+        let merged = merge_provider_history_with_live_events(
+            vec![history_item],
+            cache.for_thread("thread_1"),
+            &cache.fully_observed_turns("thread_1"),
+        );
+        assert_eq!(
+            merged.len(),
+            3,
+            "after an observation gap, history returns and distinct provider identities remain distinct"
+        );
+    }
+
+    #[test]
+    fn provider_history_order_does_not_claim_per_item_time() {
+        let history = conversation(json!({
+            "id": "thread_1",
+            "preview": "History",
+            "status": { "type": "idle" },
+            "cwd": "/tmp",
+            "createdAt": 1.0,
+            "updatedAt": 3.0,
+            "turns": [{
+                "id": "turn_1",
+                "status": "completed",
+                "startedAt": 1.0,
+                "completedAt": 3.0,
+                "items": [{
+                    "type": "agentMessage",
+                    "id": "item-1",
+                    "text": "Only its order is known"
+                }]
+            }]
+        }));
+
+        let item = thread_events(&history)
+            .into_iter()
+            .find(|event| event.event_type == "assistant_message")
+            .expect("history projects the message");
+
+        assert_eq!(item.created_ms, 1_000, "the turn anchor still places it");
+        assert_eq!(
+            item.observed_ms, None,
+            "a turn anchor is not an individual message timestamp"
+        );
+        assert!(
+            serde_json::to_value(item).unwrap()["observedMs"].is_null(),
+            "the API must distinguish unknown item time from an older response that omitted the field"
+        );
+    }
+
+    #[test]
+    fn provider_item_time_is_display_evidence_without_replacing_turn_order() {
+        let mut history = conversation(json!({
+            "id": "thread_1",
+            "preview": "History",
+            "status": { "type": "idle" },
+            "cwd": "/tmp",
+            "createdAt": 1.0,
+            "updatedAt": 3.0,
+            "turns": [{
+                "id": "turn_1",
+                "status": "completed",
+                "startedAt": 1.0,
+                "completedAt": 3.0,
+                "items": [{
+                    "type": "agentMessage",
+                    "id": "item-1",
+                    "text": "Its provider recorded a direct time"
+                }]
+            }]
+        }));
+        history.turns[0].items[0].observed_at_ms = Some(2_000);
+
+        let item = thread_events(&history)
+            .into_iter()
+            .find(|event| event.event_type == "assistant_message")
+            .expect("history projects the message");
+
+        assert_eq!(item.created_ms, 1_000, "turn order still owns placement");
+        assert_eq!(item.sort_index, Some(1));
+        assert_eq!(item.observed_ms, Some(2_000));
     }
 
     #[test]
@@ -1282,6 +1675,7 @@ mod tests {
                 completed_at_ms: Some(3),
                 items: vec![ConversationItem {
                     id: "toolu_1".to_string(),
+                    observed_at_ms: None,
                     status: ActivityStatus::Completed,
                     kind: ItemKind::CommandExecution(CommandExecution {
                         command: Some("sleep 1".to_string()),
@@ -1795,11 +2189,21 @@ mod tests {
     fn canonical_user_message_replaces_the_locally_accepted_prompt() {
         let cache = LiveTaskEventCache::default();
         let image = "data:image/png;base64,aGVsbG8=".to_string();
+        let accepted = codex_item(
+            ActivityStatus::Completed,
+            json!({
+                "type": "userMessage",
+                "id": "accepted_projection",
+                "clientId": "message_1",
+                "content": [
+                    { "type": "text", "text": "Inspect this image" },
+                    { "type": "image", "url": image }
+                ]
+            }),
+        )
+        .expect("accepted user message");
         cache.record(accepted_user_message_event(
-            "thread_1",
-            "turn_1",
-            "Inspect this image",
-            std::slice::from_ref(&image),
+            "thread_1", "turn_1", &accepted, 10,
         ));
         let canonical = codex_item_event(
             "turn_1",
@@ -1808,6 +2212,7 @@ mod tests {
             json!({
                 "type": "userMessage",
                 "id": "item_prompt",
+                "clientId": "message_1",
                 "content": [
                     { "type": "text", "text": "Inspect this image" },
                     { "type": "image", "url": image }
@@ -1818,17 +2223,28 @@ mod tests {
 
         let canonical = cache.record(canonical);
 
-        assert_eq!(cache.for_thread("thread_1"), vec![canonical]);
+        let merged = cache.for_thread("thread_1");
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].id, canonical.id);
+        assert_eq!(merged[0].created_ms, canonical.created_ms);
+        assert_eq!(merged[0].payload.as_ref().unwrap()["itemId"], "message_1");
     }
 
     #[test]
     fn a_first_turn_failure_stands_in_the_conversation_beside_its_prompt() {
         let cache = LiveTaskEventCache::default();
+        let accepted = codex_item(
+            ActivityStatus::Completed,
+            json!({
+                "type": "userMessage",
+                "id": "accepted_projection",
+                "clientId": "message_1",
+                "content": [{ "type": "text", "text": "Read the planner" }]
+            }),
+        )
+        .expect("accepted user message");
         let prompt = cache.record(accepted_user_message_event(
-            "thread_1",
-            "turn_1",
-            "Read the planner",
-            &[],
+            "thread_1", "turn_1", &accepted, 10,
         ));
         let failure = cache.record(first_turn_failed_event(
             "thread_1",
@@ -1863,20 +2279,105 @@ mod tests {
             json!({
                 "type": "userMessage",
                 "id": "item_prompt",
+                "clientId": "message_1",
                 "content": [{ "type": "text", "text": "Already canonical" }]
             }),
         )
         .expect("canonical user message");
         let canonical = cache.record(canonical);
 
+        let accepted = codex_item(
+            ActivityStatus::Completed,
+            json!({
+                "type": "userMessage",
+                "id": "accepted_projection",
+                "clientId": "message_1",
+                "content": [{ "type": "text", "text": "Already canonical" }]
+            }),
+        )
+        .expect("accepted user message");
         cache.record(accepted_user_message_event(
-            "thread_1",
-            "turn_1",
-            "Already canonical",
-            &[],
+            "thread_1", "turn_1", &accepted, 30,
         ));
 
-        assert_eq!(cache.for_thread("thread_1"), vec![canonical]);
+        let merged = cache.for_thread("thread_1");
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].id, canonical.id);
+        assert_eq!(merged[0].created_ms, canonical.created_ms);
+        assert_eq!(merged[0].payload.as_ref().unwrap()["itemId"], "message_1");
+    }
+
+    #[test]
+    fn matching_words_do_not_erase_a_second_accepted_prompt() {
+        let cache = LiveTaskEventCache::default();
+        let first = codex_item_event(
+            "turn_1",
+            20,
+            ActivityStatus::Completed,
+            json!({
+                "type": "userMessage",
+                "id": "item_prompt_1",
+                "clientId": "message_1",
+                "content": [{ "type": "text", "text": "Repeat this" }]
+            }),
+        )
+        .expect("first canonical user message");
+        cache.record(first);
+
+        let second = codex_item(
+            ActivityStatus::Completed,
+            json!({
+                "type": "userMessage",
+                "id": "accepted_projection_2",
+                "clientId": "message_2",
+                "content": [{ "type": "text", "text": "Repeat this" }]
+            }),
+        )
+        .expect("second accepted user message");
+        cache.record(accepted_user_message_event(
+            "thread_1", "turn_1", &second, 30,
+        ));
+
+        assert_eq!(
+            cache.for_thread("thread_1").len(),
+            2,
+            "equal presentation is not evidence that two accepted messages are one"
+        );
+    }
+
+    #[tokio::test]
+    async fn accepted_prompt_broadcasts_the_adapter_item_identity() {
+        let events = TaskEvents::default();
+        let mut subscriber = events.subscribe();
+        let accepted = codex_item(
+            ActivityStatus::Completed,
+            json!({
+                "type": "userMessage",
+                "id": "provider_projection",
+                "clientId": "message_1",
+                "content": [{ "type": "text", "text": "Keep the identity" }]
+            }),
+        )
+        .expect("accepted user message");
+
+        let published = events.publish(accepted_user_message_event(
+            "thread_1", "turn_1", &accepted, 10,
+        ));
+        let broadcast = subscriber.recv().await.expect("accepted prompt broadcast");
+
+        assert_eq!(broadcast, published);
+        assert_eq!(published.id, "thread_1:turn_1:message_1");
+        assert_eq!(published.created_ms, 10);
+        assert_eq!(published.payload.as_ref().unwrap()["itemId"], "message_1");
+        assert!(
+            published
+                .payload
+                .as_ref()
+                .unwrap()
+                .get("pendingCanonical")
+                .is_none(),
+            "an adapter-owned item is canonical already"
+        );
     }
 
     #[test]
@@ -1900,7 +2401,10 @@ mod tests {
                 .len(),
             1
         );
-        assert_eq!(cache.events.lock().unwrap().len(), LIVE_TASK_THREAD_LIMIT);
+        assert_eq!(
+            cache.state.lock().unwrap().events.len(),
+            LIVE_TASK_THREAD_LIMIT
+        );
     }
 
     #[test]
@@ -1950,6 +2454,7 @@ mod tests {
             1,
             &ConversationItem {
                 id: "item-1".to_string(),
+                observed_at_ms: None,
                 status: crate::agent::ActivityStatus::Completed,
                 kind: ItemKind::Failure {
                     text: "API Error: Connection refused".to_string(),

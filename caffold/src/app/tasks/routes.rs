@@ -44,7 +44,8 @@ use super::generated_images::GeneratedImageError;
 
 use crate::{
     agent::{
-        ApprovalDecision, Conversation, Driver, PermissionModes, Turn, TurnOptions, TurnRejected,
+        ApprovalDecision, Conversation, ConversationItem, Driver, PermissionModes, Turn,
+        TurnOptions, TurnRejected,
         codex::{CodexDaemonInfo, CodexStatusResponse, CodexThreadClient, CodexThreadError},
     },
     app::error::ApiError,
@@ -124,11 +125,13 @@ struct TaskPromptRequest {
 struct TaskPromptResponse {
     thread_id: String,
     turn_id: String,
+    user_message_id: String,
     steered: bool,
 }
 
 struct TaskPromptOutcome {
     turn_id: String,
+    user_message: ConversationItem,
     steered: bool,
     started_turn: Option<(Turn, TurnOptions)>,
 }

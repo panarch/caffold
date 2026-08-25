@@ -78,6 +78,20 @@ test("opts only stable user and final assistant messages into code controls", ()
   assert.equal(hasCodeBlockControls(progressAssistant), false);
 });
 
+test("does not present a history placement anchor as an item timestamp", () => {
+  const historyOnly = {
+    ...messageEvent("assistant_message", { phase: "final" }),
+    observedMs: null,
+  };
+  const directlyObserved = {
+    ...historyOnly,
+    observedMs: 2,
+  };
+
+  assert.doesNotMatch(renderConversationEvent(historyOnly, {}), /<time>/);
+  assert.match(renderConversationEvent(directlyObserved, {}), /<time>/);
+});
+
 test("a pending approval stays visible beside the command it is asking about", () => {
   // Codex names the item its approval is about, and announces that item in the
   // same breath. Both belong on screen: the command is what will run, and the

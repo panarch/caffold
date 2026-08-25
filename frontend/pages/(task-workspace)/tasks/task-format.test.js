@@ -11,8 +11,19 @@ import {
   normalizeTaskPath,
   presentTaskFilePath,
   shortId,
+  taskEventObservedMs,
   toolCallPresentation,
 } from "./task-format.js";
+
+test("Task event time distinguishes direct evidence from a history placement anchor", () => {
+  assert.equal(taskEventObservedMs({ createdMs: 100, observedMs: 120 }), 120);
+  assert.equal(taskEventObservedMs({ createdMs: 100, observedMs: null }), null);
+  assert.equal(
+    taskEventObservedMs({ createdMs: 100 }),
+    100,
+    "an older backend has no explicit unknown-time marker",
+  );
+});
 
 test("task paths normalize separators without allowing parent traversal", () => {
   assert.equal(normalizeTaskPath(".\\workspace//project/"), "workspace/project");

@@ -24,12 +24,13 @@ import {
   withPromptSubmissionState,
 } from "../../runtime-state.js";
 import {
+  eventIdentityKey,
+  handoffOptimisticSubmission,
   mergeEvents,
   mergeTaskEventsPage,
   optimisticUserMessageEvent,
-  reconcileCanonicalEvents,
+  reconcileDetailEvents,
   upsertEvent,
-  userMessageFingerprint,
 } from "../../task-events.js";
 import { cleanLogicalPath } from "../../task-format.js";
 import {
@@ -300,8 +301,10 @@ class CaffoldTaskDetail extends HTMLElement {
       submissionId: "",
       composer: null,
       threadId,
-      fingerprint: userMessageFingerprint(optimisticEvent),
-      canonicalEventIds: new Set(),
+      optimisticEventId: optimisticEvent.id,
+      acceptsFirstCanonicalUserMessage: true,
+      acceptedItemId: "",
+      detailPositionKeys: new Set(),
       state: PROMPT_SUBMISSION_STATE.SENDING,
       canonicalConfirmed: false,
       resetOverridesOnCanonical: null,
@@ -525,6 +528,12 @@ class CaffoldTaskDetail extends HTMLElement {
     if (!this.acceptTaskDetailRevision(threadId, revision)) {
       return false;
     }
+    if (!preferCurrentEvents) {
+      this.rememberPendingPromptDetailPositions(
+        threadId,
+        detail?.events ?? [],
+      );
+    }
     if (reconcilePrompt) {
       this.reconcilePendingPrompt(threadId, detail?.events ?? []);
     }
@@ -555,7 +564,7 @@ class CaffoldTaskDetail extends HTMLElement {
       threadId,
       preferCurrentEvents
         ? mergeEvents(incomingEvents, currentEvents)
-        : reconcileCanonicalEvents(currentEvents, incomingEvents),
+        : reconcileDetailEvents(currentEvents, incomingEvents),
     );
     this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
     const canonicalError =
@@ -610,36 +619,58 @@ class CaffoldTaskDetail extends HTMLElement {
       });
   }
 
+  // Detail positions remain identifiable if its event arrives before the HTTP
+  // response says which exact user item this request became.
+  rememberPendingPromptDetailPositions(threadId, events) {
+    const request = this.followUpRequests.get(threadId);
+    if (!request) {
+      return;
+    }
+    for (const event of events) {
+      if (event?.type !== "user_message" || event.payload?.optimistic) {
+        continue;
+      }
+      const key = eventIdentityKey(event);
+      if (key) {
+        request.detailPositionKeys.add(key);
+      }
+    }
+  }
+
   // What arriving events say about the prompt this Task is still holding.
   //
-  // Canonical detail and single stream events are delivered independently, and
-  // either one can carry the agent's own copy of the prompt or the news that
-  // its turn never began. Both are read here so the pending submission has one
-  // reader whichever way its answer arrives.
+  // Detail and single stream events are delivered independently, and either
+  // one can carry the agent's own copy of the prompt or the news that its turn
+  // never began. Both are read here so the pending submission has one reader
+  // whichever way its answer arrives.
   reconcilePendingPrompt(threadId, events) {
     const request = this.followUpRequests.get(threadId);
     if (!request) {
       return;
     }
 
-    // A prompt sent into a conversation that already had some is confirmed by
-    // its own words coming back, so another client's prompt cannot answer for
-    // it. A conversation that had none is a Task being started, whose first
-    // prompt is this one however the agent writes it down.
+    // A follow-up is confirmed only by the item identity returned for this
+    // request. Its words are presentation and another client may submit the
+    // same ones. A just-created Task is the one special case: its first prompt
+    // caused that Task to exist before an asynchronous turn had an item
+    // identity the creation response could carry.
     const confirmedEvent = events.find((event) => {
       if (event?.type !== "user_message" || event.payload?.optimistic) {
         return false;
       }
-      if (request.canonicalEventIds.has(event.id)) {
-        return false;
-      }
       return (
-        request.canonicalEventIds.size === 0 ||
-        userMessageFingerprint(event) === request.fingerprint
+        request.acceptsFirstCanonicalUserMessage ||
+        (request.acceptedItemId &&
+          event.payload?.itemId === request.acceptedItemId)
       );
     });
     if (confirmedEvent) {
-      this.acknowledgePendingPrompt(threadId, request);
+      this.acknowledgePendingPrompt(
+        threadId,
+        request,
+        confirmedEvent,
+        !request.detailPositionKeys.has(eventIdentityKey(confirmedEvent)),
+      );
       return;
     }
     if (
@@ -650,16 +681,26 @@ class CaffoldTaskDetail extends HTMLElement {
     }
   }
 
-  acknowledgePendingPrompt(threadId, request) {
+  acknowledgePendingPrompt(
+    threadId,
+    request,
+    confirmedEvent,
+    handoffPosition,
+  ) {
     request.state = PROMPT_SUBMISSION_STATE.ACCEPTED;
     request.canonicalConfirmed = true;
+    const currentEvents = this.eventsByThread.get(threadId) ?? [];
     this.setThreadEvents(
       threadId,
-      (this.eventsByThread.get(threadId) ?? []).filter(
-        (event) =>
-          !event.payload?.optimistic ||
-          userMessageFingerprint(event) !== request.fingerprint,
-      ),
+      handoffPosition
+        ? handoffOptimisticSubmission(
+            currentEvents,
+            request.optimisticEventId,
+            confirmedEvent,
+          )
+        : currentEvents.filter(
+            (event) => event.id !== request.optimisticEventId,
+          ),
     );
     this.releaseConfirmedFollowUpOverrides(request);
     request.composer?.resolveSubmission(request.submissionId, {
@@ -680,8 +721,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.setThreadEvents(
       threadId,
       (this.eventsByThread.get(threadId) ?? []).map((event) =>
-        event.payload?.optimistic &&
-        userMessageFingerprint(event) === request.fingerprint
+        event.id === request.optimisticEventId
           ? withPromptSubmissionState(
               event,
               PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN,
@@ -863,16 +903,10 @@ class CaffoldTaskDetail extends HTMLElement {
       submissionId,
       composer,
       threadId,
-      fingerprint: userMessageFingerprint(optimisticEvent),
-      canonicalEventIds: new Set(
-        (this.eventsByThread.get(threadId) ?? [])
-          .filter(
-            (event) =>
-              event?.type === "user_message" && !event.payload?.optimistic,
-          )
-          .map((event) => event.id)
-          .filter(Boolean),
-      ),
+      optimisticEventId: optimisticEvent.id,
+      acceptsFirstCanonicalUserMessage: false,
+      acceptedItemId: "",
+      detailPositionKeys: new Set(),
       state: PROMPT_SUBMISSION_STATE.SENDING,
       canonicalConfirmed: false,
       resetOverridesOnCanonical: null,
@@ -894,11 +928,21 @@ class CaffoldTaskDetail extends HTMLElement {
         images,
       );
       if (response?.threadId !== threadId) {
-        throw new Error("Codex accepted the prompt for a different task.");
+        throw new Error("The agent accepted the prompt for a different task.");
+      }
+      if (!`${response?.userMessageId ?? ""}`) {
+        throw new Error(
+          "The agent accepted the prompt without identifying its user message.",
+        );
       }
       followUpRequest.state = PROMPT_SUBMISSION_STATE.ACCEPTED;
+      followUpRequest.acceptedItemId = `${response.userMessageId}`;
       followUpRequest.resetOverridesOnCanonical = !response?.steered;
       this.releaseConfirmedFollowUpOverrides(followUpRequest);
+      this.reconcilePendingPrompt(
+        threadId,
+        this.eventsByThread.get(threadId) ?? [],
+      );
       this.setThreadEvents(
         threadId,
         (this.eventsByThread.get(threadId) ?? []).map((event) =>

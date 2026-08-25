@@ -5,9 +5,10 @@ import {
   conversationGroups,
   dedupeCanonicalEvents,
   fileChangePathPresentations,
+  handoffOptimisticSubmission,
   mergeEvents,
   optimisticUserMessageEvent,
-  reconcileCanonicalEvents,
+  reconcileDetailEvents,
 } from "./task-events.js";
 
 function event(id, type, createdMs, payload = {}, overrides = {}) {
@@ -60,7 +61,7 @@ test("event merge keeps causal order while a newer canonical record wins", () =>
       status: "inProgress",
       command: "cargo test",
     },
-    { sortIndex: 2 },
+    { observedMs: 100, sortIndex: 2 },
   );
   const completed = event(
     "item-1",
@@ -71,7 +72,7 @@ test("event merge keeps causal order while a newer canonical record wins", () =>
       status: "completed",
       output: "done",
     },
-    { updatedMs: 140, sortIndex: 9 },
+    { observedMs: 120, updatedMs: 140, sortIndex: 9 },
   );
   const earlier = event("message-1", "assistant_message", 90, {
     turnId: "turn-1",
@@ -84,6 +85,7 @@ test("event merge keeps causal order while a newer canonical record wins", () =>
   assert.equal(merged[1].createdMs, 100);
   assert.equal(merged[1].sortIndex, 2);
   assert.equal(merged[1].updatedMs, 140);
+  assert.equal(merged[1].observedMs, 100);
   // The newer record wins where the two disagree, and what only the earlier
   // one carried survives.
   assert.deepEqual(merged[1].payload, {
@@ -94,7 +96,7 @@ test("event merge keeps causal order while a newer canonical record wins", () =>
   });
 });
 
-test("canonical user message replaces only its matching optimistic event", () => {
+test("generic event merging does not claim an optimistic submission", () => {
   const originalNow = Date.now;
   Date.now = () => 100;
   const matching = optimisticUserMessageEvent(
@@ -123,10 +125,80 @@ test("canonical user message replaces only its matching optimistic event", () =>
 
   const merged = mergeEvents([matching, unrelated], [canonical]);
 
-  assert.deepEqual(merged.map(({ id }) => id), [unrelated.id, "canonical-1"]);
+  assert.deepEqual(merged.map(({ id }) => id), [
+    matching.id,
+    unrelated.id,
+    "canonical-1",
+  ]);
 });
 
-test("structured canonical duplicates beat sparse notifications", () => {
+test("an existing canonical message does not erase a new identical submission", () => {
+  const canonical = event("canonical-1", "user_message", 100, {
+    turnId: "turn-1",
+    itemId: "message-1",
+    text: "Repeat this",
+  });
+  const optimistic = optimisticUserMessageEvent(
+    "thread-1",
+    "Repeat this",
+    [],
+    "submission-2",
+  );
+
+  assert.deepEqual(
+    mergeEvents([canonical], [optimistic]).map(({ id }) => id),
+    ["canonical-1", optimistic.id],
+    "presentation text cannot identify a later submission",
+  );
+});
+
+test("accepted and later user-item projections merge by exact identity in either order", () => {
+  const accepted = event("accepted-projection", "user_message", 100, {
+    turnId: "turn-1",
+    itemId: "message-1",
+    text: "Keep one",
+    status: "completed",
+  });
+  const canonical = event("history-projection", "user_message", 120, {
+    turnId: "turn-1",
+    itemId: "message-1",
+    text: "Keep one",
+    content: [{ type: "text", text: "Keep one" }],
+    status: "completed",
+  });
+
+  for (const [first, second] of [
+    [accepted, canonical],
+    [canonical, accepted],
+  ]) {
+    const merged = mergeEvents([first], [second]);
+    assert.equal(merged.length, 1);
+    assert.equal(merged[0].payload.itemId, "message-1");
+    assert.deepEqual(merged[0].payload.content, [
+      { type: "text", text: "Keep one" },
+    ]);
+  }
+});
+
+test("two accepted user items survive identical presentation", () => {
+  const first = event("accepted-1", "user_message", 100, {
+    turnId: "turn-1",
+    itemId: "message-1",
+    text: "Again",
+  });
+  const second = event("accepted-2", "user_message", 101, {
+    turnId: "turn-1",
+    itemId: "message-2",
+    text: "Again",
+  });
+
+  assert.deepEqual(
+    mergeEvents([first], [second]).map((entry) => entry.payload.itemId),
+    ["message-1", "message-2"],
+  );
+});
+
+test("equal sparse and structured messages remain separate without exact identity", () => {
   const sparse = event("notification-1", "assistant_message", 100, {
     turnId: "turn-1",
     text: "Finished",
@@ -146,7 +218,11 @@ test("structured canonical duplicates beat sparse notifications", () => {
     { sortIndex: 0 },
   );
 
-  assert.deepEqual(dedupeCanonicalEvents([sparse, canonical]), [canonical]);
+  assert.deepEqual(
+    dedupeCanonicalEvents([sparse, canonical]).map(({ id }) => id),
+    ["notification-1", "canonical-1"],
+    "presentation equality cannot manufacture an identity relationship",
+  );
 });
 
 test("distinct structured messages survive even when their text is identical", () => {
@@ -166,7 +242,7 @@ test("distinct structured messages survive even when their text is identical", (
   });
 
   assert.deepEqual(
-    reconcileCanonicalEvents([], [first, second]).map(({ id }) => id),
+    reconcileDetailEvents([], [first, second]).map(({ id }) => id),
     ["canonical-1", "canonical-2"],
     "two stable item identities are two messages, whatever their text says",
   );
@@ -217,7 +293,7 @@ test("two sparse equal messages keep their event identities", () => {
   );
 });
 
-test("a background answer stays once and in order across live and canonical refreshes", () => {
+test("a backend-selected background ledger stays once across refreshes", () => {
   const earlier = event("earlier", "assistant_message", 10, {
     turnId: "turn-1",
     itemId: "earlier-message",
@@ -229,13 +305,12 @@ test("a background answer stays once and in order across live and canonical refr
     text: "The build is done.",
     phase: "final",
   });
-  const canonical = event(
-    "canonical-background",
+  const detail = event(
+    "live-background",
     "assistant_message",
     20,
     {
       turnId: "background-turn",
-      itemId: "background-answer",
       text: "The build is done.",
       phase: "final",
     },
@@ -243,9 +318,9 @@ test("a background answer stays once and in order across live and canonical refr
   );
 
   const liveState = mergeEvents([earlier], [live]);
-  const refreshed = reconcileCanonicalEvents(liveState, [earlier, canonical]);
-  const refreshedAgain = reconcileCanonicalEvents(refreshed, [earlier, canonical]);
-  const reloaded = reconcileCanonicalEvents([], [earlier, canonical]);
+  const refreshed = reconcileDetailEvents(liveState, [earlier, detail]);
+  const refreshedAgain = reconcileDetailEvents(refreshed, [earlier, detail]);
+  const reloaded = reconcileDetailEvents([], [earlier, detail]);
 
   for (const state of [refreshed, refreshedAgain, reloaded]) {
     assert.deepEqual(
@@ -300,7 +375,7 @@ test("an item's start and its finish stay one conversation entry", () => {
     exitCode: 0,
   });
 
-  const reconciled = reconcileCanonicalEvents([started], [
+  const reconciled = reconcileDetailEvents([started], [
     { ...finished, updatedMs: 200 },
   ]);
 
@@ -323,41 +398,152 @@ test("canonical reconciliation retains unrelated current and canonical events", 
     text: "New canonical event.",
   });
 
-  const reconciled = reconcileCanonicalEvents([current], [canonical]);
+  const reconciled = reconcileDetailEvents([current], [canonical]);
 
   assert.deepEqual(reconciled, [current, canonical]);
 });
 
-test("canonical reconciliation preserves ordinary merge semantics for matching projections", () => {
+test("history reconciliation takes its item position without losing live enrichment", () => {
   const current = event(
-    "thread-1:turn-1:command-1",
-    "command_execution",
+    "live-user-message",
+    "user_message",
     200,
     {
       threadId: "thread-1",
       turnId: "turn-1",
-      itemId: "command-1",
-      status: "inProgress",
-      output: "Preserve this output.",
+      itemId: "message-1",
+      text: "Test the ordering",
+      liveDelivery: "accepted",
     },
+    { sortIndex: 0 },
   );
-  const canonical = event(
-    "thread-1:turn-1:command-1",
-    "command_execution",
+  const historyPrompt = event(
+    "history-user-message",
+    "user_message",
     100,
     {
       threadId: "thread-1",
       turnId: "turn-1",
-      itemId: "command-1",
-      status: "completed",
-      exitCode: 0,
+      itemId: "message-1",
+      text: "Test the ordering",
+      content: [{ type: "text", text: "Test the ordering" }],
+    },
+    { sortIndex: 1 },
+  );
+  const historyAnswer = event(
+    "history-answer",
+    "assistant_message",
+    100,
+    {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "answer-1",
+      text: "The answer",
+    },
+    { sortIndex: 2 },
+  );
+
+  const reconciled = reconcileDetailEvents(
+    [current],
+    [historyPrompt, historyAnswer],
+  );
+
+  assert.deepEqual(
+    reconciled.map((entry) => entry.type),
+    ["user_message", "assistant_message"],
+    "a late observation cannot move a prompt behind its answer",
+  );
+  assert.equal(reconciled[0].createdMs, 100);
+  assert.equal(reconciled[0].sortIndex, 1);
+  assert.equal(reconciled[0].updatedMs, 200);
+  assert.equal(reconciled[0].payload.liveDelivery, "accepted");
+  assert.deepEqual(reconciled[0].payload.content, [
+    { type: "text", text: "Test the ordering" },
+  ]);
+});
+
+test("an exact submission handoff keeps its optimistic position until Detail owns it", () => {
+  const optimistic = event(
+    "local-user-message",
+    "user_message",
+    100,
+    { optimistic: true, text: "Test the ordering" },
+    { sortIndex: 1 },
+  );
+  const liveAnswer = event(
+    "live-answer",
+    "assistant_message",
+    150,
+    {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "answer-1",
+      text: "The answer",
+    },
+    { sortIndex: 2 },
+  );
+  const accepted = event(
+    "accepted-user-message",
+    "user_message",
+    200,
+    {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "message-1",
+      text: "Test the ordering",
+      liveDelivery: "accepted",
     },
     { sortIndex: 3 },
   );
 
-  const reconciled = reconcileCanonicalEvents([current], [canonical]);
+  const handedOff = handoffOptimisticSubmission(
+    [optimistic, liveAnswer, accepted],
+    optimistic.id,
+    accepted,
+  );
 
-  assert.deepEqual(reconciled, mergeEvents([current], [canonical]));
+  assert.deepEqual(
+    handedOff.map((entry) => entry.type),
+    ["user_message", "assistant_message"],
+  );
+  assert.equal(handedOff[0].id, accepted.id);
+  assert.equal(handedOff[0].createdMs, optimistic.createdMs);
+  assert.equal(handedOff[0].sortIndex, optimistic.sortIndex);
+  assert.equal(handedOff[0].updatedMs, accepted.createdMs);
+  assert.equal(handedOff[0].payload.liveDelivery, "accepted");
+  assert.equal(handedOff[0].payload.optimistic, undefined);
+
+  const historyPrompt = event(
+    "history-user-message",
+    "user_message",
+    120,
+    {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "message-1",
+      text: "Test the ordering",
+    },
+    { sortIndex: 1 },
+  );
+  const historyAnswer = event(
+    "history-answer",
+    "assistant_message",
+    120,
+    {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "answer-1",
+      text: "The answer",
+    },
+    { sortIndex: 2 },
+  );
+  const reconciled = reconcileDetailEvents(handedOff, [
+    historyPrompt,
+    historyAnswer,
+  ]);
+
+  assert.equal(reconciled[0].createdMs, historyPrompt.createdMs);
+  assert.equal(reconciled[0].sortIndex, historyPrompt.sortIndex);
 });
 
 test("turn grouping keeps implicit continuation causal and closes terminal turns", () => {

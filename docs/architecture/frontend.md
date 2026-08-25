@@ -249,13 +249,36 @@ not mount Integrated Review, Git, GitHub, or their Summary controls.
 
 One pending prompt per Task belongs to Detail, whether it was submitted from the
 follow-up Composer or handed over with a newly created Task. Detail shows it
-optimistically and resolves it from canonical events, which reach it as a
-canonical detail or as a single stream event: the agent's own copy of the prompt
-accepts it, and a reported turn failure marks its delivery unconfirmed. A prompt
-sent into a conversation that already had prompts is accepted only by its own
-words returning, so another client's prompt cannot answer for it; a
-conversation that had none is a Task being started, whose first canonical prompt
-is that submission however the agent writes it down.
+optimistically. For a follow-up, the prompt response returns the user-item
+identity established by the agent adapter; only a backend Detail or live stream
+event carrying that exact item identity retires the optimistic entry. Event
+content is presentation, not submission identity, so an equal prompt from
+another client cannot answer for it, and an exact-identity event that races
+ahead of the HTTP response waits for the response to identify it. A just-created
+Task is the special case: its first prompt caused that Task to exist before the
+asynchronous first turn had an item identity the creation response could carry.
+When the identity is established, the accepted event inherits that browser's
+existing optimistic position until a Detail snapshot supplies the
+provider-history position; confirming one item must not make it jump behind an
+answer already on screen.
+If transport fails before a follow-up response supplies its identity, a later
+equal provider-projected message does not erase that outcome-unknown
+submission: there is no evidence they are one event, so both remain visible. A
+reported first-turn failure marks that first prompt's delivery unconfirmed.
+
+Current live events and a refreshed Detail snapshot also have separate source
+roles. The backend sends one item ledger for a turn it observed from
+`turn_started` without a later observation gap; a refreshed provider-history
+projection cannot add a second set of history-local item ids to that continuous
+journal. A recovered turn or a turn whose provider connection lost continuity
+instead keeps provider history as its baseline, and a live event enriches an
+existing item only under the same exact identity. Detail consumes that
+already-reconciled contract; it does not compare message text or nearby times
+to manufacture a relationship.
+`createdMs` places an event in the projected timeline. `observedMs` is the
+direct per-event time shown by Conversation and Work details, including a
+provider-history item time when one exists; `null` suppresses a timestamp when
+history supplied order but no individual time.
 
 The adjacent task-scoped Detail session owns snapshot acquisition while Detail
 keeps canonical Task, event, revision, and rendering state.

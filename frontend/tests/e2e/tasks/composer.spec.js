@@ -128,6 +128,7 @@ test("starts a completed task follow-up clock only from canonical turn metadata"
         body: JSON.stringify({
           threadId,
           turnId: "turn_follow_up",
+          userMessageId: "message-follow-up-1",
           steered: false,
         }),
       });
@@ -293,6 +294,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
       body: JSON.stringify({
         threadId,
         turnId: `turn_follow_up_${submittedPrompts.length}`,
+        userMessageId: `message-follow-up-${submittedPrompts.length}`,
         steered: false,
       }),
     });
@@ -505,7 +507,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
     }),
   ).toHaveAttribute("data-delivery-state", "outcomeUnknown");
 });
-test("unlocks a completed task when canonical item content arrives before the prompt response", { tag: "@desktop" }, async ({
+test("keeps exact prompt order when Detail or live content arrives before the prompt response", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
   await page.addInitScript(() => {
@@ -563,6 +565,10 @@ test("unlocks a completed task when canonical item content arrives before the pr
   const firstPromptGate = new Promise((resolve) => {
     releaseFirstPrompt = resolve;
   });
+  let releaseSecondPrompt;
+  const secondPromptGate = new Promise((resolve) => {
+    releaseSecondPrompt = resolve;
+  });
   const detail = () => ({
     revision,
     task,
@@ -585,12 +591,15 @@ test("unlocks a completed task when canonical item content arrives before the pr
     submittedPrompts.push(body.prompt);
     if (submittedPrompts.length === 1) {
       await firstPromptGate;
+    } else if (submittedPrompts.length === 2) {
+      await secondPromptGate;
     }
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         threadId,
         turnId: `turn_${submittedPrompts.length}`,
+        userMessageId: `message-${submittedPrompts.length}`,
         steered: false,
       }),
     });
@@ -618,11 +627,22 @@ test("unlocks a completed task when canonical item content arrives before the pr
       summary: "User prompt",
       payload: {
         turnId: "turn_1",
-        id: "item_canonical_item_prompt",
-        type: "userMessage",
+        itemId: "message-1",
         content: [{ type: "input_text", text: "Canonical item prompt" }],
       },
       createdMs: now + 1,
+    },
+    {
+      id: "event_canonical_item_answer",
+      threadId,
+      type: "assistant_message",
+      summary: "Assistant response",
+      payload: {
+        turnId: "turn_1",
+        itemId: "answer-1",
+        text: "Canonical item answer",
+      },
+      createdMs: now + 2,
     },
   ];
   Object.assign(
@@ -646,7 +666,14 @@ test("unlocks a completed task when canonical item content arrives before the pr
   }, { threadId, detail: detail() });
 
   await expect(tasksPage).toContainText("Canonical item prompt");
+  const messages = tasksPage.locator(".task-message");
+  await expect(messages.nth(1)).toContainText("Canonical item prompt");
+  await expect(messages.nth(2)).toContainText("Canonical item answer");
+  await expect(form).toHaveAttribute("aria-busy", "true");
+  releaseFirstPrompt();
   await expect(form).toHaveAttribute("aria-busy", "false");
+  await expect(messages.nth(1)).toContainText("Canonical item prompt");
+  await expect(messages.nth(2)).toContainText("Canonical item answer");
   await expect(prompt).toBeEnabled();
   await expect(primaryAction).toHaveAttribute("data-primary-action", "stop");
   await expect(primaryAction).toBeEnabled();
@@ -659,9 +686,63 @@ test("unlocks a completed task when canonical item content arrives before the pr
     "Canonical item prompt",
     "Submitted after canonical item acknowledgement",
   ]);
+  await expect(form).toHaveAttribute("aria-busy", "true");
 
-  releaseFirstPrompt();
+  const liveRaceMs = Date.now();
+  const liveAnswerRevision = ++revision;
+  const acceptedPromptRevision = ++revision;
+  await page.evaluate((payload) => {
+    const source = window.__taskEventSources.find((candidate) =>
+      candidate.url.includes(`/api/tasks/${payload.threadId}/stream`),
+    );
+    source.emit("task-event", {
+      threadId: payload.threadId,
+      revision: payload.liveAnswerRevision,
+      event: payload.liveAnswer,
+    });
+    source.emit("task-event", {
+      threadId: payload.threadId,
+      revision: payload.acceptedPromptRevision,
+      event: payload.acceptedPrompt,
+    });
+  }, {
+    threadId,
+    liveAnswerRevision,
+    acceptedPromptRevision,
+    liveAnswer: {
+      id: "event_live_race_answer",
+      threadId,
+      type: "assistant_message",
+      summary: "Assistant response",
+      payload: {
+        turnId: "turn_2",
+        itemId: "answer-2",
+        text: "Live race answer",
+      },
+      createdMs: liveRaceMs + 1,
+    },
+    acceptedPrompt: {
+      id: "event_live_race_prompt",
+      threadId,
+      type: "user_message",
+      summary: "User prompt accepted",
+      payload: {
+        turnId: "turn_2",
+        itemId: "message-2",
+        text: "Submitted after canonical item acknowledgement",
+      },
+      createdMs: liveRaceMs + 2,
+    },
+  });
+
+  releaseSecondPrompt();
   await expect(form).toHaveAttribute("aria-busy", "false");
+  await expect(messages).toHaveCount(5);
+  await expect(messages.nth(3)).toContainText(
+    "Submitted after canonical item acknowledgement",
+  );
+  await expect(messages.nth(4)).toContainText("Live race answer");
+
 });
 test("unlocks canonical follow-ups after switching tasks with a pending response", { tag: "@desktop" }, async ({
   page,
@@ -773,6 +854,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
       body: JSON.stringify({
         threadId: taskA.threadId,
         turnId: `turn_a_follow_up_${submittedPrompts.length}`,
+        userMessageId: `message-a-${submittedPrompts.length}`,
         steered: false,
       }),
     });
@@ -785,6 +867,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
       body: JSON.stringify({
         threadId: taskB.threadId,
         turnId: "turn_running_b",
+        userMessageId: "message-b-running",
         steered: true,
       }),
     });
@@ -814,6 +897,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
       summary: "User prompt",
       payload: {
         turnId: "turn_a_follow_up_1",
+        itemId: "message-a-1",
         text: "Canonical while response is pending",
       },
       createdMs: now + 200,
@@ -859,6 +943,8 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
   form = tasksPage.locator(".task-follow-up-form");
   prompt = form.locator('textarea[name="prompt"]');
   send = form.locator(".task-primary-action-button");
+  await expect(form).toHaveAttribute("aria-busy", "true");
+  releaseFirstPrompt?.();
   await expect(form).toHaveAttribute("aria-busy", "false");
   await expect(prompt).toBeEnabled();
   await expect(send).toBeDisabled();
@@ -888,6 +974,4 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
   await expect
     .poll(() => conversation.evaluate((element) => element.scrollTop))
     .toBe(savedScrollTop);
-
-  releaseFirstPrompt?.();
 });

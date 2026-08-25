@@ -10,7 +10,8 @@ use file_links::{TaskFileLink, TaskFileLinkResolver};
 
 use super::{
     events::{
-        TaskEventRecord, TaskEvents, merge_task_event_records, sort_task_events, thread_events,
+        TaskEventRecord, TaskEvents, merge_provider_history_with_live_events,
+        merge_task_event_records, sort_task_events, thread_events,
     },
     lifecycle::ActiveTaskTopPlacement,
     projection::{
@@ -510,8 +511,12 @@ impl DetailContext {
         let conversation = self.project_managed_worktree_cwd(conversation)?;
         let conversation = conversation_with_turns(&conversation, turns);
         let mut events = thread_events(&conversation);
-        self.events.observe(&events);
-        events = merge_task_event_records(events, self.events.for_thread(&thread_id));
+        self.events.observe_history_assets(&events);
+        events = merge_provider_history_with_live_events(
+            events,
+            self.events.for_thread(&thread_id),
+            &self.events.fully_observed_turns(&thread_id),
+        );
         let pending_approvals = self.runtime.approval_events(&thread_id).await;
         events = merge_task_event_records(events, pending_approvals.clone());
         sort_task_events(&mut events);
@@ -1314,6 +1319,119 @@ mod request_tests {
         let stored = test_store_get(&state, thread_id).await.unwrap().unwrap();
         assert_eq!(stored.last_completed_at_ms, None);
         assert_eq!(stored.last_seen_activity_ms, None);
+    }
+
+    #[tokio::test]
+    async fn detail_history_repositions_a_late_live_projection_without_losing_its_payload() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-history-position";
+        let state = task_state_with_codex_client(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        let thread: crate::agent::codex::CodexThread = serde_json::from_value(json!({
+            "id": thread_id,
+            "preview": "History position",
+            "status": { "type": "idle" },
+            "cwd": root.path().display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": 3.0,
+            "turns": []
+        }))
+        .unwrap();
+        let turns_page: crate::agent::codex::TurnsPage = serde_json::from_value(json!({
+            "data": [{
+                "id": "turn-1",
+                "status": "completed",
+                "startedAt": 1.0,
+                "completedAt": 3.0,
+                "items": [
+                    {
+                        "type": "userMessage",
+                        "id": "provider-user-1",
+                        "clientId": "message-1",
+                        "content": [{ "type": "input_text", "text": "Test the ordering" }]
+                    },
+                    {
+                        "type": "agentMessage",
+                        "id": "answer-1",
+                        "phase": "final",
+                        "text": "The answer"
+                    }
+                ]
+            }],
+            "nextCursor": null,
+            "backwardsCursor": null
+        }))
+        .unwrap();
+        let snapshot = crate::app::tasks::sessions::SessionSnapshot {
+            lifecycle: SessionLifecycle::Subscribed,
+            conversation: Some(Conversation::from(&thread)),
+            turns_page: Some(TurnPage::from(&turns_page)),
+            active_turn_id: None,
+            active_turn_cwd: None,
+            viewer_leases: 1,
+            runtime_lease: false,
+            generation: 1,
+            revision: 1,
+            last_sync_ms: Some(3_000),
+            last_error: None,
+            external_syncing: false,
+            external_sync_started_ms: None,
+            permission_mode: None,
+            model: None,
+            reasoning_effort: None,
+            fast_mode: false,
+        };
+        let mut late_live_prompt = task_event_record(
+            thread_id,
+            "turn-1:message-1",
+            "user_message",
+            "User prompt accepted",
+            Some(json!({
+                "threadId": thread_id,
+                "turnId": "turn-1",
+                "itemId": "message-1",
+                "text": "Test the ordering",
+                "liveDelivery": "accepted"
+            })),
+            2_500,
+        );
+        late_live_prompt.sort_index = Some(0);
+        state.task_events.publish(late_live_prompt);
+
+        let detail = state
+            .detail
+            .assemble_snapshot(snapshot, None)
+            .await
+            .unwrap();
+        let messages = detail
+            .events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event.event_type.as_str(),
+                    "user_message" | "assistant_message"
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            messages
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect::<Vec<_>>(),
+            vec!["user_message", "assistant_message"]
+        );
+        assert_eq!(messages[0].created_ms, 1_000);
+        assert_eq!(messages[0].sort_index, Some(1));
+        assert_eq!(messages[0].updated_ms, Some(2_500));
+        assert_eq!(
+            messages[0].payload.as_ref().unwrap()["liveDelivery"],
+            "accepted"
+        );
     }
 
     #[tokio::test]

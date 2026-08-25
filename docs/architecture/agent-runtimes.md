@@ -190,6 +190,29 @@ content blocks. Unknown optional events may be ignored or presented as generic
 tool activity; missing load-bearing fields fail explicitly. The provider's raw
 protocol does not escape into Task or frontend state.
 
+Provider history and live observation do not own the same facts. Codex
+app-server turn history and Claude transcript history own causal order for a
+turn Caffold did not watch from its boundary. A live `turn_started` is evidence
+that Caffold watched the turn from its boundary only while that observation
+remains continuous; that one live journal then owns the turn's item set and
+direct observation times. A provider connection loss or dropped-report gap
+withdraws the completeness claim without deleting reports already observed,
+so history becomes the baseline again. Caffold does not mix a second history
+projection into a continuous journal, because some providers expose
+history-local item ids that cannot be equated with their live ids.
+
+Within either source, repeated reports under one exact item identity update one
+item. A locally accepted prompt is observed when Caffold receives the
+submission, not when the adapter eventually returns its identity; that wait
+cannot move the prompt behind an answer produced in the meantime. For a
+recovered turn, live reports may enrich history only under an exact identity.
+Content, proximity, and arrival order are never substitutes for that identity.
+An item-level provider timestamp, such as a Claude transcript row timestamp,
+crosses as `observedMs` without taking ownership of causal order. When history
+supplies item order but no item time, `createdMs` remains the projection's
+placement anchor while `observedMs` is `null`; the interface must not print the
+turn anchor as every item's timestamp.
+
 The agent still owns the meaning of a permission. Caffold owns the human answer
 vocabulary—allow, allow always, deny, and deny and stop—and each driver offers
 only decisions its agent can carry out. See

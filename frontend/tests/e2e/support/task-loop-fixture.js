@@ -389,6 +389,7 @@ export async function installTaskLoopFixture(
           body: JSON.stringify({
             threadId,
             turnId: `turn_${followUpRequests}`,
+            userMessageId: `message_${followUpRequests}`,
             steered: body.activeTurnId !== null,
           }),
         });
@@ -401,6 +402,7 @@ export async function installTaskLoopFixture(
           body: JSON.stringify({
             threadId,
             turnId: "turn_canonical_ack",
+            userMessageId: "message_canonical_ack",
             steered: false,
           }),
         });
@@ -411,6 +413,7 @@ export async function installTaskLoopFixture(
           body: JSON.stringify({
             threadId,
             turnId: "turn_after_canonical_ack",
+            userMessageId: "message_after_canonical_ack",
             steered: false,
           }),
         });
@@ -439,6 +442,7 @@ export async function installTaskLoopFixture(
           {
             text: body.prompt,
             turnId: "turn_2",
+            itemId: "message_6",
             content: [
               { type: "text", text: body.prompt },
               { type: "image", url: body.images[0], name: "follow-up.png" },
@@ -479,6 +483,7 @@ export async function installTaskLoopFixture(
         body: JSON.stringify({
           threadId,
           turnId: "turn_2",
+          userMessageId: "message_6",
           steered: false,
         }),
       });

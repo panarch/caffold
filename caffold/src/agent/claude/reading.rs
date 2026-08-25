@@ -10,14 +10,14 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 
 use super::runner::{self, RunnerEvent};
-use super::translate::message_items;
+use super::translate::{message_items, user_message_item};
 use super::{
     ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, ClaudeClient, ClaudeError,
     ClaudeRuntimeEvent, ControlRequestFrame, ConversationItem, Introduction, ItemKind,
     MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION, MessageFrame, PendingApproval, ResultFrame, Session,
     SessionEventKind, StreamFrame, SystemFrame, ThreadStatus, TokenCount, TokenUsage, TurnStatus,
-    end_pending_prompt, now_ms, open_pending_turn, parse_timestamp_ms, protocol, replace_item,
-    status_of,
+    end_pending_prompt, end_pending_steer, now_ms, open_pending_turn, parse_timestamp_ms, protocol,
+    replace_item, status_of,
 };
 
 impl ClaudeClient {
@@ -76,6 +76,14 @@ impl ClaudeClient {
                         &mut state,
                         ClaudeError::Runner(format!(
                             "the Claude runner went away before conversation {} identified its prompt",
+                            session.id
+                        )),
+                    );
+                    end_pending_steer(
+                        &mut state,
+                        ClaudeError::Runner(format!(
+                            "the Claude runner went away before conversation {} identified its \
+                             steering message",
                             session.id
                         )),
                     );
@@ -225,6 +233,7 @@ impl ClaudeClient {
                 frame.is_api_error_message,
             );
             for item in &mut items {
+                item.observed_at_ms = Some(at_ms);
                 if state.declined.remove(&item.id) {
                     item.status = ActivityStatus::Declined;
                 }
@@ -260,8 +269,59 @@ impl ClaudeClient {
         let Some(anchor) = frame.uuid.as_deref() else {
             return;
         };
-        let mut state = session.state.lock().await;
-        open_pending_turn(&mut state, Some(anchor));
+        let at_ms = frame
+            .timestamp
+            .as_deref()
+            .and_then(parse_timestamp_ms)
+            .unwrap_or_else(now_ms);
+        let steered = {
+            let mut state = session.state.lock().await;
+            if state.pending_prompt.is_some() {
+                open_pending_turn(&mut state, Some(anchor));
+                None
+            } else if let Some(pending) = state.pending_steer.take() {
+                let mut item = user_message_item(&format!("{anchor}:steer"), pending.said);
+                item.observed_at_ms = Some(at_ms);
+                if state.active_turn.as_deref() != Some(pending.turn_id.as_str()) {
+                    let _ = pending.waiting.send(Err(ClaudeError::Protocol(format!(
+                        "turn {} ended before Claude identified its steering message",
+                        pending.turn_id
+                    ))));
+                    None
+                } else {
+                    let Some(turn) = state
+                        .turns
+                        .iter_mut()
+                        .find(|turn| turn.id == pending.turn_id)
+                    else {
+                        let _ = pending.waiting.send(Err(ClaudeError::Protocol(format!(
+                            "active turn {} is missing from conversation {}",
+                            pending.turn_id, session.id
+                        ))));
+                        return;
+                    };
+                    replace_item(&mut turn.items, item.clone());
+                    state.moved_at_ms = at_ms;
+                    let _ = pending.waiting.send(Ok(item.clone()));
+                    Some((pending.turn_id, item))
+                }
+            } else {
+                // Claude also replays messages Caffold sends for its own
+                // control work. With nobody waiting for this identity, the
+                // frame does not belong to a person-visible item.
+                None
+            }
+        };
+        if let Some((turn_id, item)) = steered {
+            self.report(
+                &session.id,
+                SessionEventKind::ItemChanged {
+                    turn_id,
+                    item,
+                    at_ms,
+                },
+            );
+        }
     }
 
     async fn handle_result(&self, session: &Arc<Session>, result: ResultFrame) {
@@ -290,6 +350,13 @@ impl ClaudeClient {
                 return;
             }
             open_pending_turn(&mut state, filed.as_deref());
+            end_pending_steer(
+                &mut state,
+                ClaudeError::Protocol(format!(
+                    "conversation {} ended its active turn before identifying a steering message",
+                    session.id
+                )),
+            );
             if let Some(turn_id) = state.active_turn.take() {
                 // Whatever the agent left open, it will not answer now.
                 let abandoned = state.calls.abandon(match status {
@@ -393,6 +460,13 @@ impl ClaudeClient {
                 &mut state,
                 ClaudeError::Agent(format!(
                     "Claude conversation {} exited before identifying its prompt",
+                    session.id
+                )),
+            );
+            end_pending_steer(
+                &mut state,
+                ClaudeError::Agent(format!(
+                    "Claude conversation {} exited before identifying its steering message",
                     session.id
                 )),
             );
@@ -576,13 +650,16 @@ mod tests {
                     ClaudeRuntimeEvent::TranscriptChanged { conversation_id } => {
                         return conversation_id;
                     }
-                    ClaudeRuntimeEvent::Session(SessionEvent {
-                        kind:
+                    ClaudeRuntimeEvent::Session(event)
+                        if matches!(
+                            &event.kind,
                             SessionEventKind::TurnStarted { .. }
-                            | SessionEventKind::TurnEnded { .. }
-                            | SessionEventKind::ItemChanged { .. },
-                        ..
-                    }) => panic!("unattributed work must not manufacture a live turn"),
+                                | SessionEventKind::TurnEnded { .. }
+                                | SessionEventKind::ItemChanged { .. }
+                        ) =>
+                    {
+                        panic!("unattributed work must not manufacture a live turn")
+                    }
                     _ => {}
                 }
             }
@@ -636,13 +713,16 @@ mod tests {
             loop {
                 match events.recv().await {
                     Ok(ClaudeRuntimeEvent::Unreachable { .. }) => return false,
-                    Ok(ClaudeRuntimeEvent::Session(SessionEvent {
-                        kind:
+                    Ok(ClaudeRuntimeEvent::Session(event))
+                        if matches!(
+                            &event.kind,
                             SessionEventKind::StatusChanged {
                                 status: ThreadStatus::Idle,
-                            },
-                        ..
-                    })) => return true,
+                            }
+                        ) =>
+                    {
+                        return true;
+                    }
                     Ok(_) => continue,
                     Err(_) => return false,
                 }

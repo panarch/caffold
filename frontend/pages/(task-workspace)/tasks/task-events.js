@@ -1,5 +1,8 @@
 import { PROMPT_SUBMISSION_STATE } from "./runtime-state.js";
-import { presentTaskFilePath } from "./task-format.js";
+import {
+  presentTaskFilePath,
+  taskEventObservedMs,
+} from "./task-format.js";
 
 export function conversationGroups(events) {
   const groups = [];
@@ -200,7 +203,10 @@ export function mergeEvents(leftEvents, rightEvents) {
   );
 }
 
-export function reconcileCanonicalEvents(currentEvents, canonicalEvents) {
+// A refreshed Detail snapshot owns conversation position for every exact item
+// identity it contains. Current live observations may enrich those records,
+// while observations absent from Detail remain visible where they arrived.
+export function reconcileDetailEvents(currentEvents, detailEvents) {
   const byId = new Map();
   for (const event of currentEvents) {
     const key = eventIdentityKey(event);
@@ -208,14 +214,51 @@ export function reconcileCanonicalEvents(currentEvents, canonicalEvents) {
       byId.set(key, mergeEventRecord(byId.get(key), event));
     }
   }
-  for (const event of canonicalEvents) {
+  for (const event of detailEvents) {
     const key = eventIdentityKey(event);
     if (key) {
-      byId.set(key, mergeEventRecord(byId.get(key), event));
+      byId.set(key, mergeEventRecordAtIncomingPosition(byId.get(key), event));
     }
   }
   return sortEventsChronologically(
     dedupeCanonicalEvents([...byId.values()]),
+  );
+}
+
+// Once the prompt response or first provider projection proves which exact
+// item an optimistic submission became, keep the position already visible in
+// this browser. A later Detail reconciliation still replaces it with provider
+// history position.
+export function handoffOptimisticSubmission(
+  events,
+  optimisticEventId,
+  confirmedEvent,
+) {
+  const optimistic = events.find((event) => event.id === optimisticEventId);
+  const confirmedIdentity = eventIdentityKey(confirmedEvent);
+  if (!optimistic || !confirmedIdentity) {
+    return events;
+  }
+  const existingConfirmed = events.find(
+    (event) => eventIdentityKey(event) === confirmedIdentity,
+  );
+  const confirmed = mergeEventRecord(existingConfirmed, confirmedEvent);
+  const latestUpdateMs = Math.max(
+    confirmed.updatedMs ?? confirmed.createdMs ?? 0,
+    optimistic.updatedMs ?? optimistic.createdMs ?? 0,
+  );
+  const handedOff = eventAtPosition(
+    confirmed,
+    optimistic,
+    latestUpdateMs,
+  );
+  const remaining = events.filter(
+    (event) =>
+      event.id !== optimisticEventId &&
+      eventIdentityKey(event) !== confirmedIdentity,
+  );
+  return sortEventsChronologically(
+    dedupeCanonicalEvents([...remaining, handedOff]),
   );
 }
 
@@ -242,6 +285,13 @@ function mergeEventRecord(existing, incoming) {
   const sortIndex = existing.sortIndex ?? incoming.sortIndex;
   const existingUpdatedMs = existing.updatedMs ?? existing.createdMs ?? 0;
   const incomingUpdatedMs = incoming.updatedMs ?? incoming.createdMs ?? 0;
+  const carriesObservedTime = [existing, incoming].some((event) =>
+    Object.prototype.hasOwnProperty.call(event, "observedMs"),
+  );
+  const observedTimes = [existing, incoming]
+    .map(taskEventObservedMs)
+    .filter((value) => value !== null);
+  const observedMs = observedTimes.length ? Math.min(...observedTimes) : null;
   const [latest, earlier] =
     incomingUpdatedMs >= existingUpdatedMs
       ? [incoming, existing]
@@ -257,8 +307,39 @@ function mergeEventRecord(existing, incoming) {
     ...latest,
     payload,
     createdMs,
+    ...(carriesObservedTime ? { observedMs } : {}),
     ...(sortIndex === undefined ? {} : { sortIndex }),
     ...(updatedMs > (createdMs ?? 0) ? { updatedMs } : {}),
+  };
+}
+
+function mergeEventRecordAtIncomingPosition(existing, incoming) {
+  if (!existing) {
+    return incoming;
+  }
+  const merged = mergeEventRecord(existing, incoming);
+  const latestUpdateMs = Math.max(
+    existing.updatedMs ?? existing.createdMs ?? 0,
+    incoming.updatedMs ?? incoming.createdMs ?? 0,
+  );
+  return eventAtPosition(merged, incoming, latestUpdateMs);
+}
+
+function eventAtPosition(event, position, latestUpdateMs) {
+  const {
+    sortIndex: _mergedSortIndex,
+    updatedMs: _mergedUpdatedMs,
+    ...positioned
+  } = event;
+  return {
+    ...positioned,
+    createdMs: position.createdMs,
+    ...(position.sortIndex === undefined
+      ? {}
+      : { sortIndex: position.sortIndex }),
+    ...(latestUpdateMs > (position.createdMs ?? 0)
+      ? { updatedMs: latestUpdateMs }
+      : {}),
   };
 }
 
@@ -314,193 +395,20 @@ export function eventIdentityKey(event) {
   }
 
   // Text is presentation, not identity. A sparse event with no item id keeps
-  // its own event id until a unique structured counterpart can reconcile it.
-  // Two equal messages are otherwise indistinguishable from one message
-  // reported twice, and choosing either interpretation would discard data.
+  // its own event id. Two equal messages are otherwise indistinguishable from
+  // one message reported twice, and the frontend has no evidence with which to
+  // choose either interpretation.
   return event.id ?? "";
 }
 
 export function dedupeCanonicalEvents(events) {
   const byIdentity = new Map();
-  for (const event of removeSupersededOptimisticEvents(events)) {
+  for (const event of events) {
     const identity = eventIdentityKey(event);
     if (!identity) {
       continue;
     }
-    const existing = byIdentity.get(identity);
-    byIdentity.set(identity, preferStructuredEvent(existing, event));
+    byIdentity.set(identity, mergeEventRecord(byIdentity.get(identity), event));
   }
-  const candidates = [...byIdentity.values()];
-  const messageGroups = new Map();
-  for (const [index, event] of candidates.entries()) {
-    const fingerprint = canonicalEventKey(event);
-    if (!fingerprint) {
-      continue;
-    }
-    const group = messageGroups.get(fingerprint) ?? [];
-    group.push(index);
-    messageGroups.set(fingerprint, group);
-  }
-
-  const omitted = new Set();
-  for (const group of messageGroups.values()) {
-    const structured = group.filter(
-      (index) => Boolean(candidates[index]?.payload?.itemId),
-    );
-    const sparse = group.filter(
-      (index) => !candidates[index]?.payload?.itemId,
-    );
-    // One sparse projection and one structured projection can only describe
-    // each other within this canonical fingerprint. More than one candidate
-    // makes that relationship ambiguous, so all of them survive.
-    if (structured.length === 1 && sparse.length === 1) {
-      const structuredIndex = structured[0];
-      const sparseIndex = sparse[0];
-      candidates[structuredIndex] = preferStructuredEvent(
-        candidates[sparseIndex],
-        candidates[structuredIndex],
-      );
-      omitted.add(sparseIndex);
-    }
-  }
-  return candidates.filter((_, index) => !omitted.has(index));
-}
-
-function removeSupersededOptimisticEvents(events) {
-  const confirmedUserMessages = new Set();
-  for (const event of events) {
-    if (event?.type !== "user_message" || event.payload?.optimistic) {
-      continue;
-    }
-    const fingerprint = userMessageFingerprint(event);
-    if (fingerprint) {
-      confirmedUserMessages.add(fingerprint);
-    }
-  }
-
-  return events.filter((event) => {
-    if (event?.type !== "user_message" || !event.payload?.optimistic) {
-      return true;
-    }
-    return !confirmedUserMessages.has(userMessageFingerprint(event));
-  });
-}
-
-export function userMessageFingerprint(event) {
-  if (event?.type !== "user_message") {
-    return "";
-  }
-  const payload = event.payload ?? {};
-  const text = userMessageText(payload);
-  const content = userMessageContent(payload);
-  const images = content
-    .filter((item) => ["image", "localImage"].includes(item?.type))
-    .map((item) => imageInputFingerprint(item));
-  if (!text && !images.length) {
-    return "";
-  }
-  return JSON.stringify([event.threadId ?? "", text, images]);
-}
-
-function imageInputFingerprint(item) {
-  if (item?.type === "localImage") {
-    return `local:${item.path ?? ""}`;
-  }
-  const value = `${item?.url ?? ""}`;
-  return `data:${value.length}:${value.slice(-64)}`;
-}
-
-function canonicalEventKey(event) {
-  if (!event || !["user_message", "assistant_message"].includes(event.type)) {
-    return "";
-  }
-
-  if (event.payload?.optimistic) {
-    return event.id ?? "";
-  }
-
-  const payload = event.payload ?? {};
-  const messageFingerprint =
-    event.type === "user_message"
-      ? userMessageFingerprint(event)
-      : `${payload.prompt ?? payload.text ?? ""}`.trim();
-  if (!messageFingerprint) {
-    return "";
-  }
-
-  const threadId = event.threadId ?? payload.threadId ?? "";
-  const turnId = eventTurnId(event);
-  if (turnId) {
-    const phase =
-      event.type === "assistant_message"
-        ? (assistantMessagePhase(payload.phase) ?? "")
-        : "";
-    return [
-      "message",
-      threadId,
-      turnId,
-      event.type,
-      phase,
-      messageFingerprint,
-    ].join(":");
-  }
-
-  const createdMs = typeof event.createdMs === "number" ? event.createdMs : 0;
-  const createdBucket = createdMs ? Math.floor(createdMs / 5000) : "";
-  return ["message", threadId, event.type, messageFingerprint, createdBucket].join(":");
-}
-
-function preferStructuredEvent(existing, next) {
-  if (!existing) {
-    return next;
-  }
-  const existingScore = eventStructureScore(existing);
-  const nextScore = eventStructureScore(next);
-  if (nextScore !== existingScore) {
-    return nextScore > existingScore ? next : existing;
-  }
-  return (next.createdMs ?? 0) >= (existing.createdMs ?? 0) ? next : existing;
-}
-
-function eventStructureScore(event) {
-  const payload = event?.payload ?? {};
-  return (
-    [payload.itemId, payload.turnId, payload.threadId].filter(Boolean).length +
-    (payload.status ? 2 : 0) +
-    (event?.sortIndex === 0 ? 1 : 0)
-  );
-}
-
-function userMessageText(payload) {
-  const prompt = `${payload?.prompt ?? ""}`.trim();
-  const payloadText = `${payload?.text ?? ""}`.trim();
-  const content = userMessageContent(payload);
-  const itemText = content
-    .filter((item) => ["text", "input_text"].includes(item?.type))
-    .map((item) => `${item?.text ?? ""}`.trim())
-    .filter(Boolean)
-    .join("\n\n");
-  return normalizedUserMessageText(payloadText || prompt || itemText);
-}
-
-function userMessageContent(payload) {
-  return Array.isArray(payload?.content) ? payload.content : [];
-}
-
-function normalizedUserMessageText(text) {
-  const isAmbientWrapper =
-    text.includes("automatically supplied ambient UI state") ||
-    text.includes("<in-app-browser-context") ||
-    text.includes("# In app browser:");
-  if (!isAmbientWrapper) {
-    return text;
-  }
-
-  for (const marker of ["## My request for Codex:", "My request for Codex:"]) {
-    const markerIndex = text.lastIndexOf(marker);
-    if (markerIndex >= 0) {
-      return text.slice(markerIndex + marker.length).trim();
-    }
-  }
-  return text;
+  return [...byIdentity.values()];
 }

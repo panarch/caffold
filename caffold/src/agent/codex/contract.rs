@@ -307,7 +307,12 @@ pub(crate) fn conversation_item(
             name: tool_call_name(item, item_type),
         },
     };
-    Some(ConversationItem { id, status, kind })
+    Some(ConversationItem {
+        id,
+        observed_at_ms: None,
+        status,
+        kind,
+    })
 }
 
 /// One item from Codex's raw model-output stream.
@@ -339,6 +344,7 @@ pub(crate) fn response_item(item: &Value) -> Option<ConversationItem> {
     };
     Some(ConversationItem {
         id,
+        observed_at_ms: None,
         status: ActivityStatus::Completed,
         kind,
     })

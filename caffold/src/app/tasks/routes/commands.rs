@@ -5,6 +5,7 @@ pub(super) async fn create_task(
     State(state): State<TaskState>,
     Json(request): Json<CreateTaskRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
+    let prompt_observed_ms = now_ms();
     let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
     let cwd = task_cwd(&state, request.cwd.as_deref())?;
     let agent = new_task_agent(&state, request.provider.as_deref(), &cwd).await?;
@@ -25,6 +26,7 @@ pub(super) async fn create_task(
                 images,
                 turn_options,
                 initial_name: None,
+                prompt_observed_ms,
             },
         )
         .await?;
@@ -47,6 +49,7 @@ pub(super) async fn task_prompt(
     Query(_query): Query<TasksQuery>,
     Json(request): Json<TaskPromptRequest>,
 ) -> Result<Json<TaskPromptResponse>, ApiError> {
+    let prompt_observed_ms = now_ms();
     let managed = task_store_get(&state, &thread_id)
         .await?
         .ok_or_else(task_not_managed_error)?;
@@ -92,8 +95,9 @@ pub(super) async fn task_prompt(
                 .driver()
                 .steer_turn(&thread_id, &turn_id, &prompt, &images)
                 .await
-                .map(|()| TaskPromptOutcome {
+                .map(|user_message| TaskPromptOutcome {
                     turn_id,
+                    user_message,
                     steered: true,
                     started_turn: None,
                 }),
@@ -117,6 +121,7 @@ pub(super) async fn task_prompt(
                     .await
                     .map(|started| TaskPromptOutcome {
                         turn_id: started.turn.id.clone(),
+                        user_message: started.user_message,
                         steered: false,
                         started_turn: Some((started.turn, started.applied)),
                     })
@@ -172,7 +177,13 @@ pub(super) async fn task_prompt(
             }
         }
     };
-    if let Some((turn, applied_options)) = outcome.started_turn {
+    let TaskPromptOutcome {
+        turn_id,
+        user_message,
+        steered,
+        started_turn,
+    } = outcome;
+    if let Some((turn, applied_options)) = started_turn {
         state
             .task_sessions
             .record_turn_started(
@@ -201,14 +212,15 @@ pub(super) async fn task_prompt(
     }
     state.task_events.publish(accepted_user_message_event(
         &thread_id,
-        &outcome.turn_id,
-        &prompt,
-        &images,
+        &turn_id,
+        &user_message,
+        prompt_observed_ms,
     ));
     Ok(Json(TaskPromptResponse {
         thread_id,
-        turn_id: outcome.turn_id,
-        steered: outcome.steered,
+        turn_id,
+        user_message_id: user_message.id,
+        steered,
     }))
 }
 
@@ -793,11 +805,18 @@ mod tests {
             response.0.task.as_ref().map(|task| task.title.as_str()),
             Some("[REQ] Use the selected approval mode")
         );
-        assert_eq!(
-            first_turn_outcome(&mut task_events).await.event_type,
-            "user_message"
-        );
+        let first_prompt = first_turn_outcome(&mut task_events).await;
+        assert_eq!(first_prompt.event_type, "user_message");
         let requests = client.mock_requests().await;
+        let requested_user_message_id = requests
+            .iter()
+            .find(|(method, _)| method == "turn/start")
+            .and_then(|(_, request)| request["clientUserMessageId"].as_str())
+            .expect("the adapter identifies the first user message");
+        assert_eq!(
+            first_prompt.payload.as_ref().unwrap()["itemId"],
+            requested_user_message_id
+        );
         assert_eq!(requests[0].0, "config/read");
         assert_eq!(requests[1].0, "thread/start");
         assert_eq!(requests[1].1["serviceTier"], "default");
@@ -1049,6 +1068,56 @@ mod tests {
         assert!(
             task_store_get(&state, thread_id).await.unwrap().is_some(),
             "the claimed Task is stored before its first turn begins"
+        );
+    }
+
+    #[tokio::test]
+    async fn first_prompt_keeps_the_task_creation_observation_time() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-first-prompt-observed-position";
+        let client = CodexThreadClient::mock(vec![
+            crate::agent::codex::MockCodexResponse::ok(
+                "config/read",
+                json!({ "config": { "developer_instructions": null } }),
+            ),
+            crate::agent::codex::MockCodexResponse::ok(
+                "thread/start",
+                created_thread(thread_id, root.path()),
+            ),
+            crate::agent::codex::MockCodexResponse::ok("thread/name/set", json!({})),
+            crate::agent::codex::MockCodexResponse::delayed_ok(
+                "turn/start",
+                json!({
+                    "turn": { "id": "turn-first", "items": [], "status": "inProgress" }
+                }),
+                std::time::Duration::from_millis(50),
+            ),
+        ]);
+        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
+        let mut task_events = state.task_events.subscribe();
+
+        let _detail = create_task(
+            State(state),
+            Json(CreateTaskRequest {
+                provider: None,
+                prompt: "Keep the first user before the answer".to_string(),
+                images: Vec::new(),
+                cwd: None,
+                model: None,
+                effort: None,
+                fast_mode: false,
+                permission_mode: None,
+            }),
+        )
+        .await
+        .expect("task creation succeeds before its first turn starts");
+        let after_task_creation_ms = crate::app::tasks::events::now_ms();
+
+        let first_prompt = first_turn_outcome(&mut task_events).await;
+        assert_eq!(first_prompt.event_type, "user_message");
+        assert!(
+            first_prompt.created_ms <= after_task_creation_ms,
+            "the delayed first-turn acceptance must retain when Caffold observed task creation"
         );
     }
 
@@ -1955,6 +2024,102 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn task_prompt_dates_the_accepted_message_before_waiting_for_the_agent() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-prompt-observed-position";
+        let turn_id = "turn-active";
+        let client = CodexThreadClient::mock(vec![
+            crate::agent::codex::MockCodexResponse::ok(
+                "thread/resume",
+                json!({
+                    "thread": {
+                        "id": thread_id,
+                        "preview": "Prompt observation position",
+                        "status": { "type": "active", "activeFlags": [] },
+                        "cwd": root.path().display().to_string(),
+                        "createdAt": 1.0,
+                        "updatedAt": 2.0,
+                        "turns": [{
+                            "id": turn_id,
+                            "items": [],
+                            "status": "inProgress"
+                        }]
+                    },
+                    "cwd": root.path().display().to_string()
+                }),
+            ),
+            crate::agent::codex::MockCodexResponse::delayed_ok(
+                "turn/steer",
+                json!({ "turnId": turn_id }),
+                std::time::Duration::from_millis(50),
+            ),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        claim_cached_active(
+            &state,
+            thread_id,
+            "Prompt observation position",
+            1,
+            "section-prompt-observed",
+            "",
+        );
+
+        let prompt = tokio::spawn(task_prompt(
+            State(state.clone()),
+            AxumPath(thread_id.to_string()),
+            Query(TasksQuery { cursor: None }),
+            Json(TaskPromptRequest {
+                prompt: "Keep the user before the answer".to_string(),
+                images: Vec::new(),
+                model: None,
+                effort: None,
+                fast_mode: false,
+                permission_mode: None,
+                active_turn_id: Some(turn_id.to_string()),
+            }),
+        ));
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                if client
+                    .mock_requests()
+                    .await
+                    .iter()
+                    .any(|(method, _)| method == "turn/steer")
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the agent begins accepting the prompt");
+        let while_agent_is_accepting_ms = crate::app::tasks::events::now_ms();
+
+        let response = prompt
+            .await
+            .expect("prompt request task finishes")
+            .expect("prompt request succeeds");
+        let accepted = state
+            .task_events
+            .for_thread(thread_id)
+            .into_iter()
+            .find(|event| {
+                event
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload["itemId"].as_str())
+                    == Some(response.0.user_message_id.as_str())
+            })
+            .expect("accepted user message is published");
+
+        assert!(
+            accepted.created_ms <= while_agent_is_accepting_ms,
+            "the accepted projection must keep when Caffold observed the submission, not when the agent eventually answered"
+        );
+    }
+
+    #[tokio::test]
     async fn task_prompt_keeps_accepted_steer_visible_before_canonical_sync() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-running-prompt-reload";
@@ -2020,6 +2185,11 @@ mod tests {
         .expect("steering prompt succeeds");
 
         assert!(response.0.steered);
+        let requested_user_message_id = client.mock_requests().await[1].1["clientUserMessageId"]
+            .as_str()
+            .expect("the adapter identifies the submitted user message")
+            .to_string();
+        assert_eq!(response.0.user_message_id, requested_user_message_id);
         let (detail, _) = state
             .detail
             .cached(thread_id)
@@ -2032,6 +2202,11 @@ mod tests {
                     .as_ref()
                     .and_then(|payload| payload["text"].as_str())
                     == Some(prompt)
+                && event
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload["itemId"].as_str())
+                    == Some(requested_user_message_id.as_str())
         }));
         let stored = task_store_get(&state, thread_id).await.unwrap().unwrap();
         assert_eq!(stored.model.as_deref(), Some("gpt-before-steer"));

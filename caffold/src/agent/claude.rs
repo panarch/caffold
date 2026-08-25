@@ -135,7 +135,7 @@ struct ClaudeClientInner {
 #[derive(Debug, Clone)]
 pub(crate) enum ClaudeRuntimeEvent {
     /// The conversation moved, in the vocabulary every agent reports in.
-    Session(SessionEvent),
+    Session(Box<SessionEvent>),
     /// Claude completed work that no Caffold-owned live turn can contain.
     ///
     /// The stream does not say what opened that work. The transcript does, so
@@ -200,6 +200,13 @@ struct SessionState {
     /// being opened by a frame that is not the prompt coming home, and that
     /// frame does not know what was asked.
     pending_prompt: Option<PendingPrompt>,
+    /// A message added to the running turn, waiting for Claude to replay it
+    /// under the identity it writes to the transcript.
+    ///
+    /// Only one may be in this unnamed interval. Accepting a second would make
+    /// two replayed prompts impossible to assign without guessing from their
+    /// contents or arrival timing.
+    pending_steer: Option<PendingSteer>,
     /// The turns this session has run while Caffold watched.
     turns: Vec<Turn>,
     /// Tool calls a person refused.
@@ -251,6 +258,13 @@ struct SessionState {
 struct PendingPrompt {
     said: Vec<MessageContent>,
     waiting: oneshot::Sender<Result<Turn, ClaudeError>>,
+}
+
+/// A steering message waiting for Claude's durable item identity.
+struct PendingSteer {
+    turn_id: String,
+    said: Vec<MessageContent>,
+    waiting: oneshot::Sender<Result<ConversationItem, ClaudeError>>,
 }
 
 /// One question the agent is blocked on, and what answering it needs.
@@ -558,10 +572,10 @@ impl ClaudeClient {
     }
 
     fn report(&self, conversation_id: &str, kind: SessionEventKind) {
-        self.publish(ClaudeRuntimeEvent::Session(SessionEvent {
+        self.publish(ClaudeRuntimeEvent::Session(Box::new(SessionEvent {
             thread_id: conversation_id.to_string(),
             kind,
-        }));
+        })));
     }
 
     // -----------------------------------------------------------------------
@@ -601,6 +615,12 @@ impl ClaudeClient {
             if state.pending_prompt.is_some() {
                 return Err(ClaudeError::Protocol(format!(
                     "a prompt is already being sent on conversation {conversation_id}"
+                )));
+            }
+            if state.pending_steer.is_some() {
+                return Err(ClaudeError::Protocol(format!(
+                    "a steering message is still waiting for its identity on conversation \
+                     {conversation_id}"
                 )));
             }
             if state.ended {
@@ -667,24 +687,39 @@ impl ClaudeClient {
         turn_id: &str,
         prompt: &str,
         images: &[String],
-    ) -> Result<(), ClaudeError> {
+    ) -> Result<ConversationItem, ClaudeError> {
         let session = self.require_session(conversation_id).await?;
-        session.send(protocol::user_message(prompt, images)).await?;
-
-        let item = translate::user_message_item(
-            &format!("{turn_id}:steer:{}", now_ms()),
-            translate::prompt_content_of(prompt, images),
-        );
-        self.record_item(&session, turn_id, item.clone()).await;
-        self.report(
-            conversation_id,
-            SessionEventKind::ItemChanged {
+        let handed_back = {
+            let mut state = session.state.lock().await;
+            if state.active_turn.as_deref() != Some(turn_id) {
+                return Err(ClaudeError::Protocol(format!(
+                    "turn {turn_id} is not running on conversation {conversation_id}"
+                )));
+            }
+            if state.pending_steer.is_some() {
+                return Err(ClaudeError::Protocol(format!(
+                    "a steering message is already being sent on conversation {conversation_id}"
+                )));
+            }
+            let (sender, receiver) = oneshot::channel();
+            state.pending_steer = Some(PendingSteer {
                 turn_id: turn_id.to_string(),
-                item,
-                at_ms: now_ms(),
-            },
-        );
-        Ok(())
+                said: translate::prompt_content_of(prompt, images),
+                waiting: sender,
+            });
+            receiver
+        };
+
+        if let Err(error) = session.send(protocol::user_message(prompt, images)).await {
+            session.state.lock().await.pending_steer = None;
+            return Err(error);
+        }
+
+        handed_back.await.map_err(|_| {
+            ClaudeError::Protocol(format!(
+                "the pending steering message disappeared on conversation {conversation_id}"
+            ))
+        })?
     }
 
     /// Stop a turn where it stands.
@@ -985,22 +1020,28 @@ fn end_pending_prompt(state: &mut SessionState, error: ClaudeError) {
     }
 }
 
+/// End a steering message Claude never replayed under a durable identity.
+fn end_pending_steer(state: &mut SessionState, error: ClaudeError) {
+    if let Some(PendingSteer { waiting, .. }) = state.pending_steer.take() {
+        let _ = waiting.send(Err(error));
+    }
+}
+
 /// Open a turn on a session, under the name it will be known by.
 ///
 /// Whoever calls this holds the session's state, which is what makes the turn
 /// exist before anything the agent says next can arrive looking for it.
 fn open_turn(state: &mut SessionState, turn_id: &str, said: Vec<MessageContent>) -> Turn {
     let started_at_ms = now_ms();
+    let mut prompt = translate::user_message_item(&format!("{turn_id}:prompt"), said);
+    prompt.observed_at_ms = Some(started_at_ms);
     let turn = Turn {
         id: turn_id.to_string(),
         origin: TurnOrigin::User,
         status: TurnStatus::InProgress,
         started_at_ms: Some(started_at_ms),
         completed_at_ms: None,
-        items: vec![translate::user_message_item(
-            &format!("{turn_id}:prompt"),
-            said,
-        )],
+        items: vec![prompt],
     };
     state.active_turn = Some(turn_id.to_string());
     state.moved_at_ms = started_at_ms;
@@ -1084,9 +1125,16 @@ fn now_ms() -> u64 {
 }
 
 /// Put an item in its place, replacing the earlier report of the same one.
-fn replace_item(items: &mut Vec<ConversationItem>, item: ConversationItem) {
+fn replace_item(items: &mut Vec<ConversationItem>, mut item: ConversationItem) {
     match items.iter_mut().find(|existing| existing.id == item.id) {
-        Some(existing) => *existing = item,
+        Some(existing) => {
+            item.observed_at_ms = match (existing.observed_at_ms, item.observed_at_ms) {
+                (Some(existing), Some(incoming)) => Some(existing.min(incoming)),
+                (Some(observed), None) | (None, Some(observed)) => Some(observed),
+                (None, None) => None,
+            };
+            *existing = item;
+        }
         None => items.push(item),
     }
 }
@@ -1250,10 +1298,10 @@ mod test_support {
                 .await
                 .unwrap_or_else(|_| panic!("no {wanted} was reported"))
                 .expect("the report channel stays open");
-            if let ClaudeRuntimeEvent::Session(SessionEvent { kind, .. }) = event
-                && kind_name(&kind) == wanted
+            if let ClaudeRuntimeEvent::Session(event) = event
+                && kind_name(&event.kind) == wanted
             {
-                return kind;
+                return event.kind;
             }
         }
     }
@@ -1420,6 +1468,78 @@ mod tests {
         assert_eq!(spoken(&runner).await, vec!["try again"]);
     }
 
+    #[tokio::test]
+    async fn a_steering_message_uses_the_identity_claude_replays_and_writes() {
+        let (client, _runner, mut events) = watching().await;
+        let turn = running_turn(&client, &mut events, "run it").await;
+
+        let accepted = client
+            .steer_turn(SESSION, &turn.id, "keep going", &[])
+            .await
+            .expect("Claude identifies the steering message");
+        let SessionEventKind::ItemChanged {
+            turn_id,
+            item: reported,
+            ..
+        } = next_session_event(&mut events, "item").await
+        else {
+            unreachable!("asked for the reported steering item");
+        };
+
+        assert_eq!(turn_id, turn.id);
+        assert_eq!(accepted.id, format!("{SESSION}-prompt-2:steer"));
+        assert_eq!(reported, accepted);
+        assert!(
+            matches!(
+                accepted.kind,
+                ItemKind::UserMessage { ref text, .. } if text == "keep going"
+            ),
+            "the accepted item is the message that was steered"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_second_steer_cannot_overtake_one_waiting_for_its_identity() {
+        let (client, runner, mut events) = watching().await;
+        let turn = running_turn(&client, &mut events, "run it").await;
+        runner.swallow_prompts(SESSION).await;
+
+        let first = tokio::spawn({
+            let client = client.clone();
+            let turn_id = turn.id.clone();
+            async move {
+                client
+                    .steer_turn(SESSION, &turn_id, "first steer", &[])
+                    .await
+            }
+        });
+        wrote(&runner, |frame| {
+            frame["message"]["content"][0]["text"] == "first steer"
+        })
+        .await;
+
+        let second = client
+            .steer_turn(SESSION, &turn.id, "second steer", &[])
+            .await;
+        assert!(
+            matches!(
+                second,
+                Err(ClaudeError::Protocol(ref message))
+                    if message.contains("already being sent")
+            ),
+            "the adapter must not assign two unnamed replays by arrival order: {second:?}"
+        );
+
+        runner.exit(SESSION, Some(0)).await;
+        assert!(
+            matches!(
+                first.await.expect("steer task finishes"),
+                Err(ClaudeError::Agent(_))
+            ),
+            "the first caller is released when the session ends"
+        );
+    }
+
     #[tokio::test(start_paused = true)]
     async fn time_passing_does_not_report_or_activate_a_turn() {
         let (client, runner, mut events) = watching().await;
@@ -1503,14 +1623,14 @@ mod tests {
         assert_eq!(status, ThreadStatus::Idle, "the exit is terminal");
 
         while let Ok(event) = events.try_recv() {
-            if let ClaudeRuntimeEvent::Session(SessionEvent {
-                kind:
+            if let ClaudeRuntimeEvent::Session(event) = event
+                && matches!(
+                    &event.kind,
                     SessionEventKind::TurnStarted { .. }
-                    | SessionEventKind::StatusChanged {
-                        status: ThreadStatus::Active { .. },
-                    },
-                ..
-            }) = event
+                        | SessionEventKind::StatusChanged {
+                            status: ThreadStatus::Active { .. },
+                        }
+                )
             {
                 panic!("an ended session cannot become active again: {event:?}");
             }
@@ -1539,14 +1659,17 @@ mod tests {
                     Ok(ClaudeRuntimeEvent::Unreachable {
                         conversation_id, ..
                     }) => return conversation_id,
-                    Ok(ClaudeRuntimeEvent::Session(SessionEvent {
-                        kind:
+                    Ok(ClaudeRuntimeEvent::Session(event))
+                        if matches!(
+                            &event.kind,
                             SessionEventKind::TurnStarted { .. }
-                            | SessionEventKind::StatusChanged {
-                                status: ThreadStatus::Active { .. },
-                            },
-                        ..
-                    })) => panic!("a lost session cannot report new work"),
+                                | SessionEventKind::StatusChanged {
+                                    status: ThreadStatus::Active { .. },
+                                }
+                        ) =>
+                    {
+                        panic!("a lost session cannot report new work")
+                    }
                     Ok(_) => {}
                     Err(error) => panic!("the report channel stays open: {error}"),
                 }

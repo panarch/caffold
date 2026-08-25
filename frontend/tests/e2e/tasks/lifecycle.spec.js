@@ -1837,7 +1837,12 @@ test("keeps task list and detail revisions independent", { tag: "@desktop" }, as
     submittedPrompts.push(route.request().postDataJSON().prompt);
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ threadId, turnId: "turn_follow_up", steered: false }),
+      body: JSON.stringify({
+        threadId,
+        turnId: "turn_follow_up",
+        userMessageId: "message_follow_up",
+        steered: false,
+      }),
     });
   });
 

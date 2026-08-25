@@ -260,6 +260,18 @@ pub(crate) fn is_fast_service_tier(service_tier: Option<&str>) -> bool {
 pub struct CodexTurnStart {
     pub turn_id: String,
     pub turn: CodexTurn,
+    /// The identity Caffold supplied for the prompt and Codex returns on the
+    /// corresponding user item.
+    pub user_message_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexTurnSteer {
+    pub turn_id: String,
+    /// The identity Caffold supplied for the prompt and Codex returns on the
+    /// corresponding user item.
+    pub user_message_id: String,
 }
 
 #[derive(Debug, thiserror::Error, Clone)]
@@ -769,6 +781,7 @@ impl CodexThreadClient {
         Ok(CodexTurnStart {
             turn_id,
             turn: typed.turn,
+            user_message_id: client_user_message_id,
         })
     }
 
@@ -778,19 +791,24 @@ impl CodexThreadClient {
         expected_turn_id: &str,
         prompt: &str,
         image_urls: &[String],
-    ) -> Result<TurnSteerResponse, CodexThreadError> {
+    ) -> Result<CodexTurnSteer, CodexThreadError> {
         let client_user_message_id = uuid::Uuid::new_v4().to_string();
-        self.request_typed(
-            TURN_STEER,
-            turn_steer_params(
-                thread_id,
-                expected_turn_id,
-                prompt,
-                image_urls,
-                &client_user_message_id,
-            ),
-        )
-        .await
+        let response: TurnSteerResponse = self
+            .request_typed(
+                TURN_STEER,
+                turn_steer_params(
+                    thread_id,
+                    expected_turn_id,
+                    prompt,
+                    image_urls,
+                    &client_user_message_id,
+                ),
+            )
+            .await?;
+        Ok(CodexTurnSteer {
+            turn_id: response.turn_id,
+            user_message_id: client_user_message_id,
+        })
     }
 
     pub async fn interrupt_turn(
@@ -1278,7 +1296,7 @@ mod tests {
             MockCodexResponse::ok(TURN_STEER, json!({ "turnId": "turn_1" })),
         ]);
 
-        client
+        let started_turn = client
             .start_turn(
                 "thread_1",
                 "/workspace/project",
@@ -1288,21 +1306,23 @@ mod tests {
             )
             .await
             .expect("start a turn");
-        client
+        let steered_turn = client
             .steer_turn("thread_1", "turn_1", "Continue", &[])
             .await
             .expect("steer the turn");
 
         let requests = client.mock_requests().await;
-        let started = requests[0].1["clientUserMessageId"]
+        let started_request_id = requests[0].1["clientUserMessageId"]
             .as_str()
             .expect("turn/start carries a client message id");
-        let steered = requests[1].1["clientUserMessageId"]
+        let steered_request_id = requests[1].1["clientUserMessageId"]
             .as_str()
             .expect("turn/steer carries a client message id");
-        assert!(uuid::Uuid::parse_str(started).is_ok());
-        assert!(uuid::Uuid::parse_str(steered).is_ok());
-        assert_ne!(started, steered);
+        assert!(uuid::Uuid::parse_str(started_request_id).is_ok());
+        assert!(uuid::Uuid::parse_str(steered_request_id).is_ok());
+        assert_ne!(started_request_id, steered_request_id);
+        assert_eq!(started_request_id, started_turn.user_message_id);
+        assert_eq!(steered_request_id, steered_turn.user_message_id);
     }
 
     #[tokio::test]

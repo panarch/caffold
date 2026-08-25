@@ -3,7 +3,11 @@ import {
   renderInlineIcon,
   warmIcons,
 } from "../../../../../../components/icons.js";
-import { formatDate, formatDuration } from "../../../task-format.js";
+import {
+  formatDate,
+  formatDuration,
+  taskEventObservedMs,
+} from "../../../task-format.js";
 
 class CaffoldTaskCommandDialog extends HTMLElement {
   connectedCallback() {
@@ -58,7 +62,7 @@ class CaffoldTaskCommandDialog extends HTMLElement {
       output: `${payload.output ?? ""}`,
       exitCode: finiteNumber(payload.exitCode),
       durationMs: finiteNumber(payload.durationMs),
-      createdMs: finiteNumber(event?.createdMs),
+      createdMs: taskEventObservedMs(event),
     });
     const dialog = this.dialog();
     if (!dialog.open) {

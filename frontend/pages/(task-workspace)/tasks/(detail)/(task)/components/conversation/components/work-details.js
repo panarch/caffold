@@ -10,6 +10,7 @@ import {
 import {
   formatDate,
   formatStatus,
+  taskEventObservedMs,
   toolCallPresentation,
 } from "../../../../../task-format.js";
 import "./changed-files.js";
@@ -410,7 +411,7 @@ function renderWorkItem(
     <article class="task-work-details-item" data-event-type="${escapeHtml(event.type)}">
       <header>
         <strong>${escapeHtml(event.summary)}</strong>
-        <time>${escapeHtml(formatDate(event.createdMs))}</time>
+        ${renderObservedTime(event)}
       </header>
     </article>
   `;
@@ -434,7 +435,7 @@ function renderWorkItemShell(event, label, text, tone = "neutral") {
     <article class="task-work-details-item" data-event-type="${escapeHtml(event.type)}" data-tool-tone="${escapeHtml(tone)}">
       <header>
         <strong>${escapeHtml(label)}</strong>
-        <time>${escapeHtml(formatDate(event.createdMs))}</time>
+        ${renderObservedTime(event)}
       </header>
       ${value ? `<pre>${escapeHtml(value)}</pre>` : ""}
     </article>
@@ -447,12 +448,19 @@ function renderFileChangeWorkItemShell(event, text, identity) {
     <article class="task-work-details-item" data-event-type="file_change" data-tool-tone="neutral" data-file-change-work-identity="${escapeHtml(identity)}">
       <header>
         <strong>Files changed</strong>
-        <time>${escapeHtml(formatDate(event.createdMs))}</time>
+        ${renderObservedTime(event)}
       </header>
       ${value ? `<pre>${escapeHtml(value)}</pre>` : ""}
       <caffold-task-changed-files></caffold-task-changed-files>
     </article>
   `;
+}
+
+function renderObservedTime(event) {
+  const observedMs = taskEventObservedMs(event);
+  return observedMs === null
+    ? ""
+    : `<time>${escapeHtml(formatDate(observedMs))}</time>`;
 }
 
 function fileChangeWorkIdentity(events) {

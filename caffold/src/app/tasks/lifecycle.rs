@@ -31,6 +31,7 @@ pub(in crate::app) struct StartTask {
     pub(in crate::app) images: Vec<String>,
     pub(in crate::app) turn_options: TurnOptions,
     pub(in crate::app) initial_name: Option<String>,
+    pub(in crate::app) prompt_observed_ms: u64,
 }
 
 pub(in crate::app) struct StartedTask {
@@ -53,6 +54,7 @@ pub(in crate::app) struct FirstTurn {
     model: Option<String>,
     reasoning_effort: Option<String>,
     fast_mode: bool,
+    prompt_observed_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -138,6 +140,7 @@ impl TaskLifecycle {
             images,
             turn_options,
             initial_name,
+            prompt_observed_ms,
         } = request;
         let requested_fast_mode = turn_options.fast_mode;
         let driver = agent.driver();
@@ -228,6 +231,7 @@ impl TaskLifecycle {
                 model: effective_model,
                 reasoning_effort: effective_reasoning_effort,
                 fast_mode: requested_fast_mode,
+                prompt_observed_ms,
             },
         })
     }
@@ -262,6 +266,7 @@ impl TaskLifecycle {
             model,
             reasoning_effort,
             fast_mode,
+            prompt_observed_ms,
         } = first;
         let turn = match agent
             .driver()
@@ -304,8 +309,8 @@ impl TaskLifecycle {
         self.events.publish(accepted_user_message_event(
             &conversation_id,
             &turn.turn.id,
-            &prompt,
-            &images,
+            &turn.user_message,
+            prompt_observed_ms,
         ));
     }
 

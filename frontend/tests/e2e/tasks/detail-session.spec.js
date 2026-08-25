@@ -45,6 +45,110 @@ test("raw active flags prioritize approval over user input", { tag: "@all-viewpo
   );
 });
 
+test("work details show only direct item times instead of repeating the turn anchor", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  const detail = taskDetailFixture();
+  const anchor = Date.parse("2026-08-25T06:00:00.000Z");
+  detail.task.latestTurnStatus = "completed";
+  detail.task.updatedMs = anchor + 1_800_000;
+  detail.task.recencyMs = detail.task.updatedMs;
+  detail.events = [
+    {
+      id: "thread-1:turn-1:prompt",
+      threadId: "thread-1",
+      type: "user_message",
+      summary: "User prompt",
+      payload: { turnId: "turn-1", itemId: "prompt", text: "Inspect it" },
+      createdMs: anchor,
+      observedMs: null,
+      sortIndex: 1,
+    },
+    {
+      id: "thread-1:turn-1:update-1",
+      threadId: "thread-1",
+      type: "assistant_message",
+      summary: "Assistant response",
+      payload: {
+        turnId: "turn-1",
+        itemId: "update-1",
+        text: "First update",
+        phase: "progress",
+      },
+      createdMs: anchor,
+      observedMs: anchor + 300_000,
+      sortIndex: 2,
+    },
+    {
+      id: "thread-1:turn-1:plan-1",
+      threadId: "thread-1",
+      type: "plan",
+      summary: "Plan",
+      payload: { turnId: "turn-1", itemId: "plan-1", text: "History only" },
+      createdMs: anchor,
+      observedMs: null,
+      sortIndex: 3,
+    },
+    {
+      id: "thread-1:turn-1:update-2",
+      threadId: "thread-1",
+      type: "assistant_message",
+      summary: "Assistant response",
+      payload: {
+        turnId: "turn-1",
+        itemId: "update-2",
+        text: "Second update",
+        phase: "progress",
+      },
+      createdMs: anchor,
+      observedMs: anchor + 900_000,
+      sortIndex: 4,
+    },
+    {
+      id: "thread-1:turn-1:answer",
+      threadId: "thread-1",
+      type: "assistant_message",
+      summary: "Assistant response",
+      payload: {
+        turnId: "turn-1",
+        itemId: "answer",
+        text: "Done",
+        phase: "final",
+      },
+      createdMs: anchor,
+      observedMs: anchor + 1_200_000,
+      sortIndex: 5,
+    },
+    {
+      id: "thread-1:turn-1:completed",
+      threadId: "thread-1",
+      type: "turn_completed",
+      summary: "Turn completed",
+      payload: { turnId: "turn-1", status: "completed" },
+      createdMs: anchor,
+      observedMs: anchor + 1_200_000,
+      sortIndex: 6,
+    },
+  ];
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+  const workDetails = page.locator("caffold-task-work-details");
+  await workDetails.locator("summary").click();
+  const itemTimes = workDetails.locator(".task-work-details-item time");
+
+  await expect(itemTimes).toHaveCount(2);
+  const labels = await itemTimes.allTextContents();
+  expect(new Set(labels).size).toBe(2);
+  await expect(
+    workDetails.locator('.task-work-details-item[data-event-type="plan"] time'),
+  ).toHaveCount(0);
+});
+
 test("active task without a canonical turn keeps a disabled composer Stop action", { tag: "@all-viewports" }, async ({
   page,
 }) => {
@@ -584,6 +688,7 @@ test("recovers task detail and prompt submission across bootstrap races", { tag:
         body: JSON.stringify({
           threadId: segments[2],
           turnId: `${segments[2]}_follow_up`,
+          userMessageId: `${segments[2]}_message_follow_up`,
           steered: false,
         }),
       });
@@ -988,7 +1093,12 @@ test("keeps one Composer and its image draft per thread with a bounded clean ina
       promptRequests += 1;
       const threadId = new URL(route.request().url()).pathname.split("/").at(-2);
       return route.fulfill({
-        json: { threadId, turnId: `${threadId}-turn`, steered: false },
+        json: {
+          threadId,
+          turnId: `${threadId}-turn`,
+          userMessageId: `${threadId}-message`,
+          steered: false,
+        },
       });
     },
   );
@@ -1318,7 +1428,7 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
   });
 });
 
-test("canonical stream sync clears errors and reconciles prompts without trusting older history", { tag: "@desktop" }, async ({
+test("canonical stream sync clears errors but waits for the prompt response identity", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
   await installTaskApiFixture(page);
@@ -1365,6 +1475,7 @@ test("canonical stream sync clears errors and reconciles prompts without trustin
       json: {
         threadId: "thread-1",
         turnId: "turn-refresh-reconciled",
+        userMessageId: "message-refresh-reconciled",
         steered: false,
       },
     });
@@ -1435,6 +1546,7 @@ test("canonical stream sync clears errors and reconciles prompts without trustin
         summary: "User prompt",
         payload: {
           turnId: "turn-refresh-reconciled",
+          itemId: "message-refresh-reconciled",
           text: promptText,
         },
         createdMs: Date.now(),
@@ -1463,9 +1575,20 @@ test("canonical stream sync clears errors and reconciles prompts without trustin
         };
       }),
     )
-    .toEqual({ requests: 0, submissions: 0 });
+    .toEqual({ requests: 1, submissions: 1 });
 
   releasePrompt();
+  await expect
+    .poll(() =>
+      tasksPage.evaluate((element) => {
+        const detail = element.querySelector("caffold-task-detail");
+        return {
+          requests: detail.followUpRequests.size,
+          submissions: detail.followUpComposer().activeSubmissions.size,
+        };
+      }),
+    )
+    .toEqual({ requests: 0, submissions: 0 });
 });
 
 test("canonical action responses reject foreign tasks and preserve history cursors", { tag: "@desktop" }, async ({
@@ -2089,7 +2212,7 @@ test("opens a running conversation at the latest message from the stream bootstr
   expect(detailReads).toBe(0);
   await expect.poll(() => isScrolledToBottom(scroller)).toBe(true);
 });
-test("makes disconnected task state unavailable and reconciles an uncertain prompt", { tag: "@all-viewports" }, async ({
+test("makes disconnected task state unavailable and preserves an unidentifiable prompt", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await page.addInitScript(() => {
@@ -2337,11 +2460,21 @@ test("makes disconnected task state unavailable and reconciles an uncertain prom
   const canonicalPrompt = tasksPage
     .locator('.task-message[data-message-role="user"]')
     .filter({ hasText: promptText });
-  await expect(canonicalPrompt).toHaveCount(1);
-  await expect(canonicalPrompt).not.toHaveAttribute(
-    "data-delivery-state",
-    "outcomeUnknown",
-  );
+  await expect(canonicalPrompt).toHaveCount(2);
+  await expect(
+    tasksPage
+      .locator(
+        '.task-message[data-message-role="user"][data-delivery-state="outcomeUnknown"]',
+      )
+      .filter({ hasText: promptText }),
+  ).toHaveCount(1);
+  await expect(
+    tasksPage
+      .locator(
+        '.task-message[data-message-role="user"]:not([data-delivery-state])',
+      )
+      .filter({ hasText: promptText }),
+  ).toHaveCount(1);
   await expect(page.locator(".app-foreground-recovery")).toBeHidden();
   await expect(
     tasksPage.locator(

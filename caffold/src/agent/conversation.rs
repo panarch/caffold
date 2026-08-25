@@ -198,9 +198,15 @@ pub(crate) struct BackgroundTask {
 /// One thing the agent said or did, as the conversation draws it.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ConversationItem {
-    /// The adapter's stable identifier for this item. It is what makes a live
-    /// update and a later read of the same work one entry rather than two.
+    /// The adapter's exact provider-backed identifier for this projection.
+    /// When live and history expose the same identity it joins their reports;
+    /// when they do not, Caffold keeps the identities distinct and lets source
+    /// ownership choose one ledger instead of manufacturing a relationship.
     pub(crate) id: String,
+    /// When the provider directly recorded this item, if its history carries
+    /// an item-level clock. This is display evidence, not a substitute for the
+    /// item's position in the provider's ordered turn.
+    pub(crate) observed_at_ms: Option<u64>,
     /// How far along this item is.
     ///
     /// Every item carries one, whether its agent reports work status for that
