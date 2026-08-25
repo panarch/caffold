@@ -24,13 +24,14 @@ import {
   withPromptSubmissionState,
 } from "../../runtime-state.js";
 import {
+  appendOptimisticEvent,
   eventIdentityKey,
   handoffOptimisticSubmission,
-  mergeEvents,
   mergeTaskEventsPage,
   optimisticUserMessageEvent,
+  prependDetailEvents,
   reconcileDetailEvents,
-  upsertEvent,
+  upsertLiveEvent,
 } from "../../task-events.js";
 import { cleanLogicalPath } from "../../task-format.js";
 import {
@@ -310,7 +311,7 @@ class CaffoldTaskDetail extends HTMLElement {
       resetOverridesOnCanonical: null,
       overridesReleased: false,
     });
-    this.setThreadEvents(threadId, mergeEvents(events, [optimisticEvent]));
+    this.setThreadEvents(threadId, appendOptimisticEvent(events, optimisticEvent));
     this.conversationUpdateKind = "bottom";
     this.render();
   }
@@ -406,13 +407,7 @@ class CaffoldTaskDetail extends HTMLElement {
       return;
     }
 
-    this.eventsByThread.set(
-      this.eventsThreadId,
-      mergeEvents(
-        this.eventsByThread.get(this.eventsThreadId) ?? [],
-        this.events,
-      ),
-    );
+    this.eventsByThread.set(this.eventsThreadId, this.events);
   }
 
   activateThreadEvents(threadId) {
@@ -494,7 +489,7 @@ class CaffoldTaskDetail extends HTMLElement {
     ) {
       return;
     }
-    this.setThreadEvents(threadId, upsertEvent(this.events, entry));
+    this.setThreadEvents(threadId, upsertLiveEvent(this.events, entry));
     this.reconcilePendingPrompt(threadId, [entry]);
     this.conversationUpdateKind = this.liveConversationUpdateKind(threadId);
     this.render();
@@ -563,7 +558,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.setThreadEvents(
       threadId,
       preferCurrentEvents
-        ? mergeEvents(incomingEvents, currentEvents)
+        ? prependDetailEvents(currentEvents, incomingEvents)
         : reconcileDetailEvents(currentEvents, incomingEvents),
     );
     this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
@@ -915,7 +910,10 @@ class CaffoldTaskDetail extends HTMLElement {
     this.followUpRequests.set(threadId, followUpRequest);
     this.setThreadEvents(
       threadId,
-      mergeEvents(this.eventsByThread.get(threadId) ?? [], [optimisticEvent]),
+      appendOptimisticEvent(
+        this.eventsByThread.get(threadId) ?? [],
+        optimisticEvent,
+      ),
     );
     this.conversationUpdateKind = "bottom";
     this.render();

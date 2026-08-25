@@ -92,6 +92,15 @@ test("does not present a history placement anchor as an item timestamp", () => {
   assert.match(renderConversationEvent(directlyObserved, {}), /<time>/);
 });
 
+test("update metadata alone does not replace a conversation entry", () => {
+  const message = messageEvent("assistant_message", { phase: "final" });
+
+  assert.equal(
+    renderConversationEvent({ ...message, updatedMs: 20 }, {}),
+    renderConversationEvent({ ...message, updatedMs: 30 }, {}),
+  );
+});
+
 test("a pending approval stays visible beside the command it is asking about", () => {
   // Codex names the item its approval is about, and announces that item in the
   // same breath. Both belong on screen: the command is what will run, and the

@@ -201,8 +201,8 @@ export function fileChangePathPresentations(events, rootPath = "") {
   return [...presentationsByFileIdentity.values()];
 }
 
-export function upsertEvent(events, event) {
-  return mergeEvents(events, [event]);
+export function upsertLiveEvent(events, event) {
+  return advanceLiveEvents(events, [event]);
 }
 
 export function sortEventsChronologically(events) {
@@ -222,39 +222,66 @@ export function sortEventsChronologically(events) {
     .map(({ event }) => event);
 }
 
-export function mergeEvents(leftEvents, rightEvents) {
+// Apply reports from the current live projection. Exact identity is the only
+// join evidence. Once an item is terminal, a conflicting live status cannot
+// replace it; a canonical Detail snapshot owns any correction between terminal
+// outcomes. Otherwise the incoming report owns conflicting mutable fields
+// while the first observed conversation position remains stable.
+export function advanceLiveEvents(currentEvents, liveEvents) {
   const byId = new Map();
-  for (const event of [...leftEvents, ...rightEvents]) {
+  for (const event of [...currentEvents, ...liveEvents]) {
     const key = eventIdentityKey(event);
     if (key) {
-      byId.set(key, mergeEventRecord(byId.get(key), event));
+      byId.set(key, advanceLiveEventRecord(byId.get(key), event));
     }
   }
-  return sortEventsChronologically(
-    dedupeCanonicalEvents([...byId.values()]),
-  );
+  return sortEventsChronologically([...byId.values()]);
 }
 
-// A refreshed Detail snapshot owns conversation position for every exact item
-// identity it contains. Current live observations may enrich those records,
-// while observations absent from Detail remain visible where they arrived.
+// A refreshed Detail snapshot owns every conflicting projected field and the
+// conversation position for each exact identity it contains. Current records
+// may fill fields Detail omitted, while identities absent from Detail remain
+// visible where the backend projection last placed them.
 export function reconcileDetailEvents(currentEvents, detailEvents) {
   const byId = new Map();
   for (const event of currentEvents) {
     const key = eventIdentityKey(event);
     if (key) {
-      byId.set(key, mergeEventRecord(byId.get(key), event));
+      byId.set(key, advanceLiveEventRecord(byId.get(key), event));
     }
   }
   for (const event of detailEvents) {
     const key = eventIdentityKey(event);
     if (key) {
-      byId.set(key, mergeEventRecordAtIncomingPosition(byId.get(key), event));
+      byId.set(key, applyCanonicalDetailRecord(byId.get(key), event));
     }
   }
-  return sortEventsChronologically(
-    dedupeCanonicalEvents([...byId.values()]),
-  );
+  return sortEventsChronologically([...byId.values()]);
+}
+
+// An optimistic request has no provider identity yet. Keep it as a separate
+// local overlay until the adapter returns the exact handoff identity.
+export function appendOptimisticEvent(events, optimisticEvent) {
+  return sortEventsChronologically([...events, optimisticEvent]);
+}
+
+// Older Detail pages extend the visible transcript but cannot replace an
+// exact current projection at the cursor boundary.
+export function prependDetailEvents(currentEvents, olderDetailEvents) {
+  const byId = new Map();
+  for (const event of olderDetailEvents) {
+    const key = eventIdentityKey(event);
+    if (key) {
+      byId.set(key, applyCanonicalDetailRecord(byId.get(key), event));
+    }
+  }
+  for (const event of currentEvents) {
+    const key = eventIdentityKey(event);
+    if (key) {
+      byId.set(key, projectPrimaryEvent(event, byId.get(key), event.position));
+    }
+  }
+  return sortEventsChronologically([...byId.values()]);
 }
 
 // Once the prompt response or first provider projection proves which exact
@@ -274,21 +301,20 @@ export function handoffOptimisticSubmission(
   const existingConfirmed = events.find(
     (event) => eventIdentityKey(event) === confirmedIdentity,
   );
-  const confirmed = mergeEventRecord(existingConfirmed, confirmedEvent);
+  const confirmed = advanceLiveEventRecord(existingConfirmed, confirmedEvent);
   const latestUpdateMs = latestTaskEventUpdateMs(confirmed, optimistic);
-  const handedOff = eventAtPosition(
+  const handedOff = projectPrimaryEvent(
     confirmed,
-    optimistic,
-    latestUpdateMs,
+    null,
+    optimistic.position,
+    { updatedMs: latestUpdateMs },
   );
   const remaining = events.filter(
     (event) =>
       event.id !== optimisticEventId &&
       eventIdentityKey(event) !== confirmedIdentity,
   );
-  return sortEventsChronologically(
-    dedupeCanonicalEvents([...remaining, handedOff]),
-  );
+  return sortEventsChronologically([...remaining, handedOff]);
 }
 
 export function mergeTaskEventsPage(currentPage, detail) {
@@ -306,67 +332,76 @@ export function mergeTaskEventsPage(currentPage, detail) {
   return incomingPage;
 }
 
-function mergeEventRecord(existing, incoming) {
+function advanceLiveEventRecord(existing, incoming) {
   if (!existing) {
     return incoming;
   }
-  const position = existing.position;
-  const existingUpdatedMs = taskEventUpdateMs(existing);
-  const incomingUpdatedMs = taskEventUpdateMs(incoming);
-  const carriesObservedTime = [existing, incoming].some((event) =>
-    Object.prototype.hasOwnProperty.call(event, "observedMs"),
+  const incomingOwns = !liveReportConflictsWithTerminal(existing, incoming);
+  return incomingOwns
+    ? projectPrimaryEvent(incoming, existing, existing.position)
+    : projectPrimaryEvent(existing, incoming, existing.position);
+}
+
+function applyCanonicalDetailRecord(existing, incoming) {
+  if (!existing) {
+    return incoming;
+  }
+  return projectPrimaryEvent(incoming, existing, incoming.position);
+}
+
+function projectPrimaryEvent(
+  primary,
+  supplemental,
+  position,
+  { updatedMs = latestTaskEventUpdateMs(primary, supplemental) } = {},
+) {
+  const {
+    position: _primaryPosition,
+    updatedMs: _primaryUpdatedMs,
+    ...primaryFields
+  } = primary;
+  const {
+    position: _supplementalPosition,
+    updatedMs: _supplementalUpdatedMs,
+    ...supplementalFields
+  } = supplemental ?? {};
+  const carriesObservedTime = [primary, supplemental].some(
+    (event) => event && Object.prototype.hasOwnProperty.call(event, "observedMs"),
   );
-  const observedTimes = [existing, incoming]
+  const observedTimes = [primary, supplemental]
     .map(taskEventObservedMs)
     .filter((value) => value !== null);
   const observedMs = observedTimes.length ? Math.min(...observedTimes) : null;
-  const [latest, earlier] =
-    incomingUpdatedMs !== null &&
-    (existingUpdatedMs === null || incomingUpdatedMs >= existingUpdatedMs)
-      ? [incoming, existing]
-      : [existing, incoming];
-  const earlierPayload = earlier.payload ?? {};
-  const latestPayload = latest.payload ?? {};
-  const payload = { ...earlierPayload, ...latestPayload };
-  const updatedMs = latestTaskEventUpdateMs(existing, incoming);
+  const payload = {
+    ...(supplemental?.payload ?? {}),
+    ...(primary?.payload ?? {}),
+  };
   const anchorMs = taskEventAnchorMs({ position });
+  const carriesUpdatedMs =
+    updatedMs !== null && anchorMs !== null && updatedMs > anchorMs;
   return {
-    ...earlier,
-    ...latest,
+    ...supplementalFields,
+    ...primaryFields,
     payload,
     position,
     ...(carriesObservedTime ? { observedMs } : {}),
-    ...(updatedMs !== null && anchorMs !== null && updatedMs > anchorMs
-      ? { updatedMs }
-      : {}),
+    ...(carriesUpdatedMs ? { updatedMs } : {}),
   };
 }
 
-function mergeEventRecordAtIncomingPosition(existing, incoming) {
-  if (!existing) {
-    return incoming;
+function liveReportConflictsWithTerminal(existing, incoming) {
+  const existingStatus = existing?.payload?.status;
+  if (!TERMINAL_ACTIVITY_STATUSES.has(existingStatus)) {
+    return false;
   }
-  const merged = mergeEventRecord(existing, incoming);
-  const latestUpdateMs = latestTaskEventUpdateMs(existing, incoming);
-  return eventAtPosition(merged, incoming, latestUpdateMs);
+  return incoming?.payload?.status !== existingStatus;
 }
 
-function eventAtPosition(event, positionedEvent, latestUpdateMs) {
-  const {
-    position: _mergedPosition,
-    updatedMs: _mergedUpdatedMs,
-    ...positioned
-  } = event;
-  const position = positionedEvent.position;
-  const anchorMs = taskEventAnchorMs({ position });
-  const carriesUpdatedMs =
-    latestUpdateMs !== null && anchorMs !== null && latestUpdateMs > anchorMs;
-  return {
-    ...positioned,
-    position,
-    ...(carriesUpdatedMs ? { updatedMs: latestUpdateMs } : {}),
-  };
-}
+const TERMINAL_ACTIVITY_STATUSES = new Set([
+  "completed",
+  "failed",
+  "declined",
+]);
 
 function taskEventUpdateMs(event) {
   const updatedMs = event?.updatedMs;
@@ -448,7 +483,10 @@ export function dedupeCanonicalEvents(events) {
     if (!identity) {
       continue;
     }
-    byIdentity.set(identity, mergeEventRecord(byIdentity.get(identity), event));
+    byIdentity.set(
+      identity,
+      advanceLiveEventRecord(byIdentity.get(identity), event),
+    );
   }
   return [...byIdentity.values()];
 }

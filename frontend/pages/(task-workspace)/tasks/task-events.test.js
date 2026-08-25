@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  advanceLiveEvents,
+  appendOptimisticEvent,
   conversationGroups,
   dedupeCanonicalEvents,
   fileChangePathPresentations,
   handoffOptimisticSubmission,
-  mergeEvents,
   optimisticUserMessageEvent,
+  prependDetailEvents,
   reconcileDetailEvents,
   sortEventsChronologically,
   taskEventPosition,
@@ -53,7 +55,7 @@ test("an event without canonical position preserves projection order instead of 
     sortEventsChronologically([later, unpositioned, earlier]).map(({ id }) => id),
     ["later", "unpositioned", "earlier"],
   );
-  const merged = mergeEvents([unpositioned], [
+  const merged = advanceLiveEvents([unpositioned], [
     { ...unpositioned, summary: "Later observation" },
   ]);
   assert.equal(merged[0].position, undefined);
@@ -88,7 +90,7 @@ test("file change presentation deduplicates equivalent Task-local references", (
   assert.deepEqual(fileChanges, canonicalEvents);
 });
 
-test("event merge keeps causal order while a newer canonical record wins", () => {
+test("live advancement keeps first position while the incoming report wins", () => {
   const started = event(
     "item-1",
     "command_execution",
@@ -116,7 +118,7 @@ test("event merge keeps causal order while a newer canonical record wins", () =>
     text: "Before command",
   });
 
-  const merged = mergeEvents([started], [completed, earlier]);
+  const merged = advanceLiveEvents([started], [completed, earlier]);
 
   assert.deepEqual(merged.map(({ id }) => id), ["message-1", "item-1"]);
   assert.deepEqual(merged[1].position, { anchorMs: 100, index: 2 });
@@ -132,7 +134,57 @@ test("event merge keeps causal order while a newer canonical record wins", () =>
   });
 });
 
-test("generic event merging does not claim an optimistic submission", () => {
+test("live lifecycle replay cannot regress an exact terminal item", () => {
+  const started = event(
+    "item-1",
+    "command_execution",
+    100,
+    {
+      itemId: "item-1",
+      status: "inProgress",
+      command: "cargo test",
+      output: "started",
+    },
+    { updatedMs: 110 },
+  );
+  const completed = event(
+    "item-1",
+    "command_execution",
+    100,
+    {
+      itemId: "item-1",
+      status: "completed",
+      command: "cargo test",
+      output: "done",
+    },
+    { updatedMs: 120, summary: "Command completed" },
+  );
+  const replay = event(
+    "item-1",
+    "command_execution",
+    100,
+    {
+      itemId: "item-1",
+      status: "inProgress",
+      command: "cargo test",
+      output: "replayed partial output",
+      replayOnly: true,
+    },
+    { updatedMs: 130, summary: "Command running again" },
+  );
+
+  const merged = advanceLiveEvents(
+    advanceLiveEvents([started], [completed]),
+    [replay],
+  );
+
+  assert.equal(merged[0].summary, "Command completed");
+  assert.equal(merged[0].payload.status, "completed");
+  assert.equal(merged[0].payload.output, "done");
+  assert.equal(merged[0].payload.replayOnly, true);
+});
+
+test("an optimistic overlay remains separate until exact handoff", () => {
   const originalNow = Date.now;
   Date.now = () => 100;
   const matching = optimisticUserMessageEvent(
@@ -159,7 +211,11 @@ test("generic event merging does not claim an optimistic submission", () => {
     ],
   });
 
-  const merged = mergeEvents([matching, unrelated], [canonical]);
+  const overlays = appendOptimisticEvent(
+    appendOptimisticEvent([], matching),
+    unrelated,
+  );
+  const merged = advanceLiveEvents(overlays, [canonical]);
 
   assert.deepEqual(merged.map(({ id }) => id), [
     matching.id,
@@ -168,7 +224,7 @@ test("generic event merging does not claim an optimistic submission", () => {
   ]);
 });
 
-test("an existing canonical message does not erase a new identical submission", () => {
+test("an existing canonical message does not erase a new identical overlay", () => {
   const canonical = event("canonical-1", "user_message", 100, {
     turnId: "turn-1",
     itemId: "message-1",
@@ -182,7 +238,7 @@ test("an existing canonical message does not erase a new identical submission", 
   );
 
   assert.deepEqual(
-    mergeEvents([canonical], [optimistic]).map(({ id }) => id),
+    appendOptimisticEvent([canonical], optimistic).map(({ id }) => id),
     ["canonical-1", optimistic.id],
     "presentation text cannot identify a later submission",
   );
@@ -195,7 +251,7 @@ test("accepted and later user-item projections merge by exact identity in either
     text: "Keep one",
     status: "completed",
   });
-  const canonical = event("history-projection", "user_message", 120, {
+  const providerProjection = event("provider-projection", "user_message", 120, {
     turnId: "turn-1",
     itemId: "message-1",
     text: "Keep one",
@@ -204,10 +260,10 @@ test("accepted and later user-item projections merge by exact identity in either
   });
 
   for (const [first, second] of [
-    [accepted, canonical],
-    [canonical, accepted],
+    [accepted, providerProjection],
+    [providerProjection, accepted],
   ]) {
-    const merged = mergeEvents([first], [second]);
+    const merged = advanceLiveEvents([first], [second]);
     assert.equal(merged.length, 1);
     assert.equal(merged[0].payload.itemId, "message-1");
     assert.deepEqual(merged[0].payload.content, [
@@ -229,7 +285,7 @@ test("two accepted user items survive identical presentation", () => {
   });
 
   assert.deepEqual(
-    mergeEvents([first], [second]).map((entry) => entry.payload.itemId),
+    advanceLiveEvents([first], [second]).map((entry) => entry.payload.itemId),
     ["message-1", "message-2"],
   );
 });
@@ -323,7 +379,7 @@ test("two sparse equal messages keep their event identities", () => {
   });
 
   assert.deepEqual(
-    mergeEvents([first], [second]).map(({ id }) => id),
+    advanceLiveEvents([first], [second]).map(({ id }) => id),
     ["notification-1", "notification-2"],
     "matching content is not evidence that two unstructured events are one",
   );
@@ -353,7 +409,7 @@ test("a backend-selected background ledger stays once across refreshes", () => {
     { positionIndex: 1 },
   );
 
-  const liveState = mergeEvents([earlier], [live]);
+  const liveState = advanceLiveEvents([earlier], [live]);
   const refreshed = reconcileDetailEvents(liveState, [earlier, detail]);
   const refreshedAgain = reconcileDetailEvents(refreshed, [earlier, detail]);
   const reloaded = reconcileDetailEvents([], [earlier, detail]);
@@ -495,6 +551,103 @@ test("history reconciliation takes its item position without losing live enrichm
   assert.deepEqual(reconciled[0].payload.content, [
     { type: "text", text: "Test the ordering" },
   ]);
+});
+
+test("an older Detail page cannot replace the current cursor-boundary item", () => {
+  const olderBoundary = event(
+    "older-command",
+    "tool_call",
+    100,
+    {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "command-1",
+      status: "inProgress",
+      output: "older partial output",
+      olderOnly: true,
+    },
+    { summary: "Older command", positionIndex: 9 },
+  );
+  const currentBoundary = event(
+    "current-command",
+    "command_execution",
+    200,
+    {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "command-1",
+      status: "completed",
+      output: "current output",
+    },
+    { summary: "Current command", positionIndex: 1 },
+  );
+  const olderMessage = event("older-message", "assistant_message", 50, {
+    turnId: "turn-0",
+    itemId: "message-0",
+    text: "Earlier history",
+  });
+
+  const projected = prependDetailEvents(
+    [currentBoundary],
+    [olderMessage, olderBoundary],
+  );
+
+  assert.deepEqual(projected.map(({ id }) => id), [
+    "older-message",
+    "current-command",
+  ]);
+  assert.equal(projected[1].type, "command_execution");
+  assert.equal(projected[1].summary, "Current command");
+  assert.deepEqual(projected[1].position, currentBoundary.position);
+  assert.equal(projected[1].payload.status, "completed");
+  assert.equal(projected[1].payload.output, "current output");
+  assert.equal(projected[1].payload.olderOnly, true);
+});
+
+test("canonical Detail owns conflicts over a later-positioned stale live item", () => {
+  const staleLive = event(
+    "live-command",
+    "tool_call",
+    200,
+    {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "command-1",
+      status: "inProgress",
+      output: "partial",
+      structure: "transient",
+      liveOnly: true,
+    },
+    {
+      updatedMs: 300,
+      summary: "Transient command running",
+      positionIndex: 9,
+    },
+  );
+  const canonical = event(
+    "history-command",
+    "command_execution",
+    100,
+    {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "command-1",
+      status: "completed",
+      output: "canonical output",
+      structure: { owner: "detail" },
+    },
+    { summary: "Canonical command completed", positionIndex: 2 },
+  );
+
+  const [reconciled] = reconcileDetailEvents([staleLive], [canonical]);
+
+  assert.equal(reconciled.type, "command_execution");
+  assert.equal(reconciled.summary, "Canonical command completed");
+  assert.deepEqual(reconciled.position, { anchorMs: 100, index: 2 });
+  assert.equal(reconciled.payload.status, "completed");
+  assert.equal(reconciled.payload.output, "canonical output");
+  assert.deepEqual(reconciled.payload.structure, { owner: "detail" });
+  assert.equal(reconciled.payload.liveOnly, true);
 });
 
 test("an exact submission handoff keeps its optimistic position until Detail owns it", () => {
