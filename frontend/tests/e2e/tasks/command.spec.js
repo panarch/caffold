@@ -257,11 +257,11 @@ function activeTask(threadId, turnId, startedAtMs) {
   };
 }
 
-function commandEvent(createdMs, turnId, payload) {
+function commandEvent(anchorMs, turnId, payload) {
   return turnEvent(
     "event_command",
     "command_execution",
-    createdMs,
+    anchorMs,
     turnId,
     {
       itemId: "command_item",
@@ -272,14 +272,14 @@ function commandEvent(createdMs, turnId, payload) {
   );
 }
 
-function turnEvent(id, type, createdMs, turnId, payload = {}) {
+function turnEvent(id, type, anchorMs, turnId, payload = {}) {
   return {
     id,
     threadId: "thread_command_component",
     type,
     summary: type.replaceAll("_", " "),
     payload: { turnId, ...payload },
-    createdMs,
+    position: { anchorMs, index: 0 },
   };
 }
 

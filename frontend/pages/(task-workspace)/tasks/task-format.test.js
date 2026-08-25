@@ -16,13 +16,9 @@ import {
 } from "./task-format.js";
 
 test("Task event time distinguishes direct evidence from a history placement anchor", () => {
-  assert.equal(taskEventObservedMs({ createdMs: 100, observedMs: 120 }), 120);
-  assert.equal(taskEventObservedMs({ createdMs: 100, observedMs: null }), null);
-  assert.equal(
-    taskEventObservedMs({ createdMs: 100 }),
-    100,
-    "an older backend has no explicit unknown-time marker",
-  );
+  assert.equal(taskEventObservedMs({ observedMs: 120 }), 120);
+  assert.equal(taskEventObservedMs({ observedMs: null }), null);
+  assert.equal(taskEventObservedMs({}), null);
 });
 
 test("task paths normalize separators without allowing parent traversal", () => {

@@ -600,7 +600,9 @@ mod tests {
     use super::*;
     use crate::{
         app::tasks::{
-            events::TaskEventRecord, recovery::ActiveTaskRecoveryAction, test_support::*,
+            events::{TaskEventPosition, TaskEventRecord},
+            recovery::ActiveTaskRecoveryAction,
+            test_support::*,
         },
         fs::RootedFs,
         task_store::RunBy,
@@ -1990,10 +1992,9 @@ mod tests {
             event_type: "agent_message".to_string(),
             summary: "cached".to_string(),
             payload: None,
-            created_ms: 1,
+            position: TaskEventPosition::at(1),
             observed_ms: Some(1),
             updated_ms: None,
-            sort_index: None,
             generated_image: None,
         });
         assert_eq!(state.task_events.for_thread(thread_id).len(), 1);

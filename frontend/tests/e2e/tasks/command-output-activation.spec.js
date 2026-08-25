@@ -44,16 +44,16 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
     recencyMs: now + 20_000,
     lastEventSummary: "Checking command output actions",
   };
-  const event = (id, type, createdMs, turnId, payload = {}) => ({
+  const event = (id, type, anchorMs, turnId, payload = {}) => ({
     id,
     threadId,
     type,
     summary: type,
     payload: { threadId, turnId, ...payload },
-    createdMs,
+    position: { anchorMs, index: 0 },
   });
-  const command = (id, createdMs, turnId, status) =>
-    event(id, "command_execution", createdMs, turnId, {
+  const command = (id, anchorMs, turnId, status) =>
+    event(id, "command_execution", anchorMs, turnId, {
       itemId: id,
       command:
         status === "failed"

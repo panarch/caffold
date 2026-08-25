@@ -9,19 +9,56 @@ import {
   mergeEvents,
   optimisticUserMessageEvent,
   reconcileDetailEvents,
+  sortEventsChronologically,
+  taskEventPosition,
 } from "./task-events.js";
 
-function event(id, type, createdMs, payload = {}, overrides = {}) {
+function event(id, type, anchorMs, payload = {}, overrides = {}) {
+  const { positionIndex = 0, ...recordOverrides } = overrides;
   return {
     id,
     threadId: "thread-1",
     type,
     summary: type,
     payload,
-    createdMs,
-    ...overrides,
+    position: { anchorMs, index: positionIndex },
+    ...recordOverrides,
   };
 }
+
+test("equal positions preserve projection order instead of inferring from event IDs", () => {
+  const first = event("z-event", "assistant_message", 100, {
+    text: "Observed first",
+  });
+  const second = event("a-event", "assistant_message", 100, {
+    text: "Observed second",
+  });
+
+  assert.deepEqual(
+    sortEventsChronologically([first, second]).map(({ id }) => id),
+    ["z-event", "a-event"],
+  );
+});
+
+test("an event without canonical position preserves projection order instead of inventing an anchor", () => {
+  const later = event("later", "assistant_message", 200);
+  const unpositioned = {
+    ...event("unpositioned", "assistant_message", 150),
+    position: undefined,
+  };
+  const earlier = event("earlier", "assistant_message", 100);
+
+  assert.equal(taskEventPosition(unpositioned), null);
+  assert.deepEqual(
+    sortEventsChronologically([later, unpositioned, earlier]).map(({ id }) => id),
+    ["later", "unpositioned", "earlier"],
+  );
+  const merged = mergeEvents([unpositioned], [
+    { ...unpositioned, summary: "Later observation" },
+  ]);
+  assert.equal(merged[0].position, undefined);
+  assert.equal(Object.hasOwn(merged[0], "updatedMs"), false);
+});
 
 test("file change presentation deduplicates equivalent Task-local references", () => {
   const rootPath = "/managed/worktrees/task-1";
@@ -61,7 +98,7 @@ test("event merge keeps causal order while a newer canonical record wins", () =>
       status: "inProgress",
       command: "cargo test",
     },
-    { observedMs: 100, sortIndex: 2 },
+    { observedMs: 100, positionIndex: 2 },
   );
   const completed = event(
     "item-1",
@@ -72,7 +109,7 @@ test("event merge keeps causal order while a newer canonical record wins", () =>
       status: "completed",
       output: "done",
     },
-    { observedMs: 120, updatedMs: 140, sortIndex: 9 },
+    { observedMs: 120, updatedMs: 140, positionIndex: 9 },
   );
   const earlier = event("message-1", "assistant_message", 90, {
     turnId: "turn-1",
@@ -82,8 +119,7 @@ test("event merge keeps causal order while a newer canonical record wins", () =>
   const merged = mergeEvents([started], [completed, earlier]);
 
   assert.deepEqual(merged.map(({ id }) => id), ["message-1", "item-1"]);
-  assert.equal(merged[1].createdMs, 100);
-  assert.equal(merged[1].sortIndex, 2);
+  assert.deepEqual(merged[1].position, { anchorMs: 100, index: 2 });
   assert.equal(merged[1].updatedMs, 140);
   assert.equal(merged[1].observedMs, 100);
   // The newer record wins where the two disagree, and what only the earlier
@@ -215,7 +251,7 @@ test("equal sparse and structured messages remain separate without exact identit
       text: "Finished",
       phase: "final",
     },
-    { sortIndex: 0 },
+    { positionIndex: 0 },
   );
 
   assert.deepEqual(
@@ -314,7 +350,7 @@ test("a backend-selected background ledger stays once across refreshes", () => {
       text: "The build is done.",
       phase: "final",
     },
-    { sortIndex: 1 },
+    { positionIndex: 1 },
   );
 
   const liveState = mergeEvents([earlier], [live]);
@@ -381,9 +417,9 @@ test("an item's start and its finish stay one conversation entry", () => {
 
   assert.equal(reconciled.length, 1);
   assert.equal(reconciled[0].payload.status, "completed");
-  assert.equal(
-    reconciled[0].createdMs,
-    100,
+  assert.deepEqual(
+    reconciled[0].position,
+    { anchorMs: 100, index: 0 },
     "finishing an item must not move it from its place in the turn",
   );
 });
@@ -415,7 +451,7 @@ test("history reconciliation takes its item position without losing live enrichm
       text: "Test the ordering",
       liveDelivery: "accepted",
     },
-    { sortIndex: 0 },
+    { positionIndex: 0 },
   );
   const historyPrompt = event(
     "history-user-message",
@@ -428,7 +464,7 @@ test("history reconciliation takes its item position without losing live enrichm
       text: "Test the ordering",
       content: [{ type: "text", text: "Test the ordering" }],
     },
-    { sortIndex: 1 },
+    { positionIndex: 1 },
   );
   const historyAnswer = event(
     "history-answer",
@@ -440,7 +476,7 @@ test("history reconciliation takes its item position without losing live enrichm
       itemId: "answer-1",
       text: "The answer",
     },
-    { sortIndex: 2 },
+    { positionIndex: 2 },
   );
 
   const reconciled = reconcileDetailEvents(
@@ -453,8 +489,7 @@ test("history reconciliation takes its item position without losing live enrichm
     ["user_message", "assistant_message"],
     "a late observation cannot move a prompt behind its answer",
   );
-  assert.equal(reconciled[0].createdMs, 100);
-  assert.equal(reconciled[0].sortIndex, 1);
+  assert.deepEqual(reconciled[0].position, { anchorMs: 100, index: 1 });
   assert.equal(reconciled[0].updatedMs, 200);
   assert.equal(reconciled[0].payload.liveDelivery, "accepted");
   assert.deepEqual(reconciled[0].payload.content, [
@@ -468,7 +503,7 @@ test("an exact submission handoff keeps its optimistic position until Detail own
     "user_message",
     100,
     { optimistic: true, text: "Test the ordering" },
-    { sortIndex: 1 },
+    { positionIndex: 1 },
   );
   const liveAnswer = event(
     "live-answer",
@@ -480,7 +515,7 @@ test("an exact submission handoff keeps its optimistic position until Detail own
       itemId: "answer-1",
       text: "The answer",
     },
-    { sortIndex: 2 },
+    { positionIndex: 2 },
   );
   const accepted = event(
     "accepted-user-message",
@@ -493,7 +528,7 @@ test("an exact submission handoff keeps its optimistic position until Detail own
       text: "Test the ordering",
       liveDelivery: "accepted",
     },
-    { sortIndex: 3 },
+    { positionIndex: 3 },
   );
 
   const handedOff = handoffOptimisticSubmission(
@@ -507,9 +542,8 @@ test("an exact submission handoff keeps its optimistic position until Detail own
     ["user_message", "assistant_message"],
   );
   assert.equal(handedOff[0].id, accepted.id);
-  assert.equal(handedOff[0].createdMs, optimistic.createdMs);
-  assert.equal(handedOff[0].sortIndex, optimistic.sortIndex);
-  assert.equal(handedOff[0].updatedMs, accepted.createdMs);
+  assert.deepEqual(handedOff[0].position, optimistic.position);
+  assert.equal(handedOff[0].updatedMs, accepted.position.anchorMs);
   assert.equal(handedOff[0].payload.liveDelivery, "accepted");
   assert.equal(handedOff[0].payload.optimistic, undefined);
 
@@ -523,7 +557,7 @@ test("an exact submission handoff keeps its optimistic position until Detail own
       itemId: "message-1",
       text: "Test the ordering",
     },
-    { sortIndex: 1 },
+    { positionIndex: 1 },
   );
   const historyAnswer = event(
     "history-answer",
@@ -535,15 +569,14 @@ test("an exact submission handoff keeps its optimistic position until Detail own
       itemId: "answer-1",
       text: "The answer",
     },
-    { sortIndex: 2 },
+    { positionIndex: 2 },
   );
   const reconciled = reconcileDetailEvents(handedOff, [
     historyPrompt,
     historyAnswer,
   ]);
 
-  assert.equal(reconciled[0].createdMs, historyPrompt.createdMs);
-  assert.equal(reconciled[0].sortIndex, historyPrompt.sortIndex);
+  assert.deepEqual(reconciled[0].position, historyPrompt.position);
 });
 
 test("turn grouping keeps implicit continuation causal and closes terminal turns", () => {

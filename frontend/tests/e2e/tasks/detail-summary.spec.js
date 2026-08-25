@@ -504,7 +504,7 @@ test("keeps the task info spinner stable across equivalent detail activity", { t
           turnId: "turn_summary_spinner_equivalent",
           text: "Only the conversation changed.",
         },
-        createdMs: 101,
+        position: { anchorMs: 101, index: 0 },
       },
     });
     window.dispatchEvent(new CustomEvent("caffold:icons-ready"));

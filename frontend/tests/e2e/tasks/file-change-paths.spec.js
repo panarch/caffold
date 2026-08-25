@@ -49,13 +49,13 @@ test("renders managed Task file changes relative in live cards and Work details"
     recencyMs: 10,
     lastEventSummary: "Files changed",
   };
-  const event = (id, type, createdMs, payload = {}) => ({
+  const event = (id, type, anchorMs, payload = {}) => ({
     id,
     threadId,
     type,
     summary: type,
     payload,
-    createdMs,
+    position: { anchorMs, index: 0 },
   });
   const events = [
     event("standalone-file-change", "file_change", 1, {
@@ -198,10 +198,12 @@ test("renders managed Task file changes relative in live cards and Work details"
   );
   revisedStandalone.payload.paths.push(`${rootPath}/src/new.js`);
   revisedStandalone.payload.status = "inProgress";
+  revisedStandalone.observedMs = 6;
   const revisedCompleted = revisedDetail.events.find(
     ({ id }) => id === "completed-file-change-2",
   );
   revisedCompleted.payload.paths.push(`${rootPath}/src/new-work.js`);
+  revisedCompleted.observedMs = 7;
   await emitTaskSync(page, threadId, revisedDetail);
 
   await expect(standaloneFiles.locator("code")).toHaveText([
@@ -218,6 +220,14 @@ test("renders managed Task file changes relative in live cards and Work details"
   await expect(standalone.locator(":scope > article > p")).toHaveText(
     "5 changed files · Status: inProgress",
   );
+  await expect(
+    standalone.locator(":scope > article > header > time"),
+  ).toHaveCount(1);
+  await expect(
+    workDetails.locator(
+      ".task-work-details-item[data-event-type='file_change'] time",
+    ),
+  ).toHaveCount(1);
   await expect
     .poll(() =>
       page.evaluate(() => ({

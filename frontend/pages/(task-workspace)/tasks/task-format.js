@@ -259,16 +259,11 @@ export function formatDate(ms) {
   });
 }
 
-/// The time the backend has direct evidence for, as distinct from the
-/// `createdMs` anchor used to place provider-history items in a turn.
-///
-/// Older backends did not expose that distinction, so an absent property keeps
-/// their established `createdMs` behavior. A current backend sends `null` when
-/// history knows item order but no individual time.
+/// The time the backend has direct evidence for, as distinct from the event's
+/// conversation position. `null` means history knows order but no individual
+/// item time.
 export function taskEventObservedMs(event) {
-  const value = Object.prototype.hasOwnProperty.call(event ?? {}, "observedMs")
-    ? event?.observedMs
-    : event?.createdMs;
+  const value = event?.observedMs;
   const numeric = Number(value);
   return value !== null && value !== undefined && Number.isFinite(numeric)
     ? numeric

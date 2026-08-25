@@ -1343,7 +1343,7 @@ test("managed tasks restore their last applied model, reasoning, and speed", { t
       type: "user_message",
       summary: "User prompt",
       payload: { turnId: "turn-2", text: "Continue" },
-      createdMs: 3,
+      position: { anchorMs: 3, index: 0 },
     },
   ];
   await page.evaluate((detail) => {
@@ -1560,7 +1560,7 @@ test("steering an active turn preserves its existing work clock", { tag: "@all-v
       type: "turn_started",
       summary: "Turn started",
       payload: { turnId: "turn-1" },
-      createdMs: startedMs,
+      position: { anchorMs: startedMs, index: 0 },
     },
   ];
   await page.route("**/api/tasks/thread-1", (route) =>

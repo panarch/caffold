@@ -275,10 +275,16 @@ instead keeps provider history as its baseline, and a live event enriches an
 existing item only under the same exact identity. Detail consumes that
 already-reconciled contract; it does not compare message text or nearby times
 to manufacture a relationship.
-`createdMs` places an event in the projected timeline. `observedMs` is the
-direct per-event time shown by Conversation and Work details, including a
-provider-history item time when one exists; `null` suppresses a timestamp when
-history supplied order but no individual time.
+For canonical Task events, `position.anchorMs` places an event group in the
+projected timeline, and `position.index` orders events sharing that anchor.
+Both are backend-owned position rather than display time. A browser-created
+optimistic entry carries only provisional request-state position until exact
+identity handoff and Detail reconciliation replace it with canonical position.
+If a malformed event has no readable position, the browser preserves the
+projection order it received instead of manufacturing an anchor or update time.
+`observedMs` is the direct per-event time shown by Conversation and Work
+details, including a provider-history item time when one exists; `null`
+suppresses a timestamp when history supplied order but no individual time.
 
 The adjacent task-scoped Detail session owns snapshot acquisition while Detail
 keeps canonical Task, event, revision, and rendering state.

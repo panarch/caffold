@@ -34,7 +34,7 @@ test("shows context compaction only while its lifecycle item is active", { tag: 
     threadId,
     turnId,
     type: "turn_started",
-    createdMs: startedAtMs,
+    anchorMs: startedAtMs,
     payload: { status: "inProgress" },
   });
   const initialDetail = taskDetail(task, [turnStarted], 1);
@@ -57,7 +57,7 @@ test("shows context compaction only while its lifecycle item is active", { tag: 
     threadId,
     turnId,
     type: "tool_call",
-    createdMs: startedAtMs + 1_000,
+    anchorMs: startedAtMs + 1_000,
     payload: {
       itemId: "context-compaction-1",
       name: "Compacting context",
@@ -105,7 +105,7 @@ test("preserves active-turn and spinner identity until the turn changes", { tag:
     threadId,
     turnId: firstTurnId,
     type: "turn_started",
-    createdMs: startedAtMs,
+    anchorMs: startedAtMs,
     payload: { status: "inProgress" },
   });
   const initialDetail = taskDetail(initialTask, [started], 1);
@@ -177,7 +177,7 @@ test("preserves active-turn and spinner identity until the turn changes", { tag:
     threadId,
     turnId: firstTurnId,
     type: "command_execution",
-    createdMs: startedAtMs + 2_000,
+    anchorMs: startedAtMs + 2_000,
     payload: {
       itemId: "command_started",
       status: "inProgress",
@@ -195,7 +195,7 @@ test("preserves active-turn and spinner identity until the turn changes", { tag:
     threadId,
     turnId: firstTurnId,
     type: "file_change",
-    createdMs: startedAtMs + 3_000,
+    anchorMs: startedAtMs + 3_000,
     payload: {
       itemId: "file_change_started",
       status: "inProgress",
@@ -238,7 +238,7 @@ test("preserves active-turn and spinner identity until the turn changes", { tag:
     threadId,
     turnId: firstTurnId,
     type: "turn_completed",
-    createdMs: startedAtMs + 4_000,
+    anchorMs: startedAtMs + 4_000,
     payload: { status: "completed" },
   });
   const completedTask = {
@@ -272,7 +272,7 @@ test("preserves active-turn and spinner identity until the turn changes", { tag:
     threadId,
     turnId: secondTurnId,
     type: "turn_started",
-    createdMs: secondStartedAtMs,
+    anchorMs: secondStartedAtMs,
     payload: { status: "inProgress" },
   });
   await emitTaskSync(
@@ -309,7 +309,7 @@ test("preserves active-turn and spinner identity until the turn changes", { tag:
     threadId,
     turnId: secondTurnId,
     type: "turn_completed",
-    createdMs: secondStartedAtMs + 1_000,
+    anchorMs: secondStartedAtMs + 1_000,
     payload: { status: "interrupted" },
   });
   const interruptedTask = {
@@ -362,7 +362,7 @@ test("does not reuse active-turn state between tasks with the same turn id", { t
             threadId: task.threadId,
             turnId: sharedTurnId,
             type: "turn_started",
-            createdMs: task.activeTurn.startedAtMs,
+            anchorMs: task.activeTurn.startedAtMs,
             payload: { status: "inProgress" },
           }),
         ],
@@ -469,14 +469,14 @@ function taskDetail(task, events, revision) {
   };
 }
 
-function turnEvent({ id, threadId, turnId, type, createdMs, payload = {} }) {
+function turnEvent({ id, threadId, turnId, type, anchorMs, payload = {} }) {
   return {
     id,
     threadId,
     type,
     summary: type.replaceAll("_", " "),
     payload: { turnId, ...payload },
-    createdMs,
+    position: { anchorMs, index: 0 },
   };
 }
 

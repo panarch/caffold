@@ -53,7 +53,7 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
         type: "user_message",
         summary: "User prompt",
         payload: { text: "Say hello globally" },
-        createdMs: task.createdMs,
+        position: { anchorMs: task.createdMs, index: 0 },
       },
       {
         id: "event_answer",
@@ -61,7 +61,7 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
         type: "assistant_message",
         summary: "Assistant response",
         payload: { text: "Hello from a global Codex thread." },
-        createdMs: task.createdMs + 1,
+        position: { anchorMs: task.createdMs + 1, index: 0 },
       },
     ],
     eventsPage: { nextCursor: null },

@@ -20,6 +20,8 @@ import {
   isTurnStatusEvent,
   isWorkEvent,
   sortEventsChronologically,
+  taskEventAnchorMs,
+  taskEventPositionIndex,
 } from "../../../../task-events.js";
 import {
   effectiveTaskFileRoot,
@@ -154,7 +156,10 @@ function activeTurnGroupIndex(groups, task) {
       continue;
     }
     const hasCurrentEvent = group.events.some(
-      (event) => Number(event.createdMs) >= startedMs - 2_000,
+      (event) => {
+        const anchorMs = taskEventAnchorMs(event);
+        return anchorMs !== null && anchorMs >= startedMs - 2_000;
+      },
     );
     if (hasCurrentEvent) {
       return index;
@@ -554,7 +559,7 @@ function conversationEntryAttributes(event, presentation = "") {
     event?.type,
     event?.summary,
     event?.payload,
-    event?.createdMs,
+    event?.position,
     event?.updatedMs,
     event?.fileLinks,
     presentation,
@@ -815,9 +820,9 @@ function turnWorkItemCount(events) {
 
 function turnDurationLabel(events, terminalEvent) {
   const started = events.find((event) => event.type === "turn_started");
-  const startMs = started?.createdMs ?? events[0]?.createdMs;
-  const endMs = terminalEvent?.createdMs ?? events.at(-1)?.createdMs;
-  if (typeof startMs !== "number" || typeof endMs !== "number" || endMs <= startMs) {
+  const startMs = taskEventAnchorMs(started ?? events[0]);
+  const endMs = taskEventAnchorMs(terminalEvent ?? events.at(-1));
+  if (startMs === null || endMs === null || endMs <= startMs) {
     return "";
   }
   return formatDuration(endMs - startMs);
@@ -892,7 +897,8 @@ function fileChangeEventIdentity(event) {
     [
       "file-change",
       event?.threadId ?? event?.payload?.threadId ?? "",
-      event?.createdMs ?? "",
+      taskEventAnchorMs(event),
+      taskEventPositionIndex(event),
     ].join(":")
   );
 }

@@ -209,9 +209,10 @@ recovered turn, live reports may enrich history only under an exact identity.
 Content, proximity, and arrival order are never substitutes for that identity.
 An item-level provider timestamp, such as a Claude transcript row timestamp,
 crosses as `observedMs` without taking ownership of causal order. When history
-supplies item order but no item time, `createdMs` remains the projection's
-placement anchor while `observedMs` is `null`; the interface must not print the
-turn anchor as every item's timestamp.
+supplies item order but no item time, `position.anchorMs` places the group and
+`position.index` preserves provider order within it while `observedMs` is
+`null`; neither position field is an individual event time, so the interface
+must not print the turn anchor as every item's timestamp.
 
 The agent still owns the meaning of a permission. Caffold owns the human answer
 vocabulary—allow, allow always, deny, and deny and stop—and each driver offers

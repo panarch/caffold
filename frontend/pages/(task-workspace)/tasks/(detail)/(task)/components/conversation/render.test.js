@@ -271,14 +271,14 @@ function activeTask() {
   };
 }
 
-function turnEvent(id, type, createdMs, payload) {
+function turnEvent(id, type, anchorMs, payload) {
   return {
     id,
     threadId: "thread-1",
     type,
     summary: type,
     payload: { turnId: "turn-1", ...payload },
-    createdMs,
+    position: { anchorMs, index: 0 },
   };
 }
 
@@ -291,7 +291,7 @@ function messageEvent(type, payload = {}) {
       text: "```example\nvalue\n```",
       ...payload,
     },
-    createdMs: 1,
+    position: { anchorMs: 1, index: 0 },
   };
 }
 

@@ -47,14 +47,14 @@ function taskRecord({
   };
 }
 
-function event(createdMs, id, type, summary, payload) {
+function event(anchorMs, id, type, summary, payload) {
   return {
     id,
     threadId: THREAD_ID,
     type,
     summary,
     payload,
-    createdMs,
+    position: { anchorMs, index: 0 },
   };
 }
 

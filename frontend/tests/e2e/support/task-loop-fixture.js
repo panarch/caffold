@@ -145,7 +145,7 @@ export async function installTaskLoopFixture(
     type,
     summary,
     payload,
-    createdMs: now + offset,
+    position: { anchorMs: now + offset, index: 0 },
   });
   const detailResponse = (overrides = {}) => {
     const responseEvents = overrides.events ?? events;
@@ -618,19 +618,22 @@ export async function installTaskLoopFixture(
           },
           10,
         ),
-        eventRecord(
-          "event_9_command_completed",
-          "command_execution",
-          "Command completed",
-          {
-            turnId: "turn_1",
-            itemId: "command_1",
-            command: "cargo test",
-            cwd: "src",
-            status: "completed",
-          },
-          11,
-        ),
+        {
+          ...eventRecord(
+            "event_9_command_completed",
+            "command_execution",
+            "Command completed",
+            {
+              turnId: "turn_1",
+              itemId: "command_1",
+              command: "cargo test",
+              cwd: "src",
+              status: "completed",
+            },
+            9,
+          ),
+          updatedMs: now + 11,
+        },
         eventRecord(
           "event_10_repeat",
           "file_change",
@@ -647,6 +650,7 @@ export async function installTaskLoopFixture(
           "Assistant response",
           {
             turnId: "turn_1",
+            itemId: "message_10",
             phase: "final",
             text: completedAssistantResponse,
           },
@@ -658,6 +662,7 @@ export async function installTaskLoopFixture(
           "Assistant response",
           {
             turnId: "turn_1",
+            itemId: "message_10",
             phase: "final",
             text: completedAssistantResponse,
           },

@@ -61,9 +61,8 @@ test("work details show only direct item times instead of repeating the turn anc
       type: "user_message",
       summary: "User prompt",
       payload: { turnId: "turn-1", itemId: "prompt", text: "Inspect it" },
-      createdMs: anchor,
+      position: { anchorMs: anchor, index: 1 },
       observedMs: null,
-      sortIndex: 1,
     },
     {
       id: "thread-1:turn-1:update-1",
@@ -76,9 +75,8 @@ test("work details show only direct item times instead of repeating the turn anc
         text: "First update",
         phase: "progress",
       },
-      createdMs: anchor,
+      position: { anchorMs: anchor, index: 2 },
       observedMs: anchor + 300_000,
-      sortIndex: 2,
     },
     {
       id: "thread-1:turn-1:plan-1",
@@ -86,9 +84,8 @@ test("work details show only direct item times instead of repeating the turn anc
       type: "plan",
       summary: "Plan",
       payload: { turnId: "turn-1", itemId: "plan-1", text: "History only" },
-      createdMs: anchor,
+      position: { anchorMs: anchor, index: 3 },
       observedMs: null,
-      sortIndex: 3,
     },
     {
       id: "thread-1:turn-1:update-2",
@@ -101,9 +98,8 @@ test("work details show only direct item times instead of repeating the turn anc
         text: "Second update",
         phase: "progress",
       },
-      createdMs: anchor,
+      position: { anchorMs: anchor, index: 4 },
       observedMs: anchor + 900_000,
-      sortIndex: 4,
     },
     {
       id: "thread-1:turn-1:answer",
@@ -116,9 +112,8 @@ test("work details show only direct item times instead of repeating the turn anc
         text: "Done",
         phase: "final",
       },
-      createdMs: anchor,
+      position: { anchorMs: anchor, index: 5 },
       observedMs: anchor + 1_200_000,
-      sortIndex: 5,
     },
     {
       id: "thread-1:turn-1:completed",
@@ -126,9 +121,8 @@ test("work details show only direct item times instead of repeating the turn anc
       type: "turn_completed",
       summary: "Turn completed",
       payload: { turnId: "turn-1", status: "completed" },
-      createdMs: anchor,
+      position: { anchorMs: anchor, index: 6 },
       observedMs: anchor + 1_200_000,
-      sortIndex: 6,
     },
   ];
   await page.route("**/api/tasks/thread-1", (route) =>
@@ -247,7 +241,7 @@ test("updates stable detail regions and preserves an active IME composition", { 
       turnId: "turn-1",
       text: "Only the conversation changed.",
     },
-    createdMs: 3,
+    position: { anchorMs: 3, index: 0 },
   };
   await page.route("**/api/tasks/thread-1", (route) =>
     route.fulfill({ json: detail }),
@@ -614,7 +608,7 @@ test("recovers task detail and prompt submission across bootstrap races", { tag:
         type: "assistant_message",
         summary: "Assistant response",
         payload: { turnId: `${task.threadId}_turn`, text: response },
-        createdMs: now,
+        position: { anchorMs: now, index: 0 },
       },
     ],
     eventsPage: { nextCursor: null },
@@ -840,7 +834,7 @@ test("keeps task context and retries after an initial detail timeout", { tag: "@
             type: "assistant_message",
             summary: "Assistant response",
             payload: { text: "Recovered canonical response." },
-            createdMs: now,
+            position: { anchorMs: now, index: 0 },
           },
         ],
         eventsPage: { nextCursor: null },
@@ -904,7 +898,7 @@ test("preserves stable detail children through another task load failure", { tag
           turnId: `${threadId}-turn`,
           text: `${title} canonical response.`,
         },
-        createdMs: now,
+        position: { anchorMs: now, index: 0 },
       },
     ];
     return detail;
@@ -1326,7 +1320,7 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
         cwd: "src",
         decisions: ["allow", "deny"],
       },
-      createdMs: Date.now(),
+      position: { anchorMs: Date.now(), index: 0 },
     },
   ];
   await page.route("**/api/tasks/thread-1", (route) =>
@@ -1460,7 +1454,7 @@ test("canonical stream sync clears errors but waits for the prompt response iden
                 turnId: "turn-older-matching-prompt",
                 text: promptText,
               },
-              createdMs: 1,
+              position: { anchorMs: 1, index: 0 },
             },
           ],
           eventsPage: { nextCursor: null },
@@ -1549,7 +1543,7 @@ test("canonical stream sync clears errors but waits for the prompt response iden
           itemId: "message-refresh-reconciled",
           text: promptText,
         },
-        createdMs: Date.now(),
+        position: { anchorMs: Date.now(), index: 0 },
       },
     ],
   };
@@ -1748,7 +1742,7 @@ test("accepts canonical task detail after stream revisions restart", { tag: "@al
       type: "userMessage",
       content: [{ type: "input_text", text: rawAmbientPrompt }],
     },
-    createdMs: now,
+    position: { anchorMs: now, index: 0 },
   };
   const staleDetail = {
     revision: 43,
@@ -1777,7 +1771,7 @@ test("accepts canonical task detail after stream revisions restart", { tag: "@al
           turnId: "turn_initial",
           text: "Canonical response arrived before the stream connected.",
         },
-        createdMs: now + 2,
+        position: { anchorMs: now + 2, index: 0 },
       },
     ],
     eventsPage: { nextCursor: null },
@@ -1884,7 +1878,7 @@ test("reconciles a canonical final answer over a retained transient item after r
       itemId,
       status: "inProgress",
     },
-    createdMs: now + 200,
+    position: { anchorMs: now + 200, index: 0 },
   };
   const canonicalAnswer = {
     id: eventId,
@@ -1898,15 +1892,14 @@ test("reconciles a canonical final answer over a retained transient item after r
       phase: "final",
       text: "The canonical final answer survived the reconnect.",
     },
-    createdMs: now + 100,
-    sortIndex: 2,
+    position: { anchorMs: now + 100, index: 2 },
   };
   const canonicalTask = {
     ...task,
     ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     preview: canonicalAnswer.payload.text,
-    updatedMs: canonicalAnswer.createdMs,
-    recencyMs: canonicalAnswer.createdMs,
+    updatedMs: canonicalAnswer.position.anchorMs,
+    recencyMs: canonicalAnswer.position.anchorMs,
     lastEventSummary: canonicalAnswer.payload.text,
   };
   const initialDetail = {
@@ -2071,7 +2064,7 @@ test("accepts canonical task sync after stream revisions restart", { tag: "@all-
         threadId,
         type: "thread_status_changed",
         payload: { status: "running" },
-        createdMs: Date.now(),
+        position: { anchorMs: Date.now(), index: 0 },
       },
     });
   }, threadId);
@@ -2178,7 +2171,7 @@ test("opens a running conversation at the latest message from the stream bootstr
       turnId: `turn_reload_scroll_${index}`,
       text: `Reload race response ${index + 1}.\n\n${"Long running conversation content. ".repeat(16)}`,
     },
-    createdMs: now + index,
+    position: { anchorMs: now + index, index: 0 },
   }));
   const detail = (revision) => ({
     revision,
@@ -2293,7 +2286,7 @@ test("makes disconnected task state unavailable and preserves an unidentifiable 
         turnId: "turn_before_restart",
         text: "Work is active before the restart.",
       },
-      createdMs: now,
+      position: { anchorMs: now, index: 0 },
     },
   ];
   let promptAccepted = false;
@@ -2343,7 +2336,7 @@ test("makes disconnected task state unavailable and preserves an unidentifiable 
           turnId: "turn_after_restart",
           text: promptText,
         },
-        createdMs: now + 1,
+        position: { anchorMs: now + 1, index: 0 },
       },
       {
         id: "event_interrupted_after_restart",
@@ -2355,7 +2348,7 @@ test("makes disconnected task state unavailable and preserves an unidentifiable 
           phase: "progress",
           text: "The host stopped after accepting the prompt.",
         },
-        createdMs: now + 2,
+        position: { anchorMs: now + 2, index: 0 },
       },
     ];
     return route.abort("failed");

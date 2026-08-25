@@ -1116,7 +1116,7 @@ mod tests {
         let first_prompt = first_turn_outcome(&mut task_events).await;
         assert_eq!(first_prompt.event_type, "user_message");
         assert!(
-            first_prompt.created_ms <= after_task_creation_ms,
+            first_prompt.position.anchor_ms <= after_task_creation_ms,
             "the delayed first-turn acceptance must retain when Caffold observed task creation"
         );
     }
@@ -2114,7 +2114,7 @@ mod tests {
             .expect("accepted user message is published");
 
         assert!(
-            accepted.created_ms <= while_agent_is_accepting_ms,
+            accepted.position.anchor_ms <= while_agent_is_accepting_ms,
             "the accepted projection must keep when Caffold observed the submission, not when the agent eventually answered"
         );
     }

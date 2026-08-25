@@ -199,7 +199,7 @@ mod tests {
 
     use super::*;
     use crate::agent::{ActivityStatus, codex::conversation_item};
-    use crate::app::tasks::events::task_event_from_item;
+    use crate::app::tasks::events::{TaskEventPosition, task_event_from_item};
 
     const ONE_PIXEL_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
@@ -256,10 +256,9 @@ mod tests {
             event_type: "generated_image".to_string(),
             summary: "Image generated".to_string(),
             payload: None,
-            created_ms: 1,
+            position: TaskEventPosition::at(1),
             observed_ms: Some(1),
             updated_ms: None,
-            sort_index: None,
             generated_image: Some(GeneratedImageObservation {
                 item_id: "image_1".to_string(),
                 saved_path: Some(png_path),
@@ -305,10 +304,9 @@ mod tests {
             event_type: "assistant_message".to_string(),
             summary: "Done".to_string(),
             payload: None,
-            created_ms: 1,
+            position: TaskEventPosition::at(1),
             observed_ms: Some(1),
             updated_ms: None,
-            sort_index: None,
             generated_image: None,
         });
         assert!(

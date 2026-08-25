@@ -867,7 +867,7 @@ mod tests {
         let started = receiver.try_recv().unwrap();
         assert_eq!(started.thread_id, "thread_1");
         assert_eq!(started.event_type, "turn_started");
-        assert_eq!(started.created_ms, 1_750_000_000_250);
+        assert_eq!(started.position.anchor_ms, 1_750_000_000_250);
         assert_eq!(started.payload.unwrap()["turnId"], "turn_1");
 
         runtime.publish_session_event(
@@ -890,7 +890,7 @@ mod tests {
         );
         let command_started = receiver.try_recv().unwrap();
         assert_eq!(command_started.event_type, "command_execution");
-        assert_eq!(command_started.created_ms, 1_750_000_001_000);
+        assert_eq!(command_started.position.anchor_ms, 1_750_000_001_000);
         assert_eq!(
             command_started.payload.as_ref().unwrap()["status"],
             "inProgress"
@@ -943,7 +943,7 @@ mod tests {
         let reasoning_completed = receiver.try_recv().unwrap();
         assert_eq!(reasoning_completed.event_type, "reasoning");
         // The entry still belongs where the item started, not where it ended.
-        assert_eq!(reasoning_completed.created_ms, 1_750_000_003_000);
+        assert_eq!(reasoning_completed.position.anchor_ms, 1_750_000_003_000);
         assert_eq!(
             reasoning_completed.payload.as_ref().unwrap()["status"],
             "completed"
@@ -980,6 +980,6 @@ mod tests {
         );
         let completed = receiver.try_recv().unwrap();
         assert_eq!(completed.event_type, "turn_completed");
-        assert_eq!(completed.created_ms, 1_750_000_004_500);
+        assert_eq!(completed.position.anchor_ms, 1_750_000_004_500);
     }
 }

@@ -2004,7 +2004,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
         type: "assistant_message",
         summary: "Assistant response",
         payload: { text: `${task.title} detail response` },
-        createdMs: task.updatedMs,
+        position: { anchorMs: task.updatedMs, index: 0 },
       },
     ],
     eventsPage: { nextCursor: null },
@@ -2634,7 +2634,7 @@ test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@al
         type: "assistant_message",
         summary: "Assistant response",
         payload: { text: "DOM stability detail response" },
-        createdMs: selectedTask.updatedMs,
+        position: { anchorMs: selectedTask.updatedMs, index: 0 },
       },
     ],
     eventsPage: { nextCursor: null },
@@ -3110,7 +3110,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
         threadId: "thread_gluesql_feature",
         type: "thread_status_changed",
         payload: { status: "running" },
-        createdMs: Date.now(),
+        position: { anchorMs: Date.now(), index: 0 },
       },
     });
   });
@@ -3140,7 +3140,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
       type: "user_message",
       summary: "User prompt",
       payload: { text: "Continue this task from Codex desktop" },
-      createdMs: now + 500,
+      position: { anchorMs: now + 500, index: 0 },
     },
     {
       id: "external-reasoning",
@@ -3148,7 +3148,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
       type: "reasoning",
       summary: "Reasoning",
       payload: { summary: [], content: [] },
-      createdMs: now + 750,
+      position: { anchorMs: now + 750, index: 0 },
     },
   );
   await page.evaluate(() => {
@@ -3160,7 +3160,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
         threadId: "thread_gluesql_feature",
         type: "thread_status_changed",
         payload: { status: "idle" },
-        createdMs: Date.now(),
+        position: { anchorMs: Date.now(), index: 0 },
       },
     });
   });

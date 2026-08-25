@@ -64,7 +64,7 @@ test("starts a completed task follow-up clock only from canonical turn metadata"
       type: "turn_started",
       summary: "Turn started",
       payload: { turnId: "turn_initial" },
-      createdMs: firstTurnStartedMs,
+      position: { anchorMs: firstTurnStartedMs, index: 0 },
     },
     {
       id: "turn_initial:answer",
@@ -76,7 +76,7 @@ test("starts a completed task follow-up clock only from canonical turn metadata"
         phase: "final",
         text: "Initial answer",
       },
-      createdMs: firstTurnCompletedMs - 1,
+      position: { anchorMs: firstTurnCompletedMs - 1, index: 0 },
     },
     {
       id: "turn_initial:completed",
@@ -84,7 +84,7 @@ test("starts a completed task follow-up clock only from canonical turn metadata"
       type: "turn_completed",
       summary: "Turn completed",
       payload: { turnId: "turn_initial", status: "completed" },
-      createdMs: firstTurnCompletedMs,
+      position: { anchorMs: firstTurnCompletedMs, index: 0 },
     },
   ];
   const detail = (overrides = {}) => ({
@@ -181,7 +181,7 @@ test("starts a completed task follow-up clock only from canonical turn metadata"
           type: "turn_started",
           summary: "Turn started",
           payload: { turnId: "turn_follow_up" },
-          createdMs: canonicalStartedMs,
+          position: { anchorMs: canonicalStartedMs, index: 0 },
         },
       ],
     }),
@@ -241,7 +241,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
     type: "assistant_message",
     summary: "Assistant response",
     payload: { turnId: "turn_initial", text: "Initial canonical answer" },
-    createdMs: now,
+    position: { anchorMs: now, index: 0 },
   };
   let revision = 1;
   let canonicalEvents = [initialEvent];
@@ -319,7 +319,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
       status: "inProgress",
       startedAt: Math.floor(now / 1000),
     },
-    createdMs: now + 1,
+    position: { anchorMs: now + 1, index: 0 },
   };
   Object.assign(
     task,
@@ -397,7 +397,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
       type: "user_message",
       summary: "User prompt",
       payload: { turnId: "turn_follow_up_1", text: "Submitted by button" },
-      createdMs: now + 1,
+      position: { anchorMs: now + 1, index: 0 },
     },
     {
       id: "event_button_answer",
@@ -405,7 +405,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
       type: "assistant_message",
       summary: "Assistant response",
       payload: { turnId: "turn_follow_up_1", text: "Button response" },
-      createdMs: now + 2,
+      position: { anchorMs: now + 2, index: 0 },
     },
   ];
   Object.assign(
@@ -444,7 +444,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
       type: "user_message",
       summary: "User prompt",
       payload: { turnId: "turn_follow_up_2", text: "Submitted by Enter" },
-      createdMs: now + 3,
+      position: { anchorMs: now + 3, index: 0 },
     },
     {
       id: "event_enter_answer",
@@ -452,7 +452,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
       type: "assistant_message",
       summary: "Assistant response",
       payload: { turnId: "turn_follow_up_2", text: "Latest canonical response" },
-      createdMs: now + 4,
+      position: { anchorMs: now + 4, index: 0 },
     },
   ];
   revision += 1;
@@ -557,7 +557,7 @@ test("keeps exact prompt order when Detail or live content arrives before the pr
       type: "assistant_message",
       summary: "Assistant response",
       payload: { turnId: "turn_initial", text: "Initial response" },
-      createdMs: now,
+      position: { anchorMs: now, index: 0 },
     },
   ];
   const submittedPrompts = [];
@@ -630,7 +630,7 @@ test("keeps exact prompt order when Detail or live content arrives before the pr
         itemId: "message-1",
         content: [{ type: "input_text", text: "Canonical item prompt" }],
       },
-      createdMs: now + 1,
+      position: { anchorMs: now + 1, index: 0 },
     },
     {
       id: "event_canonical_item_answer",
@@ -642,7 +642,7 @@ test("keeps exact prompt order when Detail or live content arrives before the pr
         itemId: "answer-1",
         text: "Canonical item answer",
       },
-      createdMs: now + 2,
+      position: { anchorMs: now + 2, index: 0 },
     },
   ];
   Object.assign(
@@ -719,7 +719,7 @@ test("keeps exact prompt order when Detail or live content arrives before the pr
         itemId: "answer-2",
         text: "Live race answer",
       },
-      createdMs: liveRaceMs + 1,
+      position: { anchorMs: liveRaceMs + 1, index: 0 },
     },
     acceptedPrompt: {
       id: "event_live_race_prompt",
@@ -731,7 +731,7 @@ test("keeps exact prompt order when Detail or live content arrives before the pr
         itemId: "message-2",
         text: "Submitted after canonical item acknowledgement",
       },
-      createdMs: liveRaceMs + 2,
+      position: { anchorMs: liveRaceMs + 2, index: 0 },
     },
   });
 
@@ -796,7 +796,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
           type: "assistant_message",
           summary: "Assistant response",
           payload: { turnId: "turn_a_initial", text: "Initial A response" },
-          createdMs: now,
+          position: { anchorMs: now, index: 0 },
         },
       ],
     ],
@@ -811,7 +811,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
           turnId: "turn_running_b",
           text: `External running update ${index + 1}`,
         },
-        createdMs: now + index,
+        position: { anchorMs: now + index, index: 0 },
       })),
     ],
   ]);
@@ -900,7 +900,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
         itemId: "message-a-1",
         text: "Canonical while response is pending",
       },
-      createdMs: now + 200,
+      position: { anchorMs: now + 200, index: 0 },
     },
     {
       id: "event_a_canonical_answer",
@@ -911,7 +911,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
         turnId: "turn_a_follow_up_1",
         text: "Canonical A response",
       },
-      createdMs: now + 201,
+      position: { anchorMs: now + 201, index: 0 },
     },
   ]);
   revisions.set(taskA.threadId, 2);

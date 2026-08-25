@@ -44,22 +44,27 @@ export function conversationGroups(events) {
     group.events.push(event);
     activeGroup = isTerminalTurnEvent(event) ? null : group;
   }
-  return groups
-    .map((group, index) => ({
-      group,
-      index,
-      createdMs: conversationGroupCreatedMs(group),
-    }))
+  const positionedGroups = groups.map((group, index) => ({
+    group,
+    index,
+    position: conversationGroupPosition(group),
+  }));
+  if (positionedGroups.some(({ position }) => position === null)) {
+    return positionedGroups.map(({ group }) => group);
+  }
+  return positionedGroups
     .sort(
       (left, right) =>
-        left.createdMs - right.createdMs || left.index - right.index,
+        left.position.anchorMs - right.position.anchorMs ||
+        left.position.index - right.position.index ||
+        left.index - right.index,
     )
     .map(({ group }) => group);
 }
 
-function conversationGroupCreatedMs(group) {
+function conversationGroupPosition(group) {
   if (group.kind !== "turn") {
-    return group.event?.createdMs ?? 0;
+    return taskEventPosition(group.event);
   }
   const message = group.events.find((event) =>
     ["user_message", "assistant_message", "generated_image"].includes(
@@ -74,7 +79,26 @@ function conversationGroupCreatedMs(group) {
         event.type !== "thread_status_changed",
     ) ??
     group.events[0];
-  return substantive?.createdMs ?? 0;
+  return taskEventPosition(substantive);
+}
+
+export function taskEventPosition(event) {
+  const anchorMs = event?.position?.anchorMs;
+  const index = event?.position?.index;
+  return Number.isSafeInteger(anchorMs) &&
+    anchorMs >= 0 &&
+    Number.isSafeInteger(index) &&
+    index >= 0
+    ? { anchorMs, index }
+    : null;
+}
+
+export function taskEventAnchorMs(event) {
+  return taskEventPosition(event)?.anchorMs ?? null;
+}
+
+export function taskEventPositionIndex(event) {
+  return taskEventPosition(event)?.index ?? null;
 }
 
 export function eventTurnId(event) {
@@ -182,12 +206,20 @@ export function upsertEvent(events, event) {
 }
 
 export function sortEventsChronologically(events) {
-  return [...events].sort(
-    (left, right) =>
-      (left.createdMs ?? 0) - (right.createdMs ?? 0) ||
-      (left.sortIndex ?? Number.MAX_SAFE_INTEGER) -
-        (right.sortIndex ?? Number.MAX_SAFE_INTEGER),
-  );
+  const positionedEvents = events.map((event) => ({
+    event,
+    position: taskEventPosition(event),
+  }));
+  if (positionedEvents.some(({ position }) => position === null)) {
+    return [...events];
+  }
+  return positionedEvents
+    .sort(
+      (left, right) =>
+        left.position.anchorMs - right.position.anchorMs ||
+        left.position.index - right.position.index,
+    )
+    .map(({ event }) => event);
 }
 
 export function mergeEvents(leftEvents, rightEvents) {
@@ -243,10 +275,7 @@ export function handoffOptimisticSubmission(
     (event) => eventIdentityKey(event) === confirmedIdentity,
   );
   const confirmed = mergeEventRecord(existingConfirmed, confirmedEvent);
-  const latestUpdateMs = Math.max(
-    confirmed.updatedMs ?? confirmed.createdMs ?? 0,
-    optimistic.updatedMs ?? optimistic.createdMs ?? 0,
-  );
+  const latestUpdateMs = latestTaskEventUpdateMs(confirmed, optimistic);
   const handedOff = eventAtPosition(
     confirmed,
     optimistic,
@@ -281,10 +310,9 @@ function mergeEventRecord(existing, incoming) {
   if (!existing) {
     return incoming;
   }
-  const createdMs = existing.createdMs;
-  const sortIndex = existing.sortIndex ?? incoming.sortIndex;
-  const existingUpdatedMs = existing.updatedMs ?? existing.createdMs ?? 0;
-  const incomingUpdatedMs = incoming.updatedMs ?? incoming.createdMs ?? 0;
+  const position = existing.position;
+  const existingUpdatedMs = taskEventUpdateMs(existing);
+  const incomingUpdatedMs = taskEventUpdateMs(incoming);
   const carriesObservedTime = [existing, incoming].some((event) =>
     Object.prototype.hasOwnProperty.call(event, "observedMs"),
   );
@@ -293,23 +321,24 @@ function mergeEventRecord(existing, incoming) {
     .filter((value) => value !== null);
   const observedMs = observedTimes.length ? Math.min(...observedTimes) : null;
   const [latest, earlier] =
-    incomingUpdatedMs >= existingUpdatedMs
+    incomingUpdatedMs !== null &&
+    (existingUpdatedMs === null || incomingUpdatedMs >= existingUpdatedMs)
       ? [incoming, existing]
       : [existing, incoming];
-  const existingPayload = existing.payload ?? {};
-  const incomingPayload = incoming.payload ?? {};
   const earlierPayload = earlier.payload ?? {};
   const latestPayload = latest.payload ?? {};
   const payload = { ...earlierPayload, ...latestPayload };
-  const updatedMs = Math.max(existingUpdatedMs, incomingUpdatedMs);
+  const updatedMs = latestTaskEventUpdateMs(existing, incoming);
+  const anchorMs = taskEventAnchorMs({ position });
   return {
     ...earlier,
     ...latest,
     payload,
-    createdMs,
+    position,
     ...(carriesObservedTime ? { observedMs } : {}),
-    ...(sortIndex === undefined ? {} : { sortIndex }),
-    ...(updatedMs > (createdMs ?? 0) ? { updatedMs } : {}),
+    ...(updatedMs !== null && anchorMs !== null && updatedMs > anchorMs
+      ? { updatedMs }
+      : {}),
   };
 }
 
@@ -318,33 +347,43 @@ function mergeEventRecordAtIncomingPosition(existing, incoming) {
     return incoming;
   }
   const merged = mergeEventRecord(existing, incoming);
-  const latestUpdateMs = Math.max(
-    existing.updatedMs ?? existing.createdMs ?? 0,
-    incoming.updatedMs ?? incoming.createdMs ?? 0,
-  );
+  const latestUpdateMs = latestTaskEventUpdateMs(existing, incoming);
   return eventAtPosition(merged, incoming, latestUpdateMs);
 }
 
-function eventAtPosition(event, position, latestUpdateMs) {
+function eventAtPosition(event, positionedEvent, latestUpdateMs) {
   const {
-    sortIndex: _mergedSortIndex,
+    position: _mergedPosition,
     updatedMs: _mergedUpdatedMs,
     ...positioned
   } = event;
+  const position = positionedEvent.position;
+  const anchorMs = taskEventAnchorMs({ position });
+  const carriesUpdatedMs =
+    latestUpdateMs !== null && anchorMs !== null && latestUpdateMs > anchorMs;
   return {
     ...positioned,
-    createdMs: position.createdMs,
-    ...(position.sortIndex === undefined
-      ? {}
-      : { sortIndex: position.sortIndex }),
-    ...(latestUpdateMs > (position.createdMs ?? 0)
-      ? { updatedMs: latestUpdateMs }
-      : {}),
+    position,
+    ...(carriesUpdatedMs ? { updatedMs: latestUpdateMs } : {}),
   };
 }
 
+function taskEventUpdateMs(event) {
+  const updatedMs = event?.updatedMs;
+  return Number.isSafeInteger(updatedMs) && updatedMs >= 0
+    ? updatedMs
+    : taskEventAnchorMs(event);
+}
+
+function latestTaskEventUpdateMs(...events) {
+  const values = events
+    .map(taskEventUpdateMs)
+    .filter((value) => value !== null);
+  return values.length ? Math.max(...values) : null;
+}
+
 export function optimisticUserMessageEvent(threadId, prompt, images, requestId) {
-  const createdMs = Date.now();
+  const anchorMs = Date.now();
   const content = [
     ...(prompt ? [{ type: "text", text: prompt }] : []),
     ...images.map((image) => ({
@@ -354,7 +393,7 @@ export function optimisticUserMessageEvent(threadId, prompt, images, requestId) 
     })),
   ];
   return {
-    id: `local:user:${threadId}:${requestId}:${createdMs}`,
+    id: `local:user:${threadId}:${requestId}:${anchorMs}`,
     threadId,
     type: "user_message",
     summary: "User prompt",
@@ -364,7 +403,8 @@ export function optimisticUserMessageEvent(threadId, prompt, images, requestId) 
       optimistic: true,
       submissionState: PROMPT_SUBMISSION_STATE.SENDING,
     },
-    createdMs,
+    position: { anchorMs, index: 0 },
+    observedMs: anchorMs,
   };
 }
 

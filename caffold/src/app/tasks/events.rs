@@ -14,6 +14,27 @@ use crate::agent::{
 
 use super::generated_images::{GeneratedImageObservation, GeneratedImageStore};
 
+/// Where one event sits in the backend-owned conversation projection.
+///
+/// The anchor groups events along the cross-turn timeline. The index orders
+/// events that share that anchor. Neither value is an individual event time;
+/// direct time evidence belongs to `observed_ms`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(in crate::app) struct TaskEventPosition {
+    pub(in crate::app) anchor_ms: u64,
+    pub(in crate::app) index: u32,
+}
+
+impl TaskEventPosition {
+    pub(in crate::app) fn at(anchor_ms: u64) -> Self {
+        Self {
+            anchor_ms,
+            index: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(in crate::app) struct TaskEventRecord {
@@ -23,24 +44,16 @@ pub(in crate::app) struct TaskEventRecord {
     pub(in crate::app) event_type: String,
     pub(in crate::app) summary: String,
     pub(in crate::app) payload: Option<JsonValue>,
-    /// Where this record is placed in the conversation projection.
-    ///
-    /// Provider history can give an exact item order without giving an item
-    /// timestamp. In that case this is the turn's placement anchor and
-    /// `observed_ms` is `None`; surfaces must not present this value as though
-    /// the individual item happened then.
-    pub(in crate::app) created_ms: u64,
+    pub(in crate::app) position: TaskEventPosition,
     /// Direct time evidence for the first observation of this event.
     ///
     /// `None` means the provider supplied order but no per-item time. It is
     /// deliberately serialized as `null` so a current frontend can distinguish
-    /// unknown time from an older backend that only supplied `createdMs`.
+    /// unknown time from a backend that only supplied conversation position.
     #[serde(default)]
     pub(in crate::app) observed_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(in crate::app) updated_ms: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(in crate::app) sort_index: Option<u32>,
     #[serde(skip)]
     pub(in crate::app) generated_image: Option<GeneratedImageObservation>,
 }
@@ -83,7 +96,7 @@ impl LiveTaskEventCache {
                 .min_by_key(|(_, items)| {
                     items
                         .iter()
-                        .map(|item| item.updated_ms.unwrap_or(item.created_ms))
+                        .map(|item| item.updated_ms.unwrap_or(item.position.anchor_ms))
                         .max()
                         .unwrap_or_default()
                 })
@@ -98,16 +111,12 @@ impl LiveTaskEventCache {
             *existing = merge_task_event_record(existing.clone(), event);
             return existing.clone();
         }
-        if event.sort_index.is_none() {
-            event.sort_index = Some(
-                thread_events
-                    .iter()
-                    .filter(|existing| existing.created_ms == event.created_ms)
-                    .filter_map(|existing| existing.sort_index)
-                    .max()
-                    .map_or(0, |index| index.saturating_add(1)),
-            );
-        }
+        event.position.index = thread_events
+            .iter()
+            .filter(|existing| existing.position.anchor_ms == event.position.anchor_ms)
+            .map(|existing| existing.position.index)
+            .max()
+            .map_or(0, |index| index.saturating_add(1));
         thread_events.push(event.clone());
         if thread_events.len() > LIVE_TASK_EVENT_LIMIT_PER_THREAD {
             thread_events.remove(0);
@@ -282,24 +291,17 @@ pub(in crate::app) fn merge_task_event_records(
     positioned: Vec<TaskEventRecord>,
     supplemental: Vec<TaskEventRecord>,
 ) -> Vec<TaskEventRecord> {
-    let mut events = HashMap::<String, TaskEventRecord>::new();
-    for event in positioned {
-        events
-            .entry(event.id.clone())
-            .and_modify(|existing| {
-                *existing = merge_task_event_record(existing.clone(), event.clone());
-            })
-            .or_insert(event);
+    let mut events = Vec::<TaskEventRecord>::new();
+    let mut index_by_id = HashMap::<String, usize>::new();
+    for event in positioned.into_iter().chain(supplemental) {
+        if let Some(index) = index_by_id.get(&event.id).copied() {
+            events[index] = merge_task_event_record(events[index].clone(), event);
+        } else {
+            index_by_id.insert(event.id.clone(), events.len());
+            events.push(event);
+        }
     }
-    for event in supplemental {
-        events
-            .entry(event.id.clone())
-            .and_modify(|existing| {
-                *existing = merge_task_event_record(existing.clone(), event.clone());
-            })
-            .or_insert(event);
-    }
-    events.into_values().collect()
+    events
 }
 
 /// Join a provider-history snapshot with the live reports Caffold observed.
@@ -330,15 +332,14 @@ pub(in crate::app) fn merge_task_event_record(
     existing: TaskEventRecord,
     incoming: TaskEventRecord,
 ) -> TaskEventRecord {
-    let created_ms = existing.created_ms;
-    let sort_index = existing.sort_index;
+    let position = existing.position;
     let observed_ms = match (existing.observed_ms, incoming.observed_ms) {
         (Some(existing), Some(incoming)) => Some(existing.min(incoming)),
         (Some(observed), None) | (None, Some(observed)) => Some(observed),
         (None, None) => None,
     };
-    let existing_updated_ms = existing.updated_ms.unwrap_or(existing.created_ms);
-    let incoming_updated_ms = incoming.updated_ms.unwrap_or(incoming.created_ms);
+    let existing_updated_ms = existing.updated_ms.unwrap_or(existing.position.anchor_ms);
+    let incoming_updated_ms = incoming.updated_ms.unwrap_or(incoming.position.anchor_ms);
     let (mut latest, earlier) = if incoming_updated_ms >= existing_updated_ms {
         (incoming, existing)
     } else {
@@ -352,25 +353,20 @@ pub(in crate::app) fn merge_task_event_record(
         (Some(earlier), None) => Some(earlier),
         (_, latest) => latest,
     };
-    latest.created_ms = created_ms;
+    latest.position = position;
     latest.observed_ms = observed_ms;
-    latest.sort_index = sort_index;
     latest.generated_image = latest.generated_image.or(earlier.generated_image);
     let updated_ms = existing_updated_ms.max(incoming_updated_ms);
-    latest.updated_ms = (updated_ms > created_ms).then_some(updated_ms);
+    latest.updated_ms = (updated_ms > position.anchor_ms).then_some(updated_ms);
     latest
 }
 
 pub(in crate::app) fn sort_task_events(events: &mut [TaskEventRecord]) {
     events.sort_by(|left, right| {
-        left.created_ms
-            .cmp(&right.created_ms)
-            .then_with(|| {
-                left.sort_index
-                    .unwrap_or(u32::MAX)
-                    .cmp(&right.sort_index.unwrap_or(u32::MAX))
-            })
-            .then_with(|| left.id.cmp(&right.id))
+        left.position
+            .anchor_ms
+            .cmp(&right.position.anchor_ms)
+            .then_with(|| left.position.index.cmp(&right.position.index))
     });
 }
 
@@ -414,13 +410,12 @@ pub(in crate::app) fn thread_events(conversation: &Conversation) -> Vec<TaskEven
         if turn.started_at_ms.is_some() {
             events.push(turn_started_event(thread_id, turn, timeline_ms));
         }
-        for (index, item) in turn.items.iter().enumerate() {
+        for item in &turn.items {
             if let Some(mut event) = task_event_from_item(thread_id, turn_id, timeline_ms, item) {
                 // Provider order owns placement. An item-level provider clock,
                 // when present, is separate display evidence; without one the
                 // turn anchor must not be presented as every item's time.
                 event.observed_ms = item.observed_at_ms;
-                event.sort_index = Some(u32::try_from(index).unwrap_or(u32::MAX).saturating_add(1));
                 events.push(event);
             }
         }
@@ -432,7 +427,19 @@ pub(in crate::app) fn thread_events(conversation: &Conversation) -> Vec<TaskEven
             previous_turn_ms = timeline_ms;
         }
     }
+    assign_anchor_indexes_in_current_order(&mut events);
     events
+}
+
+fn assign_anchor_indexes_in_current_order(events: &mut [TaskEventRecord]) {
+    let mut next_index_by_anchor = HashMap::<u64, u32>::new();
+    for event in events {
+        let next_index = next_index_by_anchor
+            .entry(event.position.anchor_ms)
+            .or_default();
+        event.position.index = *next_index;
+        *next_index = next_index.saturating_add(1);
+    }
 }
 
 /// A turn beginning, from history or from the agent saying so live.
@@ -458,7 +465,7 @@ pub(in crate::app) fn turn_started_event(
         started_ms,
     );
     // A turn's own start opens the group the turn's items sort into.
-    event.sort_index = Some(0);
+    event.position.index = 0;
     event
 }
 
@@ -500,7 +507,7 @@ pub(in crate::app) fn turn_completed_event(
 pub(in crate::app) fn task_event_from_item(
     thread_id: &str,
     turn_id: &str,
-    created_ms: u64,
+    anchor_ms: u64,
     item: &ConversationItem,
 ) -> Option<TaskEventRecord> {
     let identity = json!({
@@ -636,7 +643,7 @@ pub(in crate::app) fn task_event_from_item(
         event_type,
         &summary,
         Some(merged_payload(identity, extra)),
-        created_ms,
+        anchor_ms,
     );
     event.generated_image = generated_image;
     Some(event)
@@ -682,7 +689,7 @@ fn background_task_payload(task: &BackgroundTask) -> JsonValue {
 pub(in crate::app) fn approval_requested_event(
     thread_id: &str,
     request: &ApprovalRequest,
-    created_ms: u64,
+    anchor_ms: u64,
 ) -> TaskEventRecord {
     let detail = &request.detail;
     task_event_record(
@@ -705,7 +712,7 @@ pub(in crate::app) fn approval_requested_event(
             "environment": detail.environment,
             "decisions": request.decisions,
         })),
-        created_ms,
+        anchor_ms,
     )
 }
 
@@ -778,7 +785,7 @@ pub(in crate::app) fn task_event_record(
     event_type: &str,
     summary: &str,
     payload: Option<JsonValue>,
-    created_ms: u64,
+    anchor_ms: u64,
 ) -> TaskEventRecord {
     TaskEventRecord {
         id: format!("{thread_id}:{event_id}"),
@@ -786,10 +793,9 @@ pub(in crate::app) fn task_event_record(
         event_type: event_type.to_string(),
         summary: summary.to_string(),
         payload,
-        created_ms,
-        observed_ms: Some(created_ms),
+        position: TaskEventPosition::at(anchor_ms),
+        observed_ms: Some(anchor_ms),
         updated_ms: None,
-        sort_index: None,
         generated_image: None,
     }
 }
@@ -910,27 +916,49 @@ mod tests {
     /// One Codex item, rendered the way a live notification renders it.
     fn codex_item_event(
         turn_id: &str,
-        created_ms: u64,
+        anchor_ms: u64,
         reported: ActivityStatus,
         item: JsonValue,
     ) -> Option<TaskEventRecord> {
         let item = codex_item(reported, item)?;
-        task_event_from_item("thread_1", turn_id, created_ms, &item)
+        task_event_from_item("thread_1", turn_id, anchor_ms, &item)
     }
 
     fn codex_item(reported: ActivityStatus, item: JsonValue) -> Option<ConversationItem> {
         crate::agent::codex::conversation_item(&item, reported)
     }
 
+    #[test]
+    fn task_event_wire_contract_separates_position_from_observed_time() {
+        let mut event = task_event_record(
+            "thread_1",
+            "item_1",
+            "assistant_message",
+            "Assistant message",
+            None,
+            100,
+        );
+        event.position.index = 3;
+        event.observed_ms = None;
+
+        let value = serde_json::to_value(event).expect("serialize task event");
+
+        assert_eq!(value["position"]["anchorMs"], 100);
+        assert_eq!(value["position"]["index"], 3);
+        assert!(value["observedMs"].is_null());
+        assert!(value.get("createdMs").is_none());
+        assert!(value.get("sortIndex").is_none());
+    }
+
     /// One item from Codex's raw model-output stream, which reports work that
     /// has already happened.
     fn codex_response_event(
         turn_id: &str,
-        created_ms: u64,
+        anchor_ms: u64,
         item: JsonValue,
     ) -> Option<TaskEventRecord> {
         let item = crate::agent::codex::response_item(&item)?;
-        task_event_from_item("thread_1", turn_id, created_ms, &item)
+        task_event_from_item("thread_1", turn_id, anchor_ms, &item)
     }
 
     #[test]
@@ -1034,7 +1062,8 @@ mod tests {
                 .iter()
                 .find(|event| event.id.ends_with(":message_1"))
                 .expect("merged client item")
-                .created_ms,
+                .position
+                .anchor_ms,
             11,
             "provider history owns the position even when the live projection used another ID"
         );
@@ -1056,7 +1085,7 @@ mod tests {
             })),
             100,
         );
-        history_prompt.sort_index = Some(1);
+        history_prompt.position.index = 1;
         let mut history_answer = task_event_record(
             "thread_1",
             "turn_1:answer_1",
@@ -1070,7 +1099,7 @@ mod tests {
             })),
             100,
         );
-        history_answer.sort_index = Some(2);
+        history_answer.position.index = 2;
         let mut late_live_prompt = task_event_record(
             "thread_1",
             "turn_1:message_1",
@@ -1085,7 +1114,7 @@ mod tests {
             })),
             200,
         );
-        late_live_prompt.sort_index = Some(0);
+        late_live_prompt.position.index = 0;
 
         let mut merged =
             merge_task_event_records(vec![history_prompt, history_answer], vec![late_live_prompt]);
@@ -1100,8 +1129,8 @@ mod tests {
             "a late observation cannot move a prompt behind its answer"
         );
         let prompt = &merged[0];
-        assert_eq!(prompt.created_ms, 100);
-        assert_eq!(prompt.sort_index, Some(1));
+        assert_eq!(prompt.position.anchor_ms, 100);
+        assert_eq!(prompt.position.index, 1);
         assert_eq!(prompt.updated_ms, Some(200));
         assert_eq!(prompt.payload.as_ref().unwrap()["liveDelivery"], "accepted");
         assert!(
@@ -1190,7 +1219,7 @@ mod tests {
         assert_eq!(
             merged
                 .iter()
-                .map(|event| (event.created_ms, event.observed_ms))
+                .map(|event| (event.position.anchor_ms, event.observed_ms))
                 .collect::<Vec<_>>(),
             vec![
                 (100, Some(100)),
@@ -1334,7 +1363,10 @@ mod tests {
             .find(|event| event.event_type == "assistant_message")
             .expect("history projects the message");
 
-        assert_eq!(item.created_ms, 1_000, "the turn anchor still places it");
+        assert_eq!(
+            item.position.anchor_ms, 1_000,
+            "the turn anchor still places it"
+        );
         assert_eq!(
             item.observed_ms, None,
             "a turn anchor is not an individual message timestamp"
@@ -1373,8 +1405,11 @@ mod tests {
             .find(|event| event.event_type == "assistant_message")
             .expect("history projects the message");
 
-        assert_eq!(item.created_ms, 1_000, "turn order still owns placement");
-        assert_eq!(item.sort_index, Some(1));
+        assert_eq!(
+            item.position.anchor_ms, 1_000,
+            "turn order still owns placement"
+        );
+        assert_eq!(item.position.index, 1);
         assert_eq!(item.observed_ms, Some(2_000));
     }
 
@@ -1402,7 +1437,7 @@ mod tests {
         assert_eq!(started.payload.as_ref().unwrap()["status"], "inProgress");
 
         let merged = merge_task_event_record(started, completed);
-        assert_eq!(merged.created_ms, 10);
+        assert_eq!(merged.position.anchor_ms, 10);
         assert_eq!(merged.updated_ms, Some(20));
         assert_eq!(merged.payload.as_ref().unwrap()["status"], "completed");
     }
@@ -1814,7 +1849,7 @@ mod tests {
                         .and_then(JsonValue::as_str)
                         .unwrap()
                         .to_string(),
-                    event.created_ms,
+                    event.position.anchor_ms,
                 )
             })
             .collect::<Vec<_>>();
@@ -1902,7 +1937,7 @@ mod tests {
                         .as_str()
                         .unwrap()
                         .to_string(),
-                    event.created_ms,
+                    event.position.anchor_ms,
                 )
             })
             .collect::<Vec<_>>();
@@ -2093,7 +2128,7 @@ mod tests {
                         .as_str()
                         .unwrap()
                         .to_string(),
-                    event.sort_index,
+                    event.position.index,
                 )
             })
             .collect::<Vec<_>>();
@@ -2101,9 +2136,102 @@ mod tests {
         assert_eq!(
             item_events,
             vec![
-                ("item-z".to_string(), Some(1)),
-                ("item-a".to_string(), Some(2)),
-                ("item-m".to_string(), Some(3)),
+                ("item-z".to_string(), 1),
+                ("item-a".to_string(), 2),
+                ("item-m".to_string(), 3),
+            ]
+        );
+    }
+
+    #[test]
+    fn provider_turn_boundaries_are_explicit_when_all_timestamps_match() {
+        let mut events = thread_events(&conversation(json!({
+            "status": { "type": "idle" },
+            "id": "thread_1",
+            "cwd": "/tmp",
+            "createdAt": 1.0,
+            "turns": [
+                {
+                    "id": "turn_1",
+                    "status": "completed",
+                    "startedAt": 2.0,
+                    "completedAt": 2.0,
+                    "items": [{
+                        "id": "item-1",
+                        "type": "userMessage",
+                        "content": [{ "type": "text", "text": "First prompt" }]
+                    }]
+                },
+                {
+                    "id": "turn_2",
+                    "status": "completed",
+                    "startedAt": 2.0,
+                    "completedAt": 2.0,
+                    "items": [{
+                        "id": "item-2",
+                        "type": "userMessage",
+                        "content": [{ "type": "text", "text": "Second prompt" }]
+                    }]
+                }
+            ]
+        })));
+        sort_task_events(&mut events);
+
+        assert_eq!(
+            events
+                .into_iter()
+                .map(|event| {
+                    (
+                        event.payload.unwrap()["turnId"]
+                            .as_str()
+                            .unwrap()
+                            .to_string(),
+                        event.event_type,
+                        event.position.index,
+                    )
+                })
+                .collect::<Vec<_>>(),
+            vec![
+                ("turn_1".to_string(), "turn_started".to_string(), 0),
+                ("turn_1".to_string(), "user_message".to_string(), 1),
+                ("turn_1".to_string(), "turn_completed".to_string(), 2),
+                ("turn_2".to_string(), "turn_started".to_string(), 3),
+                ("turn_2".to_string(), "user_message".to_string(), 4),
+                ("turn_2".to_string(), "turn_completed".to_string(), 5),
+            ]
+        );
+    }
+
+    #[test]
+    fn equal_positions_preserve_projection_order_instead_of_inferring_from_event_ids() {
+        let first = task_event_record(
+            "thread_1",
+            "z-event",
+            "assistant_message",
+            "Observed first",
+            None,
+            100,
+        );
+        let second = task_event_record(
+            "thread_1",
+            "a-event",
+            "assistant_message",
+            "Observed second",
+            None,
+            100,
+        );
+        let mut events = merge_task_event_records(vec![first], vec![second]);
+
+        sort_task_events(&mut events);
+
+        assert_eq!(
+            events
+                .into_iter()
+                .map(|event| (event.id, event.position.index))
+                .collect::<Vec<_>>(),
+            vec![
+                ("thread_1:z-event".to_string(), 0),
+                ("thread_1:a-event".to_string(), 0),
             ]
         );
     }
@@ -2147,7 +2275,7 @@ mod tests {
         assert_eq!(merged[0].summary, completed.summary);
         assert_eq!(merged[0].payload.as_ref().unwrap()["status"], "completed");
         assert_eq!(
-            merged[0].created_ms, started.created_ms,
+            merged[0].position.anchor_ms, started.position.anchor_ms,
             "completing an item must not move it from its original timeline position"
         );
         assert_eq!(
@@ -2180,7 +2308,7 @@ mod tests {
         let later_thread_read = Vec::new();
         let merged = merge_task_event_records(later_thread_read, cache.for_thread("thread_1"));
         let mut positioned_command = command;
-        positioned_command.sort_index = Some(0);
+        positioned_command.position.index = 0;
 
         assert_eq!(merged, vec![positioned_command]);
     }
@@ -2226,7 +2354,7 @@ mod tests {
         let merged = cache.for_thread("thread_1");
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].id, canonical.id);
-        assert_eq!(merged[0].created_ms, canonical.created_ms);
+        assert_eq!(merged[0].position.anchor_ms, canonical.position.anchor_ms);
         assert_eq!(merged[0].payload.as_ref().unwrap()["itemId"], "message_1");
     }
 
@@ -2303,7 +2431,7 @@ mod tests {
         let merged = cache.for_thread("thread_1");
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].id, canonical.id);
-        assert_eq!(merged[0].created_ms, canonical.created_ms);
+        assert_eq!(merged[0].position.anchor_ms, canonical.position.anchor_ms);
         assert_eq!(merged[0].payload.as_ref().unwrap()["itemId"], "message_1");
     }
 
@@ -2367,7 +2495,7 @@ mod tests {
 
         assert_eq!(broadcast, published);
         assert_eq!(published.id, "thread_1:turn_1:message_1");
-        assert_eq!(published.created_ms, 10);
+        assert_eq!(published.position.anchor_ms, 10);
         assert_eq!(published.payload.as_ref().unwrap()["itemId"], "message_1");
         assert!(
             published

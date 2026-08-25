@@ -418,7 +418,7 @@ test("opens resolved Markdown file links through Task Review with native link se
           phase: "final",
           text: liveMarkdownSource,
         },
-        createdMs: Date.now(),
+        position: { anchorMs: Date.now(), index: 0 },
       },
       fileLinks: liveFileLinks,
     });

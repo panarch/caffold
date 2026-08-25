@@ -1399,7 +1399,7 @@ mod request_tests {
             })),
             2_500,
         );
-        late_live_prompt.sort_index = Some(0);
+        late_live_prompt.position.index = 0;
         state.task_events.publish(late_live_prompt);
 
         let detail = state
@@ -1425,8 +1425,8 @@ mod request_tests {
                 .collect::<Vec<_>>(),
             vec!["user_message", "assistant_message"]
         );
-        assert_eq!(messages[0].created_ms, 1_000);
-        assert_eq!(messages[0].sort_index, Some(1));
+        assert_eq!(messages[0].position.anchor_ms, 1_000);
+        assert_eq!(messages[0].position.index, 1);
         assert_eq!(messages[0].updated_ms, Some(2_500));
         assert_eq!(
             messages[0].payload.as_ref().unwrap()["liveDelivery"],

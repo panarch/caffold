@@ -69,7 +69,7 @@ function assistantEvent(threadId, text, revision) {
     type: "assistant_message",
     summary: "Assistant response",
     payload: { turnId: `turn_${revision}`, text },
-    createdMs: 1_767_400_000_000 + revision,
+    position: { anchorMs: 1_767_400_000_000 + revision, index: 0 },
   };
 }
 
@@ -291,7 +291,7 @@ test("preserves readable detail and buffers events through a loading reconnect b
           turnId: "turn_buffered_reconnect",
           text: "Buffered reconnect event was retained.",
         },
-        createdMs: 1_767_400_050_100,
+        position: { anchorMs: 1_767_400_050_100, index: 0 },
       },
     });
   }, threadId);
