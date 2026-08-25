@@ -169,11 +169,11 @@ impl TaskSessions {
         cwd: Option<&str>,
         turn: Turn,
         options: TurnOptions,
-    ) {
+    ) -> Option<u64> {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
         if state.generation != generation {
-            return;
+            return None;
         }
         let active_turn_cwd = cwd
             .map(str::to_string)
@@ -200,6 +200,26 @@ impl TaskSessions {
         upsert_turn(&mut state.turns_page, turn);
         state.revision = state.revision.saturating_add(1);
         state.last_sync_ms = Some(now_unix_ms());
+        Some(state.revision)
+    }
+
+    /// Record a provider-accepted message steered into the current turn.
+    ///
+    /// The session does not retain item payloads, but a history reader still
+    /// needs the causal fact that the provider accepted new conversation work.
+    pub(in crate::app::tasks) async fn record_prompt_accepted(
+        &self,
+        generation: u64,
+        thread_id: &str,
+    ) -> Option<u64> {
+        let entry = self.entry(thread_id).await;
+        let mut state = entry.state.lock().await;
+        if state.generation != generation {
+            return None;
+        }
+        state.revision = state.revision.saturating_add(1);
+        state.last_sync_ms = Some(now_unix_ms());
+        Some(state.revision)
     }
 
     pub(in crate::app::tasks) async fn cancel_runtime(&self, thread_id: &str) {
@@ -495,6 +515,7 @@ mod tests {
             .expect("viewer subscription");
         assert_eq!(methods(&client).await, vec!["thread/resume"]);
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
+        assert_eq!(snapshot.history_base_revision, Some(0));
         assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-new"));
         assert_eq!(
             snapshot.active_turn_cwd.as_deref(),

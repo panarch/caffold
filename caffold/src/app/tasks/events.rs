@@ -58,9 +58,42 @@ pub(in crate::app) struct TaskEventRecord {
     pub(in crate::app) generated_image: Option<GeneratedImageObservation>,
 }
 
+/// One live observation retained behind the backend projection boundary.
+///
+/// Publication order and provider-session causality answer different
+/// questions. The former sequences snapshots and deltas for a browser; the
+/// latter lets history reconciliation say whether this observation existed
+/// before a provider read began. Neither is item identity or conversation
+/// position.
+#[derive(Debug, Clone, PartialEq)]
+pub(in crate::app) struct TaskEventObservation {
+    pub(in crate::app) event: TaskEventRecord,
+    pub(in crate::app) publication_revision: u64,
+    pub(in crate::app) session_revision: Option<u64>,
+}
+
+/// A Task-event delta and the revision captured when it entered the projection.
+#[derive(Debug, Clone, PartialEq)]
+pub(in crate::app) struct TaskEventPublication {
+    pub(in crate::app) revision: u64,
+    pub(in crate::app) event: TaskEventRecord,
+}
+
+/// An atomic view of retained live evidence and its publication watermark.
+#[derive(Debug, Clone, PartialEq)]
+pub(in crate::app) struct TaskEventSnapshot {
+    pub(in crate::app) revision: u64,
+    pub(in crate::app) observations: Vec<TaskEventObservation>,
+    pub(in crate::app) fully_observed_turns: HashSet<String>,
+}
+
 #[derive(Default)]
 struct LiveTaskEventCacheState {
-    events: HashMap<String, Vec<TaskEventRecord>>,
+    events: HashMap<String, Vec<TaskEventObservation>>,
+    /// Per-Task publication sequence. Entries survive cache eviction so a
+    /// later empty snapshot or new event cannot move a connected browser
+    /// backwards. Explicit Task removal clears the entry.
+    revisions: HashMap<String, u64>,
     /// Turns whose live journal lost continuity after its boundary was seen.
     ///
     /// Their records remain useful observations, but no longer prove that the
@@ -84,9 +117,18 @@ impl LiveTaskEventCache {
         }
     }
 
-    pub(in crate::app) fn record(&self, mut event: TaskEventRecord) -> TaskEventRecord {
+    #[cfg(test)]
+    pub(in crate::app) fn record(&self, event: TaskEventRecord) -> TaskEventRecord {
+        self.record_observation(event, None).event
+    }
+
+    fn record_observation(
+        &self,
+        mut event: TaskEventRecord,
+        session_revision: Option<u64>,
+    ) -> TaskEventPublication {
         let Ok(mut state) = self.state.lock() else {
-            return event;
+            return TaskEventPublication { revision: 0, event };
         };
         let thread_id = event.thread_id.clone();
         if !state.events.contains_key(&thread_id) && state.events.len() >= LIVE_TASK_THREAD_LIMIT {
@@ -96,7 +138,11 @@ impl LiveTaskEventCache {
                 .min_by_key(|(_, items)| {
                     items
                         .iter()
-                        .map(|item| item.updated_ms.unwrap_or(item.position.anchor_ms))
+                        .map(|item| {
+                            item.event
+                                .updated_ms
+                                .unwrap_or(item.event.position.anchor_ms)
+                        })
                         .max()
                         .unwrap_or_default()
                 })
@@ -104,51 +150,82 @@ impl LiveTaskEventCache {
             if let Some(oldest_thread) = oldest_thread {
                 state.events.remove(&oldest_thread);
                 state.invalidated_turns.remove(&oldest_thread);
+                advance_revision(&mut state.revisions, &oldest_thread);
             }
         }
+        let publication_revision = advance_revision(&mut state.revisions, &thread_id);
         let thread_events = state.events.entry(thread_id).or_default();
-        if let Some(existing) = thread_events.iter_mut().find(|item| item.id == event.id) {
-            *existing = merge_task_event_record(existing.clone(), event);
-            return existing.clone();
+        if let Some(existing) = thread_events
+            .iter_mut()
+            .find(|item| item.event.id == event.id)
+        {
+            existing.event = merge_task_event_record(existing.event.clone(), event);
+            existing.publication_revision = publication_revision;
+            existing.session_revision =
+                max_optional_revision(existing.session_revision, session_revision);
+            return TaskEventPublication {
+                revision: publication_revision,
+                event: existing.event.clone(),
+            };
         }
         event.position.index = thread_events
             .iter()
-            .filter(|existing| existing.position.anchor_ms == event.position.anchor_ms)
-            .map(|existing| existing.position.index)
+            .filter(|existing| existing.event.position.anchor_ms == event.position.anchor_ms)
+            .map(|existing| existing.event.position.index)
             .max()
             .map_or(0, |index| index.saturating_add(1));
-        thread_events.push(event.clone());
+        thread_events.push(TaskEventObservation {
+            event: event.clone(),
+            publication_revision,
+            session_revision,
+        });
         if thread_events.len() > LIVE_TASK_EVENT_LIMIT_PER_THREAD {
             thread_events.remove(0);
         }
-        event
+        TaskEventPublication {
+            revision: publication_revision,
+            event,
+        }
     }
 
+    #[cfg(test)]
     pub(in crate::app) fn for_thread(&self, thread_id: &str) -> Vec<TaskEventRecord> {
         self.state
             .lock()
             .ok()
             .and_then(|state| state.events.get(thread_id).cloned())
             .unwrap_or_default()
+            .into_iter()
+            .map(|observation| observation.event)
+            .collect()
+    }
+
+    fn snapshot_for_thread(&self, thread_id: &str) -> TaskEventSnapshot {
+        let Ok(mut state) = self.state.lock() else {
+            return TaskEventSnapshot {
+                revision: 0,
+                observations: Vec::new(),
+                fully_observed_turns: HashSet::new(),
+            };
+        };
+        let revision = advance_revision(&mut state.revisions, thread_id);
+        let observations = state.events.get(thread_id).cloned().unwrap_or_default();
+        let fully_observed_turns = fully_observed_turns(&state, thread_id);
+        TaskEventSnapshot {
+            revision,
+            observations,
+            fully_observed_turns,
+        }
     }
 
     /// Turns whose live item journal is known to start at the real turn
     /// boundary and has remained continuous since.
+    #[cfg(test)]
     pub(in crate::app) fn fully_observed_turns(&self, thread_id: &str) -> HashSet<String> {
         let Ok(state) = self.state.lock() else {
             return HashSet::new();
         };
-        let invalidated = state.invalidated_turns.get(thread_id);
-        state
-            .events
-            .get(thread_id)
-            .into_iter()
-            .flatten()
-            .filter(|event| event.event_type == "turn_started")
-            .filter_map(task_event_turn_id)
-            .filter(|turn_id| invalidated.is_none_or(|turns| !turns.contains(*turn_id)))
-            .map(str::to_string)
-            .collect()
+        fully_observed_turns(&state, thread_id)
     }
 
     /// Keep the observations, but withdraw the claim that this thread's live
@@ -163,8 +240,8 @@ impl LiveTaskEventCache {
             .get(thread_id)
             .into_iter()
             .flatten()
-            .filter(|event| event.event_type == "turn_started")
-            .filter_map(task_event_turn_id)
+            .filter(|event| event.event.event_type == "turn_started")
+            .filter_map(|event| task_event_turn_id(&event.event))
             .map(str::to_string)
             .collect::<Vec<_>>();
         state
@@ -172,6 +249,7 @@ impl LiveTaskEventCache {
             .entry(thread_id.to_string())
             .or_default()
             .extend(turn_ids);
+        advance_revision(&mut state.revisions, thread_id);
     }
 
     /// The receiver cannot identify which conversation its missed reports
@@ -186,17 +264,20 @@ impl LiveTaskEventCache {
             .flat_map(|(thread_id, events)| {
                 events
                     .iter()
-                    .filter(|event| event.event_type == "turn_started")
-                    .filter_map(task_event_turn_id)
+                    .filter(|event| event.event.event_type == "turn_started")
+                    .filter_map(|event| task_event_turn_id(&event.event))
                     .map(|turn_id| (thread_id.clone(), turn_id.to_string()))
             })
             .collect::<Vec<_>>();
         for (thread_id, turn_id) in turn_ids {
-            state
+            let inserted = state
                 .invalidated_turns
-                .entry(thread_id)
+                .entry(thread_id.clone())
                 .or_default()
                 .insert(turn_id);
+            if inserted {
+                advance_revision(&mut state.revisions, &thread_id);
+            }
         }
     }
 
@@ -204,13 +285,42 @@ impl LiveTaskEventCache {
         if let Ok(mut state) = self.state.lock() {
             state.events.remove(thread_id);
             state.invalidated_turns.remove(thread_id);
+            state.revisions.remove(thread_id);
         }
     }
 }
 
+fn advance_revision(revisions: &mut HashMap<String, u64>, thread_id: &str) -> u64 {
+    let revision = revisions.entry(thread_id.to_string()).or_default();
+    *revision = revision.saturating_add(1);
+    *revision
+}
+
+fn max_optional_revision(left: Option<u64>, right: Option<u64>) -> Option<u64> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(left.max(right)),
+        (Some(revision), None) | (None, Some(revision)) => Some(revision),
+        (None, None) => None,
+    }
+}
+
+fn fully_observed_turns(state: &LiveTaskEventCacheState, thread_id: &str) -> HashSet<String> {
+    let invalidated = state.invalidated_turns.get(thread_id);
+    state
+        .events
+        .get(thread_id)
+        .into_iter()
+        .flatten()
+        .filter(|event| event.event.event_type == "turn_started")
+        .filter_map(|event| task_event_turn_id(&event.event))
+        .filter(|turn_id| invalidated.is_none_or(|turns| !turns.contains(*turn_id)))
+        .map(str::to_string)
+        .collect()
+}
+
 #[derive(Clone)]
 pub(in crate::app) struct TaskEvents {
-    sender: broadcast::Sender<TaskEventRecord>,
+    sender: broadcast::Sender<TaskEventPublication>,
     cache: LiveTaskEventCache,
     generated_images: GeneratedImageStore,
 }
@@ -227,23 +337,49 @@ impl Default for TaskEvents {
 }
 
 impl TaskEvents {
-    pub(in crate::app) fn subscribe(&self) -> broadcast::Receiver<TaskEventRecord> {
+    pub(in crate::app) fn subscribe(&self) -> broadcast::Receiver<TaskEventPublication> {
         self.sender.subscribe()
     }
 
-    pub(in crate::app) fn publish(&self, event: TaskEventRecord) -> TaskEventRecord {
+    pub(in crate::app) fn publish(&self, event: TaskEventRecord) -> TaskEventPublication {
         let event = self.record(event);
         self.broadcast(event.clone());
         event
     }
 
-    pub(in crate::app) fn record(&self, mut event: TaskEventRecord) -> TaskEventRecord {
-        self.generated_images.observe(&event);
-        event.generated_image = None;
-        self.cache.record(event)
+    pub(in crate::app) fn publish_from_session(
+        &self,
+        event: TaskEventRecord,
+        session_revision: u64,
+    ) -> TaskEventPublication {
+        let event = self.record_from_session(event, session_revision);
+        self.broadcast(event.clone());
+        event
     }
 
-    pub(in crate::app) fn broadcast(&self, event: TaskEventRecord) {
+    pub(in crate::app) fn record(&self, event: TaskEventRecord) -> TaskEventPublication {
+        self.record_inner(event, None)
+    }
+
+    fn record_from_session(
+        &self,
+        event: TaskEventRecord,
+        session_revision: u64,
+    ) -> TaskEventPublication {
+        self.record_inner(event, Some(session_revision))
+    }
+
+    fn record_inner(
+        &self,
+        mut event: TaskEventRecord,
+        session_revision: Option<u64>,
+    ) -> TaskEventPublication {
+        self.generated_images.observe(&event);
+        event.generated_image = None;
+        self.cache.record_observation(event, session_revision)
+    }
+
+    pub(in crate::app) fn broadcast(&self, event: TaskEventPublication) {
         let _ = self.sender.send(event);
     }
 
@@ -255,10 +391,16 @@ impl TaskEvents {
         }
     }
 
+    #[cfg(test)]
     pub(in crate::app) fn for_thread(&self, thread_id: &str) -> Vec<TaskEventRecord> {
         self.cache.for_thread(thread_id)
     }
 
+    pub(in crate::app) fn snapshot_for_thread(&self, thread_id: &str) -> TaskEventSnapshot {
+        self.cache.snapshot_for_thread(thread_id)
+    }
+
+    #[cfg(test)]
     pub(in crate::app) fn fully_observed_turns(&self, thread_id: &str) -> HashSet<String> {
         self.cache.fully_observed_turns(thread_id)
     }
@@ -2474,6 +2616,106 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_recorded_delta_keeps_its_publication_revision_after_a_newer_snapshot() {
+        let events = TaskEvents::default();
+        let mut subscriber = events.subscribe();
+        let recorded = events.record(task_event_record(
+            "thread_1",
+            "approval_requested:approval_1",
+            "approval_requested",
+            "Approval required",
+            None,
+            10,
+        ));
+
+        let snapshot = events.snapshot_for_thread("thread_1");
+        events.broadcast(recorded.clone());
+        let delivered = subscriber.recv().await.expect("recorded event broadcast");
+
+        assert_eq!(delivered.revision, recorded.revision);
+        assert!(
+            delivered.revision < snapshot.revision,
+            "delivery after snapshot capture must not borrow the snapshot's later revision"
+        );
+        assert_eq!(snapshot.observations.len(), 1);
+        assert_eq!(
+            snapshot.observations[0].publication_revision, recorded.revision,
+            "the snapshot watermark covers the exact cached publication"
+        );
+    }
+
+    #[test]
+    fn provider_observations_retain_session_causality_beside_publication_order() {
+        let events = TaskEvents::default();
+        let published = events.publish_from_session(
+            task_event_record(
+                "thread_1",
+                "turn_1:item_1",
+                "assistant_message",
+                "Assistant response",
+                None,
+                10,
+            ),
+            41,
+        );
+
+        let snapshot = events.snapshot_for_thread("thread_1");
+        let observation = &snapshot.observations[0];
+
+        assert_eq!(observation.event.id, published.event.id);
+        assert_eq!(observation.session_revision, Some(41));
+        assert_eq!(observation.publication_revision, published.revision);
+        assert!(snapshot.revision > published.revision);
+    }
+
+    #[test]
+    fn repeated_provider_reports_keep_arrival_order_and_latest_session_causality_separate() {
+        let events = TaskEvents::default();
+        let first = events.publish_from_session(
+            task_event_record(
+                "thread_1",
+                "turn_1:item_1",
+                "command_execution",
+                "Command running",
+                Some(json!({ "status": "inProgress" })),
+                10,
+            ),
+            41,
+        );
+        let second = events.publish_from_session(
+            task_event_record(
+                "thread_1",
+                "turn_1:item_1",
+                "command_execution",
+                "Command completed",
+                Some(json!({ "status": "completed" })),
+                20,
+            ),
+            42,
+        );
+        let replay = events.publish_from_session(
+            task_event_record(
+                "thread_1",
+                "turn_1:item_1",
+                "command_execution",
+                "Older replay",
+                Some(json!({ "status": "inProgress" })),
+                5,
+            ),
+            40,
+        );
+
+        assert!(first.revision < second.revision && second.revision < replay.revision);
+        let snapshot = events.snapshot_for_thread("thread_1");
+        assert_eq!(snapshot.observations.len(), 1);
+        assert_eq!(snapshot.observations[0].session_revision, Some(42));
+        assert_eq!(
+            snapshot.observations[0].publication_revision, replay.revision,
+            "publication order records arrival even when provider causality says it is a replay"
+        );
+    }
+
+    #[tokio::test]
     async fn accepted_prompt_broadcasts_the_adapter_item_identity() {
         let events = TaskEvents::default();
         let mut subscriber = events.subscribe();
@@ -2494,11 +2736,15 @@ mod tests {
         let broadcast = subscriber.recv().await.expect("accepted prompt broadcast");
 
         assert_eq!(broadcast, published);
-        assert_eq!(published.id, "thread_1:turn_1:message_1");
-        assert_eq!(published.position.anchor_ms, 10);
-        assert_eq!(published.payload.as_ref().unwrap()["itemId"], "message_1");
+        assert_eq!(published.event.id, "thread_1:turn_1:message_1");
+        assert_eq!(published.event.position.anchor_ms, 10);
+        assert_eq!(
+            published.event.payload.as_ref().unwrap()["itemId"],
+            "message_1"
+        );
         assert!(
             published
+                .event
                 .payload
                 .as_ref()
                 .unwrap()

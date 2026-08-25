@@ -283,7 +283,8 @@ impl TaskLifecycle {
                 return;
             }
         };
-        self.sessions
+        let session_revision = self
+            .sessions
             .record_turn_started(
                 agent.generation(),
                 &conversation_id,
@@ -306,12 +307,18 @@ impl TaskLifecycle {
                 conversation_id
             );
         }
-        self.events.publish(accepted_user_message_event(
+        let accepted_event = accepted_user_message_event(
             &conversation_id,
             &turn.turn.id,
             &turn.user_message,
             prompt_observed_ms,
-        ));
+        );
+        if let Some(session_revision) = session_revision {
+            self.events
+                .publish_from_session(accepted_event, session_revision);
+        } else {
+            self.events.publish(accepted_event);
+        }
     }
 
     pub(in crate::app) async fn place_active_task(

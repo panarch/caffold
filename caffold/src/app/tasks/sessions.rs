@@ -76,6 +76,9 @@ pub(in crate::app::tasks) struct SessionSnapshot {
     pub(in crate::app::tasks) runtime_lease: bool,
     pub(in crate::app::tasks) generation: u64,
     pub(in crate::app::tasks) revision: u64,
+    /// Session revision captured before the provider read that supplied the
+    /// current latest-turns page began.
+    pub(in crate::app::tasks) history_base_revision: Option<u64>,
     pub(in crate::app::tasks) last_sync_ms: Option<u64>,
     pub(in crate::app::tasks) last_error: Option<String>,
     pub(in crate::app::tasks) external_syncing: bool,
@@ -88,6 +91,10 @@ pub(in crate::app::tasks) struct SessionSnapshot {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(in crate::app::tasks) struct SessionEventOutcome {
+    /// Whether this connection generation was allowed to speak for the session.
+    pub(in crate::app::tasks) accepted: bool,
+    /// Revision assigned to a report that advanced reader-visible session state.
+    pub(in crate::app::tasks) revision: Option<u64>,
     pub(in crate::app::tasks) canonical_state_changed: bool,
     pub(in crate::app::tasks) terminal: Option<TerminalTurnApplyOutcome>,
 }
@@ -207,6 +214,8 @@ struct SessionState {
     agent: Option<SessionAgent>,
     generation: u64,
     revision: u64,
+    /// Read-start revision for the provider history in `turns_page`.
+    history_base_revision: Option<u64>,
     status_revision: u64,
     name_revision: u64,
     pending_thread_status: Option<ThreadStatus>,
@@ -236,6 +245,7 @@ impl Default for SessionState {
             driver: None,
             generation: 0,
             revision: 0,
+            history_base_revision: None,
             status_revision: 0,
             name_revision: 0,
             pending_thread_status: None,
@@ -347,6 +357,7 @@ fn snapshot(state: &SessionState) -> SessionSnapshot {
         runtime_lease: state.runtime_lease,
         generation: state.generation,
         revision: state.revision,
+        history_base_revision: state.history_base_revision,
         last_sync_ms: state.last_sync_ms,
         last_error: state.last_error.clone(),
         external_syncing: state.external_syncing,

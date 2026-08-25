@@ -241,7 +241,7 @@ impl TaskRuntime {
                     thread_id: thread_id.to_owned(),
                     request,
                     asked_by,
-                    position: event.position,
+                    position: event.event.position,
                 },
             )
             .is_none();
@@ -739,7 +739,7 @@ mod tests {
             )
             .await;
 
-        let event = receiver.recv().await.unwrap();
+        let event = receiver.recv().await.unwrap().event;
         assert_eq!(event.thread_id, "thread_1");
         assert_eq!(event.event_type, "approval_requested");
         assert_eq!(
@@ -1354,7 +1354,7 @@ mod tests {
                 .unwrap(),
             )
             .await;
-        let requested = receiver.recv().await.unwrap();
+        let requested = receiver.recv().await.unwrap().event;
         assert_eq!(requested.event_type, "approval_requested");
 
         let completed = codex::decode_notification(
@@ -1378,7 +1378,7 @@ mod tests {
             .await;
 
         assert!(runtime.approval_events("thread_1").await.is_empty());
-        let resolved = receiver.recv().await.unwrap();
+        let resolved = receiver.recv().await.unwrap().event;
         assert_eq!(resolved.event_type, "approval_resolved");
         assert_eq!(resolved.payload.as_ref().unwrap()["approvalId"], "11");
         assert_eq!(resolved.payload.as_ref().unwrap()["outcome"], "expired");

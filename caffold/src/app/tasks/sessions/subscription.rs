@@ -88,7 +88,14 @@ impl TaskSessions {
                     )));
                 }
                 if state.revision == base_revision {
-                    apply_opened_conversation(&mut state, driver, generation, opened, false);
+                    apply_opened_conversation(
+                        &mut state,
+                        driver,
+                        generation,
+                        opened,
+                        false,
+                        base_revision,
+                    );
                 } else {
                     apply_stale_refresh(&mut state, driver, generation, opened, base_revision);
                 }
@@ -146,7 +153,14 @@ impl TaskSessions {
                     )));
                 }
                 if state.revision == base_revision {
-                    apply_opened_conversation(&mut state, driver, generation, opened, true);
+                    apply_opened_conversation(
+                        &mut state,
+                        driver,
+                        generation,
+                        opened,
+                        true,
+                        base_revision,
+                    );
                 } else {
                     apply_stale_refresh(&mut state, driver, generation, opened, base_revision);
                 }
@@ -189,6 +203,7 @@ impl TaskSessions {
         state.reasoning_effort = settings.reasoning_effort;
         state.fast_mode = settings.fast_mode;
         state.turns_page = None;
+        state.history_base_revision = None;
         state.runtime_lease = true;
         state.revision = state.revision.saturating_add(1);
         state.status_revision = state.revision;
@@ -299,6 +314,7 @@ mod tests {
         assert_eq!(methods(&client).await, vec!["thread/resume"]);
         assert_eq!(requests[0].1["serviceTier"], "default");
         assert_eq!(snapshot.lifecycle, SessionLifecycle::Subscribed);
+        assert_eq!(snapshot.history_base_revision, Some(0));
         assert_eq!(snapshot.turns_page.expect("initial page").turns.len(), 8);
     }
 

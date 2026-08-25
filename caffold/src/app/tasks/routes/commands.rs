@@ -183,8 +183,8 @@ pub(super) async fn task_prompt(
         steered,
         started_turn,
     } = outcome;
-    if let Some((turn, applied_options)) = started_turn {
-        state
+    let session_revision = if let Some((turn, applied_options)) = started_turn {
+        let revision = state
             .task_sessions
             .record_turn_started(
                 agent.generation(),
@@ -209,13 +209,22 @@ pub(super) async fn task_prompt(
                 );
             }
         }
+        revision
+    } else {
+        state
+            .task_sessions
+            .record_prompt_accepted(agent.generation(), &thread_id)
+            .await
+    };
+    let accepted_event =
+        accepted_user_message_event(&thread_id, &turn_id, &user_message, prompt_observed_ms);
+    if let Some(session_revision) = session_revision {
+        state
+            .task_events
+            .publish_from_session(accepted_event, session_revision);
+    } else {
+        state.task_events.publish(accepted_event);
     }
-    state.task_events.publish(accepted_user_message_event(
-        &thread_id,
-        &turn_id,
-        &user_message,
-        prompt_observed_ms,
-    ));
     Ok(Json(TaskPromptResponse {
         thread_id,
         turn_id,
@@ -568,13 +577,16 @@ mod tests {
     /// accepted it, or the failure that stands where the answer would have
     /// been. Subscribe before creating — this reads what was published after.
     async fn first_turn_outcome(
-        events: &mut tokio::sync::broadcast::Receiver<crate::app::tasks::TaskEventRecord>,
+        events: &mut tokio::sync::broadcast::Receiver<
+            crate::app::tasks::events::TaskEventPublication,
+        >,
     ) -> crate::app::tasks::TaskEventRecord {
         loop {
             let event = tokio::time::timeout(std::time::Duration::from_secs(5), events.recv())
                 .await
                 .expect("the first turn reported nothing")
-                .expect("Task event stream closed before the first turn reported");
+                .expect("Task event stream closed before the first turn reported")
+                .event;
             if matches!(event.event_type.as_str(), "user_message" | "task_failed") {
                 return event;
             }
@@ -610,7 +622,8 @@ mod tests {
         let event = tokio::time::timeout(std::time::Duration::from_secs(1), task_events.recv())
             .await
             .expect("permission approval did not reach the Task runtime")
-            .expect("Task event stream closed before permission approval");
+            .expect("Task event stream closed before permission approval")
+            .event;
         assert_eq!(event.thread_id, thread_id);
         assert_eq!(event.event_type, "approval_requested");
         assert_eq!(

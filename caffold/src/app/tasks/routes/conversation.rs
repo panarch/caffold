@@ -320,7 +320,7 @@ mod tests {
                 .starts_with("event: task-sync\ndata: ")
         );
 
-        state.task_events.publish(task_event_record(
+        let published = state.task_events.publish(task_event_record(
             thread_id,
             "live-assistant",
             "assistant_message",
@@ -351,6 +351,7 @@ mod tests {
         let payload: JsonValue = serde_json::from_str(payload).expect("Task event SSE JSON");
 
         assert_eq!(payload["threadId"], thread_id);
+        assert_eq!(payload["eventRevision"], published.revision);
         assert_eq!(payload["event"]["payload"]["text"], "[Live](live.rs#L9)");
         assert_eq!(payload["fileLinks"].as_array().unwrap().len(), 1);
         assert_eq!(

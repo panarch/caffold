@@ -103,6 +103,7 @@ fn merge_external_snapshot_with_active_cwd(
     }
     if let Some(page) = latest_turns {
         merge_external_turns_page(&mut state.turns_page, page, preserve_newer_turns);
+        state.history_base_revision = Some(base_revision);
     }
     let next_active_turn_id = newer_active_turn_id
         .filter(|turn_id| turn_is_in_progress(state, turn_id))
@@ -177,6 +178,7 @@ pub(super) fn apply_opened_conversation(
     generation: u64,
     opened: OpenedConversation,
     merge_history: bool,
+    history_base_revision: u64,
 ) {
     let preserved_terminal_candidate = merge_history
         .then(|| state.terminal_candidate_turn_id.clone())
@@ -197,6 +199,7 @@ pub(super) fn apply_opened_conversation(
     replace_active_turn(state, active_turn_id.clone(), active_turn_cwd);
     state.conversation = Some(thread);
     state.pending_thread_status = None;
+    let history_was_read = incoming_page.is_some();
     if merge_history {
         if let Some(page) = incoming_page {
             merge_latest_turns_page(&mut state.turns_page, page);
@@ -206,6 +209,11 @@ pub(super) fn apply_opened_conversation(
         if let Some(page) = state.turns_page.as_mut() {
             bound_latest_turns_page(page);
         }
+    }
+    if history_was_read {
+        state.history_base_revision = Some(history_base_revision);
+    } else if !merge_history {
+        state.history_base_revision = None;
     }
     state.terminal_candidate_turn_id = active_turn_id
         .filter(|turn_id| turn_is_in_progress(state, turn_id))
@@ -260,6 +268,7 @@ pub(super) fn apply_stale_refresh(
     }
     if let Some(incoming) = incoming_page {
         merge_stale_turns_page(&mut state.turns_page, incoming);
+        state.history_base_revision = Some(base_revision);
     }
 
     let next_active_turn_id = newer_active_turn_id
@@ -744,6 +753,7 @@ mod tests {
         )
         .await;
 
+        assert_eq!(snapshot.history_base_revision, Some(syncing.revision));
         assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-external"));
         let thread = snapshot.conversation.as_ref().expect("canonical thread");
         assert!(matches!(thread.status, ThreadStatus::Active { .. }));

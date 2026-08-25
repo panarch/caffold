@@ -14,18 +14,27 @@ impl TaskSessions {
         thread_id: &str,
         cursor: &str,
         limit: usize,
-    ) -> Result<(SessionSnapshot, TurnPage), AgentError> {
+    ) -> Result<(SessionSnapshot, TurnPage, u64), AgentError> {
         self.ensure_subscribed(driver, generation, thread_id)
             .await?;
-        let page = driver.read_turns(thread_id, Some(cursor), limit).await?;
         let entry = self.entry(thread_id).await;
+        let base_revision = {
+            let state = entry.state.lock().await;
+            if state.generation != generation {
+                return Err(AgentError::Failed(format!(
+                    "conversation {thread_id} changed connection before reading its history"
+                )));
+            }
+            state.revision
+        };
+        let page = driver.read_turns(thread_id, Some(cursor), limit).await?;
         let state = entry.state.lock().await;
         if state.generation != generation {
             return Err(AgentError::Failed(format!(
                 "conversation {thread_id} changed connection while reading its history"
             )));
         }
-        Ok((snapshot(&state), page))
+        Ok((snapshot(&state), page, base_revision))
     }
 
     /// Re-read the latest canonical turns for a session already being shown.
@@ -43,10 +52,10 @@ impl TaskSessions {
             return Ok(None);
         };
         let _operation = entry.operation.lock().await;
-        let Some(driver) = ({
+        let Some((driver, base_revision)) = ({
             let state = entry.state.lock().await;
             if state.generation == generation && state.lifecycle == SessionLifecycle::Subscribed {
-                state.driver.clone()
+                state.driver.clone().map(|driver| (driver, state.revision))
             } else {
                 None
             }
@@ -78,9 +87,14 @@ impl TaskSessions {
             return Ok(None);
         }
         let before = state.turns_page.clone();
+        let previous_history_base_revision = state.history_base_revision;
         let recovered = state.last_error.take().is_some();
         merge_latest_turns_page(&mut state.turns_page, latest);
-        if state.turns_page == before && !recovered {
+        state.history_base_revision = Some(base_revision);
+        if state.turns_page == before
+            && previous_history_base_revision == state.history_base_revision
+            && !recovered
+        {
             return Ok(None);
         }
         state.revision = state.revision.saturating_add(1);
@@ -459,7 +473,7 @@ mod tests {
             .await
             .expect("viewer");
 
-        let (snapshot, older_page) = sessions
+        let (snapshot, older_page, _) = sessions
             .load_older_turns(&client.driver(), 1, "thread-1", "older-1", 8)
             .await
             .expect("load older history");
@@ -515,7 +529,7 @@ mod tests {
             .await
             .expect("viewer");
 
-        let (snapshot, older_page) = sessions
+        let (snapshot, older_page, _) = sessions
             .load_older_turns(&client.driver(), 1, "thread-1", "older-1", 8)
             .await
             .expect("load older history");
@@ -595,6 +609,67 @@ mod tests {
                 .map(|turn| turn.id.as_str()),
             Some(latest_turn.id.as_str())
         );
+    }
+
+    #[tokio::test]
+    async fn latest_history_records_the_revision_from_before_its_slow_read() {
+        use crate::app::tasks::test_support::wait_for_mock_method;
+
+        let latest = wire_turn_at("turn-latest", TurnStatus::InProgress, 2.0);
+        let latest_page = wire_page(vec![latest.clone()], None, None);
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                ThreadResumeResponse {
+                    cwd: "/tmp".to_string(),
+                    thread: thread(
+                        ThreadStatus::Active {
+                            active_flags: Vec::new(),
+                        },
+                        Vec::new(),
+                    ),
+                    initial_turns_page: Some(decoded(latest_page.clone())),
+                    extra: BTreeMap::new(),
+                },
+            ),
+            MockCodexResponse::delayed_ok(
+                "thread/turns/list",
+                latest_page,
+                Duration::from_millis(250),
+            ),
+        ]);
+        let sessions = TaskSessions::default();
+        let _viewer = sessions
+            .acquire_viewer(&client.driver(), 1, "thread-1")
+            .await
+            .expect("viewer");
+        let before_read = sessions.snapshot("thread-1").await.expect("snapshot");
+        let refreshing = {
+            let sessions = sessions.clone();
+            tokio::spawn(async move { sessions.refresh_latest_turns(1, "thread-1").await })
+        };
+        wait_for_mock_method(&client, "thread/turns/list").await;
+
+        let live = sessions
+            .apply_session_event_with_outcome(
+                1,
+                &session_event("thread-1", item_changed("turn-latest", "item-live", 20)),
+            )
+            .await;
+        let live_revision = live.revision.expect("the live report is accepted");
+        let refreshed = refreshing
+            .await
+            .expect("refresh task")
+            .expect("history read")
+            .expect("the newer history cutoff changes the snapshot");
+
+        assert_eq!(
+            refreshed.history_base_revision,
+            Some(before_read.revision),
+            "history carries the session revision captured before the read began"
+        );
+        assert!(live_revision > refreshed.history_base_revision.unwrap());
+        assert!(refreshed.revision > live_revision);
     }
 
     #[tokio::test]

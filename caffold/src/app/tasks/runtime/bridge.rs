@@ -157,6 +157,9 @@ impl TaskRuntime {
             .sessions
             .apply_session_event_with_outcome(generation, &event)
             .await;
+        if !outcome.accepted {
+            return;
+        }
         let snapshot = if outcome.canonical_state_changed {
             self.sessions.snapshot(&event.thread_id).await
         } else {
@@ -170,7 +173,9 @@ impl TaskRuntime {
         );
         self.withdraw_unanswerable_approvals(&event).await;
         self.record_reported_usage(&event);
-        self.publish_session_event(&event);
+        if let Some(session_revision) = outcome.revision {
+            self.publish_session_event(&event, session_revision);
+        }
         if let Some(snapshot) = snapshot {
             let _ = self.signals.send(TaskRuntimeSignal::SessionChanged {
                 thread_id: event.thread_id,
@@ -180,7 +185,7 @@ impl TaskRuntime {
     }
 
     /// Say what the agent did, in the Task's own stream of events.
-    fn publish_session_event(&self, event: &SessionEvent) {
+    fn publish_session_event(&self, event: &SessionEvent, session_revision: u64) {
         let thread_id = event.thread_id.as_str();
         match &event.kind {
             SessionEventKind::TurnStarted { turn } => {
@@ -197,8 +202,10 @@ impl TaskRuntime {
                         );
                     }
                 }
-                self.events
-                    .publish(turn_started_event(thread_id, turn, started_ms));
+                self.events.publish_from_session(
+                    turn_started_event(thread_id, turn, started_ms),
+                    session_revision,
+                );
             }
             SessionEventKind::StatusChanged { status } => {
                 let task_status = match status {
@@ -211,17 +218,20 @@ impl TaskRuntime {
                     "failed" => "Thread failed",
                     _ => "Thread idle",
                 };
-                self.events.publish(task_event_record(
-                    thread_id,
-                    "thread_status_changed",
-                    "thread_status_changed",
-                    summary,
-                    Some(json!({
-                        "threadId": thread_id,
-                        "status": task_status,
-                    })),
-                    now_ms(),
-                ));
+                self.events.publish_from_session(
+                    task_event_record(
+                        thread_id,
+                        "thread_status_changed",
+                        "thread_status_changed",
+                        summary,
+                        Some(json!({
+                            "threadId": thread_id,
+                            "status": task_status,
+                        })),
+                        now_ms(),
+                    ),
+                    session_revision,
+                );
             }
             SessionEventKind::ItemChanged {
                 turn_id,
@@ -231,7 +241,7 @@ impl TaskRuntime {
                 if let Some(record) =
                     task_event_from_item(thread_id, turn_id, at_or_now(*at_ms), item)
                 {
-                    self.events.publish(record);
+                    self.events.publish_from_session(record, session_revision);
                 }
             }
             SessionEventKind::TurnEnded { turn } => {
@@ -246,21 +256,26 @@ impl TaskRuntime {
                         eprintln!("failed to persist completed turn for {thread_id}: {error}");
                     }
                 }
-                self.events
-                    .publish(turn_completed_event(thread_id, turn, completed_ms));
+                self.events.publish_from_session(
+                    turn_completed_event(thread_id, turn, completed_ms),
+                    session_revision,
+                );
             }
             // The diff itself is not carried: Caffold reviews changes from git,
             // which owns the working tree the agent wrote to. What this says is
             // that there is something new to review.
             SessionEventKind::DiffChanged => {
-                self.events.publish(task_event_record(
-                    thread_id,
-                    "diff_updated",
-                    "diff_updated",
-                    "Diff updated",
-                    Some(json!({ "threadId": thread_id })),
-                    now_ms(),
-                ));
+                self.events.publish_from_session(
+                    task_event_record(
+                        thread_id,
+                        "diff_updated",
+                        "diff_updated",
+                        "Diff updated",
+                        Some(json!({ "threadId": thread_id })),
+                        now_ms(),
+                    ),
+                    session_revision,
+                );
             }
             SessionEventKind::ConversationStarted { .. }
             | SessionEventKind::TitleChanged { .. }
@@ -447,6 +462,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_rejected_old_generation_report_never_enters_the_task_projection() {
+        let events = TaskEvents::default();
+        let mut receiver = events.subscribe();
+        let runtime = runtime_with_events_and_store(
+            events.clone(),
+            TaskStore::memory().expect("in-memory task store"),
+        );
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            active_resume("thread-old-generation"),
+        )]);
+        let _viewer = runtime
+            .sessions
+            .acquire_viewer(&client.driver(), 2, "thread-old-generation")
+            .await
+            .expect("current generation viewer");
+        let event = SessionEvent {
+            thread_id: "thread-old-generation".to_string(),
+            kind: SessionEventKind::ItemChanged {
+                turn_id: "turn-active".to_string(),
+                item: crate::agent::ConversationItem {
+                    id: "stale-item".to_string(),
+                    observed_at_ms: None,
+                    status: crate::agent::ActivityStatus::Completed,
+                    kind: crate::agent::ItemKind::Reasoning {
+                        summary: vec!["stale report".to_string()],
+                        content: Vec::new(),
+                    },
+                },
+                at_ms: 10,
+            },
+        };
+
+        runtime.handle_session_event(1, event).await;
+
+        assert!(receiver.try_recv().is_err());
+        assert!(events.for_thread("thread-old-generation").is_empty());
+    }
+
+    #[tokio::test]
     async fn event_notification_has_no_session_changed_signal_of_its_own() {
         let events = TaskEvents::default();
         let runtime = runtime_with_events_and_store(
@@ -496,7 +551,8 @@ mod tests {
         let event = tokio::time::timeout(Duration::from_secs(1), task_events.recv())
             .await
             .expect("item notification publishes a Task event")
-            .expect("Task event channel remains open");
+            .expect("Task event channel remains open")
+            .event;
         assert_eq!(event.thread_id, thread_id);
         assert_eq!(event.event_type, "reasoning");
 
@@ -543,6 +599,7 @@ mod tests {
                 }),
             )
             .await,
+            1,
         );
 
         let stored = store.get("thread_1").unwrap().unwrap();
@@ -576,6 +633,7 @@ mod tests {
                 }),
             )
             .await,
+            1,
         );
 
         let stored = store.get("thread_1").unwrap().unwrap();
@@ -863,12 +921,13 @@ mod tests {
                 }),
             )
             .await,
+            2,
         );
-        let started = receiver.try_recv().unwrap();
+        let started = receiver.try_recv().unwrap().event;
         assert_eq!(started.thread_id, "thread_1");
         assert_eq!(started.event_type, "turn_started");
         assert_eq!(started.position.anchor_ms, 1_750_000_000_250);
-        assert_eq!(started.payload.unwrap()["turnId"], "turn_1");
+        assert_eq!(started.payload.as_ref().unwrap()["turnId"], "turn_1");
 
         runtime.publish_session_event(
             &reported(
@@ -887,8 +946,9 @@ mod tests {
                 }),
             )
             .await,
+            3,
         );
-        let command_started = receiver.try_recv().unwrap();
+        let command_started = receiver.try_recv().unwrap().event;
         assert_eq!(command_started.event_type, "command_execution");
         assert_eq!(command_started.position.anchor_ms, 1_750_000_001_000);
         assert_eq!(
@@ -918,6 +978,7 @@ mod tests {
                 }),
             )
             .await,
+            4,
         );
         // Codex announces reasoning before writing any of it, and an empty
         // bubble is worse than waiting for the words.
@@ -939,8 +1000,9 @@ mod tests {
                 }),
             )
             .await,
+            5,
         );
-        let reasoning_completed = receiver.try_recv().unwrap();
+        let reasoning_completed = receiver.try_recv().unwrap().event;
         assert_eq!(reasoning_completed.event_type, "reasoning");
         // The entry still belongs where the item started, not where it ended.
         assert_eq!(reasoning_completed.position.anchor_ms, 1_750_000_003_000);
@@ -958,11 +1020,12 @@ mod tests {
                 }),
             )
             .await,
+            6,
         );
-        let status = receiver.try_recv().unwrap();
+        let status = receiver.try_recv().unwrap().event;
         assert_eq!(status.thread_id, "thread_1");
         assert_eq!(status.event_type, "thread_status_changed");
-        assert_eq!(status.payload.unwrap()["status"], "running");
+        assert_eq!(status.payload.as_ref().unwrap()["status"], "running");
 
         runtime.publish_session_event(
             &reported(
@@ -977,8 +1040,9 @@ mod tests {
                 }),
             )
             .await,
+            7,
         );
-        let completed = receiver.try_recv().unwrap();
+        let completed = receiver.try_recv().unwrap().event;
         assert_eq!(completed.event_type, "turn_completed");
         assert_eq!(completed.position.anchor_ms, 1_750_000_004_500);
     }

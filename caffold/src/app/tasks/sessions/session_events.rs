@@ -27,7 +27,7 @@ impl TaskSessions {
         let Some(entry) = self.existing_entry(&event.thread_id).await else {
             return SessionEventOutcome::default();
         };
-        let (effect, should_unsubscribe, terminal) = {
+        let (effect, revision, should_unsubscribe, terminal) = {
             let mut state = entry.state.lock().await;
             if state.generation != generation {
                 return SessionEventOutcome::default();
@@ -43,12 +43,16 @@ impl TaskSessions {
                 _ => None,
             };
             let effect = apply_session_event_state(&mut state, &event.kind);
-            if effect != SessionEventEffect::Ignored {
+            let revision = if effect != SessionEventEffect::Ignored {
                 state.revision = state.revision.saturating_add(1);
                 mark_what_changed(&mut state, &event.kind);
-            }
+                Some(state.revision)
+            } else {
+                None
+            };
             (
                 effect,
+                revision,
                 state.viewer_leases == 0 && !state.runtime_lease,
                 terminal,
             )
@@ -58,6 +62,13 @@ impl TaskSessions {
             self.unsubscribe_if_unused(&event.thread_id, &entry).await;
         }
         SessionEventOutcome {
+            accepted: effect != SessionEventEffect::Ignored
+                || matches!(
+                    &event.kind,
+                    SessionEventKind::UsageReported { .. }
+                        | SessionEventKind::ApprovalAnsweredElsewhere { .. }
+                ),
+            revision,
             canonical_state_changed: effect == SessionEventEffect::CanonicalStateChanged,
             terminal,
         }
