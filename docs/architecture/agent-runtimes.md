@@ -214,6 +214,31 @@ supplies item order but no item time, `position.anchorMs` places the group and
 `null`; neither position field is an individual event time, so the interface
 must not print the turn anchor as every item's timestamp.
 
+The Task backend retains live observations with their explicit operation role:
+provider lifecycle, accepted submission, or Caffold-owned projection. It
+advances repeated live reports within that role, then reconciles provider
+history and retained observations when it assembles Detail. Provider history
+owns the baseline after recovery or an observation gap; a live report may
+replace a conflicting history field only under exact identity and evidence
+that the report followed the read it advances. Backend-private session
+causality and cache-observation recency do not cross this boundary as item
+freshness or display fields.
+
+Every accepted Task-event delta receives a process-local, per-Task
+`eventRevision` when it enters the conversation projection. A Detail snapshot
+captures the retained observations and a watermark that covers them in the
+same backend owner. This publication sequence is independent of the Task
+session `revision` used to arbitrate canonical reads and Task metadata. It
+establishes only whether an independently delivered conversation snapshot or
+delta is already covered; it is not item identity, provider causality,
+conversation position, or time.
+
+A current-page Detail snapshot with provider history available owns the
+membership of its conversation projection. A snapshot marked `historyLoading`
+owns the exact identities it contains but cannot prove that an absent,
+previously readable item was deleted. Older cursor pages remain a separate
+history layer and do not become another current live ledger.
+
 The agent still owns the meaning of a permission. Caffold owns the human answer
 vocabulary—allow, allow always, deny, and deny and stop—and each driver offers
 only decisions its agent can carry out. See

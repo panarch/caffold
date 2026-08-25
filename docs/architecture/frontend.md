@@ -275,6 +275,26 @@ instead keeps provider history as its baseline, and a live event enriches an
 existing item only under the same exact identity. Detail consumes that
 already-reconciled contract; it does not compare message text or nearby times
 to manufacture a relationship.
+
+The backend publishes that projection through a Task-scoped `eventRevision`.
+Each Task-event delta carries the revision captured when it entered the
+projection, while each Detail snapshot carries the watermark covering its
+events. For conversation events, Detail applies snapshots at the current or a
+newer watermark and applies only strictly newer deltas. Deltas buffered before
+a readable bootstrap pass through the same check, so a snapshot cannot be
+followed by a stale intermediate render. A new stream bootstrap resets this
+process-local baseline for its connection generation. The separate Task
+session `revision` orders canonical Task reads and metadata; it does not
+substitute for conversation publication order.
+
+A complete current-page Detail snapshot owns projection membership. A
+`historyLoading` snapshot owns records under the exact identities it contains
+but retains absent readable records until a complete snapshot arrives. Older
+cursor pages and optimistic submissions remain separate visible layers rather
+than inputs to source arbitration. Within the current projection, a delta is a
+backend-authored patch under exact identity and a snapshot is a
+backend-authored replacement.
+
 For canonical Task events, `position.anchorMs` places an event group in the
 projected timeline, and `position.index` orders events sharing that anchor.
 Both are backend-owned position rather than display time. A browser-created
@@ -285,17 +305,22 @@ projection order it received instead of manufacturing an anchor or update time.
 `observedMs` is the direct per-event time shown by Conversation and Work
 details, including a provider-history item time when one exists; `null`
 suppresses a timestamp when history supplied order but no individual time.
+Conversation keys entries by exact identity and versions them from rendered
+content, not projection revision or position. A canonical reorder therefore
+moves an existing entry instead of replacing its DOM and state.
 
 The adjacent task-scoped Detail session owns snapshot acquisition while Detail
-keeps canonical Task, event, revision, and rendering state.
+keeps the canonical Task, conversation projection, Task-session and
+conversation-publication revision baselines, and rendering cache.
 
 The session phases are inactive, waiting for bootstrap, waiting for readable
 sync, streaming, REST fallback, and unavailable. It alone transitions the
 active attempt, while shared `tasks/stream.js` owns `EventSource` connection
 generations, timers, and transport state. Cursor pagination stays outside the
 session, and a Task switch replaces the attempt before a late response can
-update Detail. The wire-level bootstrap, revision, and fallback contract is
-defined in [Codex App Server](codex-app-server.md#frontend-ownership).
+update Detail. The provider-common projection contract is defined in
+[Agent Runtimes](agent-runtimes.md#conversation-and-event-ownership); provider
+transport and history acquisition remain in their native architecture.
 
 `caffold-section-detail` owns fixed-context Task creation for one Section.
 Switching Section context replaces its Task Create instance. The shared Task

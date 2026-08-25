@@ -260,8 +260,11 @@ discontinuous ranges.
 Turn IDs and item IDs are merge identities. A thread permits one canonical sync
 at a time; another invalidation received during that request records a dirty
 bit and causes at most one trailing sync. Browser snapshots and events carry a
-monotonic session revision so stale responses from a previous task selection or
-an older request cannot replace newer detail.
+Task session revision for canonical read arbitration. Independently delivered
+conversation snapshots and deltas use the provider-common Task-scoped
+`eventRevision` described in
+[Agent Runtimes](agent-runtimes.md#conversation-and-event-ownership); one
+sequence never substitutes for the other.
 
 ## Task Storage Boundary
 
@@ -360,12 +363,13 @@ List and header badges use only `threadStatus`. Within active flags,
 the original flag array remains unchanged. Turn completion, failure, and
 interruption are rendered inside that conversation turn rather than replacing
 the thread badge. Item changes and diff reports advance the in-memory session
-revision. Their live projections use `task-event`
-without materializing or broadcasting a full Task Detail snapshot. A later
-canonical Thread or Turn change may therefore publish a `task-sync` revision
-that skips those event-only revisions. Task lifecycle changes arrive through
-canonical REST responses, revisioned Task Detail `task-sync` snapshots, and the
-Task-list stream's revisioned Task-record syncs.
+revision. Their live projections use `task-event` without materializing or
+broadcasting a full Task Detail snapshot. Each such frame carries the
+`eventRevision` captured when the delta entered the conversation projection; a
+later `task-sync` carries the current conversation watermark even when its Task
+session revision skips event-only revisions. Task lifecycle changes arrive
+through canonical REST responses, revisioned Task Detail `task-sync` snapshots,
+and the Task-list stream's revisioned Task-record syncs.
 
 ## Frontend Ownership
 
@@ -375,14 +379,14 @@ For a Codex Task, their canonical input is app-server:
 - `caffold-task-navigator` owns managed/Archived reads, list mutations, list SSE, and the
   per-thread list revision baseline.
 - `caffold-task-detail` owns the selected task's canonical application, event
-  cache, and per-thread detail revision baseline. Normal acquisition uses the
-  detail SSE, with at most one REST fallback after bounded browser-stream
-  failure and no parallel REST read on healthy entry or reconnect. Each
-  connection starts with a cached `stream-bootstrap`; a loading bootstrap
-  establishes the new process baseline and waits for a later readable
-  `task-sync`. A bootstrap revision may be lower than the prior process
-  baseline; lower revisions within the new baseline remain stale. Frontend
-  module and attempt ownership is defined in
+  cache, per-thread Task-detail revision baseline, and independent conversation
+  publication baseline. Normal acquisition uses the detail SSE, with at most
+  one REST fallback after bounded browser-stream failure and no parallel REST
+  read on healthy entry or reconnect. Each connection starts with a cached
+  `stream-bootstrap`; a loading bootstrap establishes the new process baseline
+  and waits for a later readable `task-sync`. Bootstrap revisions may be lower
+  than the prior process baseline; lower revisions within the new baseline
+  remain stale. Frontend module and attempt ownership is defined in
   [Frontend Architecture](frontend.md#tasks-layout-and-detail-layout).
 - A detail snapshot may be forwarded to Navigator through
   `upsertCanonicalTask`, but a list revision never advances or rejects a detail
