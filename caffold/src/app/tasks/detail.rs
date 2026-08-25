@@ -10,8 +10,8 @@ use file_links::{TaskFileLink, TaskFileLinkResolver};
 
 use super::{
     events::{
-        TaskEventRecord, TaskEvents, merge_provider_history_with_live_events,
-        merge_task_event_records, sort_task_events, thread_events,
+        TaskEventRecord, TaskEvents, compose_pending_approval_events,
+        reconcile_provider_history_with_live_observations, sort_task_events, thread_events,
     },
     lifecycle::ActiveTaskTopPlacement,
     projection::{
@@ -504,7 +504,7 @@ impl DetailContext {
             .as_ref()
             .map(|thread| thread.id.clone())
             .ok_or_else(|| ApiError::Agent("subscribed thread metadata is missing".to_string()))?;
-        let (page, _history_base_revision) = response_page
+        let (page, history_base_revision) = response_page
             .map(|(page, base_revision)| (Some(page), Some(base_revision)))
             .unwrap_or_else(|| (snapshot.turns_page.clone(), snapshot.history_base_revision));
         let history_loading = page.is_none();
@@ -524,17 +524,14 @@ impl DetailContext {
         let mut events = thread_events(&conversation);
         self.events.observe_history_assets(&events);
         let live_snapshot = self.events.snapshot_for_thread(&thread_id);
-        events = merge_provider_history_with_live_events(
+        events = reconcile_provider_history_with_live_observations(
             events,
-            live_snapshot
-                .observations
-                .iter()
-                .map(|observation| observation.event.clone())
-                .collect(),
+            &live_snapshot.observations,
+            history_base_revision,
             &live_snapshot.fully_observed_turns,
         );
         let pending_approvals = self.runtime.approval_events(&thread_id).await;
-        events = merge_task_event_records(events, pending_approvals.clone());
+        events = compose_pending_approval_events(events, pending_approvals.clone());
         sort_task_events(&mut events);
         let resolved_cwd = resolve_conversation_cwd(&self.fs, &conversation);
         let mut task = task_record_from_conversation(&conversation, &events, resolved_cwd.as_ref());
@@ -1117,7 +1114,7 @@ mod request_tests {
         let client = CodexThreadClient::mock(Vec::new());
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         manage_test_thread(&state, thread_id, root.path()).await;
-        state.task_events.publish(task_event_record(
+        state.task_events.publish_local(task_event_record(
             thread_id,
             "retained-before-session",
             "assistant_message",
@@ -1436,7 +1433,9 @@ mod request_tests {
             2_500,
         );
         late_live_prompt.position.index = 0;
-        let live_publication = state.task_events.publish(late_live_prompt);
+        let live_publication = state
+            .task_events
+            .publish_accepted_submission(late_live_prompt, None);
 
         let detail = state
             .detail

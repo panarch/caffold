@@ -442,17 +442,20 @@ mod tests {
             .acquire_viewer(&client.driver(), 10, thread_id)
             .await
             .expect("the live thread is subscribed");
-        runtime.events.publish(task_event_record(
-            thread_id,
-            "turn-live:started",
-            "turn_started",
-            "Turn started",
-            Some(json!({
-                "threadId": thread_id,
-                "turnId": "turn-live",
-            })),
-            2_000,
-        ));
+        runtime.events.publish_provider_lifecycle(
+            task_event_record(
+                thread_id,
+                "turn-live:started",
+                "turn_started",
+                "Turn started",
+                Some(json!({
+                    "threadId": thread_id,
+                    "turnId": "turn-live",
+                })),
+                2_000,
+            ),
+            1,
+        );
         assert_eq!(runtime.events.fully_observed_turns(thread_id).len(), 1);
 
         let agent = super::super::TaskAgent::Codex(CodexConnection {

@@ -54,8 +54,25 @@ pub(in crate::app) struct TaskEventRecord {
     pub(in crate::app) observed_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(in crate::app) updated_ms: Option<u64>,
+    /// Typed lifecycle evidence retained behind the projection boundary.
+    ///
+    /// The rendered payload also names status, but merge policy must not infer
+    /// lifecycle from arbitrary JSON supplied to the browser.
+    #[serde(skip)]
+    pub(in crate::app) activity_status: Option<ActivityStatus>,
     #[serde(skip)]
     pub(in crate::app) generated_image: Option<GeneratedImageObservation>,
+}
+
+/// Why a live observation entered the Task projection.
+///
+/// The role is established by the caller that owns the operation. It is not
+/// inferred from payload, position, wall time, or event type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TaskEventObservationSource {
+    ProviderLifecycle,
+    AcceptedSubmission,
+    LocalProjection,
 }
 
 /// One live observation retained behind the backend projection boundary.
@@ -69,7 +86,10 @@ pub(in crate::app) struct TaskEventRecord {
 pub(in crate::app) struct TaskEventObservation {
     pub(in crate::app) event: TaskEventRecord,
     pub(in crate::app) publication_revision: u64,
+    /// Session causality for the role that owns this record's conflicting
+    /// fields. A supplemental exact-identity observation cannot promote it.
     pub(in crate::app) session_revision: Option<u64>,
+    source: TaskEventObservationSource,
 }
 
 /// A Task-event delta and the revision captured when it entered the projection.
@@ -111,20 +131,37 @@ pub(in crate::app) const LIVE_TASK_THREAD_LIMIT: usize = 128;
 
 impl LiveTaskEventCache {
     #[cfg(test)]
-    pub(in crate::app) fn observe(&self, events: &[TaskEventRecord]) {
+    pub(in crate::app) fn observe_provider_lifecycle(&self, events: &[TaskEventRecord]) {
         for event in events {
-            self.record(event.clone());
+            self.record_provider_lifecycle(event.clone());
         }
     }
 
     #[cfg(test)]
-    pub(in crate::app) fn record(&self, event: TaskEventRecord) -> TaskEventRecord {
-        self.record_observation(event, None).event
+    pub(in crate::app) fn record_provider_lifecycle(
+        &self,
+        event: TaskEventRecord,
+    ) -> TaskEventRecord {
+        self.record_observation(event, TaskEventObservationSource::ProviderLifecycle, None)
+            .event
+    }
+
+    #[cfg(test)]
+    pub(in crate::app) fn record_accepted(&self, event: TaskEventRecord) -> TaskEventRecord {
+        self.record_observation(event, TaskEventObservationSource::AcceptedSubmission, None)
+            .event
+    }
+
+    #[cfg(test)]
+    pub(in crate::app) fn record_local(&self, event: TaskEventRecord) -> TaskEventRecord {
+        self.record_observation(event, TaskEventObservationSource::LocalProjection, None)
+            .event
     }
 
     fn record_observation(
         &self,
         mut event: TaskEventRecord,
+        source: TaskEventObservationSource,
         session_revision: Option<u64>,
     ) -> TaskEventPublication {
         let Ok(mut state) = self.state.lock() else {
@@ -159,10 +196,12 @@ impl LiveTaskEventCache {
             .iter_mut()
             .find(|item| item.event.id == event.id)
         {
-            existing.event = merge_task_event_record(existing.event.clone(), event);
+            let (merged, merged_source, merged_session_revision) =
+                advance_cached_observation(existing, event, source, session_revision);
+            existing.event = merged;
+            existing.source = merged_source;
             existing.publication_revision = publication_revision;
-            existing.session_revision =
-                max_optional_revision(existing.session_revision, session_revision);
+            existing.session_revision = merged_session_revision;
             return TaskEventPublication {
                 revision: publication_revision,
                 event: existing.event.clone(),
@@ -178,6 +217,7 @@ impl LiveTaskEventCache {
             event: event.clone(),
             publication_revision,
             session_revision,
+            source,
         });
         if thread_events.len() > LIVE_TASK_EVENT_LIMIT_PER_THREAD {
             thread_events.remove(0);
@@ -240,7 +280,10 @@ impl LiveTaskEventCache {
             .get(thread_id)
             .into_iter()
             .flatten()
-            .filter(|event| event.event.event_type == "turn_started")
+            .filter(|event| {
+                event.source == TaskEventObservationSource::ProviderLifecycle
+                    && event.event.event_type == "turn_started"
+            })
             .filter_map(|event| task_event_turn_id(&event.event))
             .map(str::to_string)
             .collect::<Vec<_>>();
@@ -264,7 +307,10 @@ impl LiveTaskEventCache {
             .flat_map(|(thread_id, events)| {
                 events
                     .iter()
-                    .filter(|event| event.event.event_type == "turn_started")
+                    .filter(|event| {
+                        event.source == TaskEventObservationSource::ProviderLifecycle
+                            && event.event.event_type == "turn_started"
+                    })
                     .filter_map(|event| task_event_turn_id(&event.event))
                     .map(|turn_id| (thread_id.clone(), turn_id.to_string()))
             })
@@ -296,14 +342,6 @@ fn advance_revision(revisions: &mut HashMap<String, u64>, thread_id: &str) -> u6
     *revision
 }
 
-fn max_optional_revision(left: Option<u64>, right: Option<u64>) -> Option<u64> {
-    match (left, right) {
-        (Some(left), Some(right)) => Some(left.max(right)),
-        (Some(revision), None) | (None, Some(revision)) => Some(revision),
-        (None, None) => None,
-    }
-}
-
 fn fully_observed_turns(state: &LiveTaskEventCacheState, thread_id: &str) -> HashSet<String> {
     let invalidated = state.invalidated_turns.get(thread_id);
     state
@@ -311,7 +349,10 @@ fn fully_observed_turns(state: &LiveTaskEventCacheState, thread_id: &str) -> Has
         .get(thread_id)
         .into_iter()
         .flatten()
-        .filter(|event| event.event.event_type == "turn_started")
+        .filter(|event| {
+            event.source == TaskEventObservationSource::ProviderLifecycle
+                && event.event.event_type == "turn_started"
+        })
         .filter_map(|event| task_event_turn_id(&event.event))
         .filter(|turn_id| invalidated.is_none_or(|turns| !turns.contains(*turn_id)))
         .map(str::to_string)
@@ -341,42 +382,59 @@ impl TaskEvents {
         self.sender.subscribe()
     }
 
-    pub(in crate::app) fn publish(&self, event: TaskEventRecord) -> TaskEventPublication {
-        let event = self.record(event);
+    /// Publish a Caffold-owned projection event such as an approval lifecycle
+    /// or local failure. This does not claim provider-session causality.
+    pub(in crate::app) fn publish_local(&self, event: TaskEventRecord) -> TaskEventPublication {
+        let event = self.record_local(event);
         self.broadcast(event.clone());
         event
     }
 
-    pub(in crate::app) fn publish_from_session(
+    /// Publish a report accepted from the provider's live session.
+    pub(in crate::app) fn publish_provider_lifecycle(
         &self,
         event: TaskEventRecord,
         session_revision: u64,
     ) -> TaskEventPublication {
-        let event = self.record_from_session(event, session_revision);
+        let event = self.record_inner(
+            event,
+            TaskEventObservationSource::ProviderLifecycle,
+            Some(session_revision),
+        );
         self.broadcast(event.clone());
         event
     }
 
-    pub(in crate::app) fn record(&self, event: TaskEventRecord) -> TaskEventPublication {
-        self.record_inner(event, None)
-    }
-
-    fn record_from_session(
+    /// Publish a user item after the adapter accepted it and supplied its exact
+    /// identity. Provider lifecycle/history may later hand off that same item.
+    pub(in crate::app) fn publish_accepted_submission(
         &self,
         event: TaskEventRecord,
-        session_revision: u64,
+        session_revision: Option<u64>,
     ) -> TaskEventPublication {
-        self.record_inner(event, Some(session_revision))
+        let event = self.record_inner(
+            event,
+            TaskEventObservationSource::AcceptedSubmission,
+            session_revision,
+        );
+        self.broadcast(event.clone());
+        event
+    }
+
+    pub(in crate::app) fn record_local(&self, event: TaskEventRecord) -> TaskEventPublication {
+        self.record_inner(event, TaskEventObservationSource::LocalProjection, None)
     }
 
     fn record_inner(
         &self,
         mut event: TaskEventRecord,
+        source: TaskEventObservationSource,
         session_revision: Option<u64>,
     ) -> TaskEventPublication {
         self.generated_images.observe(&event);
         event.generated_image = None;
-        self.cache.record_observation(event, session_revision)
+        self.cache
+            .record_observation(event, source, session_revision)
     }
 
     pub(in crate::app) fn broadcast(&self, event: TaskEventPublication) {
@@ -423,29 +481,6 @@ impl TaskEvents {
     }
 }
 
-/// Merge a position-owning event projection with supplemental observations.
-///
-/// An exact identity in both collections keeps the first collection's
-/// conversation position. The supplemental record may still contribute its
-/// newer payload and update time. An identity found only in the supplemental
-/// collection remains visible at its observed position.
-pub(in crate::app) fn merge_task_event_records(
-    positioned: Vec<TaskEventRecord>,
-    supplemental: Vec<TaskEventRecord>,
-) -> Vec<TaskEventRecord> {
-    let mut events = Vec::<TaskEventRecord>::new();
-    let mut index_by_id = HashMap::<String, usize>::new();
-    for event in positioned.into_iter().chain(supplemental) {
-        if let Some(index) = index_by_id.get(&event.id).copied() {
-            events[index] = merge_task_event_record(events[index].clone(), event);
-        } else {
-            index_by_id.insert(event.id.clone(), events.len());
-            events.push(event);
-        }
-    }
-    events
-}
-
 /// Join a provider-history snapshot with the live reports Caffold observed.
 ///
 /// A live `turn_started` plus uninterrupted observation proves Caffold watched
@@ -456,51 +491,217 @@ pub(in crate::app) fn merge_task_event_records(
 /// it began, or whose live connection lost continuity, has no such proof, so
 /// history remains the baseline and only exact identities reconcile. No
 /// content, proximity, or arrival-order matching is involved.
-pub(in crate::app) fn merge_provider_history_with_live_events(
+pub(in crate::app) fn reconcile_provider_history_with_live_observations(
     history: Vec<TaskEventRecord>,
-    live: Vec<TaskEventRecord>,
+    live: &[TaskEventObservation],
+    history_base_revision: Option<u64>,
     fully_observed_turns: &HashSet<String>,
 ) -> Vec<TaskEventRecord> {
-    let history = history
+    let mut events = history
         .into_iter()
         .filter(|event| {
             task_event_turn_id(event).is_none_or(|turn_id| !fully_observed_turns.contains(turn_id))
         })
-        .collect();
-    merge_task_event_records(history, live)
+        .collect::<Vec<_>>();
+    let mut index_by_id = events
+        .iter()
+        .enumerate()
+        .map(|(index, event)| (event.id.clone(), index))
+        .collect::<HashMap<_, _>>();
+    for observation in live {
+        if let Some(index) = index_by_id.get(&observation.event.id).copied() {
+            let live_is_after_read = observation.source
+                == TaskEventObservationSource::ProviderLifecycle
+                && observation
+                    .session_revision
+                    .zip(history_base_revision)
+                    .is_some_and(|(live, history)| live > history);
+            events[index] = reconcile_history_record(
+                events[index].clone(),
+                observation.event.clone(),
+                live_is_after_read,
+            );
+        } else {
+            index_by_id.insert(observation.event.id.clone(), events.len());
+            events.push(observation.event.clone());
+        }
+    }
+    events
 }
 
-pub(in crate::app) fn merge_task_event_record(
-    existing: TaskEventRecord,
+/// Compose current Caffold-owned approval requests into a conversation view.
+///
+/// The runtime request store owns current answerability. Exact identity keeps
+/// an already projected request in place while the runtime-owned record owns
+/// conflicting request fields. This is deliberately not provider-history
+/// reconciliation.
+pub(in crate::app) fn compose_pending_approval_events(
+    mut events: Vec<TaskEventRecord>,
+    pending: Vec<TaskEventRecord>,
+) -> Vec<TaskEventRecord> {
+    let mut index_by_id = events
+        .iter()
+        .enumerate()
+        .map(|(index, event)| (event.id.clone(), index))
+        .collect::<HashMap<_, _>>();
+    for request in pending {
+        if let Some(index) = index_by_id.get(&request.id).copied() {
+            let position = events[index].position;
+            events[index] = project_primary_record(request, events[index].clone(), position);
+        } else {
+            index_by_id.insert(request.id.clone(), events.len());
+            events.push(request);
+        }
+    }
+    events
+}
+
+fn advance_cached_observation(
+    existing: &TaskEventObservation,
     incoming: TaskEventRecord,
+    incoming_source: TaskEventObservationSource,
+    incoming_session_revision: Option<u64>,
+) -> (TaskEventRecord, TaskEventObservationSource, Option<u64>) {
+    let position = existing.event.position;
+    let incoming_owns_projection = match (existing.source, incoming_source) {
+        (
+            TaskEventObservationSource::ProviderLifecycle,
+            TaskEventObservationSource::ProviderLifecycle,
+        ) => {
+            !provider_revision_is_older(existing.session_revision, incoming_session_revision)
+                && !provider_lifecycle_regresses(&existing.event, &incoming)
+        }
+        (
+            TaskEventObservationSource::AcceptedSubmission,
+            TaskEventObservationSource::ProviderLifecycle,
+        ) => true,
+        (
+            TaskEventObservationSource::ProviderLifecycle,
+            TaskEventObservationSource::AcceptedSubmission,
+        ) => false,
+        (
+            TaskEventObservationSource::LocalProjection,
+            TaskEventObservationSource::ProviderLifecycle
+            | TaskEventObservationSource::AcceptedSubmission,
+        ) => true,
+        (
+            TaskEventObservationSource::AcceptedSubmission,
+            TaskEventObservationSource::LocalProjection,
+        )
+        | (
+            TaskEventObservationSource::ProviderLifecycle,
+            TaskEventObservationSource::LocalProjection,
+        ) => false,
+        (
+            TaskEventObservationSource::AcceptedSubmission,
+            TaskEventObservationSource::AcceptedSubmission,
+        )
+        | (
+            TaskEventObservationSource::LocalProjection,
+            TaskEventObservationSource::LocalProjection,
+        ) => true,
+    };
+    if incoming_owns_projection {
+        let session_revision = if existing.source == incoming_source {
+            max_optional_revision(existing.session_revision, incoming_session_revision)
+        } else {
+            incoming_session_revision
+        };
+        (
+            project_primary_record(incoming, existing.event.clone(), position),
+            incoming_source,
+            session_revision,
+        )
+    } else {
+        (
+            project_primary_record(existing.event.clone(), incoming, position),
+            existing.source,
+            existing.session_revision,
+        )
+    }
+}
+
+fn max_optional_revision(left: Option<u64>, right: Option<u64>) -> Option<u64> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(left.max(right)),
+        (Some(revision), None) | (None, Some(revision)) => Some(revision),
+        (None, None) => None,
+    }
+}
+
+fn provider_revision_is_older(existing: Option<u64>, incoming: Option<u64>) -> bool {
+    existing
+        .zip(incoming)
+        .is_some_and(|(existing, incoming)| incoming < existing)
+}
+
+fn reconcile_history_record(
+    history: TaskEventRecord,
+    live: TaskEventRecord,
+    live_is_after_read: bool,
 ) -> TaskEventRecord {
-    let position = existing.position;
-    let observed_ms = match (existing.observed_ms, incoming.observed_ms) {
+    let position = history.position;
+    if live_is_after_read && !provider_lifecycle_regresses(&history, &live) {
+        let history_event_type = history.event_type.clone();
+        let mut reconciled = project_primary_record(live, history, position);
+        // Item kind is stable provider-history structure. Mutable live payload
+        // and summary may advance after the read begins, but cannot reclassify
+        // the exact item into another surface.
+        reconciled.event_type = history_event_type;
+        reconciled
+    } else {
+        project_primary_record(history, live, position)
+    }
+}
+
+fn provider_lifecycle_regresses(existing: &TaskEventRecord, incoming: &TaskEventRecord) -> bool {
+    match existing.activity_status {
+        None | Some(ActivityStatus::InProgress) => false,
+        Some(terminal) => incoming.activity_status != Some(terminal),
+    }
+}
+
+/// Project one exact identity with an explicitly chosen field owner.
+///
+/// `primary` owns conflicting presentation and payload fields. `supplemental`
+/// may fill fields the owner did not supply, contribute direct observation
+/// evidence, and retain a generated asset under the same identity. Update
+/// metadata is preserved for the later removal stage but never selects the
+/// owner.
+fn project_primary_record(
+    mut primary: TaskEventRecord,
+    supplemental: TaskEventRecord,
+    position: TaskEventPosition,
+) -> TaskEventRecord {
+    let observed_ms = match (primary.observed_ms, supplemental.observed_ms) {
         (Some(existing), Some(incoming)) => Some(existing.min(incoming)),
         (Some(observed), None) | (None, Some(observed)) => Some(observed),
         (None, None) => None,
     };
-    let existing_updated_ms = existing.updated_ms.unwrap_or(existing.position.anchor_ms);
-    let incoming_updated_ms = incoming.updated_ms.unwrap_or(incoming.position.anchor_ms);
-    let (mut latest, earlier) = if incoming_updated_ms >= existing_updated_ms {
-        (incoming, existing)
-    } else {
-        (existing, incoming)
-    };
-    latest.payload = match (earlier.payload, latest.payload.take()) {
-        (Some(JsonValue::Object(mut earlier)), Some(JsonValue::Object(latest))) => {
-            earlier.extend(latest);
-            Some(JsonValue::Object(earlier))
+    let updated_ms =
+        observation_update_marker(&primary).max(observation_update_marker(&supplemental));
+    let supplemental_generated_image = supplemental.generated_image;
+    let supplemental_activity_status = supplemental.activity_status;
+    primary.payload = match (primary.payload.take(), supplemental.payload) {
+        (Some(JsonValue::Object(mut primary)), Some(JsonValue::Object(supplemental))) => {
+            for (name, value) in supplemental {
+                primary.entry(name).or_insert(value);
+            }
+            Some(JsonValue::Object(primary))
         }
-        (Some(earlier), None) => Some(earlier),
-        (_, latest) => latest,
+        (None, supplemental) => supplemental,
+        (primary, _) => primary,
     };
-    latest.position = position;
-    latest.observed_ms = observed_ms;
-    latest.generated_image = latest.generated_image.or(earlier.generated_image);
-    let updated_ms = existing_updated_ms.max(incoming_updated_ms);
-    latest.updated_ms = (updated_ms > position.anchor_ms).then_some(updated_ms);
-    latest
+    primary.position = position;
+    primary.observed_ms = observed_ms;
+    primary.activity_status = primary.activity_status.or(supplemental_activity_status);
+    primary.generated_image = primary.generated_image.or(supplemental_generated_image);
+    primary.updated_ms = (updated_ms > position.anchor_ms).then_some(updated_ms);
+    primary
+}
+
+fn observation_update_marker(event: &TaskEventRecord) -> u64 {
+    event.updated_ms.unwrap_or(event.position.anchor_ms)
 }
 
 pub(in crate::app) fn sort_task_events(events: &mut [TaskEventRecord]) {
@@ -787,6 +988,7 @@ pub(in crate::app) fn task_event_from_item(
         Some(merged_payload(identity, extra)),
         anchor_ms,
     );
+    event.activity_status = Some(item.status);
     event.generated_image = generated_image;
     Some(event)
 }
@@ -938,6 +1140,7 @@ pub(in crate::app) fn task_event_record(
         position: TaskEventPosition::at(anchor_ms),
         observed_ms: Some(anchor_ms),
         updated_ms: None,
+        activity_status: None,
         generated_image: None,
     }
 }
@@ -1070,6 +1273,27 @@ mod tests {
         crate::agent::codex::conversation_item(&item, reported)
     }
 
+    fn provider_lifecycle_observation(
+        event: TaskEventRecord,
+        session_revision: u64,
+    ) -> TaskEventObservation {
+        TaskEventObservation {
+            event,
+            publication_revision: session_revision,
+            session_revision: Some(session_revision),
+            source: TaskEventObservationSource::ProviderLifecycle,
+        }
+    }
+
+    fn accepted_observation(event: TaskEventRecord) -> TaskEventObservation {
+        TaskEventObservation {
+            event,
+            publication_revision: 1,
+            session_revision: None,
+            source: TaskEventObservationSource::AcceptedSubmission,
+        }
+    }
+
     #[test]
     fn task_event_wire_contract_separates_position_from_observed_time() {
         let mut event = task_event_record(
@@ -1163,10 +1387,10 @@ mod tests {
 
         assert_eq!(raw.id, canonical.id);
         assert_eq!(raw.event_type, canonical.event_type);
-        assert_eq!(
-            merge_task_event_records(vec![canonical], vec![raw]).len(),
-            1
-        );
+        let cache = LiveTaskEventCache::default();
+        cache.record_provider_lifecycle(canonical);
+        cache.record_provider_lifecycle(raw);
+        assert_eq!(cache.for_thread("thread_1").len(), 1);
     }
 
     #[test]
@@ -1192,12 +1416,21 @@ mod tests {
         assert_eq!(live.id, history.id);
         assert_ne!(live.id, separate.id);
         let cache = LiveTaskEventCache::default();
-        cache.record(live.clone());
-        cache.record(history.clone());
-        cache.record(separate.clone());
+        cache.record_provider_lifecycle(live.clone());
+        cache.record_provider_lifecycle(history.clone());
+        cache.record_provider_lifecycle(separate.clone());
         assert_eq!(cache.for_thread("thread_1").len(), 2);
 
-        let merged = merge_task_event_records(vec![history], vec![live, separate]);
+        let observations = [
+            provider_lifecycle_observation(live, 1),
+            provider_lifecycle_observation(separate, 1),
+        ];
+        let merged = reconcile_provider_history_with_live_observations(
+            vec![history],
+            &observations,
+            Some(2),
+            &HashSet::new(),
+        );
         assert_eq!(merged.len(), 2);
         assert_eq!(
             merged
@@ -1258,8 +1491,13 @@ mod tests {
         );
         late_live_prompt.position.index = 0;
 
-        let mut merged =
-            merge_task_event_records(vec![history_prompt, history_answer], vec![late_live_prompt]);
+        let observations = [accepted_observation(late_live_prompt)];
+        let mut merged = reconcile_provider_history_with_live_observations(
+            vec![history_prompt, history_answer],
+            &observations,
+            Some(0),
+            &HashSet::new(),
+        );
         sort_task_events(&mut merged);
 
         assert_eq!(
@@ -1338,9 +1576,15 @@ mod tests {
         })
         .collect::<Vec<_>>();
 
-        let mut merged = merge_provider_history_with_live_events(
+        let live = live
+            .into_iter()
+            .enumerate()
+            .map(|(index, event)| provider_lifecycle_observation(event, index as u64 + 1))
+            .collect::<Vec<_>>();
+        let mut merged = reconcile_provider_history_with_live_observations(
             history,
-            live,
+            &live,
+            Some(0),
             &HashSet::from([turn_id.to_string()]),
         );
         sort_task_events(&mut merged);
@@ -1402,14 +1646,219 @@ mod tests {
             110,
         );
 
-        let merged =
-            merge_provider_history_with_live_events(vec![history], vec![live], &HashSet::new());
+        let observations = [provider_lifecycle_observation(live, 1)];
+        let merged = reconcile_provider_history_with_live_observations(
+            vec![history],
+            &observations,
+            Some(0),
+            &HashSet::new(),
+        );
 
         assert_eq!(
             merged.len(),
             2,
             "without a live turn boundary or exact identity, Caffold cannot claim two provider records are one"
         );
+    }
+
+    #[test]
+    fn recovered_history_owns_conflicts_from_a_stale_live_transient() {
+        let mut history = task_event_record(
+            "thread_1",
+            "turn_1:item_1",
+            "command_execution",
+            "Canonical command completed",
+            Some(json!({
+                "turnId": "turn_1",
+                "itemId": "item_1",
+                "status": "completed",
+                "output": "canonical output",
+                "structure": { "owner": "history" }
+            })),
+            100,
+        );
+        history.activity_status = Some(ActivityStatus::Completed);
+        let mut live = task_event_record(
+            "thread_1",
+            "turn_1:item_1",
+            "tool_call",
+            "Transient command running",
+            Some(json!({
+                "turnId": "turn_1",
+                "itemId": "item_1",
+                "status": "inProgress",
+                "output": "partial output",
+                "structure": "transient",
+                "liveOnly": "retained"
+            })),
+            200,
+        );
+
+        live.activity_status = Some(ActivityStatus::InProgress);
+        let observations = [provider_lifecycle_observation(live, 6)];
+        let merged = reconcile_provider_history_with_live_observations(
+            vec![history],
+            &observations,
+            Some(5),
+            &HashSet::new(),
+        );
+        let item = &merged[0];
+
+        assert_eq!(item.position.anchor_ms, 100);
+        assert_eq!(item.event_type, "command_execution");
+        assert_eq!(item.summary, "Canonical command completed");
+        assert_eq!(item.payload.as_ref().unwrap()["status"], "completed");
+        assert_eq!(item.payload.as_ref().unwrap()["output"], "canonical output");
+        assert!(item.payload.as_ref().unwrap()["structure"].is_object());
+        assert_eq!(item.payload.as_ref().unwrap()["liveOnly"], "retained");
+    }
+
+    #[test]
+    fn provider_observation_before_the_history_read_cannot_replace_history_conflicts() {
+        let mut history = task_event_record(
+            "thread_1",
+            "turn_1:item_1",
+            "command_execution",
+            "History owns this read",
+            Some(json!({
+                "turnId": "turn_1",
+                "itemId": "item_1",
+                "status": "completed",
+                "owner": "history"
+            })),
+            100,
+        );
+        history.activity_status = Some(ActivityStatus::Completed);
+        let mut live = history.clone();
+        live.summary = "Earlier live projection".to_string();
+        live.payload.as_mut().unwrap()["owner"] = json!("live");
+        live.position = TaskEventPosition::at(200);
+
+        let observations = [provider_lifecycle_observation(live, 4)];
+        let merged = reconcile_provider_history_with_live_observations(
+            vec![history],
+            &observations,
+            Some(5),
+            &HashSet::new(),
+        );
+        let item = &merged[0];
+
+        assert_eq!(item.position.anchor_ms, 100);
+        assert_eq!(item.summary, "History owns this read");
+        assert_eq!(item.payload.as_ref().unwrap()["owner"], "history");
+    }
+
+    #[test]
+    fn provider_completion_after_the_history_read_advances_mutable_fields_only() {
+        let mut history = task_event_record(
+            "thread_1",
+            "turn_1:item_1",
+            "command_execution",
+            "Command running in history",
+            Some(json!({
+                "turnId": "turn_1",
+                "itemId": "item_1",
+                "status": "inProgress",
+                "output": "partial",
+                "historyOnly": true
+            })),
+            100,
+        );
+        history.position.index = 3;
+        history.activity_status = Some(ActivityStatus::InProgress);
+        let mut live = task_event_record(
+            "thread_1",
+            "turn_1:item_1",
+            "tool_call",
+            "Command completed live",
+            Some(json!({
+                "turnId": "turn_1",
+                "itemId": "item_1",
+                "status": "completed",
+                "output": "final",
+                "liveOnly": true
+            })),
+            200,
+        );
+        live.activity_status = Some(ActivityStatus::Completed);
+
+        let observations = [provider_lifecycle_observation(live, 6)];
+        let merged = reconcile_provider_history_with_live_observations(
+            vec![history],
+            &observations,
+            Some(5),
+            &HashSet::new(),
+        );
+        let item = &merged[0];
+
+        assert_eq!(
+            item.position,
+            TaskEventPosition {
+                anchor_ms: 100,
+                index: 3
+            }
+        );
+        assert_eq!(item.event_type, "command_execution");
+        assert_eq!(item.summary, "Command completed live");
+        assert_eq!(item.payload.as_ref().unwrap()["status"], "completed");
+        assert_eq!(item.payload.as_ref().unwrap()["output"], "final");
+        assert_eq!(item.payload.as_ref().unwrap()["historyOnly"], true);
+        assert_eq!(item.payload.as_ref().unwrap()["liveOnly"], true);
+    }
+
+    #[test]
+    fn current_pending_approval_owns_answerable_fields_without_moving_the_event() {
+        let projected = task_event_record(
+            "thread_1",
+            "approval_requested:approval_1",
+            "approval_requested",
+            "Earlier approval projection",
+            Some(json!({
+                "approvalId": "approval_1",
+                "title": "Earlier title",
+                "historyOnly": true
+            })),
+            100,
+        );
+        let pending = task_event_record(
+            "thread_1",
+            "approval_requested:approval_1",
+            "approval_requested",
+            "Current pending approval",
+            Some(json!({
+                "approvalId": "approval_1",
+                "title": "Current title",
+                "decisions": ["accept"]
+            })),
+            200,
+        );
+
+        let merged = compose_pending_approval_events(vec![projected], vec![pending]);
+        let approval = &merged[0];
+
+        assert_eq!(approval.position.anchor_ms, 100);
+        assert_eq!(approval.summary, "Current pending approval");
+        assert_eq!(approval.payload.as_ref().unwrap()["title"], "Current title");
+        assert_eq!(approval.payload.as_ref().unwrap()["historyOnly"], true);
+        assert_eq!(approval.payload.as_ref().unwrap()["decisions"][0], "accept");
+    }
+
+    #[test]
+    fn local_turn_shaped_event_cannot_claim_a_complete_provider_ledger() {
+        let cache = LiveTaskEventCache::default();
+        cache.record_local(task_event_record(
+            "thread_1",
+            "turn_1:started",
+            "turn_started",
+            "Local projection",
+            Some(json!({
+                "threadId": "thread_1",
+                "turnId": "turn_1"
+            })),
+            100,
+        ));
+
+        assert!(cache.fully_observed_turns("thread_1").is_empty());
     }
 
     #[test]
@@ -1439,7 +1888,7 @@ mod tests {
             })),
             110,
         );
-        cache.observe(&[turn_started, live_item]);
+        cache.observe_provider_lifecycle(&[turn_started, live_item]);
         assert_eq!(
             cache.fully_observed_turns("thread_1"),
             HashSet::from(["turn_1".to_string()])
@@ -1466,10 +1915,12 @@ mod tests {
             })),
             100,
         );
-        let merged = merge_provider_history_with_live_events(
+        let snapshot = cache.snapshot_for_thread("thread_1");
+        let merged = reconcile_provider_history_with_live_observations(
             vec![history_item],
-            cache.for_thread("thread_1"),
-            &cache.fully_observed_turns("thread_1"),
+            &snapshot.observations,
+            None,
+            &snapshot.fully_observed_turns,
         );
         assert_eq!(
             merged.len(),
@@ -1578,7 +2029,9 @@ mod tests {
         );
         assert_eq!(started.payload.as_ref().unwrap()["status"], "inProgress");
 
-        let merged = merge_task_event_record(started, completed);
+        let cache = LiveTaskEventCache::default();
+        cache.record_provider_lifecycle(started);
+        let merged = cache.record_provider_lifecycle(completed);
         assert_eq!(merged.position.anchor_ms, 10);
         assert_eq!(merged.updated_ms, Some(20));
         assert_eq!(merged.payload.as_ref().unwrap()["status"], "completed");
@@ -2063,7 +2516,8 @@ mod tests {
 
         // Detail pages are projected independently and merged by the client.
         // This reproduces a resumed Claude history spanning two cursors.
-        let mut events = merge_task_event_records(thread_events(&older), thread_events(&newer));
+        let mut events = thread_events(&older);
+        events.extend(thread_events(&newer));
         sort_task_events(&mut events);
         let visible_messages = events
             .iter()
@@ -2362,7 +2816,7 @@ mod tests {
             None,
             100,
         );
-        let mut events = merge_task_event_records(vec![first], vec![second]);
+        let mut events = vec![first, second];
 
         sort_task_events(&mut events);
 
@@ -2381,7 +2835,7 @@ mod tests {
     #[test]
     fn live_task_event_cache_preserves_latest_transient_item_state() {
         let cache = LiveTaskEventCache::default();
-        let started = task_event_record(
+        let mut started = task_event_record(
             "thread_1",
             "turn_1:command_1",
             "command_execution",
@@ -2392,7 +2846,8 @@ mod tests {
             })),
             10,
         );
-        let completed = task_event_record(
+        started.activity_status = Some(ActivityStatus::InProgress);
+        let mut completed = task_event_record(
             "thread_1",
             "turn_1:command_1",
             "command_execution",
@@ -2401,9 +2856,10 @@ mod tests {
             20,
         );
 
-        cache.record(started.clone());
-        cache.record(completed.clone());
-        cache.record(task_event_record(
+        completed.activity_status = Some(ActivityStatus::Completed);
+        cache.record_provider_lifecycle(started.clone());
+        cache.record_provider_lifecycle(completed.clone());
+        cache.record_provider_lifecycle(task_event_record(
             "thread_2",
             "turn_2:command_1",
             "command_execution",
@@ -2412,7 +2868,7 @@ mod tests {
             30,
         ));
 
-        let merged = merge_task_event_records(Vec::new(), cache.for_thread("thread_1"));
+        let merged = cache.for_thread("thread_1");
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].summary, completed.summary);
         assert_eq!(merged[0].payload.as_ref().unwrap()["status"], "completed");
@@ -2425,7 +2881,10 @@ mod tests {
             "test result: ok"
         );
 
-        cache.record(started);
+        let mut stale_replay = started;
+        stale_replay.position.anchor_ms = 30;
+        stale_replay.observed_ms = Some(30);
+        cache.record_provider_lifecycle(stale_replay);
         let merged = cache.for_thread("thread_1");
         assert_eq!(merged[0].summary, completed.summary);
         assert_eq!(merged[0].payload.as_ref().unwrap()["status"], "completed");
@@ -2446,9 +2905,14 @@ mod tests {
             20,
         );
 
-        cache.observe(std::slice::from_ref(&command));
-        let later_thread_read = Vec::new();
-        let merged = merge_task_event_records(later_thread_read, cache.for_thread("thread_1"));
+        cache.observe_provider_lifecycle(std::slice::from_ref(&command));
+        let snapshot = cache.snapshot_for_thread("thread_1");
+        let merged = reconcile_provider_history_with_live_observations(
+            Vec::new(),
+            &snapshot.observations,
+            None,
+            &snapshot.fully_observed_turns,
+        );
         let mut positioned_command = command;
         positioned_command.position.index = 0;
 
@@ -2472,7 +2936,7 @@ mod tests {
             }),
         )
         .expect("accepted user message");
-        cache.record(accepted_user_message_event(
+        cache.record_accepted(accepted_user_message_event(
             "thread_1", "turn_1", &accepted, 10,
         ));
         let canonical = codex_item_event(
@@ -2491,13 +2955,54 @@ mod tests {
         )
         .expect("canonical user message");
 
-        let canonical = cache.record(canonical);
+        let canonical = cache.record_provider_lifecycle(canonical);
 
         let merged = cache.for_thread("thread_1");
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].id, canonical.id);
         assert_eq!(merged[0].position.anchor_ms, canonical.position.anchor_ms);
         assert_eq!(merged[0].payload.as_ref().unwrap()["itemId"], "message_1");
+    }
+
+    #[test]
+    fn later_accepted_submission_does_not_relabel_provider_causality() {
+        let events = TaskEvents::default();
+        let provider = codex_item_event(
+            "turn_1",
+            10,
+            ActivityStatus::Completed,
+            json!({
+                "type": "userMessage",
+                "id": "provider_prompt",
+                "clientId": "message_1",
+                "content": [{ "type": "text", "text": "Keep provider causality" }]
+            }),
+        )
+        .expect("provider user message");
+        events.publish_provider_lifecycle(provider, 4);
+        let accepted = codex_item(
+            ActivityStatus::Completed,
+            json!({
+                "type": "userMessage",
+                "id": "accepted_projection",
+                "clientId": "message_1",
+                "content": [{ "type": "text", "text": "Keep provider causality" }]
+            }),
+        )
+        .expect("accepted user message");
+        events.publish_accepted_submission(
+            accepted_user_message_event("thread_1", "turn_1", &accepted, 20),
+            Some(6),
+        );
+
+        let snapshot = events.snapshot_for_thread("thread_1");
+        let observation = &snapshot.observations[0];
+        assert_eq!(
+            observation.source,
+            TaskEventObservationSource::ProviderLifecycle
+        );
+        assert_eq!(observation.session_revision, Some(4));
+        assert_eq!(observation.event.position.anchor_ms, 10);
     }
 
     #[test]
@@ -2513,10 +3018,10 @@ mod tests {
             }),
         )
         .expect("accepted user message");
-        let prompt = cache.record(accepted_user_message_event(
+        let prompt = cache.record_accepted(accepted_user_message_event(
             "thread_1", "turn_1", &accepted, 10,
         ));
-        let failure = cache.record(first_turn_failed_event(
+        let failure = cache.record_local(first_turn_failed_event(
             "thread_1",
             "the agent could not be reached",
         ));
@@ -2554,7 +3059,14 @@ mod tests {
             }),
         )
         .expect("canonical user message");
-        let canonical = cache.record(canonical);
+        let mut canonical = canonical;
+        canonical
+            .payload
+            .as_mut()
+            .and_then(JsonValue::as_object_mut)
+            .unwrap()
+            .insert("owner".to_string(), json!("provider"));
+        let canonical = cache.record_provider_lifecycle(canonical);
 
         let accepted = codex_item(
             ActivityStatus::Completed,
@@ -2566,15 +3078,21 @@ mod tests {
             }),
         )
         .expect("accepted user message");
-        cache.record(accepted_user_message_event(
-            "thread_1", "turn_1", &accepted, 30,
-        ));
+        let mut accepted = accepted_user_message_event("thread_1", "turn_1", &accepted, 30);
+        accepted
+            .payload
+            .as_mut()
+            .and_then(JsonValue::as_object_mut)
+            .unwrap()
+            .insert("owner".to_string(), json!("accepted"));
+        cache.record_accepted(accepted);
 
         let merged = cache.for_thread("thread_1");
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].id, canonical.id);
         assert_eq!(merged[0].position.anchor_ms, canonical.position.anchor_ms);
         assert_eq!(merged[0].payload.as_ref().unwrap()["itemId"], "message_1");
+        assert_eq!(merged[0].payload.as_ref().unwrap()["owner"], "provider");
     }
 
     #[test]
@@ -2592,7 +3110,7 @@ mod tests {
             }),
         )
         .expect("first canonical user message");
-        cache.record(first);
+        cache.record_provider_lifecycle(first);
 
         let second = codex_item(
             ActivityStatus::Completed,
@@ -2604,7 +3122,7 @@ mod tests {
             }),
         )
         .expect("second accepted user message");
-        cache.record(accepted_user_message_event(
+        cache.record_accepted(accepted_user_message_event(
             "thread_1", "turn_1", &second, 30,
         ));
 
@@ -2619,7 +3137,7 @@ mod tests {
     async fn a_recorded_delta_keeps_its_publication_revision_after_a_newer_snapshot() {
         let events = TaskEvents::default();
         let mut subscriber = events.subscribe();
-        let recorded = events.record(task_event_record(
+        let recorded = events.record_local(task_event_record(
             "thread_1",
             "approval_requested:approval_1",
             "approval_requested",
@@ -2647,7 +3165,7 @@ mod tests {
     #[test]
     fn provider_observations_retain_session_causality_beside_publication_order() {
         let events = TaskEvents::default();
-        let published = events.publish_from_session(
+        let published = events.publish_provider_lifecycle(
             task_event_record(
                 "thread_1",
                 "turn_1:item_1",
@@ -2671,44 +3189,38 @@ mod tests {
     #[test]
     fn repeated_provider_reports_keep_arrival_order_and_latest_session_causality_separate() {
         let events = TaskEvents::default();
-        let first = events.publish_from_session(
-            task_event_record(
+        let report = |summary: &str, status: ActivityStatus, anchor_ms| {
+            let mut event = task_event_record(
                 "thread_1",
                 "turn_1:item_1",
                 "command_execution",
-                "Command running",
-                Some(json!({ "status": "inProgress" })),
-                10,
-            ),
+                summary,
+                Some(json!({ "status": status })),
+                anchor_ms,
+            );
+            event.activity_status = Some(status);
+            event
+        };
+        let first = events.publish_provider_lifecycle(
+            report("Command running", ActivityStatus::InProgress, 10),
             41,
         );
-        let second = events.publish_from_session(
-            task_event_record(
-                "thread_1",
-                "turn_1:item_1",
-                "command_execution",
-                "Command completed",
-                Some(json!({ "status": "completed" })),
-                20,
-            ),
+        let second = events.publish_provider_lifecycle(
+            report("Command completed", ActivityStatus::Completed, 20),
             42,
         );
-        let replay = events.publish_from_session(
-            task_event_record(
-                "thread_1",
-                "turn_1:item_1",
-                "command_execution",
-                "Older replay",
-                Some(json!({ "status": "inProgress" })),
-                5,
-            ),
-            40,
-        );
+        let replay = events
+            .publish_provider_lifecycle(report("Older replay", ActivityStatus::InProgress, 5), 43);
 
         assert!(first.revision < second.revision && second.revision < replay.revision);
         let snapshot = events.snapshot_for_thread("thread_1");
         assert_eq!(snapshot.observations.len(), 1);
         assert_eq!(snapshot.observations[0].session_revision, Some(42));
+        assert_eq!(snapshot.observations[0].event.summary, "Command completed");
+        assert_eq!(
+            snapshot.observations[0].event.payload.as_ref().unwrap()["status"],
+            "completed"
+        );
         assert_eq!(
             snapshot.observations[0].publication_revision, replay.revision,
             "publication order records arrival even when provider causality says it is a replay"
@@ -2730,9 +3242,10 @@ mod tests {
         )
         .expect("accepted user message");
 
-        let published = events.publish(accepted_user_message_event(
-            "thread_1", "turn_1", &accepted, 10,
-        ));
+        let published = events.publish_accepted_submission(
+            accepted_user_message_event("thread_1", "turn_1", &accepted, 10),
+            None,
+        );
         let broadcast = subscriber.recv().await.expect("accepted prompt broadcast");
 
         assert_eq!(broadcast, published);
@@ -2758,7 +3271,7 @@ mod tests {
     fn live_task_event_cache_evicts_the_oldest_thread() {
         let cache = LiveTaskEventCache::default();
         for index in 0..=LIVE_TASK_THREAD_LIMIT {
-            cache.record(task_event_record(
+            cache.record_provider_lifecycle(task_event_record(
                 &format!("thread_{index}"),
                 "event_1",
                 "assistant_message",

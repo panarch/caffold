@@ -550,17 +550,20 @@ mod tests {
     async fn a_lost_claude_session_withdraws_live_turn_completeness() {
         let root = tempfile::tempdir().unwrap();
         let (state, _runner) = watched(root.path()).await;
-        state.task_events.publish(task_event_record(
-            SESSION,
-            "turn-live:started",
-            "turn_started",
-            "Turn started",
-            Some(json!({
-                "threadId": SESSION,
-                "turnId": "turn-live",
-            })),
-            2_000,
-        ));
+        state.task_events.publish_provider_lifecycle(
+            task_event_record(
+                SESSION,
+                "turn-live:started",
+                "turn_started",
+                "Turn started",
+                Some(json!({
+                    "threadId": SESSION,
+                    "turnId": "turn-live",
+                })),
+                2_000,
+            ),
+            1,
+        );
         assert_eq!(state.task_events.fully_observed_turns(SESSION).len(), 1);
 
         state

@@ -202,7 +202,7 @@ impl TaskRuntime {
                         );
                     }
                 }
-                self.events.publish_from_session(
+                self.events.publish_provider_lifecycle(
                     turn_started_event(thread_id, turn, started_ms),
                     session_revision,
                 );
@@ -218,7 +218,7 @@ impl TaskRuntime {
                     "failed" => "Thread failed",
                     _ => "Thread idle",
                 };
-                self.events.publish_from_session(
+                self.events.publish_provider_lifecycle(
                     task_event_record(
                         thread_id,
                         "thread_status_changed",
@@ -241,7 +241,8 @@ impl TaskRuntime {
                 if let Some(record) =
                     task_event_from_item(thread_id, turn_id, at_or_now(*at_ms), item)
                 {
-                    self.events.publish_from_session(record, session_revision);
+                    self.events
+                        .publish_provider_lifecycle(record, session_revision);
                 }
             }
             SessionEventKind::TurnEnded { turn } => {
@@ -256,7 +257,7 @@ impl TaskRuntime {
                         eprintln!("failed to persist completed turn for {thread_id}: {error}");
                     }
                 }
-                self.events.publish_from_session(
+                self.events.publish_provider_lifecycle(
                     turn_completed_event(thread_id, turn, completed_ms),
                     session_revision,
                 );
@@ -265,7 +266,7 @@ impl TaskRuntime {
             // which owns the working tree the agent wrote to. What this says is
             // that there is something new to review.
             SessionEventKind::DiffChanged => {
-                self.events.publish_from_session(
+                self.events.publish_provider_lifecycle(
                     task_event_record(
                         thread_id,
                         "diff_updated",

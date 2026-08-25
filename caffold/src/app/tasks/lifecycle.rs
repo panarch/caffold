@@ -276,7 +276,7 @@ impl TaskLifecycle {
             Ok(turn) => turn,
             Err(error) => {
                 self.sessions.cancel_runtime(&conversation_id).await;
-                self.events.publish(first_turn_failed_event(
+                self.events.publish_local(first_turn_failed_event(
                     &conversation_id,
                     &error.to_string(),
                 ));
@@ -313,12 +313,8 @@ impl TaskLifecycle {
             &turn.user_message,
             prompt_observed_ms,
         );
-        if let Some(session_revision) = session_revision {
-            self.events
-                .publish_from_session(accepted_event, session_revision);
-        } else {
-            self.events.publish(accepted_event);
-        }
+        self.events
+            .publish_accepted_submission(accepted_event, session_revision);
     }
 
     pub(in crate::app) async fn place_active_task(

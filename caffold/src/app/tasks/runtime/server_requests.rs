@@ -142,7 +142,7 @@ impl TaskRuntime {
             return Ok(());
         };
 
-        self.events.publish(approval_resolved_event(
+        self.events.publish_local(approval_resolved_event(
             &pending.thread_id,
             &pending.request,
             ApprovalOutcome::Decided(decision),
@@ -230,7 +230,7 @@ impl TaskRuntime {
         let approval_id = request.id.clone();
         let event = self
             .events
-            .record(approval_requested_event(thread_id, &request, anchor_ms));
+            .record_local(approval_requested_event(thread_id, &request, anchor_ms));
         let newly_pending = self
             .approvals
             .lock()
@@ -518,7 +518,7 @@ impl TaskRuntime {
         };
 
         for (pending, outcome) in withdrawn {
-            self.events.publish(approval_resolved_event(
+            self.events.publish_local(approval_resolved_event(
                 &pending.thread_id,
                 &pending.request,
                 outcome,

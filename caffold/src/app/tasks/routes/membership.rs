@@ -1986,7 +1986,7 @@ mod tests {
         assert!(!archived.0.tasks[0].conversation_available);
         assert_eq!(archived.0.tasks[0].preview, "Conversation unavailable");
 
-        state.task_events.publish(TaskEventRecord {
+        state.task_events.publish_local(TaskEventRecord {
             id: "cached-event".to_string(),
             thread_id: thread_id.to_string(),
             event_type: "agent_message".to_string(),
@@ -1995,6 +1995,7 @@ mod tests {
             position: TaskEventPosition::at(1),
             observed_ms: Some(1),
             updated_ms: None,
+            activity_status: None,
             generated_image: None,
         });
         assert_eq!(state.task_events.for_thread(thread_id).len(), 1);

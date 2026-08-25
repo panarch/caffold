@@ -218,13 +218,9 @@ pub(super) async fn task_prompt(
     };
     let accepted_event =
         accepted_user_message_event(&thread_id, &turn_id, &user_message, prompt_observed_ms);
-    if let Some(session_revision) = session_revision {
-        state
-            .task_events
-            .publish_from_session(accepted_event, session_revision);
-    } else {
-        state.task_events.publish(accepted_event);
-    }
+    state
+        .task_events
+        .publish_accepted_submission(accepted_event, session_revision);
     Ok(Json(TaskPromptResponse {
         thread_id,
         turn_id,
