@@ -198,8 +198,8 @@ pub(crate) struct BackgroundTask {
 /// One thing the agent said or did, as the conversation draws it.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ConversationItem {
-    /// The agent's identifier for this item. It is what makes a live update and
-    /// a later read of the same work one entry rather than two.
+    /// The adapter's stable identifier for this item. It is what makes a live
+    /// update and a later read of the same work one entry rather than two.
     pub(crate) id: String,
     /// How far along this item is.
     ///

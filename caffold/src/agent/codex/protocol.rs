@@ -561,6 +561,7 @@ pub enum UserInput<'a> {
 pub struct TurnStartParams<'a> {
     pub thread_id: &'a str,
     pub input: Vec<UserInput<'a>>,
+    pub client_user_message_id: &'a str,
     pub cwd: &'a str,
     pub runtime_workspace_roots: [&'a str; 1],
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -581,6 +582,7 @@ pub struct TurnStartParams<'a> {
 pub struct TurnSteerParams<'a> {
     pub thread_id: &'a str,
     pub input: Vec<UserInput<'a>>,
+    pub client_user_message_id: &'a str,
     pub expected_turn_id: &'a str,
 }
 
@@ -1188,11 +1190,13 @@ pub(crate) fn turn_start_params<'a>(
     cwd: &'a str,
     prompt: &'a str,
     image_urls: &'a [String],
+    client_user_message_id: &'a str,
     options: &'a CodexTurnOptions,
 ) -> TurnStartParams<'a> {
     TurnStartParams {
         thread_id,
         input: turn_input(prompt, image_urls),
+        client_user_message_id,
         cwd,
         runtime_workspace_roots: [cwd],
         approval_policy: options
@@ -1216,10 +1220,12 @@ pub(crate) fn turn_steer_params<'a>(
     expected_turn_id: &'a str,
     prompt: &'a str,
     image_urls: &'a [String],
+    client_user_message_id: &'a str,
 ) -> TurnSteerParams<'a> {
     TurnSteerParams {
         thread_id,
         input: turn_input(prompt, image_urls),
+        client_user_message_id,
         expected_turn_id,
     }
 }
@@ -1651,6 +1657,7 @@ mod tests {
                     "/workspace/project",
                     "Inspect",
                     &images,
+                    "message_1",
                     &CodexTurnOptions {
                         model: Some("gpt-5.5".to_string()),
                         effort: Some("high".to_string()),
@@ -1665,6 +1672,7 @@ mod tests {
                         { "type": "text", "text": "Inspect", "text_elements": [] },
                         { "type": "image", "url": "data:image/png;base64,aGVsbG8=" }
                     ],
+                    "clientUserMessageId": "message_1",
                     "cwd": "/workspace/project",
                     "runtimeWorkspaceRoots": ["/workspace/project"],
                     "approvalPolicy": "never",
@@ -1677,14 +1685,21 @@ mod tests {
             ),
             (
                 TURN_STEER,
-                serde_json::to_value(turn_steer_params("thread_1", "turn_1", "Continue", &images))
-                    .expect("turn steer params"),
+                serde_json::to_value(turn_steer_params(
+                    "thread_1",
+                    "turn_1",
+                    "Continue",
+                    &images,
+                    "message_2",
+                ))
+                .expect("turn steer params"),
                 json!({
                     "threadId": "thread_1",
                     "input": [
                         { "type": "text", "text": "Continue", "text_elements": [] },
                         { "type": "image", "url": "data:image/png;base64,aGVsbG8=" }
                     ],
+                    "clientUserMessageId": "message_2",
                     "expectedTurnId": "turn_1"
                 }),
             ),
@@ -1944,6 +1959,7 @@ mod tests {
                 "/workspace/project",
                 "Inspect",
                 &[],
+                "message_1",
                 &CodexTurnOptions::default(),
             ))
             .expect("turn start params"),
@@ -1952,6 +1968,7 @@ mod tests {
                 "input": [
                     { "type": "text", "text": "Inspect", "text_elements": [] }
                 ],
+                "clientUserMessageId": "message_1",
                 "cwd": "/workspace/project",
                 "runtimeWorkspaceRoots": ["/workspace/project"],
                 "serviceTier": null

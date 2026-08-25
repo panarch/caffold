@@ -954,6 +954,38 @@ mod tests {
     }
 
     #[test]
+    fn codex_client_identity_survives_task_event_projection_and_merge() {
+        let prompt = |provider_id: &str, client_id: &str, created_ms| {
+            codex_item_event(
+                "turn_1",
+                created_ms,
+                ActivityStatus::Completed,
+                json!({
+                    "type": "userMessage",
+                    "id": provider_id,
+                    "clientId": client_id,
+                    "content": [{ "type": "text", "text": "Same words" }],
+                }),
+            )
+            .expect("a Codex user message event")
+        };
+        let live = prompt("01a03716-fcdb-7170-858b-f22699bc5a4f", "message_1", 10);
+        let history = prompt("item-256", "message_1", 11);
+        let separate = prompt("item-257", "message_2", 12);
+
+        assert_eq!(live.id, history.id);
+        assert_ne!(live.id, separate.id);
+        let cache = LiveTaskEventCache::default();
+        cache.record(live.clone());
+        cache.record(history.clone());
+        cache.record(separate.clone());
+        assert_eq!(cache.for_thread("thread_1").len(), 2);
+
+        let merged = merge_task_event_records(vec![live], vec![history, separate]);
+        assert_eq!(merged.len(), 2);
+    }
+
+    #[test]
     fn work_caffold_has_no_surface_for_still_reaches_the_conversation() {
         // Compacting context is not a tool call, and Codex's name for it would
         // mean nothing to a reader. It still has to appear, and it still has to

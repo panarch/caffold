@@ -261,7 +261,15 @@ pub(crate) fn conversation_item(
     reported: ActivityStatus,
 ) -> Option<ConversationItem> {
     let item_type = item.get("type").and_then(Value::as_str)?;
-    let id = text_field(item, "id")?;
+    let provider_id = text_field(item, "id")?;
+    // app-server may project one user message under a live UUID and a
+    // history-local `item-N` id. The client id is the identity it preserves
+    // across both views; older messages without one retain their provider id.
+    let id = if item_type == "userMessage" {
+        text_field(item, "clientId").unwrap_or(provider_id)
+    } else {
+        provider_id
+    };
     let status = activity_status(item).unwrap_or(reported);
     let kind = match item_type {
         "userMessage" => ItemKind::UserMessage {
@@ -1304,6 +1312,54 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn a_prompt_keeps_its_client_identity_across_item_projections() {
+        let live = conversation_item(
+            &json!({
+                "type": "userMessage",
+                "id": "01a03716-fcdb-7170-858b-f22699bc5a4f",
+                "clientId": "message_1",
+                "content": [{ "type": "text", "text": "Inspect this" }],
+            }),
+            ActivityStatus::Completed,
+        )
+        .expect("the live prompt is an item");
+        let history = conversation_item(
+            &json!({
+                "type": "userMessage",
+                "id": "item-256",
+                "clientId": "message_1",
+                "content": [{ "type": "text", "text": "Inspect this" }],
+            }),
+            ActivityStatus::Completed,
+        )
+        .expect("the historical prompt is an item");
+
+        assert_eq!(live.id, "message_1");
+        assert_eq!(history.id, live.id);
+    }
+
+    #[test]
+    fn a_prompt_without_a_client_identity_keeps_its_provider_identity() {
+        let live = conversation_item(
+            &json!({
+                "type": "userMessage",
+                "id": "01a03716-fcdb-7170-858b-f22699bc5a4f",
+                "clientId": null,
+            }),
+            ActivityStatus::Completed,
+        )
+        .expect("a legacy live prompt");
+        let history = conversation_item(
+            &json!({ "type": "userMessage", "id": "item-256" }),
+            ActivityStatus::Completed,
+        )
+        .expect("a legacy historical prompt");
+
+        assert_eq!(live.id, "01a03716-fcdb-7170-858b-f22699bc5a4f");
+        assert_eq!(history.id, "item-256");
     }
 
     #[test]

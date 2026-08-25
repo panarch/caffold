@@ -361,6 +361,7 @@ async fn run_reconnect_spike(socket_path: &Path, ids: &mut SpikeIds) -> Result<(
                 cwd,
                 &prompt,
                 &[],
+                &uuid::Uuid::new_v4().to_string(),
                 &CodexTurnOptions {
                     model: Some(SPIKE_MODEL.to_string()),
                     effort: Some("low".to_string()),
@@ -530,6 +531,7 @@ async fn run_approval_reconnect_spike(socket_path: &Path, ids: &mut SpikeIds) ->
                 cwd,
                 &prompt,
                 &[],
+                &uuid::Uuid::new_v4().to_string(),
                 &CodexTurnOptions {
                     model: Some(SPIKE_MODEL.to_string()),
                     effort: Some("low".to_string()),

@@ -225,11 +225,16 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
     schema.assert_declares(
         "v2/TurnStartParams.ts",
         &[
+            "clientUserMessageId?: string | null",
             "serviceTier?: string | null",
             "approvalPolicy",
             "approvalsReviewer",
             "permissions",
         ],
+    );
+    schema.assert_declares(
+        "v2/TurnSteerParams.ts",
+        &["clientUserMessageId?: string | null"],
     );
     schema.assert_declares("v2/ThreadStartResponse.ts", &["serviceTier: string | null"]);
     schema.assert_declares(
@@ -237,7 +242,14 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
         &["nextCursor", "backwardsCursor"],
     );
     schema.assert_declares("v2/TurnItemsView.ts", &["\"full\""]);
-    schema.assert_declares("v2/ThreadItem.ts", &["\"type\": \"imageGeneration\""]);
+    schema.assert_declares(
+        "v2/ThreadItem.ts",
+        &[
+            "\"type\": \"userMessage\"",
+            "clientId: string | null",
+            "\"type\": \"imageGeneration\"",
+        ],
+    );
     schema.assert_declares(
         "ImageGenerationItem.ts",
         &[
