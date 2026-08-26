@@ -489,6 +489,11 @@ runtime-restart request snapshots, repair guidance, diagnostics, and intents
 for Refresh or restart. The workspace Codex status lifecycle remains active
 across Tasks and Settings route changes and owns the HTTP request generations.
 
+`caffold-settings-detail-list` renders the label and value rows that Codex,
+Claude, and About report. It owns row identity, the placeholder a row shows
+before its value is known, and the width at which a label and its value
+stack. Each page publishes a row snapshot and owns its wording.
+
 Settings Claude owns a route-scoped diagnostic request for the installed
 binary, account, usage windows, and runner. Each block can fail independently
 without turning the report into a readiness gate. Its confirmed Restart intent

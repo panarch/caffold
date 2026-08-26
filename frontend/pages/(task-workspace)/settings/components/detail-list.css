@@ -1,0 +1,64 @@
+caffold-settings-detail-list {
+  container-type: inline-size;
+  display: block;
+  min-width: 0;
+
+  & > dl {
+    display: grid;
+    grid-template-columns: minmax(8rem, 0.55fr) minmax(0, 1fr);
+    column-gap: var(--interface-space-7);
+    margin: 0;
+  }
+
+  & > dl > div {
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
+    align-items: baseline;
+    row-gap: var(--interface-space-2);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: var(--interface-space-6) 0;
+  }
+
+  & dt {
+    color: var(--muted);
+    font-size: var(--settings-detail-label-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & dd {
+    min-width: 0;
+    margin: 0;
+    font-size: var(--settings-detail-value-size);
+    line-height: var(--interface-line-height);
+    overflow-wrap: anywhere;
+  }
+
+  & dd[data-unknown] {
+    color: var(--muted);
+  }
+
+  & dd[data-state="positive"] {
+    color: var(--success);
+  }
+
+  & dd[data-state="attention"] {
+    color: var(--warning);
+  }
+
+  & dd[data-state="negative"] {
+    color: var(--danger);
+  }
+}
+
+/*
+ * The value column stops earning its own column below this width: the label
+ * holds 8rem, leaving a value column too narrow for a path or an account.
+ * The settings detail pane is 43.9rem wide on desktop and 25.8rem on foldable
+ * at maximum Interface scale, so the pane itself decides where rows stack.
+ */
+@container (max-width: 28rem) {
+  caffold-settings-detail-list > dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -133,7 +133,7 @@ test("shows Codex versions and explicitly restarts an outdated runtime", { tag: 
   await expect(settings).toContainText("Codex runtime restarted.");
   await expect(settings.locator(".settings-codex-repair")).toBeHidden();
   await expect(settings).toContainText("App-server runtime");
-  await expect(settings.locator(".settings-details")).toContainText("0.147.0");
+  await expect(settings.locator("[data-codex-detail]")).toContainText("0.147.0");
   expect(restartRequests).toBe(1);
   expect(statusRequests).toBe(2);
 });
@@ -236,6 +236,142 @@ test("a source that could not answer costs its block and no more", { tag: "@all-
   await expect(settings).toContainText(
     "Unavailable — the runner did not answer within 30 seconds",
   );
+});
+
+test("holds the Codex rows while its first readiness check is still running", { tag: "@desktop" }, async ({
+  page,
+}, testInfo) => {
+  let releaseStatus;
+  const held = new Promise((resolve) => {
+    releaseStatus = resolve;
+  });
+  await page.route(/\/api\/codex\/status(?:\?|$)/, async (route) => {
+    await held;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockCodexStatus()),
+    });
+  });
+
+  await page.goto("/settings/codex");
+  const codex = page.locator("caffold-settings-codex-page");
+  const list = codex.locator("[data-codex-detail]");
+  const usage = codex.locator("[data-codex-usage]");
+
+  await expect(list.locator("[data-key='readiness'] dd")).toHaveText("Checking");
+  await expect(list.locator("[data-key='connection'] dd")).toHaveText("Checking");
+  await expect(list.locator("dd[data-unknown]")).toHaveCount(8);
+  await expect(list.locator("dl")).toHaveAttribute("aria-busy", "true");
+  await expect(usage.locator("dt")).toHaveText(["Reset credits"]);
+  await expect(usage.locator("dd[data-unknown]")).toHaveCount(1);
+  await captureReviewScreenshot(page, testInfo, "settings-codex-first-paint");
+
+  releaseStatus();
+
+  await expect(list.locator("[data-key='readiness'] dd")).toHaveText("Ready");
+  await expect(list.locator("dd[data-unknown]")).toHaveCount(0);
+  await expect(list.locator("dl")).not.toHaveAttribute("aria-busy", "true");
+  await expect(usage.locator("dt")).toHaveText([
+    "5 hours",
+    "1 week",
+    "Reset credits",
+  ]);
+  await expect(usage.locator("[data-key='primary'] dd")).toContainText("17% left");
+});
+
+test("holds the Claude agent rows while its first report is still loading", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  let releaseStatus;
+  const held = new Promise((resolve) => {
+    releaseStatus = resolve;
+  });
+  await page.route(/\/api\/claude\/status(?:\?|$)/, async (route) => {
+    await held;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockClaudeStatus()),
+    });
+  });
+
+  await page.goto("/settings/claude");
+  const agent = page.locator("caffold-settings-claude-page [data-claude-agent]");
+
+  await expect(agent.locator("dt")).toHaveText([
+    "Version",
+    "Path",
+    "Account",
+    "Plan",
+  ]);
+  await expect(agent.locator("dd[data-unknown]")).toHaveCount(4);
+  await expect(agent.locator("dl")).toHaveAttribute("aria-busy", "true");
+
+  releaseStatus();
+
+  await expect(agent.locator("dd").first()).toHaveText("2.1.239 (Claude Code)");
+  await expect(agent.locator("dt")).toHaveText([
+    "Version",
+    "Path",
+    "Account",
+    "Plan",
+  ]);
+  await expect(agent.locator("dd[data-unknown]")).toHaveCount(0);
+  await expect(agent.locator("dl")).not.toHaveAttribute("aria-busy", "true");
+});
+
+test("rewrites only the Claude row whose value changed", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  let pid = 4242;
+  await page.route(/\/api\/claude\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(
+        mockClaudeStatus({
+          runner: {
+            running: true,
+            pid,
+            version: "0.7.2",
+            sessions: 2,
+            idleTimeoutSecs: 600,
+          },
+        }),
+      ),
+    }),
+  );
+
+  await page.goto("/settings/claude");
+  const claude = page.locator("caffold-settings-claude-page");
+  await expect(claude).toContainText("Running · pid 4242");
+
+  await claude.evaluate((element) => {
+    window.claudeRunnerMutations = { childList: 0, attributes: 0, characterData: 0 };
+    window.claudeRunnerObserver = new MutationObserver((records) => {
+      for (const record of records) {
+        window.claudeRunnerMutations[record.type] += 1;
+      }
+    });
+    window.claudeRunnerObserver.observe(
+      element.querySelector("[data-claude-runner]"),
+      { subtree: true, childList: true, attributes: true, characterData: true },
+    );
+  });
+
+  pid = 5150;
+  const navigation = page.locator('nav[aria-label="Settings sections"]');
+  await navigation.getByRole("button", { name: "About Caffold" }).click();
+  await expect(page.locator("caffold-settings-about-page")).toBeVisible();
+  await navigation.getByRole("button", { name: "Claude" }).click();
+  await expect(claude).toContainText("Running · pid 5150");
+
+  expect(
+    await page.evaluate(() => {
+      for (const record of window.claudeRunnerObserver.takeRecords()) {
+        window.claudeRunnerMutations[record.type] += 1;
+      }
+      return window.claudeRunnerMutations;
+    }),
+  ).toEqual({ childList: 0, attributes: 0, characterData: 1 });
 });
 
 test("explicitly restarts the Claude runner from its Settings item", { tag: "@all-viewports" }, async ({
@@ -676,7 +812,7 @@ test("reflows Settings from the detail pane width at maximum Interface scale", {
   await page.goto("/settings/codex");
   const codex = page.locator("caffold-settings-codex-page");
   const codexMetrics = await settingsSurfaceMetrics(codex, {
-    row: ".settings-details > div",
+    row: "caffold-settings-detail-list > dl > div",
     leading: "dt",
     trailing: "dd",
     pageAction: '.settings-content-section > header [data-action="refresh-codex-status"]',
@@ -684,11 +820,11 @@ test("reflows Settings from the detail pane width at maximum Interface scale", {
   expect(codexMetrics.overflowX).toBe(false);
   expect(codexMetrics.stacked).toBe(shouldStack);
   expectSettingsActionTiers(codexMetrics);
-  await expect(codex.locator(".settings-details dd").first()).toHaveCSS(
+  await expect(codex.locator("caffold-settings-detail-list dd").first()).toHaveCSS(
     "font-size",
     settingsDetailFontSize,
   );
-  await expect(codex.locator(".settings-usage-row strong").first()).toHaveCSS(
+  await expect(codex.locator("[data-codex-usage] dd").first()).toHaveCSS(
     "font-size",
     settingsDetailFontSize,
   );
@@ -698,10 +834,27 @@ test("reflows Settings from the detail pane width at maximum Interface scale", {
     "settings-codex-roles-interface-120",
   );
 
+  await page.goto("/settings/claude");
+  const claude = page.locator("caffold-settings-claude-page");
+  const claudeMetrics = await settingsSurfaceMetrics(claude, {
+    row: "[data-claude-agent] > dl > div",
+    leading: "dt",
+    trailing: "dd",
+  });
+  expect(claudeMetrics.overflowX).toBe(false);
+  expect(claudeMetrics.stacked).toBe(shouldStack);
+  await expect(claude.locator("caffold-settings-detail-list dd").first())
+    .toHaveCSS("font-size", settingsDetailFontSize);
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "settings-claude-roles-interface-120",
+  );
+
   await page.goto("/settings/about");
   const about = page.locator("caffold-settings-about-page");
   const aboutMetrics = await settingsSurfaceMetrics(about, {
-    row: ".settings-details > div",
+    row: "caffold-settings-detail-list > dl > div",
     leading: "dt",
     trailing: "dd",
     pageAction: '[data-action="copy-diagnostics"]',
@@ -709,7 +862,7 @@ test("reflows Settings from the detail pane width at maximum Interface scale", {
   expect(aboutMetrics.overflowX).toBe(false);
   expect(aboutMetrics.stacked).toBe(shouldStack);
   expectSettingsActionTiers(aboutMetrics);
-  await expect(about.locator(".settings-details dd").first()).toHaveCSS(
+  await expect(about.locator("caffold-settings-detail-list dd").first()).toHaveCSS(
     "font-size",
     settingsDetailFontSize,
   );

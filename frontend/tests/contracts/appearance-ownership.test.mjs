@@ -553,6 +553,7 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
     ["pages/(task-workspace)/settings/files/page.css", "settings-files"],
     ["pages/(task-workspace)/settings/codex/page.css", "settings-codex"],
     ["pages/(task-workspace)/settings/about/page.css", "settings-about"],
+    ["pages/(task-workspace)/settings/claude/page.css", "settings-claude"],
   ];
   for (const [path, container] of pages) {
     const source = readFrontend(path);
@@ -614,8 +615,8 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
   assert.doesNotMatch(appearancePage, />Open</);
 
   cssBlockMatching(
-    readFrontend("pages/(task-workspace)/settings/codex/page.css"),
-    ".settings-usage-row strong",
+    readFrontend("pages/(task-workspace)/settings/components/detail-list.css"),
+    "& dd",
     [/font-size: var\(--settings-detail-value-size\)/],
   );
 });

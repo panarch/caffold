@@ -180,6 +180,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/navigator.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/settings/navigator.js"
         ))),
+        "pages/(task-workspace)/settings/components/detail-list.css" => Some(css(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/components/detail-list.css"
+        ))),
+        "pages/(task-workspace)/settings/components/detail-list.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/components/detail-list.js"
+        ))),
         "pages/(task-workspace)/settings/codex/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/codex/page.css"
         ))),
