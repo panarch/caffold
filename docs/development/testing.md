@@ -57,6 +57,7 @@ one records where it runs from and what it needs:
 | `npm run test:contract` | `frontend/` | Node | frontend policy and browser-infrastructure contracts, plus the repository, release, and protocol contracts that have not yet moved to an owner |
 | `npm run test:e2e` | `frontend/` | Node, Chromium, a built server | deterministic fixture-backed Playwright coverage |
 | `cargo test --test codex_protocol -- --ignored` | repository root | installed Codex CLI | Codex CLI schema compatibility without authentication or model usage |
+| `cargo test -p caffold app::tasks::codex_mcp::tests::live_codex_refreshes_the_caffold_mcp_after_reconnect_and_resume -- --ignored --exact` | repository root | authenticated Codex CLI | model-driven MCP use on a new Codex thread plus refreshed discovery and execution after app-server proxy reconnection and resume, with model usage |
 | `npm run test:codex-live` | `frontend/` | authenticated Codex CLI | authenticated Codex browser coverage with model usage |
 | `cargo test -p caffold-claude-runner --test live -- --ignored` | repository root | authenticated Claude CLI | that Claude still returns an unanswered permission request to a client that reattaches, with model usage |
 | `cargo test -p caffold --test claude_live -- --ignored --test-threads=1` | repository root | authenticated Claude CLI | what a person sees when the backend is replaced or the runner is killed under a working Claude Task, that each permission decision does what it says, that the agent reaches the tool Caffold serves it, and that the installation reports its status, with model usage |
@@ -235,7 +236,7 @@ model usage:
 npm run test:codex-live
 ```
 
-The run prints a usage summary and writes
+The browser run prints a usage summary and writes
 `test-results/codex-live-usage.json`. Per-test and per-model token breakdowns
 come from the final cumulative `thread/tokenUsage/updated` notification for
 each thread. The report also snapshots account lifetime tokens and both the
@@ -261,6 +262,23 @@ Use `node scripts/dev/probe-codex-app-server.mjs THREAD_ID` for an explicit
 maintainer probe of resume/read/page latency and payload size. The probe does
 not send a prompt, but it does resume the supplied thread through a temporary
 app-server connection.
+
+The narrower backend live check verifies that a new thread discovers and uses
+the Task-owned `rename_current_task` MCP name rather than legacy dynamic tools
+for a model-driven rename. Deterministic route coverage separately rejects the
+historical `rename_current_thread` name at the MCP ingress. The live check then
+moves the provider thread to an independent Caffold MCP host generation,
+discovers its changed catalog, and executes another real rename through that
+MCP connection:
+
+```sh
+cargo test -p caffold \
+  app::tasks::codex_mcp::tests::live_codex_refreshes_the_caffold_mcp_after_reconnect_and_resume \
+  -- --ignored --exact
+```
+
+It creates and deletes one real Codex thread and consumes model usage. It does
+not verify the browser Task loop.
 
 ## Claude compatibility and live tests
 

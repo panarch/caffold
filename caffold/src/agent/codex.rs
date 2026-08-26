@@ -11,10 +11,12 @@ use std::{
 
 use futures_util::{SinkExt, StreamExt, stream::SplitSink, stream::SplitStream};
 mod contract;
+mod mcp;
 mod protocol;
 mod readiness;
 #[cfg(test)]
 mod reconnect_spike;
+mod served_tools;
 mod status;
 mod transport;
 
@@ -26,6 +28,13 @@ pub(crate) use contract::{
 /// sends it and assert on what Caffold makes of it.
 #[cfg(test)]
 pub(crate) use contract::{conversation_item, response_item};
+#[cfg(test)]
+pub(crate) use mcp::CAFFOLD_MCP_SERVER_NAME;
+pub(crate) use mcp::{
+    CAFFOLD_MCP_BINDING_HEADER, CodexMcpBindingTarget, CodexMcpBindings, CodexMcpRequest,
+    caffold_mcp_tools, decode_mcp_request, mcp_error, mcp_initialize_result, mcp_result,
+    mcp_tool_result,
+};
 /// Codex's own thread status, for the tests that build a notification
 /// carrying one. A Task's status is the shared one, converted here.
 #[cfg(test)]
@@ -45,10 +54,11 @@ use protocol::{
     ThreadSectionCreateResponse, ThreadSectionMoveResponse, ThreadStartResponse, TurnStartResponse,
     TurnSteerResponse, account_read_params, config_read_params, decode_response, model_list_params,
     permission_profile_list_params, section_thread_list_params, thread_archive_params,
-    thread_delete_params, thread_list_params, thread_read_params, thread_resume_params,
+    thread_delete_params, thread_list_params, thread_read_params, thread_resume_params_with_config,
     thread_section_create_params, thread_section_list_params, thread_section_move_params,
-    thread_set_name_params, thread_start_params, thread_turns_list_params, thread_unarchive_params,
-    thread_unsubscribe_params, turn_interrupt_params, turn_start_params, turn_steer_params,
+    thread_set_name_params, thread_start_params_with_config, thread_turns_list_params,
+    thread_unarchive_params, thread_unsubscribe_params, turn_interrupt_params, turn_start_params,
+    turn_steer_params,
 };
 pub use protocol::{
     CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest, CodexThread,
@@ -56,18 +66,23 @@ pub use protocol::{
     ThreadSection, ThreadSectionFilter, ThreadSectionListResponse, ThreadUnsubscribeResponse,
     TurnsPage,
 };
-pub(crate) use protocol::{ISOLATE_CURRENT_TASK_TOOL_NAME, RENAME_CURRENT_THREAD_TOOL_NAME};
+#[cfg(test)]
+pub(crate) use protocol::{
+    MCP_SERVER_STATUS_LIST, MCP_SERVER_TOOL_CALL, decode_notification, decode_server_request,
+};
 use protocol::{
     THREAD_LOADED_LIST, ThreadListResponse, ThreadLoadedListResponse, thread_loaded_list_params,
 };
-#[cfg(test)]
-pub(crate) use protocol::{decode_notification, decode_server_request};
 pub(crate) use readiness::{CodexInstallation, inspect_codex_installation};
 pub use readiness::{
     CodexReadiness, CodexReadinessReason, CodexReadinessState, MINIMUM_SUPPORTED_CODEX_CLI_VERSION,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
+pub(crate) use served_tools::{
+    ISOLATE_CURRENT_TASK_TOOL_NAME, LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
+    RENAME_CURRENT_TASK_TOOL_NAME,
+};
 pub use status::{CodexDaemonInfo, CodexStatusResponse};
 use status::{status_from_results, unavailable_status};
 use tokio::{
@@ -95,6 +110,7 @@ fn request_timeout(method: &str) -> Duration {
 #[derive(Clone)]
 pub struct CodexThreadClient {
     inner: Option<Arc<CodexThreadClientInner>>,
+    mcp: Option<CodexMcpBindings>,
     #[cfg(test)]
     mock: Option<Arc<MockCodexThreadClient>>,
 }
@@ -357,6 +373,20 @@ impl CodexThreadClient {
     pub(crate) async fn start_with_installation(
         installation: &CodexInstallation,
     ) -> Result<Self, CodexThreadError> {
+        Self::start_with_installation_config(installation, None).await
+    }
+
+    pub(crate) async fn start_with_installation_and_mcp(
+        installation: &CodexInstallation,
+        mcp: CodexMcpBindings,
+    ) -> Result<Self, CodexThreadError> {
+        Self::start_with_installation_config(installation, Some(mcp)).await
+    }
+
+    async fn start_with_installation_config(
+        installation: &CodexInstallation,
+        mcp: Option<CodexMcpBindings>,
+    ) -> Result<Self, CodexThreadError> {
         let daemon = transport::ensure_daemon(&installation.path).await?;
         let proxy = transport::connect_proxy(&installation.path, None)
             .await
@@ -382,6 +412,7 @@ impl CodexThreadClient {
                 app_server: AsyncMutex::new(None),
                 daemon,
             })),
+            mcp,
             #[cfg(test)]
             mock: None,
         };
@@ -450,6 +481,7 @@ impl CodexThreadClient {
         let (events, _) = broadcast::channel(32);
         Self {
             inner: None,
+            mcp: None,
             mock: Some(Arc::new(MockCodexThreadClient {
                 responses: AsyncMutex::new(responses.into()),
                 requests: AsyncMutex::new(Vec::new()),
@@ -458,6 +490,13 @@ impl CodexThreadClient {
                 events,
             })),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn mock_with_mcp(responses: Vec<MockCodexResponse>, mcp: CodexMcpBindings) -> Self {
+        let mut client = Self::mock(responses);
+        client.mcp = Some(mcp);
+        client
     }
 
     #[cfg(test)]
@@ -480,6 +519,40 @@ impl CodexThreadClient {
             .lock()
             .await
             .clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn mcp_server_status_for_test(
+        &self,
+        thread_id: &str,
+    ) -> Result<Value, CodexThreadError> {
+        self.request_value(
+            MCP_SERVER_STATUS_LIST,
+            json!({
+                "threadId": thread_id,
+                "detail": "full",
+            }),
+        )
+        .await
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn call_mcp_tool_for_test(
+        &self,
+        thread_id: &str,
+        tool: &str,
+        arguments: Value,
+    ) -> Result<Value, CodexThreadError> {
+        self.request_value(
+            MCP_SERVER_TOOL_CALL,
+            json!({
+                "threadId": thread_id,
+                "server": CAFFOLD_MCP_SERVER_NAME,
+                "tool": tool,
+                "arguments": arguments,
+            }),
+        )
+        .await
     }
 
     #[cfg(test)]
@@ -670,18 +743,43 @@ impl CodexThreadClient {
     ) -> Result<CodexThreadStart, CodexThreadError> {
         let config = self.read_config(cwd).await?;
         let developer_instructions = first_turn_developer_instructions(&config.config);
-        let typed: ThreadStartResponse = self
+        let pending_binding = self.mcp.as_ref().map(CodexMcpBindings::begin_pending);
+        let mcp_config = self
+            .mcp
+            .as_ref()
+            .zip(pending_binding.as_deref())
+            .map(|(bindings, token)| bindings.thread_config(token));
+        let request = self
             .request_typed(
                 THREAD_START,
-                thread_start_params(
+                thread_start_params_with_config(
                     cwd,
                     permission_mode,
                     Some(service_tier),
                     Some(&developer_instructions),
+                    mcp_config,
                 ),
             )
-            .await?;
+            .await;
+        let typed: ThreadStartResponse = match request {
+            Ok(typed) => typed,
+            Err(error) => {
+                if let Some((bindings, token)) = self.mcp.as_ref().zip(pending_binding.as_deref()) {
+                    bindings.cancel_pending(token);
+                }
+                return Err(error);
+            }
+        };
         let thread_id = typed.thread.id.clone();
+        if let Some((bindings, token)) = self.mcp.as_ref().zip(pending_binding.as_deref())
+            && let Err(message) = bindings.bind_pending(token, &thread_id)
+        {
+            bindings.cancel_pending(token);
+            let _ = self
+                .request_typed::<EmptyResponse, _>(THREAD_DELETE, thread_delete_params(&thread_id))
+                .await;
+            return Err(CodexThreadError::Protocol(message));
+        }
         let permission_mode = if typed.extra.contains_key("approvalPolicy")
             || typed.extra.contains_key("approvalsReviewer")
             || typed.extra.contains_key("activePermissionProfile")
@@ -719,11 +817,35 @@ impl CodexThreadClient {
         initial_turns_page: bool,
         service_tier: &str,
     ) -> Result<ThreadResumeResponse, CodexThreadError> {
-        self.request_typed(
-            THREAD_RESUME,
-            thread_resume_params(thread_id, initial_turns_page, Some(service_tier)),
-        )
-        .await
+        let reattachment = self.mcp.as_ref().map(|bindings| {
+            let token = bindings.begin_reattach(thread_id);
+            let config = bindings.thread_config(&token);
+            (bindings, token, config)
+        });
+        let request = self
+            .request_typed(
+                THREAD_RESUME,
+                thread_resume_params_with_config(
+                    thread_id,
+                    initial_turns_page,
+                    Some(service_tier),
+                    reattachment.as_ref().map(|(_, _, config)| config.clone()),
+                ),
+            )
+            .await;
+        match (request, reattachment) {
+            (Ok(response), Some((bindings, token, _))) => {
+                bindings
+                    .commit_reattach(&token, thread_id)
+                    .map_err(CodexThreadError::Protocol)?;
+                Ok(response)
+            }
+            (Err(error), Some((bindings, token, _))) => {
+                bindings.cancel_reattach(&token, thread_id);
+                Err(error)
+            }
+            (result, None) => result,
+        }
     }
 
     pub async fn unsubscribe_thread(
@@ -745,6 +867,9 @@ impl CodexThreadClient {
         let _: EmptyResponse = self
             .request_typed(THREAD_DELETE, thread_delete_params(thread_id))
             .await?;
+        if let Some(bindings) = &self.mcp {
+            bindings.revoke_thread(thread_id);
+        }
         Ok(())
     }
 
@@ -1637,6 +1762,158 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn starts_new_threads_with_caffold_mcp_only() {
+        let bindings = CodexMcpBindings::new("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let client = CodexThreadClient::mock_with_mcp(
+            vec![
+                MockCodexResponse::ok(
+                    CONFIG_READ,
+                    json!({ "config": { "developer_instructions": null } }),
+                ),
+                MockCodexResponse::ok(
+                    THREAD_START,
+                    json!({
+                        "thread": {
+                            "id": "thread_mcp",
+                            "preview": "MCP task",
+                            "status": { "type": "idle" },
+                            "cwd": "/tmp/project",
+                            "turns": [],
+                        },
+                        "serviceTier": "default",
+                    }),
+                ),
+            ],
+            bindings.clone(),
+        );
+
+        client
+            .start_thread("/tmp/project", None, "default")
+            .await
+            .expect("start a Caffold MCP-backed thread");
+
+        let requests = client.mock_requests().await;
+        let started = &requests[1].1;
+        assert_eq!(started.get("dynamicTools"), None);
+        let server = &started["config"]["mcp_servers.caffold"];
+        assert_eq!(server["url"], "http://127.0.0.1:5177/api/codex/mcp");
+        let token = server["http_headers"][CAFFOLD_MCP_BINDING_HEADER]
+            .as_str()
+            .expect("thread start carries an opaque binding header");
+        assert_eq!(
+            bindings.resolve(token),
+            Some(CodexMcpBindingTarget::Thread("thread_mcp".to_string()))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_thread_start_discards_its_pending_mcp_binding() {
+        let bindings = CodexMcpBindings::new("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let client = CodexThreadClient::mock_with_mcp(
+            vec![
+                MockCodexResponse::ok(
+                    CONFIG_READ,
+                    json!({ "config": { "developer_instructions": null } }),
+                ),
+                MockCodexResponse::error(
+                    THREAD_START,
+                    CodexThreadError::Protocol("start failed".to_string()),
+                ),
+            ],
+            bindings.clone(),
+        );
+
+        assert!(
+            client
+                .start_thread("/tmp/project", None, "default")
+                .await
+                .is_err()
+        );
+
+        let requests = client.mock_requests().await;
+        let token = requests[1].1["config"]["mcp_servers.caffold"]["http_headers"]
+            [CAFFOLD_MCP_BINDING_HEADER]
+            .as_str()
+            .unwrap();
+        assert_eq!(bindings.resolve(token), None);
+    }
+
+    #[tokio::test]
+    async fn resumes_legacy_threads_with_a_new_caffold_mcp_binding() {
+        let bindings = CodexMcpBindings::new("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let previous = bindings.begin_reattach("thread_legacy");
+        bindings
+            .commit_reattach(&previous, "thread_legacy")
+            .unwrap();
+        let client = CodexThreadClient::mock_with_mcp(
+            vec![MockCodexResponse::ok(
+                THREAD_RESUME,
+                json!({
+                    "thread": {
+                        "id": "thread_legacy",
+                        "preview": "Legacy dynamic tools",
+                        "status": { "type": "idle" },
+                        "cwd": "/tmp/project",
+                        "turns": [],
+                    },
+                    "cwd": "/tmp/project",
+                    "initialTurnsPage": null,
+                }),
+            )],
+            bindings.clone(),
+        );
+
+        client
+            .resume_thread_with_page("thread_legacy", false, "default")
+            .await
+            .expect("resume with Caffold MCP");
+
+        let request = &client.mock_requests().await[0].1;
+        let token = request["config"]["mcp_servers.caffold"]["http_headers"]
+            [CAFFOLD_MCP_BINDING_HEADER]
+            .as_str()
+            .expect("resume carries a binding header");
+        assert_eq!(
+            bindings.resolve(token),
+            Some(CodexMcpBindingTarget::Thread("thread_legacy".to_string()))
+        );
+        assert_eq!(bindings.resolve(&previous), None);
+    }
+
+    #[tokio::test]
+    async fn a_failed_resume_discards_only_its_staged_mcp_binding() {
+        let bindings = CodexMcpBindings::new("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let existing = bindings.begin_reattach("thread_1");
+        bindings.commit_reattach(&existing, "thread_1").unwrap();
+        let client = CodexThreadClient::mock_with_mcp(
+            vec![MockCodexResponse::error(
+                THREAD_RESUME,
+                CodexThreadError::Protocol("resume failed".to_string()),
+            )],
+            bindings.clone(),
+        );
+
+        assert!(
+            client
+                .resume_thread_with_page("thread_1", false, "default")
+                .await
+                .is_err()
+        );
+
+        let request = &client.mock_requests().await[0].1;
+        let staged = request["config"]["mcp_servers.caffold"]["http_headers"]
+            [CAFFOLD_MCP_BINDING_HEADER]
+            .as_str()
+            .unwrap();
+        assert_ne!(staged, existing);
+        assert_eq!(bindings.resolve(staged), None);
+        assert_eq!(
+            bindings.resolve(&existing),
+            Some(CodexMcpBindingTarget::Thread("thread_1".to_string()))
+        );
+    }
+
+    #[tokio::test]
     async fn deletes_threads_with_the_canonical_app_server_method() {
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(THREAD_DELETE, json!({}))]);
 
@@ -1649,6 +1926,21 @@ mod tests {
             client.mock_requests().await,
             vec![(THREAD_DELETE.to_string(), json!({ "threadId": "thread_1" }))]
         );
+    }
+
+    #[tokio::test]
+    async fn deleting_a_thread_revokes_its_caffold_mcp_binding() {
+        let bindings = CodexMcpBindings::new("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let token = bindings.begin_reattach("thread_1");
+        bindings.commit_reattach(&token, "thread_1").unwrap();
+        let client = CodexThreadClient::mock_with_mcp(
+            vec![MockCodexResponse::ok(THREAD_DELETE, json!({}))],
+            bindings.clone(),
+        );
+
+        client.delete_thread("thread_1").await.unwrap();
+
+        assert_eq!(bindings.resolve(&token), None);
     }
 
     #[tokio::test]

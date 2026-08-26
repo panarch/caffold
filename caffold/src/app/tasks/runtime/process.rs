@@ -111,7 +111,13 @@ impl TaskRuntime {
             }
         }
 
-        let client = CodexThreadClient::start_with_installation(installation).await?;
+        let client = match &self.codex_mcp {
+            Some(bindings) => {
+                CodexThreadClient::start_with_installation_and_mcp(installation, bindings.clone())
+                    .await?
+            }
+            None => CodexThreadClient::start_with_installation(installation).await?,
+        };
         let connection = {
             let mut process = self.process.state.lock().await;
             process.generation = process.generation.saturating_add(1);

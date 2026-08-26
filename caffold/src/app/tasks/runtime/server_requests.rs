@@ -4,7 +4,8 @@ use serde_json::{Value as JsonValue, json};
 use super::{ApprovalResolveError, TaskAgent, TaskRuntime};
 use crate::agent::codex::{
     ApprovalKind, CodexServerRequest, CodexThreadClient, ISOLATE_CURRENT_TASK_TOOL_NAME,
-    RENAME_CURRENT_THREAD_TOOL_NAME, approval_request, approval_response,
+    LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME, RENAME_CURRENT_TASK_TOOL_NAME, approval_request,
+    approval_response,
 };
 use crate::agent::{
     ApprovalDecision, ApprovalOutcome, ApprovalRequest, SessionEvent, SessionEventKind,
@@ -49,7 +50,7 @@ pub(super) enum AskedBy {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RenameCurrentThreadArguments {
+struct RenameCurrentTaskArguments {
     name: String,
 }
 
@@ -68,6 +69,41 @@ struct DynamicToolInvocation {
     tool: String,
     namespace: Option<String>,
     arguments: JsonValue,
+}
+
+#[derive(Clone, Copy)]
+enum CaffoldTaskTool {
+    RenameCurrentTask,
+    IsolateCurrentTask,
+}
+
+fn unsupported_caffold_tool(tool: &str, namespace: Option<&str>) -> String {
+    let qualified_tool = namespace
+        .map(|namespace| format!("{namespace}.{tool}"))
+        .unwrap_or_else(|| tool.to_string());
+    format!("Caffold does not serve the tool `{qualified_tool}`.")
+}
+
+fn legacy_dynamic_task_tool(
+    tool: &str,
+    namespace: Option<&str>,
+) -> Result<CaffoldTaskTool, String> {
+    if namespace.is_some() {
+        return Err(unsupported_caffold_tool(tool, namespace));
+    }
+    match tool {
+        LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME => Ok(CaffoldTaskTool::RenameCurrentTask),
+        ISOLATE_CURRENT_TASK_TOOL_NAME => Ok(CaffoldTaskTool::IsolateCurrentTask),
+        _ => Err(unsupported_caffold_tool(tool, None)),
+    }
+}
+
+fn codex_mcp_task_tool(tool: &str) -> Result<CaffoldTaskTool, String> {
+    match tool {
+        RENAME_CURRENT_TASK_TOOL_NAME => Ok(CaffoldTaskTool::RenameCurrentTask),
+        ISOLATE_CURRENT_TASK_TOOL_NAME => Ok(CaffoldTaskTool::IsolateCurrentTask),
+        _ => Err(unsupported_caffold_tool(tool, None)),
+    }
 }
 
 impl TaskRuntime {
@@ -289,16 +325,13 @@ impl TaskRuntime {
             namespace,
             arguments,
         } = invocation;
-        let result = self
-            .execute_dynamic_tool(
-                client,
-                generation,
-                &thread_id,
-                &tool,
-                namespace.as_deref(),
-                arguments,
-            )
-            .await;
+        let result = match legacy_dynamic_task_tool(&tool, namespace.as_deref()) {
+            Ok(tool) => {
+                self.execute_caffold_tool(client, generation, &thread_id, tool, arguments)
+                    .await
+            }
+            Err(error) => Err(error),
+        };
         let (success, text) = match result {
             Ok(text) => (true, text),
             Err(message) => (false, message),
@@ -320,38 +353,48 @@ impl TaskRuntime {
         }
     }
 
-    async fn execute_dynamic_tool(
+    pub(in crate::app::tasks) async fn execute_codex_mcp_tool(
+        &self,
+        thread_id: &str,
+        tool: &str,
+        arguments: JsonValue,
+    ) -> Result<String, String> {
+        let tool = codex_mcp_task_tool(tool)?;
+        let connection = self
+            .connection()
+            .await
+            .map_err(|error| format!("Caffold could not reach Codex: {error}"))?;
+        self.execute_caffold_tool(
+            &connection.client,
+            connection.generation,
+            thread_id,
+            tool,
+            arguments,
+        )
+        .await
+    }
+
+    async fn execute_caffold_tool(
         &self,
         client: &CodexThreadClient,
         _generation: u64,
         thread_id: &str,
-        tool: &str,
-        namespace: Option<&str>,
+        tool: CaffoldTaskTool,
         arguments: JsonValue,
     ) -> Result<String, String> {
-        if namespace.is_some()
-            || !matches!(
-                tool,
-                RENAME_CURRENT_THREAD_TOOL_NAME | ISOLATE_CURRENT_TASK_TOOL_NAME
-            )
-        {
-            let qualified_tool = namespace
-                .map(|namespace| format!("{namespace}.{tool}"))
-                .unwrap_or_else(|| tool.to_string());
-            return Err(format!(
-                "Caffold does not support the dynamic tool `{qualified_tool}`."
-            ));
-        }
         let managed = self.managed_thread(thread_id).await?;
         if managed.is_none() {
-            return Err(if tool == RENAME_CURRENT_THREAD_TOOL_NAME {
-                "Caffold can only rename tasks that it manages.".to_string()
-            } else {
-                "Caffold can only isolate a task that it manages.".to_string()
+            return Err(match tool {
+                CaffoldTaskTool::RenameCurrentTask => {
+                    "Caffold can only rename tasks that it manages.".to_string()
+                }
+                CaffoldTaskTool::IsolateCurrentTask => {
+                    "Caffold can only isolate a task that it manages.".to_string()
+                }
             });
         }
-        if tool == RENAME_CURRENT_THREAD_TOOL_NAME {
-            let RenameCurrentThreadArguments { name } = serde_json::from_value(arguments)
+        if matches!(tool, CaffoldTaskTool::RenameCurrentTask) {
+            let RenameCurrentTaskArguments { name } = serde_json::from_value(arguments)
                 .map_err(|_| "The new task name must be a non-empty string.".to_string())?;
             let name = name.trim();
             if name.is_empty() {
@@ -1109,7 +1152,7 @@ mod tests {
                 1,
                 dynamic_tool_request(
                     "thread_1",
-                    RENAME_CURRENT_THREAD_TOOL_NAME,
+                    LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
                     json!({ "name": "  Whisper voice input  " }),
                 ),
             )
@@ -1160,7 +1203,7 @@ mod tests {
                 1,
                 dynamic_tool_request(
                     "external_thread",
-                    RENAME_CURRENT_THREAD_TOOL_NAME,
+                    LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
                     json!({ "name": "Must not change" }),
                 ),
             )
@@ -1216,7 +1259,7 @@ mod tests {
                     1,
                     dynamic_tool_request(
                         "thread_1",
-                        RENAME_CURRENT_THREAD_TOOL_NAME,
+                        LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
                         json!({ "name": "New name" }),
                     ),
                 )
@@ -1267,7 +1310,7 @@ mod tests {
                 1,
                 dynamic_tool_request(
                     "thread_1",
-                    RENAME_CURRENT_THREAD_TOOL_NAME,
+                    LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
                     json!({ "name": "   " }),
                 ),
             )
@@ -1279,10 +1322,21 @@ mod tests {
                 dynamic_tool_request("thread_1", "future_tool", json!({})),
             )
             .await;
+        runtime
+            .handle_server_request(
+                &client,
+                1,
+                dynamic_tool_request(
+                    "thread_1",
+                    RENAME_CURRENT_TASK_TOOL_NAME,
+                    json!({ "name": "Wrong ingress" }),
+                ),
+            )
+            .await;
 
         assert!(client.mock_requests().await.is_empty());
         let responses = client.mock_server_responses().await;
-        assert_eq!(responses.len(), 2);
+        assert_eq!(responses.len(), 3);
         assert_eq!(responses[0].1["success"], false);
         assert_eq!(
             responses[0].1["contentItems"][0]["text"],
@@ -1291,7 +1345,12 @@ mod tests {
         assert_eq!(responses[1].1["success"], false);
         assert_eq!(
             responses[1].1["contentItems"][0]["text"],
-            "Caffold does not support the dynamic tool `future_tool`."
+            "Caffold does not serve the tool `future_tool`."
+        );
+        assert_eq!(responses[2].1["success"], false);
+        assert_eq!(
+            responses[2].1["contentItems"][0]["text"],
+            "Caffold does not serve the tool `rename_current_task`."
         );
     }
 
@@ -1316,7 +1375,7 @@ mod tests {
                 1,
                 dynamic_tool_request(
                     "thread_1",
-                    RENAME_CURRENT_THREAD_TOOL_NAME,
+                    LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
                     json!({ "name": "Rejected name" }),
                 ),
             )

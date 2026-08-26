@@ -166,11 +166,13 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
     schema.assert_declares(
         "v2/ThreadResumeParams.ts",
         &[
+            "config?:",
             "excludeTurns",
             "initialTurnsPage",
             "serviceTier?: string | null",
         ],
     );
+    schema.assert_declares("v2/ThreadStartParams.ts", &["config?:"]);
     schema.assert_declares(
         "v2/ThreadResumeResponse.ts",
         &["cwd: AbsolutePathBuf", "serviceTier: string | null"],
@@ -319,7 +321,6 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
             "approvalsReviewer",
             "permissions",
             "developerInstructions",
-            "dynamicTools",
             "serviceName?: string | null",
         ],
     );

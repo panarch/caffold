@@ -109,7 +109,7 @@ conversation ID and cwd. Neither path deletes a Git branch.
 | Conversation history | App-server thread and paged turns | Claude-owned JSONL transcript read tolerantly by Caffold |
 | Active-turn survival across backend replacement | The daemon owns the turn; a new proxy reconnects | The runner owns the child; a new backend reattaches and asks the session for current state |
 | Working directory | Reported and owned by the Codex thread | Persisted with the Caffold Task and supplied whenever the Claude session starts or resumes |
-| Caffold-served Task tools | Dynamic tools registered when Caffold starts the thread | In-process MCP server declared whenever the session is initialized |
+| Caffold-served Task tools | Caffold-owned HTTP MCP config on thread start and resume; calls from dynamic tools persisted by pre-MCP threads remain supported | In-process MCP server declared whenever the session is initialized |
 | Readiness | Typed, blocking installation and app-server readiness | Diagnostic status; an attempted operation reports its own failure |
 | Idle release | A thread subscription may be dropped when no viewer or runtime lease remains | The session stays attached; detaching and immediately reattaching is not a free operation |
 
@@ -275,9 +275,19 @@ only decisions its agent can carry out. See
 Caffold exposes Task naming and managed-worktree isolation through the native
 extension point each agent already understands:
 
-- Codex receives Caffold dynamic tools when Caffold starts the thread.
+- Codex receives Caffold's authenticated HTTP MCP server when a thread starts
+  or resumes. New threads do not receive Caffold dynamic tools. Caffold still
+  answers calls from definitions already persisted on pre-MCP threads. The MCP
+  catalog refresh boundary is a new app-server proxy connection followed by
+  thread start or resume; active-thread hot reload is not part of the contract.
 - Claude receives an in-process MCP server on every initialization, including
   resumed and reattached sessions.
+
+Both MCP catalogs use the Task-owned base names `rename_current_task` and
+`isolate_current_task`; Claude's transport qualifies them as
+`mcp__caffold__...`, while Codex presents the base names directly. Only the
+pre-MCP Codex dynamic-tool compatibility path accepts the historical
+`rename_current_thread` name.
 
 The application handles both requests through the same Task and Git lifecycle.
 Only delivery and cwd movement differ. Codex accepts a new cwd for the next

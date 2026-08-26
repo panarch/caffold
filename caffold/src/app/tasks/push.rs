@@ -1259,7 +1259,10 @@ mod tests {
             store.clone(),
             root.path().join("worktrees"),
             push_runtime.service(),
-            crate::agent::claude::ClaudeClient::mock().0,
+            super::super::AgentRuntimeDependencies {
+                claude: crate::agent::claude::ClaudeClient::mock().0,
+                codex_mcp: None,
+            },
         )
         .unwrap();
         let app = router().with_state(state);

@@ -205,9 +205,8 @@ function pullIsValid(pull) {
   return Boolean(pull?.headRefOid && pull?.baseRepository?.nameWithOwner);
 }
 
-// The same ask reaches each agent through its own tool names: Codex through
-// the dynamic tools Caffold registers on its threads, Claude through the MCP
-// tools Caffold serves its sessions.
+// The same ask reaches each agent through its provider-facing tool names. Codex
+// uses unqualified names; Claude's in-process MCP tools are qualified.
 function caffoldTaskTools(provider) {
   if (provider === "claude") {
     return {
@@ -215,7 +214,7 @@ function caffoldTaskTools(provider) {
       isolate: "mcp__caffold__isolate_current_task",
     };
   }
-  return { rename: "rename_current_thread", isolate: "isolate_current_task" };
+  return { rename: "rename_current_task", isolate: "isolate_current_task" };
 }
 
 function pullSetupPrompt({ pull, github, repository, headRef, provider }) {

@@ -1,4 +1,5 @@
 mod active_list;
+mod codex_mcp;
 mod composer_settings;
 mod detail;
 mod events;
@@ -22,8 +23,13 @@ use std::{
 use axum::Router;
 use tokio::sync::broadcast;
 
-use crate::{agent::claude::ClaudeClient, fs::RootedFs, task_store::TaskStore};
+use crate::{
+    agent::{claude::ClaudeClient, codex::CodexMcpBindings},
+    fs::RootedFs,
+    task_store::TaskStore,
+};
 
+pub(in crate::app) use codex_mcp::CodexMcpHost;
 use detail::{DetailContext, TaskDetailSync};
 use events::TaskEvents;
 use lifecycle::TaskLifecycle;
@@ -51,6 +57,11 @@ struct TaskState {
     shutdown: broadcast::Sender<()>,
 }
 
+struct AgentRuntimeDependencies {
+    claude: ClaudeClient,
+    codex_mcp: Option<CodexMcpBindings>,
+}
+
 impl TaskState {
     #[cfg(test)]
     fn new(
@@ -69,7 +80,10 @@ impl TaskState {
             task_store,
             worktree_root,
             push,
-            claude,
+            AgentRuntimeDependencies {
+                claude,
+                codex_mcp: None,
+            },
         )
     }
 
@@ -80,8 +94,9 @@ impl TaskState {
         task_store: TaskStore,
         worktree_root: PathBuf,
         push: PushService,
-        claude: ClaudeClient,
+        agents: AgentRuntimeDependencies,
     ) -> anyhow::Result<Self> {
+        let AgentRuntimeDependencies { claude, codex_mcp } = agents;
         let task_events = TaskEvents::default();
         let task_sessions = crate::app::tasks::sessions::TaskSessions::default();
         let task_list_events = TaskListEvents::new();
@@ -102,7 +117,11 @@ impl TaskState {
             task_events.clone(),
             task_store.clone(),
             shutdown.clone(),
-        )
+        );
+        let task_runtime = match codex_mcp {
+            Some(bindings) => task_runtime.with_codex_mcp(bindings),
+            None => task_runtime,
+        }
         .with_push_service(push.clone())
         .with_lifecycle(lifecycle.clone());
         let task_runtime_signals = task_runtime.subscribe();
@@ -150,6 +169,7 @@ impl TasksApp {
         task_store: TaskStore,
         worktree_root: PathBuf,
         claude: ClaudeClient,
+        codex_mcp: CodexMcpHost,
     ) -> anyhow::Result<Self> {
         let push = PushRuntime::new(task_store.clone())?;
         let state = TaskState::new_with_push(
@@ -159,9 +179,13 @@ impl TasksApp {
             task_store,
             worktree_root,
             push.service(),
-            claude,
+            AgentRuntimeDependencies {
+                claude,
+                codex_mcp: Some(codex_mcp.bindings()),
+            },
         )?;
         let runtime = state.task_runtime.clone();
+        codex_mcp.attach_runtime(runtime.clone());
         Ok(Self {
             router: routes::router(state),
             runtime,
@@ -175,6 +199,7 @@ impl TasksApp {
         shutdown: broadcast::Sender<()>,
         database_path: PathBuf,
         worktree_root: PathBuf,
+        codex_mcp: CodexMcpHost,
     ) -> anyhow::Result<Self> {
         // The runner's socket lives beside the database, so an installed
         // application and a development server each drive their own.
@@ -189,6 +214,7 @@ impl TasksApp {
             TaskStore::redb(database_path)?,
             worktree_root,
             ClaudeClient::in_data_dir(&data_dir),
+            codex_mcp,
         )?;
         app.runtime.startup();
         Ok(app)
@@ -199,6 +225,7 @@ impl TasksApp {
         default_cwd_path: String,
         shutdown: broadcast::Sender<()>,
         worktree_root: PathBuf,
+        codex_mcp: CodexMcpHost,
     ) -> anyhow::Result<Self> {
         let data_dir = worktree_root.clone();
         Self::new(
@@ -208,6 +235,7 @@ impl TasksApp {
             TaskStore::memory()?,
             worktree_root,
             ClaudeClient::in_data_dir(&data_dir),
+            codex_mcp,
         )
     }
 

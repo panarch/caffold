@@ -256,8 +256,8 @@ impl TaskRuntime {
     /// Move the Task whose conversation asked into a managed worktree.
     ///
     /// The worktree half is the machinery every agent shares — the same
-    /// branches, hand-offs, and checks Codex's dynamic tool drives. The Claude
-    /// half is the move itself: one `set_cwd`, after which the session runs in
+    /// branches, hand-offs, and checks Codex's Caffold-served tools drive. The
+    /// Claude half is the move itself: one `set_cwd`, after which the session runs in
     /// the worktree and the agent keeps its transcript there, which is also
     /// where every later opening of this Task looks for both.
     async fn isolate_claude_task(
