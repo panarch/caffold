@@ -4,6 +4,7 @@ import {
   codexBlocksTaskOperations,
   codexSetupVisible,
   createCodexStatusSnapshot,
+  formatRateWindowLabel,
   taskStoreOperationsPresentation,
   taskStoreRecoveryVisible,
 } from "./model.js";
@@ -109,4 +110,19 @@ test("only the Task store takes every Task operation, and only when it says so",
   assert.equal(taskStoreOperationsPresentation(codexOnly).blocked, false);
   assert.equal(taskStoreRecoveryVisible(codexOnly), false);
   assert.equal(taskStoreRecoveryVisible(loadedSnapshot(migrating)), true);
+});
+
+test("a rate window is labelled by the period it meters, never by a guess", () => {
+  assert.equal(formatRateWindowLabel({ windowDurationMins: 300 }, "primary"), "5 hours");
+  assert.equal(formatRateWindowLabel({ windowDurationMins: 60 }, "primary"), "1 hour");
+  assert.equal(formatRateWindowLabel({ windowDurationMins: 10080 }, "secondary"), "1 week");
+  assert.equal(formatRateWindowLabel({ windowDurationMins: 20160 }, "secondary"), "2 weeks");
+  assert.equal(formatRateWindowLabel({ windowDurationMins: 90 }, "primary"), "90 min");
+
+  // A window Codex metered without stating its period keeps its own name; the
+  // label must not invent a duration the response never reported.
+  for (const window of [undefined, {}, { windowDurationMins: 0 }]) {
+    assert.equal(formatRateWindowLabel(window, "primary"), "Primary limit");
+    assert.equal(formatRateWindowLabel(window, "secondary"), "Secondary limit");
+  }
 });

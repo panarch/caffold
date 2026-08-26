@@ -10,9 +10,15 @@ import {
   formatRemainingPercent,
   formatResetCredits,
 } from "../../codex-status.js";
+import "../components/detail-list.js";
 
 const CODEX_INSTALL_COMMAND = "curl -fsSL https://chatgpt.com/codex/install.sh | sh";
 const CODEX_SETUP_GUIDE = "https://learn.chatgpt.com/docs/codex/cli";
+const CONNECTION_PRESENTATION = Object.freeze({
+  pending: Object.freeze({ label: "Checking", state: "" }),
+  available: Object.freeze({ label: "Connected", state: "positive" }),
+  unavailable: Object.freeze({ label: "Unavailable", state: "negative" }),
+});
 
 class CaffoldSettingsCodexPage extends HTMLElement {
   connectedCallback() {
@@ -101,18 +107,7 @@ class CaffoldSettingsCodexPage extends HTMLElement {
               <p>Connection, account, plan, and local app-server usage.</p>
               <button type="button" data-action="refresh-codex-status">Refresh</button>
             </header>
-            <dl class="settings-details">
-              ${detailSlot("readiness", "Readiness")}
-              ${detailSlot("connection", "Connection")}
-              ${detailSlot("account", "Account")}
-              ${detailSlot("plan", "Plan")}
-              ${detailSlot("minimum", "Minimum supported")}
-              ${detailSlot("detected-version", "Detected version")}
-              ${detailSlot("detected-path", "Detected path")}
-              ${detailSlot("managed-version", "Managed version")}
-              ${detailSlot("managed-path", "Managed path")}
-              ${detailSlot("runtime-version", "App-server runtime")}
-            </dl>
+            <caffold-settings-detail-list data-codex-detail></caffold-settings-detail-list>
             <section class="settings-codex-repair" aria-labelledby="settings-codex-repair-title" hidden>
               <div>
                 <h3 id="settings-codex-repair-title"></h3>
@@ -136,34 +131,32 @@ class CaffoldSettingsCodexPage extends HTMLElement {
             <p class="settings-runtime-message" role="status" hidden></p>
             <section class="settings-usage" aria-labelledby="settings-codex-usage-title">
               <h3 id="settings-codex-usage-title">Remaining usage</h3>
-              ${usageSlot("primary")}
-              ${usageSlot("secondary")}
-              <div class="settings-usage-row" data-usage="reset-credits">
-                <span>Reset credits</span>
-                <strong>-</strong>
-                <span></span>
-              </div>
+              <caffold-settings-detail-list data-codex-usage></caffold-settings-detail-list>
             </section>
             <section class="settings-codex-diagnostic" aria-labelledby="settings-codex-diagnostic-title" hidden>
               <h3 id="settings-codex-diagnostic-title">Diagnostic</h3>
               <dl>
-                ${detailSlot("reason-code", "Reason code")}
-                ${detailSlot("diagnostic-detail", "Detail")}
+                <div><dt>Reason code</dt><dd data-diagnostic-reason></dd></div>
+                <div><dt>Detail</dt><dd data-diagnostic-detail></dd></div>
               </dl>
             </section>
             <p class="settings-status-message" role="alert" hidden></p>
           </div>
         </div>
       `;
+      this.detailList = this.querySelector("[data-codex-detail]");
+      this.usageList = this.querySelector("[data-codex-usage]");
     }
 
     const snapshot = this.snapshot;
     const status = snapshot?.status;
     const readiness = status?.readiness;
-    const connection = codexConnection(status);
-    const connectionLabel = connection === "pending"
-      ? "Checking"
-      : connection === "available" ? "Connected" : "Unavailable";
+    // Readiness and Connection report the check itself, so they always answer.
+    // Every other row on the page is unknown until that check comes back, and
+    // holds its place rather than reporting an install or a limit nobody
+    // looked for.
+    const answered = (value) => (readiness ? value : undefined);
+    const connection = CONNECTION_PRESENTATION[codexConnection(status)];
     const restartRequired = readiness?.state === "restartRequired";
     const canRestart = restartRequired;
     const restarting = ["restarting", "refreshing"].includes(
@@ -174,16 +167,52 @@ class CaffoldSettingsCodexPage extends HTMLElement {
       : "Caffold only restarts the shared runtime after an explicit confirmation when the backend reports a stale runtime.";
 
     const readinessLabel = formatCodexReadiness(snapshot);
-    patchDetail(this, "readiness", readinessLabel, readinessState(readiness));
-    patchDetail(this, "connection", connectionLabel, connection);
-    patchDetail(this, "account", formatCodexAccount(status));
-    patchDetail(this, "plan", formatCodexPlan(status));
-    patchDetail(this, "minimum", readiness?.minimumSupportedVersion ?? "Unknown");
-    patchDetail(this, "detected-version", readiness?.detectedExecutable?.version ?? "Not detected");
-    patchDetail(this, "detected-path", readiness?.detectedExecutable?.path ?? "Not detected");
-    patchDetail(this, "managed-version", readiness?.managedExecutable?.version ?? "Not available");
-    patchDetail(this, "managed-path", readiness?.managedExecutable?.path ?? "Not available");
-    patchDetail(this, "runtime-version", readiness?.runningAppServerVersion ?? "Not running");
+    this.detailList.setRows([
+      {
+        key: "readiness",
+        label: "Readiness",
+        value: readinessLabel,
+        state: readinessState(readiness),
+      },
+      {
+        key: "connection",
+        label: "Connection",
+        value: connection.label,
+        state: connection.state,
+      },
+      { key: "account", label: "Account", value: answered(formatCodexAccount(status)) },
+      { key: "plan", label: "Plan", value: answered(formatCodexPlan(status)) },
+      {
+        key: "minimum",
+        label: "Minimum supported",
+        value: answered(readiness?.minimumSupportedVersion ?? "Unknown"),
+      },
+      {
+        key: "detected-version",
+        label: "Detected version",
+        value: answered(readiness?.detectedExecutable?.version ?? "Not detected"),
+      },
+      {
+        key: "detected-path",
+        label: "Detected path",
+        value: answered(readiness?.detectedExecutable?.path ?? "Not detected"),
+      },
+      {
+        key: "managed-version",
+        label: "Managed version",
+        value: answered(readiness?.managedExecutable?.version ?? "Not available"),
+      },
+      {
+        key: "managed-path",
+        label: "Managed path",
+        value: answered(readiness?.managedExecutable?.path ?? "Not available"),
+      },
+      {
+        key: "runtime-version",
+        label: "App-server runtime",
+        value: answered(readiness?.runningAppServerVersion ?? "Not running"),
+      },
+    ]);
     patchRepairSurface(this, readiness, readinessLabel, this.copyState);
 
     const refresh = this.querySelector('[data-action="refresh-codex-status"]');
@@ -199,15 +228,21 @@ class CaffoldSettingsCodexPage extends HTMLElement {
     restartMessage.dataset.state = this.restartState;
     restartMessage.textContent = this.restartMessage;
 
-    patchUsage(this, status, "primary");
-    patchUsage(this, status, "secondary");
-    this.querySelector('[data-usage="reset-credits"] strong').textContent =
-      formatResetCredits(status);
+    this.usageList.setRows([
+      ...usageWindowRows(status),
+      {
+        key: "reset-credits",
+        label: "Reset credits",
+        value: answered(formatResetCredits(status)),
+      },
+    ]);
 
     const diagnostic = this.querySelector(".settings-codex-diagnostic");
     diagnostic.hidden = !readiness?.diagnosticMessage;
-    patchDetail(this, "reason-code", readiness?.reasonCode ?? "unknown");
-    patchDetail(this, "diagnostic-detail", readiness?.diagnosticMessage ?? "");
+    this.querySelector("[data-diagnostic-reason]").textContent =
+      readiness?.reasonCode ?? "unknown";
+    this.querySelector("[data-diagnostic-detail]").textContent =
+      readiness?.diagnosticMessage ?? "";
     const loadError = this.querySelector(".settings-status-message");
     const loadErrorMessage = snapshot?.phase === "failed"
       ? snapshot.error
@@ -226,45 +261,34 @@ function codexConnection(status) {
 
 function readinessState(readiness) {
   if (!readiness) {
-    return "pending";
+    return "";
   }
   if (readiness.state === "ready") {
-    return "available";
+    return "positive";
   }
   if (["missing", "unsupportedInstall", "updateRequired", "signInRequired", "restartRequired"].includes(readiness.state)) {
     return "attention";
   }
-  return "unavailable";
+  return "negative";
 }
 
-function detailSlot(name, label) {
-  return `<div data-detail="${name}"><dt>${label}</dt><dd></dd></div>`;
+/** Only the windows Codex reported get a row; the rest were never metered. */
+function usageWindowRows(status) {
+  return ["primary", "secondary"]
+    .map((name) => [name, findRateWindow(status?.rateLimits, name)])
+    .filter(([, window]) => window)
+    .map(([name, window]) => ({
+      key: name,
+      label: formatRateWindowLabel(window, name),
+      value: usageWindowValue(window),
+    }));
 }
 
-function patchDetail(root, name, value, state = "") {
-  const detail = root.querySelector(`[data-detail="${name}"] dd`);
-  detail.textContent = value;
-  if (state) {
-    detail.dataset.state = state;
-  } else {
-    delete detail.dataset.state;
-  }
-}
-
-function usageSlot(name) {
-  return `<div class="settings-usage-row" data-usage="${name}">
-    <span></span>
-    <strong>-</strong>
-    <time>-</time>
-  </div>`;
-}
-
-function patchUsage(root, status, name) {
-  const window = findRateWindow(status?.rateLimits, name);
-  const row = root.querySelector(`[data-usage="${name}"]`);
-  row.querySelector("span").textContent = formatRateWindowLabel(window, name);
-  row.querySelector("strong").textContent = formatRemainingPercent(window);
-  row.querySelector("time").textContent = formatRateReset(window);
+/** One window as its row reads: how much is left, and when it lets go. */
+function usageWindowValue(window) {
+  const remaining = `${formatRemainingPercent(window)} left`;
+  const reset = formatRateReset(window);
+  return reset === "-" ? remaining : `${remaining} · resets ${reset}`;
 }
 
 function patchRepairSurface(root, readiness, readinessLabel, copyState) {

@@ -259,10 +259,12 @@ export function findRateWindow(value, name) {
   return null;
 }
 
-export function formatRateWindowLabel(window, fallback) {
+export function formatRateWindowLabel(window, name) {
   const minutes = Number(window?.windowDurationMins);
   if (!Number.isFinite(minutes) || minutes <= 0) {
-    return fallback === "primary" ? "5 hours" : "1 week";
+    // A window Codex metered without naming its period is still a real limit,
+    // so it is labelled by which limit it is rather than an invented duration.
+    return name === "primary" ? "Primary limit" : "Secondary limit";
   }
   if (minutes % 10080 === 0) {
     const weeks = minutes / 10080;

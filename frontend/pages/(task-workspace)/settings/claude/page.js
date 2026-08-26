@@ -1,5 +1,5 @@
 import { getClaudeStatus } from "../../../../api.js";
-import { escapeHtml } from "../../../../components/dom.js";
+import "../components/detail-list.js";
 import {
   idleTimeoutValue,
   usageWindowLabel,
@@ -8,6 +8,15 @@ import {
 
 export const CLAUDE_RUNTIME_RESTART_REQUEST_EVENT =
   "caffold:request-claude-runtime-restart";
+
+// The agent block asks the same four questions of every installation, so its
+// rows stand from the first paint and only their values arrive later.
+const AGENT_ROWS = Object.freeze([
+  Object.freeze({ key: "version", label: "Version" }),
+  Object.freeze({ key: "path", label: "Path", kind: "code" }),
+  Object.freeze({ key: "account", label: "Account" }),
+  Object.freeze({ key: "plan", label: "Plan" }),
+]);
 
 class CaffoldSettingsClaudePage extends HTMLElement {
   connectedCallback() {
@@ -86,11 +95,11 @@ class CaffoldSettingsClaudePage extends HTMLElement {
             </header>
             <section aria-labelledby="settings-claude-agent-title">
               <h3 id="settings-claude-agent-title">Agent</h3>
-              <dl class="settings-details" data-claude-agent></dl>
+              <caffold-settings-detail-list data-claude-agent></caffold-settings-detail-list>
             </section>
             <section aria-labelledby="settings-claude-usage-title">
               <h3 id="settings-claude-usage-title">Usage</h3>
-              <dl class="settings-details" data-claude-usage></dl>
+              <caffold-settings-detail-list data-claude-usage></caffold-settings-detail-list>
             </section>
             <section aria-labelledby="settings-claude-runtime-title">
               <div class="settings-runtime-control">
@@ -104,21 +113,21 @@ class CaffoldSettingsClaudePage extends HTMLElement {
                 </div>
                 <button type="button" data-action="open-claude-restart">Restart runtime</button>
               </div>
-              <dl class="settings-details" data-claude-runner></dl>
+              <caffold-settings-detail-list data-claude-runner></caffold-settings-detail-list>
               <p class="settings-runtime-message" role="status" hidden></p>
             </section>
           </div>
         </div>
       `;
+      this.agentList = this.querySelector("[data-claude-agent]");
+      this.usageList = this.querySelector("[data-claude-usage]");
+      this.runnerList = this.querySelector("[data-claude-runner]");
     }
 
-    const pending = this.pendingRows();
-    this.querySelector("[data-claude-agent]").innerHTML =
-      pending || this.agentRows();
-    this.querySelector("[data-claude-usage]").innerHTML =
-      pending || this.usageRows();
-    this.querySelector("[data-claude-runner]").innerHTML =
-      pending || this.runnerRows();
+    const unanswered = this.unansweredRows();
+    this.agentList.setRows(unanswered ?? this.agentRows());
+    this.usageList.setRows(unanswered ?? this.usageRows());
+    this.runnerList.setRows(unanswered ?? this.runnerRows());
 
     const restarting = this.restartState === "restarting";
     const restart = this.querySelector('[data-action="open-claude-restart"]');
@@ -131,71 +140,100 @@ class CaffoldSettingsClaudePage extends HTMLElement {
   }
 
   agentRows() {
-    // Each source answered for itself, so each row reads for itself: a
-    // binary nobody could ask says nothing about the signed-in account.
-    const executableProblem = this.status?.problems?.executable;
-    const executable = this.status?.executable;
-    const auth = this.status?.auth;
-    const authProblem = this.status?.problems?.auth;
-    return [
-      executableProblem
-        ? detail("Version", `Unavailable — ${executableProblem}`, false, "unavailable")
-        : detail("Version", executable?.version ?? "Unknown"),
-      executable?.path ? detail("Path", executable.path, true) : "",
-      authProblem
-        ? detail("Account", `Unavailable — ${authProblem}`, false, "unavailable")
-        : detail("Account", accountValue(auth), false, auth?.loggedIn ? "" : "unavailable"),
-      auth?.subscription ? detail("Plan", planLabel(auth.subscription)) : "",
-    ].join("");
+    if (!this.status) {
+      return AGENT_ROWS;
+    }
+    const values = agentValues(this.status);
+    return AGENT_ROWS.map((row) => ({ ...row, ...values[row.key] }));
   }
 
   usageRows() {
-    const problem = this.status?.problems?.usage;
+    if (!this.status) {
+      return [{ key: "windows", label: "Windows" }];
+    }
+    const problem = this.status.problems?.usage;
     if (problem) {
-      return unavailableRow(problem);
+      return [{ key: "status", label: "Status", ...unavailableValue(problem) }];
     }
-    const windows = this.status?.usage?.windows ?? [];
+    const windows = this.status.usage?.windows ?? [];
     if (windows.length === 0) {
-      return detail("Windows", "None reported");
+      return [{ key: "windows", label: "Windows", value: "None reported" }];
     }
-    return windows
-      .map((window) => detail(usageWindowLabel(window), usageWindowValue(window)))
-      .join("");
+    return windows.map((window, index) => ({
+      key: usageWindowKey(window, index),
+      label: usageWindowLabel(window),
+      value: usageWindowValue(window),
+    }));
   }
 
   runnerRows() {
-    const problem = this.status?.problems?.runner;
-    if (problem) {
-      return unavailableRow(problem);
+    if (!this.status) {
+      return [{ key: "runner", label: "Runner" }];
     }
-    const runner = this.status?.runner;
+    const problem = this.status.problems?.runner;
+    if (problem) {
+      return [{ key: "status", label: "Status", ...unavailableValue(problem) }];
+    }
+    const runner = this.status.runner;
     if (!runner?.running) {
-      return detail("Runner", "Not running");
+      return [{ key: "runner", label: "Runner", value: "Not running" }];
     }
     return [
-      detail("Runner", runner.pid ? `Running · pid ${runner.pid}` : "Running"),
-      Number.isFinite(runner.sessions) ? detail("Sessions", `${runner.sessions}`) : "",
-      runner.version ? detail("Runner build", runner.version, true) : "",
-      Number.isFinite(runner.idleTimeoutSecs)
-        ? detail("Idle timeout", idleTimeoutValue(runner.idleTimeoutSecs))
-        : "",
-    ].join("");
+      {
+        key: "runner",
+        label: "Runner",
+        value: runner.pid ? `Running · pid ${runner.pid}` : "Running",
+      },
+      ...(Number.isFinite(runner.sessions)
+        ? [{ key: "sessions", label: "Sessions", value: `${runner.sessions}` }]
+        : []),
+      ...(runner.version
+        ? [{ key: "runner-build", label: "Runner build", value: runner.version, kind: "code" }]
+        : []),
+      ...(Number.isFinite(runner.idleTimeoutSecs)
+        ? [{
+          key: "idle-timeout",
+          label: "Idle timeout",
+          value: idleTimeoutValue(runner.idleTimeoutSecs),
+        }]
+        : []),
+    ];
   }
 
-  pendingRows() {
-    // A refresh keeps the rows it already has until the new ones arrive;
-    // only a panel with nothing yet says it is checking.
-    if (
-      (this.statusState === "loading" || this.statusState === "idle") &&
-      !this.status
-    ) {
-      return detail("Status", "Checking…");
+  // A server that never answered leaves no block with anything of its own to
+  // report, so all three collapse to the same line.
+  unansweredRows() {
+    if (this.statusState !== "unavailable") {
+      return null;
     }
-    if (this.statusState === "unavailable") {
-      return unavailableRow("The server did not answer.");
-    }
-    return "";
+    return [{
+      key: "status",
+      label: "Status",
+      ...unavailableValue("The server did not answer."),
+    }];
   }
+}
+
+// Each source answered for itself, so each row reads for itself: a binary
+// nobody could ask says nothing about the signed-in account.
+function agentValues(status) {
+  const problems = status.problems ?? {};
+  const executable = status.executable;
+  const auth = status.auth;
+  return {
+    version: problems.executable
+      ? unavailableValue(problems.executable)
+      : { value: executable?.version ?? "Unknown" },
+    path: problems.executable
+      ? { value: "Unknown" }
+      : { value: executable?.path ?? "Not detected" },
+    account: problems.auth
+      ? unavailableValue(problems.auth)
+      : { value: accountValue(auth), state: auth?.loggedIn ? "" : "negative" },
+    plan: problems.auth
+      ? { value: "Unknown" }
+      : { value: auth?.subscription ? planLabel(auth.subscription) : "None" },
+  };
 }
 
 function accountValue(auth) {
@@ -210,20 +248,13 @@ function planLabel(subscription) {
   return subscription.charAt(0).toUpperCase() + subscription.slice(1);
 }
 
-function unavailableRow(message) {
-  return detail("Status", `Unavailable — ${message}`, false, "unavailable");
+/** Windows are identified by what they meter, and by position when they are not. */
+function usageWindowKey(window, index) {
+  return window?.model ? `model:${window.model}` : `kind:${window?.kind ?? index}`;
 }
 
-function detail(label, value, code = false, state = "") {
-  const content = code
-    ? `<code>${escapeHtml(value)}</code>`
-    : escapeHtml(value);
-  return `
-    <div>
-      <dt>${escapeHtml(label)}</dt>
-      <dd${state ? ` data-state="${escapeHtml(state)}"` : ""}>${content}</dd>
-    </div>
-  `;
+function unavailableValue(problem) {
+  return { value: `Unavailable — ${problem}`, state: "negative" };
 }
 
 customElements.define("caffold-settings-claude-page", CaffoldSettingsClaudePage);
