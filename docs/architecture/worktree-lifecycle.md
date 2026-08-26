@@ -25,20 +25,23 @@ worktrees are never adopted or removed.
 ## Isolation Preparation
 
 The `isolate_current_task` tool is available only inside a Task already managed
-by Caffold — as a Codex dynamic tool on Codex Tasks and as the
-`mcp__caffold__isolate_current_task` MCP tool Caffold serves on Claude Tasks.
-It is an explicit preparation operation, intended for requests such as "prepare
-a worktree for this PR review". It does not start a child Task and does not
-automatically continue the review or other work.
+by Caffold. Codex receives Caffold's HTTP MCP server on thread start and resume;
+Caffold also answers calls from dynamic tool definitions already persisted on
+pre-MCP threads. Claude receives the `mcp__caffold__isolate_current_task` tool
+from its in-process MCP server.
+It is an explicit preparation operation, intended for requests such as
+"prepare a worktree for this PR review". It does not start a child Task and
+does not automatically continue the review or other work.
 
 The tool must be the final file-affecting action of its turn. After it succeeds,
 that turn ends. The user's next request starts a new turn in the same agent
 conversation with the managed worktree as `cwd` and runtime workspace root.
 
-For Codex, the dynamic tool result moves the thread's workspace for the next
-turn. Codex accepts Caffold's dynamic tools only on `thread/start`; threads
-started by Caffold receive `isolate_current_task`, while resuming or forking a
-thread created elsewhere does not add the tool.
+For Codex, either compatible delivery path moves the thread's workspace for the
+next turn. Supplying MCP config while resuming a managed thread does not adopt
+or expose an unmanaged app-server thread as a Caffold Task. The detailed tool
+delivery and binding contract belongs to
+[Codex App Server](codex-app-server.md#thread-subscription-lifecycle).
 
 A Claude Task reaches the same state by moving rather than by per-turn `cwd`:
 the agent only changes directory between turns, so the session is moved into

@@ -1,4 +1,8 @@
-use std::{net::IpAddr, path::PathBuf, sync::Arc};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use axum::Router;
 use tokio::{net::TcpListener, sync::broadcast};
@@ -48,6 +52,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let voice_router = voice::router(data_dir.join("models/whisper"));
     let listener = TcpListener::bind((config.host, config.port)).await?;
     let addr = listener.local_addr()?;
+    let codex_mcp = tasks::CodexMcpHost::new(codex_mcp_endpoint(addr));
     let tailscale_router = tailscale::router(addr.port());
     let tasks = tasks::PersistentTasksGateway::new(
         fs,
@@ -55,6 +60,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         shutdown.clone(),
         data_dir.join("caffold.redb"),
         worktree_root.clone(),
+        codex_mcp.clone(),
     );
     let app = router_with_states(
         shell_router,
@@ -62,6 +68,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         tasks.router(),
         voice_router,
         tailscale_router,
+        codex_mcp.router(),
     );
 
     info!("serving Caffold at http://{addr}");
@@ -112,14 +119,25 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     let workspace_router = workspace::router(fs.clone(), shutdown.clone());
     let voice_router = voice::router(fs.root().join(".caffold-test/models/whisper"));
     let tailscale_router = tailscale::router(5_178);
+    let codex_mcp = tasks::CodexMcpHost::new(codex_mcp_endpoint(SocketAddr::from((
+        Ipv4Addr::LOCALHOST,
+        5_178,
+    ))));
     let worktree_root = fs.root().join(".caffold-test/worktrees");
-    let tasks = tasks::TasksApp::memory(fs, String::new(), shutdown, worktree_root)?;
+    let tasks = tasks::TasksApp::memory(
+        fs,
+        String::new(),
+        shutdown,
+        worktree_root,
+        codex_mcp.clone(),
+    )?;
     Ok(router_with_states(
         shell_router,
         workspace_router,
         tasks.router(),
         voice_router,
         tailscale_router,
+        codex_mcp.router(),
     ))
 }
 
@@ -129,12 +147,26 @@ fn router_with_states(
     tasks_router: Router,
     voice_router: Router,
     tailscale_router: Router,
+    codex_mcp_router: Router,
 ) -> Router {
     shell_router
         .merge(workspace_router)
         .merge(tasks_router)
         .merge(voice_router)
         .merge(tailscale_router)
+        .merge(codex_mcp_router)
+}
+
+fn codex_mcp_endpoint(listen: SocketAddr) -> String {
+    let ip = match listen.ip() {
+        IpAddr::V4(ip) if ip.is_unspecified() => IpAddr::V4(Ipv4Addr::LOCALHOST),
+        IpAddr::V6(ip) if ip.is_unspecified() => IpAddr::V6(Ipv6Addr::LOCALHOST),
+        ip => ip,
+    };
+    format!(
+        "http://{}/api/codex/mcp",
+        SocketAddr::new(ip, listen.port())
+    )
 }
 
 fn default_data_dir() -> anyhow::Result<PathBuf> {
@@ -174,5 +206,17 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let _router =
             router(RootedFs::new(root.path()).unwrap()).expect("owned state routers merge");
+    }
+
+    #[test]
+    fn codex_mcp_uses_loopback_for_an_unspecified_listener() {
+        assert_eq!(
+            codex_mcp_endpoint(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 5_178))),
+            "http://127.0.0.1:5178/api/codex/mcp"
+        );
+        assert_eq!(
+            codex_mcp_endpoint(SocketAddr::from((Ipv6Addr::UNSPECIFIED, 5_178))),
+            "http://[::1]:5178/api/codex/mcp"
+        );
     }
 }

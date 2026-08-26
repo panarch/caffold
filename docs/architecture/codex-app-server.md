@@ -53,6 +53,19 @@ bridge session events and server requests into the Tasks application. Neither
 the application composition root nor the browser projection modules inspect raw
 method names or protocol JSON paths.
 
+`caffold/src/agent/codex/served_tools.rs` owns the current Task-named MCP
+catalog and the test-only historical dynamic-tool catalog. The MCP surface uses
+`rename_current_task`; a definition persisted by an older thread may still call
+`rename_current_thread`, but that alias is neither advertised nor accepted by
+the MCP route. The legacy fixture can reconstruct a pre-MCP thread without
+putting its catalog back into production `thread/start` requests.
+`caffold/src/agent/codex/mcp.rs` owns MCP request and response framing,
+request-scoped app-server configuration, and the process-local capability that
+binds one HTTP connection to one Codex thread.
+`caffold/src/app/tasks/codex_mcp.rs` owns only the authenticated HTTP route and
+hands a verified, bound tool call to the narrow Task runtime operation that
+performs it.
+
 `caffold/src/agent/codex/contract.rs` is where Codex stops. It reads a thread,
 its turns, and its items into the vocabulary in `caffold/src/agent/`; it says
 what each notification from a subscribed thread means as a `SessionEvent` in
@@ -128,14 +141,18 @@ routes.rs
 assembles the owner types, while `TasksApp` exposes only a completed router and
 runtime shutdown lifecycle to `caffold/src/app.rs`.
 
-- `routes.rs` is the only Tasks module that imports Axum or receives
-  `TaskState`. It owns browser request/response DTOs, validation, route
-  registration, and REST/SSE adaptation.
+- `routes.rs` is the only browser-facing Tasks module that imports Axum or
+  receives `TaskState`. It owns browser request/response DTOs, validation,
+  route registration, and REST/SSE adaptation.
 - `runtime.rs` owns per-Task driver routing. Its `process.rs`, `bridge.rs`, and
   `server_requests.rs` children own the app-server proxy generation,
   connection recovery, Codex event/server-request bridge, and pending approval
   lifecycle. Pending approvals remain JSON-RPC/card state and never become a
   thread-status writer.
+- `codex_mcp.rs` owns the authenticated HTTP adaptation for Caffold-served
+  Codex tools. The provider driver owns MCP framing and thread capabilities;
+  the route receives only the Task runtime operation needed to execute a
+  verified call.
 - `sync.rs` owns subscription counts, rollout invalidation, debounce,
   maximum-latency, and retry scheduling. It does not read Codex threads or
   construct browser details.
@@ -182,21 +199,39 @@ persist a second task ledger.
   `turn/start`. Its creation-time viewer lease covers the browser handoff; with
   no viewer or prompt runtime lease, the ordinary grace period releases the
   subscription.
-- Caffold injects the experimental `rename_current_thread` dynamic tool only
-  when it creates a new thread. App-server persists that tool with the thread
-  and restores it on resume; existing threads are not retrofitted. When
-  app-server sends the corresponding `item/tool/call`, Caffold verifies the
-  current thread against managed membership, calls `thread/name/set`, and
-  returns the tool result. The resulting `thread/name/updated` notification
-  updates the canonical session and browser title; the successful command also
-  updates the stable Redb display name. Codex config remains the source of truth
-  for existing project `developer_instructions`. Immediately before
+- New threads receive Caffold tools only through the authenticated HTTP MCP
+  entry supplied in request-scoped config for `thread/start` and
+  `thread/resume`. Caffold does not advertise `dynamicTools` on new threads.
+  The MCP catalog uses the same Task-owned base names as Claude:
+  `rename_current_task` and `isolate_current_task`.
+  App-server may still restore definitions persisted on pre-MCP threads, so
+  Caffold continues to answer their historical `rename_current_thread` calls
+  through the same rename operation. That alias is confined to the dynamic
+  request handler. A managed thread created before the MCP path receives the
+  MCP entry when Caffold next resumes it. For an existing thread, the supported
+  MCP catalog refresh boundary is a replacement app-server proxy connection
+  followed by `thread/resume`, not active-thread hot reload.
+- Each MCP config carries an opaque process-local HTTP capability bound to the
+  provider thread. A pending creation may initialize and discover tools but
+  cannot execute one until `thread/start` returns the child ID. A successful
+  resume replaces the previous capability, a failed resume discards only its
+  staged replacement, and permanent Task deletion revokes the thread binding.
+  The runtime also rechecks Caffold-managed membership before performing a
+  tool, so neither the model nor request arguments choose another Task.
+- Legacy dynamic and current MCP calls execute the same Task operation after
+  their distinct ingress names have been validated. For rename, Caffold calls
+  `thread/name/set` and returns the tool result. The resulting
+  `thread/name/updated` notification updates the canonical session and browser
+  title; the successful command also updates the stable Redb display name.
+  Codex config remains the source of truth for existing project
+  `developer_instructions`. Immediately before
   `thread/start`, Caffold reads that effective value, appends its thread-naming
   instruction, and sends the composition as `developerInstructions`; Caffold
   does not store a copy. The thread override must contain both parts because it
   replaces rather than extends the config value. The instruction asks the model
-  to call the dynamic tool exactly once after understanding the first request
-  and before its final response, or immediately before first-turn isolation.
+  to call the `rename_current_task` MCP tool exactly once after understanding
+  the first request and before its final response, or immediately before
+  first-turn isolation.
   Later turns rename only on an explicit user request. This remains
   model-followed policy; Caffold does not reject a completed first turn that
   omitted the call.
@@ -632,3 +667,18 @@ record each created thread immediately and archive it during teardown,
 including after a failed assertion. This suite is intentionally separate from
 `npm run test:e2e` because it requires local Codex authentication and consumes
 model usage.
+
+The focused ignored MCP check creates one real MCP-only Codex thread and asks
+the model to perform its first Task rename through MCP. It then reconnects
+through an independent app-server proxy and Caffold MCP host generation,
+resumes the thread with a changed catalog, and verifies both refreshed
+discovery and another real Task rename through MCP:
+
+```sh
+cargo test -p caffold \
+  app::tasks::codex_mcp::tests::live_codex_refreshes_the_caffold_mcp_after_reconnect_and_resume \
+  -- --ignored --exact
+```
+
+It uses isolated temporary project and Task-store state, consumes model usage,
+and deletes the created provider thread during teardown.

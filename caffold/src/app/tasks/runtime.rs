@@ -10,7 +10,7 @@ use super::{events::TaskEvents, lifecycle::TaskLifecycle, push::PushService};
 use crate::agent::AgentError;
 use crate::{
     agent::claude::ClaudeClient,
-    agent::codex::{CodexThreadClient, CodexThreadError},
+    agent::codex::{CodexMcpBindings, CodexThreadClient, CodexThreadError},
     agent::{Driver, TokenUsage},
     app::tasks::sessions::{SessionSnapshot, TaskSessions},
     task_store::{ManagedThread, RunBy, TaskStore},
@@ -34,6 +34,7 @@ use server_requests::PendingApproval;
 #[derive(Clone)]
 pub(in crate::app) struct TaskRuntime {
     process: Arc<CodexProcess>,
+    codex_mcp: Option<CodexMcpBindings>,
     claude: ClaudeClient,
     sessions: TaskSessions,
     events: TaskEvents,
@@ -177,6 +178,7 @@ impl TaskRuntime {
         let (signals, _) = broadcast::channel(64);
         Self {
             process: Arc::new(CodexProcess::default()),
+            codex_mcp: None,
             claude,
             sessions,
             events,
@@ -189,6 +191,11 @@ impl TaskRuntime {
             signals,
             shutdown,
         }
+    }
+
+    pub(super) fn with_codex_mcp(mut self, bindings: CodexMcpBindings) -> Self {
+        self.codex_mcp = Some(bindings);
+        self
     }
 
     /// Begin carrying what Claude sessions say into the Task application.

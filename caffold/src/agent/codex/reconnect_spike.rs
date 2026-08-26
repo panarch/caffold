@@ -20,11 +20,12 @@ use tokio_tungstenite::{WebSocketStream, client_async, tungstenite::Message};
 use super::{
     CodexPermissionMode, CodexTurnOptions, NORMAL_SERVICE_TIER_ID, inspect_codex_installation,
     protocol::{
-        INITIALIZE, INITIALIZED, RENAME_CURRENT_THREAD_TOOL_NAME, THREAD_ARCHIVE, THREAD_NAME_SET,
-        THREAD_READ, THREAD_RESUME, THREAD_START, TURN_INTERRUPT, TURN_START,
-        thread_archive_params, thread_read_params, thread_resume_params, thread_set_name_params,
-        thread_start_params, turn_interrupt_params, turn_start_params,
+        INITIALIZE, INITIALIZED, THREAD_ARCHIVE, THREAD_NAME_SET, THREAD_READ, THREAD_RESUME,
+        THREAD_START, TURN_INTERRUPT, TURN_START, thread_archive_params, thread_read_params,
+        thread_resume_params, thread_set_name_params, thread_start_params,
+        thread_start_params_with_legacy_dynamic_tools, turn_interrupt_params, turn_start_params,
     },
+    served_tools::LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
 };
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(30);
@@ -333,7 +334,7 @@ async fn run_reconnect_spike(socket_path: &Path, ids: &mut SpikeIds) -> Result<(
     let started = first
         .request(
             THREAD_START,
-            serde_json::to_value(thread_start_params(
+            serde_json::to_value(thread_start_params_with_legacy_dynamic_tools(
                 cwd,
                 None,
                 Some(NORMAL_SERVICE_TIER_ID),
@@ -403,7 +404,7 @@ async fn run_reconnect_spike(socket_path: &Path, ids: &mut SpikeIds) -> Result<(
         original_request
             .pointer("/params/tool")
             .and_then(Value::as_str)
-            == Some(RENAME_CURRENT_THREAD_TOOL_NAME),
+            == Some(LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME),
         "unexpected dynamic tool request: {original_request}"
     );
     eprintln!("SPIKE pending_request_id={original_request_id}");
@@ -655,7 +656,7 @@ async fn cleanup_spike(socket_path: &Path, ids: &SpikeIds) {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires an authenticated Codex CLI and makes a real model request"]
-async fn live_proxy_replays_pending_dynamic_tool_after_reconnect() {
+async fn live_proxy_replays_pending_legacy_dynamic_tool_after_reconnect() {
     let mut server = SocketAppServer::start()
         .await
         .expect("start isolated socket app-server");

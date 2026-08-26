@@ -54,6 +54,29 @@ carries a protocol id, and taking that pairing is what retires the approval —
 whether a person answered it here or the agent resolved it first. Each pairing
 is taken once, so an approval is never answered or withdrawn twice.
 
+## Caffold-Served Task Tools
+
+Task naming and managed-worktree preparation are Caffold-owned operations, not
+general agent permissions. Caffold declares that closed tool set through each
+agent's native extension point and allows those calls without adding another
+approval card. The tool still enforces its own Task and Git lifecycle checks;
+an unknown tool or an unmanaged conversation is refused.
+
+Codex reaches this surface through an HTTP MCP endpoint on the Caffold server.
+Each app-server config carries an opaque process-local header capability bound
+by Caffold to one provider thread. The model and tool arguments do not supply
+that identity. A pending new-thread capability may discover tools but cannot
+execute them, resume rotates the capability only after success, and permanent
+Task deletion revokes it. This capability protects one Caffold integration
+inside the trusted-host deployment boundary; it is not browser authentication
+or authorization for public-internet exposure.
+
+Codex and Claude expose the same Task-owned MCP base names:
+`rename_current_task` and `isolate_current_task`. Claude's provider transport
+qualifies those names; Codex's does not. The historical Codex
+`rename_current_thread` name is accepted only for a dynamic-tool definition
+already persisted on a pre-MCP thread, never through the current MCP endpoint.
+
 ## The Mode a Turn Runs Under
 
 A turn runs under the mode its composer shows. The modes on offer are the

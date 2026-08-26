@@ -1,9 +1,13 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(test)]
+use serde_json::json;
 
 use super::CodexTurnOptions;
+#[cfg(test)]
+use super::served_tools;
 
 mod thread_list;
 mod thread_section;
@@ -46,9 +50,10 @@ pub(crate) const TURN_INTERRUPT: &str = "turn/interrupt";
 pub(crate) const MODEL_LIST: &str = "model/list";
 pub(crate) const PERMISSION_PROFILE_LIST: &str = "permissionProfile/list";
 pub(crate) const CONFIG_READ: &str = "config/read";
-pub(crate) const RENAME_CURRENT_THREAD_TOOL_NAME: &str = "rename_current_thread";
-pub(crate) const ISOLATE_CURRENT_TASK_TOOL_NAME: &str = "isolate_current_task";
-
+#[cfg(test)]
+pub(crate) const MCP_SERVER_STATUS_LIST: &str = "mcpServerStatus/list";
+#[cfg(test)]
+pub(crate) const MCP_SERVER_TOOL_CALL: &str = "mcpServer/tool/call";
 /// How Caffold names itself to Codex. The app-server sends `CAFFOLD_CLIENT_NAME`
 /// as the `originator` header on upstream requests and records it on every
 /// session it starts, so it is an identifier on the wire rather than a label;
@@ -58,14 +63,14 @@ pub(crate) const CAFFOLD_CLIENT_TITLE: &str = "Caffold";
 pub(crate) const CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS: &str = concat!(
     "This thread is a newly created Caffold task. ",
     "On its first user turn, after you understand the user's underlying goal and immediately ",
-    "before your final response, you must call rename_current_thread exactly once with a ",
+    "before your final response, you must call rename_current_task exactly once with a ",
     "concise, meaningful user-facing task name in the user's language. ",
     "Do not copy response-format instructions, verification markers, or the eventual answer ",
     "into the name. ",
     "If the user specifies an exact task name or format, honor it in that same call. ",
-    "If isolate_current_task is needed on the first turn, call rename_current_thread immediately ",
+    "If isolate_current_task is needed on the first turn, call rename_current_task immediately ",
     "before isolation because no tools may run afterward. ",
-    "On later turns, call rename_current_thread only when the user explicitly asks to rename the ",
+    "On later turns, call rename_current_task only when the user explicitly asks to rename the ",
     "task."
 );
 
@@ -508,7 +513,11 @@ enum ApprovalsReviewer {
 pub struct ThreadStartParams<'a> {
     pub cwd: &'a str,
     pub runtime_workspace_roots: [&'a str; 1],
-    pub dynamic_tools: [DynamicToolSpec; 2],
+    #[cfg(test)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dynamic_tools: Option<[DynamicToolSpec; 2]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config: Option<HashMap<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub developer_instructions: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -521,6 +530,7 @@ pub struct ThreadStartParams<'a> {
     service_name: &'static str,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DynamicToolSpec {
@@ -531,6 +541,7 @@ pub struct DynamicToolSpec {
     pub input_schema: Value,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 pub enum DynamicToolType {
     #[serde(rename = "function")]
@@ -622,6 +633,8 @@ pub struct ThreadResumeParams<'a> {
     pub runtime_workspace_roots: Option<Vec<&'a str>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub approvals_reviewer: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config: Option<HashMap<String, Value>>,
     pub service_tier: Option<&'a str>,
     pub exclude_turns: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1035,16 +1048,27 @@ fn decode_params<T: DeserializeOwned>(method: &str, params: Value) -> Result<T, 
     serde_json::from_value(params).map_err(|error| format!("invalid {method} params: {error}"))
 }
 
+#[cfg(test)]
 pub(crate) fn thread_resume_params<'a>(
     thread_id: &'a str,
     initial_turns_page: bool,
     service_tier: Option<&'a str>,
+) -> ThreadResumeParams<'a> {
+    thread_resume_params_with_config(thread_id, initial_turns_page, service_tier, None)
+}
+
+pub(crate) fn thread_resume_params_with_config<'a>(
+    thread_id: &'a str,
+    initial_turns_page: bool,
+    service_tier: Option<&'a str>,
+    config: Option<HashMap<String, Value>>,
 ) -> ThreadResumeParams<'a> {
     ThreadResumeParams {
         thread_id,
         cwd: None,
         runtime_workspace_roots: None,
         approvals_reviewer: None,
+        config,
         service_tier,
         exclude_turns: true,
         initial_turns_page: initial_turns_page.then_some(InitialTurnsPageParams {
@@ -1111,16 +1135,35 @@ pub(crate) fn account_read_params() -> AccountReadParams {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn thread_start_params<'a>(
     cwd: &'a str,
     permission_mode: Option<CodexPermissionMode>,
     service_tier: Option<&'a str>,
     developer_instructions: Option<&'a str>,
 ) -> ThreadStartParams<'a> {
+    thread_start_params_with_config(
+        cwd,
+        permission_mode,
+        service_tier,
+        developer_instructions,
+        None,
+    )
+}
+
+pub(crate) fn thread_start_params_with_config<'a>(
+    cwd: &'a str,
+    permission_mode: Option<CodexPermissionMode>,
+    service_tier: Option<&'a str>,
+    developer_instructions: Option<&'a str>,
+    config: Option<HashMap<String, Value>>,
+) -> ThreadStartParams<'a> {
     ThreadStartParams {
         cwd,
         runtime_workspace_roots: [cwd],
-        dynamic_tools: [rename_current_thread_tool(), isolate_current_task_tool()],
+        #[cfg(test)]
+        dynamic_tools: None,
+        config,
         developer_instructions,
         approval_policy: permission_mode.map(CodexPermissionMode::approval_policy),
         approvals_reviewer: permission_mode.map(CodexPermissionMode::approvals_reviewer),
@@ -1130,52 +1173,27 @@ pub(crate) fn thread_start_params<'a>(
     }
 }
 
-fn isolate_current_task_tool() -> DynamicToolSpec {
-    DynamicToolSpec {
-        kind: DynamicToolType::Function,
-        name: ISOLATE_CURRENT_TASK_TOOL_NAME,
-        description: "Prepare the current Caffold task in a Caffold-managed Git worktree only when the user explicitly asks to isolate the current task or prepare a worktree. By default, leave staged, unstaged, and untracked source checkout changes in place. An optional baseRef creates a new branch from that ref without handing off the current branch and cannot be combined with includeChanges. Set includeChanges to true only when the user explicitly asks to move current or uncommitted changes too. Call this as the final file-affecting action of the current turn. After it succeeds, do not call command or file tools; end the turn so the user's next request can continue in the managed worktree.",
-        input_schema: json!({
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-                "branchName": {
-                    "type": "string",
-                    "description": "Optional local branch name. Without baseRef, a current non-default branch is always handed off unchanged. With baseRef, this names the new branch created from that ref.",
-                    "minLength": 1
-                },
-                "baseRef": {
-                    "type": "string",
-                    "description": "Optional existing branch, tag, or commit ref to use as the new branch starting point. When provided, the current checkout remains unchanged and includeChanges must be false.",
-                    "minLength": 1
-                },
-                "includeChanges": {
-                    "type": "boolean",
-                    "description": "Whether to move staged, unstaged, and untracked changes into the worktree. Defaults to false and must be true only when the user explicitly requests that transfer."
-                }
-            }
-        }),
-    }
+#[cfg(test)]
+pub(crate) fn thread_start_params_with_legacy_dynamic_tools<'a>(
+    cwd: &'a str,
+    permission_mode: Option<CodexPermissionMode>,
+    service_tier: Option<&'a str>,
+    developer_instructions: Option<&'a str>,
+) -> ThreadStartParams<'a> {
+    let mut params =
+        thread_start_params(cwd, permission_mode, service_tier, developer_instructions);
+    params.dynamic_tools = Some(caffold_dynamic_tools());
+    params
 }
 
-fn rename_current_thread_tool() -> DynamicToolSpec {
-    DynamicToolSpec {
+#[cfg(test)]
+pub(super) fn caffold_dynamic_tools() -> [DynamicToolSpec; 2] {
+    served_tools::legacy_dynamic_tool_specs().map(|tool| DynamicToolSpec {
         kind: DynamicToolType::Function,
-        name: RENAME_CURRENT_THREAD_TOOL_NAME,
-        description: "Set the user-facing name of the current Caffold task. Never use this tool to rename a different thread.",
-        input_schema: json!({
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "The new user-facing name for the current Caffold task.",
-                    "minLength": 1
-                }
-            },
-            "required": ["name"]
-        }),
-    }
+        name: tool.name,
+        description: tool.description,
+        input_schema: tool.input_schema,
+    })
 }
 
 pub(crate) fn thread_set_name_params<'a>(
@@ -1276,6 +1294,7 @@ pub(crate) fn thread_unsubscribe_params(thread_id: &str) -> ThreadIdParams<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::codex::served_tools::LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME;
 
     fn thread(status: Value) -> Value {
         json!({
@@ -1442,7 +1461,7 @@ mod tests {
                 "threadId": "thread_1",
                 "turnId": "turn_1",
                 "callId": "call_1",
-                "tool": RENAME_CURRENT_THREAD_TOOL_NAME,
+                "tool": LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
                 "arguments": { "name": "Readable name" }
             }),
         )
@@ -1455,7 +1474,7 @@ mod tests {
                 thread_id: "thread_1".to_string(),
                 turn_id: "turn_1".to_string(),
                 call_id: "call_1".to_string(),
-                tool: RENAME_CURRENT_THREAD_TOOL_NAME.to_string(),
+                tool: LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME.to_string(),
                 namespace: None,
                 arguments: json!({ "name": "Readable name" }),
             }
@@ -1602,47 +1621,6 @@ mod tests {
                     "cwd": "/workspace/project",
                     "runtimeWorkspaceRoots": ["/workspace/project"],
                     "developerInstructions": CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS,
-                    "dynamicTools": [{
-                        "type": "function",
-                        "name": "rename_current_thread",
-                        "description": "Set the user-facing name of the current Caffold task. Never use this tool to rename a different thread.",
-                        "inputSchema": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "properties": {
-                                "name": {
-                                    "type": "string",
-                                    "description": "The new user-facing name for the current Caffold task.",
-                                    "minLength": 1
-                                }
-                            },
-                            "required": ["name"]
-                        }
-                    }, {
-                        "type": "function",
-                        "name": "isolate_current_task",
-                        "description": "Prepare the current Caffold task in a Caffold-managed Git worktree only when the user explicitly asks to isolate the current task or prepare a worktree. By default, leave staged, unstaged, and untracked source checkout changes in place. An optional baseRef creates a new branch from that ref without handing off the current branch and cannot be combined with includeChanges. Set includeChanges to true only when the user explicitly asks to move current or uncommitted changes too. Call this as the final file-affecting action of the current turn. After it succeeds, do not call command or file tools; end the turn so the user's next request can continue in the managed worktree.",
-                        "inputSchema": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "properties": {
-                                "branchName": {
-                                    "type": "string",
-                                    "description": "Optional local branch name. Without baseRef, a current non-default branch is always handed off unchanged. With baseRef, this names the new branch created from that ref.",
-                                    "minLength": 1
-                                },
-                                "baseRef": {
-                                    "type": "string",
-                                    "description": "Optional existing branch, tag, or commit ref to use as the new branch starting point. When provided, the current checkout remains unchanged and includeChanges must be false.",
-                                    "minLength": 1
-                                },
-                                "includeChanges": {
-                                    "type": "boolean",
-                                    "description": "Whether to move staged, unstaged, and untracked changes into the worktree. Defaults to false and must be true only when the user explicitly requests that transfer."
-                                }
-                            }
-                        }
-                    }],
                     "serviceTier": "priority",
                     "serviceName": "caffold",
                     "approvalPolicy": "on-request",
@@ -1908,47 +1886,6 @@ mod tests {
                 "cwd": "/workspace/project",
                 "runtimeWorkspaceRoots": ["/workspace/project"],
                 "developerInstructions": CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS,
-                "dynamicTools": [{
-                    "type": "function",
-                    "name": "rename_current_thread",
-                    "description": "Set the user-facing name of the current Caffold task. Never use this tool to rename a different thread.",
-                    "inputSchema": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                            "name": {
-                                "type": "string",
-                                "description": "The new user-facing name for the current Caffold task.",
-                                "minLength": 1
-                            }
-                        },
-                        "required": ["name"]
-                    }
-                }, {
-                    "type": "function",
-                    "name": "isolate_current_task",
-                    "description": "Prepare the current Caffold task in a Caffold-managed Git worktree only when the user explicitly asks to isolate the current task or prepare a worktree. By default, leave staged, unstaged, and untracked source checkout changes in place. An optional baseRef creates a new branch from that ref without handing off the current branch and cannot be combined with includeChanges. Set includeChanges to true only when the user explicitly asks to move current or uncommitted changes too. Call this as the final file-affecting action of the current turn. After it succeeds, do not call command or file tools; end the turn so the user's next request can continue in the managed worktree.",
-                    "inputSchema": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                            "branchName": {
-                                "type": "string",
-                                "description": "Optional local branch name. Without baseRef, a current non-default branch is always handed off unchanged. With baseRef, this names the new branch created from that ref.",
-                                "minLength": 1
-                            },
-                            "baseRef": {
-                                "type": "string",
-                                "description": "Optional existing branch, tag, or commit ref to use as the new branch starting point. When provided, the current checkout remains unchanged and includeChanges must be false.",
-                                "minLength": 1
-                            },
-                            "includeChanges": {
-                                "type": "boolean",
-                                "description": "Whether to move staged, unstaged, and untracked changes into the worktree. Defaults to false and must be true only when the user explicitly requests that transfer."
-                            }
-                        }
-                    }
-                }],
                 "serviceTier": "default",
                 "serviceName": "caffold"
             })

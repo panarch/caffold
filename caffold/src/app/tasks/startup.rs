@@ -23,6 +23,8 @@ use crate::{
     fs::RootedFs,
 };
 
+use super::CodexMcpHost;
+
 #[derive(Clone)]
 struct TaskRouterGateway {
     router: Arc<RwLock<Router>>,
@@ -98,6 +100,7 @@ pub(in crate::app) struct PersistentTasksGateway {
     shutdown: broadcast::Sender<()>,
     database_path: PathBuf,
     worktree_root: PathBuf,
+    codex_mcp: CodexMcpHost,
 }
 
 impl PersistentTasksGateway {
@@ -107,6 +110,7 @@ impl PersistentTasksGateway {
         shutdown: broadcast::Sender<()>,
         database_path: PathBuf,
         worktree_root: PathBuf,
+        codex_mcp: CodexMcpHost,
     ) -> Self {
         let status = Arc::new(RwLock::new(StartupTaskStatus {
             codex: pending_codex_status(),
@@ -146,6 +150,7 @@ impl PersistentTasksGateway {
             shutdown,
             database_path,
             worktree_root,
+            codex_mcp,
         }
     }
 
@@ -166,6 +171,7 @@ impl PersistentTasksGateway {
                     self.shutdown.clone(),
                     self.database_path.clone(),
                     self.worktree_root.clone(),
+                    self.codex_mcp.clone(),
                 ) {
                     Ok(tasks) => {
                         self.gateway.replace(tasks.router()).await;

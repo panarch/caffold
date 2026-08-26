@@ -56,8 +56,8 @@ implemented outer lifecycle.
    honest empty Task rather than an inferred or hidden first-turn state.
 7. Near the end of the first turn, the agent is instructed to replace the
    initial display name with a concise name based on the understood goal.
-   Codex receives a dynamic tool and Claude receives the equivalent
-   Caffold-served MCP tool. This remains model-followed behavior rather than a
+   Each agent receives the `rename_current_task` base operation through its
+   native MCP integration. This remains model-followed behavior rather than a
    completion gate.
 8. Repository and worktree context is derived from the Task's current cwd.
 9. Every prompt, including the first, starts a new turn or steers an active one

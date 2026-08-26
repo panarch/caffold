@@ -937,6 +937,10 @@ test("preserves Issue Start Task setup, focus return, and created Task selection
   expect(request.cwd).toBe(WORKTREE_ROOT);
   expect(request.titleSource).toContain("--- BEGIN UNTRUSTED ISSUE DATA ---");
   expect(request.titleSource).toContain("Selected base ref: main");
+  expect(request.titleSource).toContain(
+    "First, use rename_current_task to give this Task",
+  );
+  expect(request.titleSource).not.toContain("rename_current_thread");
   expect(request.titleSource).toContain('baseRef exactly "main"');
   expect(request.titleSource).toContain("includeChanges set to false");
   await expect.poll(() => fixture.counts.taskPrompts).toBe(1);
@@ -1089,6 +1093,8 @@ test("starts a same-repository PR Task from the exact prepared head", { tag: "@a
     baseRepository: "gluesql/gluesql",
   }]);
   const prompt = fixture.requests.taskCreates[0].titleSource;
+  expect(prompt).toContain("First, use rename_current_task to give this Task");
+  expect(prompt).not.toContain("rename_current_thread");
   expect(prompt).toContain(`Head: gluesql/gluesql:query-plan-limit-offset @ ${PULL_HEAD_OID}`);
   expect(prompt).toContain(
     `Prepared local head ref: refs/caffold/github/pulls/1983/${PULL_HEAD_OID}`,

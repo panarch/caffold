@@ -40,7 +40,7 @@ pub(crate) const MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION: &str = "2.1.236";
 ///
 /// `--allowedTools` grants the tools Caffold itself serves: the agent calling
 /// one is already the user asking, so they take no approval — exactly as
-/// Codex's dynamic tools answer without one.
+/// Codex's Caffold-served tools answer without one.
 pub(crate) const BASE_ARGUMENTS: &[&str] = &[
     "-p",
     "--input-format",

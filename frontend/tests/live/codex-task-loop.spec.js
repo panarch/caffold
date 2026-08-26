@@ -913,7 +913,7 @@ test("names a new Caffold task at first-turn completion and preserves it", async
     '.task-message[data-message-role="assistant"][data-message-phase="final"]',
   );
   // The name Caffold gives the tool it offers Codex for renaming a Task.
-  const RENAME_TOOL_NAME = "rename_current_thread";
+  const RENAME_TOOL_NAME = "rename_current_task";
   const readTaskDetail = async () => {
     const response = await page.request.get(`/api/tasks/${threadId}`);
     expect(response.ok()).toBeTruthy();
@@ -970,7 +970,7 @@ test("names a new Caffold task at first-turn completion and preserves it", async
   expect(completedRenames(followUpDetail)).toHaveLength(1);
 
   await followUpPrompt.fill(
-    `Rename the current Caffold task to exactly "${requestedName}" using rename_current_thread. After the tool succeeds, reply with exactly ${renamedReply}. Do not inspect files, modify files, or run commands.`,
+    `Rename the current Caffold task to exactly "${requestedName}" using rename_current_task. After the tool succeeds, reply with exactly ${renamedReply}. Do not inspect files, modify files, or run commands.`,
   );
   await submitPromptAndExpectAccepted(page, threadId, () => followUpPrompt.press("Enter"));
   await expect(finalAssistantMessages.filter({ hasText: renamedReply })).toBeVisible();

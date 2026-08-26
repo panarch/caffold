@@ -907,26 +907,7 @@ mod tests {
             .expect("composed developer instructions");
         assert!(developer_instructions.starts_with("Keep custom guidance.\n\n"));
         assert!(developer_instructions.contains("newly created Caffold task"));
-        assert_eq!(
-            requests[1].1["dynamicTools"][0]["name"],
-            "rename_current_thread"
-        );
-        assert_eq!(
-            requests[1].1["dynamicTools"][0]["inputSchema"]["required"],
-            json!(["name"])
-        );
-        assert_eq!(
-            requests[1].1["dynamicTools"][1]["name"],
-            "isolate_current_task"
-        );
-        assert_eq!(
-            requests[1].1["dynamicTools"][1]["inputSchema"]["properties"]
-                .as_object()
-                .unwrap()
-                .keys()
-                .collect::<Vec<_>>(),
-            ["baseRef", "branchName", "includeChanges"]
-        );
+        assert_eq!(requests[1].1.get("dynamicTools"), None);
         assert_eq!(requests[3].0, "turn/start");
         assert_eq!(requests[3].1["approvalsReviewer"], "auto_review");
     }
