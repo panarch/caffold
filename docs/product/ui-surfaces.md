@@ -69,7 +69,9 @@ while its migration blocks operations, with its own retry lifecycle.
 Each offered model identifies its agent. Task creation starts a conversation
 with that agent in the selected cwd and binds the Task to it; later turns can
 choose only models from the same agent. New Task reports that the task is
-starting until creation is answered, and the answer opens the Task.
+starting until the empty Task is durably created, and the answer opens the Task
+without waiting for a turn. The retained New Task submission then moves into
+that Task's Composer and is sent through the ordinary prompt flow.
 Managed-worktree preparation happens explicitly from the resulting Task; it
 is not an implicit side effect of task creation.
 
@@ -106,12 +108,14 @@ Conversation renders the canonical agent conversation as a review timeline:
 A prompt reads as the characters typed into the Composer, so Markdown syntax in
 it stays literal. Agent responses and reasoning summaries render as Markdown.
 
-A Task opened straight from creation shows the prompt it was created with while
-the agent takes it, and the agent's own copy replaces it once the turn begins. A
-first turn the agent never took is reported beside that prompt, whose delivery
-then reads as unconfirmed. Either way the prompt holds the Composer the way any
-submitted prompt does, so a second one is refused until the turn it was sent
-into has begun.
+A Task opened straight from creation is a valid zero-turn conversation. It
+shows the retained initial submission optimistically while the ordinary prompt
+request is in flight, and only the adapter's exact accepted-message identity
+hands that entry to canonical conversation history. The Composer prevents a
+second submission during that handoff. A definitive rejection leaves the Task
+open and restores its text, attachments, and selected options for retry; an
+outcome-unknown transport failure keeps the unconfirmed entry visible without
+automatic replay.
 
 The Composer owns its draft, attachments, selection, and voice capture. Task
 child switching does not interrupt the selected Task's stream.

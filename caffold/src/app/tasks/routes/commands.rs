@@ -5,8 +5,6 @@ pub(super) async fn create_task(
     State(state): State<TaskState>,
     Json(request): Json<CreateTaskRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
-    let prompt_observed_ms = now_ms();
-    let (prompt, images) = normalize_task_input(&request.prompt, request.images)?;
     let cwd = task_cwd(&state, request.cwd.as_deref())?;
     let agent = new_task_agent(&state, request.provider.as_deref(), &cwd).await?;
     let turn_options = TurnOptions {
@@ -16,30 +14,29 @@ pub(super) async fn create_task(
         permission_mode: request.permission_mode,
     };
 
-    let started = state
+    let created = state
         .lifecycle
-        .start_task(
+        .create_task(
             &agent,
-            StartTask {
+            CreateTask {
                 cwd,
-                prompt,
-                images,
+                title_source: request.title_source,
                 turn_options,
-                initial_name: None,
-                prompt_observed_ms,
             },
         )
         .await?;
-    let read = state
-        .detail
-        .read(&agent, &started.task.thread_id, None)
+    // Keep the just-created subscription alive while the response is handed
+    // to a Detail stream. A create-only caller drops this viewer and the normal
+    // handoff grace releases the otherwise idle provider subscription.
+    let _viewer = state
+        .task_sessions
+        .reserve_viewer(&created.task.thread_id)
         .await;
-    // The Task exists whatever its detail read came to, so the turn it was
-    // created for begins either way — and only once nothing is reading the
-    // session a failed turn would let go of.
-    state.lifecycle.begin_first_turn(&agent, started.first_turn);
-    let mut detail = read?;
-    detail.active_top_placement = Some(started.placement);
+    let mut detail = state
+        .detail
+        .read(&agent, &created.task.thread_id, None)
+        .await?;
+    detail.active_top_placement = Some(created.placement);
     Ok(Json(detail))
 }
 
@@ -566,29 +563,6 @@ mod tests {
         task_store::{CheckoutAnchor, ManagedThread, RunBy},
     };
 
-    /// What became of the first turn a creation left running behind it.
-    ///
-    /// Creating a Task answers before the agent takes its prompt, so the turn
-    /// reports itself on the Task's own event stream: the prompt as the agent
-    /// accepted it, or the failure that stands where the answer would have
-    /// been. Subscribe before creating — this reads what was published after.
-    async fn first_turn_outcome(
-        events: &mut tokio::sync::broadcast::Receiver<
-            crate::app::tasks::events::TaskEventPublication,
-        >,
-    ) -> crate::app::tasks::TaskEventRecord {
-        loop {
-            let event = tokio::time::timeout(std::time::Duration::from_secs(5), events.recv())
-                .await
-                .expect("the first turn reported nothing")
-                .expect("Task event stream closed before the first turn reported")
-                .event;
-            if matches!(event.event_type.as_str(), "user_message" | "task_failed") {
-                return event;
-            }
-        }
-    }
-
     async fn publish_permission_approval(
         state: &TaskState,
         client: &CodexThreadClient,
@@ -723,7 +697,7 @@ mod tests {
                     .method("POST")
                     .uri("/api/tasks")
                     .header(axum::http::header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(r#"{"prompt":"must remain blocked"}"#))
+                    .body(Body::from(r#"{"titleSource":"must remain blocked"}"#))
                     .unwrap(),
             )
             .await
@@ -742,7 +716,57 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_task_keeps_explicit_permission_mode_for_the_first_turn() {
+    async fn create_only_accepts_an_empty_title_source_and_returns_zero_turns() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-empty-create-only";
+        let client = CodexThreadClient::mock(vec![
+            crate::agent::codex::MockCodexResponse::ok(
+                "config/read",
+                json!({ "config": { "developer_instructions": null } }),
+            ),
+            crate::agent::codex::MockCodexResponse::ok(
+                "thread/start",
+                created_thread(thread_id, root.path()),
+            ),
+            crate::agent::codex::MockCodexResponse::ok("thread/name/set", json!({})),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+
+        let response = create_task(
+            State(state.clone()),
+            Json(CreateTaskRequest {
+                provider: None,
+                title_source: String::new(),
+                cwd: None,
+                model: None,
+                effort: None,
+                fast_mode: false,
+                permission_mode: None,
+            }),
+        )
+        .await
+        .expect("create-only request succeeds");
+
+        let task = response.0.task.expect("created Task");
+        assert_eq!(task.thread_id, thread_id);
+        assert_eq!(task.title, "Thread thread-e");
+        assert!(task.active_turn.is_none());
+        assert!(response.0.events.is_empty());
+        assert!(state.task_events.for_thread(thread_id).is_empty());
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["config/read", "thread/start", "thread/name/set"]
+        );
+    }
+
+    #[tokio::test]
+    async fn created_task_uses_the_ordinary_prompt_contract_for_its_first_message() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-explicit-permission";
         let mut responses = vec![
@@ -791,14 +815,11 @@ mod tests {
         let client = CodexThreadClient::mock(responses);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        let mut task_events = state.task_events.subscribe();
-
-        let response = create_task(
+        let creation = create_task(
             State(state.clone()),
             Json(CreateTaskRequest {
                 provider: None,
-                prompt: "Use the selected approval mode".to_string(),
-                images: Vec::new(),
+                title_source: "Use the selected approval mode".to_string(),
                 cwd: None,
                 model: None,
                 effort: None,
@@ -809,23 +830,74 @@ mod tests {
         .await
         .expect("task creation succeeds");
 
-        assert_eq!(response.0.permission_mode, Some("approveForMe".to_string()));
+        assert_eq!(creation.0.permission_mode, Some("approveForMe".to_string()));
         assert_eq!(
-            response.0.task.as_ref().map(|task| task.title.as_str()),
+            creation.0.task.as_ref().map(|task| task.title.as_str()),
             Some("[REQ] Use the selected approval mode")
         );
-        let first_prompt = first_turn_outcome(&mut task_events).await;
-        assert_eq!(first_prompt.event_type, "user_message");
+        assert!(creation.0.task.as_ref().unwrap().active_turn.is_none());
+        assert!(creation.0.events.is_empty());
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["config/read", "thread/start", "thread/name/set"]
+        );
+        assert!(
+            !state
+                .task_sessions
+                .snapshot(thread_id)
+                .await
+                .expect("created session")
+                .runtime_lease
+        );
+
+        let observed_after_creation_ms = crate::app::tasks::events::now_ms();
+        let response = task_prompt(
+            State(state.clone()),
+            AxumPath(thread_id.to_string()),
+            Query(TasksQuery { cursor: None }),
+            Json(TaskPromptRequest {
+                prompt: "Use the selected approval mode".to_string(),
+                images: Vec::new(),
+                model: None,
+                effort: None,
+                fast_mode: false,
+                permission_mode: Some("approveForMe".to_string()),
+                active_turn_id: None,
+            }),
+        )
+        .await
+        .expect("ordinary prompt accepts the first message");
+
+        assert_eq!(response.0.thread_id, thread_id);
+        assert_eq!(response.0.turn_id, "turn-explicit-permission");
         let requests = client.mock_requests().await;
         let requested_user_message_id = requests
             .iter()
             .find(|(method, _)| method == "turn/start")
             .and_then(|(_, request)| request["clientUserMessageId"].as_str())
-            .expect("the adapter identifies the first user message");
+            .expect("the adapter identifies the submitted user message");
         assert_eq!(
-            first_prompt.payload.as_ref().unwrap()["itemId"],
-            requested_user_message_id
+            response.0.user_message_id,
+            requested_user_message_id.to_string()
         );
+        let accepted = state
+            .task_events
+            .for_thread(thread_id)
+            .into_iter()
+            .find(|event| {
+                event
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload["itemId"].as_str())
+                    == Some(requested_user_message_id)
+            })
+            .expect("ordinary prompt publishes the accepted user message");
+        assert!(accepted.position.anchor_ms >= observed_after_creation_ms);
         assert_eq!(requests[0].0, "config/read");
         assert_eq!(requests[1].0, "thread/start");
         assert_eq!(requests[1].1["serviceTier"], "default");
@@ -860,7 +932,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_task_persists_the_applied_composer_settings_for_the_task_and_section() {
+    async fn ordinary_first_prompt_persists_applied_composer_settings_for_task_and_section() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-model-settings";
         let mut responses = vec![
@@ -892,6 +964,10 @@ mod tests {
             json!({}),
         ));
         responses.push(crate::agent::codex::MockCodexResponse::ok(
+            "model/list",
+            current_model_list_response(),
+        ));
+        responses.push(crate::agent::codex::MockCodexResponse::ok(
             "turn/start",
             json!({
                 "turn": {
@@ -911,8 +987,7 @@ mod tests {
             State(state.clone()),
             Json(CreateTaskRequest {
                 provider: None,
-                prompt: "Use xhigh".to_string(),
-                images: Vec::new(),
+                title_source: "Use xhigh".to_string(),
                 cwd: None,
                 model: Some("gpt-5.6-sol".to_string()),
                 effort: Some("xhigh".to_string()),
@@ -944,6 +1019,42 @@ mod tests {
             }
             update => panic!("expected placement list update, got {update:?}"),
         }
+        assert!(
+            matches!(
+                list_updates.try_recv(),
+                Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+            ),
+            "Task creation must not publish turn-applied Section settings"
+        );
+        let stored_after_creation = task_store_get(&state, thread_id)
+            .await
+            .unwrap()
+            .expect("created Task settings");
+        assert_eq!(stored_after_creation.model.as_deref(), Some("gpt-5.6-sol"));
+        assert_eq!(
+            stored_after_creation.reasoning_effort.as_deref(),
+            Some("xhigh")
+        );
+        assert!(stored_after_creation.fast_mode);
+
+        let prompt = task_prompt(
+            State(state.clone()),
+            AxumPath(thread_id.to_string()),
+            Query(TasksQuery { cursor: None }),
+            Json(TaskPromptRequest {
+                prompt: "Use xhigh".to_string(),
+                images: Vec::new(),
+                model: Some("gpt-5.6-sol".to_string()),
+                effort: Some("xhigh".to_string()),
+                fast_mode: true,
+                permission_mode: None,
+                active_turn_id: None,
+            }),
+        )
+        .await
+        .expect("ordinary first prompt succeeds");
+        assert!(!prompt.0.steered);
+
         match tokio::time::timeout(std::time::Duration::from_secs(1), list_updates.recv())
             .await
             .expect("Section composer settings update was not published")
@@ -988,13 +1099,13 @@ mod tests {
         let requests = client.mock_requests().await;
         assert_eq!(requests[2].0, "thread/start");
         assert_eq!(requests[2].1["serviceTier"], "priority");
-        assert_eq!(requests[4].0, "turn/start");
-        assert_eq!(requests[4].1["model"], "gpt-5.6-sol");
-        assert_eq!(requests[4].1["serviceTier"], "priority");
-        assert_eq!(requests[4].1["effort"], "xhigh");
+        assert_eq!(requests[5].0, "turn/start");
+        assert_eq!(requests[5].1["model"], "gpt-5.6-sol");
+        assert_eq!(requests[5].1["serviceTier"], "priority");
+        assert_eq!(requests[5].1["effort"], "xhigh");
     }
 
-    /// The thread a creation answers with, before its first turn exists.
+    /// The empty thread a creation answers with.
     fn created_thread(thread_id: &str, cwd: &std::path::Path) -> JsonValue {
         json!({
             "thread": {
@@ -1010,7 +1121,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_task_answers_before_the_agent_takes_the_first_prompt() {
+    async fn empty_task_survives_runtime_replacement_before_its_first_prompt() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-first-turn-pending";
         let client = CodexThreadClient::mock(vec![
@@ -1027,41 +1138,27 @@ mod tests {
                 json!({ "threadId": thread_id, "name": "[REQ] Read the planner" }),
                 json!({}),
             ),
-            // An agent that takes far longer over the first prompt than any
-            // creation could wait for it.
-            crate::agent::codex::MockCodexResponse::delayed_ok(
-                "turn/start",
-                json!({
-                    "turn": { "id": "turn-first", "items": [], "status": "inProgress" }
-                }),
-                std::time::Duration::from_secs(30),
-            ),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
 
-        let response = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            create_task(
-                State(state.clone()),
-                Json(CreateTaskRequest {
-                    provider: None,
-                    prompt: "Read the planner".to_string(),
-                    images: Vec::new(),
-                    cwd: None,
-                    model: None,
-                    effort: None,
-                    fast_mode: false,
-                    permission_mode: None,
-                }),
-            ),
+        let response = create_task(
+            State(state.clone()),
+            Json(CreateTaskRequest {
+                provider: None,
+                title_source: "Read the planner".to_string(),
+                cwd: None,
+                model: None,
+                effort: None,
+                fast_mode: false,
+                permission_mode: None,
+            }),
         )
         .await
-        .expect("task creation answers without waiting for the first turn")
         .expect("task creation succeeds");
 
-        // The Task is a Task: named, claimed at the top of its Section, and
-        // carrying no turn of its own yet.
+        // The Task is already the durable unit: named, claimed at the top of
+        // its Section, and carrying no submitted message or turn.
         assert_eq!(response.0.thread_id, thread_id);
         let task = response.0.task.as_ref().expect("created Task record");
         assert_eq!(task.title, "[REQ] Read the planner");
@@ -1078,12 +1175,72 @@ mod tests {
             task_store_get(&state, thread_id).await.unwrap().is_some(),
             "the claimed Task is stored before its first turn begins"
         );
+
+        let affected = state
+            .task_sessions
+            .codex_connection_lost(1, "backend replaced".to_string())
+            .await;
+        assert_eq!(affected, [thread_id]);
+        assert!(state.task_events.for_thread(thread_id).is_empty());
+        assert_eq!(
+            state
+                .task_store
+                .read(|tables| tables.active_managed_threads())
+                .unwrap()
+                .into_iter()
+                .filter(|thread| thread.thread_id == thread_id)
+                .count(),
+            1
+        );
+
+        let replacement = CodexThreadClient::mock(vec![
+            crate::agent::codex::MockCodexResponse::ok(
+                "thread/resume",
+                resumed_task(thread_id, root.path()),
+            ),
+            crate::agent::codex::MockCodexResponse::ok(
+                "turn/start",
+                json!({
+                    "turn": { "id": "turn-after-replacement", "items": [], "status": "inProgress" }
+                }),
+            ),
+        ]);
+        state
+            .task_runtime
+            .install_test_client(2, replacement.clone())
+            .await;
+        let prompt = task_prompt(
+            State(state.clone()),
+            AxumPath(thread_id.to_string()),
+            Query(TasksQuery { cursor: None }),
+            Json(TaskPromptRequest {
+                prompt: "Read the planner".to_string(),
+                images: Vec::new(),
+                model: None,
+                effort: None,
+                fast_mode: false,
+                permission_mode: None,
+                active_turn_id: None,
+            }),
+        )
+        .await
+        .expect("the replacement runtime accepts the ordinary first prompt");
+        assert_eq!(prompt.0.turn_id, "turn-after-replacement");
+        assert_eq!(
+            replacement
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/resume", "turn/start"]
+        );
     }
 
     #[tokio::test]
-    async fn first_prompt_keeps_the_task_creation_observation_time() {
+    async fn rejected_ordinary_first_prompt_leaves_the_created_task_empty() {
         let root = tempfile::tempdir().unwrap();
-        let thread_id = "thread-first-prompt-observed-position";
+        let thread_id = "thread-first-prompt-refused";
         let client = CodexThreadClient::mock(vec![
             crate::agent::codex::MockCodexResponse::ok(
                 "config/read",
@@ -1094,87 +1251,25 @@ mod tests {
                 created_thread(thread_id, root.path()),
             ),
             crate::agent::codex::MockCodexResponse::ok("thread/name/set", json!({})),
-            crate::agent::codex::MockCodexResponse::delayed_ok(
-                "turn/start",
-                json!({
-                    "turn": { "id": "turn-first", "items": [], "status": "inProgress" }
-                }),
-                std::time::Duration::from_millis(50),
-            ),
-        ]);
-        let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
-        let mut task_events = state.task_events.subscribe();
-
-        let _detail = create_task(
-            State(state),
-            Json(CreateTaskRequest {
-                provider: None,
-                prompt: "Keep the first user before the answer".to_string(),
-                images: Vec::new(),
-                cwd: None,
-                model: None,
-                effort: None,
-                fast_mode: false,
-                permission_mode: None,
-            }),
-        )
-        .await
-        .expect("task creation succeeds before its first turn starts");
-        let after_task_creation_ms = crate::app::tasks::events::now_ms();
-
-        let first_prompt = first_turn_outcome(&mut task_events).await;
-        assert_eq!(first_prompt.event_type, "user_message");
-        assert!(
-            first_prompt.position.anchor_ms <= after_task_creation_ms,
-            "the delayed first-turn acceptance must retain when Caffold observed task creation"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_first_turn_that_never_begins_is_told_in_the_task_it_was_for() {
-        let root = tempfile::tempdir().unwrap();
-        let thread_id = "thread-first-turn-refused";
-        let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok(
-                "config/read",
-                json!({ "config": { "developer_instructions": null } }),
-            ),
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/start",
-                created_thread(thread_id, root.path()),
-            ),
-            crate::agent::codex::MockCodexResponse::ok_for(
-                "thread/name/set",
-                json!({ "threadId": thread_id, "name": "[REQ] Read the planner" }),
-                json!({}),
-            ),
             crate::agent::codex::MockCodexResponse::error(
                 "turn/start",
                 crate::agent::codex::CodexThreadError::Protocol(
                     "the agent could not be reached".to_string(),
                 ),
             ),
-            // Letting the failed turn's runtime lease go, and reading the Task
-            // back afterwards the way a person opening it does.
             crate::agent::codex::MockCodexResponse::ok(
                 "thread/unsubscribe",
                 json!({ "status": "unsubscribed" }),
             ),
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/resume",
-                resumed_task(thread_id, root.path()),
-            ),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        let mut task_events = state.task_events.subscribe();
 
-        let response = create_task(
+        let detail = create_task(
             State(state.clone()),
             Json(CreateTaskRequest {
                 provider: None,
-                prompt: "Read the planner".to_string(),
-                images: Vec::new(),
+                title_source: "Read the planner".to_string(),
                 cwd: None,
                 model: None,
                 effort: None,
@@ -1183,54 +1278,59 @@ mod tests {
             }),
         )
         .await
-        .expect("creating a Task succeeds even though its first turn will not");
+        .expect("empty Task creation succeeds");
+        assert_eq!(detail.0.thread_id, thread_id);
 
-        assert_eq!(response.0.thread_id, thread_id);
-        let failure = first_turn_outcome(&mut task_events).await;
-        assert_eq!(failure.event_type, "task_failed");
-        assert_eq!(failure.thread_id, thread_id);
-        assert!(
-            failure
-                .summary
-                .starts_with("The first turn could not be started:"),
-            "unexpected failure summary: {}",
-            failure.summary
-        );
-        assert!(failure.summary.contains("the agent could not be reached"));
-
-        // The Task keeps its place: the prompt is still there to send again,
-        // and archiving it is the ordinary way to put it away.
+        let error = task_prompt(
+            State(state.clone()),
+            AxumPath(thread_id.to_string()),
+            Query(TasksQuery { cursor: None }),
+            Json(TaskPromptRequest {
+                prompt: "Read the planner".to_string(),
+                images: Vec::new(),
+                model: None,
+                effort: None,
+                fast_mode: false,
+                permission_mode: None,
+                active_turn_id: None,
+            }),
+        )
+        .await
+        .expect_err("ordinary prompt failure is returned to its caller");
+        assert!(error.to_string().contains("the agent could not be reached"));
         assert!(
             task_store_get(&state, thread_id).await.unwrap().is_some(),
-            "a Task whose first turn failed is still the Task that was created"
+            "the valid empty Task remains managed after prompt rejection"
         );
-
-        let response = router(state)
-            .oneshot(
-                axum::http::Request::builder()
-                    .method("GET")
-                    .uri(format!("/api/tasks/{thread_id}"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+        let snapshot = state
+            .task_sessions
+            .snapshot(thread_id)
             .await
-            .expect("task detail response");
-        assert_eq!(response.status(), axum::http::StatusCode::OK);
-        let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
-            .await
-            .expect("task detail body");
-        let body: JsonValue = serde_json::from_slice(&body).expect("task detail JSON");
-        // Nothing is running on it, which is what lets it be archived rather
-        // than sitting in the list as a Task nobody can put away.
-        assert_eq!(body["task"]["threadStatus"]["type"], "idle");
-        assert!(body["task"]["activeTurn"].is_null());
+            .expect("empty Task session remains inspectable");
+        assert!(snapshot.active_turn_id.is_none());
         assert!(
-            body["events"]
-                .as_array()
-                .expect("task detail events")
+            state
+                .task_events
+                .for_thread(thread_id)
                 .iter()
-                .any(|event| event["type"] == "task_failed"),
-            "the failure reads back with the Task"
+                .all(
+                    |event| event.event_type != "task_failed" && event.event_type != "user_message"
+                )
+        );
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            [
+                "config/read",
+                "thread/start",
+                "thread/name/set",
+                "turn/start",
+                "thread/unsubscribe"
+            ]
         );
     }
 
@@ -1282,8 +1382,7 @@ mod tests {
             State(state.clone()),
             Json(CreateTaskRequest {
                 provider: None,
-                prompt: "Must not become managed".to_string(),
-                images: Vec::new(),
+                title_source: "Must not become managed".to_string(),
                 cwd: None,
                 model: None,
                 effort: None,

@@ -209,12 +209,24 @@ impl Backend {
         self.create(prompt, model, "default").await
     }
 
+    /// Create the valid empty Task that exists before its first prompt.
+    pub async fn create_empty_task(&self, title_source: &str, model: &str) -> Task {
+        self.create_empty(title_source, model, "bypassPermissions")
+            .await
+    }
+
     async fn create(&self, prompt: &str, model: &str, permission_mode: &str) -> Task {
+        let task = self.create_empty(prompt, model, permission_mode).await;
+        task.say_with_options(prompt, model, permission_mode).await;
+        task
+    }
+
+    async fn create_empty(&self, title_source: &str, model: &str, permission_mode: &str) -> Task {
         let created = self
             .post(
                 "/api/tasks",
                 json!({
-                    "prompt": prompt,
+                    "titleSource": title_source,
                     "cwd": "notes",
                     "provider": "claude",
                     "model": model,
@@ -481,12 +493,25 @@ impl Task {
     }
 
     pub async fn say(&self, text: &str) -> Said {
+        self.say_with_body(json!({ "prompt": text, "images": [] }))
+            .await
+    }
+
+    pub async fn say_with_options(&self, text: &str, model: &str, permission_mode: &str) -> Said {
+        self.say_with_body(json!({
+            "prompt": text,
+            "images": [],
+            "model": model,
+            "fastMode": false,
+            "permissionMode": permission_mode,
+        }))
+        .await
+    }
+
+    async fn say_with_body(&self, body: Value) -> Said {
         let answer = self
             .at
-            .post(
-                &format!("/api/tasks/{}/prompts", self.thread_id),
-                json!({ "prompt": text, "images": [] }),
-            )
+            .post(&format!("/api/tasks/{}/prompts", self.thread_id), body)
             .await
             .expect("the message is accepted");
         Said {

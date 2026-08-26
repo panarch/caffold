@@ -106,7 +106,7 @@ pub(in crate::app::tasks) struct TerminalTurnApplyOutcome {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(in crate::app::tasks) struct StartedSettings {
+pub(in crate::app::tasks) struct ConversationSettings {
     pub(in crate::app::tasks) permission_mode: Option<String>,
     pub(in crate::app::tasks) model: Option<String>,
     pub(in crate::app::tasks) reasoning_effort: Option<String>,

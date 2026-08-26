@@ -284,12 +284,24 @@ test("explicit approval mode is sent with a new task prompt", { tag: "@all-viewp
   );
   await page.unroute("**/api/tasks");
   let submittedBody = null;
+  let promptBody = null;
   await page.route("**/api/tasks", (route) => {
     if (route.request().method() === "POST") {
       submittedBody = route.request().postDataJSON();
       return route.fulfill({ json: taskDetailFixture() });
     }
     return route.fulfill({ json: activeTaskProjection() });
+  });
+  await page.route("**/api/tasks/*/prompts", (route) => {
+    promptBody = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-created-permission",
+        userMessageId: "message-created-permission",
+        steered: false,
+      },
+    });
   });
 
   await page.goto("/tasks/new?cwd=src");
@@ -303,8 +315,14 @@ test("explicit approval mode is sent with a new task prompt", { tag: "@all-viewp
 
   await expect.poll(() => submittedBody).not.toBeNull();
   expect(submittedBody).toMatchObject({
+    titleSource: "Inspect the task",
+    permissionMode: "approveForMe",
+  });
+  await expect.poll(() => promptBody).not.toBeNull();
+  expect(promptBody).toMatchObject({
     prompt: "Inspect the task",
     permissionMode: "approveForMe",
+    activeTurnId: null,
   });
 });
 
@@ -314,12 +332,24 @@ test("new tasks start in Normal mode and submit an explicit Fast choice", { tag:
   await installTaskApiFixture(page);
   await page.unroute("**/api/tasks");
   let submittedBody = null;
+  let promptBody = null;
   await page.route("**/api/tasks", (route) => {
     if (route.request().method() === "POST") {
       submittedBody = route.request().postDataJSON();
       return route.fulfill({ json: taskDetailFixture({ fastMode: true }) });
     }
     return route.fulfill({ json: activeTaskProjection() });
+  });
+  await page.route("**/api/tasks/*/prompts", (route) => {
+    promptBody = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-created-1",
+        userMessageId: "message-created-1",
+        steered: false,
+      },
+    });
   });
 
   await page.goto("/tasks/new?cwd=src");
@@ -386,6 +416,8 @@ test("new tasks start in Normal mode and submit an explicit Fast choice", { tag:
   await form.getByRole("textbox", { name: "New task prompt" }).press("Enter");
   await expect.poll(() => submittedBody).not.toBeNull();
   expect(submittedBody.fastMode).toBe(true);
+  await expect.poll(() => promptBody).not.toBeNull();
+  expect(promptBody.fastMode).toBe(true);
 
   await expect(page).toHaveURL(/\/tasks\/thread-1$/);
   await page.locator("caffold-tasks-page").evaluate((element) => {
@@ -927,6 +959,7 @@ test("new task submission stays single-flight and restores local input after rej
     releaseFirstRequest = resolve;
   });
   const submittedBodies = [];
+  let initialPromptBody = null;
   let adoptedDetailReads = 0;
   await page.route("**/api/tasks/thread-1", (route) => {
     adoptedDetailReads += 1;
@@ -945,6 +978,17 @@ test("new task submission stays single-flight and restores local input after rej
       });
     }
     return route.fulfill({ json: taskDetailFixture() });
+  });
+  await page.route("**/api/tasks/thread-1/prompts", (route) => {
+    initialPromptBody = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-created-retry",
+        userMessageId: "message-created-retry",
+        steered: false,
+      },
+    });
   });
 
   await page.goto("/tasks/new?cwd=src");
@@ -980,10 +1024,17 @@ test("new task submission stays single-flight and restores local input after rej
   expect(submittedBodies[1]).toMatchObject({
     cwd: "src",
     fastMode: true,
-    prompt: "Retry this exact task",
+    titleSource: "Retry this exact task",
   });
-  expect(submittedBodies[1].images).toHaveLength(1);
+  expect(submittedBodies[1]).not.toHaveProperty("images");
   await expect(page).toHaveURL("/tasks/thread-1");
+  await expect.poll(() => initialPromptBody).not.toBeNull();
+  expect(initialPromptBody).toMatchObject({
+    prompt: "Retry this exact task",
+    fastMode: true,
+    activeTurnId: null,
+  });
+  expect(initialPromptBody.images).toHaveLength(1);
   expect(adoptedDetailReads).toBe(0);
 });
 

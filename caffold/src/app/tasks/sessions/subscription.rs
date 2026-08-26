@@ -4,7 +4,7 @@ use crate::agent::AgentError;
 use crate::agent::{Conversation, Driver};
 
 use super::{
-    SessionEntry, SessionLifecycle, SessionSnapshot, StartedSettings, TaskSessions,
+    ConversationSettings, SessionEntry, SessionLifecycle, SessionSnapshot, TaskSessions,
     VIEWER_HANDOFF_GRACE, ViewerLease, now_unix_ms, snapshot,
 };
 use super::{
@@ -177,12 +177,12 @@ impl TaskSessions {
         }
     }
 
-    pub(in crate::app::tasks) async fn register_started_thread(
+    pub(in crate::app::tasks) async fn register_created_thread(
         &self,
         driver: &Driver,
         generation: u64,
         thread: Conversation,
-        settings: StartedSettings,
+        settings: ConversationSettings,
     ) {
         let entry = self.entry(&thread.id).await;
         let mut state = entry.state.lock().await;
@@ -204,7 +204,7 @@ impl TaskSessions {
         state.fast_mode = settings.fast_mode;
         state.turns_page = None;
         state.history_base_revision = None;
-        state.runtime_lease = true;
+        state.runtime_lease = false;
         state.revision = state.revision.saturating_add(1);
         state.status_revision = state.revision;
         state.name_revision = state.revision;
@@ -578,20 +578,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn registered_started_thread_is_subscribed_and_holds_runtime() {
+    async fn registered_created_thread_is_subscribed_without_a_runtime_lease() {
         let client = CodexThreadClient::mock(Vec::new());
         let sessions = TaskSessions::default();
         sessions
-            .register_started_thread(
+            .register_created_thread(
                 &client.driver(),
                 1,
-                Conversation::from(&thread(
-                    ThreadStatus::Active {
-                        active_flags: Vec::new(),
-                    },
-                    vec![wire_turn("turn-new", TurnStatus::InProgress)],
-                )),
-                StartedSettings {
+                Conversation::from(&thread(ThreadStatus::Idle, Vec::new())),
+                ConversationSettings {
                     permission_mode: Some("askForApproval".to_string()),
                     model: Some("gpt-test".to_string()),
                     reasoning_effort: Some("xhigh".to_string()),
@@ -602,8 +597,8 @@ mod tests {
 
         let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
         assert_eq!(snapshot.lifecycle, SessionLifecycle::Subscribed);
-        assert!(snapshot.runtime_lease);
-        assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-new"));
+        assert!(!snapshot.runtime_lease);
+        assert!(snapshot.active_turn_id.is_none());
         assert_eq!(snapshot.model.as_deref(), Some("gpt-test"));
         assert_eq!(snapshot.reasoning_effort.as_deref(), Some("xhigh"));
         assert!(snapshot.fast_mode);

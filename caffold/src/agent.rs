@@ -36,6 +36,5 @@ pub(crate) use conversation::{
     ThreadActiveFlag, ThreadStatus, TokenCount, TokenUsage, Turn, TurnOrigin, TurnPage, TurnStatus,
 };
 pub(crate) use driver::{
-    AcceptedTurnOptions, AgentError, Driver, OpenedConversation, PermissionModes, TurnOptions,
-    TurnRejected,
+    AgentError, Driver, OpenedConversation, PermissionModes, TurnOptions, TurnRejected,
 };

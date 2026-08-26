@@ -255,6 +255,68 @@ class CaffoldTaskComposer extends HTMLElement {
     return true;
   }
 
+  // Remove an in-flight submission from this composer without accepting or
+  // rejecting it. The returned value is the complete browser-owned request,
+  // ready for another composer to adopt while a create-then-submit flow moves
+  // from the New Task surface into the Task that was just created.
+  takeSubmission(submissionId) {
+    this.ensureState();
+    const submission = this.activeSubmissions.get(submissionId);
+    if (!submission) {
+      return null;
+    }
+    this.activeSubmissions.delete(submissionId);
+    const state = this.stateFor();
+    if (state.activeSubmissionId === submissionId) {
+      state.activeSubmissionId = "";
+    }
+    this.context.requestError = "";
+    this.render();
+    return submissionDetail(submission, this.context.threadId);
+  }
+
+  submissionSnapshot(submissionId) {
+    this.ensureState();
+    const submission = this.activeSubmissions.get(submissionId);
+    return submission
+      ? submissionDetail(submission, this.context.threadId)
+      : null;
+  }
+
+  // Take ownership of a submission that another surface was holding.
+  //
+  // The message and its selected options remain here until the ordinary
+  // prompt request is accepted. A rejection can therefore restore the exact
+  // draft in the valid empty Task instead of sending the person back to New.
+  adoptSubmission(value = {}) {
+    this.ensureState();
+    if (this.activeSubmissionFor()) {
+      return null;
+    }
+    const submission = normalizeAdoptedSubmission(value);
+    if (!submission) {
+      return null;
+    }
+    this.activeSubmissions.set(submission.id, submission);
+    const state = this.stateFor();
+    state.activeSubmissionId = submission.id;
+    state.prompt = "";
+    state.images = [];
+    state.imageError = "";
+    this.context.requestError = "";
+    const turnOptionsContext = this.turnOptionsContext();
+    this.turnOptions()?.reset({
+      ...turnOptionsContext,
+      initialSelection: {
+        ...turnOptionsContext.initialSelection,
+        ...submission.options,
+      },
+    });
+    this.turnOptions()?.holdSubmissionOptions(submission.options);
+    this.render();
+    return submissionDetail(submission, this.context.threadId);
+  }
+
   resetOverrides() {
     this.turnOptions()?.resetOverrides();
   }
@@ -855,6 +917,7 @@ class CaffoldTaskComposer extends HTMLElement {
       id: submissionId,
       prompt,
       images: [...state.images],
+      options: { ...options },
       restorePromptFocus:
         !event.submitter &&
         document.activeElement ===
@@ -1308,6 +1371,47 @@ function setOptionalAttribute(element, name, value) {
   } else {
     element.removeAttribute(name);
   }
+}
+
+function submissionDetail(submission, threadId = "") {
+  return {
+    submissionId: submission.id,
+    threadId: `${threadId ?? ""}`,
+    prompt: submission.prompt,
+    images: submission.images.map((image) => image.dataUrl),
+    attachments: [...submission.images],
+    options: { ...(submission.options ?? {}) },
+    restorePromptFocus: Boolean(submission.restorePromptFocus),
+  };
+}
+
+function normalizeAdoptedSubmission(value) {
+  const id = `${value?.submissionId ?? value?.id ?? ""}`.trim();
+  const prompt = `${value?.prompt ?? ""}`.trim();
+  const providedAttachments = Array.isArray(value?.attachments)
+    ? value.attachments
+    : [];
+  const attachments = providedAttachments.length
+    ? providedAttachments.map((image) => ({ ...image }))
+    : (Array.isArray(value?.images) ? value.images : []).map(
+        (dataUrl, index) => ({
+          id: `adopted:${id}:${index}`,
+          name: `image-${index + 1}`,
+          type: `${dataUrl}`.match(/^data:([^;,]+)/)?.[1] ?? "image/png",
+          size: 0,
+          dataUrl: `${dataUrl}`,
+        }),
+      );
+  if (!id || (!prompt && !attachments.length)) {
+    return null;
+  }
+  return {
+    id,
+    prompt,
+    images: attachments,
+    options: { ...(value?.options ?? {}) },
+    restorePromptFocus: Boolean(value?.restorePromptFocus),
+  };
 }
 
 function closestElement(target, selector) {

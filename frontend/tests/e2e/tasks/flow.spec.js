@@ -101,6 +101,23 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
       });
     }
 
+    if (
+      segments.length === 4 &&
+      segments[2] === threadId &&
+      segments[3] === "prompts" &&
+      method === "POST"
+    ) {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          threadId,
+          turnId: "turn-global-created",
+          userMessageId: "message-global-created",
+          steered: false,
+        }),
+      });
+    }
+
     return route.fallback();
   });
   await page.route(/\/api\/list(?:\?|$)/, (route) => {
@@ -403,7 +420,7 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
   await expect(tasksPage.locator(".task-composer-context")).toContainText("src");
   await prompt.press("Enter");
 
-  await expect.poll(() => createdTaskRequest?.prompt).toBe("Say hello globally");
+  await expect.poll(() => createdTaskRequest?.titleSource).toBe("Say hello globally");
   await expect(page).toHaveURL(`/tasks/${threadId}`);
   await expect(tasksPage).toContainText("Hello from a global Codex thread.");
   await expect(
@@ -620,12 +637,15 @@ test("runs a minimal task from creation through follow-up", { tag: "@all-viewpor
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("shows the submitted prompt until the first turn reports it", { tag: "@desktop" }, async ({ page }) => {
-  const scenario = await installTaskLoopFixture(page, { deferFirstTurn: true });
+test("shows the retained initial prompt until the ordinary prompt request is accepted", { tag: "@desktop" }, async ({ page }) => {
+  const scenario = await installTaskLoopFixture(page, { deferInitialPrompt: true });
   const tasksPage = page.locator("caffold-tasks-page");
   await startTaskFromNewSurface(page, scenario);
 
   await expect(page).toHaveURL(`/tasks/${scenario.threadId}`);
+  await scenario.initialPromptRequested;
+  expect(scenario.createTaskRequests).toBe(1);
+  expect(scenario.initialPromptRequests).toBe(1);
   const userMessage = tasksPage.locator('.task-message[data-message-role="user"]');
   await expect(userMessage).toHaveCount(1);
   await expect(userMessage).toContainText("Inspect the planner changes");
@@ -635,7 +655,7 @@ test("shows the submitted prompt until the first turn reports it", { tag: "@desk
     /^data:image\/png;base64,/,
   );
 
-  await scenario.releaseFirstTurn();
+  await scenario.releaseInitialPrompt();
 
   await expect(userMessage).toHaveCount(1);
   await expect(userMessage).not.toHaveAttribute("data-delivery-state", /.+/);
@@ -643,23 +663,25 @@ test("shows the submitted prompt until the first turn reports it", { tag: "@desk
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("keeps a second prompt out of a first turn that has not begun", { tag: "@desktop" }, async ({ page }) => {
-  const scenario = await installTaskLoopFixture(page, { deferFirstTurn: true });
+test("prevents a duplicate while create then ordinary prompt is in progress", { tag: "@desktop" }, async ({ page }) => {
+  const scenario = await installTaskLoopFixture(page, { deferInitialPrompt: true });
   const tasksPage = page.locator("caffold-tasks-page");
   await startTaskFromNewSurface(page, scenario);
   await expect(page).toHaveURL(`/tasks/${scenario.threadId}`);
+  await scenario.initialPromptRequested;
 
   const followUp = tasksPage.locator('.task-follow-up-form textarea[name="prompt"]');
   await followUp.fill("Second prompt before the first turn");
   await followUp.press("Enter");
 
-  await expect(
-    tasksPage.locator(".task-follow-up-form .task-composer-request-error"),
-  ).toHaveText("A prompt is already being submitted for this task.");
+  expect(scenario.initialPromptRequests).toBe(1);
   expect(scenario.followUpRequests).toBe(0);
   await expect(followUp).toHaveValue("Second prompt before the first turn");
+  await expect(
+    tasksPage.locator(".task-follow-up-form .task-primary-action-button"),
+  ).toBeDisabled();
 
-  await scenario.releaseFirstTurn();
+  await scenario.releaseInitialPrompt();
 
   await expect(
     tasksPage.locator('.task-message[data-message-role="user"]'),
@@ -667,37 +689,69 @@ test("keeps a second prompt out of a first turn that has not begun", { tag: "@de
   expect(scenario.pageErrors).toEqual([]);
 });
 
-test("says in the conversation when the first turn could not be started", { tag: "@desktop" }, async ({ page }) => {
-  const scenario = await installTaskLoopFixture(page, { deferFirstTurn: true });
+test("keeps the empty Task and restores its composer when the initial prompt is rejected", { tag: "@desktop" }, async ({ page }) => {
+  const scenario = await installTaskLoopFixture(page, { deferInitialPrompt: true });
   const tasksPage = page.locator("caffold-tasks-page");
-  await startTaskFromNewSurface(page, scenario);
+  await startTaskFromNewSurface(page, scenario, {
+    fastMode: true,
+    permissionMode: "askForApproval",
+  });
   await expect(page).toHaveURL(`/tasks/${scenario.threadId}`);
+  await scenario.initialPromptRequested;
+  expect(scenario.initialPromptBody).toMatchObject({
+    model: "gpt-5.6-sol",
+    effort: "xhigh",
+    fastMode: true,
+    permissionMode: "askForApproval",
+  });
 
-  await scenario.failFirstTurn();
+  await scenario.rejectInitialPrompt();
 
   await expect(
-    tasksPage.locator('.task-event[data-event-type="task_failed"]'),
-  ).toContainText(
-    "The first turn could not be started: the agent could not be reached.",
+    tasksPage.locator(".task-follow-up-form .task-composer-request-error"),
+  ).toHaveText("Prompt request failed");
+  await expect(
+    tasksPage.locator('.task-message[data-message-role="user"]'),
+  ).toHaveCount(0);
+  const composer = tasksPage.locator(".task-follow-up-form");
+  await expect(composer.locator('textarea[name="prompt"]')).toHaveValue(
+    "Inspect the planner changes",
   );
-  const userMessage = tasksPage.locator('.task-message[data-message-role="user"]');
-  await expect(userMessage).toHaveCount(1);
-  await expect(userMessage).toContainText("Inspect the planner changes");
-  await expect(userMessage).toHaveAttribute(
-    "data-delivery-state",
-    "outcomeUnknown",
+  await expect(composer.locator(".task-composer-attachment")).toHaveCount(1);
+  await expect(composer.locator('input[name="model"]')).toHaveValue(
+    "gpt-5.6-sol",
   );
+  await expect(composer.locator('input[name="effort"]')).toHaveValue("xhigh");
+  await expect(composer.locator('input[name="fastMode"]')).toHaveValue("true");
+  await expect(composer.locator('input[name="permissionMode"]')).toHaveValue(
+    "askForApproval",
+  );
+  await expect(composer.locator('textarea[name="prompt"]')).toBeFocused();
+  expect(scenario.createTaskRequests).toBe(1);
+  expect(scenario.initialPromptRequests).toBe(1);
   expect(scenario.pageErrors).toEqual([]);
 });
 
 // The New Task surface's own submission, performed the way a person performs
 // it, so each test above starts from a Task that was created through the UI.
-async function startTaskFromNewSurface(page, scenario) {
+async function startTaskFromNewSurface(
+  page,
+  scenario,
+  { fastMode = false, permissionMode = "" } = {},
+) {
   await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
   const composer = page.locator("caffold-tasks-page .task-new-form");
   await expect(composer).toBeVisible();
   await composer.locator(".task-model-button").click();
   await composer.locator('.task-model-popover [data-effort="xhigh"]').click();
+  if (fastMode) {
+    await composer.locator(".task-model-button").click();
+    await composer.locator('[data-fast-mode="true"]').click();
+  }
+  if (permissionMode) {
+    await composer.getByRole("button", { name: "Choose approval mode" }).click();
+    await composer.locator(`[data-permission-mode="${permissionMode}"]`).click();
+  }
   const prompt = composer.locator('textarea[name="prompt"]');
   await prompt.fill("Inspect the planner changes");
   await pasteImage(prompt, "planner-layout.png");

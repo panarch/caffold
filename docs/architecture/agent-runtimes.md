@@ -161,6 +161,16 @@ children and removing its socket. An explicit Claude runtime restart does the
 same immediately and then starts a fresh runner. Ended conversations remain
 resumable from Claude's transcript when their Tasks are opened.
 
+A newly created Claude Task legitimately has no transcript until its first
+ordinary prompt materializes provider history. A backend replacement reattaches
+to the runner's exact live session when that session survived. If both the live
+session and transcript are absent, the adapter does not infer that the Task is
+fresh or recreate the conversation from its empty content; it reports the
+provider conversation unavailable. The durable Task remains an honest
+zero-turn record, but a runner restart before its first prompt is therefore an
+accepted no-transcript recovery limit rather than a hidden state or inferred
+replay rule.
+
 New authenticating Claude starts pass through one backend-owned gate. Direct
 measurement showed that two young CLI processes can refresh the same account
 credential concurrently and cause the service to revoke the login. Caffold
@@ -212,6 +222,13 @@ complete Detail supplies backend placement, so identity delay cannot move the
 prompt behind an answer produced in the meantime. For a recovered turn, live
 reports may enrich history only under an exact identity. Content, proximity,
 and arrival order are never substitutes for that identity.
+
+This contract includes a Task's first message. Task creation commits only the
+empty conversation and local membership; it carries title-source metadata but
+does not create a submitted item. The later ordinary prompt boundary supplies
+the adapter-owned identity. Task creation metadata does not supply that
+message's observation or turn time.
+
 An item-level provider timestamp, such as a Claude transcript row timestamp,
 crosses as `observedMs` without taking ownership of causal order. When history
 supplies item order but no item time, `position.anchorMs` places the group and

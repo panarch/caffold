@@ -31,25 +31,39 @@ test("renders permission and network approvals without clipping at appearance ex
     threadId: "thread_permission_card",
   });
   await page.goto("/tasks");
-  await page.evaluate(async (contextPath) => {
-    const response = await fetch("/api/tasks", {
+  await page.evaluate(async ({ contextPath, threadId }) => {
+    const created = await fetch("/api/tasks", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         cwd: contextPath,
+        titleSource: "Inspect the planner changes",
+        model: "gpt-5.6-sol",
+        effort: "xhigh",
+        permissionMode: "approveForMe",
+      }),
+    });
+    if (!created.ok) {
+      throw new Error(`task seed failed: ${created.status}`);
+    }
+    const prompted = await fetch(`/api/tasks/${threadId}/prompts`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
         prompt: "Inspect the planner changes",
         model: "gpt-5.6-sol",
         effort: "xhigh",
         permissionMode: "approveForMe",
+        activeTurnId: null,
         images: [
           "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
         ],
       }),
     });
-    if (!response.ok) {
-      throw new Error(`task seed failed: ${response.status}`);
+    if (!prompted.ok) {
+      throw new Error(`task prompt seed failed: ${prompted.status}`);
     }
-  }, scenario.contextPath);
+  }, { contextPath: scenario.contextPath, threadId: scenario.threadId });
 
   const longRoot =
     "/Users/taehoon/Library/Application Support/Caffold/data/worktrees/permission-review/fixtures/generated/release-metadata";

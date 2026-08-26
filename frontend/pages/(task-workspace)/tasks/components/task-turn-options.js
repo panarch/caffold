@@ -274,6 +274,26 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.selection.permissionExplicit = false;
   }
 
+  holdSubmissionOptions(options = {}) {
+    this.ensureState();
+    if (options.model || options.effort) {
+      this.selection.model = `${options.model ?? this.selection.model}`;
+      this.selection.effort = `${options.effort ?? this.selection.effort}`;
+      this.selection.modelExplicit = true;
+    }
+    if (Object.hasOwn(options, "fastMode")) {
+      this.selection.fastMode = Boolean(options.fastMode);
+      this.selection.fastModeExplicit = true;
+    }
+    if (options.permissionMode) {
+      this.selection.permissionMode = `${options.permissionMode}`;
+      this.selection.permissionExplicit = true;
+    }
+    if (this.isConnected) {
+      this.render();
+    }
+  }
+
   resetFastMode() {
     this.selection.fastMode = false;
     this.selection.fastModeExplicit = false;

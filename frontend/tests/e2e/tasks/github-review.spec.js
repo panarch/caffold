@@ -94,10 +94,12 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
     gitRefs: 0,
     pullHeads: 0,
     taskCreates: 0,
+    taskPrompts: 0,
   };
   const requests = {
     pullHeads: [],
     taskCreates: [],
+    taskPrompts: [],
   };
   const controls = {
     pullHeadFailure: null,
@@ -225,6 +227,21 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
   );
   await page.route(new RegExp(`/api/tasks/${CREATED_THREAD_ID}(?:\\?|$)`), (route) =>
     route.fulfill({ json: createdDetail }),
+  );
+  await page.route(
+    new RegExp(`/api/tasks/${CREATED_THREAD_ID}/prompts(?:\\?|$)`),
+    (route) => {
+      counts.taskPrompts += 1;
+      requests.taskPrompts.push(route.request().postDataJSON());
+      return route.fulfill({
+        json: {
+          threadId: CREATED_THREAD_ID,
+          turnId: "turn-created-github",
+          userMessageId: "message-created-github",
+          steered: false,
+        },
+      });
+    },
   );
   await page.route(/\/api\/git\/status(?:\?|$)/, (route) =>
     route.fulfill({ json: { repository, additions: 0, deletions: 0, files: [] } }),
@@ -918,10 +935,15 @@ test("preserves Issue Start Task setup, focus return, and created Task selection
   await expect.poll(() => fixture.counts.taskCreates).toBe(1);
   const request = fixture.requests.taskCreates[0];
   expect(request.cwd).toBe(WORKTREE_ROOT);
-  expect(request.prompt).toContain("--- BEGIN UNTRUSTED ISSUE DATA ---");
-  expect(request.prompt).toContain("Selected base ref: main");
-  expect(request.prompt).toContain('baseRef exactly "main"');
-  expect(request.prompt).toContain("includeChanges set to false");
+  expect(request.titleSource).toContain("--- BEGIN UNTRUSTED ISSUE DATA ---");
+  expect(request.titleSource).toContain("Selected base ref: main");
+  expect(request.titleSource).toContain('baseRef exactly "main"');
+  expect(request.titleSource).toContain("includeChanges set to false");
+  await expect.poll(() => fixture.counts.taskPrompts).toBe(1);
+  expect(fixture.requests.taskPrompts[0]).toMatchObject({
+    prompt: request.titleSource,
+    activeTurnId: null,
+  });
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
 });
 
@@ -968,7 +990,7 @@ test("starts a Task from a Section-scoped GitHub Issue", { tag: "@desktop" }, as
     effort: "xhigh",
     fastMode: true,
   });
-  expect(fixture.requests.taskCreates[0].prompt).toContain(
+  expect(fixture.requests.taskCreates[0].titleSource).toContain(
     "--- BEGIN UNTRUSTED ISSUE DATA ---",
   );
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
@@ -1030,13 +1052,13 @@ test("names the tools a Claude Task actually has in its issue setup prompt", { t
   await expect.poll(() => fixture.counts.taskCreates).toBe(1);
   const request = fixture.requests.taskCreates[0];
   expect(request.provider).toBe("claude");
-  expect(request.prompt).toContain(
+  expect(request.titleSource).toContain(
     "First, use mcp__caffold__rename_current_task to give this Task",
   );
-  expect(request.prompt).toContain(
+  expect(request.titleSource).toContain(
     'call mcp__caffold__isolate_current_task with that branchName, baseRef exactly "main"',
   );
-  expect(request.prompt).not.toContain("rename_current_thread");
+  expect(request.titleSource).not.toContain("rename_current_thread");
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
 });
 
@@ -1066,7 +1088,7 @@ test("starts a same-repository PR Task from the exact prepared head", { tag: "@a
     headOid: PULL_HEAD_OID,
     baseRepository: "gluesql/gluesql",
   }]);
-  const prompt = fixture.requests.taskCreates[0].prompt;
+  const prompt = fixture.requests.taskCreates[0].titleSource;
   expect(prompt).toContain(`Head: gluesql/gluesql:query-plan-limit-offset @ ${PULL_HEAD_OID}`);
   expect(prompt).toContain(
     `Prepared local head ref: refs/caffold/github/pulls/1983/${PULL_HEAD_OID}`,
@@ -1159,7 +1181,7 @@ test("starts a fork PR Task through the base repository pull ref", { tag: "@all-
     headOid: PULL_HEAD_OID,
     baseRepository: "gluesql/gluesql",
   });
-  expect(fixture.requests.taskCreates[0].prompt).toContain(
+  expect(fixture.requests.taskCreates[0].titleSource).toContain(
     `Head: contributor/gluesql:query-plan-limit-offset @ ${PULL_HEAD_OID}`,
   );
 });

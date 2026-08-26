@@ -82,6 +82,53 @@ const INSTRUCTED_MODEL: &str = "sonnet";
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn an_empty_task_takes_its_first_prompt_after_the_backend_is_replaced() {
+    // Before any prompt, no transcript exists. The replacement backend must
+    // take up the runner's exact live session rather than infer delivery or
+    // create a second conversation for the durable empty Task.
+    let mut backend = Backend::start().await;
+    let task = backend
+        .create_empty_task("Reply with the single word: alive.", MODEL)
+        .await;
+    let empty = task
+        .wait_for(TurnState::Idle, Duration::from_secs(30))
+        .await;
+    assert_eq!(empty.turn_id, None, "no turn exists before submission");
+
+    backend.replace().await;
+
+    let replaced = task.wait_until_known(Duration::from_secs(30)).await;
+    assert_eq!(replaced.state, TurnState::Idle);
+    assert_eq!(replaced.turn_id, None, "replacement did not invent a turn");
+    let accepted = task
+        .say_with_options(
+            "Reply with the single word: alive.",
+            MODEL,
+            "bypassPermissions",
+        )
+        .await;
+    assert!(
+        !accepted.steered,
+        "the ordinary first prompt starts one turn"
+    );
+    task.wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+
+    let detail = task.detail().await;
+    let user_messages = detail["events"]
+        .as_array()
+        .expect("events")
+        .iter()
+        .filter(|event| event["type"] == "user_message")
+        .count();
+    assert_eq!(
+        user_messages, 1,
+        "the first prompt was accepted exactly once"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
 async fn a_turn_running_when_the_backend_is_replaced_is_still_running_afterwards() {
     // The reason the runner exists. The backend is the part that gets replaced
     // — an application update, a crash, a developer restarting it — and the

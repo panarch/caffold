@@ -172,16 +172,16 @@ persist a second task ledger.
 - Additional browser viewers share the same subscribed session and do not
   repeat the resume bootstrap.
 - A new thread returned by `thread/start` is registered as already subscribed.
-- Before claiming a new thread or starting its first turn, Caffold persists its
+- Before answering Task creation, Caffold persists the new thread's
   initial app-server name, resolves or creates the matching Caffold-owned local
   Section by logical path, and inserts the managed row at local position zero.
 - After the managed claim succeeds, the create response and Active-list SSE
   carry the same backend-authored Section placement. The navigator can insert
   the row immediately without reconstructing grouping or reloading every
-  Section. That response is sent before `turn/start`, so a created thread is
-  answered for while its first turn is still being taken. A `turn/start` that
-  fails afterwards releases the runtime lease and publishes the failure on the
-  thread's own event stream; the managed row stays claimed.
+  Section. The response is an idle zero-turn Task and does not schedule
+  `turn/start`. Its creation-time viewer lease covers the browser handoff; with
+  no viewer or prompt runtime lease, the ordinary grace period releases the
+  subscription.
 - Caffold injects the experimental `rename_current_thread` dynamic tool only
   when it creates a new thread. App-server persists that tool with the thread
   and restores it on resume; existing threads are not retrofitted. When
@@ -200,7 +200,8 @@ persist a second task ledger.
   Later turns rename only on an explicit user request. This remains
   model-followed policy; Caffold does not reject a completed first turn that
   omitted the call.
-- A completed thread starts a follow-up with `turn/start`. An active thread is
+- An idle or system-error thread, including a newly created empty thread,
+  accepts an ordinary prompt with `turn/start`. An active thread is
   steered only when canonical thread status and an active turn ID agree.
 - If app-server rejects that pointer because the turn ended before
   `turn/steer`, Caffold refreshes one canonical resume snapshot and chooses
@@ -219,6 +220,10 @@ and resumes the managed loaded threads. Only canonically active threads retain
 a runtime lease. Caffold never replays `turn/start`, `turn/steer`, or another
 user request automatically; app-server replays pending server requests on
 `thread/resume` with their original IDs.
+An empty Task with no viewer or runtime lease need not be resumed proactively;
+its next ordinary prompt opens the managed thread on demand. Task existence,
+elapsed time, content, and position are never treated as evidence that a
+message was delivered.
 
 ## Approval Requests
 

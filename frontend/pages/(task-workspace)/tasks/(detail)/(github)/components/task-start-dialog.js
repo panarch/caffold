@@ -146,8 +146,9 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
     this.error = null;
     this.patch();
     try {
+      const options = this.turnOptions().submissionOptions();
       const prompt = await sourceComponent.prepareSetup(
-        this.turnOptions()?.submissionOptions().provider ?? "codex",
+        options.provider ?? "codex",
       );
       if (requestId !== this.createRequestId) {
         return;
@@ -160,23 +161,36 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
 
       const detail = await createTask({
         cwd: this.repository.rootPath,
-        prompt,
-        images: [],
-        ...this.turnOptions().submissionOptions(),
+        titleSource: prompt,
+        ...options,
       });
       if (requestId !== this.createRequestId) {
         return;
       }
-      this.pending = false;
-      this.turnOptions().resetFastMode();
-      this.dialog().close("started");
+      const handoff = {
+        detail,
+        submission: {
+          submissionId: `github:${Date.now()}:${requestId}`,
+          prompt,
+          images: [],
+          attachments: [],
+          options,
+        },
+        adopted: false,
+      };
       this.dispatchEvent(
         new CustomEvent("caffold:task-created", {
           bubbles: true,
           composed: true,
-          detail: { detail, submission: { prompt, attachments: [] } },
+          detail: handoff,
         }),
       );
+      if (!handoff.adopted) {
+        throw new Error("The created Task could not take ownership of its prompt.");
+      }
+      this.pending = false;
+      this.turnOptions().resetFastMode();
+      this.dialog().close("started");
     } catch (error) {
       if (requestId !== this.createRequestId) {
         return;

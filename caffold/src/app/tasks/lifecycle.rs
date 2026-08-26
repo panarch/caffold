@@ -4,18 +4,17 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
+    agent::TurnOptions,
     agent::claude::ClaudeClient,
-    agent::{AcceptedTurnOptions, TurnOptions},
     app::error::ApiError,
-    app::tasks::sessions::{StartedSettings, TaskSessions},
+    app::tasks::sessions::{ConversationSettings, TaskSessions},
     fs::RootedFs,
-    task_store::{ComposerSettings, ManagedThread, RunBy, TaskStore, TaskStoreError},
+    task_store::{ManagedThread, RunBy, TaskStore, TaskStoreError},
 };
 
 use super::{
     TaskAgent, TaskRecord,
-    composer_settings::persist_started_turn_composer_settings,
-    events::{TaskEvents, accepted_user_message_event, first_turn_failed_event, now_ms},
+    events::{TaskEvents, now_ms},
     projection::{resolve_conversation_cwd, task_activity_ms, task_record_from_conversation},
     routes::TaskListEvents,
     worktrees::{
@@ -25,36 +24,15 @@ use super::{
 
 mod initial_request_name;
 
-pub(in crate::app) struct StartTask {
+pub(in crate::app) struct CreateTask {
     pub(in crate::app) cwd: String,
-    pub(in crate::app) prompt: String,
-    pub(in crate::app) images: Vec<String>,
+    pub(in crate::app) title_source: String,
     pub(in crate::app) turn_options: TurnOptions,
-    pub(in crate::app) initial_name: Option<String>,
-    pub(in crate::app) prompt_observed_ms: u64,
 }
 
-pub(in crate::app) struct StartedTask {
+pub(in crate::app) struct CreatedTask {
     pub(in crate::app) task: TaskRecord,
     pub(in crate::app) placement: ActiveTaskTopPlacement,
-    /// The turn this Task was created for, waiting to be set going.
-    pub(in crate::app) first_turn: FirstTurn,
-}
-
-/// The prompt a claimed Task was created for, and what to ask it with.
-///
-/// Everything here was settled while the Task was being made, so the turn it
-/// describes can begin without asking the agent anything twice.
-pub(in crate::app) struct FirstTurn {
-    conversation_id: String,
-    cwd: String,
-    prompt: String,
-    images: Vec<String>,
-    accepted: AcceptedTurnOptions,
-    model: Option<String>,
-    reasoning_effort: Option<String>,
-    fast_mode: bool,
-    prompt_observed_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -121,26 +99,21 @@ impl TaskLifecycle {
         }
     }
 
-    /// Make a Task the agent holds a conversation for.
+    /// Create an empty Task backed by an agent conversation.
     ///
     /// The answer is the Task itself: a conversation the agent agreed to open,
     /// a record claimed at the top of its Section, and the placement every list
-    /// is told about. The turn it was created for comes back unstarted, for
-    /// whoever answers for the Task to begin once they have — so the wait for
-    /// the agent to take the prompt is spent in the Task rather than in front
-    /// of the form that sent it.
-    pub(in crate::app) async fn start_task(
+    /// is told about. It contains no turn; any message, including the first,
+    /// is submitted separately through the ordinary prompt path.
+    pub(in crate::app) async fn create_task(
         &self,
         agent: &TaskAgent,
-        request: StartTask,
-    ) -> Result<StartedTask, ApiError> {
-        let StartTask {
+        request: CreateTask,
+    ) -> Result<CreatedTask, ApiError> {
+        let CreateTask {
             cwd,
-            prompt,
-            images,
+            title_source,
             turn_options,
-            initial_name,
-            prompt_observed_ms,
         } = request;
         let requested_fast_mode = turn_options.fast_mode;
         let driver = agent.driver();
@@ -149,8 +122,7 @@ impl TaskLifecycle {
         let accepted = driver.accept_turn_options(&turn_options).await?;
         let mut started = driver.start_conversation(&cwd, &accepted).await?;
         let conversation_id = started.conversation.id.clone();
-        let initial_name = initial_name
-            .or_else(|| initial_request_name::from_prompt(&prompt))
+        let initial_name = initial_request_name::from_prompt(&title_source)
             .unwrap_or_else(|| format!("Thread {}", short_thread_id(&conversation_id)));
         // Codex keeps a name of its own for a thread, and it should read as
         // the name Caffold shows. Claude titles its own sessions and is asked
@@ -207,11 +179,11 @@ impl TaskLifecycle {
 
         self.list_events.place(task.clone(), placement.clone());
         self.sessions
-            .register_started_thread(
+            .register_created_thread(
                 &driver,
                 agent.generation(),
                 started.conversation.clone(),
-                StartedSettings {
+                ConversationSettings {
                     permission_mode: settled.permission_mode.clone(),
                     model: settled.model.clone(),
                     reasoning_effort: settled.effort.clone(),
@@ -219,102 +191,7 @@ impl TaskLifecycle {
                 },
             )
             .await;
-        Ok(StartedTask {
-            task,
-            placement,
-            first_turn: FirstTurn {
-                conversation_id,
-                cwd,
-                prompt,
-                images,
-                accepted,
-                model: effective_model,
-                reasoning_effort: effective_reasoning_effort,
-                fast_mode: requested_fast_mode,
-                prompt_observed_ms,
-            },
-        })
-    }
-
-    /// Ask the agent for a Task's first turn, once the Task is answered for.
-    ///
-    /// The turn opens on the agent's own first word, which is a process start
-    /// and a model's first thought away. Holding creation for it would hold the
-    /// interface on a form that has already sent everything it had, so the turn
-    /// begins here instead, in the Task the person is now watching. Begin it
-    /// after the answer is assembled: a turn that fails releases the session
-    /// the answer is still being read from.
-    pub(in crate::app) fn begin_first_turn(&self, agent: &TaskAgent, first: FirstTurn) {
-        let lifecycle = self.clone();
-        let agent = agent.clone();
-        tokio::spawn(async move { lifecycle.start_first_turn(agent, first).await });
-    }
-
-    /// A first turn that never began, told where the prompt it was for is.
-    ///
-    /// Nobody is waiting on an answer any more, so what went wrong is published
-    /// into the conversation rather than returned. The Task stays where it was
-    /// claimed: it exists, the agent holds a conversation for it, and a person
-    /// who reads why nothing followed can send the prompt again or archive it.
-    async fn start_first_turn(&self, agent: TaskAgent, first: FirstTurn) {
-        let FirstTurn {
-            conversation_id,
-            cwd,
-            prompt,
-            images,
-            accepted,
-            model,
-            reasoning_effort,
-            fast_mode,
-            prompt_observed_ms,
-        } = first;
-        let turn = match agent
-            .driver()
-            .start_turn(&conversation_id, &cwd, &prompt, &images, &accepted)
-            .await
-        {
-            Ok(turn) => turn,
-            Err(error) => {
-                self.sessions.cancel_runtime(&conversation_id).await;
-                self.events.publish_local(first_turn_failed_event(
-                    &conversation_id,
-                    &error.to_string(),
-                ));
-                return;
-            }
-        };
-        let session_revision = self
-            .sessions
-            .record_turn_started(
-                agent.generation(),
-                &conversation_id,
-                Some(&cwd),
-                turn.turn.clone(),
-                turn.applied.clone(),
-            )
-            .await;
-        if let Err(error) = self
-            .update_composer_settings(
-                &conversation_id,
-                model.as_deref(),
-                reasoning_effort.as_deref(),
-                fast_mode,
-            )
-            .await
-        {
-            eprintln!(
-                "failed to persist composer settings for started thread {}: {error:?}",
-                conversation_id
-            );
-        }
-        let accepted_event = accepted_user_message_event(
-            &conversation_id,
-            &turn.turn.id,
-            &turn.user_message,
-            prompt_observed_ms,
-        );
-        self.events
-            .publish_accepted_submission(accepted_event, session_revision);
+        Ok(CreatedTask { task, placement })
     }
 
     pub(in crate::app) async fn place_active_task(
@@ -542,29 +419,6 @@ impl TaskLifecycle {
 
     pub(in crate::app) fn refresh_task_list(&self) {
         self.list_events.refresh();
-    }
-
-    async fn update_composer_settings(
-        &self,
-        thread_id: &str,
-        model: Option<&str>,
-        reasoning_effort: Option<&str>,
-        fast_mode: bool,
-    ) -> Result<(), ApiError> {
-        let persisted = persist_started_turn_composer_settings(
-            self.store.clone(),
-            thread_id,
-            ComposerSettings {
-                model: model.map(str::to_string),
-                reasoning_effort: reasoning_effort.map(str::to_string),
-                fast_mode,
-            },
-        )
-        .await?;
-        if let Some(section) = persisted.and_then(|persisted| persisted.section) {
-            self.list_events.section_composer_settings(&section);
-        }
-        Ok(())
     }
 
     /// Let go of a conversation no Task ever claimed.
