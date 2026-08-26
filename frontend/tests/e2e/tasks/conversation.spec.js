@@ -232,10 +232,17 @@ test("keeps the visible conversation anchor while loading older events by cursor
       "user_message",
       "User prompt",
       {
-        text: `${olderFileLinkSource}\n\n${olderPrompt}`,
+        text: olderPrompt,
         content: [{ type: "localImage", path: "/tmp/older-image.png" }],
       },
       1,
+    ),
+    eventRecord(
+      "event_older_answer",
+      "assistant_message",
+      "Assistant response",
+      { text: olderFileLinkSource },
+      2,
     ),
   ];
   const ancientEvents = [
@@ -295,7 +302,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
         fileLinks: cursor === "older_cursor"
           ? [
               {
-                eventId: "event_older",
+                eventId: "event_older_answer",
                 linkId: 0,
                 target: "older.rs#L7",
                 status: "resolved",
@@ -397,12 +404,12 @@ test("keeps the visible conversation anchor while loading older events by cursor
   await expect(tasksPage.locator(".task-load-older")).toHaveCount(1);
   await expect(
     tasksPage.locator(
-      '.task-event[data-event-id="event_older"] caffold-task-markdown',
+      '.task-event[data-event-id="event_older_answer"] caffold-task-markdown',
     ),
   ).toHaveAttribute("data-render-state", "markdown");
   await expect(
     tasksPage
-      .locator('.task-event[data-event-id="event_older"] caffold-task-markdown')
+      .locator('.task-event[data-event-id="event_older_answer"] caffold-task-markdown')
       .getByRole("link", { name: "Older source" }),
   ).toHaveAttribute(
     "href",

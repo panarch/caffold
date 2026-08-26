@@ -292,6 +292,10 @@ caffold-task-conversation {
     font-size: var(--interface-meta-font-size);
   }
 
+  & .task-message-text {
+    white-space: pre-wrap;
+  }
+
   & .task-tool-card pre {
     margin: 0;
     font-size: var(--code-font-size);

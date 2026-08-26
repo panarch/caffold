@@ -103,6 +103,9 @@ Conversation renders the canonical agent conversation as a review timeline:
 - interruption, failure, reconnect, completion, and unavailable states;
 - follow-up Start or Steer behavior derived from canonical conversation state.
 
+A prompt reads as the characters typed into the Composer, so Markdown syntax in
+it stays literal. Agent responses and reasoning summaries render as Markdown.
+
 A Task opened straight from creation shows the prompt it was created with while
 the agent takes it, and the agent's own copy replaces it once the turn begins. A
 first turn the agent never took is reported beside that prompt, whose delivery
