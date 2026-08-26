@@ -89,6 +89,32 @@ Provider wire methods and payloads stop in the driver. See
 [caffold-claude-runner](../../runners/claude/README.md) for the provider and
 transport details.
 
+Conversation delivery crosses these ownership boundaries:
+
+```text
+Codex app-server or Claude transcript/live process
+                        |
+                        v
+native driver translates provider evidence
+                        |
+                        v
+Tasks backend reconciles one conversation projection
+                        |
+                        v
+Detail transport publishes snapshots and deltas
+                        |
+                        v
+browser Task Detail renders projection and local layers
+```
+
+The provider-owned history and live sources remain authoritative. The backend
+projection coordinates their evidence without becoming another transcript,
+and the browser does not reconstruct that reconciliation.
+[Agent Runtimes](agent-runtimes.md#conversation-and-event-ownership) owns the
+evidence and publication contract;
+[Frontend Structure](frontend.md#tasks-layout-and-detail-layout) owns its
+browser application and rendering consequences.
+
 ### Git checkout and worktree
 
 Git is the source of truth for code changes. Caffold derives repository and

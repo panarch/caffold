@@ -266,15 +266,12 @@ equal provider-projected message does not erase that outcome-unknown
 submission: there is no evidence they are one event, so both remain visible. A
 reported first-turn failure marks that first prompt's delivery unconfirmed.
 
-Current live events and a refreshed Detail snapshot also have separate source
-roles. The backend sends one item ledger for a turn it observed from
-`turn_started` without a later observation gap; a refreshed provider-history
-projection cannot add a second set of history-local item ids to that continuous
-journal. A recovered turn or a turn whose provider connection lost continuity
-instead keeps provider history as its baseline, and a live event enriches an
-existing item only under the same exact identity. Detail consumes that
-already-reconciled contract; it does not compare message text or nearby times
-to manufacture a relationship.
+Detail receives the backend's already-reconciled conversation projection. The
+provider evidence, history/live authority, exact-identity requirement, and
+publication contract are owned by
+[Agent Runtimes](agent-runtimes.md#conversation-and-event-ownership). The
+browser does not compare provider payloads, message text, timestamps, or
+arrival order to reconstruct those decisions.
 
 The backend publishes that projection through a Task-scoped `eventRevision`.
 Each Task-event delta carries the revision captured when it entered the
@@ -318,9 +315,8 @@ sync, streaming, REST fallback, and unavailable. It alone transitions the
 active attempt, while shared `tasks/stream.js` owns `EventSource` connection
 generations, timers, and transport state. Cursor pagination stays outside the
 session, and a Task switch replaces the attempt before a late response can
-update Detail. The provider-common projection contract is defined in
-[Agent Runtimes](agent-runtimes.md#conversation-and-event-ownership); provider
-transport and history acquisition remain in their native architecture.
+update Detail. Provider transport and history acquisition remain in their
+native architecture.
 
 `caffold-section-detail` owns fixed-context Task creation for one Section.
 Switching Section context replaces its Task Create instance. The shared Task
