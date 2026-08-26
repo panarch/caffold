@@ -754,12 +754,80 @@ test("names the work an agent did that Caffold draws no surface for", { tag: "@a
   await expect(probed).toHaveAttribute("data-tool-tone", "danger");
 });
 
-test("renders a message that ends where its text ends", { tag: "@all-viewports" }, async ({
+test("shows a prompt as the characters a person typed", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const prompt = [
+    "# Not a heading",
+    "",
+    "**Not bold**   keeps   its   spacing",
+    "",
+    "```sh",
+    `printf '<user> & "quoted"'`,
+    "```",
+    "",
+    "[Not a link](docs/review/policy.md#L22)",
+    `unbroken-${"segment".repeat(24)}`,
+  ].join("\n");
+  const scenario = await installTaskLoopFixture(page, {
+    threadId: "thread_plain_prompt",
+  });
+  await scenario.seedCompletedTask();
+  scenario.events = scenario.events.map((event) =>
+    event.id === "event_1_user"
+      ? { ...event, payload: { ...event.payload, content: [], text: prompt } }
+      : event,
+  );
+  await page.goto(`/tasks/${scenario.threadId}`);
+
+  const tasksPage = page.locator("caffold-tasks-page");
+  const userMessage = tasksPage.locator('.task-message[data-message-role="user"]');
+  const bubble = userMessage.locator(".task-message-content");
+  const promptText = userMessage.locator(".task-message-text");
+  await expect(
+    tasksPage.locator('.task-message[data-message-role="assistant"] caffold-task-markdown'),
+  ).toHaveAttribute("data-render-state", "markdown");
+
+  await expect(userMessage.locator("caffold-task-markdown")).toHaveCount(0);
+  expect(await promptText.evaluate((element) => element.textContent)).toBe(prompt);
+  expect(
+    await promptText.evaluate((element) => ({
+      markup: element.childElementCount,
+      whiteSpace: getComputedStyle(element).whiteSpace,
+    })),
+  ).toEqual({ markup: 0, whiteSpace: "pre-wrap" });
+
+  const layout = await bubble.evaluate((element) => {
+    const scroller = element.closest(".task-conversation-scroll");
+    const box = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const inner =
+      box.height -
+      parseFloat(style.paddingTop) -
+      parseFloat(style.paddingBottom);
+    return {
+      containedInScroller:
+        box.right <= scroller.getBoundingClientRect().right + 0.5,
+      renderedLines: Math.round(inner / parseFloat(style.lineHeight)),
+      wrapsInsteadOfOverflowing: element.scrollWidth <= element.clientWidth,
+    };
+  });
+  expect(layout.containedInScroller).toBe(true);
+  expect(layout.wrapsInsteadOfOverflowing).toBe(true);
+  expect(layout.renderedLines).toBeGreaterThanOrEqual(prompt.split("\n").length);
+
+  await promptText.scrollIntoViewIfNeeded();
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-plain-text-prompt");
+  expect(scenario.pageErrors).toEqual([]);
+});
+
+test("renders an agent message that ends where its text ends", { tag: "@all-viewports" }, async ({
   page,
 }) => {
-  // Every block inside a rendered message carries a margin so the blocks stand
-  // apart. The outermost two must give theirs back, or the bubble reads as
-  // though the writer left a blank line at the end that they never typed.
+  // Every block inside a rendered Markdown message carries a margin so the
+  // blocks stand apart. The outermost two must give theirs back, or the message
+  // reads as though the writer left a blank line at the end they never typed.
   const scenario = await installTaskLoopFixture(page, {
     threadId: "019fd747-1247-7bb0-998b-9aec53bdf7f4",
   });
@@ -770,23 +838,17 @@ test("renders a message that ends where its text ends", { tag: "@all-viewports" 
     tasksPage.locator('.task-message[data-message-role="assistant"] caffold-task-markdown'),
   ).toHaveAttribute("data-render-state", "markdown");
 
-  const edges = await tasksPage.evaluate((root) =>
-    ["user", "assistant"].map((role) => {
-      const body = root.querySelector(
-        `.task-message[data-message-role="${role}"] .markdown-body`,
-      );
-      return {
-        role,
-        marginTop: getComputedStyle(body.firstElementChild).marginTop,
-        marginBottom: getComputedStyle(body.lastElementChild).marginBottom,
-      };
-    }),
-  );
+  const edges = await tasksPage.evaluate((root) => {
+    const body = root.querySelector(
+      '.task-message[data-message-role="assistant"] .markdown-body',
+    );
+    return {
+      marginTop: getComputedStyle(body.firstElementChild).marginTop,
+      marginBottom: getComputedStyle(body.lastElementChild).marginBottom,
+    };
+  });
 
-  expect(edges).toEqual([
-    { role: "user", marginTop: "0px", marginBottom: "0px" },
-    { role: "assistant", marginTop: "0px", marginBottom: "0px" },
-  ]);
+  expect(edges).toEqual({ marginTop: "0px", marginBottom: "0px" });
 });
 
 test("presents a completed canonical turn without duplicate or unsafe content", { tag: "@all-viewports" }, async ({

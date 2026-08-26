@@ -102,8 +102,6 @@ struct MarkdownSource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum MarkdownField {
     Text,
-    Prompt,
-    ContentText { nested: bool, index: usize },
     ReasoningSummary(usize),
     ReasoningContent(usize),
 }
@@ -323,7 +321,6 @@ fn event_markdown_sources(event: &TaskEventRecord) -> Vec<MarkdownSource> {
             sources.extend(reasoning_sources(payload, "content", false));
             sources
         }
-        "user_message" => user_message_sources(payload),
         _ => Vec::new(),
     }
 }
@@ -363,112 +360,6 @@ fn reasoning_sources(payload: &serde_json::Value, key: &str, summary: bool) -> V
             })
         })
         .collect()
-}
-
-fn user_message_sources(payload: &serde_json::Value) -> Vec<MarkdownSource> {
-    for (key, field) in [
-        ("text", MarkdownField::Text),
-        ("prompt", MarkdownField::Prompt),
-    ] {
-        let Some(value) = payload.get(key).and_then(serde_json::Value::as_str) else {
-            continue;
-        };
-        if value.trim().is_empty() {
-            continue;
-        }
-        let range = presented_user_range(payload, value);
-        return vec![MarkdownSource {
-            field,
-            markdown: value[range.clone()].to_string(),
-            source_offset: range.start,
-        }];
-    }
-
-    let (nested, content) =
-        if let Some(content) = payload.get("content").and_then(serde_json::Value::as_array) {
-            (false, content)
-        } else if let Some(content) = payload
-            .get("item")
-            .and_then(|item| item.get("content"))
-            .and_then(serde_json::Value::as_array)
-        {
-            (true, content)
-        } else {
-            return Vec::new();
-        };
-    content
-        .iter()
-        .enumerate()
-        .filter_map(|(index, item)| {
-            matches!(
-                item.get("type").and_then(serde_json::Value::as_str),
-                Some("text" | "input_text")
-            )
-            .then_some(())?;
-            let value = item.get("text")?.as_str()?;
-            let range = trim_range(value);
-            (!range.is_empty()).then(|| MarkdownSource {
-                field: MarkdownField::ContentText { nested, index },
-                markdown: value[range.clone()].to_string(),
-                source_offset: range.start,
-            })
-        })
-        .collect()
-}
-
-fn presented_user_range(payload: &serde_json::Value, value: &str) -> std::ops::Range<usize> {
-    let mut range = trim_range(value);
-    let mut markdown = &value[range.clone()];
-    if [
-        "automatically supplied ambient UI state",
-        "<in-app-browser-context",
-        "# In app browser:",
-    ]
-    .iter()
-    .any(|marker| markdown.contains(marker))
-    {
-        for marker in ["## My request for Codex:", "My request for Codex:"] {
-            if let Some(marker_index) = markdown.rfind(marker) {
-                let request_start = range.start + marker_index + marker.len();
-                range = trim_range_within(value, request_start..range.end);
-                markdown = &value[range.clone()];
-                break;
-            }
-        }
-    }
-
-    let has_image = payload
-        .get("content")
-        .or_else(|| payload.get("item").and_then(|item| item.get("content")))
-        .and_then(serde_json::Value::as_array)
-        .is_some_and(|items| {
-            items.iter().any(|item| {
-                matches!(
-                    item.get("type").and_then(serde_json::Value::as_str),
-                    Some("image" | "localImage")
-                )
-            })
-        });
-    if has_image
-        && markdown.contains("# Files mentioned by the user:")
-        && markdown.contains("## My request for Codex:")
-        && let Some(marker_index) = markdown.find("## My request for Codex:")
-    {
-        let request_start = range.start + marker_index + "## My request for Codex:".len();
-        range = trim_range_within(value, request_start..range.end);
-    }
-    range
-}
-
-fn trim_range(value: &str) -> std::ops::Range<usize> {
-    trim_range_within(value, 0..value.len())
-}
-
-fn trim_range_within(value: &str, range: std::ops::Range<usize>) -> std::ops::Range<usize> {
-    let inner = &value[range.clone()];
-    let trimmed_start = inner.len() - inner.trim_start().len();
-    let trimmed_end = inner.trim_end().len();
-    range.start + trimmed_start..range.start + trimmed_end
 }
 
 fn project_events(
@@ -515,23 +406,11 @@ fn markdown_field_mut(event: &mut TaskEventRecord, field: MarkdownField) -> Opti
     let payload = event.payload.as_mut()?;
     match field {
         MarkdownField::Text => json_string_mut(payload.get_mut("text")?),
-        MarkdownField::Prompt => json_string_mut(payload.get_mut("prompt")?),
         MarkdownField::ReasoningSummary(index) => {
             json_string_mut(payload.get_mut("summary")?.as_array_mut()?.get_mut(index)?)
         }
         MarkdownField::ReasoningContent(index) => {
             json_string_mut(payload.get_mut("content")?.as_array_mut()?.get_mut(index)?)
-        }
-        MarkdownField::ContentText { nested, index } => {
-            let content = if nested {
-                payload
-                    .get_mut("item")?
-                    .get_mut("content")?
-                    .as_array_mut()?
-            } else {
-                payload.get_mut("content")?.as_array_mut()?
-            };
-            json_string_mut(content.get_mut(index)?.get_mut("text")?)
         }
     }
 }
@@ -822,34 +701,46 @@ mod tests {
         );
     }
 
-    #[test]
-    fn uses_the_same_presented_user_markdown_as_the_browser() {
-        let event = task_event_record(
-            "thread",
-            "user",
-            "user_message",
-            "User prompt",
-            Some(json!({
-                "text": concat!(
-                    "# Files mentioned by the user:\n\n",
-                    "## image.png: /tmp/image.png\n\n",
-                    "## My request for Codex:\n\n",
-                    "🙂 [policy](/tmp/My Project/policy.md:22)"
-                ),
-                "content": [{ "type": "localImage", "path": "/tmp/image.png" }]
-            })),
-            1,
-        );
+    #[tokio::test]
+    async fn leaves_a_prompt_exactly_as_the_person_typed_it() {
+        let root = tempdir().unwrap();
+        let task = root.path().join("task");
+        fs::create_dir(&task).unwrap();
+        fs::write(task.join("owned.rs"), "source").unwrap();
+        let resolver = TaskFileLinkResolver::new(Arc::new(RootedFs::new(root.path()).unwrap()));
+        let events = vec![
+            task_event_record(
+                "thread",
+                "text",
+                "user_message",
+                "User prompt",
+                Some(json!({ "text": "[owned](owned.rs:2) and owned.rs:3" })),
+                1,
+            ),
+            task_event_record(
+                "thread",
+                "prompt",
+                "user_message",
+                "User prompt",
+                Some(json!({ "text": "", "prompt": "[owned](owned.rs:4)" })),
+                2,
+            ),
+            task_event_record(
+                "thread",
+                "content",
+                "user_message",
+                "User prompt",
+                Some(json!({
+                    "content": [{ "type": "input_text", "text": "[owned](owned.rs:5)" }]
+                })),
+                3,
+            ),
+        ];
 
-        let markdown = event.payload.as_ref().unwrap()["text"].as_str().unwrap();
-        let targets = collect_event_link_targets(std::slice::from_ref(&event));
+        let (projected, links) = resolver.project("task".to_string(), &events).await;
 
-        assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].target, "/tmp/My Project/policy.md:22");
-        assert_eq!(
-            &markdown[targets[0].source_range.clone()],
-            "[policy](/tmp/My Project/policy.md:22)"
-        );
+        assert_eq!(projected, events);
+        assert_eq!(links, Vec::new());
     }
 
     #[tokio::test]
@@ -900,53 +791,21 @@ mod tests {
         fs::create_dir(&task).unwrap();
         fs::write(task.join("owned.rs"), "source").unwrap();
         let resolver = TaskFileLinkResolver::new(Arc::new(RootedFs::new(root.path()).unwrap()));
-        let events = vec![
-            task_event_record(
-                "thread",
-                "reasoning",
-                "reasoning",
-                "Thinking",
-                Some(json!({
-                    "summary": [" [summary](owned.rs:2) "],
-                    "content": ["[content](owned.rs#L3)"]
-                })),
-                1,
-            ),
-            task_event_record(
-                "thread",
-                "prompt",
-                "user_message",
-                "Prompt",
-                Some(json!({ "text": "", "prompt": "[prompt](owned.rs:4)" })),
-                2,
-            ),
-            task_event_record(
-                "thread",
-                "content",
-                "user_message",
-                "Content",
-                Some(json!({
-                    "content": [{ "type": "input_text", "text": "[item](owned.rs:5)" }]
-                })),
-                3,
-            ),
-            task_event_record(
-                "thread",
-                "nested",
-                "user_message",
-                "Nested content",
-                Some(json!({
-                    "item": {
-                        "content": [{ "type": "text", "text": "[nested](owned.rs:6)" }]
-                    }
-                })),
-                4,
-            ),
-        ];
+        let events = vec![task_event_record(
+            "thread",
+            "reasoning",
+            "reasoning",
+            "Thinking",
+            Some(json!({
+                "summary": [" [summary](owned.rs:2) "],
+                "content": ["[content](owned.rs#L3)"]
+            })),
+            1,
+        )];
 
         let (projected, links) = resolver.project("task".to_string(), &events).await;
 
-        assert_eq!(links.len(), 5);
+        assert_eq!(links.len(), 2);
         assert_eq!(
             projected[0].payload.as_ref().unwrap()["summary"][0],
             " [summary](owned.rs#L2) "
@@ -954,18 +813,6 @@ mod tests {
         assert_eq!(
             projected[0].payload.as_ref().unwrap()["content"][0],
             "[content](owned.rs#L3)"
-        );
-        assert_eq!(
-            projected[1].payload.as_ref().unwrap()["prompt"],
-            "[prompt](owned.rs#L4)"
-        );
-        assert_eq!(
-            projected[2].payload.as_ref().unwrap()["content"][0]["text"],
-            "[item](owned.rs#L5)"
-        );
-        assert_eq!(
-            projected[3].payload.as_ref().unwrap()["item"]["content"][0]["text"],
-            "[nested](owned.rs#L6)"
         );
 
         let live = task_event_record(

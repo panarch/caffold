@@ -54,12 +54,23 @@ test("delegates active-turn presentation to its component snapshot", () => {
   });
 });
 
-test("opts only stable user and final assistant messages into code controls", () => {
+test("shows a prompt as the text it was typed as", () => {
   const stableUser = renderConversationEvent(messageEvent("user_message"), {});
   const pendingUser = renderConversationEvent(
     messageEvent("user_message", { optimistic: true }),
     {},
   );
+
+  for (const html of [stableUser, pendingUser]) {
+    assert.doesNotMatch(html, /<caffold-task-markdown/);
+    assert.match(
+      html,
+      /<div class="task-message-text">```example\nvalue\n```<\/div>/,
+    );
+  }
+});
+
+test("opts only final assistant messages into code controls", () => {
   const finalAssistant = renderConversationEvent(
     messageEvent("assistant_message", { phase: "final" }),
     {},
@@ -71,8 +82,6 @@ test("opts only stable user and final assistant messages into code controls", ()
     { messagePhase: "progress" },
   );
 
-  assert.equal(hasCodeBlockControls(stableUser), true);
-  assert.equal(hasCodeBlockControls(pendingUser), false);
   assert.equal(hasCodeBlockControls(finalAssistant), true);
   assert.equal(hasCodeBlockControls(progressAssistant), false);
 });

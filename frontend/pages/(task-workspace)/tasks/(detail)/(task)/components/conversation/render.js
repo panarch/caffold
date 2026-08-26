@@ -504,12 +504,6 @@ function renderMessageEvent(event, role, text, options = {}) {
     : "";
   const attachmentsAttribute = attachments.length ? " data-has-attachments" : "";
   const submissionState = promptSubmissionState(event);
-  const codeBlockControls =
-    (role === "user" && !submissionState) ||
-    (role === "assistant" && options.phase === "final");
-  const codeBlockControlsAttribute = codeBlockControls
-    ? " code-block-controls"
-    : "";
   const deliveryAttribute = submissionState
     ? ` data-delivery-state="${escapeHtml(submissionState)}"`
     : "";
@@ -528,11 +522,21 @@ function renderMessageEvent(event, role, text, options = {}) {
       ${renderMessageAttachments(attachments)}
       ${value ? `
         <div class="task-message-content">
-          <caffold-task-markdown${markdownContextAttributes(event)}${codeBlockControlsAttribute}>${escapeHtml(value)}</caffold-task-markdown>
+          ${renderMessageBody(event, role, value, options.phase)}
         </div>
       ` : ""}
     </li>
   `;
+}
+
+// The Composer is a plain textarea, so a prompt is shown as the characters it
+// was typed with. Markdown is the agent's own formatting.
+function renderMessageBody(event, role, value, phase) {
+  if (role === "user") {
+    return `<div class="task-message-text">${escapeHtml(value)}</div>`;
+  }
+  const codeBlockControls = phase === "final" ? " code-block-controls" : "";
+  return `<caffold-task-markdown${markdownContextAttributes(event)}${codeBlockControls}>${escapeHtml(value)}</caffold-task-markdown>`;
 }
 
 function eventIdentityAttribute(event) {

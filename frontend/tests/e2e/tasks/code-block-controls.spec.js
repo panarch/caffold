@@ -37,16 +37,14 @@ test("keeps the code-block toolbar dense and usable across Task viewports", { ta
     "thread_code_layout_" + testInfo.project.name,
   );
   const tasksPage = page.locator("caffold-tasks-page");
-  const userMarkdown = tasksPage.locator(
-    '.task-message[data-message-role="user"] caffold-task-markdown',
-  );
+  const userMessage = tasksPage.locator('.task-message[data-message-role="user"]');
   const finalMarkdown = tasksPage.locator(
     '.task-message[data-message-role="assistant"][data-message-phase="final"] caffold-task-markdown',
   );
 
-  await expect(userMarkdown).toHaveAttribute("code-block-controls", "");
   await expect(finalMarkdown).toHaveAttribute("code-block-controls", "");
-  await expect(userMarkdown.locator("caffold-task-markdown-code-block")).toHaveCount(1);
+  await expect(userMessage.locator("caffold-task-markdown-code-block")).toHaveCount(0);
+  await expect(userMessage.locator(".task-message-text")).toContainText("```sh");
   await expect(finalMarkdown.locator("caffold-task-markdown-code-block")).toHaveCount(2);
   await expect(finalMarkdown.locator(".code-block-label")).toHaveText([
     "rust",
