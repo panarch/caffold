@@ -3,10 +3,12 @@ import {
   formatDate,
   formatDuration,
   formatStatus,
+  taskEventObservedMs,
 } from "../../../../../../task-format.js";
 
 export function commandPresentation(event = {}) {
   const payload = event.payload ?? {};
+  const observedMs = taskEventObservedMs(event);
   const command = `${payload.command ?? ""}`.trim();
   const cwd = `${payload.cwd ?? ""}`.trim();
   const rawStatus = `${payload.status ?? ""}`.trim();
@@ -54,7 +56,7 @@ export function commandPresentation(event = {}) {
       : rawStatus
         ? formatStatus(rawStatus)
         : "",
-    time: formatDate(event.createdMs),
+    time: observedMs === null ? "" : formatDate(observedMs),
     tone: terminal
       ? result === "failed"
         ? "danger"

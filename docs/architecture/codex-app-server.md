@@ -259,9 +259,10 @@ discontinuous ranges.
 
 Turn IDs and item IDs are merge identities. A thread permits one canonical sync
 at a time; another invalidation received during that request records a dirty
-bit and causes at most one trailing sync. Browser snapshots and events carry a
-monotonic session revision so stale responses from a previous task selection or
-an older request cannot replace newer detail.
+bit and causes at most one trailing sync. A Task session revision arbitrates
+these canonical reads. Once translated into the common conversation
+projection, independently delivered snapshots and deltas follow the
+[Agent Runtimes publication contract](agent-runtimes.md#projection-publication).
 
 ## Task Storage Boundary
 
@@ -360,57 +361,29 @@ List and header badges use only `threadStatus`. Within active flags,
 the original flag array remains unchanged. Turn completion, failure, and
 interruption are rendered inside that conversation turn rather than replacing
 the thread badge. Item changes and diff reports advance the in-memory session
-revision. Their live projections use `task-event`
-without materializing or broadcasting a full Task Detail snapshot. A later
-canonical Thread or Turn change may therefore publish a `task-sync` revision
-that skips those event-only revisions. Task lifecycle changes arrive through
-canonical REST responses, revisioned Task Detail `task-sync` snapshots, and the
+revision and may enter the common projection as `task-event` deltas without
+materializing a full Task Detail snapshot. Canonical Thread or Turn changes may
+instead publish a `task-sync` snapshot. Their ordering and membership semantics
+belong to the
+[common conversation projection](agent-runtimes.md#conversation-and-event-ownership).
+Task lifecycle changes also arrive through canonical REST responses and the
 Task-list stream's revisioned Task-record syncs.
 
-## Frontend Ownership
+## Browser boundary
 
-The Tasks browser keeps list and detail as separate projections of agent state.
-For a Codex Task, their canonical input is app-server:
+For a Codex Task, app-server remains the canonical input for conversation and
+lifecycle state. The browser keeps Task-list and Task-detail projections and
+their revisions independent; forwarding a canonical Task from Detail to the
+navigator does not let either revision advance or reject the other. The
+[Frontend Architecture](frontend.md#tasks-layout-and-detail-layout) owns
+snapshot acquisition, projection application, rendering caches, component
+boundaries, and fallback behavior.
 
-- `caffold-task-navigator` owns managed/Archived reads, list mutations, list SSE, and the
-  per-thread list revision baseline.
-- `caffold-task-detail` owns the selected task's canonical application, event
-  cache, and per-thread detail revision baseline. Normal acquisition uses the
-  detail SSE, with at most one REST fallback after bounded browser-stream
-  failure and no parallel REST read on healthy entry or reconnect. Each
-  connection starts with a cached `stream-bootstrap`; a loading bootstrap
-  establishes the new process baseline and waits for a later readable
-  `task-sync`. A bootstrap revision may be lower than the prior process
-  baseline; lower revisions within the new baseline remain stale. Frontend
-  module and attempt ownership is defined in
-  [Frontend Architecture](frontend.md#tasks-layout-and-detail-layout).
-- A detail snapshot may be forwarded to Navigator through
-  `upsertCanonicalTask`, but a list revision never advances or rejects a detail
-  revision, and a detail revision never advances or rejects a list revision.
-
-The remaining components project or collect UI state without acquiring agent
-status ownership. `caffold-detail-layout` binds a Task or Section subject to the
-shared review surfaces. `caffold-task-detail-summary` renders the Task header
-and raises Task intents without executing agent or GitHub requests. The
-`caffold-task-detail-git` and
-`caffold-task-detail-github` leaf components each own their native popover
-invoker, action surface, disclosure state, and action intent.
-`caffold-task-conversation` renders the canonical task and events and may
-request older history or approval actions through intents.
-`caffold-task-composer` owns draft, image, picker, and focus state, but emits a
-submission intent for its Task or Task Create owner to execute.
-`caffold-task-review` receives read-only subject context and exclusively owns
-Working Tree/current Branch navigation, selected path, file/diff/source state,
-and its root watcher. Shared Git and GitHub children own only their domain API
-state and receive repository context as a snapshot from the common Detail.
-None of these components may synthesize, overwrite, or restore `ThreadStatus`,
-active flags, turn status, or active-turn control pointers for either agent.
-
-Transport state and UI request state remain separate from this canonical
-projection. Reconnecting, loading, optimistic delivery, review refresh, and
-watch availability may disable or annotate controls, but they cannot rewrite
-the app-server thread lifecycle. When canonical detail is unavailable, Detail
-disables stale canonical controls and exposes the transport/API failure.
+No browser component synthesizes or restores Codex `ThreadStatus`, active
+flags, turn status, or active-turn control pointers. Transport and UI request
+state may annotate or disable controls but cannot rewrite the app-server
+lifecycle. Unavailable canonical Detail remains an explicit transport or API
+failure.
 
 ## Cross-Process Reconciliation
 

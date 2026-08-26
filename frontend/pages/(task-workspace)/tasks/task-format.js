@@ -259,6 +259,17 @@ export function formatDate(ms) {
   });
 }
 
+/// The time the backend has direct evidence for, as distinct from the event's
+/// conversation position. `null` means history knows order but no individual
+/// item time.
+export function taskEventObservedMs(event) {
+  const value = event?.observedMs;
+  const numeric = Number(value);
+  return value !== null && value !== undefined && Number.isFinite(numeric)
+    ? numeric
+    : null;
+}
+
 export function formatDuration(ms) {
   const seconds = Math.max(1, Math.round(Number(ms) / 1000));
   if (!Number.isFinite(seconds)) {

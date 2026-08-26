@@ -1,5 +1,8 @@
 import { PROMPT_SUBMISSION_STATE } from "./runtime-state.js";
-import { presentTaskFilePath } from "./task-format.js";
+import {
+  presentTaskFilePath,
+  taskEventObservedMs,
+} from "./task-format.js";
 
 export function conversationGroups(events) {
   const groups = [];
@@ -41,22 +44,27 @@ export function conversationGroups(events) {
     group.events.push(event);
     activeGroup = isTerminalTurnEvent(event) ? null : group;
   }
-  return groups
-    .map((group, index) => ({
-      group,
-      index,
-      createdMs: conversationGroupCreatedMs(group),
-    }))
+  const positionedGroups = groups.map((group, index) => ({
+    group,
+    index,
+    position: conversationGroupPosition(group),
+  }));
+  if (positionedGroups.some(({ position }) => position === null)) {
+    return positionedGroups.map(({ group }) => group);
+  }
+  return positionedGroups
     .sort(
       (left, right) =>
-        left.createdMs - right.createdMs || left.index - right.index,
+        left.position.anchorMs - right.position.anchorMs ||
+        left.position.index - right.position.index ||
+        left.index - right.index,
     )
     .map(({ group }) => group);
 }
 
-function conversationGroupCreatedMs(group) {
+function conversationGroupPosition(group) {
   if (group.kind !== "turn") {
-    return group.event?.createdMs ?? 0;
+    return taskEventPosition(group.event);
   }
   const message = group.events.find((event) =>
     ["user_message", "assistant_message", "generated_image"].includes(
@@ -71,7 +79,26 @@ function conversationGroupCreatedMs(group) {
         event.type !== "thread_status_changed",
     ) ??
     group.events[0];
-  return substantive?.createdMs ?? 0;
+  return taskEventPosition(substantive);
+}
+
+export function taskEventPosition(event) {
+  const anchorMs = event?.position?.anchorMs;
+  const index = event?.position?.index;
+  return Number.isSafeInteger(anchorMs) &&
+    anchorMs >= 0 &&
+    Number.isSafeInteger(index) &&
+    index >= 0
+    ? { anchorMs, index }
+    : null;
+}
+
+export function taskEventAnchorMs(event) {
+  return taskEventPosition(event)?.anchorMs ?? null;
+}
+
+export function taskEventPositionIndex(event) {
+  return taskEventPosition(event)?.index ?? null;
 }
 
 export function eventTurnId(event) {
@@ -174,49 +201,119 @@ export function fileChangePathPresentations(events, rootPath = "") {
   return [...presentationsByFileIdentity.values()];
 }
 
-export function upsertEvent(events, event) {
-  return mergeEvents(events, [event]);
+export function applyProjectionDelta(events, event) {
+  return applyProjectionDeltas(events, [event]);
 }
 
 export function sortEventsChronologically(events) {
-  return [...events].sort(
-    (left, right) =>
-      (left.createdMs ?? 0) - (right.createdMs ?? 0) ||
-      (left.sortIndex ?? Number.MAX_SAFE_INTEGER) -
-        (right.sortIndex ?? Number.MAX_SAFE_INTEGER),
-  );
+  const positionedEvents = events.map((event) => ({
+    event,
+    position: taskEventPosition(event),
+  }));
+  if (positionedEvents.some(({ position }) => position === null)) {
+    return [...events];
+  }
+  return positionedEvents
+    .sort(
+      (left, right) =>
+        left.position.anchorMs - right.position.anchorMs ||
+        left.position.index - right.position.index,
+    )
+    .map(({ event }) => event);
 }
 
-export function mergeEvents(leftEvents, rightEvents) {
+// Apply backend projection patches in accepted publication order. Exact
+// identity is the only join evidence. An existing item keeps its backend-owned
+// placement while the incoming patch owns conflicting projected fields.
+export function applyProjectionDeltas(currentEvents, deltas) {
   const byId = new Map();
-  for (const event of [...leftEvents, ...rightEvents]) {
+  for (const event of [...currentEvents, ...deltas]) {
     const key = eventIdentityKey(event);
     if (key) {
-      byId.set(key, mergeEventRecord(byId.get(key), event));
+      byId.set(key, applyProjectionDeltaRecord(byId.get(key), event));
     }
   }
-  return sortEventsChronologically(
-    dedupeCanonicalEvents([...byId.values()]),
-  );
+  return sortEventsChronologically([...byId.values()]);
 }
 
-export function reconcileCanonicalEvents(currentEvents, canonicalEvents) {
+// An optimistic request has no provider identity yet. Keep it as a separate
+// local overlay until the adapter returns the exact handoff identity.
+export function appendOptimisticEvent(events, optimisticEvent) {
+  return sortEventsChronologically([...events, optimisticEvent]);
+}
+
+// Older Detail pages extend the visible transcript but cannot replace an
+// exact current projection at the cursor boundary.
+export function prependDetailEvents(currentEvents, olderDetailEvents) {
   const byId = new Map();
+  for (const event of olderDetailEvents) {
+    const key = eventIdentityKey(event);
+    if (key) {
+      byId.set(key, applyCanonicalDetailRecord(byId.get(key), event));
+    }
+  }
   for (const event of currentEvents) {
     const key = eventIdentityKey(event);
     if (key) {
-      byId.set(key, mergeEventRecord(byId.get(key), event));
+      byId.set(key, projectPrimaryEvent(event, byId.get(key), event.position));
     }
   }
-  for (const event of canonicalEvents) {
-    const key = eventIdentityKey(event);
-    if (key) {
-      byId.set(key, mergeEventRecord(byId.get(key), event));
-    }
+  return sortEventsChronologically([...byId.values()]);
+}
+
+// A canonical Detail snapshot is already reconciled by the backend. Older
+// cursor pages and local optimistic overlays are separate visible layers;
+// neither is allowed to arbitrate fields in the current projection.
+export function projectCanonicalEvents(
+  detailEvents,
+  olderDetailEvents = [],
+  optimisticEvents = [],
+) {
+  return sortEventsChronologically([
+    ...prependDetailEvents(detailEvents, olderDetailEvents),
+    ...optimisticEvents,
+  ]);
+}
+
+// A Detail snapshot produced while provider history is still loading owns
+// every exact identity it contains, but it cannot declare that retained
+// readable history disappeared. Keep absent records until a complete Detail
+// snapshot owns projection membership.
+export function projectHistoryLoadingEvents(
+  detailEvents,
+  retainedEvents = [],
+) {
+  return prependDetailEvents(detailEvents, retainedEvents);
+}
+
+// Once the prompt response or first provider projection proves which exact
+// item an optimistic submission became, keep the position already visible in
+// this browser. A later Detail reconciliation still replaces it with provider
+// history position.
+export function handoffOptimisticSubmission(
+  events,
+  optimisticEventId,
+  confirmedEvent,
+) {
+  const optimistic = events.find((event) => event.id === optimisticEventId);
+  const confirmedIdentity = eventIdentityKey(confirmedEvent);
+  if (!optimistic || !confirmedIdentity) {
+    return events;
   }
-  return sortEventsChronologically(
-    dedupeCanonicalEvents([...byId.values()]),
+  const existingConfirmed = events.find(
+    (event) => eventIdentityKey(event) === confirmedIdentity,
   );
+  const confirmed = applyProjectionDeltaRecord(
+    existingConfirmed,
+    confirmedEvent,
+  );
+  const handedOff = projectPrimaryEvent(confirmed, null, optimistic.position);
+  const remaining = events.filter(
+    (event) =>
+      event.id !== optimisticEventId &&
+      eventIdentityKey(event) !== confirmedIdentity,
+  );
+  return sortEventsChronologically([...remaining, handedOff]);
 }
 
 export function mergeTaskEventsPage(currentPage, detail) {
@@ -234,36 +331,46 @@ export function mergeTaskEventsPage(currentPage, detail) {
   return incomingPage;
 }
 
-function mergeEventRecord(existing, incoming) {
+function applyProjectionDeltaRecord(existing, incoming) {
   if (!existing) {
     return incoming;
   }
-  const createdMs = existing.createdMs;
-  const sortIndex = existing.sortIndex ?? incoming.sortIndex;
-  const existingUpdatedMs = existing.updatedMs ?? existing.createdMs ?? 0;
-  const incomingUpdatedMs = incoming.updatedMs ?? incoming.createdMs ?? 0;
-  const [latest, earlier] =
-    incomingUpdatedMs >= existingUpdatedMs
-      ? [incoming, existing]
-      : [existing, incoming];
-  const existingPayload = existing.payload ?? {};
-  const incomingPayload = incoming.payload ?? {};
-  const earlierPayload = earlier.payload ?? {};
-  const latestPayload = latest.payload ?? {};
-  const payload = { ...earlierPayload, ...latestPayload };
-  const updatedMs = Math.max(existingUpdatedMs, incomingUpdatedMs);
+  return projectPrimaryEvent(incoming, existing, existing.position);
+}
+
+function applyCanonicalDetailRecord(existing, incoming) {
+  if (!existing) {
+    return incoming;
+  }
+  return projectPrimaryEvent(incoming, existing, incoming.position);
+}
+
+function projectPrimaryEvent(primary, supplemental, position) {
+  const { position: _primaryPosition, ...primaryFields } = primary;
+  const { position: _supplementalPosition, ...supplementalFields } =
+    supplemental ?? {};
+  const carriesObservedTime = [primary, supplemental].some(
+    (event) => event && Object.prototype.hasOwnProperty.call(event, "observedMs"),
+  );
+  const observedTimes = [primary, supplemental]
+    .map(taskEventObservedMs)
+    .filter((value) => value !== null);
+  const observedMs = observedTimes.length ? Math.min(...observedTimes) : null;
+  const payload = {
+    ...(supplemental?.payload ?? {}),
+    ...(primary?.payload ?? {}),
+  };
   return {
-    ...earlier,
-    ...latest,
+    ...supplementalFields,
+    ...primaryFields,
     payload,
-    createdMs,
-    ...(sortIndex === undefined ? {} : { sortIndex }),
-    ...(updatedMs > (createdMs ?? 0) ? { updatedMs } : {}),
+    position,
+    ...(carriesObservedTime ? { observedMs } : {}),
   };
 }
 
 export function optimisticUserMessageEvent(threadId, prompt, images, requestId) {
-  const createdMs = Date.now();
+  const anchorMs = Date.now();
   const content = [
     ...(prompt ? [{ type: "text", text: prompt }] : []),
     ...images.map((image) => ({
@@ -273,7 +380,7 @@ export function optimisticUserMessageEvent(threadId, prompt, images, requestId) 
     })),
   ];
   return {
-    id: `local:user:${threadId}:${requestId}:${createdMs}`,
+    id: `local:user:${threadId}:${requestId}:${anchorMs}`,
     threadId,
     type: "user_message",
     summary: "User prompt",
@@ -283,7 +390,8 @@ export function optimisticUserMessageEvent(threadId, prompt, images, requestId) 
       optimistic: true,
       submissionState: PROMPT_SUBMISSION_STATE.SENDING,
     },
-    createdMs,
+    position: { anchorMs, index: 0 },
+    observedMs: anchorMs,
   };
 }
 
@@ -313,167 +421,24 @@ export function eventIdentityKey(event) {
     return ["turn", threadId, turnId, event.type, payload.status ?? ""].join(":");
   }
 
-  if (turnId && ["user_message", "assistant_message"].includes(event.type)) {
-    const text =
-      event.type === "user_message"
-        ? userMessageText(payload)
-        : `${payload.prompt ?? payload.text ?? ""}`.trim();
-    if (text) {
-      return ["message", threadId, turnId, event.type, text].join(":");
-    }
-  }
-
+  // Text is presentation, not identity. A sparse event with no item id keeps
+  // its own event id. Two equal messages are otherwise indistinguishable from
+  // one message reported twice, and the frontend has no evidence with which to
+  // choose either interpretation.
   return event.id ?? "";
 }
 
 export function dedupeCanonicalEvents(events) {
-  const byKey = new Map();
-  for (const event of removeSupersededOptimisticEvents(events)) {
-    const key = canonicalEventKey(event) || eventIdentityKey(event);
-    if (!key) {
-      continue;
-    }
-    const existing = byKey.get(key);
-    byKey.set(key, preferStructuredEvent(existing, event));
-  }
-  return [...byKey.values()];
-}
-
-function removeSupersededOptimisticEvents(events) {
-  const confirmedUserMessages = new Set();
+  const byIdentity = new Map();
   for (const event of events) {
-    if (event?.type !== "user_message" || event.payload?.optimistic) {
+    const identity = eventIdentityKey(event);
+    if (!identity) {
       continue;
     }
-    const fingerprint = userMessageFingerprint(event);
-    if (fingerprint) {
-      confirmedUserMessages.add(fingerprint);
-    }
+    byIdentity.set(
+      identity,
+      applyProjectionDeltaRecord(byIdentity.get(identity), event),
+    );
   }
-
-  return events.filter((event) => {
-    if (event?.type !== "user_message" || !event.payload?.optimistic) {
-      return true;
-    }
-    return !confirmedUserMessages.has(userMessageFingerprint(event));
-  });
-}
-
-export function userMessageFingerprint(event) {
-  if (event?.type !== "user_message") {
-    return "";
-  }
-  const payload = event.payload ?? {};
-  const text = userMessageText(payload);
-  const content = userMessageContent(payload);
-  const images = content
-    .filter((item) => ["image", "localImage"].includes(item?.type))
-    .map((item) => imageInputFingerprint(item));
-  if (!text && !images.length) {
-    return "";
-  }
-  return JSON.stringify([event.threadId ?? "", text, images]);
-}
-
-function imageInputFingerprint(item) {
-  if (item?.type === "localImage") {
-    return `local:${item.path ?? ""}`;
-  }
-  const value = `${item?.url ?? ""}`;
-  return `data:${value.length}:${value.slice(-64)}`;
-}
-
-function canonicalEventKey(event) {
-  if (!event || !["user_message", "assistant_message"].includes(event.type)) {
-    return "";
-  }
-
-  if (event.payload?.optimistic) {
-    return event.id ?? "";
-  }
-
-  const payload = event.payload ?? {};
-  const messageFingerprint =
-    event.type === "user_message"
-      ? userMessageFingerprint(event)
-      : `${payload.prompt ?? payload.text ?? ""}`.trim();
-  if (!messageFingerprint) {
-    return "";
-  }
-
-  const threadId = event.threadId ?? payload.threadId ?? "";
-  const turnId = eventTurnId(event);
-  if (turnId) {
-    const phase =
-      event.type === "assistant_message"
-        ? (assistantMessagePhase(payload.phase) ?? "")
-        : "";
-    return [
-      "message",
-      threadId,
-      turnId,
-      event.type,
-      phase,
-      messageFingerprint,
-    ].join(":");
-  }
-
-  const createdMs = typeof event.createdMs === "number" ? event.createdMs : 0;
-  const createdBucket = createdMs ? Math.floor(createdMs / 5000) : "";
-  return ["message", threadId, event.type, messageFingerprint, createdBucket].join(":");
-}
-
-function preferStructuredEvent(existing, next) {
-  if (!existing) {
-    return next;
-  }
-  const existingScore = eventStructureScore(existing);
-  const nextScore = eventStructureScore(next);
-  if (nextScore !== existingScore) {
-    return nextScore > existingScore ? next : existing;
-  }
-  return (next.createdMs ?? 0) >= (existing.createdMs ?? 0) ? next : existing;
-}
-
-function eventStructureScore(event) {
-  const payload = event?.payload ?? {};
-  return (
-    [payload.itemId, payload.turnId, payload.threadId].filter(Boolean).length +
-    (payload.status ? 2 : 0) +
-    (event?.sortIndex === 0 ? 1 : 0)
-  );
-}
-
-function userMessageText(payload) {
-  const prompt = `${payload?.prompt ?? ""}`.trim();
-  const payloadText = `${payload?.text ?? ""}`.trim();
-  const content = userMessageContent(payload);
-  const itemText = content
-    .filter((item) => ["text", "input_text"].includes(item?.type))
-    .map((item) => `${item?.text ?? ""}`.trim())
-    .filter(Boolean)
-    .join("\n\n");
-  return normalizedUserMessageText(payloadText || prompt || itemText);
-}
-
-function userMessageContent(payload) {
-  return Array.isArray(payload?.content) ? payload.content : [];
-}
-
-function normalizedUserMessageText(text) {
-  const isAmbientWrapper =
-    text.includes("automatically supplied ambient UI state") ||
-    text.includes("<in-app-browser-context") ||
-    text.includes("# In app browser:");
-  if (!isAmbientWrapper) {
-    return text;
-  }
-
-  for (const marker of ["## My request for Codex:", "My request for Codex:"]) {
-    const markerIndex = text.lastIndexOf(marker);
-    if (markerIndex >= 0) {
-      return text.slice(markerIndex + marker.length).trim();
-    }
-  }
-  return text;
+  return [...byIdentity.values()];
 }

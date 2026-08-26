@@ -120,6 +120,7 @@ export function taskDetailFixture({
     threadId: "thread-1",
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task: {
       id: "thread-1",
       threadId: "thread-1",

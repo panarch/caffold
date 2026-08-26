@@ -83,10 +83,15 @@ function installBrowserHarness() {
   };
 }
 
-function detail(threadId, revision, { readable = true } = {}) {
+function detail(
+  threadId,
+  revision,
+  { readable = true, eventRevision = 0 } = {},
+) {
   return {
     threadId,
     revision,
+    eventRevision,
     syncState: readable ? "ready" : "loading",
     task: readable ? { id: threadId, threadId } : null,
     events: [],
@@ -97,13 +102,17 @@ function detail(threadId, revision, { readable = true } = {}) {
 function syncMessage(
   threadId,
   revision,
-  { readable = true, reason = "stream-bootstrap" } = {},
+  {
+    readable = true,
+    reason = "stream-bootstrap",
+    eventRevision = 0,
+  } = {},
 ) {
   return {
     threadId,
     revision,
     reason,
-    detail: detail(threadId, revision, { readable }),
+    detail: detail(threadId, revision, { readable, eventRevision }),
   };
 }
 
@@ -142,6 +151,7 @@ test("waits for a readable bootstrap and buffers connection-local events", async
   source.emit("task-event", {
     threadId: "thread-a",
     revision: 2,
+    eventRevision: 1,
     event: { id: "before-bootstrap" },
   });
   assert.deepEqual(syncs, []);
@@ -154,6 +164,7 @@ test("waits for a readable bootstrap and buffers connection-local events", async
   source.emit("task-event", {
     threadId: "thread-a",
     revision: 4,
+    eventRevision: 2,
     event: { id: "before-readable" },
   });
   assert.equal(syncs.length, 1);
@@ -230,6 +241,7 @@ test("rejects late inputs from an invalidated Task generation", async () => {
   sourceA.emit("task-event", {
     threadId: "thread-a",
     revision: 2,
+    eventRevision: 1,
     event: { id: "late-a" },
   });
   sourceB.emit("task-sync", syncMessage("thread-b", 1));

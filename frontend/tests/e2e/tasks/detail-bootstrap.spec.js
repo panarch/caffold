@@ -37,6 +37,7 @@ function taskDetail(task, text, revision, nextCursor = null) {
     threadId: task.threadId,
     syncState: "ready",
     revision,
+    eventRevision: revision,
     task,
     events: [assistantEvent(task.threadId, text, revision)],
     eventsPage: { nextCursor },
@@ -54,6 +55,7 @@ function loadingDetail(threadId, revision) {
     threadId,
     syncState: "loading",
     revision,
+    eventRevision: 0,
     task: null,
     events: [],
     eventsPage: { nextCursor: null },
@@ -69,7 +71,7 @@ function assistantEvent(threadId, text, revision) {
     type: "assistant_message",
     summary: "Assistant response",
     payload: { turnId: `turn_${revision}`, text },
-    createdMs: 1_767_400_000_000 + revision,
+    position: { anchorMs: 1_767_400_000_000 + revision, index: 0 },
   };
 }
 
@@ -240,6 +242,10 @@ test("preserves readable detail and buffers events through a loading reconnect b
     "Canonical reconnect snapshot replaced the baseline.",
     2,
   );
+  // The readable snapshot was cut before the buffered publication below.
+  // A backend snapshot watermark is strictly before a delta it does not yet
+  // contain; equal values would describe an impossible publication order.
+  recoveredDetail.eventRevision = 1;
   let detailReads = 0;
 
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
@@ -272,6 +278,7 @@ test("preserves readable detail and buffers events through a loading reconnect b
         threadId: id,
         syncState: "loading",
         revision: 1,
+        eventRevision: 0,
         task: null,
         events: [],
         eventsPage: { nextCursor: null },
@@ -282,6 +289,7 @@ test("preserves readable detail and buffers events through a loading reconnect b
     source.emit("task-event", {
       threadId: id,
       revision: 3,
+      eventRevision: 2,
       event: {
         id: "event_buffered_reconnect",
         threadId: id,
@@ -291,7 +299,7 @@ test("preserves readable detail and buffers events through a loading reconnect b
           turnId: "turn_buffered_reconnect",
           text: "Buffered reconnect event was retained.",
         },
-        createdMs: 1_767_400_050_100,
+        position: { anchorMs: 1_767_400_050_100, index: 0 },
       },
     });
   }, threadId);

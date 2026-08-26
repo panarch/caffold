@@ -11,7 +11,10 @@ use crate::agent::{
     ThreadStatus, TurnStatus,
 };
 use crate::app::tasks::{
-    events::{TaskEventRecord, approval_requested_event, approval_resolved_event, now_ms},
+    events::{
+        TaskEventPosition, TaskEventRecord, approval_requested_event, approval_resolved_event,
+        now_ms,
+    },
     worktrees::IsolateOutcome,
 };
 
@@ -27,8 +30,7 @@ pub(super) struct PendingApproval {
     thread_id: String,
     request: ApprovalRequest,
     asked_by: AskedBy,
-    created_ms: u64,
-    sort_index: Option<u32>,
+    position: TaskEventPosition,
 }
 
 /// Which agent is blocked on this answer.
@@ -79,9 +81,9 @@ impl TaskRuntime {
                 let mut event = approval_requested_event(
                     &pending.thread_id,
                     &pending.request,
-                    pending.created_ms,
+                    pending.position.anchor_ms,
                 );
-                event.sort_index = pending.sort_index;
+                event.position = pending.position;
                 event
             })
             .collect()
@@ -140,7 +142,7 @@ impl TaskRuntime {
             return Ok(());
         };
 
-        self.events.publish(approval_resolved_event(
+        self.events.publish_local(approval_resolved_event(
             &pending.thread_id,
             &pending.request,
             ApprovalOutcome::Decided(decision),
@@ -196,7 +198,7 @@ impl TaskRuntime {
         };
         let approval_id = approval_id_from_request(&request_id, &params);
         client.track_approval(&approval_id, request_id).await;
-        let created_ms = params
+        let anchor_ms = params
             .get("startedAtMs")
             .and_then(JsonValue::as_u64)
             .filter(|started_at_ms| *started_at_ms > 0)
@@ -205,7 +207,7 @@ impl TaskRuntime {
         self.record_pending_approval(
             &thread_id,
             request,
-            created_ms,
+            anchor_ms,
             AskedBy::Codex { kind, params },
         )
         .await;
@@ -222,13 +224,13 @@ impl TaskRuntime {
         &self,
         thread_id: &str,
         request: ApprovalRequest,
-        created_ms: u64,
+        anchor_ms: u64,
         asked_by: AskedBy,
     ) {
         let approval_id = request.id.clone();
         let event = self
             .events
-            .record(approval_requested_event(thread_id, &request, created_ms));
+            .record_local(approval_requested_event(thread_id, &request, anchor_ms));
         let newly_pending = self
             .approvals
             .lock()
@@ -239,8 +241,7 @@ impl TaskRuntime {
                     thread_id: thread_id.to_owned(),
                     request,
                     asked_by,
-                    created_ms: event.created_ms,
-                    sort_index: event.sort_index,
+                    position: event.event.position,
                 },
             )
             .is_none();
@@ -517,7 +518,7 @@ impl TaskRuntime {
         };
 
         for (pending, outcome) in withdrawn {
-            self.events.publish(approval_resolved_event(
+            self.events.publish_local(approval_resolved_event(
                 &pending.thread_id,
                 &pending.request,
                 outcome,
@@ -738,7 +739,7 @@ mod tests {
             )
             .await;
 
-        let event = receiver.recv().await.unwrap();
+        let event = receiver.recv().await.unwrap().event;
         assert_eq!(event.thread_id, "thread_1");
         assert_eq!(event.event_type, "approval_requested");
         assert_eq!(
@@ -750,8 +751,8 @@ mod tests {
         let approvals = runtime.approval_events("thread_1").await;
         assert_eq!(approvals.len(), 1);
         assert_eq!(approvals[0].id, event.id);
-        assert_eq!(approvals[0].created_ms, event.created_ms);
-        assert_eq!(approvals[0].sort_index, event.sort_index);
+        assert_eq!(approvals[0].position.anchor_ms, event.position.anchor_ms);
+        assert_eq!(approvals[0].position.index, event.position.index);
         assert_eq!(
             approvals[0].payload.as_ref().unwrap()["command"],
             "cargo test"
@@ -902,7 +903,7 @@ mod tests {
         let requested = runtime.approval_events("thread_1").await;
         assert_eq!(requested.len(), 1);
         assert_eq!(requested[0].summary, "Permission requested");
-        assert_eq!(requested[0].created_ms, 1_750_000_000_000);
+        assert_eq!(requested[0].position.anchor_ms, 1_750_000_000_000);
 
         runtime
             .resolve_approval(
@@ -1353,7 +1354,7 @@ mod tests {
                 .unwrap(),
             )
             .await;
-        let requested = receiver.recv().await.unwrap();
+        let requested = receiver.recv().await.unwrap().event;
         assert_eq!(requested.event_type, "approval_requested");
 
         let completed = codex::decode_notification(
@@ -1377,7 +1378,7 @@ mod tests {
             .await;
 
         assert!(runtime.approval_events("thread_1").await.is_empty());
-        let resolved = receiver.recv().await.unwrap();
+        let resolved = receiver.recv().await.unwrap().event;
         assert_eq!(resolved.event_type, "approval_resolved");
         assert_eq!(resolved.payload.as_ref().unwrap()["approvalId"], "11");
         assert_eq!(resolved.payload.as_ref().unwrap()["outcome"], "expired");

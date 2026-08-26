@@ -73,6 +73,7 @@ async function installTransportOverlayFixture(page, threadId, registryKey) {
     threadId,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task,
     events: [
       {
@@ -84,7 +85,7 @@ async function installTransportOverlayFixture(page, threadId, registryKey) {
           turnId: "turn_transport_overlay",
           text: "Conversation stays fixed while transport notices change.",
         },
-        createdMs: task.updatedMs,
+        position: { anchorMs: task.updatedMs, index: 0 },
       },
     ],
     eventsPage: { nextCursor: null },
@@ -175,6 +176,7 @@ test("background Task tabs release list and detail streams", { tag: "@desktop" }
     threadId,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task,
     events: [],
     eventsPage: { nextCursor: null },
@@ -292,6 +294,7 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
     threadId,
     syncState: "ready",
     revision: foregroundState ? 2 : 1,
+    eventRevision: foregroundState ? 2 : 1,
     task: foregroundState
       ? { ...runtimeTask, title: "Foreground recovery renamed in Caffold" }
       : runtimeTask,
@@ -306,7 +309,7 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
           ? "Detail reconciled after foreground recovery."
           : "Detail loaded before backgrounding.",
       },
-      createdMs: now + (foregroundState ? 2 : 1),
+      position: { anchorMs: now + (foregroundState ? 2 : 1), index: 0 },
     }],
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
@@ -543,6 +546,7 @@ test("notification activation refreshes stale readiness and opens its Task route
     threadId,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task: {
       ...task,
       ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
@@ -556,7 +560,7 @@ test("notification activation refreshes stale readiness and opens its Task route
       payload: {
         text: "Pending Task opened after notification foreground recovery.",
       },
-      createdMs: now + 1,
+      position: { anchorMs: now + 1, index: 0 },
     }],
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
@@ -687,6 +691,7 @@ test("fresh origin reachability recovers a foreground offline pause without an o
     threadId,
     syncState: "ready",
     revision: recovered ? 2 : 1,
+    eventRevision: recovered ? 2 : 1,
     task,
     events: [
       {
@@ -700,7 +705,7 @@ test("fresh origin reachability recovers a foreground offline pause without an o
             ? "Conversation reconciled after network recovery."
             : "Conversation stays available while offline.",
         },
-        createdMs: task.updatedMs,
+        position: { anchorMs: task.updatedMs, index: 0 },
       },
     ],
     eventsPage: { nextCursor: null },
@@ -817,6 +822,7 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
     threadId,
     syncState: "ready",
     revision: recovered ? 2 : 1,
+    eventRevision: recovered ? 2 : 1,
     task,
     events: [
       {
@@ -830,7 +836,7 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
             ? "Conversation reconciled after connection recovery."
             : "Conversation remains useful before connection loss.",
         },
-        createdMs: task.updatedMs,
+        position: { anchorMs: task.updatedMs, index: 0 },
       },
     ],
     eventsPage: { nextCursor: null },
@@ -954,6 +960,7 @@ test("a late failed disconnect probe yields to a newer reconnect signal", { tag:
     threadId,
     syncState: "ready",
     revision: recovered ? 2 : 1,
+    eventRevision: recovered ? 2 : 1,
     task,
     events: [
       {
@@ -967,7 +974,7 @@ test("a late failed disconnect probe yields to a newer reconnect signal", { tag:
             ? "Conversation reconciled after the late failure."
             : "Conversation remains useful before the late failure.",
         },
-        createdMs: task.updatedMs,
+        position: { anchorMs: task.updatedMs, index: 0 },
       },
     ],
     eventsPage: { nextCursor: null },
@@ -1062,6 +1069,7 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
     threadId,
     syncState: "ready",
     revision: recovered ? 2 : 1,
+    eventRevision: recovered ? 2 : 1,
     task,
     events: [
       {
@@ -1075,7 +1083,7 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
             ? "Conversation reconciled after recovery."
             : "Conversation stays available during recovery.",
         },
-        createdMs: task.updatedMs,
+        position: { anchorMs: task.updatedMs, index: 0 },
       },
     ],
     eventsPage: { nextCursor: null },
@@ -1197,6 +1205,7 @@ test("reopened Task detail waits for a readable stream bootstrap", { tag: "@desk
     threadId,
     syncState: "ready",
     revision,
+    eventRevision: revision,
     task,
     events: [
       {
@@ -1205,7 +1214,7 @@ test("reopened Task detail waits for a readable stream bootstrap", { tag: "@desk
         type: "assistant_message",
         summary: "Assistant response",
         payload: { turnId: `turn_detail_reconnect_${revision}`, text },
-        createdMs: task.updatedMs + revision,
+        position: { anchorMs: task.updatedMs + revision, index: 0 },
       },
     ],
     eventsPage: { nextCursor: null },
@@ -1356,6 +1365,7 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
     threadId,
     syncState: "ready",
     revision,
+    eventRevision: revision,
     task,
     events: [
       {
@@ -1364,7 +1374,7 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
         type: "assistant_message",
         summary: "Assistant response",
         payload: { turnId: `turn_${revision}`, text },
-        createdMs: now + revision,
+        position: { anchorMs: now + revision, index: 0 },
       },
     ],
     eventsPage: { nextCursor: null },
@@ -1487,6 +1497,7 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
           threadId,
           syncState: "ready",
           revision: 999,
+          eventRevision: 999,
           task: staleTask,
           events: [
             {
@@ -1498,7 +1509,7 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
                 turnId: "turn_stale_generation",
                 text: "Stale generation must stay hidden.",
               },
-              createdMs: Date.now(),
+              position: { anchorMs: Date.now(), index: 0 },
             },
           ],
           eventsPage: { nextCursor: null },
@@ -1804,7 +1815,7 @@ test("keeps task list and detail revisions independent", { tag: "@desktop" }, as
         prompt: "Initial prompt",
         text: "Only this request should be visible.",
       },
-      createdMs: now,
+      position: { anchorMs: now, index: 0 },
     },
     {
       id: "event_initial_answer",
@@ -1812,11 +1823,12 @@ test("keeps task list and detail revisions independent", { tag: "@desktop" }, as
       type: "assistant_message",
       summary: "Assistant response",
       payload: { turnId: "turn_initial", text: "Initial answer" },
-      createdMs: now + 1,
+      position: { anchorMs: now + 1, index: 0 },
     },
   ];
   const detail = (revision, events = initialEvents) => ({
     revision,
+    eventRevision: revision,
     task,
     events,
     eventsPage: { nextCursor: null },
@@ -1837,7 +1849,12 @@ test("keeps task list and detail revisions independent", { tag: "@desktop" }, as
     submittedPrompts.push(route.request().postDataJSON().prompt);
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ threadId, turnId: "turn_follow_up", steered: false }),
+      body: JSON.stringify({
+        threadId,
+        turnId: "turn_follow_up",
+        userMessageId: "message_follow_up",
+        steered: false,
+      }),
     });
   });
 
@@ -1872,7 +1889,7 @@ test("keeps task list and detail revisions independent", { tag: "@desktop" }, as
     type: "assistant_message",
     summary: "Assistant response",
     payload: { turnId: "turn_external", text: "Detail stream update is visible." },
-    createdMs: now + 2,
+    position: { anchorMs: now + 2, index: 0 },
   };
   await page.evaluate(({ threadId, detail }) => {
     const detailSource = window.__taskEventSources.find((source) =>
@@ -1919,7 +1936,7 @@ test("keeps task list and detail revisions independent", { tag: "@desktop" }, as
     type: "assistant_message",
     summary: "Assistant progress",
     payload: { turnId: "turn_external", text: "History synchronized after status." },
-    createdMs: now + 3,
+    position: { anchorMs: now + 3, index: 0 },
   };
   await page.evaluate(({ threadId, detail }) => {
     const detailSource = window.__taskEventSources.find((source) =>
@@ -2002,6 +2019,7 @@ test("isolates task detail responses and conversation scroll by thread", { tag: 
   const tasks = [taskB, taskA];
   const detailFor = (task) => ({
     revision: 1,
+    eventRevision: 1,
     task,
     model: "gpt-5.6-sol",
     reasoningEffort: task.threadId === taskA.threadId ? "xhigh" : "low",
@@ -2018,7 +2036,7 @@ test("isolates task detail responses and conversation scroll by thread", { tag: 
         turnId: `${task.threadId}_turn_${index}`,
         text: `${task.title} response ${index + 1}.\n\n${"Thread-specific scroll content. ".repeat(16)}`,
       },
-      createdMs: now + index,
+      position: { anchorMs: now + index, index: 0 },
     })),
     eventsPage: { nextCursor: null },
     pendingApprovals: [],

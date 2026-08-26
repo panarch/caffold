@@ -995,16 +995,16 @@ function patchCommandEntry(current, desired) {
 }
 
 function patchFileChangeEntry(current, desired) {
-  const currentTime = current.querySelector(":scope > article > header > time");
-  const desiredTime = desired.querySelector(":scope > article > header > time");
+  const currentHeader = current.querySelector(":scope > article > header");
+  const desiredHeader = desired.querySelector(":scope > article > header");
   const currentSummary = current.querySelector(":scope > article > p");
   const desiredSummary = desired.querySelector(":scope > article > p");
   const owner = current.querySelector(
     ":scope > article > caffold-task-changed-files",
   );
   if (
-    !currentTime ||
-    !desiredTime ||
+    !currentHeader ||
+    !desiredHeader ||
     !currentSummary ||
     !desiredSummary ||
     !owner
@@ -1017,9 +1017,21 @@ function patchFileChangeEntry(current, desired) {
     "data-conversation-entry-key",
     "data-event-type",
   ]);
-  patchText(currentTime, desiredTime.textContent);
+  patchOptionalTime(currentHeader, desiredHeader);
   patchText(currentSummary, desiredSummary.textContent);
   return true;
+}
+
+function patchOptionalTime(currentHeader, desiredHeader) {
+  const current = currentHeader.querySelector(":scope > time");
+  const desired = desiredHeader.querySelector(":scope > time");
+  if (!desired) {
+    current?.remove();
+  } else if (!current) {
+    currentHeader.append(desired.cloneNode(true));
+  } else {
+    patchText(current, desired.textContent);
+  }
 }
 
 function syncElementAttributes(current, desired, names) {

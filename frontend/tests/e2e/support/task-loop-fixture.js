@@ -145,7 +145,7 @@ export async function installTaskLoopFixture(
     type,
     summary,
     payload,
-    createdMs: now + offset,
+    position: { anchorMs: now + offset, index: 0 },
   });
   const detailResponse = (overrides = {}) => {
     const responseEvents = overrides.events ?? events;
@@ -154,6 +154,8 @@ export async function installTaskLoopFixture(
       threadId,
       syncState: "ready",
       revision: overrides.revision ?? 1,
+      eventRevision:
+        overrides.eventRevision ?? overrides.revision ?? 1,
       task: overrides.task ?? task,
       events: responseEvents,
       fileLinks: (overrides.fileLinks ?? fileLinks).filter((link) =>
@@ -389,6 +391,7 @@ export async function installTaskLoopFixture(
           body: JSON.stringify({
             threadId,
             turnId: `turn_${followUpRequests}`,
+            userMessageId: `message_${followUpRequests}`,
             steered: body.activeTurnId !== null,
           }),
         });
@@ -401,6 +404,7 @@ export async function installTaskLoopFixture(
           body: JSON.stringify({
             threadId,
             turnId: "turn_canonical_ack",
+            userMessageId: "message_canonical_ack",
             steered: false,
           }),
         });
@@ -411,6 +415,7 @@ export async function installTaskLoopFixture(
           body: JSON.stringify({
             threadId,
             turnId: "turn_after_canonical_ack",
+            userMessageId: "message_after_canonical_ack",
             steered: false,
           }),
         });
@@ -439,6 +444,7 @@ export async function installTaskLoopFixture(
           {
             text: body.prompt,
             turnId: "turn_2",
+            itemId: "message_6",
             content: [
               { type: "text", text: body.prompt },
               { type: "image", url: body.images[0], name: "follow-up.png" },
@@ -479,6 +485,7 @@ export async function installTaskLoopFixture(
         body: JSON.stringify({
           threadId,
           turnId: "turn_2",
+          userMessageId: "message_6",
           steered: false,
         }),
       });
@@ -624,7 +631,7 @@ export async function installTaskLoopFixture(
             cwd: "src",
             status: "completed",
           },
-          11,
+          9,
         ),
         eventRecord(
           "event_10_repeat",
@@ -642,6 +649,7 @@ export async function installTaskLoopFixture(
           "Assistant response",
           {
             turnId: "turn_1",
+            itemId: "message_10",
             phase: "final",
             text: completedAssistantResponse,
           },
@@ -653,6 +661,7 @@ export async function installTaskLoopFixture(
           "Assistant response",
           {
             turnId: "turn_1",
+            itemId: "message_10",
             phase: "final",
             text: completedAssistantResponse,
           },
@@ -730,6 +739,7 @@ export async function installTaskLoopFixture(
     await emitToDetailStream("task-event", {
       threadId,
       revision: 2,
+      eventRevision: 2,
       event: failure,
     });
   };

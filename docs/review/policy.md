@@ -115,6 +115,36 @@ Every review that changes state handling must trace each affected state field:
 An affected state flow is not ready while an unowned writer, stale fallback, or
 cross-layer status overlay remains in that flow.
 
+### Conversation Projection Evidence
+
+When provider history, live observations, snapshots, and deltas contribute to
+one conversation, keep their evidence and authority explicit across the whole
+projection:
+
+- Reconcile two records as the same item only under exact identity supplied by
+  the adapter or operation that observed or accepted it. Content equality,
+  timestamps, arrival proximity, conversation position, elapsed time, and
+  timeouts are not identity or causality evidence.
+- The backend owns reconciliation of provider history and live observations,
+  including which source owns conflicting fields and whether a snapshot owns
+  complete membership. Do not select a source by comparing cross-source update
+  timestamps or by treating a locally observed value as provider history.
+- Independently delivered snapshots and deltas require a Task-scoped
+  publication revision: capture each accepted delta at publication and each
+  snapshot with the watermark it includes. The frontend applies that contract
+  mechanically; lifecycle progress, transport arrival, and legacy session
+  revisions must not substitute for it.
+- A snapshot explicitly marked as still loading history owns the exact items it
+  contains but cannot declare that an absent, previously readable item was
+  deleted. A complete snapshot owns projection membership.
+- Conversation position answers only where an item appears, and direct
+  observation time answers only whether an item timestamp may be displayed.
+  Neither value chooses identity, source authority, lifecycle, or freshness.
+
+Reject frontend provider branches or browser-side arbitration that reconstruct
+these backend decisions. An unavailable owning source remains unavailable; it
+is not repaired with a timestamp fallback or a guessed item match.
+
 ## Explicit Control Models
 
 An enum or asynchronous request does not by itself require a state machine.

@@ -18,11 +18,11 @@
 //! own name.
 //!
 //! **A turn is bounded by what Caffold sent and what the agent answered.** It
-//! opens when a prompt is written and closes on the `result` frame that answers
-//! it. Its name comes from the agent: a prompt is handed back under the
-//! identity the agent filed it as, and that identity is what the transcript
-//! knows the turn by, so a turn watched here and the same turn read from disk
-//! are one turn.
+//! opens when the agent identifies the prompt it took and closes on the
+//! `result` frame that answers it. Its name comes from the agent: a prompt is
+//! handed back under the identity the agent filed it as, and that identity is
+//! what the transcript knows the turn by, so a turn watched here and the same
+//! turn read from disk are one turn.
 //!
 //! **History belongs to the agent.** What a session has said is kept here for
 //! as long as the session is watched, because that is what a viewer arriving
@@ -68,7 +68,7 @@ use crate::agent::driver::{
 use crate::agent::{
     ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, Conversation,
     ConversationItem, ItemKind, MessageContent, SessionEvent, SessionEventKind, ThreadActiveFlag,
-    ThreadStatus, TokenCount, TokenUsage, Turn, TurnPage, TurnStatus,
+    ThreadStatus, TokenCount, TokenUsage, Turn, TurnOrigin, TurnPage, TurnStatus,
 };
 
 pub(crate) use self::served_tools::{AskedTool, ToolAsk};
@@ -84,15 +84,6 @@ pub(crate) use self::runner::MockRunnerHandle;
 /// that never finishes loading.
 const ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// How long to wait for a prompt to be handed back before naming its turn
-/// without the agent's help.
-///
-/// The prompt has already been written by the time this starts, so waiting only
-/// delays what a person sees. The agent hands one back as soon as it reads it,
-/// and it is only ever read when nothing else is running, so this is long
-/// enough to be a fault rather than a slow moment.
-const PROMPT_HANDBACK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
-
 /// Why an operation on a Claude session did not happen.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ClaudeError {
@@ -105,6 +96,9 @@ pub(crate) enum ClaudeError {
     /// The agent answered, and the answer was a refusal.
     #[error("Claude refused: {0}")]
     Agent(String),
+    /// The agent-owned transcript could not answer a history read.
+    #[error("Claude transcript is unavailable: {0}")]
+    History(String),
     /// No session is being watched under that conversation's name.
     #[error("Caffold is not watching Claude conversation {0}.")]
     NotWatching(String),
@@ -141,7 +135,13 @@ struct ClaudeClientInner {
 #[derive(Debug, Clone)]
 pub(crate) enum ClaudeRuntimeEvent {
     /// The conversation moved, in the vocabulary every agent reports in.
-    Session(SessionEvent),
+    Session(Box<SessionEvent>),
+    /// Claude completed work that no Caffold-owned live turn can contain.
+    ///
+    /// The stream does not say what opened that work. The transcript does, so
+    /// this asks the application to read that canonical evidence rather than
+    /// making a turn up from the frames around it.
+    TranscriptChanged { conversation_id: String },
     /// The agent is blocked until someone answers.
     Approval {
         conversation_id: String,
@@ -199,7 +199,14 @@ struct SessionState {
     /// call what follows. What was said is kept because the turn may end up
     /// being opened by a frame that is not the prompt coming home, and that
     /// frame does not know what was asked.
-    pending_prompt: Option<(Vec<MessageContent>, oneshot::Sender<Turn>)>,
+    pending_prompt: Option<PendingPrompt>,
+    /// A message added to the running turn, waiting for Claude to replay it
+    /// under the identity it writes to the transcript.
+    ///
+    /// Only one may be in this unnamed interval. Accepting a second would make
+    /// two replayed prompts impossible to assign without guessing from their
+    /// contents or arrival timing.
+    pending_steer: Option<PendingSteer>,
     /// The turns this session has run while Caffold watched.
     turns: Vec<Turn>,
     /// Tool calls a person refused.
@@ -245,6 +252,19 @@ struct SessionState {
     /// watched — which is honest, and the only answer there is.
     opened_at_ms: u64,
     moved_at_ms: u64,
+}
+
+/// A submitted prompt waiting for Claude to establish its turn.
+struct PendingPrompt {
+    said: Vec<MessageContent>,
+    waiting: oneshot::Sender<Result<Turn, ClaudeError>>,
+}
+
+/// A steering message waiting for Claude's durable item identity.
+struct PendingSteer {
+    turn_id: String,
+    said: Vec<MessageContent>,
+    waiting: oneshot::Sender<Result<ConversationItem, ClaudeError>>,
 }
 
 /// One question the agent is blocked on, and what answering it needs.
@@ -305,6 +325,17 @@ impl ClaudeClient {
             Self::with_runner_and_projects(runner, Some(projects)),
             handle,
         )
+    }
+
+    /// Put canonical history where this test client's Claude installation
+    /// keeps it. Tests outside the transcript module use this instead of
+    /// copying Claude's project-directory encoding.
+    #[cfg(test)]
+    pub(crate) fn write_test_transcript(&self, cwd: &str, conversation_id: &str, contents: &str) {
+        let projects = self
+            .projects()
+            .expect("the test client has a projects directory");
+        transcript::plant(projects, cwd, conversation_id, contents);
     }
 
     /// Hold the start door shut, the way a start mid-passage holds it.
@@ -531,6 +562,7 @@ impl ClaudeClient {
             .and_then(|projects| transcript::locate(projects, cwd, id))?;
         let reading = tokio::task::spawn_blocking(move || transcript::read(&path, None, 1))
             .await
+            .ok()?
             .ok()?;
         reading.page.turns.into_iter().next()
     }
@@ -540,10 +572,10 @@ impl ClaudeClient {
     }
 
     fn report(&self, conversation_id: &str, kind: SessionEventKind) {
-        self.publish(ClaudeRuntimeEvent::Session(SessionEvent {
+        self.publish(ClaudeRuntimeEvent::Session(Box::new(SessionEvent {
             thread_id: conversation_id.to_string(),
             kind,
-        }));
+        })));
     }
 
     // -----------------------------------------------------------------------
@@ -585,8 +617,22 @@ impl ClaudeClient {
                     "a prompt is already being sent on conversation {conversation_id}"
                 )));
             }
+            if state.pending_steer.is_some() {
+                return Err(ClaudeError::Protocol(format!(
+                    "a steering message is still waiting for its identity on conversation \
+                     {conversation_id}"
+                )));
+            }
+            if state.ended {
+                return Err(ClaudeError::Agent(format!(
+                    "Claude conversation {conversation_id} has ended"
+                )));
+            }
             let (sender, receiver) = oneshot::channel();
-            state.pending_prompt = Some((translate::prompt_content_of(prompt, images), sender));
+            state.pending_prompt = Some(PendingPrompt {
+                said: translate::prompt_content_of(prompt, images),
+                waiting: sender,
+            });
             receiver
         };
 
@@ -596,13 +642,14 @@ impl ClaudeClient {
         }
 
         // The turn is opened by the first thing the agent says, not here, so
-        // that nothing it says arrives before there is a turn to say it in. This
-        // only waits to be told which turn that was; the timeout is for an agent
-        // that says nothing at all.
-        let turn = match tokio::time::timeout(PROMPT_HANDBACK_TIMEOUT, handed_back).await {
-            Ok(Ok(turn)) => turn,
-            _ => self.open_a_turn_unprompted(&session).await,
-        };
+        // that nothing it says arrives before there is a turn to say it in.
+        // Only Claude identifying the turn, or the session ending, can finish
+        // this wait; time passing says nothing about either.
+        let turn = handed_back.await.map_err(|_| {
+            ClaudeError::Protocol(format!(
+                "the pending prompt disappeared on conversation {conversation_id}"
+            ))
+        })??;
 
         let prompt_item = turn.items.first().cloned();
         self.report(
@@ -630,24 +677,6 @@ impl ClaudeClient {
         Ok(turn)
     }
 
-    /// Open a turn for a prompt the agent has answered nothing to.
-    ///
-    /// A session that says nothing at all still has the prompt, so the turn has
-    /// to exist for the answer to arrive into. Waiting longer would only make a
-    /// person watch a conversation that shows nothing of what they asked.
-    async fn open_a_turn_unprompted(&self, session: &Arc<Session>) -> Turn {
-        let mut state = session.state.lock().await;
-        if let Some(turn) = open_pending_turn(&mut state, None) {
-            return turn;
-        }
-        // Something opened it while this was giving up on waiting.
-        let named = state.active_turn.clone();
-        named
-            .and_then(|id| state.turns.iter().find(|turn| turn.id == id))
-            .cloned()
-            .unwrap_or_else(|| open_turn(&mut state, &uuid::Uuid::new_v4().to_string(), Vec::new()))
-    }
-
     /// Add to a turn already running.
     ///
     /// The agent takes this at its next tool-call boundary rather than at once,
@@ -658,24 +687,39 @@ impl ClaudeClient {
         turn_id: &str,
         prompt: &str,
         images: &[String],
-    ) -> Result<(), ClaudeError> {
+    ) -> Result<ConversationItem, ClaudeError> {
         let session = self.require_session(conversation_id).await?;
-        session.send(protocol::user_message(prompt, images)).await?;
-
-        let item = translate::user_message_item(
-            &format!("{turn_id}:steer:{}", now_ms()),
-            translate::prompt_content_of(prompt, images),
-        );
-        self.record_item(&session, turn_id, item.clone()).await;
-        self.report(
-            conversation_id,
-            SessionEventKind::ItemChanged {
+        let handed_back = {
+            let mut state = session.state.lock().await;
+            if state.active_turn.as_deref() != Some(turn_id) {
+                return Err(ClaudeError::Protocol(format!(
+                    "turn {turn_id} is not running on conversation {conversation_id}"
+                )));
+            }
+            if state.pending_steer.is_some() {
+                return Err(ClaudeError::Protocol(format!(
+                    "a steering message is already being sent on conversation {conversation_id}"
+                )));
+            }
+            let (sender, receiver) = oneshot::channel();
+            state.pending_steer = Some(PendingSteer {
                 turn_id: turn_id.to_string(),
-                item,
-                at_ms: now_ms(),
-            },
-        );
-        Ok(())
+                said: translate::prompt_content_of(prompt, images),
+                waiting: sender,
+            });
+            receiver
+        };
+
+        if let Err(error) = session.send(protocol::user_message(prompt, images)).await {
+            session.state.lock().await.pending_steer = None;
+            return Err(error);
+        }
+
+        handed_back.await.map_err(|_| {
+            ClaudeError::Protocol(format!(
+                "the pending steering message disappeared on conversation {conversation_id}"
+            ))
+        })?
     }
 
     /// Stop a turn where it stands.
@@ -733,18 +777,21 @@ impl ClaudeClient {
         cwd: &str,
         cursor: Option<&str>,
         limit: usize,
-    ) -> TurnPage {
-        let Some(path) = self
+    ) -> Result<TurnPage, ClaudeError> {
+        let path = self
             .projects()
             .and_then(|projects| transcript::locate(projects, cwd, conversation_id))
-        else {
-            return TurnPage::default();
-        };
+            .ok_or_else(|| {
+                ClaudeError::History(format!(
+                    "cannot work out where conversation {conversation_id} is written down"
+                ))
+            })?;
         let cursor = cursor.map(str::to_string);
         let reading =
             tokio::task::spawn_blocking(move || transcript::read(&path, cursor.as_deref(), limit))
                 .await
-                .unwrap_or_default();
+                .map_err(|error| ClaudeError::History(format!("history reader stopped: {error}")))?
+                .map_err(|error| ClaudeError::History(error.to_string()))?;
         if reading.unreadable > 0 {
             self.publish(ClaudeRuntimeEvent::Diagnostic {
                 message: format!(
@@ -763,7 +810,7 @@ impl ClaudeClient {
                 }
             }
         }
-        page
+        Ok(page)
     }
 
     // -----------------------------------------------------------------------
@@ -917,9 +964,10 @@ impl From<ClaudeError> for crate::agent::AgentError {
             // Not watching is not unreachable: the runner is fine and the
             // conversation is simply not there to be asked about.
             ClaudeError::NotWatching(_) => AgentError::ConversationGone(error.to_string()),
-            ClaudeError::Protocol(_) | ClaudeError::Agent(_) | ClaudeError::NoSuchApproval(_) => {
-                AgentError::Failed(error.to_string())
-            }
+            ClaudeError::Protocol(_)
+            | ClaudeError::Agent(_)
+            | ClaudeError::History(_)
+            | ClaudeError::NoSuchApproval(_) => AgentError::Failed(error.to_string()),
         }
     }
 }
@@ -943,20 +991,40 @@ pub(crate) struct ClaudeTurnOptions {
 ///
 /// `named` is what the agent filed the prompt as — said by the prompt coming
 /// home, or read back from the conversation on disk when the agent answered
-/// without handing it back. Only with no name from either source is one made
-/// up here, rather than left to a timeout the agent's own answer has already
-/// outrun — a turn opened after its `result` went by is a turn nothing will
-/// ever close.
+/// without handing it back. Only after actual output proves a turn exists can
+/// a missing name be replaced locally; silence never reaches this function.
+/// That keeps an answer from passing before there is a turn for its result to
+/// close when the transcript is unavailable.
 fn open_pending_turn(state: &mut SessionState, named: Option<&str>) -> Option<Turn> {
-    let (said, waiting) = state.pending_prompt.take()?;
+    if state.ended {
+        return None;
+    }
+    let PendingPrompt { said, waiting } = state.pending_prompt.take()?;
     let turn_id = named
         .map(str::to_string)
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let turn = open_turn(state, &turn_id, said);
-    // Nobody waiting means the prompt gave up on being told, and has taken this
-    // turn as the session's active one by another route.
-    let _ = waiting.send(turn.clone());
+    // The caller may have gone away, but actual agent output still opened this
+    // turn and remains the authority for the session state.
+    let _ = waiting.send(Ok(turn.clone()));
     Some(turn)
+}
+
+/// End a prompt that never received a turn identity from the agent.
+///
+/// The source of the terminal fact supplies the error: an ordinary agent exit
+/// is different from losing the runner underneath it.
+fn end_pending_prompt(state: &mut SessionState, error: ClaudeError) {
+    if let Some(PendingPrompt { waiting, .. }) = state.pending_prompt.take() {
+        let _ = waiting.send(Err(error));
+    }
+}
+
+/// End a steering message Claude never replayed under a durable identity.
+fn end_pending_steer(state: &mut SessionState, error: ClaudeError) {
+    if let Some(PendingSteer { waiting, .. }) = state.pending_steer.take() {
+        let _ = waiting.send(Err(error));
+    }
 }
 
 /// Open a turn on a session, under the name it will be known by.
@@ -965,15 +1033,15 @@ fn open_pending_turn(state: &mut SessionState, named: Option<&str>) -> Option<Tu
 /// exist before anything the agent says next can arrive looking for it.
 fn open_turn(state: &mut SessionState, turn_id: &str, said: Vec<MessageContent>) -> Turn {
     let started_at_ms = now_ms();
+    let mut prompt = translate::user_message_item(&format!("{turn_id}:prompt"), said);
+    prompt.observed_at_ms = Some(started_at_ms);
     let turn = Turn {
         id: turn_id.to_string(),
+        origin: TurnOrigin::User,
         status: TurnStatus::InProgress,
         started_at_ms: Some(started_at_ms),
         completed_at_ms: None,
-        items: vec![translate::user_message_item(
-            &format!("{turn_id}:prompt"),
-            said,
-        )],
+        items: vec![prompt],
     };
     state.active_turn = Some(turn_id.to_string());
     state.moved_at_ms = started_at_ms;
@@ -981,20 +1049,14 @@ fn open_turn(state: &mut SessionState, turn_id: &str, said: Vec<MessageContent>)
     turn
 }
 
-/// What the conversation is doing, from what the session is waiting on.
+/// What the conversation is doing, from what the agent has reported.
 ///
-/// A prompt that has been written and not yet handed back has no turn to be
-/// named by, and the agent is already working on it. Reading that moment as
-/// idle would let a Task be archived — and its process ended — between a person
-/// asking for something and the agent saying what it is called.
+/// A prompt accepted by the runner but not identified by Claude is request
+/// state, not evidence of an active turn. Keeping that distinction here avoids
+/// turning transport progress into agent-owned domain state.
 fn status_of(state: &SessionState) -> ThreadStatus {
     if state.ended {
         return ThreadStatus::Idle;
-    }
-    if state.pending_prompt.is_some() {
-        return ThreadStatus::Active {
-            active_flags: Vec::new(),
-        };
     }
     if !state.pending_approvals.is_empty() {
         // Waiting on a person is not being idle, whether or not a turn is open
@@ -1063,9 +1125,16 @@ fn now_ms() -> u64 {
 }
 
 /// Put an item in its place, replacing the earlier report of the same one.
-fn replace_item(items: &mut Vec<ConversationItem>, item: ConversationItem) {
+fn replace_item(items: &mut Vec<ConversationItem>, mut item: ConversationItem) {
     match items.iter_mut().find(|existing| existing.id == item.id) {
-        Some(existing) => *existing = item,
+        Some(existing) => {
+            item.observed_at_ms = match (existing.observed_at_ms, item.observed_at_ms) {
+                (Some(existing), Some(incoming)) => Some(existing.min(incoming)),
+                (Some(observed), None) | (None, Some(observed)) => Some(observed),
+                (None, None) => None,
+            };
+            *existing = item;
+        }
         None => items.push(item),
     }
 }
@@ -1229,10 +1298,10 @@ mod test_support {
                 .await
                 .unwrap_or_else(|_| panic!("no {wanted} was reported"))
                 .expect("the report channel stays open");
-            if let ClaudeRuntimeEvent::Session(SessionEvent { kind, .. }) = event
-                && kind_name(&kind) == wanted
+            if let ClaudeRuntimeEvent::Session(event) = event
+                && kind_name(&event.kind) == wanted
             {
-                return kind;
+                return event.kind;
             }
         }
     }
@@ -1359,6 +1428,275 @@ mod tests {
             .await
             .expect("the task finishes")
             .expect("the conversation opens once the door is free");
+    }
+
+    #[tokio::test]
+    async fn a_rejected_prompt_never_becomes_a_turn() {
+        let (client, runner, mut events) = watching().await;
+        runner
+            .reject_next_send(SESSION, "NotAttached: subscribe before sending")
+            .await;
+
+        let refused = client
+            .start_turn(SESSION, "run it", &[], &options("opus"))
+            .await;
+
+        assert!(
+            matches!(
+                refused,
+                Err(ClaudeError::Runner(ref message))
+                    if message == "NotAttached: subscribe before sending"
+            ),
+            "a runner rejection must not invent a turn: {refused:?}"
+        );
+        assert!(
+            matches!(
+                events.try_recv(),
+                Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+            ),
+            "a prompt the runner refused reports no turn or active status"
+        );
+        assert!(
+            runner.prompts(SESSION).await.is_empty(),
+            "the rejected frame never reached the agent"
+        );
+
+        client
+            .start_turn(SESSION, "try again", &[], &options("opus"))
+            .await
+            .expect("a rejected prompt leaves the session retryable");
+        assert_eq!(spoken(&runner).await, vec!["try again"]);
+    }
+
+    #[tokio::test]
+    async fn a_steering_message_uses_the_identity_claude_replays_and_writes() {
+        let (client, _runner, mut events) = watching().await;
+        let turn = running_turn(&client, &mut events, "run it").await;
+
+        let accepted = client
+            .steer_turn(SESSION, &turn.id, "keep going", &[])
+            .await
+            .expect("Claude identifies the steering message");
+        let SessionEventKind::ItemChanged {
+            turn_id,
+            item: reported,
+            ..
+        } = next_session_event(&mut events, "item").await
+        else {
+            unreachable!("asked for the reported steering item");
+        };
+
+        assert_eq!(turn_id, turn.id);
+        assert_eq!(accepted.id, format!("{SESSION}-prompt-2:steer"));
+        assert_eq!(reported, accepted);
+        assert!(
+            matches!(
+                accepted.kind,
+                ItemKind::UserMessage { ref text, .. } if text == "keep going"
+            ),
+            "the accepted item is the message that was steered"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_second_steer_cannot_overtake_one_waiting_for_its_identity() {
+        let (client, runner, mut events) = watching().await;
+        let turn = running_turn(&client, &mut events, "run it").await;
+        runner.swallow_prompts(SESSION).await;
+
+        let first = tokio::spawn({
+            let client = client.clone();
+            let turn_id = turn.id.clone();
+            async move {
+                client
+                    .steer_turn(SESSION, &turn_id, "first steer", &[])
+                    .await
+            }
+        });
+        wrote(&runner, |frame| {
+            frame["message"]["content"][0]["text"] == "first steer"
+        })
+        .await;
+
+        let second = client
+            .steer_turn(SESSION, &turn.id, "second steer", &[])
+            .await;
+        assert!(
+            matches!(
+                second,
+                Err(ClaudeError::Protocol(ref message))
+                    if message.contains("already being sent")
+            ),
+            "the adapter must not assign two unnamed replays by arrival order: {second:?}"
+        );
+
+        runner.exit(SESSION, Some(0)).await;
+        assert!(
+            matches!(
+                first.await.expect("steer task finishes"),
+                Err(ClaudeError::Agent(_))
+            ),
+            "the first caller is released when the session ends"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn time_passing_does_not_report_or_activate_a_turn() {
+        let (client, runner, mut events) = watching().await;
+        runner.swallow_prompts(SESSION).await;
+
+        let mut starting = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .start_turn(SESSION, "run it", &[], &options("opus"))
+                    .await
+            }
+        });
+        heard_the_prompt(&runner).await;
+
+        tokio::time::advance(Duration::from_secs(60)).await;
+        tokio::task::yield_now().await;
+        assert!(
+            matches!(
+                events.try_recv(),
+                Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+            ),
+            "a clock is not a Claude runtime event"
+        );
+
+        assert!(
+            !starting.is_finished(),
+            "a clock says nothing about whether Claude began a turn"
+        );
+        let watched = client
+            .watched_conversation(SESSION)
+            .await
+            .expect("the conversation is still watched");
+        assert_eq!(watched.status, ThreadStatus::Idle);
+        assert!(
+            watched.turns.is_empty(),
+            "silence must not be replaced with an invented turn: {:?}",
+            watched.turns
+        );
+        runner.exit(SESSION, Some(0)).await;
+        let stopped = tokio::time::timeout(REPORT_TIMEOUT, &mut starting)
+            .await
+            .expect("the exit releases the pending request")
+            .expect("the start task finishes");
+        assert!(
+            matches!(stopped, Err(ClaudeError::Agent(ref message)) if message.contains("exited")),
+            "an exit, not the clock, explains why the turn did not begin: {stopped:?}"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_exit_cannot_be_followed_by_a_late_turn_start() {
+        let (client, runner, mut events) = watching().await;
+        runner.swallow_prompts(SESSION).await;
+
+        let mut starting = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .start_turn(SESSION, "run it", &[], &options("opus"))
+                    .await
+            }
+        });
+        heard_the_prompt(&runner).await;
+        runner.exit(SESSION, Some(0)).await;
+
+        let stopped = tokio::time::timeout(REPORT_TIMEOUT, &mut starting)
+            .await
+            .expect("the exit releases the pending request")
+            .expect("the start task finishes");
+        assert!(
+            matches!(stopped, Err(ClaudeError::Agent(ref message)) if message.contains("exited")),
+            "the request ends with the session: {stopped:?}"
+        );
+
+        let SessionEventKind::StatusChanged { status } =
+            next_session_event(&mut events, "status change").await
+        else {
+            unreachable!("asked for a status change");
+        };
+        assert_eq!(status, ThreadStatus::Idle, "the exit is terminal");
+
+        while let Ok(event) = events.try_recv() {
+            if let ClaudeRuntimeEvent::Session(event) = event
+                && matches!(
+                    &event.kind,
+                    SessionEventKind::TurnStarted { .. }
+                        | SessionEventKind::StatusChanged {
+                            status: ThreadStatus::Active { .. },
+                        }
+                )
+            {
+                panic!("an ended session cannot become active again: {event:?}");
+            }
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_lost_runner_releases_a_prompt_without_inventing_its_turn() {
+        let (client, runner, mut events) = watching().await;
+        runner.swallow_prompts(SESSION).await;
+
+        let mut starting = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .start_turn(SESSION, "run it", &[], &options("opus"))
+                    .await
+            }
+        });
+        heard_the_prompt(&runner).await;
+        runner.vanish(SESSION).await;
+
+        let unreachable = tokio::time::timeout(REPORT_TIMEOUT, async {
+            loop {
+                match events.recv().await {
+                    Ok(ClaudeRuntimeEvent::Unreachable {
+                        conversation_id, ..
+                    }) => return conversation_id,
+                    Ok(ClaudeRuntimeEvent::Session(event))
+                        if matches!(
+                            &event.kind,
+                            SessionEventKind::TurnStarted { .. }
+                                | SessionEventKind::StatusChanged {
+                                    status: ThreadStatus::Active { .. },
+                                }
+                        ) =>
+                    {
+                        panic!("a lost session cannot report new work")
+                    }
+                    Ok(_) => {}
+                    Err(error) => panic!("the report channel stays open: {error}"),
+                }
+            }
+        })
+        .await
+        .expect("the lost runner is reported as unreachable");
+        assert_eq!(unreachable, SESSION);
+
+        let stopped = tokio::time::timeout(REPORT_TIMEOUT, &mut starting)
+            .await
+            .expect("losing the runner releases the pending request")
+            .expect("the start task finishes");
+        assert!(
+            matches!(stopped, Err(ClaudeError::Runner(ref message)) if message.contains("went away")),
+            "the lost transport, not an invented turn, ends the request: {stopped:?}"
+        );
+        tokio::time::timeout(REPORT_TIMEOUT, async {
+            loop {
+                if client.watched_conversation(SESSION).await.is_none() {
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the unreachable session is no longer watched");
     }
 
     #[tokio::test]
@@ -1685,6 +2023,80 @@ mod tests {
         assert_eq!(
             moved.created_at_ms, opened.created_at_ms,
             "when it began does not move"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_missing_transcript_is_empty_but_an_unverifiable_page_is_an_error() {
+        let projects = tempfile::tempdir().expect("a projects directory");
+        let (client, _runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
+
+        let missing = client
+            .read_turns(SESSION, CWD, None, 8)
+            .await
+            .expect("the agent has not written this transcript yet");
+        assert!(missing.turns.is_empty());
+
+        client.write_test_transcript(
+            CWD,
+            SESSION,
+            &serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "hello"},
+            })
+            .to_string(),
+        );
+        let error = client
+            .read_turns(SESSION, CWD, Some("a turn id is not a cursor"), 8)
+            .await
+            .expect_err("the cursor cannot be verified");
+
+        assert!(
+            matches!(error, ClaudeError::History(ref message) if message.contains("cursor is invalid"))
+        );
+    }
+
+    #[tokio::test]
+    async fn transcript_io_failure_does_not_become_empty_agent_history() {
+        let projects = tempfile::tempdir().expect("a projects directory");
+        let (client, _runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
+        client.write_test_transcript(
+            CWD,
+            SESSION,
+            &serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "hello"},
+            })
+            .to_string(),
+        );
+        let path = transcript::locate(projects.path(), CWD, SESSION).expect("the transcript path");
+        std::fs::remove_file(&path).expect("replace the transcript fixture");
+        std::fs::create_dir(&path).expect("an unreadable transcript stand-in");
+
+        let error = client
+            .read_turns(SESSION, CWD, None, 8)
+            .await
+            .expect_err("the canonical source is unavailable");
+
+        assert!(matches!(error, ClaudeError::History(_)));
+    }
+
+    #[tokio::test]
+    async fn an_unknown_transcript_root_is_not_an_empty_transcript() {
+        let (runner, _handle) = RunnerClient::mock();
+        let client = ClaudeClient::with_runner_and_projects(runner, None);
+
+        let error = client
+            .read_turns(SESSION, CWD, None, 8)
+            .await
+            .expect_err("there is no canonical location to read");
+
+        assert!(
+            matches!(error, ClaudeError::History(ref message) if message.contains("cannot work out where"))
         );
     }
 }

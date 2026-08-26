@@ -30,6 +30,7 @@ impl TaskSessions {
             state.lifecycle = SessionLifecycle::Unloaded;
             state.conversation = None;
             state.turns_page = None;
+            state.history_base_revision = None;
             state.active_turn_id = None;
             state.active_turn_cwd = None;
             state.terminal_candidate_turn_id = None;

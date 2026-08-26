@@ -312,6 +312,7 @@ mod tests {
         // watch.
         let projects = written_conversation();
         let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
+        let mut events = client.subscribe();
         runner
             .greet_next_session_as(json!({ "response": { "session_state": "running" } }))
             .await;
@@ -324,10 +325,21 @@ mod tests {
             .await
             .expect("the conversation opens");
 
-        let page = client.read_turns(SESSION, CWD, None, 8).await;
+        let page = client
+            .read_turns(SESSION, CWD, None, 8)
+            .await
+            .expect("the written turns are readable");
         let running = page.turns.first().expect("the turn it was working on");
         assert_eq!(running.id, "e848560b-26f6-4bcf-92e2-86539d420ab9");
         assert_eq!(running.status, TurnStatus::InProgress);
+        assert!(
+            std::iter::from_fn(|| events.try_recv().ok()).all(|event| !matches!(
+                event,
+                ClaudeRuntimeEvent::Session(event)
+                    if matches!(event.kind, SessionEventKind::TurnStarted { .. })
+            )),
+            "recovering a running turn is a snapshot, not proof that this client watched its start"
+        );
     }
 
     #[tokio::test]
@@ -441,7 +453,10 @@ mod tests {
             .await
             .expect("the conversation opens");
 
-        let page = client.read_turns(SESSION, CWD, None, 8).await;
+        let page = client
+            .read_turns(SESSION, CWD, None, 8)
+            .await
+            .expect("the written turns are readable");
         assert!(
             page.turns
                 .iter()

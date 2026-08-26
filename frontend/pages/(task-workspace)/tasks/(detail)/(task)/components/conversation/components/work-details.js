@@ -6,10 +6,14 @@ import {
 import {
   eventIdentityKey,
   fileChangePathPresentations,
+  sortEventsChronologically,
+  taskEventAnchorMs,
+  taskEventPositionIndex,
 } from "../../../../../task-events.js";
 import {
   formatDate,
   formatStatus,
+  taskEventObservedMs,
   toolCallPresentation,
 } from "../../../../../task-format.js";
 import "./changed-files.js";
@@ -348,9 +352,7 @@ function renderCombinedFileChangeWorkItem(
 }
 
 function latestEvent(events) {
-  return events.reduce((latest, event) =>
-    (event.createdMs ?? 0) >= (latest.createdMs ?? 0) ? event : latest,
-  );
+  return sortEventsChronologically(events).at(-1);
 }
 
 function renderWorkItem(
@@ -410,7 +412,7 @@ function renderWorkItem(
     <article class="task-work-details-item" data-event-type="${escapeHtml(event.type)}">
       <header>
         <strong>${escapeHtml(event.summary)}</strong>
-        <time>${escapeHtml(formatDate(event.createdMs))}</time>
+        ${renderObservedTime(event)}
       </header>
     </article>
   `;
@@ -434,7 +436,7 @@ function renderWorkItemShell(event, label, text, tone = "neutral") {
     <article class="task-work-details-item" data-event-type="${escapeHtml(event.type)}" data-tool-tone="${escapeHtml(tone)}">
       <header>
         <strong>${escapeHtml(label)}</strong>
-        <time>${escapeHtml(formatDate(event.createdMs))}</time>
+        ${renderObservedTime(event)}
       </header>
       ${value ? `<pre>${escapeHtml(value)}</pre>` : ""}
     </article>
@@ -447,7 +449,7 @@ function renderFileChangeWorkItemShell(event, text, identity) {
     <article class="task-work-details-item" data-event-type="file_change" data-tool-tone="neutral" data-file-change-work-identity="${escapeHtml(identity)}">
       <header>
         <strong>Files changed</strong>
-        <time>${escapeHtml(formatDate(event.createdMs))}</time>
+        ${renderObservedTime(event)}
       </header>
       ${value ? `<pre>${escapeHtml(value)}</pre>` : ""}
       <caffold-task-changed-files></caffold-task-changed-files>
@@ -455,11 +457,22 @@ function renderFileChangeWorkItemShell(event, text, identity) {
   `;
 }
 
+function renderObservedTime(event) {
+  const observedMs = taskEventObservedMs(event);
+  return observedMs === null
+    ? ""
+    : `<time>${escapeHtml(formatDate(observedMs))}</time>`;
+}
+
 function fileChangeWorkIdentity(events) {
   const first = events[0];
   return `file-change:${
     eventIdentityKey(first) ||
-    [first?.threadId ?? "", first?.createdMs ?? ""].join(":")
+    [
+      first?.threadId ?? "",
+      taskEventAnchorMs(first),
+      taskEventPositionIndex(first),
+    ].join(":")
   }`;
 }
 
@@ -507,14 +520,14 @@ function reconcileWorkItems(body, html, changedFiles, commands) {
 }
 
 function patchFileChangeWorkItem(current, desired) {
-  const currentTime = current.querySelector(":scope > header > time");
-  const desiredTime = desired.querySelector(":scope > header > time");
+  const currentHeader = current.querySelector(":scope > header");
+  const desiredHeader = desired.querySelector(":scope > header");
   const currentSummary = current.querySelector(":scope > pre");
   const desiredSummary = desired.querySelector(":scope > pre");
   const owner = current.querySelector(":scope > caffold-task-changed-files");
   if (
-    !currentTime ||
-    !desiredTime ||
+    !currentHeader ||
+    !desiredHeader ||
     !owner ||
     Boolean(currentSummary) !== Boolean(desiredSummary)
   ) {
@@ -526,11 +539,23 @@ function patchFileChangeWorkItem(current, desired) {
     "data-tool-tone",
     "data-file-change-work-identity",
   ]);
-  patchText(currentTime, desiredTime.textContent);
+  patchOptionalTime(currentHeader, desiredHeader);
   if (currentSummary && desiredSummary) {
     patchText(currentSummary, desiredSummary.textContent);
   }
   return true;
+}
+
+function patchOptionalTime(currentHeader, desiredHeader) {
+  const current = currentHeader.querySelector(":scope > time");
+  const desired = desiredHeader.querySelector(":scope > time");
+  if (!desired) {
+    current?.remove();
+  } else if (!current) {
+    currentHeader.append(desired.cloneNode(true));
+  } else {
+    patchText(current, desired.textContent);
+  }
 }
 
 function syncElementAttributes(current, desired, names) {

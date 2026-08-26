@@ -1117,7 +1117,7 @@ mod tests {
         )
         .await;
         cache_and_manage_test_thread(&state, "thread-owned-links", &task).await;
-        state.task_events.publish(task_event_record(
+        state.task_events.publish_local(task_event_record(
             "thread-owned-links",
             "assistant",
             "assistant_message",

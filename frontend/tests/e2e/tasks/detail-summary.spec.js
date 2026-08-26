@@ -42,6 +42,7 @@ function summaryDetail(task, revision = 1) {
     threadId: task.threadId,
     syncState: "ready",
     revision,
+    eventRevision: revision,
     task,
     events: [],
     eventsPage: { nextCursor: null },
@@ -495,6 +496,7 @@ test("keeps the task info spinner stable across equivalent detail activity", { t
     source.emit("task-event", {
       threadId,
       revision: 4,
+      eventRevision: 4,
       event: {
         id: "event_summary_spinner_equivalent",
         threadId,
@@ -504,7 +506,7 @@ test("keeps the task info spinner stable across equivalent detail activity", { t
           turnId: "turn_summary_spinner_equivalent",
           text: "Only the conversation changed.",
         },
-        createdMs: 101,
+        position: { anchorMs: 101, index: 0 },
       },
     });
     window.dispatchEvent(new CustomEvent("caffold:icons-ready"));

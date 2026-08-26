@@ -28,7 +28,6 @@ test("delegates active-turn presentation to its component snapshot", () => {
       ...compactionStarted.payload,
       status: "completed",
     },
-    updatedMs: 3,
   };
 
   const active = renderConversation(
@@ -76,6 +75,35 @@ test("opts only stable user and final assistant messages into code controls", ()
   assert.equal(hasCodeBlockControls(pendingUser), false);
   assert.equal(hasCodeBlockControls(finalAssistant), true);
   assert.equal(hasCodeBlockControls(progressAssistant), false);
+});
+
+test("does not present a history placement anchor as an item timestamp", () => {
+  const historyOnly = {
+    ...messageEvent("assistant_message", { phase: "final" }),
+    observedMs: null,
+  };
+  const directlyObserved = {
+    ...historyOnly,
+    observedMs: 2,
+  };
+
+  assert.doesNotMatch(renderConversationEvent(historyOnly, {}), /<time>/);
+  assert.match(renderConversationEvent(directlyObserved, {}), /<time>/);
+});
+
+test("conversation position alone does not replace an entry's content", () => {
+  const message = messageEvent("assistant_message", { phase: "final" });
+
+  assert.equal(
+    renderConversationEvent(
+      { ...message, position: { anchorMs: 20, index: 0 } },
+      {},
+    ),
+    renderConversationEvent(
+      { ...message, position: { anchorMs: 30, index: 1 } },
+      {},
+    ),
+  );
 });
 
 test("a pending approval stays visible beside the command it is asking about", () => {
@@ -213,6 +241,41 @@ test("a tool call the agent did not name is still an entry", () => {
   assert.match(html, /<strong>Tool call<\/strong>/);
 });
 
+test("a completed background turn renders its answer without a user message", () => {
+  const idleTask = {
+    id: "thread-1",
+    threadId: "thread-1",
+    threadStatus: { type: "idle" },
+  };
+  const answer = turnEvent(
+    "thread-1:background-turn:answer",
+    "assistant_message",
+    2,
+    {
+      turnId: "background-turn",
+      itemId: "answer",
+      text: "The background build is done.",
+      phase: "final",
+    },
+  );
+  const ended = turnEvent(
+    "thread-1:background-turn:end",
+    "turn_completed",
+    3,
+    {
+      turnId: "background-turn",
+      status: "completed",
+      origin: { type: "backgroundTask", taskId: "task-1" },
+    },
+  );
+
+  const { html } = renderConversation([answer, ended], idleTask);
+
+  assert.match(html, /The background build is done\./);
+  assert.match(html, /data-message-role="assistant"/);
+  assert.doesNotMatch(html, /data-message-role="user"/);
+});
+
 function activeTask() {
   return {
     id: "thread-1",
@@ -222,14 +285,14 @@ function activeTask() {
   };
 }
 
-function turnEvent(id, type, createdMs, payload) {
+function turnEvent(id, type, anchorMs, payload) {
   return {
     id,
     threadId: "thread-1",
     type,
     summary: type,
     payload: { turnId: "turn-1", ...payload },
-    createdMs,
+    position: { anchorMs, index: 0 },
   };
 }
 
@@ -242,7 +305,7 @@ function messageEvent(type, payload = {}) {
       text: "```example\nvalue\n```",
       ...payload,
     },
-    createdMs: 1,
+    position: { anchorMs: 1, index: 0 },
   };
 }
 

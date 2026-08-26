@@ -257,11 +257,11 @@ function activeTask(threadId, turnId, startedAtMs) {
   };
 }
 
-function commandEvent(createdMs, turnId, payload) {
+function commandEvent(anchorMs, turnId, payload) {
   return turnEvent(
     "event_command",
     "command_execution",
-    createdMs,
+    anchorMs,
     turnId,
     {
       itemId: "command_item",
@@ -272,14 +272,14 @@ function commandEvent(createdMs, turnId, payload) {
   );
 }
 
-function turnEvent(id, type, createdMs, turnId, payload = {}) {
+function turnEvent(id, type, anchorMs, turnId, payload = {}) {
   return {
     id,
     threadId: "thread_command_component",
     type,
     summary: type.replaceAll("_", " "),
     payload: { turnId, ...payload },
-    createdMs,
+    position: { anchorMs, index: 0 },
   };
 }
 
@@ -288,6 +288,7 @@ function taskDetail(task, events, revision) {
     threadId: task.threadId,
     syncState: "ready",
     revision,
+    eventRevision: revision,
     task,
     events,
     eventsPage: { nextCursor: null },
@@ -301,7 +302,12 @@ async function emitTaskEvent(page, threadId, event, revision) {
     const source = window.__commandEventSources.find((candidate) =>
       candidate.url.includes(`/api/tasks/${threadId}/stream`),
     );
-    source.emit("task-event", { threadId, revision, event });
+    source.emit("task-event", {
+      threadId,
+      revision,
+      eventRevision: revision,
+      event,
+    });
   }, { threadId, event, revision });
 }
 

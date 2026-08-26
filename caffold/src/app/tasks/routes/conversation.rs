@@ -208,7 +208,7 @@ mod tests {
             )]);
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         cache_and_manage_test_thread(&state, thread_id, &task).await;
-        state.task_events.publish(task_event_record(
+        state.task_events.publish_local(task_event_record(
             thread_id,
             "assistant",
             "assistant_message",
@@ -320,7 +320,7 @@ mod tests {
                 .starts_with("event: task-sync\ndata: ")
         );
 
-        state.task_events.publish(task_event_record(
+        let published = state.task_events.publish_local(task_event_record(
             thread_id,
             "live-assistant",
             "assistant_message",
@@ -351,6 +351,7 @@ mod tests {
         let payload: JsonValue = serde_json::from_str(payload).expect("Task event SSE JSON");
 
         assert_eq!(payload["threadId"], thread_id);
+        assert_eq!(payload["eventRevision"], published.revision);
         assert_eq!(payload["event"]["payload"]["text"], "[Live](live.rs#L9)");
         assert_eq!(payload["fileLinks"].as_array().unwrap().len(), 1);
         assert_eq!(
@@ -444,8 +445,9 @@ mod tests {
             crate::agent::ActivityStatus::Completed,
         )
         .expect("a generated image item");
-        state.task_events.publish(
+        state.task_events.publish_provider_lifecycle(
             task_event_from_item("thread_1", "turn_1", 1, &item).expect("generated image event"),
+            1,
         );
 
         let response = router(state.clone())

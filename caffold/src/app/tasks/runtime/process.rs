@@ -212,6 +212,7 @@ impl TaskRuntime {
             .codex_connection_lost(generation, message.clone())
             .await;
         for thread_id in affected {
+            self.events.invalidate_continuity(&thread_id);
             let _ = self.signals.send(TaskRuntimeSignal::SessionUnavailable {
                 thread_id,
                 message: message.clone(),
@@ -260,6 +261,7 @@ impl TaskRuntime {
             .codex_connection_lost(connection.generation, message.clone())
             .await;
         for thread_id in affected {
+            self.events.invalidate_continuity(&thread_id);
             let _ = self.signals.send(TaskRuntimeSignal::SessionUnavailable {
                 thread_id,
                 message: message.clone(),
@@ -347,11 +349,17 @@ impl CodexProcess {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
     use tokio::sync::broadcast;
 
     use super::*;
     use crate::{
-        app::tasks::events::TaskEvents, app::tasks::sessions::TaskSessions, task_store::TaskStore,
+        agent::codex::MockCodexResponse,
+        app::tasks::{
+            events::{TaskEvents, task_event_record},
+            sessions::TaskSessions,
+        },
+        task_store::TaskStore,
     };
 
     fn test_runtime() -> TaskRuntime {
@@ -402,6 +410,73 @@ mod tests {
             )
             .await;
         assert_eq!(runtime.diagnostics().await, (8, false));
+    }
+
+    #[tokio::test]
+    async fn transport_failures_withdraw_live_turn_completeness() {
+        let runtime = test_runtime();
+        let thread_id = "thread-live-gap";
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            json!({
+                "thread": {
+                    "id": thread_id,
+                    "preview": "Live gap",
+                    "status": { "type": "active", "activeFlags": [] },
+                    "cwd": "/tmp",
+                    "createdAt": 1.0,
+                    "updatedAt": 2.0,
+                    "turns": [{
+                        "id": "turn-live",
+                        "items": [],
+                        "status": "inProgress",
+                        "startedAt": 2.0
+                    }]
+                },
+                "cwd": "/tmp"
+            }),
+        )]);
+        runtime.install_test_client(10, client.clone()).await;
+        let _viewer = runtime
+            .sessions
+            .acquire_viewer(&client.driver(), 10, thread_id)
+            .await
+            .expect("the live thread is subscribed");
+        runtime.events.publish_provider_lifecycle(
+            task_event_record(
+                thread_id,
+                "turn-live:started",
+                "turn_started",
+                "Turn started",
+                Some(json!({
+                    "threadId": thread_id,
+                    "turnId": "turn-live",
+                })),
+                2_000,
+            ),
+            1,
+        );
+        assert_eq!(runtime.events.fully_observed_turns(thread_id).len(), 1);
+
+        let agent = super::super::TaskAgent::Codex(CodexConnection {
+            client,
+            generation: 10,
+        });
+        runtime
+            .recover_connection_error_for(
+                &agent,
+                &crate::agent::AgentError::Unreachable(
+                    "Codex app-server is unavailable.".to_string(),
+                ),
+            )
+            .await;
+
+        assert!(runtime.events.fully_observed_turns(thread_id).is_empty());
+        assert_eq!(
+            runtime.events.for_thread(thread_id).len(),
+            1,
+            "the report stays visible even though it no longer proves a continuous journal"
+        );
     }
 
     #[tokio::test]

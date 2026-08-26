@@ -47,14 +47,14 @@ function taskRecord({
   };
 }
 
-function event(createdMs, id, type, summary, payload) {
+function event(anchorMs, id, type, summary, payload) {
   return {
     id,
     threadId: THREAD_ID,
     type,
     summary,
     payload,
-    createdMs,
+    position: { anchorMs, index: 0 },
   };
 }
 
@@ -111,6 +111,7 @@ export async function installShowcaseFixture(page) {
     threadId: THREAD_ID,
     syncState: "ready",
     revision: 3,
+    eventRevision: 3,
     task: selectedTask,
     events: [
       event(turnStart, "showcase-user", "user_message", "User prompt", {

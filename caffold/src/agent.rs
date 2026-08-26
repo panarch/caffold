@@ -31,9 +31,9 @@ pub(crate) use approval::{
     ApprovalDecision, ApprovalDetail, ApprovalOutcome, ApprovalRequest, PermissionRow,
 };
 pub(crate) use conversation::{
-    ActivityStatus, CommandExecution, Conversation, ConversationItem, GeneratedImage, ItemKind,
-    MessageContent, MessagePhase, SessionEvent, SessionEventKind, ThreadActiveFlag, ThreadStatus,
-    TokenCount, TokenUsage, Turn, TurnPage, TurnStatus,
+    ActivityStatus, BackgroundTask, CommandExecution, Conversation, ConversationItem,
+    GeneratedImage, ItemKind, MessageContent, MessagePhase, SessionEvent, SessionEventKind,
+    ThreadActiveFlag, ThreadStatus, TokenCount, TokenUsage, Turn, TurnOrigin, TurnPage, TurnStatus,
 };
 pub(crate) use driver::{
     AcceptedTurnOptions, AgentError, Driver, OpenedConversation, PermissionModes, TurnOptions,

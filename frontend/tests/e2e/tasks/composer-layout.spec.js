@@ -104,7 +104,7 @@ async function installScrollableTask(page) {
       turnId: `turn_composer_resize_${index}`,
       text: `Existing conversation block ${index + 1}.\n\n${"Keep this transcript scrollable. ".repeat(4)}`,
     },
-    createdMs: 1_767_300_000_000 + index,
+    position: { anchorMs: 1_767_300_000_000 + index, index: 0 },
   }));
   await page.route("**/api/tasks/thread-1", (route) =>
     route.fulfill({ json: detail }),

@@ -745,6 +745,7 @@ async function installTaskRoutes(page, task) {
           threadId: task.threadId,
           syncState: "ready",
           revision: 1,
+          eventRevision: 1,
           task,
           events: [],
           eventsPage: { nextCursor: null },

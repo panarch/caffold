@@ -42,6 +42,25 @@ rules when a Rust implementation expands beyond one file.
   narrowest visibility required by the owning module. Do not widen visibility
   to make an extracted implementation appear shared.
 
+## Rust Names And Paths
+
+Make ordinary Rust names read as the vocabulary of the file that uses them.
+
+- Import types, traits, constants, and enum variants used as ordinary file
+  vocabulary through the nearest appropriate `use` declaration. Do not repeat
+  `crate::...` or `super::...` in signatures, constructors, matches, or call
+  sites merely to avoid adding an import.
+- Keep a name module-qualified only when the qualifier carries meaning needed
+  in that flow, such as distinguishing colliding protocol and shared-model
+  types or making an operation's owner clear. Use the shortest owner path that
+  preserves that distinction; do not spell unrelated module ancestry.
+- Apply an intentional qualification consistently within the flow where the
+  distinction matters. If its reason is not evident from the surrounding code,
+  import the item or name the distinction explicitly rather than leave the
+  reviewer to infer it.
+- Keep imports in the narrowest scope that consumes them. Test-only imports
+  belong inside the inline test module.
+
 ## Agent Integration Review
 
 Caffold preserves each supported agent's native harness behind the shared Task

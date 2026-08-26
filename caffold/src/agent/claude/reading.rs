@@ -10,13 +10,14 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 
 use super::runner::{self, RunnerEvent};
-use super::translate::message_items;
+use super::translate::{message_items, user_message_item};
 use super::{
-    ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, ClaudeClient,
+    ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, ClaudeClient, ClaudeError,
     ClaudeRuntimeEvent, ControlRequestFrame, ConversationItem, Introduction, ItemKind,
     MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION, MessageFrame, PendingApproval, ResultFrame, Session,
     SessionEventKind, StreamFrame, SystemFrame, ThreadStatus, TokenCount, TokenUsage, TurnStatus,
-    now_ms, open_pending_turn, parse_timestamp_ms, protocol, replace_item, status_of,
+    end_pending_prompt, end_pending_steer, now_ms, open_pending_turn, parse_timestamp_ms, protocol,
+    replace_item, status_of,
 };
 
 impl ClaudeClient {
@@ -66,6 +67,28 @@ impl ClaudeClient {
             }
             // A session that stops speaking is no longer one Caffold can drive,
             // whether it exited or the connection went away.
+            if !said_goodbye {
+                {
+                    let mut state = session.state.lock().await;
+                    state.ended = true;
+                    state.active_turn = None;
+                    end_pending_prompt(
+                        &mut state,
+                        ClaudeError::Runner(format!(
+                            "the Claude runner went away before conversation {} identified its prompt",
+                            session.id
+                        )),
+                    );
+                    end_pending_steer(
+                        &mut state,
+                        ClaudeError::Runner(format!(
+                            "the Claude runner went away before conversation {} identified its \
+                             steering message",
+                            session.id
+                        )),
+                    );
+                }
+            }
             client.inner.sessions.lock().await.remove(&session.id);
             if !said_goodbye {
                 // Nothing said it was ending, so the runner went away under it.
@@ -198,7 +221,9 @@ impl ClaudeClient {
             // existed.
             open_pending_turn(&mut state, filed.as_deref());
             let Some(turn_id) = state.active_turn.clone() else {
-                // Work with no turn open belongs to nothing Caffold can show.
+                // This frame alone does not say what opened the work. Its
+                // terminal result asks the application to reconcile Claude's
+                // canonical transcript, where that relationship is recorded.
                 return;
             };
             let mut items = message_items(
@@ -208,6 +233,7 @@ impl ClaudeClient {
                 frame.is_api_error_message,
             );
             for item in &mut items {
+                item.observed_at_ms = Some(at_ms);
                 if state.declined.remove(&item.id) {
                     item.status = ActivityStatus::Declined;
                 }
@@ -243,8 +269,59 @@ impl ClaudeClient {
         let Some(anchor) = frame.uuid.as_deref() else {
             return;
         };
-        let mut state = session.state.lock().await;
-        open_pending_turn(&mut state, Some(anchor));
+        let at_ms = frame
+            .timestamp
+            .as_deref()
+            .and_then(parse_timestamp_ms)
+            .unwrap_or_else(now_ms);
+        let steered = {
+            let mut state = session.state.lock().await;
+            if state.pending_prompt.is_some() {
+                open_pending_turn(&mut state, Some(anchor));
+                None
+            } else if let Some(pending) = state.pending_steer.take() {
+                let mut item = user_message_item(&format!("{anchor}:steer"), pending.said);
+                item.observed_at_ms = Some(at_ms);
+                if state.active_turn.as_deref() != Some(pending.turn_id.as_str()) {
+                    let _ = pending.waiting.send(Err(ClaudeError::Protocol(format!(
+                        "turn {} ended before Claude identified its steering message",
+                        pending.turn_id
+                    ))));
+                    None
+                } else {
+                    let Some(turn) = state
+                        .turns
+                        .iter_mut()
+                        .find(|turn| turn.id == pending.turn_id)
+                    else {
+                        let _ = pending.waiting.send(Err(ClaudeError::Protocol(format!(
+                            "active turn {} is missing from conversation {}",
+                            pending.turn_id, session.id
+                        ))));
+                        return;
+                    };
+                    replace_item(&mut turn.items, item.clone());
+                    state.moved_at_ms = at_ms;
+                    let _ = pending.waiting.send(Ok(item.clone()));
+                    Some((pending.turn_id, item))
+                }
+            } else {
+                // Claude also replays messages Caffold sends for its own
+                // control work. With nobody waiting for this identity, the
+                // frame does not belong to a person-visible item.
+                None
+            }
+        };
+        if let Some((turn_id, item)) = steered {
+            self.report(
+                &session.id,
+                SessionEventKind::ItemChanged {
+                    turn_id,
+                    item,
+                    at_ms,
+                },
+            );
+        }
     }
 
     async fn handle_result(&self, session: &Arc<Session>, result: ResultFrame) {
@@ -265,7 +342,7 @@ impl ClaudeClient {
         } else {
             None
         };
-        let (turn, abandoned) = {
+        let completed = {
             let mut state = session.state.lock().await;
             if let Some(waiting) = state.quiet_turn.take() {
                 // Something Caffold asked for on its own account, answered.
@@ -273,27 +350,46 @@ impl ClaudeClient {
                 return;
             }
             open_pending_turn(&mut state, filed.as_deref());
-            let Some(turn_id) = state.active_turn.take() else {
-                return;
-            };
-            // Whatever the agent left open, it will not answer now.
-            let abandoned = state.calls.abandon(match status {
-                TurnStatus::Completed => ActivityStatus::Completed,
-                _ => ActivityStatus::Failed,
-            });
-            state.pending_approvals.clear();
-            state.declined.clear();
-            let Some(turn) = state.turns.iter_mut().find(|turn| turn.id == turn_id) else {
-                return;
-            };
-            for item in &abandoned {
-                replace_item(&mut turn.items, item.clone());
+            end_pending_steer(
+                &mut state,
+                ClaudeError::Protocol(format!(
+                    "conversation {} ended its active turn before identifying a steering message",
+                    session.id
+                )),
+            );
+            if let Some(turn_id) = state.active_turn.take() {
+                // Whatever the agent left open, it will not answer now.
+                let abandoned = state.calls.abandon(match status {
+                    TurnStatus::Completed => ActivityStatus::Completed,
+                    _ => ActivityStatus::Failed,
+                });
+                state.pending_approvals.clear();
+                state.declined.clear();
+                let Some(turn) = state.turns.iter_mut().find(|turn| turn.id == turn_id) else {
+                    return;
+                };
+                for item in &abandoned {
+                    replace_item(&mut turn.items, item.clone());
+                }
+                turn.status = status;
+                turn.completed_at_ms = Some(completed_at_ms);
+                let turn = turn.clone();
+                state.moved_at_ms = completed_at_ms;
+                Some((turn, abandoned))
+            } else {
+                None
             }
-            turn.status = status;
-            turn.completed_at_ms = Some(completed_at_ms);
-            let turn = turn.clone();
-            state.moved_at_ms = completed_at_ms;
-            (turn, abandoned)
+        };
+        let Some((turn, abandoned)) = completed else {
+            // A result is the protocol's concrete boundary for work that has
+            // finished. With no Caffold-owned turn open, the stream gives us
+            // no evidence for what opened it; Claude's transcript does. Ask
+            // the application to reconcile that source instead of assigning
+            // the frames by timing or position.
+            self.publish(ClaudeRuntimeEvent::TranscriptChanged {
+                conversation_id: session.id.clone(),
+            });
+            return;
         };
 
         for item in abandoned {
@@ -360,6 +456,20 @@ impl ClaudeClient {
             let mut state = session.state.lock().await;
             state.ended = true;
             state.active_turn = None;
+            end_pending_prompt(
+                &mut state,
+                ClaudeError::Agent(format!(
+                    "Claude conversation {} exited before identifying its prompt",
+                    session.id
+                )),
+            );
+            end_pending_steer(
+                &mut state,
+                ClaudeError::Agent(format!(
+                    "Claude conversation {} exited before identifying its steering message",
+                    session.id
+                )),
+            );
         }
         self.publish(ClaudeRuntimeEvent::Diagnostic {
             message: match code {
@@ -520,6 +630,47 @@ mod tests {
     use super::super::*;
 
     #[tokio::test]
+    async fn an_unowned_result_requests_history_instead_of_inventing_a_live_turn() {
+        let (_client, runner, mut events) = watching().await;
+
+        runner
+            .say(
+                SESSION,
+                assistant_frame(
+                    "background-answer",
+                    json!([{ "type": "text", "text": "the build is done" }]),
+                ),
+            )
+            .await;
+        runner.say(SESSION, result_frame(Some("end_turn"))).await;
+
+        let changed = tokio::time::timeout(REPORT_TIMEOUT, async {
+            loop {
+                match events.recv().await.expect("the report channel stays open") {
+                    ClaudeRuntimeEvent::TranscriptChanged { conversation_id } => {
+                        return conversation_id;
+                    }
+                    ClaudeRuntimeEvent::Session(event)
+                        if matches!(
+                            &event.kind,
+                            SessionEventKind::TurnStarted { .. }
+                                | SessionEventKind::TurnEnded { .. }
+                                | SessionEventKind::ItemChanged { .. }
+                        ) =>
+                    {
+                        panic!("unattributed work must not manufacture a live turn")
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .expect("the canonical transcript is requested");
+
+        assert_eq!(changed, SESSION);
+    }
+
+    #[tokio::test]
     async fn a_session_that_stops_speaking_without_ending_is_one_to_open_again() {
         // The runner killed outright. Nothing says the agent ended, because
         // nothing is left to say it, and what Caffold last heard would go on
@@ -562,13 +713,16 @@ mod tests {
             loop {
                 match events.recv().await {
                     Ok(ClaudeRuntimeEvent::Unreachable { .. }) => return false,
-                    Ok(ClaudeRuntimeEvent::Session(SessionEvent {
-                        kind:
+                    Ok(ClaudeRuntimeEvent::Session(event))
+                        if matches!(
+                            &event.kind,
                             SessionEventKind::StatusChanged {
                                 status: ThreadStatus::Idle,
-                            },
-                        ..
-                    })) => return true,
+                            }
+                        ) =>
+                    {
+                        return true;
+                    }
                     Ok(_) => continue,
                     Err(_) => return false,
                 }

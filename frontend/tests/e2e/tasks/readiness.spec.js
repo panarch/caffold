@@ -754,6 +754,7 @@ test("a Claude Task never looks at Codex readiness", { tag: "@all-viewports" }, 
       json: {
         threadId: "thread-1",
         turnId: "turn-claude-1",
+        userMessageId: "message-claude-1",
         steered: false,
         startedTurn: null,
       },

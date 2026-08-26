@@ -1269,6 +1269,7 @@ test("starts active Task navigator spinners at independent phases", { tag: "@all
       contentType: "application/json",
       body: JSON.stringify({
         revision: 1,
+        eventRevision: 1,
         threadId: tasks[0].threadId,
         syncState: "ready",
         task: tasks[0],
@@ -1282,6 +1283,7 @@ test("starts active Task navigator spinners at independent phases", { tag: "@all
   await page.goto("/tasks/thread_spinner_alpha");
   await emitTaskDetailBootstrap(page, {
     revision: 1,
+    eventRevision: 1,
     threadId: tasks[0].threadId,
     syncState: "ready",
     task: tasks[0],
@@ -1457,6 +1459,7 @@ test("archives and restores an idle Caffold task through the grouped Archived se
     threadId: activeTask.threadId,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task: activeTask,
     events: [],
     eventsPage: { nextCursor: null },
@@ -1687,6 +1690,7 @@ test("keeps an idle task active when the archive request fails", { tag: "@all-vi
     threadId: task.threadId,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task,
     events: [],
     eventsPage: { nextCursor: null },
@@ -1833,6 +1837,7 @@ test("does not offer archive while the canonical task is active", { tag: "@all-v
     threadId: task.threadId,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task,
     events: [],
     eventsPage: { nextCursor: null },
@@ -1996,6 +2001,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
     threadId: task.threadId,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task,
     events: [
       {
@@ -2004,7 +2010,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
         type: "assistant_message",
         summary: "Assistant response",
         payload: { text: `${task.title} detail response` },
-        createdMs: task.updatedMs,
+        position: { anchorMs: task.updatedMs, index: 0 },
       },
     ],
     eventsPage: { nextCursor: null },
@@ -2626,6 +2632,7 @@ test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@al
     threadId: selectedTask.threadId,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task: tasks[0],
     events: [
       {
@@ -2634,7 +2641,7 @@ test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@al
         type: "assistant_message",
         summary: "Assistant response",
         payload: { text: "DOM stability detail response" },
-        createdMs: selectedTask.updatedMs,
+        position: { anchorMs: selectedTask.updatedMs, index: 0 },
       },
     ],
     eventsPage: { nextCursor: null },
@@ -2790,6 +2797,7 @@ test("patches Task rows in place without reordering and preserves a running spin
       contentType: "application/json",
       body: JSON.stringify({
         revision: 1,
+        eventRevision: 1,
         threadId: runningTask.threadId,
         syncState: "ready",
         task: runningTask,
@@ -2803,6 +2811,7 @@ test("patches Task rows in place without reordering and preserves a running spin
   await page.goto("/tasks/thread_spinner_stability");
   await emitTaskDetailBootstrap(page, {
     revision: 1,
+    eventRevision: 1,
     threadId: runningTask.threadId,
     syncState: "ready",
     task: runningTask,
@@ -2850,6 +2859,7 @@ test("patches Task rows in place without reordering and preserves a running spin
       revision: 2,
       detail: {
         revision: 2,
+        eventRevision: 2,
         threadId: task.threadId,
         syncState: "ready",
         task,
@@ -3110,7 +3120,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
         threadId: "thread_gluesql_feature",
         type: "thread_status_changed",
         payload: { status: "running" },
-        createdMs: Date.now(),
+        position: { anchorMs: Date.now(), index: 0 },
       },
     });
   });
@@ -3140,7 +3150,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
       type: "user_message",
       summary: "User prompt",
       payload: { text: "Continue this task from Codex desktop" },
-      createdMs: now + 500,
+      position: { anchorMs: now + 500, index: 0 },
     },
     {
       id: "external-reasoning",
@@ -3148,7 +3158,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
       type: "reasoning",
       summary: "Reasoning",
       payload: { summary: [], content: [] },
-      createdMs: now + 750,
+      position: { anchorMs: now + 750, index: 0 },
     },
   );
   await page.evaluate(() => {
@@ -3160,7 +3170,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
         threadId: "thread_gluesql_feature",
         type: "thread_status_changed",
         payload: { status: "idle" },
-        createdMs: Date.now(),
+        position: { anchorMs: Date.now(), index: 0 },
       },
     });
   });
@@ -3187,6 +3197,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
     threadId: "thread_gluesql_feature",
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task: tasks[0],
     events: detailEvents,
     eventsPage: { nextCursor: null },

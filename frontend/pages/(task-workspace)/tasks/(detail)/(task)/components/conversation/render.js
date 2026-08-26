@@ -20,6 +20,8 @@ import {
   isTurnStatusEvent,
   isWorkEvent,
   sortEventsChronologically,
+  taskEventAnchorMs,
+  taskEventPositionIndex,
 } from "../../../../task-events.js";
 import {
   effectiveTaskFileRoot,
@@ -27,6 +29,7 @@ import {
   formatDecision,
   formatDuration,
   formatStatus,
+  taskEventObservedMs,
   toolCallPresentation,
 } from "../../../../task-format.js";
 import { activeTurnPresentation } from "./components/active-turn/model.js";
@@ -153,7 +156,10 @@ function activeTurnGroupIndex(groups, task) {
       continue;
     }
     const hasCurrentEvent = group.events.some(
-      (event) => Number(event.createdMs) >= startedMs - 2_000,
+      (event) => {
+        const anchorMs = taskEventAnchorMs(event);
+        return anchorMs !== null && anchorMs >= startedMs - 2_000;
+      },
     );
     if (hasCurrentEvent) {
       return index;
@@ -482,7 +488,7 @@ function renderStatusEvent(event) {
   return `
     <li class="task-event task-event-status"${eventIdentityAttribute(event)} data-event-type="${escapeHtml(event.type)}" data-event-status="${escapeHtml(status)}">
       <span class="task-status-chip">${escapeHtml(event.summary)}</span>
-      <time>${escapeHtml(formatDate(event.createdMs))}</time>
+      ${renderObservedTime(event)}
     </li>
   `;
 }
@@ -517,7 +523,7 @@ function renderMessageEvent(event, role, text, options = {}) {
     <li class="task-event task-message"${eventIdentityAttribute(event)}${conversationEntryAttributes(event, `${role}:${options.phase ?? ""}:${submissionState}`)} data-event-type="${escapeHtml(event.type)}" data-message-role="${escapeHtml(role)}"${phaseAttribute}${attachmentsAttribute}${deliveryAttribute}>
       <div class="task-message-header">
         ${deliveryLabel ? `<span class="task-message-delivery">${escapeHtml(deliveryLabel)}</span>` : ""}
-        <time>${escapeHtml(formatDate(event.createdMs))}</time>
+        ${renderObservedTime(event)}
       </div>
       ${renderMessageAttachments(attachments)}
       ${value ? `
@@ -553,8 +559,6 @@ function conversationEntryAttributes(event, presentation = "") {
     event?.type,
     event?.summary,
     event?.payload,
-    event?.createdMs,
-    event?.updatedMs,
     event?.fileLinks,
     presentation,
   ]);
@@ -756,7 +760,7 @@ function renderThinkingEvent(event, text, task, eventState) {
       <details${open}${disclosureIdentityAttribute("thinking", eventIdentityKey(event))}>
         <summary>
           <span>Thinking</span>
-          <time>${escapeHtml(formatDate(event.createdMs))}</time>
+          ${renderObservedTime(event)}
         </summary>
         <div class="task-thinking-content">
           <caffold-task-markdown${markdownContextAttributes(event)}>${escapeHtml(value)}</caffold-task-markdown>
@@ -814,9 +818,9 @@ function turnWorkItemCount(events) {
 
 function turnDurationLabel(events, terminalEvent) {
   const started = events.find((event) => event.type === "turn_started");
-  const startMs = started?.createdMs ?? events[0]?.createdMs;
-  const endMs = terminalEvent?.createdMs ?? events.at(-1)?.createdMs;
-  if (typeof startMs !== "number" || typeof endMs !== "number" || endMs <= startMs) {
+  const startMs = taskEventAnchorMs(started ?? events[0]);
+  const endMs = taskEventAnchorMs(terminalEvent ?? events.at(-1));
+  if (startMs === null || endMs === null || endMs <= startMs) {
     return "";
   }
   return formatDuration(endMs - startMs);
@@ -832,7 +836,7 @@ function renderToolEvent(event, label, text, tone = "neutral") {
     <li class="task-event task-tool-card" data-event-type="${escapeHtml(event.type)}" data-tool-tone="${escapeHtml(tone)}">
       <header>
         <strong>${escapeHtml(label)}</strong>
-        <time>${escapeHtml(formatDate(event.createdMs))}</time>
+        ${renderObservedTime(event)}
       </header>
       <pre>${escapeHtml(value)}</pre>
     </li>
@@ -869,7 +873,7 @@ function renderFileChangeEvent(
       <article>
         <header>
           <strong>Files changed</strong>
-          <time>${escapeHtml(formatDate(event.createdMs))}</time>
+          ${renderObservedTime(event)}
         </header>
         <p>${escapeHtml(summary)}${status ? ` · ${status}` : ""}</p>
         <caffold-task-changed-files></caffold-task-changed-files>
@@ -878,13 +882,21 @@ function renderFileChangeEvent(
   `;
 }
 
+function renderObservedTime(event) {
+  const observedMs = taskEventObservedMs(event);
+  return observedMs === null
+    ? ""
+    : `<time>${escapeHtml(formatDate(observedMs))}</time>`;
+}
+
 function fileChangeEventIdentity(event) {
   return (
     eventIdentityKey(event) ||
     [
       "file-change",
       event?.threadId ?? event?.payload?.threadId ?? "",
-      event?.createdMs ?? "",
+      taskEventAnchorMs(event),
+      taskEventPositionIndex(event),
     ].join(":")
   );
 }

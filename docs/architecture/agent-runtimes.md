@@ -184,11 +184,69 @@ It contains only what the interface and Task lifecycle consume:
 - approvals under a Caffold identity paired privately with the provider
   request that must be answered.
 
+### Provider evidence
+
 The Codex driver translates app-server threads, items, notifications, and
 server requests. The Claude driver translates stream frames and transcript
 content blocks. Unknown optional events may be ignored or presented as generic
 tool activity; missing load-bearing fields fail explicitly. The provider's raw
 protocol does not escape into Task or frontend state.
+
+Provider history and live observation do not own the same facts. Codex
+app-server turn history and Claude transcript history own causal order for a
+turn Caffold did not watch from its boundary. A live `turn_started` is evidence
+that Caffold watched the turn from its boundary only while that observation
+remains continuous; that one live journal then owns the turn's item set and
+direct observation times. A provider connection loss or dropped-report gap
+withdraws the completeness claim without deleting reports already observed,
+so history becomes the baseline again. Caffold does not mix a second history
+projection into a continuous journal, because some providers expose
+history-local item ids that cannot be equated with their live ids.
+
+Within either source, repeated reports under one exact item identity update one
+item. Submission observation and provider identity remain separate: the
+browser may place an optimistic prompt when it submits the request, but only
+the exact identity returned by the adapter hands that prompt off to the
+projection. The handoff keeps its provisional browser position until a
+complete Detail supplies backend placement, so identity delay cannot move the
+prompt behind an answer produced in the meantime. For a recovered turn, live
+reports may enrich history only under an exact identity. Content, proximity,
+and arrival order are never substitutes for that identity.
+An item-level provider timestamp, such as a Claude transcript row timestamp,
+crosses as `observedMs` without taking ownership of causal order. When history
+supplies item order but no item time, `position.anchorMs` places the group and
+`position.index` preserves provider order within it while `observedMs` is
+`null`; neither position field is an individual event time, so the interface
+must not print the turn anchor as every item's timestamp.
+
+### Backend reconciliation
+
+The Task backend retains live observations with their explicit operation role:
+provider lifecycle, accepted submission, or Caffold-owned projection. It
+advances repeated live reports within that role, then reconciles provider
+history and retained observations when it assembles Detail. Provider history
+owns the baseline after recovery or an observation gap; a live report may
+replace a conflicting history field only under exact identity and evidence
+that the report followed the read it advances. Backend-private session
+causality and cache-observation recency do not cross this boundary as item
+freshness or display fields.
+
+### Projection publication
+
+Every accepted Task-event delta receives a process-local, per-Task
+`eventRevision` when it enters the conversation projection. A Detail snapshot
+captures the retained observations and a watermark that covers them in the
+same backend owner. This publication sequence is independent of the Task
+session `revision` used to arbitrate canonical reads and Task metadata. It
+establishes only whether an independently delivered conversation snapshot or
+delta is already covered; it is not item identity, provider causality,
+conversation position, or time.
+
+A current-page Detail snapshot with provider history available owns the
+membership of its conversation projection. A snapshot marked `historyLoading`
+owns the exact identities it contains but cannot prove that an absent,
+previously readable item was deleted. Older cursor pages remain a separate
+history layer and do not become another current live ledger.
 
 The agent still owns the meaning of a permission. Caffold owns the human answer
 vocabulary—allow, allow always, deny, and deny and stop—and each driver offers
@@ -262,6 +320,12 @@ caffold/src/app/tasks/runtime.rs         per-Task routing and cross-agent orches
 caffold/src/app/tasks/runtime/bridge.rs  Codex runtime bridge
 caffold/src/app/tasks/runtime/claude_bridge.rs
                                         Claude runtime and tool bridge
+caffold/src/app/tasks/detail.rs          canonical Detail and history membership
+caffold/src/app/tasks/events.rs          observation reconciliation and publication
+frontend/pages/(task-workspace)/tasks/task-events.js
+                                        exact-identity projection operations
+frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout.js
+                                        snapshot/delta application and rendering cache
 runners/claude/                         transport-only runner crate
 ```
 

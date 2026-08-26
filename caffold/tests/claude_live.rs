@@ -618,7 +618,7 @@ async fn a_turn_that_cannot_run_reads_as_a_failure_not_as_the_agent_talking() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires an authenticated Claude CLI and spends model usage"]
-async fn a_background_command_reporting_back_is_not_read_as_somebody_talking() {
+async fn a_background_command_report_reaches_the_live_task_without_becoming_user_message() {
     // A background command that finishes reports back into the conversation in
     // the shape of a prompt, because that is how the agent is made to answer
     // it. The report is machine text — a task identifier, a path, an exit code
@@ -626,7 +626,7 @@ async fn a_background_command_reporting_back_is_not_read_as_somebody_talking() {
     // conversation under the name of the person who never wrote it. Only the
     // real agent writes one, and it writes it into the file Caffold reads the
     // conversation back from.
-    let mut backend = Backend::start().await;
+    let backend = Backend::start().await;
     let mut started = Instant::now();
     let task = backend
         .start_task(&background_work(), INSTRUCTED_MODEL)
@@ -640,13 +640,55 @@ async fn a_background_command_reporting_back_is_not_read_as_somebody_talking() {
     // reports back the same way.
     let mut prompts = 1;
     loop {
-        // Watched from working to done, because what is being measured is how
-        // long the turn took: a Task read as idle before its turn has opened
-        // would time a turn that had not started.
-        task.wait_for(TurnState::Running, Duration::from_secs(60))
-            .await;
-        task.wait_for(TurnState::Idle, Duration::from_secs(180))
-            .await;
+        // A turn that starts and finishes between two HTTP polls need never be
+        // observed as Running. Its own canonical events are the durable proof
+        // that it opened and ended; wait for those rather than requiring an
+        // incidental intermediate reading.
+        let deadline = Instant::now() + Duration::from_secs(180);
+        loop {
+            let events = task.detail().await["events"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            let prompted_turns = events
+                .iter()
+                .filter(|event| {
+                    event["type"] == "user_message"
+                        && event["payload"]["text"]
+                            .as_str()
+                            .is_some_and(|text| text.contains("run_in_background"))
+                })
+                .filter_map(|event| event["payload"]["turnId"].as_str())
+                .collect::<std::collections::BTreeSet<_>>();
+            let completed = events
+                .iter()
+                .filter(|event| event["type"] == "turn_completed")
+                .filter_map(|event| event["payload"]["turnId"].as_str())
+                .filter(|turn_id| prompted_turns.contains(turn_id))
+                .count();
+            if prompted_turns.len() >= prompts && completed >= prompts {
+                let failed = events.iter().any(|event| {
+                    event["type"] == "turn_completed"
+                        && event["payload"]["status"] == "failed"
+                        && event["payload"]["turnId"]
+                            .as_str()
+                            .is_some_and(|turn_id| prompted_turns.contains(turn_id))
+                });
+                if failed {
+                    panic!(
+                        "Claude failed before it could start background work: {}",
+                        task.raw().await
+                    );
+                }
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the prompt never completed a canonical turn; it did {}",
+                task.what_happened().await
+            );
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
         if started.elapsed() < COMMAND_RUNS {
             break;
         }
@@ -659,38 +701,44 @@ async fn a_background_command_reporting_back_is_not_read_as_somebody_talking() {
         started = Instant::now();
         task.say(&background_work()).await;
     }
-    // Waited out rather than watched for. A report lands on the session and not
-    // on Caffold — the stream says only that a background task changed, the
-    // Task goes on reading idle while the agent answers, and the conversation
-    // on disk is read when a backend subscribes rather than when it is asked.
-    // So there is nothing to poll, and the wait is timed from the command
-    // rather than from the turn: measured from the turn, a slow turn would move
-    // the report into the turn that started it, where it is queued instead and
-    // opens no turn of its own.
-    tokio::time::sleep(REPORT_HAS_LANDED.saturating_sub(started.elapsed())).await;
-
-    // Read as a Task that outlived its backend reads: from the file, which is
-    // the only place the report and the answer to it are written down.
-    backend.replace().await;
-
-    // A backend that has just started answers for the Task before it has read
-    // the conversation, so this is the read arriving rather than the work.
-    let deadline = Instant::now() + Duration::from_secs(60);
+    // The result frame for the autonomous answer is a concrete signal to read
+    // the transcript. No backend replacement and no synthetic turn is needed:
+    // the marked transcript prompt names the background turn, and the Task
+    // being watched receives its canonical answer as soon as that work ends.
+    let deadline = started + REPORT_HAS_LANDED;
     let events = loop {
         let events = task.detail().await["events"]
             .as_array()
             .cloned()
             .unwrap_or_default();
-        if events
+        let background_turns = events
             .iter()
-            .any(|event| event["type"] == "command_execution")
-        {
+            .filter(|event| {
+                event["type"] == "turn_started"
+                    && event["payload"]["origin"]["type"] == "backgroundTask"
+            })
+            .filter_map(|event| event["payload"]["turnId"].as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        let has_answer = events.iter().any(|event| {
+            event["type"] == "assistant_message"
+                && event["payload"]["turnId"]
+                    .as_str()
+                    .is_some_and(|turn_id| background_turns.contains(turn_id))
+        });
+        let has_completion = events.iter().any(|event| {
+            event["type"] == "turn_completed"
+                && event["payload"]["turnId"]
+                    .as_str()
+                    .is_some_and(|turn_id| background_turns.contains(turn_id))
+        });
+        if has_answer && has_completion {
             break events;
         }
         assert!(
             Instant::now() < deadline,
-            "the conversation came back with the command in it; it came back as {}",
-            task.what_happened().await
+            "the background answer never reached the live Task; it read as {}; detail {}",
+            task.what_happened().await,
+            task.raw().await
         );
         tokio::time::sleep(Duration::from_millis(500)).await;
     };

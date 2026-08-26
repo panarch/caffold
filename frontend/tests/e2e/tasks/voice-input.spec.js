@@ -540,6 +540,7 @@ test("keeps recording Stop separate while voice steers an active turn", { tag: "
       json: {
         threadId: "thread-1",
         turnId: "turn-1",
+        userMessageId: "message-voice-1",
         steered: true,
       },
     });

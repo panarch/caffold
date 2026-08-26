@@ -50,6 +50,7 @@ function taskDetail(taskRecord) {
     threadId: taskRecord.threadId,
     syncState: "ready",
     revision: 1,
+    eventRevision: 1,
     task: taskRecord,
     events: [],
     eventsPage: { nextCursor: null },

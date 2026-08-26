@@ -249,24 +249,74 @@ not mount Integrated Review, Git, GitHub, or their Summary controls.
 
 One pending prompt per Task belongs to Detail, whether it was submitted from the
 follow-up Composer or handed over with a newly created Task. Detail shows it
-optimistically and resolves it from canonical events, which reach it as a
-canonical detail or as a single stream event: the agent's own copy of the prompt
-accepts it, and a reported turn failure marks its delivery unconfirmed. A prompt
-sent into a conversation that already had prompts is accepted only by its own
-words returning, so another client's prompt cannot answer for it; a
-conversation that had none is a Task being started, whose first canonical prompt
-is that submission however the agent writes it down.
+optimistically. For a follow-up, the prompt response returns the user-item
+identity established by the agent adapter; only a backend Detail or live stream
+event carrying that exact item identity retires the optimistic entry. Event
+content is presentation, not submission identity, so an equal prompt from
+another client cannot answer for it, and an exact-identity event that races
+ahead of the HTTP response waits for the response to identify it. A just-created
+Task is the special case: its first prompt caused that Task to exist before the
+asynchronous first turn had an item identity the creation response could carry.
+When the identity is established, the accepted event inherits that browser's
+existing optimistic position until a Detail snapshot supplies the
+provider-history position; confirming one item must not make it jump behind an
+answer already on screen.
+If transport fails before a follow-up response supplies its identity, a later
+equal provider-projected message does not erase that outcome-unknown
+submission: there is no evidence they are one event, so both remain visible. A
+reported first-turn failure marks that first prompt's delivery unconfirmed.
+
+Detail receives the backend's already-reconciled conversation projection. The
+provider evidence, history/live authority, exact-identity requirement, and
+publication contract are owned by
+[Agent Runtimes](agent-runtimes.md#conversation-and-event-ownership). The
+browser does not compare provider payloads, message text, timestamps, or
+arrival order to reconstruct those decisions.
+
+The backend publishes that projection through a Task-scoped `eventRevision`.
+Each Task-event delta carries the revision captured when it entered the
+projection, while each Detail snapshot carries the watermark covering its
+events. For conversation events, Detail applies snapshots at the current or a
+newer watermark and applies only strictly newer deltas. Deltas buffered before
+a readable bootstrap pass through the same check, so a snapshot cannot be
+followed by a stale intermediate render. A new stream bootstrap resets this
+process-local baseline for its connection generation. The separate Task
+session `revision` orders canonical Task reads and metadata; it does not
+substitute for conversation publication order.
+
+A complete current-page Detail snapshot owns projection membership. A
+`historyLoading` snapshot owns records under the exact identities it contains
+but retains absent readable records until a complete snapshot arrives. Older
+cursor pages and optimistic submissions remain separate visible layers rather
+than inputs to source arbitration. Within the current projection, a delta is a
+backend-authored patch under exact identity and a snapshot is a
+backend-authored replacement.
+
+For canonical Task events, `position.anchorMs` places an event group in the
+projected timeline, and `position.index` orders events sharing that anchor.
+Both are backend-owned position rather than display time. A browser-created
+optimistic entry carries only provisional request-state position until exact
+identity handoff and Detail reconciliation replace it with canonical position.
+If a malformed event has no readable position, the browser preserves the
+projection order it received instead of manufacturing an anchor or update time.
+`observedMs` is the direct per-event time shown by Conversation and Work
+details, including a provider-history item time when one exists; `null`
+suppresses a timestamp when history supplied order but no individual time.
+Conversation keys entries by exact identity and versions them from rendered
+content, not projection revision or position. A canonical reorder therefore
+moves an existing entry instead of replacing its DOM and state.
 
 The adjacent task-scoped Detail session owns snapshot acquisition while Detail
-keeps canonical Task, event, revision, and rendering state.
+keeps the canonical Task, conversation projection, Task-session and
+conversation-publication revision baselines, and rendering cache.
 
 The session phases are inactive, waiting for bootstrap, waiting for readable
 sync, streaming, REST fallback, and unavailable. It alone transitions the
 active attempt, while shared `tasks/stream.js` owns `EventSource` connection
 generations, timers, and transport state. Cursor pagination stays outside the
 session, and a Task switch replaces the attempt before a late response can
-update Detail. The wire-level bootstrap, revision, and fallback contract is
-defined in [Codex App Server](codex-app-server.md#frontend-ownership).
+update Detail. Provider transport and history acquisition remain in their
+native architecture.
 
 `caffold-section-detail` owns fixed-context Task creation for one Section.
 Switching Section context replaces its Task Create instance. The shared Task

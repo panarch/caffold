@@ -33,7 +33,9 @@ use super::codex::{
     CodexThreadClient, CodexTurnOptions, codex_mode_id, codex_models, codex_permission_mode_name,
     codex_permission_modes, codex_turn_options, is_fast_service_tier, service_tier_for_fast_mode,
 };
-use super::{Conversation, Turn, TurnPage};
+use super::{
+    ActivityStatus, Conversation, ConversationItem, ItemKind, MessageContent, Turn, TurnPage,
+};
 
 /// How many turns come back with a conversation that has just been opened.
 ///
@@ -255,6 +257,36 @@ fn mismatched_agent() -> AgentError {
     )
 }
 
+/// The user item Codex will report for one submitted prompt.
+///
+/// Codex accepts the item identity with the request and returns that identity
+/// on every projection of the user message. Constructing the shared item here
+/// keeps the application from inventing another placeholder identity or
+/// matching later by presentation text.
+fn submitted_user_message(id: &str, text: &str, images: &[String]) -> ConversationItem {
+    let content = (!text.is_empty())
+        .then(|| MessageContent::Text {
+            text: text.to_string(),
+        })
+        .into_iter()
+        .chain(
+            images
+                .iter()
+                .cloned()
+                .map(|url| MessageContent::Image { url }),
+        )
+        .collect();
+    ConversationItem {
+        id: id.to_string(),
+        observed_at_ms: None,
+        status: ActivityStatus::Completed,
+        kind: ItemKind::UserMessage {
+            text: text.to_string(),
+            content,
+        },
+    }
+}
+
 /// A conversation the agent has just begun, and what it begins under.
 ///
 /// An agent settles the settings at the same moment it makes the conversation,
@@ -267,6 +299,9 @@ pub(crate) struct StartedConversation {
 /// A turn the agent has begun.
 pub(crate) struct StartedTurn {
     pub(crate) turn: Turn,
+    /// The prompt under the same stable identity the agent reports on its item
+    /// stream and in history.
+    pub(crate) user_message: ConversationItem,
     /// What the agent settled on, which is not always what was asked for: a
     /// model without a faster tier answers a request for speed with its normal
     /// one, and the person should be told what they got.
@@ -432,6 +467,7 @@ impl Driver {
                     .await?;
                 Ok(StartedTurn {
                     turn: Turn::from(&started.turn),
+                    user_message: submitted_user_message(&started.user_message_id, prompt, images),
                     applied: options.applied.clone(),
                 })
             }
@@ -440,8 +476,20 @@ impl Driver {
                     .client
                     .start_turn(conversation_id, prompt, images, options.claude()?)
                     .await?;
+                let user_message = turn
+                    .items
+                    .first()
+                    .filter(|item| matches!(item.kind, ItemKind::UserMessage { .. }))
+                    .cloned()
+                    .ok_or_else(|| {
+                        AgentError::Failed(format!(
+                            "Claude began turn {} without identifying its user message",
+                            turn.id
+                        ))
+                    })?;
                 Ok(StartedTurn {
                     turn,
+                    user_message,
                     applied: options.applied.clone(),
                 })
             }
@@ -455,13 +503,23 @@ impl Driver {
         turn_id: &str,
         prompt: &str,
         images: &[String],
-    ) -> Result<(), AgentError> {
+    ) -> Result<ConversationItem, AgentError> {
         match self {
             Self::Codex(client) => {
-                client
+                let steered = client
                     .steer_turn(conversation_id, turn_id, prompt, images)
                     .await?;
-                Ok(())
+                if steered.turn_id != turn_id {
+                    return Err(AgentError::Failed(format!(
+                        "Codex steered turn {} when Caffold asked for {turn_id}",
+                        steered.turn_id
+                    )));
+                }
+                Ok(submitted_user_message(
+                    &steered.user_message_id,
+                    prompt,
+                    images,
+                ))
             }
             Self::Claude(claude) => Ok(claude
                 .client
@@ -550,7 +608,7 @@ impl Driver {
                         claude
                             .client
                             .read_turns(conversation_id, &claude.cwd, None, INITIAL_TURNS_PAGE)
-                            .await,
+                            .await?,
                     ),
                     false => None,
                 };
@@ -577,10 +635,11 @@ impl Driver {
                     .list_thread_turns(conversation_id, cursor, limit)
                     .await?,
             )),
-            Self::Claude(claude) => Ok(claude
+            Self::Claude(claude) => claude
                 .client
                 .read_turns(conversation_id, &claude.cwd, cursor, limit)
-                .await),
+                .await
+                .map_err(Into::into),
         }
     }
 

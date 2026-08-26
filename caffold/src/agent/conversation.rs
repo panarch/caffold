@@ -153,18 +153,60 @@ pub(crate) struct TurnPage {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Turn {
     pub(crate) id: String,
+    /// What opened this turn, to the extent the agent said.
+    ///
+    /// This is evidence, not a classification recovered from the turn's
+    /// contents. A turn with no visible user message may be an agent-owned
+    /// notification, or it may simply be a shape this release cannot explain.
+    pub(crate) origin: TurnOrigin,
     pub(crate) status: TurnStatus,
     pub(crate) started_at_ms: Option<u64>,
     pub(crate) completed_at_ms: Option<u64>,
     pub(crate) items: Vec<ConversationItem>,
 }
 
+/// What opened a turn, in Caffold's shared vocabulary.
+///
+/// `Unknown` is deliberately a first-class answer. It keeps an agent whose
+/// history does not expose a cause from being rewritten as a person speaking
+/// or as an agent acting on its own.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) enum TurnOrigin {
+    User,
+    BackgroundTask(BackgroundTask),
+    #[default]
+    Unknown,
+}
+
+/// The evidence Claude writes when a background task reports back.
+///
+/// Every field is optional because the outer `task-notification` marking is
+/// independently meaningful: a changed or incomplete payload is still known
+/// to be agent-owned, while its missing relationship must stay unknown. The
+/// raw marked payload is kept so tolerant parsing does not turn an unsupported
+/// shape into lost evidence.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct BackgroundTask {
+    pub(crate) task_id: Option<String>,
+    pub(crate) tool_use_id: Option<String>,
+    pub(crate) status: Option<String>,
+    pub(crate) output_file: Option<String>,
+    pub(crate) summary: Option<String>,
+    pub(crate) raw: Option<String>,
+}
+
 /// One thing the agent said or did, as the conversation draws it.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ConversationItem {
-    /// The agent's identifier for this item. It is what makes a live update and
-    /// a later read of the same work one entry rather than two.
+    /// The adapter's exact provider-backed identifier for this projection.
+    /// When live and history expose the same identity it joins their reports;
+    /// when they do not, Caffold keeps the identities distinct and lets source
+    /// ownership choose one ledger instead of manufacturing a relationship.
     pub(crate) id: String,
+    /// When the provider directly recorded this item, if its history carries
+    /// an item-level clock. This is display evidence, not a substitute for the
+    /// item's position in the provider's ordered turn.
+    pub(crate) observed_at_ms: Option<u64>,
     /// How far along this item is.
     ///
     /// Every item carries one, whether its agent reports work status for that
@@ -232,6 +274,11 @@ pub(crate) struct CommandExecution {
     /// than success.
     pub(crate) exit_code: Option<i64>,
     pub(crate) duration_ms: Option<u64>,
+    /// A process this command handed off, when the agent gave it an identity.
+    /// The command itself may already have returned successfully while this
+    /// work continues; that distinction is why this is not inferred from the
+    /// command item's activity status.
+    pub(crate) background_task: Option<BackgroundTask>,
 }
 
 /// An image the agent produced, and where it put it.
