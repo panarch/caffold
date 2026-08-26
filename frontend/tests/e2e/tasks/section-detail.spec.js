@@ -477,10 +477,11 @@ test("uses the Section's last composer settings for its next Task request", { ta
     }],
     unsectioned: [],
   };
-  let submittedBody = null;
+  let createdBody = null;
+  let promptBody = null;
   await page.route(/\/api\/tasks(?:\?|$)/, (route) => {
     if (route.request().method() === "POST") {
-      submittedBody = route.request().postDataJSON();
+      createdBody = route.request().postDataJSON();
       return route.fulfill({
         json: taskDetailFixture({
           model: "gpt-5.6-sol",
@@ -490,6 +491,17 @@ test("uses the Section's last composer settings for its next Task request", { ta
       });
     }
     return route.fulfill({ json: projection });
+  });
+  await page.route("**/api/tasks/*/prompts", (route) => {
+    promptBody = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-section-composer-seed",
+        userMessageId: "message-section-composer-seed",
+        steered: false,
+      },
+    });
   });
   await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
     route.fulfill({ json: { tasks: [], nextCursor: null } })
@@ -504,13 +516,21 @@ test("uses the Section's last composer settings for its next Task request", { ta
   await form.getByRole("textbox", { name: "New task prompt" }).fill("Use the Section settings");
   await form.getByRole("textbox", { name: "New task prompt" }).press("Enter");
 
-  await expect.poll(() => submittedBody).not.toBeNull();
-  expect(submittedBody).toMatchObject({
+  await expect.poll(() => createdBody).not.toBeNull();
+  expect(createdBody).toMatchObject({
     cwd: rootPath,
+    titleSource: "Use the Section settings",
+    model: "gpt-5.6-sol",
+    effort: "xhigh",
+    fastMode: true,
+  });
+  await expect.poll(() => promptBody).not.toBeNull();
+  expect(promptBody).toMatchObject({
     prompt: "Use the Section settings",
     model: "gpt-5.6-sol",
     effort: "xhigh",
     fastMode: true,
+    activeTurnId: null,
   });
 });
 

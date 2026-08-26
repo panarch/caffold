@@ -269,54 +269,40 @@ class CaffoldTaskDetail extends HTMLElement {
     ) {
       return false;
     }
-    this.showSubmittedPrompt(threadId, submission);
+    if (submission && !this.submitCreatedTaskPrompt(threadId, submission)) {
+      return false;
+    }
     void this.detailSession.attach(threadId);
     return true;
   }
 
-  // The prompt a Task was created with, until the agent reports it back.
-  // Creation answers as soon as the Task exists, so its first turn — and the
-  // agent's own copy of the prompt — arrive afterwards. The optimistic message
-  // a follow-up uses stands in until then, and the same pending submission
-  // keeps a second prompt from being sent into a turn that has not begun.
-  showSubmittedPrompt(threadId, { prompt = "", attachments = [] } = {}) {
-    const images = [...attachments];
-    if (!`${prompt}`.trim() && !images.length) {
-      return;
-    }
-    const events = this.eventsByThread.get(threadId) ?? [];
-    // A Task answered before its first turn has no prompt of its own yet. One
-    // already there means the turn began before this answer arrived, and the
-    // conversation is already showing what was asked.
+  // Move the browser-owned initial submission into the new Task before its
+  // route takes over. From this point on it is an ordinary prompt request: the
+  // same optimistic event, exact accepted item identity, failure classifier,
+  // composer restoration, and reconciliation used by every later message.
+  submitCreatedTaskPrompt(threadId, submission) {
+    const composer = this.followUpComposer();
     if (
-      events.some(
-        (event) => event?.type === "user_message" && !event.payload?.optimistic,
-      )
+      !composer ||
+      this.followUpComposers.get(threadId) !== composer ||
+      this.selectedThreadId !== threadId
     ) {
-      return;
+      return false;
     }
-    const optimisticEvent = optimisticUserMessageEvent(
+    const adopted = composer.adoptSubmission({
+      ...submission,
       threadId,
-      `${prompt}`,
-      images,
-      ++this.promptSubmissionSequence,
-    );
-    this.followUpRequests.set(threadId, {
-      submissionId: "",
-      composer: null,
-      threadId,
-      optimisticEventId: optimisticEvent.id,
-      acceptsFirstCanonicalUserMessage: true,
-      acceptedItemId: "",
-      detailPositionKeys: new Set(),
-      state: PROMPT_SUBMISSION_STATE.SENDING,
-      canonicalConfirmed: false,
-      resetOverridesOnCanonical: null,
-      overridesReleased: false,
     });
-    this.setThreadEvents(threadId, appendOptimisticEvent(events, optimisticEvent));
-    this.conversationUpdateKind = "bottom";
-    this.render();
+    if (!adopted) {
+      return false;
+    }
+    void this.sendFollowUpSubmission(composer, adopted).catch((error) => {
+      composer.resolveSubmission(adopted.submissionId, {
+        status: "rejected",
+        error,
+      });
+    });
+    return true;
   }
 
   deactivate({ retainComposerDom = false } = {}) {
@@ -697,30 +683,24 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   // What arriving events say about the prompt this Task is still holding.
-  //
-  // Detail and single stream events are delivered independently, and either
-  // one can carry the agent's own copy of the prompt or the news that its turn
-  // never began. Both are read here so the pending submission has one reader
-  // whichever way its answer arrives.
+  // Detail and single stream events are delivered independently, so either
+  // one may confirm the exact accepted item identity first.
   reconcilePendingPrompt(threadId, events) {
     const request = this.followUpRequests.get(threadId);
     if (!request) {
       return;
     }
 
-    // A follow-up is confirmed only by the item identity returned for this
+    // Every prompt is confirmed only by the item identity returned for that
     // request. Its words are presentation and another client may submit the
-    // same ones. A just-created Task is the one special case: its first prompt
-    // caused that Task to exist before an asynchronous turn had an item
-    // identity the creation response could carry.
+    // same ones.
     const confirmedEvent = events.find((event) => {
       if (event?.type !== "user_message" || event.payload?.optimistic) {
         return false;
       }
       return (
-        request.acceptsFirstCanonicalUserMessage ||
-        (request.acceptedItemId &&
-          event.payload?.itemId === request.acceptedItemId)
+        request.acceptedItemId &&
+        event.payload?.itemId === request.acceptedItemId
       );
     });
     if (confirmedEvent) {
@@ -731,12 +711,6 @@ class CaffoldTaskDetail extends HTMLElement {
         !request.detailPositionKeys.has(eventIdentityKey(confirmedEvent)),
       );
       return;
-    }
-    if (
-      request.state === PROMPT_SUBMISSION_STATE.SENDING &&
-      events.some((event) => event?.type === "task_failed")
-    ) {
-      this.unconfirmPendingPrompt(threadId, request);
     }
   }
 
@@ -768,26 +742,6 @@ class CaffoldTaskDetail extends HTMLElement {
     if (this.followUpRequests.get(threadId) === request) {
       this.followUpRequests.delete(threadId);
     }
-  }
-
-  // A turn the agent never took leaves its prompt undelivered.
-  //
-  // The prompt stays in the conversation beside what went wrong, marked as the
-  // unconfirmed delivery it is, so it can be read and sent again rather than
-  // disappearing with the turn that was supposed to carry it.
-  unconfirmPendingPrompt(threadId, request) {
-    request.state = PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN;
-    this.setThreadEvents(
-      threadId,
-      (this.eventsByThread.get(threadId) ?? []).map((event) =>
-        event.id === request.optimisticEventId
-          ? withPromptSubmissionState(
-              event,
-              PROMPT_SUBMISSION_STATE.OUTCOME_UNKNOWN,
-            )
-          : event,
-      ),
-    );
   }
 
   releaseConfirmedFollowUpOverrides(request) {
@@ -989,7 +943,6 @@ class CaffoldTaskDetail extends HTMLElement {
       composer,
       threadId,
       optimisticEventId: optimisticEvent.id,
-      acceptsFirstCanonicalUserMessage: false,
       acceptedItemId: "",
       detailPositionKeys: new Set(),
       state: PROMPT_SUBMISSION_STATE.SENDING,

@@ -918,7 +918,7 @@ test("consumes the real backend readiness contract and gates Task creation", { t
   });
 
   const taskResponse = await page.request.post("/api/tasks", {
-    data: { prompt: "must remain blocked" },
+    data: { titleSource: "must remain blocked" },
   });
   expect(taskResponse.status()).toBe(503);
   await expect(taskResponse.json()).resolves.toMatchObject({

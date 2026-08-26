@@ -101,6 +101,17 @@ export async function installTaskApiFixture(page, overrides = {}) {
   await page.route("**/api/tasks", (route) =>
     route.fulfill({ json: activeTaskProjection() }),
   );
+  await page.route("**/api/tasks/*/prompts", (route) => {
+    const threadId = new URL(route.request().url()).pathname.split("/")[3];
+    return route.fulfill({
+      json: {
+        threadId,
+        turnId: "turn-created-1",
+        userMessageId: "message-created-1",
+        steered: false,
+      },
+    });
+  });
   await page.route("**/api/tasks/stream*", (route) =>
     route.fulfill({
       contentType: "text/event-stream",

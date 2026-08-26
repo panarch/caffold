@@ -99,7 +99,10 @@ class CaffoldTasksPage extends HTMLElement {
     });
     this.addEventListener("caffold:task-created", (event) => {
       event.stopPropagation();
-      this.adoptCreatedDetail(event.detail?.detail, event.detail?.submission);
+      event.detail.adopted = this.adoptCreatedDetail(
+        event.detail?.detail,
+        event.detail?.submission,
+      );
     });
     this.addEventListener("caffold:task-snapshot", (event) => {
       event.stopPropagation();
@@ -376,16 +379,20 @@ class CaffoldTasksPage extends HTMLElement {
   adoptCreatedDetail(detail, submission) {
     const threadId = taskDetailThreadId(detail);
     if (!threadId || !detail?.task) {
-      return;
+      return false;
     }
     this.adoptedThreadId = threadId;
     this.selectedThreadId = threadId;
-    this.taskDetail()?.adoptCreatedDetail(detail, submission);
+    const adopted = this.taskDetail()?.adoptCreatedDetail(detail, submission);
+    if (!adopted) {
+      return false;
+    }
     this.taskNavigator()?.placeCanonicalTaskAtTop(
       detail.task,
       detail.activeTopPlacement,
     );
     this.requestRoute({ kind: "tasks", threadId });
+    return true;
   }
 
   applyRecheckedRecovery(recovery) {

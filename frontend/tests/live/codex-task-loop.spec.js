@@ -379,10 +379,11 @@ test("hydrates, orders, and restores Tasks through the local navigator ledger", 
   const marker = `${Date.now()}`;
 
   const createTask = async (label) => {
+    const prompt = `Reply with exactly caffold-section-${label}-${marker}. Do not modify files or run commands.`;
     const response = await request.post("/api/tasks", {
       data: {
         cwd: fixture.cwd,
-        prompt: `Reply with exactly caffold-section-${label}-${marker}. Do not modify files or run commands.`,
+        titleSource: prompt,
         model: SPARK_MODEL,
         effort: LIVE_REASONING_EFFORT,
       },
@@ -396,6 +397,18 @@ test("hydrates, orders, and restores Tasks through the local navigator ledger", 
     expect(detail.activeTopPlacement?.section?.name).toBe(fixture.cwd);
     expect(detail.activeTopPlacement?.section?.repository).toBe(true);
     trackLiveThread(detail.threadId, "spark", SPARK_MODEL);
+    const prompted = await request.post(`/api/tasks/${detail.threadId}/prompts`, {
+      data: {
+        prompt,
+        images: [],
+        model: SPARK_MODEL,
+        effort: LIVE_REASONING_EFFORT,
+        fastMode: false,
+        activeTurnId: null,
+      },
+    });
+    const promptedBody = await prompted.text();
+    expect(prompted.status(), `prompt ${label} response: ${promptedBody}`).toBe(200);
     return detail.threadId;
   };
 
@@ -490,10 +503,11 @@ test("rechecks externally archived and deleted Codex Threads through explicit Re
 }) => {
   const fixture = initializePersistentLiveRepository("thread-recovery");
   const marker = `${Date.now()}`;
+  const prompt = `Reply with exactly caffold-recovery-${marker}. Do not modify files or run commands.`;
   const createdResponse = await request.post("/api/tasks", {
     data: {
       cwd: fixture.cwd,
-      prompt: `Reply with exactly caffold-recovery-${marker}. Do not modify files or run commands.`,
+      titleSource: prompt,
       model: SPARK_MODEL,
       effort: LIVE_REASONING_EFFORT,
     },
@@ -504,6 +518,21 @@ test("rechecks externally archived and deleted Codex Threads through explicit Re
   const threadId = created.threadId;
   expect(threadId).toBeTruthy();
   trackLiveThread(threadId, "spark", SPARK_MODEL);
+  const promptedResponse = await request.post(`/api/tasks/${threadId}/prompts`, {
+    data: {
+      prompt,
+      images: [],
+      model: SPARK_MODEL,
+      effort: LIVE_REASONING_EFFORT,
+      fastMode: false,
+      activeTurnId: null,
+    },
+  });
+  const promptedBody = await promptedResponse.text();
+  expect(
+    promptedResponse.status(),
+    `prompt recovery Task response: ${promptedBody}`,
+  ).toBe(200);
   await expectLiveThreadIdle(request, threadId);
 
   const recoveryReason = async () => {

@@ -35,7 +35,7 @@ use super::{
     TaskDetailSync, TaskRecord, TaskState, accepted_user_message_event, now_ms, task_activity_ms,
 };
 use super::{
-    lifecycle::{ActiveTaskTopPlacement, StartTask},
+    lifecycle::{ActiveTaskTopPlacement, CreateTask},
     recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason, ManagedCodexThreadLocation},
     worktrees::inspect_ready_worktree,
 };
@@ -91,9 +91,8 @@ struct TaskDetailQuery {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateTaskRequest {
-    prompt: String,
     #[serde(default)]
-    images: Vec<String>,
+    title_source: String,
     cwd: Option<String>,
     /// Which agent should run this Task, named as the model list named it.
     /// Absent means Codex, which is what every Task was before there was a

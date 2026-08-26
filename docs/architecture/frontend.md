@@ -247,24 +247,34 @@ snapshot and live event application, Conversation, Command dialog, follow-up
 Composer, and Task mutations. It publishes a subject snapshot upward; it does
 not mount Integrated Review, Git, GitHub, or their Summary controls.
 
-One pending prompt per Task belongs to Detail, whether it was submitted from the
-follow-up Composer or handed over with a newly created Task. Detail shows it
-optimistically. For a follow-up, the prompt response returns the user-item
-identity established by the agent adapter; only a backend Detail or live stream
-event carrying that exact item identity retires the optimistic entry. Event
-content is presentation, not submission identity, so an equal prompt from
-another client cannot answer for it, and an exact-identity event that races
-ahead of the HTTP response waits for the response to identify it. A just-created
-Task is the special case: its first prompt caused that Task to exist before the
-asynchronous first turn had an item identity the creation response could carry.
+One pending prompt per Task belongs to Detail, whether it originated in the
+Task Composer or was transferred synchronously from the New Task or GitHub
+creation surface. The source Composer retains the complete submission until
+Detail adopts it; Detail then owns the text, attachments, options, optimistic
+entry, and retry state. Creation and prompt submission are separate HTTP
+requests, while this in-page ownership transfer preserves the one-action
+experience and prevents a duplicate request between them.
+
+Detail shows every prompt optimistically. The prompt response returns the
+user-item identity established by the agent adapter; only a backend Detail or
+live stream event carrying that exact item identity retires the optimistic
+entry. Event content is presentation, not submission identity, so an equal
+prompt from another client cannot answer for it, and an exact-identity event
+that races ahead of the HTTP response waits for the response to identify it.
+The first message has no exception: Task creation carries title-source metadata
+but no submitted conversation item, and the later ordinary prompt response
+supplies its accepted identity.
+
 When the identity is established, the accepted event inherits that browser's
 existing optimistic position until a Detail snapshot supplies the
 provider-history position; confirming one item must not make it jump behind an
 answer already on screen.
-If transport fails before a follow-up response supplies its identity, a later
+
+If transport fails before a prompt response supplies its identity, a later
 equal provider-projected message does not erase that outcome-unknown
 submission: there is no evidence they are one event, so both remain visible. A
-reported first-turn failure marks that first prompt's delivery unconfirmed.
+definitive rejection restores the owning Composer; no first-turn-specific
+failure event or content-based recovery path exists.
 
 Detail receives the backend's already-reconciled conversation projection. The
 provider evidence, history/live authority, exact-identity requirement, and
@@ -451,9 +461,10 @@ repository context from the navigator projection. See
 Global New owns its editable cwd and Directory Picker. Section New owns a fixed
 cwd and exposes no picker. Both mount the same Tasks-owned Task Create behavior,
 which owns the Composer, request, status, and error lifecycle. It reports a
-creation still in flight in its own status region and hands the submitted prompt
-to the Task the answer opens. Only Global New represents its selected directory
-in `/tasks/new?cwd=...`.
+creation still in flight in its own status region. When the empty Task answer
+arrives, Detail adopts the still-pending Composer submission before navigation,
+then sends it through the ordinary prompt API. Only Global New represents its
+selected directory in `/tasks/new?cwd=...`.
 
 Reusable RootedFs capabilities remain shared:
 

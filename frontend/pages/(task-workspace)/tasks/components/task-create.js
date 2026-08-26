@@ -180,7 +180,6 @@ class CaffoldTaskCreate extends HTMLElement {
       return;
     }
     const prompt = `${event.detail?.prompt ?? ""}`;
-    const attachments = [...(event.detail?.attachments ?? [])];
     this.activeSubmissionId = submissionId;
     this.error = null;
     this.syncComposer();
@@ -191,8 +190,7 @@ class CaffoldTaskCreate extends HTMLElement {
         ...(this.selectedContextPath()
           ? { cwd: this.selectedContextPath() }
           : {}),
-        prompt,
-        images: event.detail?.images ?? [],
+        titleSource: prompt,
         ...(event.detail?.options ?? {}),
       });
       if (
@@ -201,23 +199,32 @@ class CaffoldTaskCreate extends HTMLElement {
       ) {
         return;
       }
-      this.activeSubmissionId = "";
-      this.syncComposer();
-      this.renderStatus();
-      this.composer()?.resolveSubmission(submissionId, {
-        status: "accepted",
-        resetOptions: true,
-      });
-      // The prompt travels with the Task it created. Its first turn begins
-      // after this answer, so the Task being opened is where the prompt has to
-      // be shown until the agent reports it back.
+      const submission = this.composer()?.submissionSnapshot(submissionId);
+      if (!submission) {
+        throw new Error("The created Task lost the prompt it was meant to submit.");
+      }
+      // Creation has accepted only the empty Task. The Task Detail composer
+      // takes ownership of the still-pending message before navigation and
+      // sends it through the same prompt path as every later message.
+      const handoff = { detail, submission, adopted: false };
       this.dispatchEvent(
         new CustomEvent("caffold:task-created", {
           bubbles: true,
           composed: true,
-          detail: { detail, submission: { prompt, attachments } },
+          detail: handoff,
         }),
       );
+      if (!handoff.adopted) {
+        throw new Error("The created Task could not take ownership of its prompt.");
+      }
+      this.composer()?.takeSubmission(submissionId);
+      // The pending request and its exact options now belong to the Task
+      // composer. End this New Task editing lifetime so a later New surface
+      // starts from canonical defaults instead of inheriting the old request.
+      this.composer()?.endEditingLifetime();
+      this.activeSubmissionId = "";
+      this.syncComposer();
+      this.renderStatus();
     } catch (error) {
       if (
         generation !== this.requestGeneration ||
@@ -275,11 +282,10 @@ class CaffoldTaskCreate extends HTMLElement {
 
   // What this surface has to say about the request it is holding.
   //
-  // Creating answers once the Task exists, and the agent takes the prompt after
-  // that. The wait in between is the person's to see: an emptied composer on
-  // its own says only that something was sent somewhere. The region is left
-  // alone while it already says this, so a live region is not re-announced for
-  // an unchanged state.
+  // This surface waits only for the empty Task to be committed. Once that
+  // answers, the retained submission moves into the visible Task composer.
+  // The region is left alone while it already says this, so a live region is
+  // not re-announced for an unchanged state.
   renderStatus() {
     const region = this.querySelector(":scope > .task-create-status-region");
     if (!region) {

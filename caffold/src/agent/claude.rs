@@ -1732,6 +1732,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_unprompted_conversation_survives_backend_replacement_by_exact_live_session() {
+        // A new Claude Task has no transcript before its ordinary first prompt.
+        // The runner-held session is nevertheless exact provider evidence, so
+        // a replacement client takes that same session up without inventing a
+        // prompt, starting a fresh conversation, or consulting message content.
+        let (first, runner) = ClaudeClient::mock();
+        let conversation = first
+            .start_conversation(CWD, &ClaudeTurnOptions::default())
+            .await
+            .expect("the empty conversation starts");
+        assert!(runner.prompts(&conversation.id).await.is_empty());
+
+        let second = ClaudeClient::with_runner(first.inner.runner.clone());
+        let resumed = second
+            .open_conversation(&conversation.id, CWD, &ClaudeTurnOptions::default())
+            .await
+            .expect("the replacement client takes up the live session");
+
+        assert_eq!(resumed.id, conversation.id);
+        assert!(resumed.turns.is_empty());
+        assert!(runner.prompts(&conversation.id).await.is_empty());
+        assert!(second.live_conversations().await.contains(&conversation.id));
+    }
+
+    #[tokio::test]
     async fn a_turn_that_is_stopped_leaves_nothing_still_running() {
         let (client, runner, mut events) = watching().await;
         running_turn(&client, &mut events, "run it").await;

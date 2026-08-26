@@ -1091,23 +1091,6 @@ pub(in crate::app) fn accepted_user_message_event(
         .expect("an accepted prompt is a displayable user message")
 }
 
-/// A first turn that could not begin, said in the Task it was meant for.
-///
-/// Creating a Task answers as soon as the Task exists, so a first turn that
-/// the agent never took has nobody left to fail to. The conversation is where
-/// the prompt already is, and this is what stands beside it in place of the
-/// answer that never came.
-pub(in crate::app) fn first_turn_failed_event(thread_id: &str, reason: &str) -> TaskEventRecord {
-    task_event_record(
-        thread_id,
-        &format!("first-turn-failed:{}", uuid::Uuid::new_v4()),
-        "task_failed",
-        &format!("The first turn could not be started: {reason}"),
-        Some(json!({ "threadId": thread_id })),
-        now_ms(),
-    )
-}
-
 /// One record, in the shape the interface reads every event in.
 ///
 /// The identifier is scoped to its thread so that events from two Tasks cannot
@@ -3001,45 +2984,6 @@ mod tests {
         );
         assert_eq!(observation.session_revision, Some(4));
         assert_eq!(observation.event.position.anchor_ms, 10);
-    }
-
-    #[test]
-    fn a_first_turn_failure_stands_in_the_conversation_beside_its_prompt() {
-        let cache = LiveTaskEventCache::default();
-        let accepted = codex_item(
-            ActivityStatus::Completed,
-            json!({
-                "type": "userMessage",
-                "id": "accepted_projection",
-                "clientId": "message_1",
-                "content": [{ "type": "text", "text": "Read the planner" }]
-            }),
-        )
-        .expect("accepted user message");
-        let prompt = cache.record_accepted(accepted_user_message_event(
-            "thread_1", "turn_1", &accepted, 10,
-        ));
-        let failure = cache.record_local(first_turn_failed_event(
-            "thread_1",
-            "the agent could not be reached",
-        ));
-
-        assert_eq!(failure.event_type, "task_failed");
-        assert_eq!(
-            failure.summary,
-            "The first turn could not be started: the agent could not be reached"
-        );
-        assert!(failure.id.starts_with("thread_1:"));
-        // No turn names it, so it reads with the prompt it was for rather than
-        // opening a turn of its own.
-        assert!(
-            failure
-                .payload
-                .as_ref()
-                .and_then(|payload| payload.get("turnId"))
-                .is_none()
-        );
-        assert_eq!(cache.for_thread("thread_1"), vec![prompt, failure]);
     }
 
     #[test]

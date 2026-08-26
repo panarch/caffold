@@ -10,7 +10,7 @@ export async function installTaskLoopFixture(
   {
     completedAssistantResponse: completedAssistantResponseOverride,
     contextPath = "src",
-    deferFirstTurn = false,
+    deferInitialPrompt = false,
     fileLinks = [],
     holdCreateResponse = false,
     threadId = "thread_12345678",
@@ -81,13 +81,17 @@ export async function installTaskLoopFixture(
   let task = null;
   let events = [];
   let createTaskRequests = 0;
+  let initialPromptRequests = 0;
+  let initialPromptBody = null;
   let followUpRequests = 0;
   let taskDetailReadRequests = 0;
   let approvalRequests = 0;
   let omitCompletedCommandFromDetail = false;
-  let startFirstTurn = () => {};
   let resolveCreateRequest;
   let releaseCreateResponse;
+  let resolveInitialPromptRequest;
+  let releaseInitialPromptResponse;
+  let resolveInitialPromptHandled;
   let resolveFollowUpRequest;
   let releaseFollowUpResponse;
   let resolveCanonicalFollowUpRequest;
@@ -97,6 +101,15 @@ export async function installTaskLoopFixture(
   });
   const createResponseReleased = new Promise((resolve) => {
     releaseCreateResponse = resolve;
+  });
+  const initialPromptRequested = new Promise((resolve) => {
+    resolveInitialPromptRequest = resolve;
+  });
+  const initialPromptResponseReleased = new Promise((resolve) => {
+    releaseInitialPromptResponse = resolve;
+  });
+  const initialPromptHandled = new Promise((resolve) => {
+    resolveInitialPromptHandled = resolve;
   });
   const followUpRequested = new Promise((resolve) => {
     resolveFollowUpRequest = resolve;
@@ -230,11 +243,11 @@ export async function installTaskLoopFixture(
       createTaskRequests += 1;
       const body = request.postDataJSON();
       expect(body.cwd).toBe(contextPath);
-      expect(body.prompt).toBe("Inspect the planner changes");
+      expect(body.titleSource).toBe("Inspect the planner changes");
       expect(body.model).toBe("gpt-5.6-sol");
       expect(body.effort).toBe("xhigh");
-      expect(body.images).toHaveLength(1);
-      expect(body.images[0]).toMatch(/^data:image\/png;base64,/);
+      expect(body).not.toHaveProperty("prompt");
+      expect(body).not.toHaveProperty("images");
       const createdTask = {
         id: threadId,
         threadId,
@@ -254,83 +267,12 @@ export async function installTaskLoopFixture(
         updatedMs: now + 4,
         recencyMs: now + 4,
       };
-      // Creation answers with a Task whose first turn has not begun: no turn,
-      // no prompt of its own, and nothing the agent has said yet.
+      // Creation commits exactly the empty Task. The retained browser input is
+      // submitted separately through the prompt route below.
       task = {
         ...createdTask,
         ...canonicalTaskState("idle"),
         lastEventSummary: null,
-      };
-      const firstTurnEvents = [
-        eventRecord("event_1", "prompt_sent", "Prompt sent", { prompt: body.prompt }, 1),
-        eventRecord(
-          "event_1_user",
-          "user_message",
-          "User prompt",
-          {
-            prompt: "",
-            text: [
-              "# Files mentioned by the user:",
-              "",
-              "## planner-layout.png: /tmp/planner-layout.png",
-              "",
-              "## My request for Codex:",
-              body.prompt,
-            ].join("\n"),
-            turnId: "turn_1",
-            content: [
-              {
-                type: "text",
-                text: body.prompt,
-              },
-              {
-                type: "image",
-                url: body.images[0],
-                name: "planner-layout.png",
-              },
-              {
-                type: "localImage",
-                path: "/tmp/planner-layout.png",
-                name: "server-reference.png",
-              },
-            ],
-          },
-          2,
-        ),
-        eventRecord(
-          "event_2",
-          "thread_started",
-          "Thread started",
-          { threadId },
-          3,
-        ),
-        eventRecord("event_3", "turn_started", "Turn started", { turnId: "turn_1" }, 4),
-        eventRecord(
-          "event_4",
-          "approval_requested",
-          "Command approval requested",
-          {
-            approvalId: "approval_1",
-            title: "Command approval requested",
-            reason: "Run the test suite",
-            command: "cargo test",
-            cwd: "src",
-            decisions: ["allow", "allowAlways", "deny", "denyAndStop"],
-          },
-          5,
-        ),
-      ];
-      startFirstTurn = () => {
-        task = {
-          ...createdTask,
-          ...canonicalTaskState("active", {
-            activeFlags: ["waitingOnApproval"],
-            turnId: "turn_1",
-            latestTurnStatus: "inProgress",
-          }),
-          lastEventSummary: "Command approval requested",
-        };
-        events = firstTurnEvents;
       };
       const created = detailResponse({
         events: [],
@@ -346,10 +288,6 @@ export async function installTaskLoopFixture(
       if (holdCreateResponse) {
         await createResponseReleased;
       }
-      if (!deferFirstTurn) {
-        startFirstTurn();
-      }
-
       return route.fulfill({
         contentType: "application/json",
         body: JSON.stringify(created),
@@ -377,6 +315,115 @@ export async function installTaskLoopFixture(
       method === "POST"
     ) {
       const body = request.postDataJSON();
+      if (body.prompt === "Inspect the planner changes") {
+        initialPromptRequests += 1;
+        initialPromptBody = body;
+        expect(body.model).toBe("gpt-5.6-sol");
+        expect(body.effort).toBe("xhigh");
+        expect(body.activeTurnId).toBeNull();
+        expect(body.images).toHaveLength(1);
+        expect(body.images[0]).toMatch(/^data:image\/png;base64,/);
+        resolveInitialPromptRequest();
+        const outcome = deferInitialPrompt
+          ? await initialPromptResponseReleased
+          : "accept";
+        if (outcome === "reject") {
+          resolveInitialPromptHandled();
+          return route.fulfill({
+            status: 422,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "Prompt request failed" }),
+          });
+        }
+        task = {
+          ...task,
+          ...canonicalTaskState("active", {
+            activeFlags: ["waitingOnApproval"],
+            turnId: "turn_1",
+            latestTurnStatus: "inProgress",
+          }),
+          lastEventSummary: "Command approval requested",
+        };
+        events = [
+          eventRecord(
+            "event_1",
+            "prompt_sent",
+            "Prompt sent",
+            { prompt: body.prompt },
+            1,
+          ),
+          eventRecord(
+            "event_1_user",
+            "user_message",
+            "User prompt",
+            {
+              prompt: "",
+              text: [
+                "# Files mentioned by the user:",
+                "",
+                "## planner-layout.png: /tmp/planner-layout.png",
+                "",
+                "## My request for Codex:",
+                body.prompt,
+              ].join("\n"),
+              turnId: "turn_1",
+              itemId: "message_initial",
+              content: [
+                { type: "text", text: body.prompt },
+                {
+                  type: "image",
+                  url: body.images[0],
+                  name: "planner-layout.png",
+                },
+                {
+                  type: "localImage",
+                  path: "/tmp/planner-layout.png",
+                  name: "server-reference.png",
+                },
+              ],
+            },
+            2,
+          ),
+          eventRecord(
+            "event_2",
+            "thread_started",
+            "Thread started",
+            { threadId },
+            3,
+          ),
+          eventRecord(
+            "event_3",
+            "turn_started",
+            "Turn started",
+            { turnId: "turn_1" },
+            4,
+          ),
+          eventRecord(
+            "event_4",
+            "approval_requested",
+            "Command approval requested",
+            {
+              approvalId: "approval_1",
+              title: "Command approval requested",
+              reason: "Run the test suite",
+              command: "cargo test",
+              cwd: "src",
+              decisions: ["allow", "allowAlways", "deny", "denyAndStop"],
+            },
+            5,
+          ),
+        ];
+        resolveInitialPromptHandled();
+        return route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            threadId,
+            turnId: "turn_1",
+            userMessageId: "message_initial",
+            steered: false,
+          }),
+        });
+      }
       followUpRequests += 1;
       if (body.prompt === "Prompt that fails") {
         return route.fulfill({
@@ -712,11 +759,11 @@ export async function installTaskLoopFixture(
     );
   };
 
-  // The agent takes the first prompt, and the Task's own stream carries what
-  // it said — the same way the server reports a turn that began after its
-  // creation was already answered.
-  const releaseFirstTurn = async () => {
-    startFirstTurn();
+  // Release the ordinary initial prompt response, then project the exact
+  // accepted user item through the Task stream.
+  const releaseInitialPrompt = async () => {
+    releaseInitialPromptResponse("accept");
+    await initialPromptHandled;
     await emitToDetailStream("task-sync", {
       threadId,
       revision: 2,
@@ -725,23 +772,9 @@ export async function installTaskLoopFixture(
     });
   };
 
-  const failFirstTurn = async (
-    reason = "The first turn could not be started: the agent could not be reached.",
-  ) => {
-    const failure = eventRecord(
-      "event_first_turn_failed",
-      "task_failed",
-      reason,
-      { threadId },
-      2,
-    );
-    events = [...events, failure];
-    await emitToDetailStream("task-event", {
-      threadId,
-      revision: 2,
-      eventRevision: 2,
-      event: failure,
-    });
+  const rejectInitialPrompt = async () => {
+    releaseInitialPromptResponse("reject");
+    await initialPromptHandled;
   };
 
   const seedCompletedTask = async () => {
@@ -749,24 +782,44 @@ export async function installTaskLoopFixture(
     const image =
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
     await page.evaluate(
-      async ({ contextPath, image }) => {
+      async (contextPath) => {
         const created = await fetch("/api/tasks", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             cwd: contextPath,
-            prompt: "Inspect the planner changes",
+            titleSource: "Inspect the planner changes",
             model: "gpt-5.6-sol",
             effort: "xhigh",
             permissionMode: "approveForMe",
-            images: [image],
           }),
         });
         if (!created.ok) {
           throw new Error(`task seed failed: ${created.status}`);
         }
       },
-      { contextPath, image },
+      contextPath,
+    );
+    await page.evaluate(
+      async ({ threadId, image }) => {
+        const prompted = await fetch(`/api/tasks/${threadId}/prompts`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            prompt: "Inspect the planner changes",
+            model: "gpt-5.6-sol",
+            effort: "xhigh",
+            permissionMode: "approveForMe",
+            fastMode: false,
+            activeTurnId: null,
+            images: [image],
+          }),
+        });
+        if (!prompted.ok) {
+          throw new Error(`task prompt seed failed: ${prompted.status}`);
+        }
+      },
+      { threadId, image },
     );
     await page.evaluate(async (threadId) => {
       const approved = await fetch(
@@ -790,8 +843,9 @@ export async function installTaskLoopFixture(
     pageErrors,
     createRequested,
     releaseCreateResponse,
-    releaseFirstTurn,
-    failFirstTurn,
+    initialPromptRequested,
+    releaseInitialPrompt,
+    rejectInitialPrompt,
     followUpRequested,
     releaseFollowUpResponse,
     canonicalFollowUpRequested,
@@ -811,6 +865,12 @@ export async function installTaskLoopFixture(
     },
     get createTaskRequests() {
       return createTaskRequests;
+    },
+    get initialPromptRequests() {
+      return initialPromptRequests;
+    },
+    get initialPromptBody() {
+      return initialPromptBody;
     },
     get followUpRequests() {
       return followUpRequests;
