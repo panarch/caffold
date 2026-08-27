@@ -23,6 +23,7 @@
 
 mod support;
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use support::{Backend, TurnState};
@@ -218,6 +219,45 @@ async fn a_task_can_be_spoken_to_again_after_the_backend_is_replaced() {
         "and one sent afterwards starts a turn of its own"
     );
     task.wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn a_task_reads_as_working_before_its_prompt_receives_a_turn_identity() {
+    // The prompt request waits for Claude to replay the prompt under its exact
+    // turn identity. Session activity arrives earlier and may make the Task
+    // visibly active, but it must not finish that identity handoff itself.
+    let backend = Backend::start().await;
+    let task = Arc::new(backend.create_empty_task("activity", MODEL).await);
+
+    let saying = tokio::spawn({
+        let task = Arc::clone(&task);
+        async move {
+            task.say_with_options(SLOW_WORK, MODEL, "bypassPermissions")
+                .await
+        }
+    });
+
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let mut early_activity = None;
+    while Instant::now() < deadline {
+        let reading = task.state().await;
+        if reading.state == TurnState::Running {
+            early_activity = Some((reading.turn_id, !saying.is_finished()));
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+
+    assert_eq!(
+        early_activity,
+        Some((None, true)),
+        "activity is visible before Claude supplies the prompt's turn identity and answers the request"
+    );
+
+    saying.await.expect("the prompt request finishes");
+    task.wait_for(TurnState::Idle, Duration::from_secs(300))
         .await;
 }
 

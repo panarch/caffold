@@ -187,6 +187,19 @@ struct Session {
 struct SessionState {
     /// What the agent said about itself when it started.
     introduction: Option<Introduction>,
+    /// Whether Claude says this session is working.
+    ///
+    /// `None` means this process has not observed Claude's activity protocol,
+    /// so the established turn-based status remains the compatibility
+    /// fallback. An observation never identifies or ends a turn.
+    activity: Option<SessionActivity>,
+    /// Whether this backend has received a live activity frame from the child.
+    ///
+    /// An initialize answer is only a snapshot: a child handed back by an
+    /// older backend may not have been spawned with activity events enabled.
+    /// Until a frame proves the stream exists, lifecycle reports retain the
+    /// established turn-based fallback.
+    activity_stream_observed: bool,
     /// Tool calls waiting on their results.
     calls: ToolCalls,
     /// The turn Caffold opened and the agent has not answered.
@@ -252,6 +265,28 @@ struct SessionState {
     /// watched — which is honest, and the only answer there is.
     opened_at_ms: u64,
     moved_at_ms: u64,
+}
+
+/// Claude's session-scoped account of whether it is working.
+///
+/// `requires_action` does not say what Claude is waiting for. Caffold names a
+/// wait only when it holds the corresponding control request itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionActivity {
+    Idle,
+    Running,
+    RequiresAction,
+}
+
+impl SessionActivity {
+    fn read(value: &str) -> Option<Self> {
+        match value {
+            "idle" => Some(Self::Idle),
+            "running" => Some(Self::Running),
+            "requires_action" => Some(Self::RequiresAction),
+            _ => None,
+        }
+    }
 }
 
 /// A submitted prompt waiting for Claude to establish its turn.
@@ -1050,10 +1085,6 @@ fn open_turn(state: &mut SessionState, turn_id: &str, said: Vec<MessageContent>)
 }
 
 /// What the conversation is doing, from what the agent has reported.
-///
-/// A prompt accepted by the runner but not identified by Claude is request
-/// state, not evidence of an active turn. Keeping that distinction here avoids
-/// turning transport progress into agent-owned domain state.
 fn status_of(state: &SessionState) -> ThreadStatus {
     if state.ended {
         return ThreadStatus::Idle;
@@ -1067,11 +1098,39 @@ fn status_of(state: &SessionState) -> ThreadStatus {
             active_flags: vec![ThreadActiveFlag::WaitingOnApproval],
         };
     }
-    match &state.active_turn {
+    match state.activity {
+        Some(SessionActivity::Idle) => ThreadStatus::Idle,
+        Some(SessionActivity::Running | SessionActivity::RequiresAction) => ThreadStatus::Active {
+            active_flags: Vec::new(),
+        },
+        // Sessions started before Caffold enabled Claude's activity reports,
+        // or an installation that does not support them, keep the established
+        // turn-based behavior. A pending prompt alone remains request state.
+        None if state.active_turn.is_some() => ThreadStatus::Active {
+            active_flags: Vec::new(),
+        },
         None => ThreadStatus::Idle,
+    }
+}
+
+/// The status Claude used before it exposed session activity independently.
+///
+/// This remains the fallback for a child that has not proved it can stream
+/// activity changes, including one handed back across a backend replacement.
+fn turn_status_of(state: &SessionState) -> ThreadStatus {
+    if state.ended {
+        return ThreadStatus::Idle;
+    }
+    if !state.pending_approvals.is_empty() {
+        return ThreadStatus::Active {
+            active_flags: vec![ThreadActiveFlag::WaitingOnApproval],
+        };
+    }
+    match &state.active_turn {
         Some(_) => ThreadStatus::Active {
             active_flags: Vec::new(),
         },
+        None => ThreadStatus::Idle,
     }
 }
 
@@ -1172,6 +1231,13 @@ mod test_support {
             "capabilities": ["interrupt_receipt_v1"],
             "fast_mode_state": "off",
             "fast_mode_disabled_reason": "extra_usage_disabled",
+        })
+    }
+    pub(super) fn session_state_frame(state: &str) -> Value {
+        json!({
+            "type": "system",
+            "subtype": "session_state_changed",
+            "state": state,
         })
     }
     pub(super) fn assistant_frame(id: &str, content: Value) -> Value {
@@ -1337,6 +1403,7 @@ mod test_support {
         match kind {
             SessionEventKind::ConversationStarted { .. } => "conversation started",
             SessionEventKind::StatusChanged { .. } => "status change",
+            SessionEventKind::ActivityChanged { .. } => "activity change",
             SessionEventKind::TitleChanged { .. } => "title change",
             SessionEventKind::SettingsChanged { .. } => "settings",
             SessionEventKind::TurnStarted { .. } => "turn start",

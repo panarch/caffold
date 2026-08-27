@@ -156,6 +156,17 @@ identities. Caffold reads the agent-owned transcript for the conversation and
 lays the live session state over it; it never persists a normalized transcript
 of its own.
 
+Claude session activity and turn lifecycle are independent provider facts.
+Each Claude child reports its moves between idle, working, and requiring action;
+the same state is returned when a surviving child is initialized again. Caffold
+projects that observation onto the Task's activity without creating, identifying,
+or ending a turn. Replayed prompts and transcript or result evidence remain the
+only writers of Claude's turn ledger. Codex status and turn lifecycle retain
+their app-server-owned coupled path through the same shared Task state.
+An initialize answer is only a current snapshot: until this backend sees a live
+activity frame, it retains the turn-based fallback for a child that may have
+survived from before activity events were enabled.
+
 The runner stops after ten minutes without a backend subscriber, ending its
 children and removing its socket. An explicit Claude runtime restart does the
 same immediately and then starts a fresh runner. Ended conversations remain
