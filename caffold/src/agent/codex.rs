@@ -50,17 +50,18 @@ use protocol::{
     CAFFOLD_CLIENT_NAME, CAFFOLD_CLIENT_TITLE, CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS, CONFIG_READ,
     ConfigReadResponse, EmptyResponse, INITIALIZE, INITIALIZED, JsonRpcError,
     MCP_SERVER_RESOURCE_READ, MODEL_LIST, PERMISSION_PROFILE_LIST, PermissionProfileListResponse,
-    THREAD_ARCHIVE, THREAD_DELETE, THREAD_LIST, THREAD_NAME_SET, THREAD_READ, THREAD_RESUME,
-    THREAD_SECTION_CREATE, THREAD_SECTION_LIST, THREAD_SECTION_MOVE, THREAD_START,
+    THREAD_ARCHIVE, THREAD_DELETE, THREAD_FORK, THREAD_LIST, THREAD_NAME_SET, THREAD_READ,
+    THREAD_RESUME, THREAD_SECTION_CREATE, THREAD_SECTION_LIST, THREAD_SECTION_MOVE, THREAD_START,
     THREAD_TURNS_LIST, THREAD_UNARCHIVE, THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START,
-    TURN_STEER, ThreadReadResponse, ThreadSectionCreateResponse, ThreadSectionMoveResponse,
-    ThreadStartResponse, TurnStartResponse, TurnSteerResponse, account_read_params,
-    config_read_params, decode_response, model_list_params, permission_profile_list_params,
-    section_thread_list_params, thread_archive_params, thread_delete_params, thread_list_params,
-    thread_read_params, thread_resume_params_with_config, thread_section_create_params,
-    thread_section_list_params, thread_section_move_params, thread_set_name_params,
-    thread_start_params_with_config, thread_turns_list_params, thread_unarchive_params,
-    thread_unsubscribe_params, turn_interrupt_params, turn_start_params, turn_steer_params,
+    TURN_STEER, ThreadForkResponse, ThreadReadResponse, ThreadSectionCreateResponse,
+    ThreadSectionMoveResponse, ThreadStartResponse, TurnStartResponse, TurnSteerResponse,
+    account_read_params, config_read_params, decode_response, model_list_params,
+    permission_profile_list_params, section_thread_list_params, thread_archive_params,
+    thread_delete_params, thread_fork_params_with_config, thread_list_params, thread_read_params,
+    thread_resume_params_with_config, thread_section_create_params, thread_section_list_params,
+    thread_section_move_params, thread_set_name_params, thread_start_params_with_config,
+    thread_turns_list_params, thread_unarchive_params, thread_unsubscribe_params,
+    turn_interrupt_params, turn_start_params, turn_steer_params,
 };
 pub use protocol::{
     CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest, CodexThread,
@@ -105,8 +106,8 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(500);
 
 fn request_timeout(method: &str) -> Duration {
     match method {
-        THREAD_LIST | THREAD_LOADED_LIST | THREAD_READ | THREAD_RESUME | THREAD_SECTION_LIST
-        | THREAD_TURNS_LIST => HISTORY_REQUEST_TIMEOUT,
+        THREAD_LIST | THREAD_LOADED_LIST | THREAD_READ | THREAD_RESUME | THREAD_FORK
+        | THREAD_SECTION_LIST | THREAD_TURNS_LIST => HISTORY_REQUEST_TIMEOUT,
         _ => INTERACTIVE_REQUEST_TIMEOUT,
     }
 }
@@ -232,6 +233,18 @@ pub enum CodexRuntimeEvent {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexThreadStart {
+    pub thread_id: String,
+    pub thread: CodexThread,
+    pub permission_mode: Option<CodexPermissionMode>,
+    pub model: Option<String>,
+    pub reasoning_effort: Option<String>,
+    pub fast_mode: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexThreadFork {
+    pub source_thread_id: String,
     pub thread_id: String,
     pub thread: CodexThread,
     pub permission_mode: Option<CodexPermissionMode>,
@@ -908,6 +921,152 @@ impl CodexThreadClient {
         })
     }
 
+    /// Fork a settled Codex thread into a new thread rooted at `cwd`.
+    ///
+    /// `thread/fork` creates the provider conversation before Caffold can claim
+    /// it. Until the response has proved that it names a distinct child with
+    /// the requested cwd and a fresh Caffold MCP session, every failure deletes
+    /// that child again. The source thread is never resumed or otherwise
+    /// mutated here.
+    pub async fn fork_thread(
+        &self,
+        source_thread_id: &str,
+        cwd: &str,
+    ) -> Result<CodexThreadFork, CodexThreadError> {
+        let pending_binding = match &self.mcp {
+            Some(bindings) => Some(
+                bindings
+                    .begin_pending()
+                    .await
+                    .map_err(CodexThreadError::Protocol)?,
+            ),
+            None => None,
+        };
+        let mcp_config = self
+            .mcp
+            .as_ref()
+            .zip(pending_binding.as_deref())
+            .map(|(bindings, token)| bindings.thread_config(token));
+        let request = self
+            .request_typed(
+                THREAD_FORK,
+                thread_fork_params_with_config(source_thread_id, cwd, mcp_config),
+            )
+            .await;
+        let typed: ThreadForkResponse = match request {
+            Ok(typed) => typed,
+            Err(error) => {
+                self.cancel_pending_mcp_binding(pending_binding.as_deref(), "thread/fork")
+                    .await;
+                return Err(error);
+            }
+        };
+        let thread_id = typed.thread.id.clone();
+        let trimmed_thread_id = thread_id.trim();
+        let reported_source = typed.thread.extra.get("forkedFromId");
+        let invalid_source =
+            reported_source.and_then(|reported_source| match reported_source.as_str() {
+                Some(value) if value == source_thread_id => None,
+                Some(_) => Some(
+                    "Codex app-server returned a fork with a different source thread id."
+                        .to_string(),
+                ),
+                None if reported_source.is_null() => None,
+                None => {
+                    Some("Codex app-server returned an invalid fork source thread id.".to_string())
+                }
+            });
+        let invalid = if trimmed_thread_id.is_empty() {
+            Some("Codex app-server returned an empty child thread id.".to_string())
+        } else if trimmed_thread_id != thread_id {
+            Some("Codex app-server returned an invalid child thread id.".to_string())
+        } else if thread_id == source_thread_id {
+            Some("Codex app-server returned the source thread as its own fork.".to_string())
+        } else if let Some(message) = invalid_source {
+            Some(message)
+        } else if typed.cwd != cwd || typed.thread.cwd != cwd {
+            Some("Codex app-server silently changed the fork working directory.".to_string())
+        } else if !matches!(typed.thread.status, protocol::ThreadStatus::Idle) {
+            Some("Codex app-server returned a fork that was not idle.".to_string())
+        } else {
+            None
+        };
+        if let Some(message) = invalid {
+            self.cancel_pending_mcp_binding(pending_binding.as_deref(), "invalid thread/fork")
+                .await;
+            if !trimmed_thread_id.is_empty() && thread_id != source_thread_id {
+                self.delete_unclaimed_thread(&thread_id, "invalid thread/fork")
+                    .await;
+            }
+            return Err(CodexThreadError::Protocol(message));
+        }
+
+        if let Some((bindings, token)) = self.mcp.as_ref().zip(pending_binding.as_deref()) {
+            if let Err(message) = bindings.bind_pending(token, &thread_id).await {
+                let _ = bindings.cancel_pending(token).await;
+                self.delete_unclaimed_thread(&thread_id, "failed thread/fork binding")
+                    .await;
+                return Err(CodexThreadError::Protocol(message));
+            }
+            if let Err(error) = self.promote_caffold_mcp_session(&thread_id).await {
+                let _ = bindings.cancel_pending(token).await;
+                self.delete_unclaimed_thread(&thread_id, "failed thread/fork promotion")
+                    .await;
+                return Err(error);
+            }
+            if let Err(message) = bindings.complete_bootstrap(token, &thread_id).await {
+                let _ = bindings.cancel_pending(token).await;
+                self.delete_unclaimed_thread(&thread_id, "failed thread/fork bootstrap")
+                    .await;
+                return Err(CodexThreadError::Protocol(message));
+            }
+        }
+
+        let permission_mode = (typed.extra.contains_key("approvalPolicy")
+            || typed.extra.contains_key("approvalsReviewer")
+            || typed.extra.contains_key("activePermissionProfile")
+            || typed.extra.contains_key("sandbox"))
+        .then(|| CodexPermissionMode::from_settings(&typed.extra));
+        let model = typed
+            .extra
+            .get("model")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let reasoning_effort = typed
+            .extra
+            .get("reasoningEffort")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let fast_mode =
+            is_fast_service_tier(typed.extra.get("serviceTier").and_then(Value::as_str));
+        Ok(CodexThreadFork {
+            source_thread_id: source_thread_id.to_string(),
+            thread_id,
+            thread: typed.thread,
+            permission_mode,
+            model,
+            reasoning_effort,
+            fast_mode,
+        })
+    }
+
+    async fn cancel_pending_mcp_binding(&self, binding: Option<&str>, operation: &str) {
+        if let Some((bindings, token)) = self.mcp.as_ref().zip(binding)
+            && let Err(error) = bindings.cancel_pending(token).await
+        {
+            eprintln!("failed to discard a Codex MCP capability after {operation}: {error}");
+        }
+    }
+
+    async fn delete_unclaimed_thread(&self, thread_id: &str, operation: &str) {
+        if let Err(error) = self
+            .request_typed::<EmptyResponse, _>(THREAD_DELETE, thread_delete_params(thread_id))
+            .await
+        {
+            eprintln!("failed to delete an unclaimed Codex thread after {operation}: {error}");
+        }
+    }
+
     pub async fn resume_thread_with_page(
         &self,
         thread_id: &str,
@@ -1422,7 +1581,7 @@ fn classify_json_rpc_error(method: Option<&str>, value: &Value) -> CodexThreadEr
     } else if error.code == -32600
         && matches!(
             method,
-            Some(THREAD_READ | THREAD_RESUME | THREAD_TURNS_LIST)
+            Some(THREAD_READ | THREAD_RESUME | THREAD_FORK | THREAD_TURNS_LIST)
         )
     {
         CodexThreadError::ThreadUnavailable(message)
@@ -1625,6 +1784,7 @@ mod tests {
             THREAD_LIST,
             THREAD_READ,
             THREAD_RESUME,
+            THREAD_FORK,
             THREAD_SECTION_LIST,
             THREAD_TURNS_LIST,
         ] {
@@ -1928,6 +2088,305 @@ mod tests {
             .expect("thread start carries an opaque binding header");
         assert_eq!(bindings.resolve(token).await, None);
         assert_eq!(requests[2].0, MCP_SERVER_RESOURCE_READ);
+    }
+
+    #[tokio::test]
+    async fn forks_threads_with_whole_history_a_project_root_and_fresh_caffold_mcp() {
+        let bindings = CodexMcpBindings::memory("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let client = CodexThreadClient::mock_with_mcp(
+            vec![
+                MockCodexResponse::ok(
+                    THREAD_FORK,
+                    json!({
+                        "thread": {
+                            "id": "thread_child",
+                            "preview": "Inherited history",
+                            "status": { "type": "idle" },
+                            "cwd": "/tmp/project",
+                            "forkedFromId": "thread_source",
+                            "turns": []
+                        },
+                        "cwd": "/tmp/project",
+                        "model": "gpt-5.5",
+                        "reasoningEffort": "high",
+                        "approvalPolicy": "on-request",
+                        "approvalsReviewer": "auto_review",
+                        "sandbox": { "type": "workspaceWrite" },
+                        "serviceTier": "priority"
+                    }),
+                ),
+                MockCodexResponse::ok_for(
+                    MCP_SERVER_RESOURCE_READ,
+                    json!({
+                        "threadId": "thread_child",
+                        "server": CAFFOLD_MCP_SERVER_NAME,
+                        "uri": CAFFOLD_MCP_SESSION_READY_URI,
+                    }),
+                    mcp_resource_result(CAFFOLD_MCP_SESSION_READY_URI),
+                ),
+            ],
+            bindings.clone(),
+        );
+
+        let forked = client
+            .fork_thread("thread_source", "/tmp/project")
+            .await
+            .expect("fork an idle thread");
+
+        assert_eq!(forked.source_thread_id, "thread_source");
+        assert_eq!(forked.thread_id, "thread_child");
+        assert_eq!(forked.model.as_deref(), Some("gpt-5.5"));
+        assert_eq!(forked.reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(
+            forked.permission_mode,
+            Some(CodexPermissionMode::ApproveForMe)
+        );
+        assert!(forked.fast_mode);
+
+        let requests = client.mock_requests().await;
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].0, THREAD_FORK);
+        let request = &requests[0].1;
+        assert_eq!(request["threadId"], "thread_source");
+        assert_eq!(request["cwd"], "/tmp/project");
+        assert_eq!(request["runtimeWorkspaceRoots"], json!(["/tmp/project"]));
+        assert_eq!(request["excludeTurns"], true);
+        assert_eq!(request["deferGoalContinuation"], true);
+        assert_eq!(request.get("lastTurnId"), None);
+        assert_eq!(request.get("beforeTurnId"), None);
+        let token = request["config"]["mcp_servers.caffold"]["http_headers"]
+            [CAFFOLD_MCP_BINDING_HEADER]
+            .as_str()
+            .expect("fork carries a fresh opaque binding header");
+        assert_eq!(bindings.resolve(token).await, None);
+        assert_eq!(requests[1].0, MCP_SERVER_RESOURCE_READ);
+    }
+
+    #[tokio::test]
+    async fn a_mismatched_fork_source_is_deleted_before_it_can_be_claimed() {
+        let bindings = CodexMcpBindings::memory("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let client = CodexThreadClient::mock_with_mcp(
+            vec![
+                MockCodexResponse::ok(
+                    THREAD_FORK,
+                    json!({
+                        "thread": {
+                            "id": "thread_child",
+                            "preview": "Wrong source",
+                            "status": { "type": "idle" },
+                            "cwd": "/tmp/project",
+                            "forkedFromId": "another_source",
+                            "turns": []
+                        },
+                        "cwd": "/tmp/project"
+                    }),
+                ),
+                MockCodexResponse::ok(THREAD_DELETE, json!({})),
+            ],
+            bindings.clone(),
+        );
+
+        let error = client
+            .fork_thread("thread_source", "/tmp/project")
+            .await
+            .expect_err("a provider-mismatched child must be rejected");
+        assert!(error.to_string().contains("different source thread id"));
+
+        let requests = client.mock_requests().await;
+        let token = requests[0].1["config"]["mcp_servers.caffold"]["http_headers"]
+            [CAFFOLD_MCP_BINDING_HEADER]
+            .as_str()
+            .unwrap();
+        assert_eq!(bindings.resolve(token).await, None);
+        assert_eq!(
+            requests[1],
+            (
+                THREAD_DELETE.to_string(),
+                json!({ "threadId": "thread_child" })
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_fork_request_discards_its_pending_caffold_mcp_binding() {
+        let bindings = CodexMcpBindings::memory("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let client = CodexThreadClient::mock_with_mcp(
+            vec![MockCodexResponse::error(
+                THREAD_FORK,
+                CodexThreadError::Protocol("fork unavailable".to_string()),
+            )],
+            bindings.clone(),
+        );
+
+        let error = client
+            .fork_thread("thread_source", "/tmp/project")
+            .await
+            .expect_err("provider fork failure must be reported");
+        assert!(error.to_string().contains("fork unavailable"));
+
+        let requests = client.mock_requests().await;
+        assert_eq!(requests.len(), 1);
+        let token = requests[0].1["config"]["mcp_servers.caffold"]["http_headers"]
+            [CAFFOLD_MCP_BINDING_HEADER]
+            .as_str()
+            .unwrap();
+        assert_eq!(bindings.resolve(token).await, None);
+    }
+
+    #[tokio::test]
+    async fn invalid_fork_children_are_never_returned_or_mistaken_for_the_source() {
+        let cases = [
+            (
+                "empty id",
+                "",
+                json!("thread_source"),
+                json!({ "type": "idle" }),
+                "/tmp/project",
+                false,
+                "empty child thread id",
+            ),
+            (
+                "source id",
+                "thread_source",
+                json!("thread_source"),
+                json!({ "type": "idle" }),
+                "/tmp/project",
+                false,
+                "source thread as its own fork",
+            ),
+            (
+                "whitespace id",
+                " thread_child ",
+                json!("thread_source"),
+                json!({ "type": "idle" }),
+                "/tmp/project",
+                true,
+                "invalid child thread id",
+            ),
+            (
+                "invalid provenance",
+                "thread_child",
+                json!(7),
+                json!({ "type": "idle" }),
+                "/tmp/project",
+                true,
+                "invalid fork source thread id",
+            ),
+            (
+                "changed cwd",
+                "thread_child",
+                json!("thread_source"),
+                json!({ "type": "idle" }),
+                "/tmp/other",
+                true,
+                "silently changed the fork working directory",
+            ),
+            (
+                "active child",
+                "thread_child",
+                json!("thread_source"),
+                json!({ "type": "active", "activeFlags": [] }),
+                "/tmp/project",
+                true,
+                "fork that was not idle",
+            ),
+        ];
+
+        for (
+            label,
+            child_thread_id,
+            forked_from_id,
+            status,
+            response_cwd,
+            delete_child,
+            expected_message,
+        ) in cases
+        {
+            let mut responses = vec![MockCodexResponse::ok(
+                THREAD_FORK,
+                json!({
+                    "thread": {
+                        "id": child_thread_id,
+                        "preview": "Invalid child",
+                        "status": status,
+                        "cwd": "/tmp/project",
+                        "forkedFromId": forked_from_id,
+                        "turns": []
+                    },
+                    "cwd": response_cwd
+                }),
+            )];
+            if delete_child {
+                responses.push(MockCodexResponse::ok(THREAD_DELETE, json!({})));
+            }
+            let client = CodexThreadClient::mock(responses);
+
+            let error = client
+                .fork_thread("thread_source", "/tmp/project")
+                .await
+                .unwrap_err();
+            assert!(
+                error.to_string().contains(expected_message),
+                "{label}: {error}"
+            );
+
+            let requests = client.mock_requests().await;
+            assert_eq!(requests.len(), usize::from(delete_child) + 1, "{label}");
+            if delete_child {
+                assert_eq!(requests[1].0, THREAD_DELETE, "{label}");
+                assert_eq!(requests[1].1["threadId"], child_thread_id, "{label}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_fork_whose_caffold_mcp_session_cannot_be_promoted_is_deleted() {
+        let bindings = CodexMcpBindings::memory("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let client = CodexThreadClient::mock_with_mcp(
+            vec![
+                MockCodexResponse::ok(
+                    THREAD_FORK,
+                    json!({
+                        "thread": {
+                            "id": "thread_child",
+                            "preview": "Unreachable MCP",
+                            "status": { "type": "idle" },
+                            "cwd": "/tmp/project",
+                            "forkedFromId": "thread_source",
+                            "turns": []
+                        },
+                        "cwd": "/tmp/project"
+                    }),
+                ),
+                MockCodexResponse::error(
+                    MCP_SERVER_RESOURCE_READ,
+                    CodexThreadError::Protocol("MCP readiness failed".to_string()),
+                ),
+                MockCodexResponse::ok(THREAD_DELETE, json!({})),
+            ],
+            bindings.clone(),
+        );
+
+        let error = client
+            .fork_thread("thread_source", "/tmp/project")
+            .await
+            .expect_err("unpromoted child must not escape");
+        assert!(error.to_string().contains("MCP readiness failed"));
+
+        let requests = client.mock_requests().await;
+        let token = requests[0].1["config"]["mcp_servers.caffold"]["http_headers"]
+            [CAFFOLD_MCP_BINDING_HEADER]
+            .as_str()
+            .unwrap();
+        assert_eq!(bindings.resolve(token).await, None);
+        assert_eq!(
+            requests
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            [THREAD_FORK, MCP_SERVER_RESOURCE_READ, THREAD_DELETE]
+        );
+        assert_eq!(requests[2].1, json!({ "threadId": "thread_child" }));
     }
 
     #[tokio::test]

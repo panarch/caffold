@@ -51,7 +51,7 @@ use tokio::sync::Mutex as AsyncMutex;
 
 use crate::agent::{Conversation, Driver, ThreadStatus, TurnPage};
 
-const INITIAL_TURNS_PAGE_SIZE: usize = 8;
+pub(super) const INITIAL_TURNS_PAGE_SIZE: usize = 8;
 const VIEWER_HANDOFF_GRACE: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -185,6 +185,14 @@ impl SessionState {
 struct SessionEntry {
     state: AsyncMutex<SessionState>,
     operation: AsyncMutex<()>,
+    /// Provider mutations that must not cross for one conversation.
+    ///
+    /// Resuming a subscription is an internal observation operation. A prompt
+    /// and a fork are different: if they overlap, an idle source can become
+    /// active between the fork precondition read and `thread/fork`. This lock is
+    /// held through the provider mutation, while the narrower `operation` lock
+    /// continues to serialize subscription work inside the session owner.
+    mutation: Arc<AsyncMutex<()>>,
 }
 
 struct SessionState {
@@ -328,6 +336,18 @@ impl TaskSessions {
         self.entries.lock().await.remove(thread_id);
     }
 
+    pub(in crate::app::tasks) async fn reserve_mutation(
+        &self,
+        thread_id: &str,
+    ) -> tokio::sync::OwnedMutexGuard<()> {
+        self.entry(thread_id)
+            .await
+            .mutation
+            .clone()
+            .lock_owned()
+            .await
+    }
+
     async fn entry(&self, thread_id: &str) -> Arc<SessionEntry> {
         let mut entries = self.entries.lock().await;
         entries
@@ -336,6 +356,7 @@ impl TaskSessions {
                 Arc::new(SessionEntry {
                     state: AsyncMutex::new(SessionState::default()),
                     operation: AsyncMutex::new(()),
+                    mutation: Arc::new(AsyncMutex::new(())),
                 })
             })
             .clone()

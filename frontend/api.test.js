@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
-import { getHealth, reorderSection } from "./api.js";
+import { forkTask, getHealth, reorderSection } from "./api.js";
 import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "./origin-reachability.js";
 
 const originalBrowserGlobals = {
@@ -106,6 +106,22 @@ test("serializes Section reorder intent at the API owner", async () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ beforeSectionId: null }),
       },
+    },
+  ]);
+});
+
+test("forks the encoded managed Task id with an empty POST", async () => {
+  const requests = [];
+  installBrowserHarness(async (url, options) => {
+    requests.push({ url: `${url}`, options });
+    return jsonResponse({ threadId: "child" });
+  });
+
+  assert.deepEqual(await forkTask("source/thread"), { threadId: "child" });
+  assert.deepEqual(requests, [
+    {
+      url: "http://127.0.0.1/api/tasks/source%2Fthread/fork",
+      options: { method: "POST" },
     },
   ]);
 });

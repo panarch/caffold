@@ -2,17 +2,14 @@ import {
   renderInlineIcon,
   warmIcons,
 } from "../../../../../../../../components/icons.js";
-import {
-  formatTaskStatus,
-  isTaskTransportStale,
-  taskThreadStatusType,
-} from "../../../../../runtime-state.js";
+import { formatTaskStatus } from "../../../../../runtime-state.js";
 import { shortId } from "../../../../../task-format.js";
 import { taskThreadId } from "../../../../../task-list-model.js";
 import {
   patchTaskStatusChip,
   renderTaskStatusChip,
 } from "../../../../../components/task-status.js";
+import "./info/components/actions.js";
 
 let taskInfoInstanceId = 0;
 
@@ -21,7 +18,10 @@ class CaffoldTaskDetailInfo extends HTMLElement {
     this.ensureState();
     if (!this.listenersAttached) {
       this.listenersAttached = true;
-      this.addEventListener("click", this.boundClick);
+      this.addEventListener(
+        "caffold:task-detail-info-action-intent",
+        this.boundActionIntent,
+      );
       window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     }
     if (this.snapshot.task) {
@@ -38,7 +38,10 @@ class CaffoldTaskDetailInfo extends HTMLElement {
       return;
     }
     this.listenersAttached = false;
-    this.removeEventListener("click", this.boundClick);
+    this.removeEventListener(
+      "caffold:task-detail-info-action-intent",
+      this.boundActionIntent,
+    );
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
@@ -53,7 +56,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
     this.renderedStatusKey = "";
     this.snapshot = normalizedSnapshot();
     this.listenersAttached = false;
-    this.boundClick = (event) => this.handleClick(event);
+    this.boundActionIntent = (event) => this.handleActionIntent(event);
     this.boundIconsReady = () => this.patchStatus();
     warmIcons();
   }
@@ -87,19 +90,19 @@ class CaffoldTaskDetailInfo extends HTMLElement {
     }
   }
 
-  handleClick(event) {
-    const action = closestElement(
-      event.target,
-      '[data-task-info-action="archive"]',
-    );
-    if (!action || action.matches(":disabled")) {
+  handleActionIntent(event) {
+    if (
+      event.target !== this.actions() ||
+      !["archive", "fork"].includes(event.detail?.type)
+    ) {
       return;
     }
+    event.stopPropagation();
     this.dispatchEvent(
       new CustomEvent("caffold:task-detail-info-intent", {
         bubbles: true,
         composed: true,
-        detail: { type: "archive" },
+        detail: { type: event.detail.type },
       }),
     );
   }
@@ -151,15 +154,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
             <dd data-task-info-field="worktree-ref"></dd>
           </div>
         </dl>
-        <div class="task-detail-archive-action">
-          <p>Archive removes this task from the active list. Its worktree and files are retained.</p>
-          <button
-            type="button"
-            class="task-secondary-button"
-            data-task-info-action="archive"
-          >Archive task</button>
-          <p class="task-detail-archive-error" role="alert" hidden></p>
-        </div>
+        <caffold-task-detail-info-actions></caffold-task-detail-info-actions>
       </div>
     `;
     this.renderedThreadId = taskThreadId(task);
@@ -199,7 +194,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
       this.querySelector('[data-task-info-field="worktree-ref"]'),
       taskWorktreeRef(task),
     );
-    this.patchArchive();
+    this.actions()?.setSnapshot(this.snapshot);
   }
 
   patchStatus() {
@@ -230,32 +225,16 @@ class CaffoldTaskDetailInfo extends HTMLElement {
     this.renderedStatusKey = renderKey;
   }
 
-  patchArchive() {
-    const task = this.snapshot.task;
-    const button = this.querySelector('[data-task-info-action="archive"]');
-    const error = this.querySelector(".task-detail-archive-error");
-    if (!task || !button || !error) {
-      return;
-    }
-
-    const loading = this.snapshot.archiveState.loading;
-    button.disabled =
-      loading ||
-      isTaskTransportStale(this.snapshot.transportState) ||
-      taskThreadStatusType(task) === "active";
-    setText(button, loading ? "Archiving..." : "Archive task");
-
-    const message = archiveErrorMessage(this.snapshot.archiveState.error);
-    setText(error, message);
-    error.hidden = !message;
-  }
-
   infoButton() {
     return this.querySelector(".task-detail-info-button");
   }
 
   infoPopover() {
     return this.querySelector(".task-detail-popover");
+  }
+
+  actions() {
+    return this.querySelector("caffold-task-detail-info-actions");
   }
 }
 
@@ -268,9 +247,14 @@ function normalizedSnapshot(snapshot = {}) {
     task: snapshot.task ?? null,
     transportState: snapshot.transportState ?? "idle",
     contextPath: `${snapshot.contextPath ?? "."}`,
+    provider: `${snapshot.provider ?? ""}`,
     archiveState: {
       loading: Boolean(snapshot.archiveState?.loading),
       error: snapshot.archiveState?.error ?? null,
+    },
+    forkState: {
+      loading: Boolean(snapshot.forkState?.loading),
+      error: snapshot.forkState?.error ?? null,
     },
   };
 }
@@ -278,10 +262,6 @@ function normalizedSnapshot(snapshot = {}) {
 function taskWorktreeRef(task) {
   const branch = `${task?.worktree?.branch ?? ""}`.trim();
   return branch || shortId(task?.worktree?.headSha ?? "");
-}
-
-function archiveErrorMessage(error) {
-  return error ? `${error.message ?? error}` : "";
 }
 
 function patchStatusContent(button, content) {
@@ -308,8 +288,4 @@ function setText(element, value) {
   if (element && element.textContent !== value) {
     element.textContent = value;
   }
-}
-
-function closestElement(target, selector) {
-  return target instanceof Element ? target.closest(selector) : null;
 }

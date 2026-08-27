@@ -1,5 +1,6 @@
 import {
   archiveTask,
+  forkTask,
   getTask,
   interruptTask,
   markTaskSeen,
@@ -85,9 +86,11 @@ class CaffoldTaskDetail extends HTMLElement {
     this.interruptActionToken = 0;
     this.interruptStateValue = { loading: false, error: null };
     this.archiveActionToken = 0;
+    this.forkActionToken = 0;
     this.approvalActionToken = 0;
     this.promptSubmissionSequence = 0;
     this.archiveStateValue = { loading: false, error: null };
+    this.forkStateValue = { loading: false, error: null };
     this.conversationUpdateKind = null;
     this.initialConversationLoad = null;
     this.followUpRequests = new Map();
@@ -208,8 +211,10 @@ class CaffoldTaskDetail extends HTMLElement {
       this.interruptActionToken += 1;
       this.interruptStateValue = { loading: false, error: null };
       this.archiveActionToken += 1;
+      this.forkActionToken += 1;
       this.approvalActionToken += 1;
       this.archiveStateValue = { loading: false, error: null };
+      this.forkStateValue = { loading: false, error: null };
       this.loadingOlderEvents = false;
       this.reviewView = "conversation";
       this.detailSession.deactivate();
@@ -257,6 +262,8 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     this.interruptActionToken += 1;
     this.interruptStateValue = { loading: false, error: null };
+    this.forkActionToken += 1;
+    this.forkStateValue = { loading: false, error: null };
     this.selectedThreadId = threadId;
     this.view = "detail";
     this.hidden = false;
@@ -310,8 +317,10 @@ class CaffoldTaskDetail extends HTMLElement {
     this.interruptActionToken += 1;
     this.interruptStateValue = { loading: false, error: null };
     this.archiveActionToken += 1;
+    this.forkActionToken += 1;
     this.approvalActionToken += 1;
     this.archiveStateValue = { loading: false, error: null };
+    this.forkStateValue = { loading: false, error: null };
     this.loadingOlderEvents = false;
     this.initialConversationLoad = null;
     this.detailSession.deactivate();
@@ -340,7 +349,9 @@ class CaffoldTaskDetail extends HTMLElement {
           : null,
       transportState: this.detailSession.state,
       contextPath: this.activeCwdPath(),
+      provider: `${this.taskDetail?.provider ?? ""}`.trim(),
       archiveState: this.archiveStateValue,
+      forkState: this.forkStateValue,
     };
   }
 
@@ -1104,6 +1115,7 @@ class CaffoldTaskDetail extends HTMLElement {
     if (
       !this.selectedThreadId ||
       this.archiveStateValue.loading ||
+      this.forkStateValue.loading ||
       isTaskTransportStale(this.detailSession.state)
     ) {
       return;
@@ -1136,6 +1148,58 @@ class CaffoldTaskDetail extends HTMLElement {
         return;
       }
       this.archiveStateValue = { loading: false, error };
+      this.emitSubjectSnapshot();
+    }
+  }
+
+  async forkSelectedTask() {
+    const task = this.taskDetail?.task ?? null;
+    if (
+      !this.selectedThreadId ||
+      this.forkStateValue.loading ||
+      this.archiveStateValue.loading ||
+      `${this.taskDetail?.provider ?? ""}` !== "codex" ||
+      taskThreadStatusType(task) !== "idle" ||
+      isTaskTransportStale(this.detailSession.state)
+    ) {
+      return;
+    }
+    const actionToken = ++this.forkActionToken;
+    const threadId = this.selectedThreadId;
+    this.forkStateValue = { loading: true, error: null };
+    this.emitSubjectSnapshot();
+    try {
+      const detail = await forkTask(threadId);
+      if (
+        actionToken !== this.forkActionToken ||
+        threadId !== this.selectedThreadId
+      ) {
+        return;
+      }
+      const childThreadId = taskDetailThreadId(detail);
+      if (!childThreadId || childThreadId === threadId || !detail?.task) {
+        throw new Error("Codex did not return a distinct forked Task.");
+      }
+      this.forkStateValue = { loading: false, error: null };
+      const handoff = { detail, submission: null, adopted: false };
+      this.dispatchEvent(
+        new CustomEvent("caffold:task-created", {
+          bubbles: true,
+          composed: true,
+          detail: handoff,
+        }),
+      );
+      if (!handoff.adopted) {
+        throw new Error("The forked Task could not be opened.");
+      }
+    } catch (error) {
+      if (
+        actionToken !== this.forkActionToken ||
+        threadId !== this.selectedThreadId
+      ) {
+        return;
+      }
+      this.forkStateValue = { loading: false, error };
       this.emitSubjectSnapshot();
     }
   }

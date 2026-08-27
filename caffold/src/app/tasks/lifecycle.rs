@@ -4,16 +4,17 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
-    agent::TurnOptions,
     agent::claude::ClaudeClient,
+    agent::codex::codex_mode_id,
+    agent::{ThreadStatus, TurnOptions, TurnPage},
     app::error::ApiError,
-    app::tasks::sessions::{ConversationSettings, TaskSessions},
+    app::tasks::sessions::{ConversationSettings, INITIAL_TURNS_PAGE_SIZE, TaskSessions},
     fs::RootedFs,
-    task_store::{ManagedThread, RunBy, TaskStore, TaskStoreError},
+    task_store::{ManagedSection, ManagedThread, RunBy, TaskProvider, TaskStore, TaskStoreError},
 };
 
 use super::{
-    TaskAgent, TaskRecord,
+    CodexConnection, TaskAgent, TaskRecord,
     events::{TaskEvents, now_ms},
     projection::{resolve_conversation_cwd, task_activity_ms, task_record_from_conversation},
     routes::TaskListEvents,
@@ -33,6 +34,12 @@ pub(in crate::app) struct CreateTask {
 pub(in crate::app) struct CreatedTask {
     pub(in crate::app) task: TaskRecord,
     pub(in crate::app) placement: ActiveTaskTopPlacement,
+}
+
+pub(in crate::app) struct ForkCodexTask {
+    pub(in crate::app) source: ManagedThread,
+    pub(in crate::app) section: ManagedSection,
+    pub(in crate::app) cwd: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -62,6 +69,11 @@ enum LocalPlacementMutation {
     Claim {
         thread: Box<ManagedThread>,
         display_name: String,
+    },
+    ClaimInSection {
+        thread: Box<ManagedThread>,
+        display_name: String,
+        section_id: String,
     },
     Place,
     Restore,
@@ -183,11 +195,142 @@ impl TaskLifecycle {
                 &driver,
                 agent.generation(),
                 started.conversation.clone(),
+                None,
                 ConversationSettings {
                     permission_mode: settled.permission_mode.clone(),
                     model: settled.model.clone(),
                     reasoning_effort: settled.effort.clone(),
                     fast_mode: settled.fast_mode,
+                },
+            )
+            .await;
+        Ok(CreatedTask { task, placement })
+    }
+
+    /// Fork one idle managed Codex Task and claim only the returned child.
+    ///
+    /// The source read is deliberately native and read-only. The per-Task
+    /// mutation lease keeps Caffold prompts from crossing the idle check, and
+    /// the second read rejects an external source change observed while the
+    /// provider was forking. Until the local claim commits, every failure
+    /// deletes the otherwise unreachable child.
+    pub(in crate::app) async fn fork_codex_task(
+        &self,
+        connection: &CodexConnection,
+        request: ForkCodexTask,
+    ) -> Result<CreatedTask, ApiError> {
+        let ForkCodexTask {
+            source,
+            section,
+            cwd,
+        } = request;
+        let source_thread_id = source.thread_id.clone();
+        let _mutation = self.sessions.reserve_mutation(&source_thread_id).await;
+        self.ensure_fork_source_is_current(&source_thread_id, &section)
+            .await?;
+        let source_before = connection.client.read_thread(&source_thread_id).await?;
+        if source_before.id != source_thread_id {
+            return Err(ApiError::BadRequest {
+                code: "task_fork_source_mismatch",
+                message: "Codex returned a different source thread".to_string(),
+            });
+        }
+        if !matches!(
+            crate::agent::Conversation::from(&source_before).status,
+            ThreadStatus::Idle
+        ) {
+            return Err(task_fork_source_not_idle());
+        }
+
+        let mut forked = connection
+            .client
+            .fork_thread(&source_thread_id, &cwd)
+            .await?;
+        let child_thread_id = forked.thread_id.clone();
+        let source_after = match connection.client.read_thread(&source_thread_id).await {
+            Ok(source_after) => source_after,
+            Err(error) => {
+                self.rollback_unclaimed_codex_fork(&connection.client, &child_thread_id)
+                    .await;
+                return Err(error.into());
+            }
+        };
+        if source_after.id != source_thread_id
+            || !matches!(
+                crate::agent::Conversation::from(&source_after).status,
+                ThreadStatus::Idle
+            )
+            || source_after.updated_at != source_before.updated_at
+        {
+            self.rollback_unclaimed_codex_fork(&connection.client, &child_thread_id)
+                .await;
+            return Err(task_fork_source_changed());
+        }
+
+        let child_turns = match connection
+            .client
+            .list_thread_turns(&child_thread_id, None, INITIAL_TURNS_PAGE_SIZE)
+            .await
+        {
+            Ok(page) => TurnPage::from(&page),
+            Err(error) => {
+                self.rollback_unclaimed_codex_fork(&connection.client, &child_thread_id)
+                    .await;
+                return Err(error.into());
+            }
+        };
+
+        let title = format!("Fork of {}", source.display_name);
+        if let Err(error) = connection
+            .client
+            .set_thread_name(&child_thread_id, &title)
+            .await
+        {
+            self.rollback_unclaimed_codex_fork(&connection.client, &child_thread_id)
+                .await;
+            return Err(error.into());
+        }
+        forked.thread.name = Some(title.clone());
+        let conversation = crate::agent::Conversation::from(&forked.thread);
+        let task = match self.record_from_conversation(&conversation) {
+            Ok(task) => task,
+            Err(error) => {
+                self.rollback_unclaimed_codex_fork(&connection.client, &child_thread_id)
+                    .await;
+                return Err(error);
+            }
+        };
+        let managed = managed_thread_from_task_record(
+            &task,
+            RunBy::Codex,
+            forked.model.clone(),
+            forked.reasoning_effort.clone(),
+            forked.fast_mode,
+        );
+        let placement = match self
+            .claim_in_section_at_top(managed, &title, &task, &section)
+            .await
+        {
+            Ok(placement) => placement,
+            Err(error) => {
+                self.rollback_unclaimed_codex_fork(&connection.client, &child_thread_id)
+                    .await;
+                return Err(error);
+            }
+        };
+
+        self.list_events.place(task.clone(), placement.clone());
+        self.sessions
+            .register_created_thread(
+                &connection.driver(),
+                connection.generation,
+                conversation,
+                Some(child_turns),
+                ConversationSettings {
+                    permission_mode: forked.permission_mode.map(codex_mode_id),
+                    model: forked.model,
+                    reasoning_effort: forked.reasoning_effort,
+                    fast_mode: forked.fast_mode,
                 },
             )
             .await;
@@ -327,6 +470,47 @@ impl TaskLifecycle {
         .ok_or_else(|| ApiError::Internal("claimed Task was not persisted".to_string()))
     }
 
+    async fn claim_in_section_at_top(
+        &self,
+        thread: ManagedThread,
+        display_name: &str,
+        task: &TaskRecord,
+        section: &ManagedSection,
+    ) -> Result<ActiveTaskTopPlacement, ApiError> {
+        self.mutate_local_placement(
+            task,
+            LocalPlacementMutation::ClaimInSection {
+                thread: Box::new(thread),
+                display_name: display_name.to_string(),
+                section_id: section.section_id.clone(),
+            },
+        )
+        .await?
+        .ok_or_else(|| ApiError::Internal("forked Task was not persisted".to_string()))
+    }
+
+    async fn ensure_fork_source_is_current(
+        &self,
+        source_thread_id: &str,
+        section: &ManagedSection,
+    ) -> Result<(), ApiError> {
+        let store = self.store.clone();
+        let source_thread_id = source_thread_id.to_string();
+        let section_id = section.section_id.clone();
+        let current = tokio::task::spawn_blocking(move || store.get(&source_thread_id))
+            .await
+            .map_err(task_store_worker_error)?
+            .map_err(|error| ApiError::Internal(error.to_string()))?;
+        if current.is_none_or(|current| {
+            current.archived_at_ms.is_some()
+                || current.section_id.as_deref() != Some(section_id.as_str())
+                || current.run_by.provider() != TaskProvider::Codex
+        }) {
+            return Err(task_fork_source_changed());
+        }
+        Ok(())
+    }
+
     async fn mutate_local_placement(
         &self,
         task: &TaskRecord,
@@ -342,16 +526,32 @@ impl TaskLifecycle {
         let thread_id = task.thread_id.clone();
         let result = tokio::task::spawn_blocking(move || {
             store.transaction(|tables| {
-                let section = match tables
-                    .managed_sections()?
-                    .into_iter()
-                    .find(|section| section.logical_path == identity.logical_path)
-                {
-                    Some(section) => section,
-                    None => tables.insert_managed_section_at_top(
-                        &Uuid::new_v4().to_string(),
-                        &identity.logical_path,
-                    )?,
+                let requested_section_id = match &mutation {
+                    LocalPlacementMutation::ClaimInSection { section_id, .. } => {
+                        Some(section_id.as_str())
+                    }
+                    _ => None,
+                };
+                let section = match requested_section_id {
+                    Some(section_id) => tables
+                        .managed_sections()?
+                        .into_iter()
+                        .find(|section| {
+                            section.section_id == section_id
+                                && section.logical_path == identity.logical_path
+                        })
+                        .ok_or(TaskStoreError::UnexpectedPayload)?,
+                    None => match tables
+                        .managed_sections()?
+                        .into_iter()
+                        .find(|section| section.logical_path == identity.logical_path)
+                    {
+                        Some(section) => section,
+                        None => tables.insert_managed_section_at_top(
+                            &Uuid::new_v4().to_string(),
+                            &identity.logical_path,
+                        )?,
+                    },
                 };
                 let before_thread_id = tables
                     .active_managed_threads()?
@@ -370,6 +570,11 @@ impl TaskLifecycle {
                     LocalPlacementMutation::Claim {
                         thread,
                         display_name,
+                    }
+                    | LocalPlacementMutation::ClaimInSection {
+                        thread,
+                        display_name,
+                        ..
                     } => Some(tables.claim_managed_thread_at_top(
                         *thread,
                         &display_name,
@@ -440,6 +645,30 @@ impl TaskLifecycle {
                 }
             }
         }
+    }
+
+    async fn rollback_unclaimed_codex_fork(
+        &self,
+        client: &crate::agent::codex::CodexThreadClient,
+        thread_id: &str,
+    ) {
+        if let Err(error) = client.delete_thread(thread_id).await {
+            eprintln!("failed to delete an unclaimed Codex fork: {error}");
+        }
+    }
+}
+
+fn task_fork_source_not_idle() -> ApiError {
+    ApiError::Conflict {
+        code: "task_fork_source_not_idle",
+        message: "a Task can be forked only while its Codex thread is idle".to_string(),
+    }
+}
+
+fn task_fork_source_changed() -> ApiError {
+    ApiError::Conflict {
+        code: "task_fork_source_changed",
+        message: "the source Task changed while Codex was forking it".to_string(),
     }
 }
 

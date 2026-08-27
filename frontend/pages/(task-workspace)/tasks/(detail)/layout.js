@@ -77,6 +77,8 @@ class CaffoldDetailLayout extends HTMLElement {
       event.stopPropagation();
       if (event.detail?.type === "archive") {
         void this.taskDetail()?.archiveSelectedTask();
+      } else if (event.detail?.type === "fork") {
+        void this.taskDetail()?.forkSelectedTask();
       }
     });
     this.addEventListener(
@@ -379,7 +381,9 @@ class CaffoldDetailLayout extends HTMLElement {
       task,
       transportState: snapshot.transportState ?? this.streamState ?? "idle",
       contextPath: snapshot.contextPath ?? this.selectedTaskContextPath(),
+      provider: snapshot.provider,
       archiveState: snapshot.archiveState,
+      forkState: snapshot.forkState,
     });
     this.viewSwitch()?.setSnapshot({
       label: "Task view",

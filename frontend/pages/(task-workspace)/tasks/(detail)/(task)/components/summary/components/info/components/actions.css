@@ -1,0 +1,59 @@
+caffold-task-detail-info-actions {
+  display: block;
+
+  & .task-detail-task-action {
+    display: grid;
+    justify-items: start;
+    gap: var(--interface-space-3);
+    margin-top: var(--interface-space-6);
+    padding-top: var(--interface-space-5);
+    border-top: 1px solid var(--border);
+  }
+
+  & .task-detail-task-action > p {
+    display: block;
+    max-width: 36rem;
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-detail-task-action .task-secondary-button {
+    position: relative;
+    min-height: var(--interface-compact-hit-size);
+    margin-block: calc(0rem - var(--interface-compact-hit-outset));
+    border: 0;
+    background: transparent;
+    font-size: var(--interface-meta-font-size);
+  }
+
+  & .task-detail-task-action .task-secondary-button::before {
+    position: absolute;
+    inset: var(--interface-compact-hit-outset) 0;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    content: "";
+  }
+
+  & .task-detail-task-action .task-secondary-button:not(:disabled):hover::before,
+  & .task-detail-task-action .task-secondary-button:focus-visible::before {
+    border-color: var(--border-strong);
+  }
+
+  & .task-detail-task-action .task-secondary-button:disabled {
+    color: var(--disabled-text);
+    cursor: not-allowed;
+    opacity: 0.58;
+  }
+
+  & .task-detail-task-action .task-secondary-button:disabled::before {
+    border-color: var(--border);
+    background: var(--surface-muted);
+  }
+
+  & .task-detail-task-action .task-detail-action-error {
+    color: var(--danger);
+  }
+}

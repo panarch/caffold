@@ -140,6 +140,12 @@ export async function archiveTask(threadId) {
   });
 }
 
+export async function forkTask(threadId) {
+  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/fork`, {}, {
+    method: "POST",
+  });
+}
+
 export async function restoreTask(threadId) {
   return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/restore`, {}, {
     method: "POST",

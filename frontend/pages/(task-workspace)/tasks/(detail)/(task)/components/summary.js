@@ -29,7 +29,9 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       task: null,
       transportState: "idle",
       contextPath: ".",
+      provider: "",
       archiveState: { loading: false, error: null },
+      forkState: { loading: false, error: null },
     };
     this.renderedThreadId = "";
     this.boundInfoIntent = (event) => this.handleInfoIntent(event);
@@ -44,9 +46,14 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       task,
       transportState: snapshot.transportState ?? "idle",
       contextPath: `${snapshot.contextPath ?? "."}`,
+      provider: `${snapshot.provider ?? ""}`,
       archiveState: {
         loading: Boolean(snapshot.archiveState?.loading),
         error: snapshot.archiveState?.error ?? null,
+      },
+      forkState: {
+        loading: Boolean(snapshot.forkState?.loading),
+        error: snapshot.forkState?.error ?? null,
       },
     };
     if (
@@ -65,7 +72,10 @@ class CaffoldTaskDetailSummary extends HTMLElement {
   }
 
   handleInfoIntent(event) {
-    if (event.target !== this.taskInfo() || event.detail?.type !== "archive") {
+    if (
+      event.target !== this.taskInfo() ||
+      !["archive", "fork"].includes(event.detail?.type)
+    ) {
       return;
     }
     event.stopPropagation();
@@ -73,7 +83,7 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       new CustomEvent("caffold:task-detail-summary-intent", {
         bubbles: true,
         composed: true,
-        detail: { type: "archive" },
+        detail: { type: event.detail.type },
       }),
     );
   }
@@ -117,7 +127,9 @@ class CaffoldTaskDetailSummary extends HTMLElement {
       task: this.snapshot.task,
       transportState: this.snapshot.transportState,
       contextPath: this.snapshot.contextPath,
+      provider: this.snapshot.provider,
       archiveState: this.snapshot.archiveState,
+      forkState: this.snapshot.forkState,
     });
   }
 

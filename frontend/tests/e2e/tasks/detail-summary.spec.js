@@ -37,8 +37,9 @@ function summaryTask(threadId, title, rootPath, recencyMs) {
   };
 }
 
-function summaryDetail(task, revision = 1) {
+function summaryDetail(task, revision = 1, provider = "codex") {
   return {
+    provider,
     threadId: task.threadId,
     syncState: "ready",
     revision,
@@ -83,6 +84,15 @@ async function summaryNodeState(page) {
         nodes.infoButton === summary.querySelector(".task-detail-info-button"),
       infoPopover:
         nodes.infoPopover === summary.querySelector(".task-detail-popover"),
+      infoActions:
+        nodes.infoActions ===
+        summary.querySelector("caffold-task-detail-info-actions"),
+      forkButton:
+        nodes.forkButton ===
+        summary.querySelector('[data-task-info-action="fork"]'),
+      archiveButton:
+        nodes.archiveButton ===
+        summary.querySelector('[data-task-info-action="archive"]'),
       infoOpen: nodes.infoPopover.matches(":popover-open"),
     };
   });
@@ -93,6 +103,9 @@ const stableSummaryNodes = {
   info: true,
   infoButton: true,
   infoPopover: true,
+  infoActions: true,
+  forkButton: true,
+  archiveButton: true,
 };
 
 async function installSummaryFixture(page, tasks) {
@@ -214,6 +227,11 @@ test("keeps the task info leaf and popover stable across canonical sync", { tag:
       info: element.querySelector("caffold-task-detail-info"),
       infoButton: element.querySelector(".task-detail-info-button"),
       infoPopover: element.querySelector(".task-detail-popover"),
+      infoActions: element.querySelector("caffold-task-detail-info-actions"),
+      forkButton: element.querySelector('[data-task-info-action="fork"]'),
+      archiveButton: element.querySelector(
+        '[data-task-info-action="archive"]',
+      ),
     };
   });
 
@@ -222,6 +240,9 @@ test("keeps the task info leaf and popover stable across canonical sync", { tag:
   await expect(
     taskDetailsPopover.locator('[data-task-info-field="task"]'),
   ).toHaveText("Stable summary");
+  await expect(
+    taskDetailsPopover.locator('[data-task-info-action="fork"]'),
+  ).toBeEnabled();
   await page.evaluate(() => {
     window.dispatchEvent(new CustomEvent("caffold:icons-ready"));
   });
@@ -257,6 +278,18 @@ test("keeps the task info leaf and popover stable across canonical sync", { tag:
   await expect(
     taskDetailsPopover.locator('[data-task-info-action="archive"]'),
   ).toBeDisabled();
+  await expect(
+    taskDetailsPopover.locator('[data-task-info-action="fork"]'),
+  ).toBeDisabled();
+  await expect(
+    taskDetailsPopover.locator('[data-task-info-action="fork"]'),
+  ).toHaveCSS("cursor", "not-allowed");
+  await expect(
+    taskDetailsPopover.locator('[data-task-info-action="fork"]'),
+  ).toHaveCSS("opacity", "0.58");
+  await expect(
+    taskDetailsPopover.locator(".task-detail-fork-availability"),
+  ).toHaveText("Fork is available when the Codex Task is idle.");
   await expect
     .poll(() => summaryNodeState(page))
     .toEqual({ ...stableSummaryNodes, infoOpen: true });
@@ -280,7 +313,152 @@ test("keeps the task info leaf and popover stable across canonical sync", { tag:
   expect(buttonBox.x + buttonBox.width / 2).toBeLessThanOrEqual(
     popoverBox.x + popoverBox.width + 1,
   );
+  const forkActionVisible = await taskDetailsPopover.evaluate((popover) => {
+    const action = popover.querySelector('[data-task-info-action="fork"]');
+    const actionBox = action.getBoundingClientRect();
+    const popoverBox = popover.getBoundingClientRect();
+    return {
+      bottom: actionBox.bottom <= popoverBox.bottom + 1,
+      top: actionBox.top >= popoverBox.top - 1,
+    };
+  });
+  expect(forkActionVisible).toEqual({ bottom: true, top: true });
   await captureReviewScreenshot(page, testInfo, "tasks-summary-live-popover");
+});
+
+test("forks an idle Codex Task and opens the distinct child", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const sourceThreadId = "thread_summary_fork_source";
+  const childThreadId = "thread_summary_fork_child";
+  const rootPath = "repo-fork";
+  const source = {
+    ...summaryTask(sourceThreadId, "Source task", rootPath, 100),
+    worktree: null,
+  };
+  const child = {
+    ...summaryTask(childThreadId, "Fork of Source task", rootPath, 101),
+    worktree: null,
+  };
+  const childDetail = {
+    ...summaryDetail(child),
+    activeTopPlacement: {
+      section: {
+        id: "fixture-section-1",
+        name: rootPath,
+        repository: false,
+      },
+      beforeSectionId: null,
+      beforeThreadId: sourceThreadId,
+    },
+  };
+  let releaseFork;
+  const forkGate = new Promise((resolve) => {
+    releaseFork = resolve;
+  });
+  let observeFork;
+  const forkObserved = new Promise((resolve) => {
+    observeFork = resolve;
+  });
+  let requestCount = 0;
+  await installSummaryFixture(page, [source]);
+  await page.route(`**/api/tasks/${sourceThreadId}/fork`, async (route) => {
+    requestCount += 1;
+    expect(route.request().method()).toBe("POST");
+    observeFork();
+    await forkGate;
+    await route.fulfill({ json: childDetail });
+  });
+  await page.route(
+    new RegExp(`/api/tasks/${childThreadId}(?:\\?|$)`),
+    (route) => route.fulfill({ json: childDetail }),
+  );
+
+  await page.goto(`/tasks/${sourceThreadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(source));
+  const summary = page.locator("caffold-task-detail-summary");
+  await summary.getByRole("button", { name: /Task details/ }).click();
+  const popover = summary.locator(".task-detail-popover");
+  const forkButton = popover.locator('[data-task-info-action="fork"]');
+  await expect(forkButton).toBeEnabled();
+
+  await forkButton.click();
+  await forkObserved;
+  await expect(forkButton).toBeDisabled();
+  await expect(forkButton).toHaveText("Forking...");
+  await expect(
+    popover.locator('[data-task-info-action="archive"]'),
+  ).toBeDisabled();
+  releaseFork();
+
+  await expect(page).toHaveURL(new RegExp(`/tasks/${childThreadId}$`));
+  await expect(page.locator("caffold-task-detail-summary h2")).toHaveText(
+    "Fork of Source task",
+  );
+  await expect(
+    page.locator("caffold-task-navigator .task-row-title"),
+  ).toHaveText(["Fork of Source task", "Source task"]);
+  expect(requestCount).toBe(1);
+});
+
+test("keeps fork disabled for Claude Tasks and reports why", { tag: "@all-viewports" }, async ({ page }) => {
+  const threadId = "thread_summary_claude_fork";
+  const task = {
+    ...summaryTask(threadId, "Claude source", "repo-claude", 100),
+    worktree: null,
+  };
+  await installSummaryFixture(page, [task]);
+
+  await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task, 1, "claude"));
+  const summary = page.locator("caffold-task-detail-summary");
+  await summary.getByRole("button", { name: /Task details/ }).click();
+  const popover = summary.locator(".task-detail-popover");
+  const forkButton = popover.locator('[data-task-info-action="fork"]');
+
+  await expect(forkButton).toBeDisabled();
+  await expect(forkButton).toHaveAttribute(
+    "title",
+    "Fork is currently available only for Codex Tasks.",
+  );
+  await expect(popover.locator(".task-detail-fork-availability")).toHaveText(
+    "Fork is currently available only for Codex Tasks.",
+  );
+});
+
+test("keeps the source selected and shows a fork failure inline", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const threadId = "thread_summary_fork_failure";
+  const task = {
+    ...summaryTask(threadId, "Fork failure", "repo-fork-failure", 100),
+    worktree: null,
+  };
+  await installSummaryFixture(page, [task]);
+  await page.route(`**/api/tasks/${threadId}/fork`, (route) =>
+    route.fulfill({
+      status: 409,
+      json: {
+        error: {
+          code: "task_fork_source_changed",
+          message: "The source Task changed while Codex was forking it.",
+        },
+      },
+    }),
+  );
+
+  await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(page, summaryDetail(task));
+  const summary = page.locator("caffold-task-detail-summary");
+  await summary.getByRole("button", { name: /Task details/ }).click();
+  const popover = summary.locator(".task-detail-popover");
+  await popover.locator('[data-task-info-action="fork"]').click();
+
+  await expect(popover.locator(".task-detail-fork-error")).toHaveText(
+    "The source Task changed while Codex was forking it.",
+  );
+  await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}$`));
+  await expect(popover.locator('[data-task-info-action="fork"]')).toBeEnabled();
 });
 
 test("uses light-dismiss review popovers and preserves them across same-Task sync", { tag: "@all-viewports" }, async ({

@@ -139,6 +139,7 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
         "thread/start",
         "thread/name/set",
         "thread/read",
+        "thread/fork",
         "thread/delete",
         "thread/section/move",
         "thread/resume",
@@ -214,6 +215,22 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
         ],
     );
     schema.assert_declares("v2/ThreadReadParams.ts", &["includeTurns?: boolean"]);
+    schema.assert_declares(
+        "v2/ThreadForkParams.ts",
+        &[
+            "threadId: string",
+            "lastTurnId?: string | null",
+            "cwd?: string | null",
+            "runtimeWorkspaceRoots?: Array<AbsolutePathBuf> | null",
+            "config?:",
+            "excludeTurns",
+            "deferGoalContinuation",
+        ],
+    );
+    schema.assert_declares(
+        "v2/ThreadForkResponse.ts",
+        &["thread: Thread", "cwd: AbsolutePathBuf"],
+    );
     schema.assert_declares(
         "v2/Thread.ts",
         &["id: string", "name: string | null", "preview: string"],
