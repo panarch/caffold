@@ -50,6 +50,7 @@ pub(crate) const TURN_INTERRUPT: &str = "turn/interrupt";
 pub(crate) const MODEL_LIST: &str = "model/list";
 pub(crate) const PERMISSION_PROFILE_LIST: &str = "permissionProfile/list";
 pub(crate) const CONFIG_READ: &str = "config/read";
+pub(crate) const MCP_SERVER_RESOURCE_READ: &str = "mcpServer/resource/read";
 #[cfg(test)]
 pub(crate) const MCP_SERVER_STATUS_LIST: &str = "mcpServerStatus/list";
 #[cfg(test)]

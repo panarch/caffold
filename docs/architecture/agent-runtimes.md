@@ -280,6 +280,9 @@ extension point each agent already understands:
   answers calls from definitions already persisted on pre-MCP threads. The MCP
   catalog refresh boundary is a new app-server proxy connection followed by
   thread start or resume; active-thread hot reload is not part of the contract.
+  Its single installation-local signing key is opened lazily and only for signed
+  Codex MCP sessions. Neither route initialization nor a signing-key failure
+  makes Codex a prerequisite for a Claude-only Caffold service.
 - Claude receives an in-process MCP server on every initialization, including
   resumed and reattached sessions.
 

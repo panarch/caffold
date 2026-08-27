@@ -151,6 +151,7 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
         "turn/interrupt",
         "model/list",
         "permissionProfile/list",
+        "mcpServer/resource/read",
         "config/read",
     ] {
         assert!(
@@ -173,6 +174,14 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
         ],
     );
     schema.assert_declares("v2/ThreadStartParams.ts", &["config?:"]);
+    schema.assert_declares(
+        "v2/McpResourceReadParams.ts",
+        &["threadId?: string | null", "server: string", "uri: string"],
+    );
+    schema.assert_declares(
+        "v2/McpResourceReadResponse.ts",
+        &["contents: Array<ResourceContent>"],
+    );
     schema.assert_declares(
         "v2/ThreadResumeResponse.ts",
         &["cwd: AbsolutePathBuf", "serviceTier: string | null"],

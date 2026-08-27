@@ -442,6 +442,7 @@ dependencies = [
  "clap",
  "futures-util",
  "gluesql",
+ "hmac 0.12.1",
  "hound",
  "notify",
  "percent-encoding",

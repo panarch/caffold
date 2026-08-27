@@ -39,19 +39,28 @@ async fn eligible_codex_executable() -> Result<PathBuf> {
         .map_err(|readiness| anyhow::anyhow!(readiness.diagnostic_message))
 }
 
-struct SocketAppServer {
+pub(crate) struct SocketAppServer {
     child: Child,
-    socket_path: PathBuf,
+    pub(crate) socket_path: PathBuf,
     _temp: tempfile::TempDir,
 }
 
 impl SocketAppServer {
-    async fn start() -> Result<Self> {
+    pub(crate) async fn start() -> Result<Self> {
         let temp = tempfile::Builder::new()
             .prefix("caffold-reconnect-")
             .tempdir_in("/tmp")
             .context("create temporary app-server directory")?;
         let socket_path = temp.path().join("app-server.sock");
+        let child = Self::spawn(&socket_path).await?;
+        Ok(Self {
+            child,
+            socket_path,
+            _temp: temp,
+        })
+    }
+
+    async fn spawn(socket_path: &Path) -> Result<Child> {
         let listen = format!("unix://{}", socket_path.display());
         let mut child = Command::new(eligible_codex_executable().await?)
             .arg("app-server")
@@ -67,11 +76,7 @@ impl SocketAppServer {
         for _ in 0..200 {
             if socket_path.exists() {
                 eprintln!("SPIKE app_server_socket={}", socket_path.display());
-                return Ok(Self {
-                    child,
-                    socket_path,
-                    _temp: temp,
-                });
+                return Ok(child);
             }
             if let Some(status) = child.try_wait().context("poll Codex app-server")? {
                 bail!("Codex app-server exited before opening its socket: {status}");
@@ -85,9 +90,29 @@ impl SocketAppServer {
         )
     }
 
-    async fn stop(&mut self) {
+    pub(crate) async fn restart(&mut self) -> Result<()> {
+        self.stop_owned().await?;
+        self.child = Self::spawn(&self.socket_path).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn stop(&mut self) {
+        if let Err(error) = self.stop_owned().await {
+            eprintln!("SPIKE app_server_cleanup_error={error:#}");
+        }
+    }
+
+    async fn stop_owned(&mut self) -> Result<()> {
         let _ = self.child.start_kill();
-        let _ = timeout(Duration::from_secs(2), self.child.wait()).await;
+        timeout(Duration::from_secs(2), self.child.wait())
+            .await
+            .context("wait for test-owned Codex app-server to stop")??;
+        match tokio::fs::remove_file(&self.socket_path).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error).context("remove test-owned app-server socket"),
+        }
+        Ok(())
     }
 }
 
