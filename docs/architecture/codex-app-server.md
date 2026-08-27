@@ -60,8 +60,9 @@ catalog and the test-only historical dynamic-tool catalog. The MCP surface uses
 the MCP route. The legacy fixture can reconstruct a pre-MCP thread without
 putting its catalog back into production `thread/start` requests.
 `caffold/src/agent/codex/mcp.rs` owns MCP request and response framing,
-request-scoped app-server configuration, and the process-local capability that
-binds one HTTP connection to one Codex thread.
+request-scoped app-server configuration, bootstrap promotion, and the
+installation-local signer that binds one HTTP connection to one Codex thread across
+backend generations.
 `caffold/src/app/tasks/codex_mcp.rs` owns only the authenticated HTTP route and
 hands a verified, bound tool call to the narrow Task runtime operation that
 performs it.
@@ -211,13 +212,40 @@ persist a second task ledger.
   MCP entry when Caffold next resumes it. For an existing thread, the supported
   MCP catalog refresh boundary is a replacement app-server proxy connection
   followed by `thread/resume`, not active-thread hot reload.
-- Each MCP config carries an opaque process-local HTTP capability bound to the
-  provider thread. A pending creation may initialize and discover tools but
-  cannot execute one until `thread/start` returns the child ID. A successful
-  resume replaces the previous capability, a failed resume discards only its
-  staged replacement, and permanent Task deletion revokes the thread binding.
-  The runtime also rechecks Caffold-managed membership before performing a
-  tool, so neither the model nor request arguments choose another Task.
+- Each MCP config carries a private opaque binding header. Initial MCP
+  `initialize` returns a provisional session that permits discovery but not a
+  Task tool. After `thread/start` or `thread/resume` returns the provider thread
+  ID, Caffold marks that bootstrap ready and asks app-server to read
+  `caffold://session/ready`. The provisional session receives HTTP 404, Codex
+  reinitializes the configured MCP server, and Caffold returns a signed thread
+  session. Caffold completes the bootstrap only after the retried resource read
+  returns the expected URI and readiness text; an unconfirmed new thread is
+  deleted and an unconfirmed resume discards only its staged bootstrap.
+- Every Task-scoped MCP request must carry both the original binding header and
+  its signed session. The session contains the provider thread ID and a digest
+  of the binding header authenticated by one installation-local HMAC key. It is
+  therefore self-contained across Caffold backend generations without trusting
+  a model-supplied Task or thread ID. A missing header, either value on its own,
+  a mismatched pair, a forged session, or another installation's session is
+  unauthorized.
+- Only `codex-mcp/signing.key` is persisted, with private directory and file
+  permissions. Bootstrap bindings and provisional sessions are process-local
+  and removed after promotion; there are no Task, thread, grant, connection,
+  epoch, or revocation records in either the Task database or capability files.
+  A successful resume creates an overlapping binding-and-session pair because
+  an older MCP connection may still be serving an in-flight turn. The runtime
+  rechecks Caffold-managed Task membership on every tool, so Task deletion and
+  explicit lifecycle removal make every older session unable to operate even
+  though the signed transport value has no per-Task revocation row.
+- The signer is configured without filesystem I/O and opened lazily only when
+  a signed session is issued or validated. An unavailable key therefore fails
+  Codex MCP promotion and authentication closed without preventing Caffold or
+  its Claude driver from starting. Tokens stay out of URLs, Task events, and
+  provider history, and matching shapes are redacted from provider diagnostics.
+- The bootstrap deliberately relies on Codex reinitializing an MCP server after
+  the readiness request receives HTTP 404. That compatibility behavior is
+  covered by authenticated live tests for a new thread, same-endpoint backend
+  replacement, overlapping reattachment, and a test-owned app-server restart.
 - Legacy dynamic and current MCP calls execute the same Task operation after
   their distinct ingress names have been validated. For rename, Caffold calls
   `thread/name/set` and returns the tool result. The resulting
@@ -668,17 +696,31 @@ including after a failed assertion. This suite is intentionally separate from
 `npm run test:e2e` because it requires local Codex authentication and consumes
 model usage.
 
-The focused ignored MCP check creates one real MCP-only Codex thread and asks
-the model to perform its first Task rename through MCP. It then reconnects
-through an independent app-server proxy and Caffold MCP host generation,
-resumes the thread with a changed catalog, and verifies both refreshed
-discovery and another real Task rename through MCP:
+The first focused ignored MCP check creates one real MCP-only Codex thread and
+asks the model to perform its first Task rename through MCP. It replaces the
+Caffold HTTP host on the same endpoint while the provider thread, proxy, and
+existing MCP client remain alive, then calls the old connection before any
+resume. It also reconnects through an independent proxy, resumes the same
+thread, and verifies that the new connection and the still-live older
+connection can both call the same Task-scoped catalog:
 
 ```sh
 cargo test -p caffold \
-  app::tasks::codex_mcp::tests::live_codex_refreshes_the_caffold_mcp_after_reconnect_and_resume \
+  app::tasks::codex_mcp::tests::live_codex_mcp_survives_backend_replacement_and_runtime_reattachment \
   -- --ignored --exact
 ```
 
-It uses isolated temporary project and Task-store state, consumes model usage,
-and deletes the created provider thread during teardown.
+A second ignored check starts a test-owned Codex app-server on a temporary Unix
+socket, materializes a real thread, restarts only that isolated process, then
+reconnects, resumes the same thread, and calls Caffold MCP again:
+
+```sh
+cargo test -p caffold \
+  app::tasks::codex_mcp::tests::live_codex_mcp_survives_an_isolated_app_server_restart \
+  -- --ignored --exact
+```
+
+Both checks use isolated temporary project, signing-key, and Task-store state,
+consume model usage, and delete the created provider thread during teardown.
+The runtime-restart check does not stop or replace the persistent Codex daemon
+that Caffold normally uses.

@@ -63,13 +63,43 @@ approval card. The tool still enforces its own Task and Git lifecycle checks;
 an unknown tool or an unmanaged conversation is refused.
 
 Codex reaches this surface through an HTTP MCP endpoint on the Caffold server.
-Each app-server config carries an opaque process-local header capability bound
-by Caffold to one provider thread. The model and tool arguments do not supply
-that identity. A pending new-thread capability may discover tools but cannot
-execute them, resume rotates the capability only after success, and permanent
-Task deletion revokes it. This capability protects one Caffold integration
-inside the trusted-host deployment boundary; it is not browser authentication
-or authorization for public-internet exposure.
+Each request-scoped app-server config carries a private opaque binding header.
+A Task-scoped call is authorized only by that header together with its signed
+MCP session. The session authenticates the provider thread ID and a digest of
+the binding header under one installation-local HMAC key, so neither the model
+nor tool arguments can choose another Task. The bootstrap and Codex
+reinitialization sequence that establishes the pair belongs to
+[Codex app-server integration](codex-app-server.md#thread-subscription-lifecycle).
+
+Only the private `codex-mcp/signing.key` file survives backend generations.
+Bootstrap bindings and provisional sessions remain process-local and are
+discarded after promotion; Caffold writes no Task, thread, grant, connection,
+or revocation records for this transport. A replacement backend validates an
+already initialized binding-and-session pair statelessly with the same key. A
+successful resume creates another pair without revoking an older live
+connection, while a failed start or resume removes only its staged bootstrap.
+When the Task lifecycle deletes the managed thread, the runtime membership
+check rejects every Task-scoped tool call from older sessions even though the
+signed transport value itself has no per-Task revocation ledger.
+
+Tokens remain in request headers and request-scoped app-server configuration,
+never in the endpoint URL. Caffold does not project that configuration into
+Task events or conversation history, and it redacts binding, provisional, and
+signed session shapes plus the binding header from provider errors and
+diagnostics before they can reach ordinary logs or Task-facing error state.
+Missing headers, forged values, mismatched pairs, another installation's
+session, and pending bootstraps fail closed.
+
+This capability protects one Caffold integration inside the trusted-host
+deployment boundary; it is not browser authentication or authorization for
+public-internet exposure, nor is it a boundary against code that can already
+read Caffold's private data directory or inspect its process as the same host
+user. Because the route shares the main Caffold server, it can be reachable
+even when that installation is used only with Claude. The signing key is opened
+lazily only for a Codex signed-session operation, route reachability does not
+start Codex or select a Task, and an unavailable key or a request without an
+install-issued capability fails closed without preventing a Claude-only
+Caffold service from starting.
 
 Codex and Claude expose the same Task-owned MCP base names:
 `rename_current_task` and `isolate_current_task`. Claude's provider transport
