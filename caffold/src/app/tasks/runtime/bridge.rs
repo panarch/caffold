@@ -207,7 +207,8 @@ impl TaskRuntime {
                     session_revision,
                 );
             }
-            SessionEventKind::StatusChanged { status } => {
+            SessionEventKind::StatusChanged { status }
+            | SessionEventKind::ActivityChanged { status } => {
                 let task_status = match status {
                     ThreadStatus::Active { .. } => "running",
                     ThreadStatus::Idle | ThreadStatus::NotLoaded => "idle",
@@ -1046,5 +1047,32 @@ mod tests {
         let completed = receiver.try_recv().unwrap().event;
         assert_eq!(completed.event_type, "turn_completed");
         assert_eq!(completed.position.anchor_ms, 1_750_000_004_500);
+    }
+
+    #[test]
+    fn independent_activity_publishes_the_existing_task_status_event() {
+        let events = TaskEvents::default();
+        let mut receiver = events.subscribe();
+        let runtime = runtime_with_events_and_store(
+            events,
+            TaskStore::memory().expect("in-memory task store"),
+        );
+
+        runtime.publish_session_event(
+            &SessionEvent {
+                thread_id: "claude-thread".to_string(),
+                kind: SessionEventKind::ActivityChanged {
+                    status: ThreadStatus::Active {
+                        active_flags: Vec::new(),
+                    },
+                },
+            },
+            1,
+        );
+
+        let status = receiver.try_recv().expect("published status").event;
+        assert_eq!(status.thread_id, "claude-thread");
+        assert_eq!(status.event_type, "thread_status_changed");
+        assert_eq!(status.payload.expect("status payload")["status"], "running");
     }
 }

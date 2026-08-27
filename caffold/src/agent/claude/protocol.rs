@@ -57,6 +57,14 @@ pub(crate) const BASE_ARGUMENTS: &[&str] = &[
     ISOLATE_CURRENT_TASK_QUALIFIED_NAME,
 ];
 
+/// What every session is started with beyond its arguments.
+///
+/// Claude reports session activity only when this is enabled. The resulting
+/// state frames describe whether the session is working, independently of the
+/// replay and transcript evidence that identifies its turn.
+pub(crate) const SESSION_ENVIRONMENT: &[(&str, &str)] =
+    &[("CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS", "1")];
+
 // ---------------------------------------------------------------------------
 // Agent to host
 // ---------------------------------------------------------------------------
@@ -104,6 +112,10 @@ pub(crate) struct SystemFrame {
     /// usage is one reason; an installation that never opted in is another.
     #[serde(default)]
     pub(crate) fast_mode_disabled_reason: Option<String>,
+    /// Present on `session_state_changed`, separate from the introduction
+    /// fields above.
+    #[serde(default)]
+    pub(crate) state: Option<String>,
 }
 
 /// One API message, as the agent produced it.

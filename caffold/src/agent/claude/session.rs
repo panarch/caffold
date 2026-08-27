@@ -15,11 +15,11 @@ use tokio::sync::Mutex as AsyncMutex;
 
 use caffold_claude_runner::protocol::SessionState as RunnerSessionState;
 
-use super::protocol::BASE_ARGUMENTS;
+use super::protocol::{BASE_ARGUMENTS, SESSION_ENVIRONMENT};
 use super::runner::RunnerSession;
 use super::{
     ANSWER_TIMEOUT, ClaudeClient, ClaudeError, ClaudeRuntimeEvent, ClaudeTurnOptions, Session,
-    SessionState, Turn, TurnStatus, now_ms, protocol,
+    SessionActivity, SessionState, Turn, TurnStatus, now_ms, protocol,
 };
 
 /// What asking a session to move came to.
@@ -52,7 +52,10 @@ impl ClaudeClient {
         let spawn = caffold_claude_runner::protocol::SpawnRequest {
             argv: session_argv(id, start, options),
             cwd: cwd.to_string(),
-            env: Default::default(),
+            env: SESSION_ENVIRONMENT
+                .iter()
+                .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+                .collect(),
         };
         // Every open passes the start door alone. The runner's create is
         // idempotent, and its answer says whether it began a process or handed
@@ -226,8 +229,15 @@ impl ClaudeClient {
                 return;
             }
         };
-        let working = hello.payload.get("session_state").and_then(Value::as_str) == Some("running");
-        if working
+        let activity = hello
+            .payload
+            .get("session_state")
+            .and_then(Value::as_str)
+            .and_then(SessionActivity::read);
+        if let Some(activity) = activity {
+            session.state.lock().await.activity = Some(activity);
+        }
+        if activity == Some(SessionActivity::Running)
             && let Some(turn) = self
                 .turn_left_running(&session.id, &session.cwd.lock().await.clone())
                 .await
@@ -301,6 +311,74 @@ mod tests {
     use super::super::*;
 
     use super::super::test_support::written_conversation;
+
+    #[tokio::test]
+    async fn a_session_asks_claude_to_report_activity_changes() {
+        let (client, runner) = ClaudeClient::mock();
+        runner
+            .greet_next_session_with(vec![init_frame(SESSION)])
+            .await;
+
+        client
+            .open_conversation(SESSION, CWD, &options("opus"))
+            .await
+            .expect("the conversation opens");
+
+        let spawned = runner.spawned(SESSION).await.expect("the process");
+        for (name, value) in protocol::SESSION_ENVIRONMENT {
+            assert_eq!(
+                spawned.env.get(*name).map(String::as_str),
+                Some(*value),
+                "Claude is started with its activity protocol enabled"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_reattached_session_restores_activity_without_inventing_a_turn() {
+        let (client, runner) = ClaudeClient::mock();
+        let mut events = client.subscribe();
+        runner
+            .greet_next_session_as(json!({ "response": { "session_state": "running" } }))
+            .await;
+        runner
+            .greet_next_session_with(vec![init_frame(SESSION)])
+            .await;
+
+        client
+            .open_conversation(SESSION, CWD, &options("opus"))
+            .await
+            .expect("the conversation opens");
+        next_session_event(&mut events, "settings").await;
+
+        let session = client.session(SESSION).await.expect("the session");
+        {
+            let state = session.state.lock().await;
+            assert!(state.active_turn.is_none(), "no source identified a turn");
+            assert_eq!(
+                status_of(&state),
+                ThreadStatus::Active {
+                    active_flags: Vec::new(),
+                },
+            );
+            assert!(
+                !state.activity_stream_observed,
+                "an initialize snapshot does not prove how the surviving child was spawned"
+            );
+        }
+
+        client.report_status(&session).await;
+        let SessionEventKind::StatusChanged { status } =
+            next_session_event(&mut events, "status change").await
+        else {
+            unreachable!("asked for the compatibility status");
+        };
+        assert_eq!(
+            status,
+            ThreadStatus::Idle,
+            "without a live activity frame, turn lifecycle remains the fallback"
+        );
+    }
 
     #[tokio::test]
     async fn a_session_still_working_is_picked_up_in_the_turn_it_is_working_on() {

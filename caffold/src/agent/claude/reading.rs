@@ -15,9 +15,9 @@ use super::{
     ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, ClaudeClient, ClaudeError,
     ClaudeRuntimeEvent, ControlRequestFrame, ConversationItem, Introduction, ItemKind,
     MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION, MessageFrame, PendingApproval, ResultFrame, Session,
-    SessionEventKind, StreamFrame, SystemFrame, ThreadStatus, TokenCount, TokenUsage, TurnStatus,
-    end_pending_prompt, end_pending_steer, now_ms, open_pending_turn, parse_timestamp_ms, protocol,
-    replace_item, status_of,
+    SessionActivity, SessionEventKind, StreamFrame, SystemFrame, ThreadStatus, TokenCount,
+    TokenUsage, TurnStatus, end_pending_prompt, end_pending_steer, now_ms, open_pending_turn,
+    parse_timestamp_ms, protocol, replace_item, status_of, turn_status_of,
 };
 
 impl ClaudeClient {
@@ -135,9 +135,17 @@ impl ClaudeClient {
     }
 
     async fn handle_system(&self, session: &Arc<Session>, system: SystemFrame) {
-        if system.subtype.as_deref() != Some("init") {
-            return;
+        match system.subtype.as_deref() {
+            Some("init") => self.handle_introduction(session, system).await,
+            Some("session_state_changed") => self.handle_session_activity(session, system).await,
+            // Claude reports background work, hooks, and other optional
+            // process details on system frames too. None of them is session
+            // activity or conversation history.
+            _ => {}
         }
+    }
+
+    async fn handle_introduction(&self, session: &Arc<Session>, system: SystemFrame) {
         let introduction = Introduction {
             session_id: system.session_id,
             permission_mode: system.permission_mode,
@@ -156,6 +164,38 @@ impl ClaudeClient {
         }
         let settings = self.settings_of_session(session).await;
         self.report(&session.id, SessionEventKind::SettingsChanged { settings });
+    }
+
+    /// Record Claude's session-scoped account of whether it is working.
+    ///
+    /// The report carries no turn identity, so it changes only activity. A
+    /// replay, transcript entry, or terminal result remains the authority for
+    /// the turn ledger.
+    async fn handle_session_activity(&self, session: &Arc<Session>, system: SystemFrame) {
+        let Some(value) = system.state.as_deref() else {
+            self.publish(ClaudeRuntimeEvent::Diagnostic {
+                message: format!(
+                    "claude {} reported a session state without its state",
+                    session.id
+                ),
+            });
+            return;
+        };
+        let Some(activity) = SessionActivity::read(value) else {
+            self.publish(ClaudeRuntimeEvent::Diagnostic {
+                message: format!(
+                    "claude {} reported a session state this release cannot read: {value:?}",
+                    session.id
+                ),
+            });
+            return;
+        };
+        {
+            let mut state = session.state.lock().await;
+            state.activity = Some(activity);
+            state.activity_stream_observed = true;
+        }
+        self.report_activity(session).await;
     }
 
     async fn handle_message(
@@ -499,8 +539,27 @@ impl ClaudeClient {
     }
 
     pub(super) async fn report_status(&self, session: &Arc<Session>) {
+        let (status, activity_stream_observed) = {
+            let state = session.state.lock().await;
+            let observed = state.activity_stream_observed;
+            let status = if observed {
+                status_of(&state)
+            } else {
+                turn_status_of(&state)
+            };
+            (status, observed)
+        };
+        let kind = if activity_stream_observed {
+            SessionEventKind::ActivityChanged { status }
+        } else {
+            SessionEventKind::StatusChanged { status }
+        };
+        self.report(&session.id, kind);
+    }
+
+    async fn report_activity(&self, session: &Arc<Session>) {
         let status = status_of(&*session.state.lock().await);
-        self.report(&session.id, SessionEventKind::StatusChanged { status });
+        self.report(&session.id, SessionEventKind::ActivityChanged { status });
     }
 }
 
@@ -628,6 +687,119 @@ mod tests {
 
     use super::super::test_support::*;
     use super::super::*;
+
+    #[tokio::test]
+    async fn session_activity_changes_without_naming_or_ending_a_turn() {
+        let (client, runner, mut events) = watching().await;
+
+        runner.say(SESSION, session_state_frame("running")).await;
+
+        let SessionEventKind::ActivityChanged { status } =
+            next_session_event(&mut events, "activity change").await
+        else {
+            unreachable!("asked for an activity change");
+        };
+        assert_eq!(
+            status,
+            ThreadStatus::Active {
+                active_flags: Vec::new(),
+            }
+        );
+        assert!(
+            client
+                .session(SESSION)
+                .await
+                .expect("the session")
+                .state
+                .lock()
+                .await
+                .active_turn
+                .is_none(),
+            "activity carries no turn identity"
+        );
+
+        runner
+            .say(SESSION, session_state_frame("requires_action"))
+            .await;
+        let SessionEventKind::ActivityChanged { status } =
+            next_session_event(&mut events, "activity change").await
+        else {
+            unreachable!("asked for an activity change");
+        };
+        assert_eq!(
+            status,
+            ThreadStatus::Active {
+                active_flags: Vec::new(),
+            },
+            "requires_action names no approval unless Caffold holds its request"
+        );
+
+        running_turn(&client, &mut events, "run it").await;
+        runner.say(SESSION, session_state_frame("idle")).await;
+
+        let SessionEventKind::ActivityChanged { status } =
+            next_session_event(&mut events, "activity change").await
+        else {
+            unreachable!("asked for an activity change");
+        };
+        assert_eq!(status, ThreadStatus::Idle);
+        let session = client.session(SESSION).await.expect("the session");
+
+        client.report_status(&session).await;
+        let SessionEventKind::ActivityChanged { status } =
+            next_session_event(&mut events, "activity change").await
+        else {
+            unreachable!("activity remains independent after the stream is observed");
+        };
+        assert_eq!(status, ThreadStatus::Idle);
+        assert!(
+            session.state.lock().await.active_turn.is_some(),
+            "idle activity is not a terminal turn report"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unknown_session_activity_leaves_the_last_observation_standing() {
+        let (client, runner, mut events) = watching().await;
+        runner.say(SESSION, session_state_frame("running")).await;
+        next_session_event(&mut events, "activity change").await;
+
+        runner
+            .say(SESSION, session_state_frame("mulling_it_over"))
+            .await;
+
+        let complaint = next_diagnostic(&mut events).await;
+        assert!(complaint.contains("mulling_it_over"), "{complaint}");
+        let session = client.session(SESSION).await.expect("the session");
+        assert_eq!(
+            status_of(&*session.state.lock().await),
+            ThreadStatus::Active {
+                active_flags: Vec::new(),
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn a_session_activity_without_state_is_diagnostic_only() {
+        let (client, runner, mut events) = watching().await;
+
+        runner
+            .say(
+                SESSION,
+                json!({
+                    "type": "system",
+                    "subtype": "session_state_changed",
+                }),
+            )
+            .await;
+
+        let complaint = next_diagnostic(&mut events).await;
+        assert!(complaint.contains("without its state"), "{complaint}");
+        let session = client.session(SESSION).await.expect("the session");
+        let state = session.state.lock().await;
+        assert!(state.activity.is_none());
+        assert!(!state.activity_stream_observed);
+    }
 
     #[tokio::test]
     async fn an_unowned_result_requests_history_instead_of_inventing_a_live_turn() {

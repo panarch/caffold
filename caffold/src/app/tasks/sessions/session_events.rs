@@ -92,7 +92,9 @@ fn mark_what_changed(state: &mut SessionState, kind: &SessionEventKind) {
             state.status_revision = state.revision;
             state.name_revision = state.revision;
         }
-        SessionEventKind::StatusChanged { .. } => state.status_revision = state.revision,
+        SessionEventKind::StatusChanged { .. } | SessionEventKind::ActivityChanged { .. } => {
+            state.status_revision = state.revision;
+        }
         SessionEventKind::TitleChanged { .. } => state.name_revision = state.revision,
         _ => {}
     }
@@ -145,6 +147,23 @@ fn apply_session_event_state(
                 if state.terminal_candidate_turn_id.is_none() {
                     state.runtime_lease = false;
                 }
+            }
+            SessionEventEffect::CanonicalStateChanged
+        }
+        SessionEventKind::ActivityChanged { status } => {
+            // Activity is an observation beside the turn ledger. In
+            // particular, an idle observation cannot end or forget a turn;
+            // only that turn's own terminal report can do either.
+            if let Some(conversation) = state.conversation.as_mut() {
+                if conversation.status == *status {
+                    return SessionEventEffect::Ignored;
+                }
+                conversation.status = status.clone();
+            } else {
+                if state.pending_thread_status.as_ref() == Some(status) {
+                    return SessionEventEffect::Ignored;
+                }
+                state.pending_thread_status = Some(status.clone());
             }
             SessionEventEffect::CanonicalStateChanged
         }
@@ -748,6 +767,78 @@ mod tests {
         assert_eq!(
             snapshot.turns_page.as_ref().expect("history").turns[0].status,
             TurnStatus::InProgress
+        );
+    }
+
+    #[tokio::test]
+    async fn an_idle_activity_does_not_end_the_active_turn() {
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            resume_response(
+                ThreadStatus::Active {
+                    active_flags: Vec::new(),
+                },
+                Vec::new(),
+                vec![wire_turn("turn-live", TurnStatus::InProgress)],
+            ),
+        )]);
+        let sessions = TaskSessions::default();
+        let _viewer = sessions
+            .acquire_viewer(&client.driver(), 1, "thread-1")
+            .await
+            .expect("viewer");
+        let before = sessions
+            .snapshot("thread-1")
+            .await
+            .expect("before activity");
+
+        sessions
+            .apply_session_event(
+                1,
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::ActivityChanged {
+                        status: ThreadStatus::Idle,
+                    },
+                ),
+            )
+            .await;
+        let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
+
+        assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-live"));
+        assert_eq!(snapshot.runtime_lease, before.runtime_lease);
+        assert!(
+            snapshot
+                .conversation
+                .as_ref()
+                .is_some_and(|thread| thread.status == ThreadStatus::Idle)
+        );
+        assert_eq!(
+            snapshot.turns_page.as_ref().expect("history").turns[0].status,
+            TurnStatus::InProgress,
+            "an activity observation cannot write the turn ledger"
+        );
+
+        let revision = snapshot.revision;
+        let duplicate = sessions
+            .apply_session_event_with_outcome(
+                1,
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::ActivityChanged {
+                        status: ThreadStatus::Idle,
+                    },
+                ),
+            )
+            .await;
+        assert!(!duplicate.accepted, "the same observation says nothing new");
+        assert_eq!(
+            sessions
+                .snapshot("thread-1")
+                .await
+                .expect("snapshot")
+                .revision,
+            revision
         );
     }
 

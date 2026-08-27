@@ -361,4 +361,40 @@ mod tests {
             ThreadStatus::Active { .. }
         ));
     }
+
+    #[tokio::test]
+    async fn current_activity_waits_for_and_then_wins_over_older_metadata() {
+        let sessions = TaskSessions::default();
+        sessions.track_listed_codex_thread(3, "thread-1").await;
+        let activity = session_event(
+            "thread-1",
+            SessionEventKind::ActivityChanged {
+                status: active_status(),
+            },
+        );
+
+        let first = sessions
+            .apply_session_event_with_outcome(3, &activity)
+            .await;
+        assert!(first.canonical_state_changed);
+        let duplicate = sessions
+            .apply_session_event_with_outcome(3, &activity)
+            .await;
+        assert!(!duplicate.accepted, "the same pending activity is not new");
+
+        sessions
+            .observe_listed_thread_metadata(3, listed_thread("thread-1", ThreadStatus::Idle))
+            .await;
+
+        assert!(matches!(
+            sessions
+                .snapshot("thread-1")
+                .await
+                .unwrap()
+                .conversation
+                .unwrap()
+                .status,
+            ThreadStatus::Active { .. }
+        ));
+    }
 }

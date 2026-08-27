@@ -46,6 +46,15 @@ pub(crate) enum SessionEventKind {
     StatusChanged {
         status: ThreadStatus,
     },
+    /// The agent's current activity, observed independently of its turn
+    /// lifecycle.
+    ///
+    /// This changes what a Task displays without establishing, ending, or
+    /// identifying a turn. Drivers whose status and turn lifecycle arrive as
+    /// one fact continue to report `StatusChanged` instead.
+    ActivityChanged {
+        status: ThreadStatus,
+    },
     /// The agent renamed the conversation, or cleared its name.
     TitleChanged {
         title: Option<String>,
