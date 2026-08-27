@@ -36,6 +36,7 @@ pub(crate) const THREAD_LIST: &str = "thread/list";
 pub(crate) const THREAD_READ: &str = "thread/read";
 pub(crate) const THREAD_LOADED_LIST: &str = "thread/loaded/list";
 pub(crate) const THREAD_START: &str = "thread/start";
+pub(crate) const THREAD_FORK: &str = "thread/fork";
 pub(crate) const THREAD_NAME_SET: &str = "thread/name/set";
 pub(crate) const THREAD_RESUME: &str = "thread/resume";
 pub(crate) const THREAD_ARCHIVE: &str = "thread/archive";
@@ -244,6 +245,15 @@ pub struct TurnsPage {
 #[serde(rename_all = "camelCase")]
 pub struct ThreadStartResponse {
     pub thread: CodexThread,
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadForkResponse {
+    pub thread: CodexThread,
+    pub cwd: String,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
@@ -529,6 +539,18 @@ pub struct ThreadStartParams<'a> {
     pub permissions: Option<&'static str>,
     pub service_tier: Option<&'a str>,
     service_name: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadForkParams<'a> {
+    pub thread_id: &'a str,
+    pub cwd: &'a str,
+    pub runtime_workspace_roots: [&'a str; 1],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config: Option<HashMap<String, Value>>,
+    pub exclude_turns: bool,
+    pub defer_goal_continuation: bool,
 }
 
 #[cfg(test)]
@@ -1174,6 +1196,21 @@ pub(crate) fn thread_start_params_with_config<'a>(
     }
 }
 
+pub(crate) fn thread_fork_params_with_config<'a>(
+    thread_id: &'a str,
+    cwd: &'a str,
+    config: Option<HashMap<String, Value>>,
+) -> ThreadForkParams<'a> {
+    ThreadForkParams {
+        thread_id,
+        cwd,
+        runtime_workspace_roots: [cwd],
+        config,
+        exclude_turns: true,
+        defer_goal_continuation: true,
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn thread_start_params_with_legacy_dynamic_tools<'a>(
     cwd: &'a str,
@@ -1630,6 +1667,22 @@ mod tests {
                 }),
             ),
             (
+                THREAD_FORK,
+                serde_json::to_value(thread_fork_params_with_config(
+                    "thread_1",
+                    "/workspace/project",
+                    None,
+                ))
+                .expect("thread fork params"),
+                json!({
+                    "threadId": "thread_1",
+                    "cwd": "/workspace/project",
+                    "runtimeWorkspaceRoots": ["/workspace/project"],
+                    "excludeTurns": true,
+                    "deferGoalContinuation": true
+                }),
+            ),
+            (
                 TURN_START,
                 serde_json::to_value(turn_start_params(
                     "thread_1",
@@ -1782,6 +1835,29 @@ mod tests {
             decode_response(THREAD_START, json!({ "thread": idle_thread.clone() }))
                 .expect("thread start response");
         assert_eq!(started.thread.id, "thread_1");
+
+        let forked: ThreadForkResponse = decode_response(
+            THREAD_FORK,
+            json!({
+                "thread": {
+                    "id": "thread_2",
+                    "preview": "Forked",
+                    "status": { "type": "idle" },
+                    "cwd": "/workspace/project",
+                    "forkedFromId": "thread_1",
+                    "createdAt": 3,
+                    "updatedAt": 4,
+                    "turns": []
+                },
+                "cwd": "/workspace/project",
+                "model": "gpt-5.5",
+                "reasoningEffort": "high"
+            }),
+        )
+        .expect("thread fork response");
+        assert_eq!(forked.thread.id, "thread_2");
+        assert_eq!(forked.thread.extra["forkedFromId"], json!("thread_1"));
+        assert_eq!(forked.cwd, "/workspace/project");
 
         let resumed: ThreadResumeResponse = decode_response(
             THREAD_RESUME,

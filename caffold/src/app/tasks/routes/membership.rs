@@ -80,6 +80,10 @@ pub(super) async fn task_archive(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
 ) -> Result<Json<TaskRecord>, ApiError> {
+    if task_store_get(&state, &thread_id).await?.is_none() {
+        return Err(task_not_managed_error());
+    }
+    let _mutation = state.task_sessions.reserve_mutation(&thread_id).await;
     let Some(managed) = task_store_get(&state, &thread_id).await? else {
         return Err(task_not_managed_error());
     };

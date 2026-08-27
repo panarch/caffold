@@ -237,6 +237,26 @@ test("Tasks custom elements use routed owners or the nearest components namespac
   assert.deepEqual(invalidOwners, []);
 });
 
+test("Task Info keeps action presentation in its private leaf", () => {
+  const info = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.js",
+  );
+  const actions = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.js",
+  );
+
+  assert.match(info, /import "\.\/info\/components\/actions\.js"/);
+  assert.match(info, /<caffold-task-detail-info-actions>/);
+  assert.match(info, /caffold:task-detail-info-action-intent/);
+  assert.doesNotMatch(info, /data-task-info-action|forkDisabledReason/);
+
+  assert.match(actions, /customElements\.define/);
+  assert.match(actions, /data-task-info-action="fork"/);
+  assert.match(actions, /data-task-info-action="archive"/);
+  assert.match(actions, /caffold:task-detail-info-action-intent/);
+  assert.doesNotMatch(actions, /forkTask|archiveTask/);
+});
+
 test("workspace brand owns the shared Tasks and Settings navigator identity", () => {
   const brand = readFrontend(
     "pages/(task-workspace)/components/workspace-brand.js",

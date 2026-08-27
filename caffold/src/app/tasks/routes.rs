@@ -35,7 +35,7 @@ use super::{
     TaskDetailSync, TaskRecord, TaskState, accepted_user_message_event, now_ms, task_activity_ms,
 };
 use super::{
-    lifecycle::{ActiveTaskTopPlacement, CreateTask},
+    lifecycle::{ActiveTaskTopPlacement, CreateTask, ForkCodexTask},
     recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason, ManagedCodexThreadLocation},
     worktrees::inspect_ready_worktree,
 };
@@ -342,6 +342,7 @@ pub(super) fn router(state: TaskState) -> Router {
             get(task_generated_image),
         )
         .route("/api/tasks/{thread_id}/archive", post(task_archive))
+        .route("/api/tasks/{thread_id}/fork", post(fork_task))
         .route("/api/tasks/{thread_id}/restore", post(task_restore))
         .route("/api/tasks/{thread_id}/reorder", post(task_reorder))
         .route(

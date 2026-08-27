@@ -927,6 +927,35 @@ test("archived actions use a visually secondary compact base", () => {
   ]);
 });
 
+test("Task Info actions visibly distinguish their disabled state", () => {
+  const actions = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css",
+  );
+
+  cssBlockMatching(
+    actions,
+    ".task-detail-task-action .task-secondary-button:not\(:disabled\):hover::before",
+    [/border-color: var\(--border-strong\)/],
+  );
+  cssBlockMatching(
+    actions,
+    ".task-detail-task-action .task-secondary-button:disabled",
+    [
+      /color: var\(--disabled-text\)/,
+      /cursor: not-allowed/,
+      /opacity: 0\.58/,
+    ],
+  );
+  cssBlockMatching(
+    actions,
+    ".task-detail-task-action .task-secondary-button:disabled::before",
+    [
+      /border-color: var\(--border\)/,
+      /background: var\(--surface-muted\)/,
+    ],
+  );
+});
+
 test("visible controls separate responsive geometry from coarse-pointer hit area", () => {
   const tokens = readFrontend("styles.css");
   for (const token of [
@@ -968,7 +997,7 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
     ["pages/(task-workspace)/settings/codex/page.css", ".settings-content-section > header button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/settings/codex/page.css", ".settings-runtime-control button::before", "--interface-control-hit-outset"],
     ["pages/(task-workspace)/settings/about/page.css", ".settings-about-actions button::before", "--interface-control-hit-outset"],
-    ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css", ".task-detail-archive-action .task-secondary-button::before", "--interface-compact-hit-outset"],
+    ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css", ".task-detail-task-action .task-secondary-button::before", "--interface-compact-hit-outset"],
   ];
 
   for (const [path, selector, token] of controls) {

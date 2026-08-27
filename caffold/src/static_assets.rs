@@ -424,6 +424,16 @@ pub fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.js"
             )))
         }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css"
@@ -1521,6 +1531,10 @@ mod tests {
                 b"caffold-task-detail-info".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.js",
+                b"caffold-task-detail-info-actions".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/(detail)/(review)/layout.js",
                 b"caffold-task-review".as_slice(),
             ),
@@ -1664,6 +1678,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css",
                 b"caffold-task-detail-info".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css",
+                b"caffold-task-detail-info-actions".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(review)/layout.css",

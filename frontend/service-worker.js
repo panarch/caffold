@@ -146,6 +146,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/(detail)/components/github-menu.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css",
+  "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css",

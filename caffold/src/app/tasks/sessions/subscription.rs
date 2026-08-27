@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::agent::AgentError;
-use crate::agent::{Conversation, Driver};
+use crate::agent::{Conversation, Driver, TurnPage};
 
 use super::{
     ConversationSettings, SessionEntry, SessionLifecycle, SessionSnapshot, TaskSessions,
@@ -182,14 +182,16 @@ impl TaskSessions {
         driver: &Driver,
         generation: u64,
         thread: Conversation,
+        turns_page: Option<TurnPage>,
         settings: ConversationSettings,
     ) {
         let entry = self.entry(&thread.id).await;
         let mut state = entry.state.lock().await;
+        let history_base_revision = turns_page.as_ref().map(|_| state.revision);
         state.lifecycle = SessionLifecycle::Subscribed;
         state.driver = Some(driver.clone());
         state.on_connection(driver, generation);
-        let next_active_turn_id = active_turn_id(&thread, None);
+        let next_active_turn_id = active_turn_id(&thread, turns_page.as_ref());
         update_active_turn(
             &mut state,
             next_active_turn_id.clone(),
@@ -202,8 +204,8 @@ impl TaskSessions {
         state.model = settings.model;
         state.reasoning_effort = settings.reasoning_effort;
         state.fast_mode = settings.fast_mode;
-        state.turns_page = None;
-        state.history_base_revision = None;
+        state.turns_page = turns_page;
+        state.history_base_revision = history_base_revision;
         state.runtime_lease = false;
         state.revision = state.revision.saturating_add(1);
         state.status_revision = state.revision;
@@ -586,6 +588,7 @@ mod tests {
                 &client.driver(),
                 1,
                 Conversation::from(&thread(ThreadStatus::Idle, Vec::new())),
+                None,
                 ConversationSettings {
                     permission_mode: Some("askForApproval".to_string()),
                     model: Some("gpt-test".to_string()),

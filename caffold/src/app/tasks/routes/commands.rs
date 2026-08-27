@@ -40,6 +40,88 @@ pub(super) async fn create_task(
     Ok(Json(detail))
 }
 
+pub(super) async fn fork_task(
+    State(state): State<TaskState>,
+    AxumPath(thread_id): AxumPath<String>,
+) -> Result<Json<TaskDetailResponse>, ApiError> {
+    let (source, section) = fork_source_context(&state, &thread_id).await?;
+    if !matches!(source.run_by, RunBy::Codex) {
+        return Err(ApiError::BadRequest {
+            code: "task_fork_unsupported_provider",
+            message: "forking is currently available only for Codex Tasks".to_string(),
+        });
+    }
+    let cwd = state
+        .fs
+        .absolute_directory_path(&section.logical_path)
+        .map_err(|error| ApiError::Conflict {
+            code: "task_fork_project_unavailable",
+            message: format!("the source Task project root is unavailable: {error}"),
+        })?
+        .display()
+        .to_string();
+    let connection = require_codex_thread_connection(&state).await?;
+    let created = state
+        .lifecycle
+        .fork_codex_task(
+            &connection,
+            ForkCodexTask {
+                source,
+                section,
+                cwd,
+            },
+        )
+        .await?;
+    let _viewer = state
+        .task_sessions
+        .reserve_viewer(&created.task.thread_id)
+        .await;
+    let agent = TaskAgent::Codex(connection);
+    let mut detail = state
+        .detail
+        .read(&agent, &created.task.thread_id, None)
+        .await?;
+    detail.active_top_placement = Some(created.placement);
+    Ok(Json(detail))
+}
+
+async fn fork_source_context(
+    state: &TaskState,
+    thread_id: &str,
+) -> Result<(ManagedThread, crate::task_store::ManagedSection), ApiError> {
+    let store = state.task_store.clone();
+    let thread_id = thread_id.to_string();
+    let (source, section) = tokio::task::spawn_blocking(move || {
+        store.read(|tables| {
+            let source = tables
+                .active_managed_threads()?
+                .into_iter()
+                .find(|thread| thread.thread_id == thread_id);
+            let section_id = source
+                .as_ref()
+                .and_then(|source| source.section_id.as_deref())
+                .map(str::to_string);
+            let section = match section_id {
+                Some(section_id) => tables
+                    .managed_sections()?
+                    .into_iter()
+                    .find(|section| section.section_id == section_id),
+                None => None,
+            };
+            Ok((source, section))
+        })
+    })
+    .await
+    .map_err(task_store_join_error)?
+    .map_err(task_store_api_error)?;
+    let source = source.ok_or_else(task_not_managed_error)?;
+    let section = section.ok_or_else(|| ApiError::Conflict {
+        code: "task_fork_source_unplaced",
+        message: "the source Task is not placed in an active Section".to_string(),
+    })?;
+    Ok((source, section))
+}
+
 pub(super) async fn task_prompt(
     State(state): State<TaskState>,
     AxumPath(thread_id): AxumPath<String>,
@@ -47,6 +129,10 @@ pub(super) async fn task_prompt(
     Json(request): Json<TaskPromptRequest>,
 ) -> Result<Json<TaskPromptResponse>, ApiError> {
     let prompt_observed_ms = now_ms();
+    if task_store_get(&state, &thread_id).await?.is_none() {
+        return Err(task_not_managed_error());
+    }
+    let _mutation = state.task_sessions.reserve_mutation(&thread_id).await;
     let managed = task_store_get(&state, &thread_id)
         .await?
         .ok_or_else(task_not_managed_error)?;
@@ -555,6 +641,45 @@ mod tests {
         serde_json::from_value(page).expect("the fixture decodes as a Codex turns page")
     }
 
+    fn fork_thread(thread_id: &str, cwd: &std::path::Path, updated_at: f64) -> JsonValue {
+        json!({
+            "id": thread_id,
+            "name": "Provider source name",
+            "preview": "Inherited conversation",
+            "status": { "type": "idle" },
+            "cwd": cwd.display().to_string(),
+            "createdAt": 1.0,
+            "updatedAt": updated_at,
+            "turns": []
+        })
+    }
+
+    fn inherited_turns_page() -> JsonValue {
+        json!({
+            "data": [{
+                "id": "turn-inherited",
+                "status": "completed",
+                "startedAt": 1.0,
+                "completedAt": 2.0,
+                "items": [
+                    {
+                        "type": "userMessage",
+                        "id": "user-inherited",
+                        "content": [{ "type": "text", "text": "Inherited prompt" }]
+                    },
+                    {
+                        "type": "agentMessage",
+                        "id": "assistant-inherited",
+                        "phase": "final",
+                        "text": "Inherited answer"
+                    }
+                ]
+            }],
+            "nextCursor": "older-inherited-turns",
+            "backwardsCursor": null
+        })
+    }
+
     use super::super::test_support::*;
     use super::*;
     use crate::{
@@ -712,6 +837,460 @@ mod tests {
             .expect("Task creation error body");
         let body: JsonValue = serde_json::from_slice(&body).expect("Task creation error JSON");
         assert_eq!(body["error"]["code"], "codex_readiness_blocked");
+        assert!(client.mock_requests().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fork_route_claims_only_the_idle_codex_child_at_the_project_root() {
+        let root = tempfile::tempdir().unwrap();
+        let project_root = root.path().canonicalize().unwrap();
+        let source_thread_id = "thread-fork-source";
+        let child_thread_id = "thread-fork-child";
+        let cwd = project_root.display().to_string();
+        let source = fork_thread(source_thread_id, &project_root, 2.0);
+        let child = json!({
+            "id": child_thread_id,
+            "preview": "Inherited conversation",
+            "status": { "type": "idle" },
+            "cwd": cwd,
+            "forkedFromId": source_thread_id,
+            "createdAt": 3.0,
+            "updatedAt": 3.0,
+            "turns": []
+        });
+        let client = CodexThreadClient::mock(vec![
+            crate::agent::codex::MockCodexResponse::ok_for(
+                "thread/read",
+                json!({ "threadId": source_thread_id, "includeTurns": false }),
+                json!({ "thread": source.clone() }),
+            ),
+            crate::agent::codex::MockCodexResponse::ok_for(
+                "thread/fork",
+                json!({
+                    "threadId": source_thread_id,
+                    "cwd": cwd,
+                    "runtimeWorkspaceRoots": [cwd],
+                    "excludeTurns": true,
+                    "deferGoalContinuation": true
+                }),
+                json!({
+                    "thread": child,
+                    "cwd": cwd,
+                    "model": "gpt-5.6-sol",
+                    "reasoningEffort": "high",
+                    "serviceTier": "priority",
+                    "approvalPolicy": "on-request",
+                    "approvalsReviewer": "auto_review",
+                    "sandbox": { "type": "workspaceWrite" }
+                }),
+            ),
+            crate::agent::codex::MockCodexResponse::ok_for(
+                "thread/read",
+                json!({ "threadId": source_thread_id, "includeTurns": false }),
+                json!({ "thread": source }),
+            ),
+            crate::agent::codex::MockCodexResponse::ok_for(
+                "thread/turns/list",
+                json!({
+                    "threadId": child_thread_id,
+                    "limit": 8,
+                    "sortDirection": "desc",
+                    "itemsView": "full"
+                }),
+                inherited_turns_page(),
+            ),
+            crate::agent::codex::MockCodexResponse::ok_for(
+                "thread/name/set",
+                json!({
+                    "threadId": child_thread_id,
+                    "name": "Fork of Source task"
+                }),
+                json!({}),
+            ),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        claim_cached_active(
+            &state,
+            source_thread_id,
+            "Source task",
+            2_000,
+            "section-root",
+            "",
+        );
+
+        let response = router(state.clone())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/tasks/{source_thread_id}/fork"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .expect("fork response");
+
+        let status = response.status();
+        let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("fork response body");
+        let detail: JsonValue = serde_json::from_slice(&body).expect("fork detail JSON");
+        assert_eq!(status, axum::http::StatusCode::OK, "{detail}");
+        assert_eq!(detail["threadId"], child_thread_id);
+        assert_eq!(detail["provider"], "codex");
+        assert_eq!(detail["task"]["title"], "Fork of Source task");
+        assert_eq!(detail["task"]["cwdPath"], "");
+        assert_eq!(detail["task"]["worktree"], JsonValue::Null);
+        assert_eq!(detail["historyLoading"], false);
+        assert_eq!(detail["eventsPage"]["nextCursor"], "older-inherited-turns");
+        assert!(detail["events"].as_array().unwrap().iter().any(|event| {
+            event["summary"] == "Inherited prompt" || event["payload"]["text"] == "Inherited prompt"
+        }));
+        assert_eq!(
+            detail["activeTopPlacement"]["section"]["id"],
+            "section-root"
+        );
+        assert_eq!(
+            detail["activeTopPlacement"]["beforeThreadId"],
+            source_thread_id
+        );
+
+        let source_stored = state
+            .task_store
+            .get(source_thread_id)
+            .unwrap()
+            .expect("source remains managed");
+        assert_eq!(source_stored.display_name, "Source task");
+        assert!(state.task_store.get(child_thread_id).unwrap().is_some());
+        assert!(
+            state
+                .task_store
+                .worktree_for_thread(child_thread_id)
+                .unwrap()
+                .is_none()
+        );
+        let active = state
+            .task_store
+            .read(|tables| tables.active_managed_threads())
+            .unwrap();
+        assert_eq!(
+            active
+                .iter()
+                .map(|thread| thread.thread_id.as_str())
+                .collect::<Vec<_>>(),
+            [child_thread_id, source_thread_id]
+        );
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            [
+                "thread/read",
+                "thread/fork",
+                "thread/read",
+                "thread/turns/list",
+                "thread/name/set"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn fork_rejects_an_active_source_before_creating_a_child() {
+        let root = tempfile::tempdir().unwrap();
+        let source_thread_id = "thread-fork-active";
+        let mut source = fork_thread(source_thread_id, root.path(), 2.0);
+        source["status"] = json!({ "type": "active", "activeFlags": [] });
+        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok_for(
+            "thread/read",
+            json!({ "threadId": source_thread_id, "includeTurns": false }),
+            json!({ "thread": source }),
+        )]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        claim_cached_active(
+            &state,
+            source_thread_id,
+            "Active source",
+            2_000,
+            "section-root",
+            "",
+        );
+
+        let error = fork_task(State(state.clone()), AxumPath(source_thread_id.to_string()))
+            .await
+            .expect_err("active source is rejected");
+
+        assert!(matches!(
+            error,
+            ApiError::Conflict {
+                code: "task_fork_source_not_idle",
+                ..
+            }
+        ));
+        assert_eq!(
+            state
+                .task_store
+                .read(|tables| tables.active_managed_threads())
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/read"]
+        );
+    }
+
+    #[tokio::test]
+    async fn fork_rejects_a_source_archived_after_its_route_context_was_read() {
+        let root = tempfile::tempdir().unwrap();
+        let project_root = root.path().canonicalize().unwrap();
+        let source_thread_id = "thread-fork-stale-source";
+        let client = CodexThreadClient::mock(Vec::new());
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        claim_cached_active(
+            &state,
+            source_thread_id,
+            "Stale source",
+            2_000,
+            "section-root",
+            "",
+        );
+        let (source, section) = fork_source_context(&state, source_thread_id)
+            .await
+            .expect("capture active source context");
+        state
+            .task_store
+            .archive(source_thread_id, 3_000)
+            .unwrap()
+            .expect("archive source after context read");
+        let connection = require_codex_thread_connection(&state)
+            .await
+            .expect("Codex connection");
+
+        let result = state
+            .lifecycle
+            .fork_codex_task(
+                &connection,
+                ForkCodexTask {
+                    source,
+                    section,
+                    cwd: project_root.display().to_string(),
+                },
+            )
+            .await;
+        let Err(error) = result else {
+            panic!("stale source context must not create a child");
+        };
+
+        assert!(matches!(
+            error,
+            ApiError::Conflict {
+                code: "task_fork_source_changed",
+                ..
+            }
+        ));
+        assert!(client.mock_requests().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fork_deletes_the_child_when_the_source_changes_during_provider_fork() {
+        let root = tempfile::tempdir().unwrap();
+        let project_root = root.path().canonicalize().unwrap();
+        let source_thread_id = "thread-fork-changing-source";
+        let child_thread_id = "thread-fork-changing-child";
+        let cwd = project_root.display().to_string();
+        let source_before = fork_thread(source_thread_id, &project_root, 2.0);
+        let source_after = fork_thread(source_thread_id, &project_root, 3.0);
+        let client = CodexThreadClient::mock(vec![
+            crate::agent::codex::MockCodexResponse::ok(
+                "thread/read",
+                json!({ "thread": source_before }),
+            ),
+            crate::agent::codex::MockCodexResponse::ok(
+                "thread/fork",
+                json!({
+                    "thread": {
+                        "id": child_thread_id,
+                        "preview": "Inherited conversation",
+                        "status": { "type": "idle" },
+                        "cwd": cwd,
+                        "forkedFromId": source_thread_id,
+                        "createdAt": 3.0,
+                        "updatedAt": 3.0,
+                        "turns": []
+                    },
+                    "cwd": cwd
+                }),
+            ),
+            crate::agent::codex::MockCodexResponse::ok(
+                "thread/read",
+                json!({ "thread": source_after }),
+            ),
+            crate::agent::codex::MockCodexResponse::ok_for(
+                "thread/delete",
+                json!({ "threadId": child_thread_id }),
+                json!({}),
+            ),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        claim_cached_active(
+            &state,
+            source_thread_id,
+            "Changing source",
+            2_000,
+            "section-root",
+            "",
+        );
+
+        let error = fork_task(State(state.clone()), AxumPath(source_thread_id.to_string()))
+            .await
+            .expect_err("a changed source invalidates its child");
+
+        assert!(matches!(
+            error,
+            ApiError::Conflict {
+                code: "task_fork_source_changed",
+                ..
+            }
+        ));
+        assert!(state.task_store.get(child_thread_id).unwrap().is_none());
+        assert!(state.task_store.get(source_thread_id).unwrap().is_some());
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/read", "thread/fork", "thread/read", "thread/delete"]
+        );
+    }
+
+    #[tokio::test]
+    async fn fork_history_failure_deletes_the_unclaimed_child() {
+        let root = tempfile::tempdir().unwrap();
+        let project_root = root.path().canonicalize().unwrap();
+        let source_thread_id = "thread-fork-history-source";
+        let child_thread_id = "thread-fork-history-child";
+        let cwd = project_root.display().to_string();
+        let source = fork_thread(source_thread_id, &project_root, 2.0);
+        let client = CodexThreadClient::mock(vec![
+            crate::agent::codex::MockCodexResponse::ok(
+                "thread/read",
+                json!({ "thread": source.clone() }),
+            ),
+            crate::agent::codex::MockCodexResponse::ok(
+                "thread/fork",
+                json!({
+                    "thread": {
+                        "id": child_thread_id,
+                        "preview": "Inherited conversation",
+                        "status": { "type": "idle" },
+                        "cwd": cwd,
+                        "forkedFromId": source_thread_id,
+                        "createdAt": 3.0,
+                        "updatedAt": 3.0,
+                        "turns": []
+                    },
+                    "cwd": cwd
+                }),
+            ),
+            crate::agent::codex::MockCodexResponse::ok("thread/read", json!({ "thread": source })),
+            crate::agent::codex::MockCodexResponse::error(
+                "thread/turns/list",
+                crate::agent::codex::CodexThreadError::Protocol("history unavailable".to_string()),
+            ),
+            crate::agent::codex::MockCodexResponse::ok_for(
+                "thread/delete",
+                json!({ "threadId": child_thread_id }),
+                json!({}),
+            ),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        claim_cached_active(
+            &state,
+            source_thread_id,
+            "Source task",
+            2_000,
+            "section-root",
+            "",
+        );
+
+        let error = fork_task(State(state.clone()), AxumPath(source_thread_id.to_string()))
+            .await
+            .expect_err("history failure rejects the fork");
+
+        assert!(error.to_string().contains("history unavailable"));
+        assert!(state.task_store.get(child_thread_id).unwrap().is_none());
+        assert!(state.task_store.get(source_thread_id).unwrap().is_some());
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            [
+                "thread/read",
+                "thread/fork",
+                "thread/read",
+                "thread/turns/list",
+                "thread/delete"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn fork_rejects_a_claude_task_without_contacting_codex() {
+        let root = tempfile::tempdir().unwrap();
+        let source_thread_id = "claude-fork-source";
+        let client = CodexThreadClient::mock(Vec::new());
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        seed_section(&state, "section-root", "");
+        state
+            .task_store
+            .transaction(|tables| {
+                tables.claim_managed_thread_at_top(
+                    ManagedThread::new(
+                        source_thread_id,
+                        RunBy::Claude {
+                            cwd: root.path().display().to_string(),
+                        },
+                        Some(2_000),
+                        None,
+                        None,
+                    ),
+                    "Claude source",
+                    "section-root",
+                    2_000,
+                )
+            })
+            .unwrap();
+
+        let error = fork_task(State(state), AxumPath(source_thread_id.to_string()))
+            .await
+            .expect_err("Claude fork is not part of phase one");
+
+        assert!(matches!(
+            error,
+            ApiError::BadRequest {
+                code: "task_fork_unsupported_provider",
+                ..
+            }
+        ));
         assert!(client.mock_requests().await.is_empty());
     }
 
