@@ -3,6 +3,7 @@ mod claude;
 mod codex;
 mod commands;
 mod conversation;
+mod fork;
 mod list;
 mod membership;
 mod store;
@@ -106,41 +107,6 @@ struct CreateTaskRequest {
     #[serde(default)]
     fast_mode: bool,
     permission_mode: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TaskForkSourceRequest {
-    provider: String,
-    source_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CreateTaskForkRequest {
-    provider: String,
-    source_id: String,
-    section_id: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct TaskForkSourcePreview {
-    provider: &'static str,
-    source_id: String,
-    display_name: String,
-    summary: Option<String>,
-    status: ThreadStatus,
-    cwd: Option<String>,
-    last_activity_ms: Option<u64>,
-    recent_history: Vec<TaskForkPreviewMessage>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct TaskForkPreviewMessage {
-    role: &'static str,
-    text: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -352,6 +318,7 @@ pub(super) async fn test_wait_for_task_list_refresh(events: TaskListEvents) {
 pub(super) fn router(state: TaskState) -> Router {
     Router::new()
         .merge(super::push::router())
+        .merge(fork::routes())
         .route("/api/codex/status", get(codex_status))
         .route("/api/codex/restart", post(codex_restart))
         .route("/api/claude/status", get(claude_status))
@@ -365,8 +332,6 @@ pub(super) fn router(state: TaskState) -> Router {
                 .layer(DefaultBodyLimit::max(MAX_TASK_REQUEST_BYTES)),
         )
         .route("/api/tasks/archived", get(list_archived_tasks))
-        .route("/api/task-forks/preview", post(preview_task_fork_source))
-        .route("/api/task-forks", post(create_task_fork))
         .route("/api/tasks/stream", get(task_list_stream))
         .route(
             "/api/tasks/{thread_id}",
@@ -382,7 +347,6 @@ pub(super) fn router(state: TaskState) -> Router {
             get(task_generated_image),
         )
         .route("/api/tasks/{thread_id}/archive", post(task_archive))
-        .route("/api/tasks/{thread_id}/fork", post(fork_task))
         .route("/api/tasks/{thread_id}/restore", post(task_restore))
         .route("/api/tasks/{thread_id}/reorder", post(task_reorder))
         .route(
