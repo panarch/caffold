@@ -18,6 +18,10 @@ const ownership = new Map([
     "components/file-viewer.css",
     ["caffold-review-file-viewer"],
   ],
+  [
+    "components/file-viewer/components/markdown-preview.css",
+    ["caffold-review-markdown-preview"],
+  ],
   ["components/git-compare-browser.css", ["caffold-git-compare-browser"]],
   [
     "components/git-compare-browser/compare-tree.css",
@@ -32,6 +36,7 @@ const ownership = new Map([
     "components/review-panel-resizer.css",
     ["caffold-review-panel-resizer"],
   ],
+  ["components/segmented-control.css", ["caffold-segmented-control"]],
   ["pages/(task-workspace)/layout.css", ["caffold-task-workspace"]],
   [
     "pages/(task-workspace)/components/navigation.css",
@@ -121,10 +126,6 @@ const ownership = new Map([
   [
     "pages/(task-workspace)/tasks/(detail)/layout.css",
     ["caffold-detail-layout"],
-  ],
-  [
-    "pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.css",
-    ["caffold-detail-view-switch"],
   ],
   [
     "pages/(task-workspace)/tasks/(detail)/(section)/layout.css",
@@ -372,7 +373,7 @@ const componentChildren = new Map([
     [
       "caffold-task-detail",
       "caffold-section-detail-summary",
-      "caffold-detail-view-switch",
+      "caffold-segmented-control",
       "caffold-task-detail-git",
       "caffold-task-detail-github",
       "caffold-section-detail",
@@ -434,6 +435,7 @@ const componentChildren = new Map([
       "caffold-git-compare-tree",
       "caffold-review-panel-resizer",
       "caffold-review-file-viewer",
+      "caffold-segmented-control",
     ],
   ],
   [

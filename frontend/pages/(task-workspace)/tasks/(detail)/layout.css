@@ -74,6 +74,10 @@ caffold-detail-layout {
     min-width: 0;
   }
 
+  & caffold-segmented-control[data-detail-view-switch] {
+    margin-inline-end: var(--interface-compact-hit-outset);
+  }
+
   & .detail-layout-body,
   & .detail-layout-body > div,
   & .detail-layout-body > div > caffold-task-review,

@@ -47,7 +47,7 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
 
   const before = await taskReview.evaluate((review) => {
     const modeSwitch = document.querySelector(
-      "caffold-detail-view-switch",
+      "caffold-segmented-control[data-detail-view-switch]",
     );
     const summary = document.querySelector(".detail-layout-summary");
     const summaryActions = summary.querySelector(".detail-layout-actions");
@@ -62,7 +62,7 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
     const navigator = review.querySelector(".task-review-navigator-pane");
     const viewer = review.querySelector(".task-review-viewer-pane");
     const visiblePaneControls = [...review.querySelectorAll(
-      ".task-review-pane-axis .task-review-axis-options",
+      ".task-review-pane-axis > caffold-segmented-control",
     )].filter((control) => control.getClientRects().length > 0);
     const rightmostPaneControl = visiblePaneControls.reduce((rightmost, control) =>
       !rightmost || control.getBoundingClientRect().right > rightmost.getBoundingClientRect().right
@@ -138,7 +138,7 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
       "caffold-review-file-viewer .viewer-info-button",
     );
     const viewerAxis = review.querySelector(
-      ".task-review-viewer-axis .task-review-axis-options",
+      '.task-review-viewer-axis caffold-segmented-control[data-review-axis="viewer"]',
     );
     const summary = document.querySelector(".detail-layout-summary");
     const github = summary.querySelector(".task-github-button");
@@ -336,7 +336,7 @@ test("keeps Review reflowed at the appearance extremes", { tag: "@all-viewports"
     }, settings);
     const layout = await taskReview.evaluate((review) => {
       const modeSwitch = document.querySelector(
-        "caffold-detail-view-switch",
+        "caffold-segmented-control[data-detail-view-switch]",
       );
       const viewer = review.querySelector(".task-review-viewer-pane");
       const code = review.querySelector(".diff-code");
@@ -346,9 +346,9 @@ test("keeps Review reflowed at the appearance extremes", { tag: "@all-viewports"
         viewerOverflow: viewer.scrollWidth > viewer.clientWidth,
         codeFontSize: code ? getComputedStyle(code).fontSize : null,
         selectedInsets: [...review.querySelectorAll(
-          '.task-review-axis-options button[aria-pressed="true"] > span',
+          '.task-review-pane-axis > caffold-segmented-control button[aria-pressed="true"] > span',
         )].map((selected) => {
-          const group = selected.closest(".task-review-axis-options").getBoundingClientRect();
+          const group = selected.closest("caffold-segmented-control").getBoundingClientRect();
           const visual = selected.getBoundingClientRect();
           return {
             bottom: group.bottom - visual.bottom,
@@ -356,7 +356,7 @@ test("keeps Review reflowed at the appearance extremes", { tag: "@all-viewports"
           };
         }),
         truncatedAxisLabels: [...review.querySelectorAll(
-          ".task-review-axis-options button > span",
+          ".task-review-pane-axis > caffold-segmented-control button > span",
         )]
           .filter((label) => label.scrollWidth > label.clientWidth)
           .map((label) => label.textContent.trim()),
@@ -412,7 +412,7 @@ test("keeps compact Task segments pixel-aligned on Retina displays", { tag: "@al
       const { devicePixelRatio, segments } = await page.evaluate(() => ({
         devicePixelRatio: window.devicePixelRatio,
         segments: [
-          ...document.querySelectorAll("caffold-detail-view-switch, .task-review-axis-options"),
+          ...document.querySelectorAll("caffold-segmented-control"),
         ]
           .filter((group) => group.getClientRects().length > 0)
           .map((group) => {
@@ -481,7 +481,7 @@ test("reflows Review at a desktop 200 percent effective viewport", { tag: "@desk
     overflow: review.scrollWidth > review.clientWidth,
     modeSwitchOverflow: (() => {
       const modeSwitch = document.querySelector(
-        "caffold-detail-view-switch",
+        "caffold-segmented-control[data-detail-view-switch]",
       );
       return modeSwitch.scrollWidth > modeSwitch.clientWidth;
     })(),

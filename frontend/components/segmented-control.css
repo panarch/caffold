@@ -1,7 +1,7 @@
-caffold-detail-view-switch {
+caffold-segmented-control {
   display: inline-grid;
   grid-auto-flow: column;
-  grid-auto-columns: max-content;
+  grid-auto-columns: var(--segmented-control-column-size, max-content);
   align-content: center;
   box-sizing: border-box;
   height: var(--interface-compact-visual-size);
@@ -9,9 +9,10 @@ caffold-detail-view-switch {
   border: 1px solid var(--border);
   border-radius: 5px;
   background: var(--surface-muted);
-  margin-inline-end: var(--interface-compact-hit-outset);
+  font-size: var(--interface-meta-font-size);
 
-  &[hidden] {
+  &[hidden],
+  &[data-empty] {
     display: none;
   }
 
@@ -20,6 +21,7 @@ caffold-detail-view-switch {
     display: grid;
     box-sizing: border-box;
     height: var(--interface-compact-hit-size);
+    min-width: var(--segmented-control-choice-min-inline-size, auto);
     min-height: var(--interface-compact-hit-size);
     margin-block: calc(0rem - var(--interface-compact-hit-outset));
     padding: 0;
@@ -37,8 +39,10 @@ caffold-detail-view-switch {
     display: grid;
     box-sizing: border-box;
     width: 100%;
+    min-width: var(--segmented-control-choice-min-inline-size, auto);
     height: calc(var(--interface-compact-visual-size) - 2px);
-    padding: 0 var(--interface-space-4);
+    padding: 0
+      var(--segmented-control-label-padding-inline, var(--interface-space-4));
     place-items: center;
     border-radius: 3px;
     white-space: nowrap;
@@ -70,7 +74,10 @@ caffold-detail-view-switch {
 }
 
 @media (max-width: 520px) {
-  caffold-detail-view-switch button > span {
-    padding-inline: var(--interface-space-3);
+  caffold-segmented-control button > span {
+    padding-inline: var(
+      --segmented-control-label-padding-inline,
+      var(--interface-space-3)
+    );
   }
 }

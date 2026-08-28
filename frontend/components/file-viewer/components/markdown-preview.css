@@ -1,0 +1,170 @@
+caffold-review-markdown-preview {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: clamp(1rem, 3vw, 2rem);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--conversation-font-size);
+  line-height: var(--conversation-line-height);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+
+  & .markdown-preview-body {
+    width: 100%;
+    max-width: 52rem;
+    min-width: 0;
+    margin-inline: auto;
+    overflow-wrap: anywhere;
+  }
+
+  & .markdown-preview-body :is(
+    p,
+    ul,
+    ol,
+    blockquote,
+    pre,
+    .markdown-preview-table-scroll
+  ) {
+    margin: 0 0 0.875rem;
+  }
+
+  & .markdown-preview-body :is(h1, h2, h3, h4, h5, h6) {
+    margin: 1.5rem 0 0.625rem;
+    font-weight: 600;
+    line-height: var(--conversation-line-height);
+  }
+
+  & .markdown-preview-body h1 {
+    font-size: calc(var(--conversation-font-size) + 6px);
+  }
+
+  & .markdown-preview-body h2 {
+    font-size: calc(var(--conversation-font-size) + 4px);
+  }
+
+  & .markdown-preview-body h3 {
+    font-size: calc(var(--conversation-font-size) + 2px);
+  }
+
+  & .markdown-preview-body :is(h4, h5, h6) {
+    font-size: calc(var(--conversation-font-size) + 1px);
+  }
+
+  & .markdown-preview-body a {
+    color: var(--link-fg);
+    text-underline-offset: 2px;
+  }
+
+  & .markdown-preview-body :not(pre) > code {
+    padding: 0.0625rem 0.25rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--code-gutter);
+    color: var(--code-text);
+    font-family: var(--font-code);
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+  }
+
+  & .markdown-preview-body pre {
+    max-width: 100%;
+    overflow: auto;
+    overscroll-behavior-x: contain;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--code-bg);
+    color: var(--code-text);
+    font-family: var(--font-code);
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+    white-space: pre;
+  }
+
+  & .markdown-preview-body pre > code {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+  }
+
+  & .markdown-preview-body blockquote {
+    padding-left: 0.875rem;
+    border-left: 3px solid var(--border);
+    color: var(--muted);
+  }
+
+  & .markdown-preview-body :is(ul, ol) {
+    padding-left: 1.625rem;
+  }
+
+  & .markdown-preview-body li + li {
+    margin-top: 0.25rem;
+  }
+
+  & .markdown-preview-table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+  }
+
+  & .markdown-preview-body table {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+  }
+
+  & .markdown-preview-body :is(th, td) {
+    padding: 0.3rem 0.45rem;
+    border: 1px solid var(--border);
+    overflow-wrap: normal;
+    text-align: left;
+    vertical-align: top;
+    white-space: nowrap;
+  }
+
+  & .markdown-preview-body hr {
+    height: 1px;
+    margin: 1.25rem 0;
+    border: 0;
+    background: var(--border);
+  }
+
+  & .markdown-preview-body input[type="checkbox"] {
+    margin: 0 0.3125rem 0 0;
+    vertical-align: middle;
+  }
+
+  & .markdown-preview-image-placeholder,
+  & .markdown-preview-loading {
+    color: var(--muted);
+  }
+
+  & .markdown-preview-loading {
+    font-family: var(--font-ui);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .markdown-preview-fallback {
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--code-text);
+    font-family: var(--font-code);
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+    white-space: pre-wrap;
+  }
+
+  & .markdown-preview-body > :first-child {
+    margin-top: 0;
+  }
+
+  & .markdown-preview-body > :last-child {
+    margin-bottom: 0;
+  }
+}

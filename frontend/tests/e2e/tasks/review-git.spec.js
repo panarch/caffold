@@ -323,7 +323,7 @@ test("keeps selectedPath while scope, navigator, and viewer switch independently
   const refsBefore = reviewScenario.gitRefsRequests;
   const compareBefore = reviewScenario.gitCompareRequests;
   const branchMode = tasksPage.locator(
-    'caffold-detail-view-switch button[data-detail-view="branch"]',
+    'caffold-segmented-control[data-detail-view-switch] button[data-segmented-value="branch"]',
   );
   await expect(branchMode).toHaveText("Branch");
   await branchMode.evaluate((button) => {
@@ -443,7 +443,10 @@ test("supports every scope navigator and viewer combination", { tag: "@all-viewp
 
       if (scope === "branch") {
         await expect(
-          tasksPage.locator('button[data-detail-view="branch"]'),
+          tasksPage.locator(
+            'caffold-segmented-control[data-detail-view-switch] '
+              + 'button[data-segmented-value="branch"]',
+          ),
         ).toHaveAttribute("aria-pressed", "true");
       }
       await expect.poll(() => {
@@ -727,10 +730,10 @@ test("keeps compact review controls and available panes inside the workspace", {
 }, testInfo) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
   const branchMode = tasksPage.locator(
-    'caffold-detail-view-switch button[data-detail-view="branch"]',
+    'caffold-segmented-control[data-detail-view-switch] button[data-segmented-value="branch"]',
   );
   const workingMode = tasksPage.locator(
-    'caffold-detail-view-switch button[data-detail-view="working"]',
+    'caffold-segmented-control[data-detail-view-switch] button[data-segmented-value="working"]',
   );
   const inactiveDivider = await branchMode.evaluate((button) => {
     const style = getComputedStyle(button, "::before");
@@ -847,7 +850,7 @@ test("keeps compact review controls and available panes inside the workspace", {
     );
     const count = header.querySelector(".change-count");
     const controls = review.querySelector(
-      ".task-review-navigator-axis .task-review-axis-options",
+      '.task-review-navigator-axis caffold-segmented-control[data-review-axis="navigator"]',
     );
     const paneRect = pane.getBoundingClientRect();
     const controlsRect = controls.getBoundingClientRect();
@@ -870,7 +873,10 @@ test("keeps compact review controls and available panes inside the workspace", {
     changesAlignment.expectedLabelGap - 1,
   );
   await taskReview
-    .locator('button[data-review-axis="navigator"][data-review-value="files"]')
+    .locator(
+      'caffold-segmented-control[data-review-axis="navigator"] '
+        + 'button[data-segmented-value="files"]',
+    )
     .click();
   const filesHeader = taskReview.locator(
     "caffold-file-list .file-list-panel > header",
@@ -895,7 +901,7 @@ test("keeps compact review controls and available panes inside the workspace", {
     );
     const count = header.querySelector(".entry-count");
     const controls = review.querySelector(
-      ".task-review-navigator-axis .task-review-axis-options",
+      '.task-review-navigator-axis caffold-segmented-control[data-review-axis="navigator"]',
     );
     const rootStyle = getComputedStyle(document.documentElement);
     return {
@@ -911,10 +917,15 @@ test("keeps compact review controls and available panes inside the workspace", {
     filesAlignment.expectedLabelGap - 1,
   );
   await taskReview
-    .locator('button[data-review-axis="navigator"][data-review-value="changes"]')
+    .locator(
+      'caffold-segmented-control[data-review-axis="navigator"] '
+        + 'button[data-segmented-value="changes"]',
+    )
     .click();
   await expect(
-    tasksPage.locator("caffold-detail-view-switch button"),
+    tasksPage.locator(
+      "caffold-segmented-control[data-detail-view-switch] button",
+    ),
   ).toHaveCount(3);
   await expect(taskReview.locator(".task-review-toolbar")).toHaveCount(0);
 
@@ -924,12 +935,59 @@ test("keeps compact review controls and available panes inside the workspace", {
     const workspaceRect = workspace.getBoundingClientRect();
     const navigator = element.querySelector(".task-review-navigator-pane");
     const viewer = element.querySelector(".task-review-viewer-pane");
+    const detailSwitch = document.querySelector(
+      "caffold-segmented-control[data-detail-view-switch]",
+    );
+    const detailSwitchRect = detailSwitch.getBoundingClientRect();
+    const detailSwitchStyle = getComputedStyle(detailSwitch);
+    const rootFontSize = Number.parseFloat(
+      getComputedStyle(document.documentElement).fontSize,
+    );
     return {
       leftGap: Math.abs(workspaceRect.left - pageRect.left),
       rightGap: Math.abs(workspaceRect.right - pageRect.right),
       horizontalOverflow: workspace.scrollWidth > workspace.clientWidth,
       navigatorWidth: navigator.getBoundingClientRect().width,
       viewerWidth: viewer.getBoundingClientRect().width,
+      rootFontSize,
+      detailSwitch: {
+        width: detailSwitchRect.width,
+        height: detailSwitchRect.height,
+        borderInlineWidth:
+          Number.parseFloat(detailSwitchStyle.borderLeftWidth) +
+          Number.parseFloat(detailSwitchStyle.borderRightWidth),
+        gridAutoColumns: detailSwitchStyle.gridAutoColumns,
+        insidePage:
+          detailSwitchRect.left >= pageRect.left - 1 &&
+          detailSwitchRect.right <= pageRect.right + 1,
+        buttonFontSizes: [...detailSwitch.querySelectorAll("button")].map(
+          (button) => getComputedStyle(button).fontSize,
+        ),
+        segments: [...detailSwitch.querySelectorAll("button")].map((button) => {
+          const label = button.querySelector(":scope > span");
+          const labelStyle = getComputedStyle(label);
+          const textRange = document.createRange();
+          textRange.selectNodeContents(label);
+          return {
+            buttonWidth: button.getBoundingClientRect().width,
+            paddingInline:
+              Number.parseFloat(labelStyle.paddingLeft) +
+              Number.parseFloat(labelStyle.paddingRight),
+            textWidth: textRange.getBoundingClientRect().width,
+          };
+        }),
+      },
+      axisControlWidths: Object.fromEntries(
+        [...element.querySelectorAll(".task-review-pane-axis")]
+          .filter((axis) => axis.getClientRects().length > 0)
+          .map((axis) => {
+            const control = axis.querySelector("caffold-segmented-control");
+            return [
+              control.getAttribute("aria-label"),
+              control.getBoundingClientRect().width,
+            ];
+          }),
+      ),
       layoutStartsAtWorkspaceTop:
         Math.abs(
           element.querySelector(".task-review-layout").getBoundingClientRect().top -
@@ -937,13 +995,13 @@ test("keeps compact review controls and available panes inside the workspace", {
         ) <= 1,
       visiblePaneAxes: [...element.querySelectorAll(".task-review-pane-axis")]
         .filter((axis) => axis.getClientRects().length > 0)
-        .map((axis) => axis.getAttribute("aria-label")),
+        .map((axis) => axis.querySelector("caffold-segmented-control").getAttribute("aria-label")),
       paneAxisClearances: [...element.querySelectorAll(".task-review-pane-axis")]
         .filter((axis) => axis.getClientRects().length > 0)
         .map((axis) => {
           const axisBounds = axis.getBoundingClientRect();
           const controlsBounds = axis
-            .querySelector(".task-review-axis-options")
+            .querySelector("caffold-segmented-control")
             .getBoundingClientRect();
           return {
             top: controlsBounds.top - axisBounds.top,
@@ -954,13 +1012,15 @@ test("keeps compact review controls and available panes inside the workspace", {
         element.querySelector(".task-review-viewer-empty-header").getClientRects().length > 0,
       visualControlHeights: [
         ...element.querySelectorAll(
-          ".task-review-axis-options",
+          ".task-review-pane-axis > caffold-segmented-control",
         ),
       ]
         .filter((control) => control.getClientRects().length > 0)
         .map((control) => control.getBoundingClientRect().height),
       directTouchControlHeights: [
-        ...element.querySelectorAll(".task-review-axis-options button"),
+        ...element.querySelectorAll(
+          ".task-review-pane-axis > caffold-segmented-control > button",
+        ),
       ]
         .filter((control) => control.getClientRects().length > 0)
         .map((control) => control.getBoundingClientRect().height),
@@ -977,6 +1037,45 @@ test("keeps compact review controls and available panes inside the workspace", {
     expect(layout.viewerWidth).toBeGreaterThanOrEqual(360);
   }
   expect(layout.layoutStartsAtWorkspaceTop).toBe(true);
+  expect(layout.detailSwitch.gridAutoColumns).toBe("max-content");
+  expect(layout.detailSwitch.insidePage).toBe(true);
+  const expectedLabelPaddingInline =
+    layout.rootFontSize * (testInfo.project.name === "phone" ? 0.75 : 1);
+  for (const segment of layout.detailSwitch.segments) {
+    expect(segment.paddingInline).toBeCloseTo(expectedLabelPaddingInline, 1);
+    expect(segment.buttonWidth).toBeCloseTo(
+      segment.textWidth + segment.paddingInline,
+      0,
+    );
+  }
+  expect(layout.detailSwitch.width).toBeCloseTo(
+    layout.detailSwitch.borderInlineWidth +
+      layout.detailSwitch.segments.reduce(
+        (width, segment) => width + segment.buttonWidth,
+        0,
+      ),
+    0,
+  );
+  expect(layout.detailSwitch.height).toBeCloseTo(
+    layout.rootFontSize * 1.875,
+    0,
+  );
+  for (const fontSize of layout.detailSwitch.buttonFontSizes) {
+    expect(Number.parseFloat(fontSize)).toBeCloseTo(
+      layout.rootFontSize * 0.75,
+      1,
+    );
+  }
+  expect(layout.axisControlWidths["Review navigator"]).toBeCloseTo(
+    layout.rootFontSize * 7,
+    0,
+  );
+  if (testInfo.project.name !== "phone") {
+    expect(layout.axisControlWidths["Review viewer"]).toBeCloseTo(
+      layout.rootFontSize * 7.5,
+      0,
+    );
+  }
   expect(layout.visiblePaneAxes).toEqual(
     testInfo.project.name === "phone"
       ? ["Review navigator"]
@@ -998,10 +1097,16 @@ test("keeps compact review controls and available panes inside the workspace", {
     expect(Math.min(...layout.directTouchControlHeights)).toBeGreaterThanOrEqual(40);
   }
 
-  for (const axis of await taskReview.locator(".task-review-pane-axis").all()) {
-    await expect(axis.locator(":scope > .task-review-axis-options")).toHaveCount(1);
-    await expect(axis.locator(":scope > .task-review-axis-options > button")).toHaveCount(2);
-  }
+  const navigatorAxis = taskReview.locator(".task-review-navigator-axis");
+  const viewerAxis = taskReview.locator(".task-review-viewer-axis");
+  await expect(navigatorAxis.locator(":scope > caffold-segmented-control")).toHaveCount(1);
+  await expect(viewerAxis.locator(":scope > caffold-segmented-control")).toHaveCount(1);
+  await expect(
+    navigatorAxis.locator(":scope > caffold-segmented-control > button"),
+  ).toHaveCount(2);
+  await expect(
+    viewerAxis.locator(":scope > caffold-segmented-control > button"),
+  ).toHaveCount(2);
 });
 
 test("keeps a 180-file change set inspectable without clipping its identity", { tag: "@all-viewports" }, async ({
@@ -1037,7 +1142,7 @@ test("maps the visible source line when Diff and Source representations switch",
 
   const viewer = taskReview.locator("caffold-review-file-viewer");
   const viewerAxis = taskReview.locator(
-    ".task-review-viewer-axis .task-review-axis-options",
+    '.task-review-viewer-axis caffold-segmented-control[data-review-axis="viewer"]',
   );
   const controlMetrics = () => viewerAxis.evaluate((group) => {
     const selected = group.querySelector(
@@ -1059,7 +1164,7 @@ test("maps the visible source line when Diff and Source representations switch",
   expect(sourceControl.selectedLeft).toBeGreaterThanOrEqual(sourceControl.groupLeft - 1);
   expect(sourceControl.selectedRight).toBeLessThanOrEqual(sourceControl.groupRight + 1);
   expect(sourceControl.selectedOverflow).toBe(false);
-  expect(sourceControl.selectedShadow).not.toContain("0px 0px 0px 1px");
+  expect(sourceControl.selectedShadow).toContain("0px 0px 0px 1px");
   await expect(viewer.locator("caffold-code-viewer")).toBeVisible();
   await expect(viewer.locator("caffold-code-viewer header")).toHaveCount(0);
   expect(await viewer.evaluate((element) => element.scrollToLine(60))).toBe(true);
@@ -1076,7 +1181,7 @@ test("maps the visible source line when Diff and Source representations switch",
   expect(diffControl.selectedLeft).toBeGreaterThanOrEqual(diffControl.groupLeft - 1);
   expect(diffControl.selectedRight).toBeLessThanOrEqual(diffControl.groupRight + 1);
   expect(diffControl.selectedOverflow).toBe(false);
-  expect(diffControl.selectedShadow).not.toContain("0px 0px 0px 1px");
+  expect(diffControl.selectedShadow).toContain("0px 0px 0px 1px");
   await expect(viewer.locator("caffold-diff-viewer")).toBeVisible();
   await expect.poll(() => viewer.evaluate((element) => element.visibleLine())).toBe(60);
 

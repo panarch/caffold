@@ -68,13 +68,29 @@ test("normalizes a non-Git task to Files and Source without hiding why", { tag: 
   );
   await expect(taskReview).toContainText("Git review is unavailable for this task.");
   await expect(
-    tasksPage.locator('caffold-detail-view-switch button[data-detail-view="working"]'),
+    tasksPage.locator(
+      'caffold-segmented-control[data-detail-view-switch] '
+        + 'button[data-segmented-value="working"]',
+    ),
   ).toHaveCount(0);
   await expect(
-    tasksPage.locator('caffold-detail-view-switch button[data-detail-view="branch"]'),
+    tasksPage.locator(
+      'caffold-segmented-control[data-detail-view-switch] '
+        + 'button[data-segmented-value="branch"]',
+    ),
   ).toHaveCount(0);
-  await expect(taskReview.locator('[data-review-value="changes"]')).toBeHidden();
-  await expect(taskReview.locator('[data-review-value="diff"]')).toBeHidden();
+  await expect(
+    taskReview.locator(
+      'caffold-segmented-control[data-review-axis="navigator"] '
+        + 'button[data-segmented-value="changes"]',
+    ),
+  ).toHaveCount(0);
+  await expect(
+    taskReview.locator(
+      'caffold-segmented-control[data-review-axis="viewer"] '
+        + 'button[data-segmented-value="diff"]',
+    ),
+  ).toHaveCount(0);
   await expect(taskReview.getByRole("button", { name: "Files", exact: true })).toBeVisible();
   await expect(
     taskReview.locator("caffold-file-navigator").getByRole("button", {
@@ -82,7 +98,12 @@ test("normalizes a non-Git task to Files and Source without hiding why", { tag: 
     }),
   ).toBeAttached();
   if (testInfo.project.name === "phone") {
-    await expect(taskReview.locator('[data-review-value="source"]')).toBeHidden();
+    await expect(
+      taskReview.locator(
+        'caffold-segmented-control[data-review-axis="viewer"] '
+          + 'button[data-segmented-value="source"]',
+      ),
+    ).toBeHidden();
     await taskReview
       .locator("caffold-file-navigator")
       .getByRole("button", { name: /alpha\.rs file/ })

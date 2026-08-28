@@ -99,7 +99,9 @@ test("selects a Section and opens fixed-directory Task creation", { tag: "@all-v
   await expect(
     detail.locator("caffold-section-github-shortcuts"),
   ).toBeHidden();
-  await expect(detail.locator("caffold-detail-view-switch")).toBeHidden();
+  await expect(
+    detail.locator("caffold-segmented-control[data-detail-view-switch]"),
+  ).toBeHidden();
 });
 
 test("offers GitHub work shortcuts from repository Task creation", { tag: "@all-viewports" }, async ({
@@ -618,17 +620,20 @@ test("returns a missing Section route to Tasks home", { tag: "@all-viewports" },
 test("keeps a repository Section draft while switching shared surfaces", { tag: "@all-viewports" }, async ({ page }) => {
   await installEventSourceMock(page);
   await mockAgentModels(page);
+  const rootPath = "frontend/tests/e2e/fixtures/home";
+  const markdownPath = `${rootPath}/README.md`;
+  const markdownContent = "# Fixture Home\n\nSection Markdown Preview.\n";
   const task = {
     id: "thread_repository_section",
     threadId: "thread_repository_section",
     ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
     title: "Repository Section Task",
-    cwd: "frontend/tests/e2e/fixtures/home",
-    cwdPath: "frontend/tests/e2e/fixtures/home",
+    cwd: rootPath,
+    cwdPath: rootPath,
     relativeCwd: "",
     worktree: {
       rootPath: "frontend/tests/e2e/fixtures/home/.caffold-worktrees/repository-section",
-      repositoryRootPath: "frontend/tests/e2e/fixtures/home",
+      repositoryRootPath: rootPath,
       branch: "feature/section-detail",
       headSha: "0123456789abcdef0123456789abcdef01234567",
     },
@@ -642,6 +647,60 @@ test("keeps a repository Section draft while switching shared surfaces", { tag: 
   await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
     route.fulfill({ json: { tasks: [], nextCursor: null } })
   );
+  await page.route(/\/api\/list(?:\?|$)/, (route) => {
+    const requestedPath = new URL(route.request().url()).searchParams.get("path");
+    if (requestedPath !== rootPath) {
+      return route.continue();
+    }
+    return route.fulfill({
+      json: {
+        root: rootPath,
+        path: rootPath,
+        git: { rootPath, branch: "main", dirty: false },
+        entries: [{
+          name: "README.md",
+          path: markdownPath,
+          kind: "file",
+          isSymlink: false,
+          supported: true,
+          gitIgnored: false,
+          size: markdownContent.length,
+          modifiedMs: null,
+          git: null,
+        }],
+      },
+    });
+  });
+  await page.route(/\/api\/file(?:\?|$)/, (route) => {
+    const requestedPath = new URL(route.request().url()).searchParams.get("path");
+    if (requestedPath !== markdownPath) {
+      return route.continue();
+    }
+    return route.fulfill({
+      json: {
+        path: markdownPath,
+        name: "README.md",
+        size: markdownContent.length,
+        modifiedMs: null,
+        languageHint: "markdown",
+        content: markdownContent,
+      },
+    });
+  });
+  await page.route(/\/api\/git\/status(?:\?|$)/, (route) => {
+    const requestedPath = new URL(route.request().url()).searchParams.get("path");
+    if (requestedPath !== rootPath) {
+      return route.continue();
+    }
+    return route.fulfill({
+      json: {
+        repository: { rootPath, branch: "main", dirty: false },
+        files: [],
+        additions: 0,
+        deletions: 0,
+      },
+    });
+  });
 
   await page.goto("/");
   await page.locator(
@@ -649,7 +708,9 @@ test("keeps a repository Section draft while switching shared surfaces", { tag: 
   ).click();
 
   const detail = page.locator("caffold-detail-layout");
-  const switcher = detail.locator("caffold-detail-view-switch");
+  const switcher = detail.locator(
+    "caffold-segmented-control[data-detail-view-switch]",
+  );
   await expect(switcher).toBeVisible();
   await expect(switcher.locator("button")).toHaveText([
     "New Task",
@@ -688,15 +749,32 @@ test("keeps a repository Section draft while switching shared surfaces", { tag: 
     textarea.value = "Preserve this Section draft";
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
   });
-  await switcher.locator('button[data-detail-view="working"]').click();
+  await switcher.locator('button[data-segmented-value="working"]').click();
   await expect(page).toHaveURL(
     "/?section=fixture-section-1&surface=review",
   );
   await expect(detail.locator(".detail-review-slot")).toBeVisible();
 
-  await switcher.locator('button[data-detail-view="new"]').click();
+  const review = detail.locator("caffold-task-review");
+  await review.getByRole("button", { name: "Files", exact: true }).click();
+  await review
+    .locator(`caffold-file-navigator button[data-file-tree-path="${markdownPath}"]`)
+    .click();
+  await review.getByRole("button", { name: "Preview", exact: true }).click();
+  await expect(page).toHaveURL(
+    "/?section=fixture-section-1&surface=review&nav=files&view=preview&file=README.md",
+  );
+  await expect(review.locator(".markdown-preview-body h1")).toHaveText("Fixture Home");
+
+  await switcher.locator('button[data-segmented-value="new"]').click();
   await expect(page).toHaveURL("/?section=fixture-section-1");
   await expect(prompt).toHaveValue("Preserve this Section draft");
+
+  await switcher.locator('button[data-segmented-value="working"]').click();
+  await expect(page).toHaveURL(
+    "/?section=fixture-section-1&surface=review&nav=files&view=preview&file=README.md",
+  );
+  await expect(review.locator(".markdown-preview-body h1")).toHaveText("Fixture Home");
 });
 
 test("replaces the New Task context when a selected Section path changes", { tag: "@all-viewports" }, async ({

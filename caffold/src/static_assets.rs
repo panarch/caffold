@@ -274,16 +274,6 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/(detail)/layout.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/layout.js"
         ))),
-        "pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.css" => {
-            Some(css(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.css"
-            )))
-        }
-        "pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.js" => {
-            Some(js(include_str!(
-                "../../frontend/pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.js"
-            )))
-        }
         "pages/(task-workspace)/tasks/(detail)/(section)/layout.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/layout.css"
         ))),
@@ -847,6 +837,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/file-viewer.js" => {
             Some(js(include_str!("../../frontend/components/file-viewer.js")))
         }
+        "components/file-viewer/components/markdown-preview.css" => Some(css(include_str!(
+            "../../frontend/components/file-viewer/components/markdown-preview.css"
+        ))),
+        "components/file-viewer/components/markdown-preview.js" => Some(js(include_str!(
+            "../../frontend/components/file-viewer/components/markdown-preview.js"
+        ))),
         "components/file-viewer-presentation.js" => Some(js(include_str!(
             "../../frontend/components/file-viewer-presentation.js"
         ))),
@@ -857,6 +853,12 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "components/pagination.js" => {
             Some(js(include_str!("../../frontend/components/pagination.js")))
         }
+        "components/segmented-control.css" => Some(css(include_str!(
+            "../../frontend/components/segmented-control.css"
+        ))),
+        "components/segmented-control.js" => Some(js(include_str!(
+            "../../frontend/components/segmented-control.js"
+        ))),
         _ => None,
     }
 }
@@ -1515,8 +1517,8 @@ mod tests {
                 b"caffold-detail-layout".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.js",
-                b"caffold-detail-view-switch".as_slice(),
+                "components/segmented-control.js",
+                b"caffold-segmented-control".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(section)/layout.js",
@@ -1680,8 +1682,8 @@ mod tests {
                 b"caffold-detail-layout".as_slice(),
             ),
             (
-                "pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.css",
-                b"caffold-detail-view-switch".as_slice(),
+                "components/segmented-control.css",
+                b"caffold-segmented-control".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(section)/layout.css",

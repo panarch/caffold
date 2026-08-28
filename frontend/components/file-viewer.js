@@ -7,6 +7,7 @@ import { renderInlineIcon, warmIcons } from "./icons.js";
 import { imageUrl } from "../api.js";
 import "./code-viewer.js";
 import "./diff-viewer.js";
+import "./file-viewer/components/markdown-preview.js";
 
 let viewerInstanceId = 0;
 
@@ -70,6 +71,15 @@ class CaffoldReviewFileViewer extends HTMLElement {
     this.render({ ...options, scroll });
   }
 
+  setMarkdown(file, options = {}) {
+    this.state = {
+      status: "markdown",
+      file,
+      presentation: sourceViewerPresentation(file),
+    };
+    this.render({ ...options, markdownChanged: true });
+  }
+
   setImage(image) {
     this.state = { status: "image", image };
     this.render();
@@ -109,7 +119,11 @@ class CaffoldReviewFileViewer extends HTMLElement {
 
   captureContentScroll() {
     const viewer = this.querySelector("caffold-code-viewer, caffold-diff-viewer");
-    return viewer?.getScrollState?.() ?? null;
+    if (viewer) {
+      return viewer.getScrollState?.() ?? null;
+    }
+    return this.querySelector("caffold-review-markdown-preview")
+      ?.getScrollState?.() ?? null;
   }
 
   visibleLine() {
@@ -203,6 +217,11 @@ class CaffoldReviewFileViewer extends HTMLElement {
       return;
     }
 
+    if (this.state.status === "markdown") {
+      this.renderMarkdown(options);
+      return;
+    }
+
     const { file, presentation } = this.state;
     this.innerHTML = `
       <section class="viewer-panel file-panel">
@@ -212,6 +231,39 @@ class CaffoldReviewFileViewer extends HTMLElement {
     `;
 
     this.querySelector("caffold-code-viewer").setFile(file, options);
+  }
+
+  renderMarkdown(options = {}) {
+    const { file, presentation } = this.state;
+    const { markdownChanged = false, ...previewOptions } = options;
+    const panel = this.querySelector(":scope > .markdown-panel");
+    const preview = panel?.querySelector(
+      ":scope > caffold-review-markdown-preview",
+    );
+    if (panel && preview) {
+      this.replacePresentationHeader(panel, presentation);
+      if (markdownChanged) {
+        preview.setMarkdown(file.content, previewOptions);
+      }
+      return;
+    }
+
+    this.innerHTML = `
+      <section class="viewer-panel file-panel markdown-panel">
+        ${this.renderPresentationHeader(presentation)}
+        <caffold-review-markdown-preview></caffold-review-markdown-preview>
+      </section>
+    `;
+    this.querySelector("caffold-review-markdown-preview")
+      ?.setMarkdown(file.content, previewOptions);
+  }
+
+  replacePresentationHeader(panel, presentation) {
+    const template = document.createElement("template");
+    template.innerHTML = this.renderPresentationHeader(presentation);
+    panel.querySelector(":scope > header")?.replaceWith(
+      template.content.firstElementChild,
+    );
   }
 
   renderImage() {

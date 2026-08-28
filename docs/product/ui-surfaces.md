@@ -149,7 +149,7 @@ Branch review. It combines:
 
 - Working Tree or Branch scope;
 - Changes or Files navigator;
-- Diff or Source viewer;
+- Diff plus file-capability-aware Source or Preview representations;
 - one selected task-root-relative path.
 
 This is also the product path for general file/source inspection through the

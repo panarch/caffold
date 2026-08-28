@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { rm, writeFile } from "node:fs/promises";
+import { copyFile, rm, writeFile } from "node:fs/promises";
 import { repositoryPath } from "../../repository-paths.mjs";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { openCompletedTaskForReview } from "../support/task-review-test.js";
@@ -121,31 +121,261 @@ test("browses source through the shared Files navigator and one root watch", { t
     .toBe(0);
 });
 
-test("previews images selected from the shared Files navigator", { tag: "@all-viewports" }, async ({
+test("renders a route-owned text-only Markdown Preview without changing file selection", { tag: "@all-viewports" }, async ({
   page,
-}) => {
+}, testInfo) => {
+  const embeddedResourceRequests = [];
+  page.on("request", (request) => {
+    if (request.url() === "https://example.com/preview.png") {
+      embeddedResourceRequests.push(request.url());
+    }
+  });
   const { taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await taskReview.getByRole("button", { name: "Files", exact: true }).click();
-  if (test.info().project.name === "phone") {
-    await taskReview.evaluate((review) => review.updateAxis("viewer", "source"));
-  } else {
-    await taskReview.getByRole("button", { name: "Source", exact: true }).click();
-  }
+
+  await taskReview.evaluate((review) => {
+    const viewerControl = review.querySelector(
+      'caffold-segmented-control[data-review-axis="viewer"]',
+    );
+    for (const value of ["diff", "source"]) {
+      viewerControl.querySelector(
+        `button[data-segmented-value="${value}"]`,
+      ).stableChoiceProbe = true;
+    }
+  });
 
   const navigator = taskReview.locator("caffold-file-navigator");
-  await navigator.locator('button[data-file-tree-path="src/review-image.svg"]').click();
+  await navigator.locator('button[data-file-tree-path="src/README.md"]').click();
+  expect(await taskReview.evaluate((review) => {
+    const viewerControl = review.querySelector(
+      'caffold-segmented-control[data-review-axis="viewer"]',
+    );
+    return ["diff", "source"].every((value) =>
+      viewerControl.querySelector(
+        `button[data-segmented-value="${value}"]`,
+      ).stableChoiceProbe === true
+    );
+  })).toBe(true);
+  const previewControl = taskReview.getByRole("button", {
+    name: "Preview",
+    exact: true,
+  });
+  await expect(previewControl).toBeVisible();
+  await expect(previewControl).toBeEnabled();
+  expect(await previewControl.evaluate((button) => {
+    const control = button.parentElement;
+    const selected = control.querySelector('button[aria-pressed="true"]')
+      ?.dataset.segmentedValue ?? "";
+    const snapshot = {
+      label: control.getAttribute("aria-label"),
+      choices: [...control.querySelectorAll("button")].map((choice) => ({
+        value: choice.dataset.segmentedValue,
+        label: choice.textContent.trim(),
+        title: choice.title,
+      })),
+    };
+    button.focus();
+    control.setSnapshot({
+      ...snapshot,
+      selected: button.dataset.segmentedValue,
+    });
+    const retained =
+      document.activeElement === button &&
+      control.querySelector(
+        `button[data-segmented-value="${button.dataset.segmentedValue}"]`,
+      ) === button;
+    control.setSnapshot({ ...snapshot, selected });
+    return retained && document.activeElement === button;
+  })).toBe(true);
+  await previewControl.click();
   await expect(page).toHaveURL(
-    `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=review-image.svg`,
+    `/tasks/${taskScenario.threadId}/review?nav=files&view=preview&file=README.md`,
   );
+  await expect(previewControl).toHaveAttribute("aria-pressed", "true");
+
   const viewer = taskReview.locator("caffold-review-file-viewer");
-  await expect(viewer).toContainText("review-image.svg");
-  await expect(viewer).toContainText("SVG image");
-  await expect(viewer.locator("img.image-preview")).toHaveAttribute(
-    "src",
-    /\/api\/image\?path=src%2Freview-image\.svg&revision=\d+$/,
+  const markdownPreview = viewer.locator("caffold-review-markdown-preview");
+  const preview = markdownPreview.locator(".markdown-preview-body");
+  await expect(markdownPreview).toHaveAttribute("data-render-state", "markdown");
+  const previewScroll = await markdownPreview.evaluate((element) => {
+    window.__caffoldMarkdownPreviewElement = element;
+    element.scrollTop = Math.min(120, element.scrollHeight - element.clientHeight);
+    return element.scrollTop;
+  });
+  expect(previewScroll).toBeGreaterThan(0);
+  const refreshedFile = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === "/api/file" &&
+      url.searchParams.get("path") === "src/README.md";
+  });
+  await navigator.evaluate((element) => {
+    element.dispatchEvent(new CustomEvent(
+      "caffold:file-navigator-refresh-selected",
+      { bubbles: true },
+    ));
+  });
+  await refreshedFile;
+  await expect(markdownPreview).toHaveAttribute("data-render-state", "markdown");
+  expect(await markdownPreview.evaluate((element) =>
+    window.__caffoldMarkdownPreviewElement === element
+  )).toBe(true);
+  expect(await markdownPreview.evaluate((element) => element.scrollTop)).toBe(
+    previewScroll,
   );
+  await markdownPreview.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await expect(preview.locator("h1")).toHaveText("Markdown file preview");
+  await expect(preview.locator("strong")).toHaveText("textual Markdown");
+  await expect(preview.locator("table")).toContainText("Renders safe text content");
+  await expect(preview.locator("pre code")).toContainText('println!("preview")');
+  await expect(preview.locator("img, script")).toHaveCount(0);
+  await expect(preview.locator(".markdown-preview-image-placeholder")).toHaveText(
+    "[Image: Architecture diagram]",
+  );
+  await expect(preview.getByRole("link", { name: "External documentation" })).toHaveAttribute(
+    "target",
+    "_blank",
+  );
+  await expect(preview.locator("a", { hasText: "Sibling source" })).toHaveCount(0);
+  await expect(preview.getByText("Sibling source", { exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(() => window.__caffoldMarkdownPreviewScriptRan),
+  ).toBeUndefined();
+  expect(embeddedResourceRequests).toEqual([]);
+  await expect(previewControl).toHaveAttribute("aria-pressed", "true");
+
+  const layout = await taskReview.evaluate((review) => {
+    const axis = review.querySelector(
+      '.task-review-viewer-axis caffold-segmented-control[data-review-axis="viewer"]',
+    );
+    const labels = [...axis.querySelectorAll("button > span")];
+    const previewScroll = review.querySelector("caffold-review-markdown-preview");
+    return {
+      rootFontSize: Number.parseFloat(
+        getComputedStyle(document.documentElement).fontSize,
+      ),
+      axisWidth: axis.getBoundingClientRect().width,
+      reviewOverflow: review.scrollWidth > review.clientWidth,
+      previewOverflow: previewScroll.scrollWidth > previewScroll.clientWidth,
+      clippedLabels: labels
+        .filter((label) => label.scrollWidth > label.clientWidth)
+        .map((label) => ({
+          label: label.textContent.trim(),
+          scrollWidth: label.scrollWidth,
+          clientWidth: label.clientWidth,
+        })),
+      visibleLabels: labels.map((label) => label.textContent.trim()),
+    };
+  });
+  expect(layout.reviewOverflow).toBe(false);
+  expect(layout.previewOverflow).toBe(false);
+  expect(layout.axisWidth).toBeCloseTo(layout.rootFontSize * 11.25, 0);
+  expect(layout.clippedLabels).toEqual([]);
+  expect(layout.visibleLabels).toEqual(["Diff", "Source", "Preview"]);
+  await stabilizeDynamicText(page);
+  await captureReviewScreenshot(page, testInfo, "tasks-markdown-preview");
+
+  await markdownPreview.evaluate((element) => {
+    element.setMarkdown("[[caffold-test:markdown-error]]");
+  });
+  await expect(markdownPreview).toHaveAttribute("data-render-state", "plain");
+  await expect(markdownPreview.locator(".markdown-preview-fallback")).toHaveText(
+    "[[caffold-test:markdown-error]]",
+  );
+
+  await page.reload();
+  await expect(markdownPreview).toHaveAttribute("data-render-state", "markdown");
+  await expect(preview.locator("h1")).toHaveText("Markdown file preview");
+  await expect(previewControl).toHaveAttribute("aria-pressed", "true");
+
+  if (testInfo.project.name === "phone") {
+    await taskReview.getByRole("button", { name: "Back to navigator" }).click();
+  }
+  await navigator.locator('button[data-file-tree-path="src/alpha.rs"]').click();
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=alpha.rs`,
+  );
+  await expect(viewer.locator("caffold-code-viewer")).toContainText("pub const ALPHA");
+  await expect(previewControl).toBeHidden();
+});
+
+test("selects supported source and preview representations for images", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const rasterName = `review-image-${testInfo.project.name}.png`;
+  const rasterPath = repositoryPath("frontend/tests/e2e/fixtures/home/src", rasterName);
+  await copyFile(
+    repositoryPath("frontend/assets/icons/favicon-32.png"),
+    rasterPath,
+  );
+  try {
+    const { taskScenario, tasksPage, taskReview } =
+      await openCompletedTaskForReview(page);
+    await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+    await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+    if (testInfo.project.name === "phone") {
+      await taskReview.evaluate((review) => review.updateAxis("viewer", "source"));
+    } else {
+      await taskReview.getByRole("button", { name: "Source", exact: true }).click();
+    }
+
+    const navigator = taskReview.locator("caffold-file-navigator");
+    await navigator.locator(`button[data-file-tree-path="src/${rasterName}"]`).click();
+    await expect(page).toHaveURL(
+      `/tasks/${taskScenario.threadId}/review?nav=files&view=preview&file=${rasterName}`,
+    );
+    const viewer = taskReview.locator("caffold-review-file-viewer");
+    const sourceControl = taskReview.getByRole("button", {
+      name: "Source",
+      exact: true,
+    });
+    const previewControl = taskReview.getByRole("button", {
+      name: "Preview",
+      exact: true,
+    });
+    await expect(sourceControl).toBeHidden();
+    await expect(previewControl).toHaveAttribute("aria-pressed", "true");
+    await expect(viewer).toContainText("PNG image");
+    await expect(viewer.locator("img.image-preview")).toHaveAttribute(
+      "src",
+      new RegExp(`/api/image\\?path=src%2F${rasterName}&revision=\\d+$`),
+    );
+
+    if (testInfo.project.name === "phone") {
+      await taskReview.getByRole("button", { name: "Back to navigator" }).click();
+    }
+    await navigator.locator('button[data-file-tree-path="src/review-image.svg"]').click();
+    await expect(page).toHaveURL(
+      `/tasks/${taskScenario.threadId}/review?nav=files&view=preview&file=review-image.svg`,
+    );
+    await expect(sourceControl).toBeVisible();
+    await expect(previewControl).toHaveAttribute("aria-pressed", "true");
+    await expect(viewer).toContainText("SVG image");
+    await expect(viewer.locator("img.image-preview")).toHaveAttribute(
+      "src",
+      /\/api\/image\?path=src%2Freview-image\.svg&revision=\d+$/,
+    );
+
+    await sourceControl.click();
+    await expect(page).toHaveURL(
+      `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=review-image.svg`,
+    );
+    await expect(viewer.locator("caffold-code-viewer")).toContainText("<svg");
+    await expect(viewer.locator("img.image-preview")).toHaveCount(0);
+
+    await page.goto(
+      `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=${rasterName}`,
+    );
+    await expect(page).toHaveURL(
+      `/tasks/${taskScenario.threadId}/review?nav=files&view=preview&file=${rasterName}`,
+    );
+    await expect(viewer.locator("img.image-preview")).toBeVisible();
+  } finally {
+    await rm(rasterPath, { force: true });
+  }
 });
 
 test("keeps the shared Review panes inside the task workspace", { tag: "@all-viewports" }, async ({ page }) => {

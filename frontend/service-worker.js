@@ -108,8 +108,6 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/layout.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/layout.css",
   "/assets/pages/(task-workspace)/tasks/(detail)/layout.js",
-  "/assets/pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.css",
-  "/assets/pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(section)/layout.css",
   "/assets/pages/(task-workspace)/tasks/(detail)/(section)/layout.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.css",
@@ -245,10 +243,14 @@ const APP_SHELL_ASSETS = [
   "/assets/components/dom.js",
   "/assets/components/file-viewer.css",
   "/assets/components/file-viewer.js",
+  "/assets/components/file-viewer/components/markdown-preview.css",
+  "/assets/components/file-viewer/components/markdown-preview.js",
   "/assets/components/file-viewer-presentation.js",
   "/assets/components/icons.js",
   "/assets/components/pagination.css",
   "/assets/components/pagination.js",
+  "/assets/components/segmented-control.css",
+  "/assets/components/segmented-control.js",
 ];
 
 const APP_SHELL_ASSET_PATHS = new Set(APP_SHELL_ASSETS);
