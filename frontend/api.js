@@ -146,6 +146,21 @@ export async function forkTask(threadId) {
   });
 }
 
+export async function previewTaskForkSource(source, signal) {
+  return requestJson("/api/task-forks/preview", {}, {
+    method: "POST",
+    body: source,
+    signal,
+  });
+}
+
+export async function createTaskFork(fork) {
+  return requestJson("/api/task-forks", {}, {
+    method: "POST",
+    body: fork,
+  });
+}
+
 export async function restoreTask(threadId) {
   return requestJson(`/api/tasks/${encodeURIComponent(threadId)}/restore`, {}, {
     method: "POST",

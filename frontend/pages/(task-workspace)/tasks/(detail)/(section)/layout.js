@@ -1,4 +1,5 @@
 import "../../components/task-create.js";
+import "./components/conversation-shortcuts.js";
 import "./components/github-shortcuts.js";
 import { cleanLogicalPath } from "../../task-format.js";
 
@@ -20,9 +21,11 @@ class CaffoldSectionDetail extends HTMLElement {
     }
     this.innerHTML = `
       <caffold-task-create></caffold-task-create>
+      <caffold-section-conversation-shortcuts hidden></caffold-section-conversation-shortcuts>
       <caffold-section-github-shortcuts hidden></caffold-section-github-shortcuts>
     `;
     this.syncTaskCreate();
+    this.syncConversationShortcuts();
     this.syncGitHubShortcuts();
   }
 
@@ -36,22 +39,26 @@ class CaffoldSectionDetail extends HTMLElement {
     }
     this.section = section ? { ...section } : null;
     this.syncTaskCreate();
+    this.syncConversationShortcuts();
     this.syncGitHubShortcuts();
   }
 
   activate() {
     this.ensureRendered();
     this.hidden = false;
+    this.conversationShortcuts()?.activate();
     this.githubShortcuts()?.activate();
     this.taskCreate()?.activate();
   }
 
   deactivate() {
+    this.conversationShortcuts()?.deactivate();
     this.githubShortcuts()?.deactivate();
     this.taskCreate()?.deactivate();
   }
 
   clear() {
+    this.conversationShortcuts()?.deactivate();
     this.taskCreate()?.deactivate();
     this.replaceChildren();
     this.section = null;
@@ -61,12 +68,14 @@ class CaffoldSectionDetail extends HTMLElement {
     this.ensureState();
     this.transportAvailable = Boolean(available);
     this.taskCreate()?.setTransportAvailable(this.transportAvailable);
+    this.conversationShortcuts()?.setTransportAvailable(this.transportAvailable);
   }
 
   setCodexStatusSnapshot(snapshot) {
     this.ensureState();
     this.codexStatusSnapshot = snapshot ?? null;
     this.taskCreate()?.setCodexStatusSnapshot(this.codexStatusSnapshot);
+    this.conversationShortcuts()?.setCodexStatusSnapshot(this.codexStatusSnapshot);
   }
 
   selectedContextPath() {
@@ -86,6 +95,12 @@ class CaffoldSectionDetail extends HTMLElement {
 
   githubShortcuts() {
     return this.querySelector(":scope > caffold-section-github-shortcuts");
+  }
+
+  conversationShortcuts() {
+    return this.querySelector(
+      ":scope > caffold-section-conversation-shortcuts",
+    );
   }
 
   syncTaskCreate() {
@@ -108,6 +123,20 @@ class CaffoldSectionDetail extends HTMLElement {
       path: this.selectedContextPath(),
       repository: Boolean(this.section?.repository),
     });
+  }
+
+  syncConversationShortcuts() {
+    const shortcuts = this.conversationShortcuts();
+    if (!shortcuts) {
+      return;
+    }
+    shortcuts.setContext({
+      key: this.sectionContextKey(this.section),
+      sectionId: `${this.section?.id ?? ""}`,
+      path: this.selectedContextPath(),
+    });
+    shortcuts.setTransportAvailable(this.transportAvailable);
+    shortcuts.setCodexStatusSnapshot(this.codexStatusSnapshot);
   }
 }
 

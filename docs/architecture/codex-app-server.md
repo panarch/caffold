@@ -18,6 +18,7 @@ internal fork or a replacement for the Codex harness.
 Caffold needs:
 
 - thread creation and lookup
+- read-only external-thread preview and native thread forking
 - turn execution
 - streamed agent events
 - approval requests and responses
@@ -40,8 +41,8 @@ The adapter owns:
 - request/response matching
 - event stream handling
 - app-server error normalization
-- thread-oriented APIs for listing, reading, starting, deleting, steering,
-  interrupting, and resolving approvals
+- thread-oriented APIs for listing, reading, starting, forking, deleting,
+  steering, interrupting, and resolving approvals
 
 The rest of Caffold should not depend directly on app-server protocol details.
 
@@ -190,6 +191,24 @@ persist a second task ledger.
 - Additional browser viewers share the same subscribed session and do not
   repeat the resume bootstrap.
 - A new thread returned by `thread/start` is registered as already subscribed.
+- `thread/read` plus bounded `thread/turns/list` provides an external Thread-ID
+  preview without `thread/resume`, a viewer lease, a session entry, or managed
+  membership. The preview is a browser projection only: it does not change the
+  source's existing Caffold membership, and an unmanaged source remains
+  unmanaged.
+- A confirmed source uses `thread/fork`. Caffold passes the project root
+  resolved from the target Managed Section, reads the source before and after
+  the provider mutation, and claims only the distinct returned child ID. A
+  known managed source also holds its per-conversation mutation lease and must
+  remain idle across the fork. An external source may instead remain
+  `notLoaded`: read-only lookup does not resume it, and Codex loads its stored
+  history for the native fork. Caffold does not reinterpret that status as
+  idle. The surrounding provider reads reject an observable concurrent source
+  change. Child history is loaded through `thread/turns/list`, and every
+  failure after provider creation deletes the still-unclaimed child. A
+  successful child is named `Fork of ...`, placed at the target Section's
+  local position zero, and registered as the subscribed Task. No worktree
+  operation is part of this lifecycle.
 - Before answering Task creation, Caffold persists the new thread's
   initial app-server name, resolves or creates the matching Caffold-owned local
   Section by logical path, and inserts the managed row at local position zero.
@@ -379,9 +398,11 @@ its current state, while the Section fields seed the next Task created in that
 Section. For a Codex Task, Caffold does not persist thread status, active turn,
 preview, cwd, Codex timestamps, event summaries, turns, transcript items,
 approvals, or derived repository/worktree presentation. Only app-server
-threads created and managed through Caffold are part of the Codex Task surface.
-Unmanaged app-server threads are not listed, read through Task routes, or
-implicitly adopted from a direct URL.
+threads created or forked and then managed through Caffold are part of the
+Codex Task surface. Unmanaged app-server threads are not listed, read through
+Task routes, or implicitly adopted from a direct URL. The dedicated
+fork-preview route may read one explicitly supplied provider ID, but that read
+creates no membership, session lease, or persisted lineage.
 Caffold keeps pending approvals and SSE notifications as ephemeral in-memory
 state in this slice. After a backend restart, startup recovery resumes each
 managed loaded thread so app-server can re-emit a pending approval request.
@@ -533,10 +554,12 @@ parent Section in one local transaction, then publishes a targeted
 existing Active projection without a full list reload. Steering an active turn
 does not replace either record.
 
-Create, rename, archive, restore, and permanent-delete commands update the
-Task's agent first, then commit their corresponding local projection change,
-and only then publish the browser event. Normal runtime lifecycle commands do
-not create agent-owned Sections or move conversations between local Sections.
+Create, fork, rename, archive, restore, and permanent-delete commands update
+the Task's agent first, then commit their corresponding local projection
+change, and only then publish the browser event. Fork claims only a returned
+child and leaves its source outside that commit. Normal runtime lifecycle
+commands do not create agent-owned Sections or move conversations between local
+Sections.
 New and restored Tasks are placed at local position zero, while archive clears
 their placement and compacts the remaining positions. Creating a managed
 Section inserts it at the top of the durable Section order. Task and Section

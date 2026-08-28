@@ -48,7 +48,8 @@ caffold-app-shell
     |       |-- Task subject
     |       |   `-- Conversation
     |       |-- Section subject
-    |       |   `-- Fixed-context New Task
+    |       |   |-- Fixed-context New Task
+    |       |   `-- Existing-conversation shortcuts
     |       |-- Integrated Review
     |       |-- Git
     |       |   |-- Compare
@@ -328,10 +329,32 @@ session, and a Task switch replaces the attempt before a late response can
 update Detail. Provider transport and history acquisition remain in their
 native architecture.
 
-`caffold-section-detail` owns fixed-context Task creation for one Section.
-Switching Section context replaces its Task Create instance. The shared Task
-Create and cwd contracts are defined in
+`caffold-section-detail` owns fixed-context Task creation and
+existing-conversation shortcuts for one Section. Switching Section context
+replaces its Task Create instance and closes any read-only source preview. The
+shared Task Create and cwd contracts are defined in
 [New Task and directories](#new-task-and-directories).
+
+`caffold-section-conversation-shortcuts` derives only capability presentation
+from the workspace Codex-status snapshot. It remains hidden while capability
+is unknown, exposes one provider-specific Codex row once known, and gives a
+blocked row the backend diagnostic instead of removing it. Its private native
+dialog owns Thread-ID input, cancellable preview generations, read-only preview
+DOM, fork request state, focus restoration, and the synchronous created-Task
+handoff. Input changes invalidate the preview. Preview loading may be cancelled;
+once the provider mutation begins, Cancel and native dismissal stay locked
+until the request settles.
+
+An external preview whose provider status is `notLoaded` displays **Live status
+unavailable** without inferring idle state, but it may still invoke Codex's
+native stored-history fork. Idle previews are also forkable. Active,
+system-error, and unrecognized statuses keep the action disabled.
+
+The dialog sends the selected Managed Section ID rather than a cwd. The backend
+resolves the current Section project root and returns the child placement. The
+browser accepts only a distinct child ID placed in that Section, then hands the
+Detail response to the existing `caffold:task-created` owner. It does not infer
+source ownership, status, cwd, or conversation lineage.
 
 A Task deep route is prepared before canonical Task loading. Shared repository
 surfaces activate only after the Task snapshot is available. Section repository
@@ -466,6 +489,11 @@ arrives, Detail adopts the still-pending Composer submission before navigation,
 then sends it through the ordinary prompt API. Only Global New represents its
 selected directory in `/tasks/new?cwd=...`.
 
+The Section-owned Existing conversations card is adjacent to, but independent
+of, Task Create. Its external Codex preview and native fork requests do not
+reuse the Composer submission lifecycle. A fork creates an already inherited
+zero-prompt child, so the handoff carries no pending submission.
+
 Reusable RootedFs capabilities remain shared:
 
 - `caffold-file-navigator` and its list leaf;
@@ -579,6 +607,8 @@ frontend/
 |               |-- (section)/
 |               |   |-- layout.js
 |               |   `-- components/
+|               |       |-- conversation-shortcuts.js
+|               |       |-- conversation-shortcuts/components/fork-dialog.js
 |               |       |-- github-shortcuts.js
 |               |       `-- summary.js
 |               |-- (review)/layout.js

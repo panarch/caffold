@@ -80,6 +80,22 @@ behavior. Section New fixes cwd to the Section's managed logical path, omits
 directory browsing and setup guidance, and preserves its draft across
 same-Section surface switches.
 
+Section New also presents an **Existing conversations** card after Codex
+capability is known. Its Codex row opens a native dialog that accepts a Thread
+ID or a copied `codex://threads/<id>` link only after an explicit **Preview
+thread** action. The preview reads the provider-owned name, summary, status,
+last activity, source cwd, and recent messages without resuming the thread or
+adding it to managed Tasks. Editing the ID invalidates that preview. Idle and
+not-loaded previews enable **Fork task**; the latter displays **Live status
+unavailable** rather than being presented as idle. Active, system-error, and
+unrecognized statuses keep the action disabled.
+
+Forking uses Codex's native conversation fork and creates the managed child at
+the selected Section's project root. The source cwd is display-only. Files,
+uncommitted changes, branches, and worktrees are not copied or created. A
+temporarily unavailable Codex runtime leaves the row visible but disabled with
+the reason; Claude is not offered by this surface yet.
+
 ## Detail
 
 Detail provides Summary actions, the subject-aware view switch, Integrated
@@ -93,6 +109,12 @@ repository capability, it returns to New Task.
 Task Detail presents the selected conversation, command requests,
 follow-up Composer, and Task actions. Integrated Review, Git, and GitHub remain
 shared repository surfaces.
+
+An idle Codex Task exposes **Fork task** in Task actions. It performs the same
+native fork without an ID lookup, places the child at the source Task's Section
+project root, and opens the distinct managed child. Active Codex Tasks and
+Claude Tasks keep the action disabled with an explicit reason. Forking remains
+separate from worktree isolation.
 
 ### Conversation
 

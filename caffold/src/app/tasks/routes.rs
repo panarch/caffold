@@ -35,7 +35,7 @@ use super::{
     TaskDetailSync, TaskRecord, TaskState, accepted_user_message_event, now_ms, task_activity_ms,
 };
 use super::{
-    lifecycle::{ActiveTaskTopPlacement, CreateTask, ForkCodexTask},
+    lifecycle::{ActiveTaskTopPlacement, CreateTask, ForkCodexSource, ForkCodexTask},
     recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason, ManagedCodexThreadLocation},
     worktrees::inspect_ready_worktree,
 };
@@ -44,14 +44,17 @@ use super::generated_images::GeneratedImageError;
 
 use crate::{
     agent::{
-        ApprovalDecision, Conversation, ConversationItem, Driver, PermissionModes, Turn,
-        TurnOptions, TurnRejected,
+        ApprovalDecision, Conversation, ConversationItem, Driver, ItemKind, PermissionModes,
+        ThreadStatus, Turn, TurnOptions, TurnPage, TurnRejected,
         codex::{CodexDaemonInfo, CodexStatusResponse, CodexThreadClient, CodexThreadError},
     },
     app::error::ApiError,
     app::tasks::sessions::{PromptTarget, SessionSnapshot, SessionsDiagnostics},
     fs::MAX_IMAGE_BYTES,
-    task_store::{ManagedThread, ManagedWorktree, ManagedWorktreeState, RunBy, TaskStoreError},
+    task_store::{
+        ManagedSection, ManagedThread, ManagedWorktree, ManagedWorktreeState, RunBy, TaskProvider,
+        TaskStoreError,
+    },
 };
 
 const MAX_TASK_IMAGES: usize = 4;
@@ -103,6 +106,41 @@ struct CreateTaskRequest {
     #[serde(default)]
     fast_mode: bool,
     permission_mode: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskForkSourceRequest {
+    provider: String,
+    source_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateTaskForkRequest {
+    provider: String,
+    source_id: String,
+    section_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskForkSourcePreview {
+    provider: &'static str,
+    source_id: String,
+    display_name: String,
+    summary: Option<String>,
+    status: ThreadStatus,
+    cwd: Option<String>,
+    last_activity_ms: Option<u64>,
+    recent_history: Vec<TaskForkPreviewMessage>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskForkPreviewMessage {
+    role: &'static str,
+    text: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -260,7 +298,7 @@ impl TaskListEvents {
         )));
     }
 
-    pub(super) fn section_composer_settings(&self, section: &crate::task_store::ManagedSection) {
+    pub(super) fn section_composer_settings(&self, section: &ManagedSection) {
         let Some(settings) = section.last_composer_settings.as_ref() else {
             return;
         };
@@ -327,6 +365,8 @@ pub(super) fn router(state: TaskState) -> Router {
                 .layer(DefaultBodyLimit::max(MAX_TASK_REQUEST_BYTES)),
         )
         .route("/api/tasks/archived", get(list_archived_tasks))
+        .route("/api/task-forks/preview", post(preview_task_fork_source))
+        .route("/api/task-forks", post(create_task_fork))
         .route("/api/tasks/stream", get(task_list_stream))
         .route(
             "/api/tasks/{thread_id}",

@@ -79,9 +79,7 @@ pub(in crate::app) fn task_record_from_conversation(
 ) -> TaskRecord {
     let thread_id = conversation.id.as_str();
     let cwd = conversation.cwd.clone();
-    let title = non_empty_string(conversation.title.as_deref())
-        .or_else(|| non_empty_string(Some(conversation.preview.as_str())))
-        .unwrap_or_else(|| format!("Thread {}", short_thread_id(thread_id)));
+    let title = conversation_display_name(conversation);
     let preview = conversation.preview.clone();
     let thread_status = conversation.status.clone();
     let last_event_summary = events
@@ -110,6 +108,12 @@ pub(in crate::app) fn task_record_from_conversation(
         last_event_summary,
         unseen: false,
     }
+}
+
+pub(in crate::app) fn conversation_display_name(conversation: &Conversation) -> String {
+    non_empty_string(conversation.title.as_deref())
+        .or_else(|| non_empty_string(Some(conversation.preview.as_str())))
+        .unwrap_or_else(|| format!("Thread {}", short_thread_id(&conversation.id)))
 }
 
 pub(in crate::app) fn apply_canonical_turn_projection(
