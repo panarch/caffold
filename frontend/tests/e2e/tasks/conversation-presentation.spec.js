@@ -1310,7 +1310,9 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   }
   expect(new Set(detailActionGeometry.map(({ iconWidth }) => iconWidth)).size).toBe(1);
   const contextualControlGeometry = await tasksPage.evaluate((element) => {
-    const modeSwitch = element.querySelector("caffold-detail-view-switch");
+    const modeSwitch = element.querySelector(
+      "caffold-segmented-control[data-detail-view-switch]",
+    );
     const controls = [
       modeSwitch,
       ...element.querySelectorAll(

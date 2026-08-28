@@ -103,7 +103,9 @@ test("reopens the selected Review scope at its last semantic route", { tag: "@al
   await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}`);
 
-  await tasksPage.locator('button[data-detail-view="branch"]').click();
+  await tasksPage.locator(
+    'caffold-segmented-control[data-detail-view-switch] button[data-segmented-value="branch"]',
+  ).click();
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?scope=branch&nav=files&view=source&file=planner.rs&base=origin%2Fmain`,
   );
@@ -146,10 +148,19 @@ test("keeps Task view and pane controls mounted and focused through live updates
     .click();
 
   await tasksPage.evaluate((tasks) => {
-    tasks.querySelector('button[data-detail-view="working"]').stableControlProbe = true;
+    tasks.querySelector(
+      'caffold-segmented-control[data-detail-view-switch] '
+        + 'button[data-segmented-value="working"]',
+    ).stableControlProbe = true;
     const review = tasks.querySelector("caffold-task-review");
-    review.querySelector('[data-review-value="files"]').stableControlProbe = true;
-    const viewerControl = review.querySelector('[data-review-value="diff"]');
+    review.querySelector(
+      'caffold-segmented-control[data-review-axis="navigator"] '
+        + 'button[data-segmented-value="files"]',
+    ).stableControlProbe = true;
+    const viewerControl = review.querySelector(
+      'caffold-segmented-control[data-review-axis="viewer"] '
+        + 'button[data-segmented-value="diff"]',
+    );
     viewerControl.stableControlProbe = true;
     viewerControl.focus();
   });
@@ -167,10 +178,19 @@ test("keeps Task view and pane controls mounted and focused through live updates
 
   expect(
     await tasksPage.evaluate((tasks) => {
-      const scope = tasks.querySelector('button[data-detail-view="working"]');
+      const scope = tasks.querySelector(
+        'caffold-segmented-control[data-detail-view-switch] '
+          + 'button[data-segmented-value="working"]',
+      );
       const review = tasks.querySelector("caffold-task-review");
-      const navigator = review.querySelector('[data-review-value="files"]');
-      const viewer = review.querySelector('[data-review-value="diff"]');
+      const navigator = review.querySelector(
+        'caffold-segmented-control[data-review-axis="navigator"] '
+          + 'button[data-segmented-value="files"]',
+      );
+      const viewer = review.querySelector(
+        'caffold-segmented-control[data-review-axis="viewer"] '
+          + 'button[data-segmented-value="diff"]',
+      );
       return {
         scope: scope.stableControlProbe === true,
         navigator: navigator.stableControlProbe === true,

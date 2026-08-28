@@ -73,10 +73,10 @@ labels:
 ## Integrated Review Navigation
 
 Treat review scope, navigator, viewer representation, and selected file as
-independent axes. Switching Working Tree/Branch, Changes/Files, or Diff/Source
-must not silently choose another file or representation merely to make the new
-surface non-empty. Empty or unavailable combinations should explain the state
-and offer an explicit action.
+explicit review state. One intent may update multiple fields when they together
+define one semantic result, but must not change otherwise valid state merely to
+make a surface non-empty. Keep valid-but-empty combinations explicit and offer
+an action when another state is useful.
 
 One integrated review workspace must have one selected-path owner. Reusing
 change-tree, file-tree, source, and diff presentation components is preferred.

@@ -17,7 +17,7 @@ export async function openCompletedTaskForReview(page, options = {}) {
 
 export async function selectTaskReviewScope(tasksPage, scope) {
   const option = tasksPage.locator(
-    `caffold-detail-view-switch button[data-detail-view="${scope}"]`,
+    `caffold-segmented-control[data-detail-view-switch] button[data-segmented-value="${scope}"]`,
   );
   await option.click();
 }

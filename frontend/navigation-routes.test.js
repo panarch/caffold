@@ -203,6 +203,20 @@ test("parses and serializes Task-scoped routes canonically", () => {
   }
 });
 
+test("preserves Markdown Preview as reloadable Integrated Review state", () => {
+  const urls = [
+    "/tasks/thread/review?nav=files&view=preview&file=README.md",
+    "/?section=repo-1&surface=review&nav=files&view=preview&file=README.md",
+  ];
+
+  for (const url of urls) {
+    const route = parseRoute(url);
+    assert.equal(route.reviewViewer, "preview");
+    assert.equal(route.path, "README.md");
+    assert.equal(routeUrl(route), url);
+  }
+});
+
 test("derives deterministic Task child parents", () => {
   const cases = [
     ["/settings", null],

@@ -8,6 +8,7 @@ import {
 } from "../../../../../api.js";
 import "../../../../../components/file-navigator.js";
 import "../../../../../components/file-viewer.js";
+import "../../../../../components/segmented-control.js";
 import {
   diffViewerPresentation,
   sourceViewerPresentation,
@@ -79,11 +80,8 @@ class CaffoldTaskReview extends HTMLElement {
         </div>
         <div class="task-review-layout">
           <aside class="task-review-navigator-pane" aria-label="Review navigator">
-            <div class="task-review-pane-axis task-review-navigator-axis" role="group" aria-label="Review navigator">
-              <div class="task-review-axis-options">
-                <button type="button" data-review-axis="navigator" data-review-value="changes"><span>Changes</span></button>
-                <button type="button" data-review-axis="navigator" data-review-value="files"><span>Files</span></button>
-              </div>
+            <div class="task-review-pane-axis task-review-navigator-axis">
+              <caffold-segmented-control data-review-axis="navigator"></caffold-segmented-control>
             </div>
             <div class="task-review-navigator" data-review-navigator="working">
               <caffold-git-diff-changes-tree></caffold-git-diff-changes-tree>
@@ -106,11 +104,8 @@ class CaffoldTaskReview extends HTMLElement {
           ></caffold-review-panel-resizer>
           <section class="task-review-viewer-pane" aria-label="Review file">
             <div class="task-review-viewer-empty-header" aria-hidden="true"></div>
-            <div class="task-review-pane-axis task-review-viewer-axis" role="group" aria-label="Review viewer">
-              <div class="task-review-axis-options">
-                <button type="button" data-review-axis="viewer" data-review-value="diff"><span>Diff</span></button>
-                <button type="button" data-review-axis="viewer" data-review-value="source"><span>Source</span></button>
-              </div>
+            <div class="task-review-pane-axis task-review-viewer-axis">
+              <caffold-segmented-control data-review-axis="viewer"></caffold-segmented-control>
             </div>
             <caffold-review-file-viewer compact-chrome></caffold-review-file-viewer>
           </section>
@@ -127,6 +122,9 @@ class CaffoldTaskReview extends HTMLElement {
     this.applyPanelWidth();
 
     this.addEventListener("click", (event) => this.handleClick(event));
+    this.addEventListener("caffold:segmented-control-intent", (event) => {
+      this.handleAxisIntent(event);
+    });
     this.addEventListener("caffold:open-git-diff", (event) => {
       if (!closestElement(event.target, "caffold-git-diff-changes-tree")) {
         return;
@@ -154,8 +152,8 @@ class CaffoldTaskReview extends HTMLElement {
     });
     this.addEventListener("caffold:file-navigator-refresh-selected", (event) => {
       event.stopPropagation();
-      if (this.route.viewer === "source") {
-        void this.loadViewer();
+      if (isFileRepresentation(this.route.viewer)) {
+        void this.loadViewer({ background: true });
       }
     });
     this.addEventListener("caffold:review-panel-resize", (event) => {
@@ -487,22 +485,25 @@ class CaffoldTaskReview extends HTMLElement {
     }
     const generation = ++this.viewerGeneration;
     const sourceMode = this.route.viewer === "source";
+    const previewMode = this.route.viewer === "preview";
+    const fileMode = sourceMode || previewMode;
+    const representations = fileRepresentationCapabilities(selectedPath);
     if (
-      !sourceMode &&
+      !fileMode &&
       ((this.route.scope === "working" && !this.status) ||
         (this.route.scope === "branch" && !this.compare))
     ) {
       return;
     }
     const change = this.selectedChange();
-    if (sourceMode && change?.deleted) {
+    if (fileMode && change?.deleted) {
       this.viewer()?.setNotice(
         "This file was deleted in the selected scope. Diff remains available.",
         { title: fileNameFromPath(selectedPath) },
       );
       return;
     }
-    if (sourceMode && isPreviewableImagePath(selectedPath)) {
+    if (previewMode && representations.previewKind === "image") {
       const entry = this.fileNavigator()?.entryForPath(selectedPath);
       this.viewer()?.setImage({
         path: selectedPath,
@@ -514,7 +515,23 @@ class CaffoldTaskReview extends HTMLElement {
       });
       return;
     }
-    if (!sourceMode && !change) {
+    if (sourceMode && !representations.source) {
+      this.viewer()?.setNotice("Source is unavailable for this file.", {
+        actionLabel: "View preview",
+        action: "view-preview",
+        title: fileNameFromPath(selectedPath),
+      });
+      return;
+    }
+    if (previewMode && !representations.previewKind) {
+      this.viewer()?.setNotice("Preview is unavailable for this file.", {
+        actionLabel: "View source",
+        action: "view-source",
+        title: fileNameFromPath(selectedPath),
+      });
+      return;
+    }
+    if (!fileMode && !change) {
       this.viewer()?.setNotice("No changes in this scope.", {
         actionLabel: "View source",
         action: "view-source",
@@ -525,7 +542,7 @@ class CaffoldTaskReview extends HTMLElement {
     const viewer = this.viewer();
     const saved = this.viewerScroll.get(this.viewerStateKey());
     const background = Boolean(options.background);
-    const presentation = sourceMode
+    const presentation = fileMode
       ? sourceViewerPresentation({ path: selectedPath })
       : this.diffPresentation(selectedPath, change);
     if (!background) {
@@ -537,12 +554,16 @@ class CaffoldTaskReview extends HTMLElement {
         ? { line: this.route.line }
         : { scroll: saved?.scroll ?? null };
     try {
-      if (sourceMode) {
+      if (fileMode) {
         const file = await readFile(selectedPath);
         if (!this.acceptViewer(generation, selectedPath)) {
           return;
         }
-        viewer?.setFile(file, viewerOptions);
+        if (previewMode) {
+          viewer?.setMarkdown(file, viewerOptions);
+        } else {
+          viewer?.setFile(file, viewerOptions);
+        }
       } else {
         const diff = this.route.scope === "branch"
           ? await getGitCompareDiff(
@@ -653,22 +674,32 @@ class CaffoldTaskReview extends HTMLElement {
 
   patchControls() {
     const gitAvailable = Boolean(this.task?.worktree);
-    for (const button of this.querySelectorAll("button[data-review-axis]")) {
-      const axis = button.dataset.reviewAxis;
-      const value = button.dataset.reviewValue;
-      const current = this.route[axis];
-      button.setAttribute("aria-pressed", current === value ? "true" : "false");
-      const gitOnly =
-        (axis === "navigator" && value === "changes") ||
-        (axis === "viewer" && value === "diff");
-      button.disabled = gitOnly && !gitAvailable;
-      button.toggleAttribute("hidden", gitOnly && !gitAvailable);
-      if (button.disabled) {
-        button.title = "Unavailable outside a Git worktree";
-      } else {
-        button.removeAttribute("title");
-      }
-    }
+    const navigatorChoices = [
+      ...(gitAvailable ? [{ value: "changes", label: "Changes" }] : []),
+      { value: "files", label: "Files" },
+    ];
+    this.dataset.reviewNavigatorChoiceCount = `${navigatorChoices.length}`;
+    this.axisControl("navigator")?.setSnapshot({
+      label: "Review navigator",
+      selected: this.route.navigator,
+      choices: navigatorChoices,
+    });
+    const representations = fileRepresentationCapabilities(this.route.path);
+    const preserveUnboundPreview =
+      !this.route.path && this.route.viewer === "preview";
+    const viewerChoices = [
+      ...(gitAvailable ? [{ value: "diff", label: "Diff" }] : []),
+      ...(representations.source ? [{ value: "source", label: "Source" }] : []),
+      ...(representations.previewKind || preserveUnboundPreview
+        ? [{ value: "preview", label: "Preview" }]
+        : []),
+    ];
+    this.dataset.reviewViewerChoiceCount = `${viewerChoices.length}`;
+    this.axisControl("viewer")?.setSnapshot({
+      label: "Review viewer",
+      selected: this.route.viewer,
+      choices: viewerChoices,
+    });
     const notice = this.querySelector(".task-review-git-notice");
     notice?.toggleAttribute("hidden", gitAvailable);
     this.patchErrorState();
@@ -725,18 +756,29 @@ class CaffoldTaskReview extends HTMLElement {
       }
       return;
     }
-    const noticeAction = closestElement(event.target, '[data-action="view-source"]');
+    const noticeAction = closestElement(
+      event.target,
+      '[data-action="view-source"], [data-action="view-preview"]',
+    );
     if (noticeAction && this.contains(noticeAction)) {
       event.stopPropagation();
-      this.updateAxis("viewer", "source");
+      this.updateAxis(
+        "viewer",
+        noticeAction.dataset.action === "view-preview" ? "preview" : "source",
+      );
       return;
     }
-    const axis = closestElement(event.target, "button[data-review-axis]");
-    if (!axis || !this.contains(axis) || axis.disabled) {
+  }
+
+  handleAxisIntent(event) {
+    const control = event.target instanceof Element
+      ? event.target.closest("caffold-segmented-control[data-review-axis]")
+      : null;
+    if (!control || !this.contains(control)) {
       return;
     }
     event.stopPropagation();
-    this.updateAxis(axis.dataset.reviewAxis, axis.dataset.reviewValue);
+    this.updateAxis(control.dataset.reviewAxis, event.detail?.value);
   }
 
   updateAxis(axis, value) {
@@ -761,7 +803,7 @@ class CaffoldTaskReview extends HTMLElement {
       return;
     }
     const replace = Boolean(this.route.path);
-    this.requestRoute({ ...this.route, path: relative, line: null }, { replace });
+    this.requestRoute(routeForSelectedFile(this.route, relative), { replace });
   }
 
   selectCompareBase(baseRef) {
@@ -919,6 +961,12 @@ class CaffoldTaskReview extends HTMLElement {
     return this.querySelector("caffold-review-panel-resizer");
   }
 
+  axisControl(axis) {
+    return this.querySelector(
+      `caffold-segmented-control[data-review-axis="${axis}"]`,
+    );
+  }
+
 }
 
 if (!customElements.get("caffold-task-review")) {
@@ -930,7 +978,9 @@ function normalizeReviewRoute(route = {}, task = null) {
   return {
     scope: route?.reviewScope === "branch" ? "branch" : "working",
     navigator: route?.reviewNavigator === "files" ? "files" : "changes",
-    viewer: route?.reviewViewer === "source" ? "source" : "diff",
+    viewer: ["source", "preview"].includes(route?.reviewViewer)
+      ? route.reviewViewer
+      : "diff",
     path,
     line: path ? positiveLine(route?.line) : null,
     baseRef: `${route?.baseRef ?? ""}`,
@@ -953,10 +1003,17 @@ function taskRouteForReview(threadId, state) {
 }
 
 function normalizeForTask(route, task) {
-  if (task?.worktree) {
-    return route;
-  }
-  return { ...route, scope: "working", navigator: "files", viewer: "source", baseRef: "" };
+  const taskRoute = task?.worktree
+    ? route
+    : {
+        ...route,
+        scope: "working",
+        navigator: "files",
+        viewer: route.viewer === "preview" ? "preview" : "source",
+        baseRef: "",
+      };
+  const viewer = representationForFile(taskRoute.viewer, taskRoute.path);
+  return viewer === taskRoute.viewer ? taskRoute : { ...taskRoute, viewer };
 }
 
 function reviewRouteKey(route) {
@@ -965,6 +1022,53 @@ function reviewRouteKey(route) {
 
 function viewerStateKey(route) {
   return `${route.scope}:${route.path}:${route.viewer}`;
+}
+
+function isFileRepresentation(viewer) {
+  return viewer === "source" || viewer === "preview";
+}
+
+function routeForSelectedFile(route, path) {
+  return {
+    ...route,
+    viewer: representationForFile(route.viewer, path),
+    path,
+    line: null,
+  };
+}
+
+function representationForFile(viewer, path) {
+  if (!path || viewer === "diff") {
+    return viewer;
+  }
+  const representations = fileRepresentationCapabilities(path);
+  if (
+    (viewer === "source" && representations.source) ||
+    (viewer === "preview" && representations.previewKind)
+  ) {
+    return viewer;
+  }
+  return representations.source ? "source" : "preview";
+}
+
+function fileRepresentationCapabilities(path) {
+  const imagePreview = isPreviewableImagePath(path);
+  return {
+    source: !imagePreview || isSvgPath(path),
+    previewKind: imagePreview
+      ? "image"
+      : isPreviewableMarkdownPath(path)
+        ? "markdown"
+        : null,
+  };
+}
+
+function isPreviewableMarkdownPath(path) {
+  return /\.(?:md|markdown)$/i.test(`${path ?? ""}`);
+}
+
+function isSvgPath(path) {
+  return /\.svg$/i.test(`${path ?? ""}`);
 }
 
 function reviewContextKey(task) {

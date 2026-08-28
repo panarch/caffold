@@ -396,8 +396,15 @@ review. It owns:
 - scope, navigator, viewer, base ref, and selected path;
 - Git status, branch refs/compare, file, diff, and source requests;
 - one root watch while active;
-- Changes/Files and Diff/Source reconciliation;
+- Changes/Files, Diff, and file-capability-aware Source/Preview reconciliation;
 - pane width, disclosure, selection, and scroll.
+
+The Integrated Review owner resolves file-open intents to a path and supported
+representation together. Text files support Source, Markdown adds text-only
+Preview, raster images use Preview, and SVG supports both its source text and
+image Preview. The file viewer owns representation chrome and image rendering,
+and delegates Markdown rendering, sanitization, fallback, and local scroll to
+its private Markdown Preview child component.
 
 Integrated Review uses a bounded cache keyed by explicit Task or Section
 identity. Disconnecting an inactive entry invalidates its requests and releases
@@ -598,7 +605,6 @@ frontend/
 |           `-- (detail)/
 |               |-- layout.js
 |               |-- components/
-|               |   |-- detail-view-switch.js
 |               |   |-- git-menu.js
 |               |   `-- github-menu.js
 |               |-- (task)/
@@ -630,7 +636,8 @@ frontend/
     |-- file-navigator.js
     |-- file-viewer.js
     |-- git-compare-browser.js
-    `-- review-panel-resizer.js
+    |-- review-panel-resizer.js
+    `-- segmented-control.js
 ```
 
 Parenthesized directories are pathless ownership nodes. A directory with its
@@ -654,6 +661,11 @@ instead of acquiring list API or persistence ownership.
 Components render in Light DOM, so CSS remains one cascade. Each stylesheet
 must scope internal selectors below the owning custom element. A parent may
 size or hide a child host, but descendant styling belongs to the child.
+
+`caffold-segmented-control` is the shared compact single-choice presentation
+owner. It patches value-keyed buttons from a choices snapshot, owns pressed
+semantics and visual separators, and emits value intent. Task Detail and
+Integrated Review retain route state, choice availability, and host placement.
 
 Every production JavaScript/CSS asset must be registered consistently in:
 

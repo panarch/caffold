@@ -8,6 +8,7 @@ const frontendRoot = fileURLToPath(new URL("../../", import.meta.url));
 const e2eSupportRoot = fileURLToPath(new URL("../e2e/support/", import.meta.url));
 
 const conversationOwners = new Set([
+  "components/file-viewer/components/markdown-preview.css",
   "pages/(task-workspace)/tasks/components/composer.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css",
@@ -23,6 +24,7 @@ const conversationOwners = new Set([
 const codeOwners = new Set([
   "components/code-viewer.css",
   "components/diff-viewer.css",
+  "components/file-viewer/components/markdown-preview.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css",
@@ -40,6 +42,7 @@ const codeOwners = new Set([
 const typefaceOwners = new Set([
   "components/code-viewer.css",
   "components/diff-viewer.css",
+  "components/file-viewer/components/markdown-preview.css",
   "fonts.js",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css",
@@ -115,6 +118,9 @@ test("mobile interaction policies preserve pinch zoom and own viewer text sizing
   const index = readFrontend("index.html");
   const codeViewer = readFrontend("components/code-viewer.css");
   const diffViewer = readFrontend("components/diff-viewer.css");
+  const markdownPreview = readFrontend(
+    "components/file-viewer/components/markdown-preview.css",
+  );
 
   assert.match(cssBlock(root, "html {"), /touch-action: manipulation/);
   assert.doesNotMatch(
@@ -125,6 +131,11 @@ test("mobile interaction policies preserve pinch zoom and own viewer text sizing
   for (const [path, source, selector] of [
     ["components/code-viewer.css", codeViewer, "& .code-lines {"],
     ["components/diff-viewer.css", diffViewer, "& .diff-lines {"],
+    [
+      "components/file-viewer/components/markdown-preview.css",
+      markdownPreview,
+      "caffold-review-markdown-preview {",
+    ],
   ]) {
     const block = cssBlock(source, selector);
     assert.match(block, /-webkit-text-size-adjust: 100%/i, path);
@@ -1018,8 +1029,8 @@ test("visible controls separate responsive geometry from coarse-pointer hit area
 test("contextual and inline actions stay compact while page and primary actions stay regular", () => {
   const compactControls = [
     [
-      "pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.css",
-      "caffold-detail-view-switch",
+      "components/segmented-control.css",
+      "caffold-segmented-control",
       "--interface-compact-visual-size",
     ],
     [
@@ -1104,8 +1115,9 @@ test("contextual and inline actions stay compact while page and primary actions 
 
 test("dense contextual toolbars separate visual size from coarse-pointer hit area", () => {
   const tokens = readFrontend("styles.css");
-  const detailViewSwitch = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.css",
+  const segmentedControl = readFrontend("components/segmented-control.css");
+  const reviewLayout = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/(review)/layout.css",
   );
   const gitButton = readFrontend(
     "pages/(task-workspace)/tasks/(detail)/components/git-menu.css",
@@ -1113,7 +1125,6 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
   const githubButton = readFrontend(
     "pages/(task-workspace)/tasks/(detail)/components/github-menu.css",
   );
-  const review = readFrontend("pages/(task-workspace)/tasks/(detail)/(review)/layout.css");
 
   assert.match(tokens, /--interface-compact-visual-size: 1\.875rem;/);
   assert.match(
@@ -1125,8 +1136,35 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
     /--interface-compact-hit-outset:[\s\S]*--interface-target-floor[\s\S]*--interface-compact-visual-size/,
   );
   assert.match(
-    detailViewSwitch,
+    segmentedControl,
     /& button \{[\s\S]*height: var\(--interface-compact-hit-size\)[\s\S]*margin-block: calc\(0rem - var\(--interface-compact-hit-outset\)\)/,
+  );
+  assert.match(
+    segmentedControl,
+    /font-size: var\(--interface-meta-font-size\);/,
+  );
+  assert.match(
+    segmentedControl,
+    /min-width: var\(--segmented-control-choice-min-inline-size, auto\);/,
+  );
+  assert.match(reviewLayout, /--review-navigator-axis-inline-size: 7rem;/);
+  assert.match(reviewLayout, /--review-viewer-axis-inline-size: 7\.5rem;/);
+  assert.match(
+    reviewLayout,
+    /--review-navigator-control-inline-size: calc\([\s\S]*var\(--review-navigator-axis-inline-size\) \/ 2/,
+  );
+  assert.match(
+    reviewLayout,
+    /--review-viewer-control-inline-size: calc\([\s\S]*var\(--review-viewer-axis-inline-size\) \/ 2/,
+  );
+  assert.doesNotMatch(reviewLayout, /4\.125rem/);
+  assert.match(
+    reviewLayout,
+    /--segmented-control-choice-min-inline-size: 0;/,
+  );
+  assert.match(
+    reviewLayout,
+    /--segmented-control-label-padding-inline: var\(--interface-space-1\);/,
   );
   assert.match(
     gitButton,
@@ -1135,10 +1173,6 @@ test("dense contextual toolbars separate visual size from coarse-pointer hit are
   assert.match(
     githubButton,
     /\.task-github-button::before \{[\s\S]*--interface-compact-hit-outset/,
-  );
-  assert.match(
-    review,
-    /\.task-review-axis-options button \{[\s\S]*height: var\(--interface-compact-hit-size\)[\s\S]*margin-block: calc\(0rem - var\(--interface-compact-hit-outset\)\)/,
   );
 });
 

@@ -3,10 +3,18 @@ caffold-task-review {
   --review-navigator-header-padding-inline: var(--interface-space-6);
   --review-navigator-action-inline-end: var(--interface-space-6);
   --review-navigator-axis-inline-size: 7rem;
+  --review-navigator-control-inline-size: calc(
+    attr(data-review-navigator-choice-count type(<number>), 1) *
+      var(--review-navigator-axis-inline-size) / 2
+  );
   --review-viewer-action-inline-end: calc(
     var(--interface-space-7) + var(--interface-compact-hit-outset)
   );
   --review-viewer-axis-inline-size: 7.5rem;
+  --review-viewer-control-inline-size: calc(
+    attr(data-review-viewer-choice-count type(<number>), 1) *
+      var(--review-viewer-axis-inline-size) / 2
+  );
   --review-pane-title-size: 0.82rem;
   --review-pane-title-line-height: 1.05;
   --review-pane-meta-size: 0.74rem;
@@ -29,79 +37,6 @@ caffold-task-review {
     min-height: 0;
     height: 100%;
     overflow: hidden;
-  }
-
-  & .task-review-axis-options {
-    display: inline-grid;
-    grid-template-columns: repeat(2, max-content);
-    align-content: center;
-    align-items: center;
-    gap: 0.0625rem;
-    box-sizing: border-box;
-    height: var(--interface-compact-visual-size);
-    padding: 0;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    background: var(--surface-muted);
-  }
-
-  & .task-review-axis-options button {
-    position: relative;
-    z-index: 1;
-    display: grid;
-    box-sizing: border-box;
-    height: var(--interface-compact-hit-size);
-    min-width: 0;
-    min-height: var(--interface-compact-hit-size);
-    margin-block: calc(0rem - var(--interface-compact-hit-outset));
-    padding: 0;
-    border: 0;
-    border-radius: 3px;
-    background: transparent;
-    color: var(--muted);
-    font: inherit;
-    font-size: var(--interface-meta-font-size);
-    place-items: center;
-    cursor: pointer;
-  }
-
-  & .task-review-axis-options button > span {
-    display: grid;
-    box-sizing: border-box;
-    width: 100%;
-    min-width: 0;
-    height: calc(var(--interface-compact-visual-size) - 2px);
-    padding: 0 var(--interface-space-4);
-    place-items: center;
-    border-radius: 3px;
-  }
-
-  & .task-review-axis-options button[aria-pressed="true"] > span {
-    background: var(--surface);
-    color: var(--text);
-  }
-
-  & .task-review-axis-options button[aria-pressed="true"]:first-child > span {
-    box-shadow: 1px 0 0 var(--border);
-  }
-
-  & .task-review-axis-options button[aria-pressed="true"]:last-child > span {
-    box-shadow: -1px 0 0 var(--border);
-  }
-
-  & .task-review-axis-options:has(button[hidden])
-    button[aria-pressed="true"]
-    > span {
-    box-shadow: none;
-  }
-
-  & .task-review-axis-options button:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-
-  & .task-review-axis-options button[hidden] {
-    display: none;
   }
 
   & .task-review-notices:has(> :not([hidden])) {
@@ -166,14 +101,14 @@ caffold-task-review {
   & .task-review-navigator-pane {
     --review-pane-action-clearance: calc(
       var(--review-navigator-action-inline-end) +
-        var(--review-navigator-axis-inline-size) + var(--interface-space-5)
+        var(--review-navigator-control-inline-size) + var(--interface-space-5)
     );
   }
 
   & .task-review-viewer-pane {
     --review-pane-action-clearance: calc(
       var(--review-viewer-action-inline-end) +
-        var(--review-viewer-axis-inline-size) + var(--interface-space-5) -
+        var(--review-viewer-control-inline-size) + var(--interface-space-5) -
         var(--interface-compact-hit-outset)
     );
   }
@@ -197,18 +132,18 @@ caffold-task-review {
     right: var(--review-viewer-action-inline-end);
   }
 
-  & .task-review-navigator-axis .task-review-axis-options:not(:has(button[hidden])) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: var(--review-navigator-axis-inline-size);
+  & .task-review-pane-axis > caffold-segmented-control {
+    --segmented-control-column-size: auto;
+    --segmented-control-choice-min-inline-size: 0;
+    --segmented-control-label-padding-inline: var(--interface-space-1);
   }
 
-  & .task-review-viewer-axis .task-review-axis-options {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: var(--review-viewer-axis-inline-size);
+  & .task-review-navigator-axis > caffold-segmented-control {
+    width: var(--review-navigator-control-inline-size);
   }
 
-  & .task-review-axis-options:has(button[hidden]) {
-    grid-template-columns: max-content;
+  & .task-review-viewer-axis > caffold-segmented-control {
+    width: var(--review-viewer-control-inline-size);
   }
 
   & .task-review-viewer-empty-header {

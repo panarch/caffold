@@ -4,9 +4,9 @@ import "./(task)/layout.js";
 import "./(git)/layout.js";
 import "./(github)/layout.js";
 import "./(review)/layout.js";
+import "../../../../components/segmented-control.js";
 import "./components/git-menu.js";
 import "./components/github-menu.js";
-import "./components/detail-view-switch.js";
 import "./(task)/components/summary.js";
 import "./(section)/components/summary.js";
 import "./(section)/layout.js";
@@ -43,7 +43,7 @@ class CaffoldDetailLayout extends HTMLElement {
           <caffold-task-detail-summary hidden></caffold-task-detail-summary>
           <caffold-section-detail-summary></caffold-section-detail-summary>
           <div class="detail-layout-actions">
-            <caffold-detail-view-switch></caffold-detail-view-switch>
+            <caffold-segmented-control data-detail-view-switch></caffold-segmented-control>
             <caffold-task-detail-git></caffold-task-detail-git>
             <caffold-task-detail-github></caffold-task-detail-github>
           </div>
@@ -82,7 +82,7 @@ class CaffoldDetailLayout extends HTMLElement {
       }
     });
     this.addEventListener(
-      "caffold:detail-view-switch-intent",
+      "caffold:segmented-control-intent",
       (event) => this.handleViewIntent(event),
     );
     this.addEventListener(
@@ -392,19 +392,20 @@ class CaffoldDetailLayout extends HTMLElement {
         : surface,
       choices: repository
         ? [
-            { id: "conversation", label: "Conversation" },
-            { id: "working", label: "Working Tree" },
+            { value: "conversation", label: "Conversation" },
+            { value: "working", label: "Working Tree" },
             {
-              id: "branch",
+              value: "branch",
               label: "Branch",
               title: `Compare with ${this.taskRoute?.baseRef || "the default branch"}`,
             },
           ]
         : [
-            { id: "conversation", label: "Conversation" },
-            { id: "review", label: "Review" },
+            { value: "conversation", label: "Conversation" },
+            { value: "review", label: "Review" },
           ],
     });
+    this.viewSwitch()?.removeAttribute("hidden");
     this.gitMenu()?.setSnapshot({ available: repository });
     this.githubMenu()?.setSnapshot({ available: repository });
     this.applySurfaceVisibility(surface);
@@ -427,16 +428,17 @@ class CaffoldDetailLayout extends HTMLElement {
         : surface,
       choices: repository
         ? [
-            { id: "new", label: "New Task" },
-            { id: "working", label: "Working Tree" },
+            { value: "new", label: "New Task" },
+            { value: "working", label: "Working Tree" },
             {
-              id: "branch",
+              value: "branch",
               label: "Branch",
               title: `Compare with ${this.sectionRoute?.baseRef || "the default branch"}`,
             },
           ]
-        : [{ id: "new", label: "New Task" }],
+        : [{ value: "new", label: "New Task" }],
     });
+    this.viewSwitch()?.toggleAttribute("hidden", !repository);
     this.gitMenu()?.setSnapshot({ available: repository });
     this.githubMenu()?.setSnapshot({ available: repository });
     const subjectActive = surface === "new";
@@ -668,7 +670,7 @@ class CaffoldDetailLayout extends HTMLElement {
       return;
     }
     event.stopPropagation();
-    const view = event.detail?.view;
+    const view = event.detail?.value;
     const preservedReviewRoute = this.reviewForSubject()?.currentTaskRoute?.();
     if (this.subjectKind === "section") {
       this.requestSectionRoute(
@@ -979,7 +981,7 @@ class CaffoldDetailLayout extends HTMLElement {
   summaryHeader() { return this.querySelector(".detail-layout-summary"); }
   sectionShell() { return this.querySelector(":scope > .common-detail-shell"); }
   sectionSummary() { return this.querySelector("caffold-section-detail-summary"); }
-  viewSwitch() { return this.querySelector("caffold-detail-view-switch"); }
+  viewSwitch() { return this.querySelector("caffold-segmented-control[data-detail-view-switch]"); }
   gitMenu() { return this.sectionShell()?.querySelector("caffold-task-detail-git"); }
   githubMenu() { return this.sectionShell()?.querySelector("caffold-task-detail-github"); }
   sectionDetail() { return this.querySelector("caffold-section-detail"); }
@@ -1004,7 +1006,9 @@ function reviewFields(route = {}) {
   return {
     reviewScope: route.reviewScope === "branch" ? "branch" : "working",
     reviewNavigator: route.reviewNavigator === "files" ? "files" : "changes",
-    reviewViewer: route.reviewViewer === "source" ? "source" : "diff",
+    reviewViewer: ["source", "preview"].includes(route.reviewViewer)
+      ? route.reviewViewer
+      : "diff",
     path: `${route.path ?? ""}`,
     line: route.line ?? null,
     baseRef: `${route.baseRef ?? ""}`,

@@ -546,13 +546,19 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
   await expect(tasksPage).toContainText("Hello from a global Codex thread.");
 
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
-  await tasksPage.locator('caffold-task-review button[data-review-axis="navigator"][data-review-value="files"]').click();
+  await tasksPage
+    .locator(
+      'caffold-task-review caffold-segmented-control[data-review-axis="navigator"] button[data-segmented-value="files"]',
+    )
+    .click();
   const taskReview = tasksPage.locator("caffold-task-review");
   if (testInfo.project.name === "phone") {
     await taskReview.evaluate((review) => review.updateAxis("viewer", "source"));
   } else {
     await taskReview
-      .locator('button[data-review-axis="viewer"][data-review-value="source"]')
+      .locator(
+        'caffold-segmented-control[data-review-axis="viewer"] button[data-segmented-value="source"]',
+      )
       .click();
   }
   await expect(tasksPage.locator(".task-detail")).toHaveAttribute(
