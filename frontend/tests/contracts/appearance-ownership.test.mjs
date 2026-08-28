@@ -1113,6 +1113,15 @@ test("contextual and inline actions stay compact while page and primary actions 
   }
 });
 
+test("shared segmented controls keep their Interface text scale across mobile engines", () => {
+  const segmentedControl = readFrontend("components/segmented-control.css");
+  cssBlockMatching(segmentedControl, "caffold-segmented-control", [
+    /font-size: var\(--interface-meta-font-size\)/,
+    /-webkit-text-size-adjust: 100%/i,
+    /(?:^|\n)\s*text-size-adjust: 100%/i,
+  ]);
+});
+
 test("dense contextual toolbars separate visual size from coarse-pointer hit area", () => {
   const tokens = readFrontend("styles.css");
   const segmentedControl = readFrontend("components/segmented-control.css");

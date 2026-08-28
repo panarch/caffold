@@ -953,6 +953,7 @@ test("keeps compact review controls and available panes inside the workspace", {
       detailSwitch: {
         width: detailSwitch.getBoundingClientRect().width,
         height: detailSwitch.getBoundingClientRect().height,
+        textSizeAdjust: getComputedStyle(detailSwitch).textSizeAdjust,
         buttonFontSizes: [...detailSwitch.querySelectorAll("button")].map(
           (button) => getComputedStyle(button).fontSize,
         ),
@@ -1017,6 +1018,7 @@ test("keeps compact review controls and available panes inside the workspace", {
     expect(layout.viewerWidth).toBeGreaterThanOrEqual(360);
   }
   expect(layout.layoutStartsAtWorkspaceTop).toBe(true);
+  expect(layout.detailSwitch.textSizeAdjust).toBe("100%");
   expect(layout.detailSwitch.width).toBeLessThan(layout.rootFontSize * 15);
   if (testInfo.project.name === "desktop") {
     expect(layout.detailSwitch.width).toBeCloseTo(230, 0);
