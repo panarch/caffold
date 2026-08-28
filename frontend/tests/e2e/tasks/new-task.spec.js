@@ -2,7 +2,12 @@ import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import {
+  activeTaskProjection,
+  canonicalTaskState,
   captureReviewScreenshot,
+  emitTaskDetailBootstrap,
+  installEventSourceMock,
+  mockAgentModels,
   pasteImage,
   stabilizeDynamicText,
   taskPresentation,
@@ -571,6 +576,243 @@ test("creates a task with responsive composer controls and canonical approval st
     )
     .toEqual({ action: "approval", approvalId: "approval_1", decision: "allow" });
 
+});
+
+test("does not carry an older-history cursor into a newly created task", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page, { autoOpen: true });
+  await mockAgentModels(page);
+  await page.addInitScript(() => {
+    const fetch = window.fetch.bind(window);
+    window.__caffoldFetchRequests = [];
+    window.fetch = (input, init = {}) => {
+      const request = input instanceof Request ? input : null;
+      window.__caffoldFetchRequests.push({
+        method: `${init.method ?? request?.method ?? "GET"}`.toUpperCase(),
+        url: `${request?.url ?? input}`,
+      });
+      return fetch(input, init);
+    };
+  });
+
+  const previousThreadId = "thread_history_cursor_owner";
+  const createdThreadId = "thread_created_without_history";
+  const previousCursor = "cursor-from-previous-task";
+  const now = 1_767_320_000_000;
+  const previousTask = {
+    id: previousThreadId,
+    threadId: previousThreadId,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Task with older history",
+    preview: "Previous response 12",
+    cwd: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Previous response 12",
+  };
+  const previousEvents = Array.from({ length: 12 }, (_, index) => ({
+    id: `previous-event-${index}`,
+    threadId: previousThreadId,
+    type: index % 2 === 0 ? "user_message" : "assistant_message",
+    summary: index % 2 === 0 ? "User prompt" : "Assistant response",
+    payload: {
+      text: `${
+        index % 2 === 0 ? "Previous prompt" : "Previous response"
+      } ${index + 1}. ${"This makes the existing conversation scroll. ".repeat(20)}`,
+    },
+    position: { anchorMs: now + index, index: 0 },
+  }));
+  const previousDetail = {
+    threadId: previousThreadId,
+    syncState: "ready",
+    revision: 1,
+    eventRevision: 1,
+    task: previousTask,
+    events: previousEvents,
+    eventsPage: { nextCursor: previousCursor },
+    pendingApprovals: [],
+    historyLoading: false,
+  };
+  const createdTask = {
+    id: createdThreadId,
+    threadId: createdThreadId,
+    ...canonicalTaskState("idle"),
+    title: "Fresh task",
+    preview: "",
+    cwd: "src",
+    relativeCwd: "",
+    createdMs: now + 100,
+    updatedMs: now + 100,
+    recencyMs: now + 100,
+    lastEventSummary: null,
+  };
+  const createdDetail = {
+    threadId: createdThreadId,
+    syncState: "ready",
+    revision: 1,
+    eventRevision: 1,
+    task: createdTask,
+    events: [],
+    eventsPage: { nextCursor: null },
+    pendingApprovals: [],
+    historyLoading: true,
+    activeTopPlacement: {
+      section: { id: "fixture-section-src", name: "src", repository: false },
+    },
+  };
+  let taskCreated = false;
+  let resolvePromptRequest;
+  const promptRequested = new Promise((resolve) => {
+    resolvePromptRequest = resolve;
+  });
+
+  await page.route("**/api/tasks**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const segments = url.pathname.split("/").filter(Boolean);
+    const method = request.method();
+
+    if (segments.length === 2 && method === "GET") {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(
+          activeTaskProjection(
+            taskCreated ? [createdTask, previousTask] : [previousTask],
+          ),
+        ),
+      });
+    }
+
+    if (segments.length === 2 && method === "POST") {
+      expect(request.postDataJSON()).toEqual(
+        expect.objectContaining({ titleSource: "Start with clean history" }),
+      );
+      taskCreated = true;
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(createdDetail),
+      });
+    }
+
+    if (
+      segments.length === 3 &&
+      segments[2] === previousThreadId &&
+      method === "GET"
+    ) {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(previousDetail),
+      });
+    }
+
+    if (
+      segments.length === 3 &&
+      segments[2] === createdThreadId &&
+      method === "GET"
+    ) {
+      return route.fulfill({
+        status: url.searchParams.has("cursor") ? 502 : 200,
+        contentType: "application/json",
+        body: JSON.stringify(
+          url.searchParams.has("cursor")
+            ? {
+                error: {
+                  code: "agent_error",
+                  message: "The cursor belongs to another Task.",
+                },
+              }
+            : createdDetail,
+        ),
+      });
+    }
+
+    if (
+      segments.length === 4 &&
+      segments[2] === createdThreadId &&
+      segments[3] === "prompts" &&
+      method === "POST"
+    ) {
+      resolvePromptRequest();
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          threadId: createdThreadId,
+          turnId: "turn-created-without-history",
+          userMessageId: "message-created-without-history",
+          steered: false,
+        }),
+      });
+    }
+
+    return route.fallback();
+  });
+
+  await page.goto(`/tasks/${previousThreadId}`);
+  await emitTaskDetailBootstrap(page, previousDetail);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const conversation = tasksPage.locator(".task-conversation-scroll");
+  await expect(tasksPage).toContainText("Previous response 12.");
+  await expect
+    .poll(() =>
+      tasksPage.evaluate(
+        (element) =>
+          element.querySelector("caffold-task-detail")?.eventsPage?.nextCursor,
+      ),
+    )
+    .toBe(previousCursor);
+  await expect
+    .poll(() =>
+      conversation.evaluate(
+        (element) =>
+          element.scrollHeight > element.clientHeight && element.scrollTop > 32,
+      ),
+    )
+    .toBe(true);
+
+  await page
+    .locator("caffold-task-navigator")
+    .getByRole("button", { name: "New Task" })
+    .click();
+  const newTaskForm = tasksPage.locator(".task-new-form");
+  const prompt = newTaskForm.locator('textarea[name="prompt"]');
+  await expect(prompt).toBeVisible();
+  await prompt.fill("Start with clean history");
+  await newTaskForm.getByRole("button", { name: "Start task" }).click();
+
+  await promptRequested;
+  await expect(page).toHaveURL(`/tasks/${createdThreadId}`);
+  const paginationState = await tasksPage.evaluate((element) => {
+    const detail = element.querySelector("caffold-task-detail");
+    const scroller = detail.querySelector(".task-conversation-scroll");
+    scroller.scrollTop = 0;
+    scroller.dispatchEvent(new Event("scroll"));
+    return {
+      cursor: detail.eventsPage?.nextCursor ?? null,
+      historyError: detail.historyLoadError?.message ?? null,
+      loadingOlder: detail.loadingOlderEvents,
+      selectedThreadId: detail.selectedThreadId,
+    };
+  });
+  expect(paginationState).toEqual({
+    cursor: null,
+    historyError: null,
+    loadingOlder: false,
+    selectedThreadId: createdThreadId,
+  });
+  expect(
+    await page.evaluate((threadId) =>
+      window.__caffoldFetchRequests
+        .filter(({ method }) => method === "GET")
+        .map(({ url }) => new URL(url, location.href))
+        .filter(({ pathname }) => pathname === `/api/tasks/${threadId}`)
+        .map(({ searchParams }) => searchParams.get("cursor")),
+      createdThreadId,
+    ),
+  ).toEqual([]);
+  await expect(tasksPage.locator(".task-history-error")).toHaveCount(0);
 });
 
 test("says that a new task is starting until creation is answered", { tag: "@all-viewports" }, async ({

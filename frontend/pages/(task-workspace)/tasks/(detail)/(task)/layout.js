@@ -260,13 +260,10 @@ class CaffoldTaskDetail extends HTMLElement {
     if (!threadId || !detail?.task) {
       return false;
     }
-    this.interruptActionToken += 1;
-    this.interruptStateValue = { loading: false, error: null };
-    this.forkActionToken += 1;
-    this.forkStateValue = { loading: false, error: null };
-    this.selectedThreadId = threadId;
-    this.view = "detail";
-    this.hidden = false;
+    // Creation hands Detail a new Task before its route opens. Bind that Task
+    // through the ordinary identity transition so no request or pagination
+    // state from the previously selected Task can be applied to it.
+    this.prepare(threadId);
     if (
       !this.applyCanonicalTaskDetail(threadId, detail, {
         resetRevision: true,
