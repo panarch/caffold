@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
-import { forkTask, getHealth, reorderSection } from "./api.js";
+import {
+  createTaskFork,
+  forkTask,
+  getHealth,
+  previewTaskForkSource,
+  reorderSection,
+} from "./api.js";
 import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "./origin-reachability.js";
 
 const originalBrowserGlobals = {
@@ -122,6 +128,49 @@ test("forks the encoded managed Task id with an empty POST", async () => {
     {
       url: "http://127.0.0.1/api/tasks/source%2Fthread/fork",
       options: { method: "POST" },
+    },
+  ]);
+});
+
+test("keeps external fork preview and creation on their dedicated API boundary", async () => {
+  const requests = [];
+  installBrowserHarness(async (url, options) => {
+    requests.push({ url: `${url}`, options });
+    return jsonResponse({ sourceId: "source", threadId: "child" });
+  });
+  const controller = new AbortController();
+
+  await previewTaskForkSource(
+    { provider: "codex", sourceId: "source" },
+    controller.signal,
+  );
+  await createTaskFork({
+    provider: "codex",
+    sourceId: "source",
+    sectionId: "section-one",
+  });
+
+  assert.deepEqual(requests, [
+    {
+      url: "http://127.0.0.1/api/task-forks/preview",
+      options: {
+        method: "POST",
+        signal: controller.signal,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ provider: "codex", sourceId: "source" }),
+      },
+    },
+    {
+      url: "http://127.0.0.1/api/task-forks",
+      options: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          provider: "codex",
+          sourceId: "source",
+          sectionId: "section-one",
+        }),
+      },
     },
   ]);
 });

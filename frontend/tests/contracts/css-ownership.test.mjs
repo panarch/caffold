@@ -131,6 +131,14 @@ const ownership = new Map([
     ["caffold-section-detail"],
   ],
   [
+    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.css",
+    ["caffold-section-conversation-shortcuts"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.css",
+    ["caffold-conversation-fork-dialog"],
+  ],
+  [
     "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.css",
     ["caffold-section-github-shortcuts"],
   ],

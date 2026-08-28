@@ -290,6 +290,26 @@ pub fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/(detail)/(section)/layout.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/layout.js"
         ))),
+        "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.css"
@@ -1501,6 +1521,14 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/(detail)/(section)/layout.js",
                 b"caffold-section-detail".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.js",
+                b"caffold-section-conversation-shortcuts".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js",
+                b"caffold-conversation-fork-dialog".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.js",

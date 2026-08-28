@@ -16,14 +16,24 @@ caffold-section-detail {
     margin: 0 auto;
   }
 
+  & > caffold-section-conversation-shortcuts,
   & > caffold-section-github-shortcuts {
     width: min(calc(100% - 5.25rem), 896px);
     margin: 0 auto;
   }
+
+  & > caffold-section-conversation-shortcuts {
+    margin-bottom: var(--interface-space-7);
+  }
 }
 
 @media (max-width: 959px) {
+  caffold-section-detail > caffold-section-conversation-shortcuts,
   caffold-section-detail > caffold-section-github-shortcuts {
     width: min(calc(100% - 3rem), 932px);
+  }
+
+  caffold-section-detail > caffold-section-conversation-shortcuts {
+    margin-bottom: var(--interface-space-5);
   }
 }

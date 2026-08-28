@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { installBrowserDefaults } from "../support/browser-defaults.js";
+import {
+  installBrowserDefaults,
+  mockCodexStatus,
+} from "../support/browser-defaults.js";
 import { taskDetailFixture } from "../support/task-api-fixture.js";
 import {
   activeTaskProjection,
@@ -169,7 +172,11 @@ test("offers GitHub work shortcuts from repository Task creation", { tag: "@all-
 
   await page.goto("/?section=fixture-section-1");
   const detail = page.locator("caffold-detail-layout");
+  const conversationShortcuts = detail.locator(
+    "caffold-section-conversation-shortcuts",
+  );
   const shortcuts = detail.locator("caffold-section-github-shortcuts");
+  await expect(conversationShortcuts).toBeVisible();
   await expect(shortcuts).toBeVisible();
   await expect(shortcuts.locator(".section-github-name")).toHaveText(
     "panarch/caffold",
@@ -186,28 +193,45 @@ test("offers GitHub work shortcuts from repository Task creation", { tag: "@all-
     window.innerWidth <= 959 ? 10 : 14
   );
   const measureAlignment = async () => {
-    const [composerBox, shortcutBox] = await Promise.all([
+    const [composerBox, conversationBox, shortcutBox] = await Promise.all([
       composerPanel.boundingBox(),
+      conversationShortcuts.boundingBox(),
       shortcuts.boundingBox(),
     ]);
-    if (!composerBox || !shortcutBox) {
+    if (!composerBox || !conversationBox || !shortcutBox) {
       return null;
     }
     return {
-      left: Math.abs(shortcutBox.x - composerBox.x),
-      right: Math.abs(
-        shortcutBox.x + shortcutBox.width - composerBox.x - composerBox.width,
+      conversationLeft: Math.abs(conversationBox.x - composerBox.x),
+      conversationRight: Math.abs(
+        conversationBox.x + conversationBox.width - composerBox.x - composerBox.width,
       ),
-      gap: shortcutBox.y - composerBox.y - composerBox.height,
+      shortcutLeft: Math.abs(shortcutBox.x - conversationBox.x),
+      shortcutRight: Math.abs(
+        shortcutBox.x + shortcutBox.width - conversationBox.x - conversationBox.width,
+      ),
+      composerGap: conversationBox.y - composerBox.y - composerBox.height,
+      shortcutGap: shortcutBox.y - conversationBox.y - conversationBox.height,
     };
   };
   await expect.poll(async () => {
     const alignment = await measureAlignment();
-    return alignment ? Math.max(alignment.left, alignment.right) : Infinity;
+    return alignment
+      ? Math.max(
+        alignment.conversationLeft,
+        alignment.conversationRight,
+        alignment.shortcutLeft,
+        alignment.shortcutRight,
+      )
+      : Infinity;
   }).toBeLessThanOrEqual(0.5);
   await expect.poll(async () => {
     const alignment = await measureAlignment();
-    return alignment ? Math.abs(alignment.gap - expectedGap) : Infinity;
+    return alignment ? Math.abs(alignment.composerGap - expectedGap) : Infinity;
+  }).toBeLessThanOrEqual(1);
+  await expect.poll(async () => {
+    const alignment = await measureAlignment();
+    return alignment ? Math.abs(alignment.shortcutGap - expectedGap) : Infinity;
   }).toBeLessThanOrEqual(1);
 
   const [issuesBox, pullsBox] = await Promise.all([
@@ -226,6 +250,355 @@ test("offers GitHub work shortcuts from repository Task creation", { tag: "@all-
     "/?section=fixture-section-1&surface=github&tool=issues",
   );
   await expect(detail.locator("caffold-github-issues-list-page")).toBeVisible();
+});
+
+test("previews a Codex thread ID and forks it into the selected Section", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockAgentModels(page);
+  const rootPath = "frontend/tests/e2e/fixtures/home";
+  const sourceThreadId = "external-codex-source";
+  const childThreadId = "external-codex-child";
+  const sourceTask = {
+    id: "section-fork-anchor",
+    threadId: "section-fork-anchor",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Section fork anchor",
+    cwd: rootPath,
+    cwdPath: rootPath,
+    relativeCwd: "",
+    worktree: null,
+    createdMs: 10,
+    updatedMs: 20,
+    lastEventSummary: "Section fork anchor",
+  };
+  const childTask = {
+    ...sourceTask,
+    id: childThreadId,
+    threadId: childThreadId,
+    title: "Fork of Long-running Codex work",
+    preview: "Continue the established implementation direction.",
+    createdMs: 30,
+    updatedMs: 30,
+    lastEventSummary: "Inherited answer",
+  };
+  const childDetail = {
+    ...taskDetailFixture(),
+    threadId: childThreadId,
+    task: childTask,
+    events: [],
+    activeTopPlacement: {
+      section: {
+        id: "fixture-section-1",
+        name: rootPath,
+        repository: false,
+      },
+      beforeSectionId: null,
+      beforeThreadId: sourceTask.threadId,
+    },
+  };
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([sourceTask]) })
+  );
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({ json: { tasks: [], nextCursor: null } })
+  );
+  let previewRequests = 0;
+  await page.route(/\/api\/task-forks\/preview$/, async (route) => {
+    previewRequests += 1;
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().postDataJSON()).toEqual({
+      provider: "codex",
+      sourceId: sourceThreadId,
+    });
+    await route.fulfill({
+      json: {
+        provider: "codex",
+        sourceId: sourceThreadId,
+        displayName: "Long-running Codex work",
+        summary: "Continue the established implementation direction.",
+        status: { type: "notLoaded" },
+        cwd: "/Users/example/Workspace/other-project",
+        lastActivityMs: Date.UTC(2026, 7, 28, 3, 20),
+        recentHistory: [
+          { role: "user", text: "Keep the conversation context.\nDo not copy files." },
+          { role: "assistant", text: "I will preserve the conversation only." },
+        ],
+      },
+    });
+  });
+  let observeFork;
+  const forkObserved = new Promise((resolve) => {
+    observeFork = resolve;
+  });
+  let releaseFork;
+  const forkGate = new Promise((resolve) => {
+    releaseFork = resolve;
+  });
+  let forkRequests = 0;
+  await page.route(/\/api\/task-forks$/, async (route) => {
+    forkRequests += 1;
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().postDataJSON()).toEqual({
+      provider: "codex",
+      sourceId: sourceThreadId,
+      sectionId: "fixture-section-1",
+    });
+    observeFork();
+    await forkGate;
+    await route.fulfill({ json: childDetail });
+  });
+
+  await page.goto("/?section=fixture-section-1");
+  const shortcuts = page.locator("caffold-section-conversation-shortcuts");
+  await expect(shortcuts).toBeVisible();
+  await expect(shortcuts.getByRole("heading")).toHaveText("Existing conversations");
+  await expect(shortcuts).toContainText(
+    "Create a Task here with an existing conversation's history.",
+  );
+  const openButton = shortcuts.getByRole("button", {
+    name: "Fork from Codex thread ID",
+  });
+  await expect(openButton).toBeEnabled();
+  await openButton.click();
+
+  const dialog = page.getByRole("dialog", { name: "Fork a Codex thread" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".conversation-fork-target dd")).toHaveText(rootPath);
+  const threadIdInput = dialog.getByLabel("Thread ID");
+  await threadIdInput.fill(`codex://threads/${sourceThreadId}`);
+  expect(previewRequests).toBe(0);
+  await expect(dialog.getByRole("button", { name: "Fork task" })).toBeDisabled();
+  await threadIdInput.press("Enter");
+
+  await expect(dialog.locator("[data-fork-preview='name']")).toHaveText(
+    "Long-running Codex work",
+  );
+  await expect(dialog.locator("[data-fork-preview='status']")).toHaveText(
+    "Live status unavailable",
+  );
+  await expect(dialog.locator(".conversation-fork-unavailable-reason")).toBeHidden();
+  await expect(dialog.locator("[data-fork-preview='cwd']")).toHaveText(
+    "/Users/example/Workspace/other-project",
+  );
+  await expect(dialog.locator(".conversation-fork-summary")).toContainText(
+    "Continue the established implementation direction.",
+  );
+  await expect(dialog.locator(".conversation-fork-history-list article")).toHaveCount(2);
+  await expect(dialog.locator(".conversation-fork-history-list")).toContainText(
+    "Keep the conversation context.\nDo not copy files.",
+  );
+  expect(previewRequests).toBe(1);
+
+  const forkButton = dialog.locator("[data-fork-dialog-action='fork']");
+  await expect(forkButton).toBeEnabled();
+  await forkButton.click();
+  await forkObserved;
+  await expect(forkButton).toHaveText("Forking…");
+  await expect(forkButton).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  await expect(threadIdInput).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  releaseFork();
+
+  await expect(page).toHaveURL(new RegExp(`/tasks/${childThreadId}$`));
+  await expect(page.locator("caffold-task-detail-summary h2")).toHaveText(
+    "Fork of Long-running Codex work",
+  );
+  await expect(page.locator("caffold-task-navigator .task-row-title")).toHaveText([
+    "Fork of Long-running Codex work",
+    "Section fork anchor",
+  ]);
+  expect(forkRequests).toBe(1);
+});
+
+test("keeps non-idle and unknown previews read-only and cancels an in-flight preview", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockAgentModels(page);
+  const rootPath = "frontend/tests/e2e/fixtures/home";
+  const task = {
+    id: "section-active-preview",
+    threadId: "section-active-preview",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Section active preview",
+    cwd: rootPath,
+    cwdPath: rootPath,
+    relativeCwd: "",
+    worktree: null,
+    createdMs: 10,
+    updatedMs: 20,
+    lastEventSummary: "Section active preview",
+  };
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) })
+  );
+  let observeSlowPreview;
+  const slowPreviewObserved = new Promise((resolve) => {
+    observeSlowPreview = resolve;
+  });
+  let releaseSlowPreview;
+  const slowPreviewGate = new Promise((resolve) => {
+    releaseSlowPreview = resolve;
+  });
+  let finishSlowPreview;
+  const slowPreviewFinished = new Promise((resolve) => {
+    finishSlowPreview = resolve;
+  });
+  let previewRequests = 0;
+  await page.route(/\/api\/task-forks\/preview$/, async (route) => {
+    previewRequests += 1;
+    const { sourceId } = route.request().postDataJSON();
+    if (sourceId === "missing-thread") {
+      return route.fulfill({
+        status: 404,
+        json: {
+          error: {
+            code: "task_fork_source_unresolved",
+            message: "Codex could not resolve that Thread ID",
+          },
+        },
+      });
+    }
+    if (sourceId === "slow-thread") {
+      observeSlowPreview();
+      await slowPreviewGate;
+      try {
+        return await route.fulfill({
+          json: {
+            provider: "codex",
+            sourceId,
+            displayName: "Slow external work",
+            summary: null,
+            status: { type: "idle" },
+            cwd: "/workspace/slow",
+            lastActivityMs: null,
+            recentHistory: [],
+          },
+        });
+      } finally {
+        finishSlowPreview();
+      }
+    }
+    return route.fulfill({
+      json: {
+        provider: "codex",
+        sourceId,
+        displayName: sourceId === "unknown-thread"
+          ? "Unknown external work"
+          : "Active external work",
+        summary: null,
+        status: sourceId === "unknown-thread"
+          ? { type: "unknown" }
+          : { type: "active", activeFlags: [] },
+        cwd: "/workspace/active",
+        lastActivityMs: null,
+        recentHistory: [],
+      },
+    });
+  });
+
+  await page.goto("/?section=fixture-section-1");
+  const openButton = page.getByRole("button", {
+    name: "Fork from Codex thread ID",
+  });
+  await openButton.click();
+  const dialog = page.getByRole("dialog", { name: "Fork a Codex thread" });
+  const input = dialog.getByLabel("Thread ID");
+  await input.fill("active-external-thread");
+  expect(previewRequests).toBe(0);
+  await dialog.getByRole("button", { name: "Preview thread" }).click();
+  await expect(dialog.locator("[data-fork-preview='status']")).toHaveText("Active");
+  await expect(dialog).toContainText(
+    "Forking is unavailable while the Codex thread is active.",
+  );
+  await expect(dialog.getByRole("button", { name: "Fork task" })).toBeDisabled();
+
+  await input.fill("missing-thread");
+  await expect(dialog.locator(".conversation-fork-preview")).toBeHidden();
+  await dialog.getByRole("button", { name: "Preview thread" }).click();
+  await expect(dialog).toContainText("Codex could not resolve that Thread ID");
+  await expect(dialog).toBeVisible();
+  await input.fill("another-thread");
+  await expect(dialog).not.toContainText("Codex could not resolve that Thread ID");
+
+  await input.fill("unknown-thread");
+  await dialog.getByRole("button", { name: "Preview thread" }).click();
+  await expect(dialog.locator("[data-fork-preview='status']")).toHaveText("Unknown");
+  await expect(dialog).toContainText(
+    "Codex reported a thread status that Caffold cannot fork.",
+  );
+  await expect(dialog.getByRole("button", { name: "Fork task" })).toBeDisabled();
+
+  await input.fill("slow-thread");
+  await dialog.getByRole("button", { name: "Preview thread" }).click();
+  await slowPreviewObserved;
+  await expect(dialog).toContainText("Loading the Codex thread…");
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeEnabled();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(openButton).toBeFocused();
+  expect(previewRequests).toBe(4);
+  releaseSlowPreview();
+  await slowPreviewFinished;
+});
+
+test("reveals the Codex row only after capability is known and explains disabled state", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page);
+  await mockAgentModels(page);
+  const rootPath = "frontend/tests/e2e/fixtures/home";
+  const task = {
+    id: "section-blocked-fork",
+    threadId: "section-blocked-fork",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Section blocked fork",
+    cwd: rootPath,
+    cwdPath: rootPath,
+    relativeCwd: "",
+    worktree: null,
+    createdMs: 10,
+    updatedMs: 20,
+    lastEventSummary: "Section blocked fork",
+  };
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) })
+  );
+  await page.unroute(/\/api\/codex\/status(?:\?|$)/);
+  let releaseStatus;
+  const statusGate = new Promise((resolve) => {
+    releaseStatus = resolve;
+  });
+  const blockedStatus = mockCodexStatus({
+    readiness: {
+      ...mockCodexStatus().readiness,
+      state: "error",
+      blocksTaskOperations: true,
+      reasonCode: "runtimeUnavailable",
+      diagnosticMessage: "Codex is reconnecting. Try again shortly.",
+    },
+  });
+  await page.route(/\/api\/codex\/status(?:\?|$)/, async (route) => {
+    await statusGate;
+    await route.fulfill({ json: blockedStatus });
+  });
+
+  await page.goto("/?section=fixture-section-1");
+  const shortcuts = page.locator("caffold-section-conversation-shortcuts");
+  await expect(shortcuts).toBeHidden();
+  releaseStatus();
+  await expect(shortcuts).toBeVisible();
+  const button = shortcuts.getByRole("button", {
+    name: /Fork from Codex thread ID/,
+  });
+  await expect(button).toBeDisabled();
+  await expect(shortcuts).toContainText("Codex is reconnecting. Try again shortly.");
+  await expect(button).toHaveCSS("cursor", "not-allowed");
+  await expect(shortcuts.getByText(/Claude/)).toHaveCount(0);
 });
 
 test("returns a missing Section route to Tasks home", { tag: "@all-viewports" }, async ({ page }) => {

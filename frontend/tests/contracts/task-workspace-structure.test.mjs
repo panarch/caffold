@@ -164,6 +164,12 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   const sectionGithubShortcuts = readFrontend(
     "pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.js",
   );
+  const sectionConversationShortcuts = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.js",
+  );
+  const conversationForkDialog = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js",
+  );
   const taskCreate = readFrontend(
     "pages/(task-workspace)/tasks/components/task-create.js",
   );
@@ -204,7 +210,9 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
 
   assert.match(sectionLayout, /import "\.\.\/\.\.\/components\/task-create\.js"/);
   assert.match(sectionLayout, /import "\.\/components\/github-shortcuts\.js"/);
+  assert.match(sectionLayout, /import "\.\/components\/conversation-shortcuts\.js"/);
   assert.match(sectionLayout, /<caffold-task-create>/);
+  assert.match(sectionLayout, /<caffold-section-conversation-shortcuts hidden>/);
   assert.match(sectionLayout, /<caffold-section-github-shortcuts hidden>/);
   assert.doesNotMatch(
     sectionLayout,
@@ -213,6 +221,11 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(sectionGithubShortcuts, /getGitHubStatus/);
   assert.match(sectionGithubShortcuts, /statusRequestId/);
   assert.match(sectionGithubShortcuts, /caffold:section-detail-intent/);
+  assert.match(sectionConversationShortcuts, /<caffold-conversation-fork-dialog>/);
+  assert.match(sectionConversationShortcuts, /Fork from Codex thread ID/);
+  assert.match(conversationForkDialog, /previewTaskForkSource/);
+  assert.match(conversationForkDialog, /createTaskFork/);
+  assert.match(conversationForkDialog, /caffold:task-created/);
   assert.match(sectionLayout, /browseCwd: false/);
   assert.match(globalNew, /import "\.\.\/components\/task-create\.js"/);
   assert.match(globalNew, /browseCwd: true/);

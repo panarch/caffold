@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::{
     agent::claude::ClaudeClient,
     agent::codex::codex_mode_id,
-    agent::{ThreadStatus, TurnOptions, TurnPage},
+    agent::{Conversation, ThreadStatus, TurnOptions, TurnPage},
     app::error::ApiError,
     app::tasks::sessions::{ConversationSettings, INITIAL_TURNS_PAGE_SIZE, TaskSessions},
     fs::RootedFs,
@@ -16,7 +16,10 @@ use crate::{
 use super::{
     CodexConnection, TaskAgent, TaskRecord,
     events::{TaskEvents, now_ms},
-    projection::{resolve_conversation_cwd, task_activity_ms, task_record_from_conversation},
+    projection::{
+        conversation_display_name, resolve_conversation_cwd, task_activity_ms,
+        task_record_from_conversation,
+    },
     routes::TaskListEvents,
     worktrees::{
         ArchiveOutcome, IsolateOutcome, ManagedWorktreeError, ManagedWorktrees, RestoreOutcome,
@@ -37,9 +40,39 @@ pub(in crate::app) struct CreatedTask {
 }
 
 pub(in crate::app) struct ForkCodexTask {
-    pub(in crate::app) source: ManagedThread,
+    pub(in crate::app) source: ForkCodexSource,
     pub(in crate::app) section: ManagedSection,
     pub(in crate::app) cwd: String,
+}
+
+pub(in crate::app) enum ForkCodexSource {
+    Managed(Box<ManagedThread>),
+    External { thread_id: String },
+}
+
+impl ForkCodexSource {
+    fn thread_id(&self) -> &str {
+        match self {
+            Self::Managed(source) => &source.thread_id,
+            Self::External { thread_id } => thread_id,
+        }
+    }
+
+    fn display_name(&self, conversation: &Conversation) -> String {
+        match self {
+            Self::Managed(source) => source.display_name.clone(),
+            Self::External { .. } => conversation_display_name(conversation),
+        }
+    }
+
+    fn can_fork(&self, status: &ThreadStatus) -> bool {
+        match self {
+            Self::Managed(_) => matches!(status, ThreadStatus::Idle),
+            Self::External { .. } => {
+                matches!(status, ThreadStatus::Idle | ThreadStatus::NotLoaded)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -207,13 +240,15 @@ impl TaskLifecycle {
         Ok(CreatedTask { task, placement })
     }
 
-    /// Fork one idle managed Codex Task and claim only the returned child.
+    /// Fork one eligible Codex conversation and claim only the returned child.
     ///
-    /// The source read is deliberately native and read-only. The per-Task
-    /// mutation lease keeps Caffold prompts from crossing the idle check, and
-    /// the second read rejects an external source change observed while the
-    /// provider was forking. Until the local claim commits, every failure
-    /// deletes the otherwise unreachable child.
+    /// The source read is deliberately native and read-only. A managed source
+    /// retains its per-Task mutation lease and must be idle so Caffold prompts
+    /// cannot cross the check. An external source may remain not loaded because
+    /// read-only lookup deliberately does not resume it and Codex forks stored
+    /// history natively. The second provider read rejects any source change
+    /// Caffold can observe while the provider is forking. Until the local claim
+    /// commits, every failure deletes the otherwise unreachable child.
     pub(in crate::app) async fn fork_codex_task(
         &self,
         connection: &CodexConnection,
@@ -224,10 +259,17 @@ impl TaskLifecycle {
             section,
             cwd,
         } = request;
-        let source_thread_id = source.thread_id.clone();
-        let _mutation = self.sessions.reserve_mutation(&source_thread_id).await;
-        self.ensure_fork_source_is_current(&source_thread_id, &section)
-            .await?;
+        let source_thread_id = source.thread_id().to_string();
+        let _mutation = match &source {
+            ForkCodexSource::Managed(source) => {
+                Some(self.sessions.reserve_mutation(&source.thread_id).await)
+            }
+            ForkCodexSource::External { .. } => None,
+        };
+        self.ensure_fork_target_is_current(&section).await?;
+        if let ForkCodexSource::Managed(source) = &source {
+            self.ensure_managed_fork_source_is_current(source).await?;
+        }
         let source_before = connection.client.read_thread(&source_thread_id).await?;
         if source_before.id != source_thread_id {
             return Err(ApiError::BadRequest {
@@ -235,10 +277,8 @@ impl TaskLifecycle {
                 message: "Codex returned a different source thread".to_string(),
             });
         }
-        if !matches!(
-            crate::agent::Conversation::from(&source_before).status,
-            ThreadStatus::Idle
-        ) {
+        let source_conversation = Conversation::from(&source_before);
+        if !source.can_fork(&source_conversation.status) {
             return Err(task_fork_source_not_idle());
         }
 
@@ -255,11 +295,9 @@ impl TaskLifecycle {
                 return Err(error.into());
             }
         };
+        let source_after_conversation = Conversation::from(&source_after);
         if source_after.id != source_thread_id
-            || !matches!(
-                crate::agent::Conversation::from(&source_after).status,
-                ThreadStatus::Idle
-            )
+            || !source.can_fork(&source_after_conversation.status)
             || source_after.updated_at != source_before.updated_at
         {
             self.rollback_unclaimed_codex_fork(&connection.client, &child_thread_id)
@@ -280,7 +318,7 @@ impl TaskLifecycle {
             }
         };
 
-        let title = format!("Fork of {}", source.display_name);
+        let title = format!("Fork of {}", source.display_name(&source_conversation));
         if let Err(error) = connection
             .client
             .set_thread_name(&child_thread_id, &title)
@@ -291,7 +329,7 @@ impl TaskLifecycle {
             return Err(error.into());
         }
         forked.thread.name = Some(title.clone());
-        let conversation = crate::agent::Conversation::from(&forked.thread);
+        let conversation = Conversation::from(&forked.thread);
         let task = match self.record_from_conversation(&conversation) {
             Ok(task) => task,
             Err(error) => {
@@ -443,7 +481,7 @@ impl TaskLifecycle {
 
     fn record_from_conversation(
         &self,
-        conversation: &crate::agent::Conversation,
+        conversation: &Conversation,
     ) -> Result<TaskRecord, ApiError> {
         let resolved = resolve_conversation_cwd(&self.fs, conversation);
         Ok(task_record_from_conversation(
@@ -489,24 +527,46 @@ impl TaskLifecycle {
         .ok_or_else(|| ApiError::Internal("forked Task was not persisted".to_string()))
     }
 
-    async fn ensure_fork_source_is_current(
+    async fn ensure_managed_fork_source_is_current(
         &self,
-        source_thread_id: &str,
-        section: &ManagedSection,
+        source: &ManagedThread,
     ) -> Result<(), ApiError> {
         let store = self.store.clone();
-        let source_thread_id = source_thread_id.to_string();
-        let section_id = section.section_id.clone();
+        let source_thread_id = source.thread_id.clone();
+        let section_id = source.section_id.clone();
         let current = tokio::task::spawn_blocking(move || store.get(&source_thread_id))
             .await
             .map_err(task_store_worker_error)?
             .map_err(|error| ApiError::Internal(error.to_string()))?;
         if current.is_none_or(|current| {
             current.archived_at_ms.is_some()
-                || current.section_id.as_deref() != Some(section_id.as_str())
+                || current.section_id != section_id
                 || current.run_by.provider() != TaskProvider::Codex
         }) {
             return Err(task_fork_source_changed());
+        }
+        Ok(())
+    }
+
+    async fn ensure_fork_target_is_current(
+        &self,
+        section: &ManagedSection,
+    ) -> Result<(), ApiError> {
+        let store = self.store.clone();
+        let section_id = section.section_id.clone();
+        let logical_path = section.logical_path.clone();
+        let current = tokio::task::spawn_blocking(move || {
+            store.read(|tables| {
+                Ok(tables.managed_sections()?.into_iter().find(|section| {
+                    section.section_id == section_id && section.logical_path == logical_path
+                }))
+            })
+        })
+        .await
+        .map_err(task_store_worker_error)?
+        .map_err(|error| ApiError::Internal(error.to_string()))?;
+        if current.is_none() {
+            return Err(task_fork_target_changed());
         }
         Ok(())
     }
@@ -661,14 +721,21 @@ impl TaskLifecycle {
 fn task_fork_source_not_idle() -> ApiError {
     ApiError::Conflict {
         code: "task_fork_source_not_idle",
-        message: "a Task can be forked only while its Codex thread is idle".to_string(),
+        message: "the Codex conversation cannot be forked in its current state".to_string(),
     }
 }
 
 fn task_fork_source_changed() -> ApiError {
     ApiError::Conflict {
         code: "task_fork_source_changed",
-        message: "the source Task changed while Codex was forking it".to_string(),
+        message: "the source conversation changed while Codex was forking it".to_string(),
+    }
+}
+
+fn task_fork_target_changed() -> ApiError {
+    ApiError::Conflict {
+        code: "task_fork_target_changed",
+        message: "the target Section changed before the fork could be created".to_string(),
     }
 }
 
@@ -784,7 +851,7 @@ mod tests {
         });
         let thread: crate::agent::codex::CodexThread =
             serde_json::from_value(thread).expect("the fixture decodes as a Codex thread");
-        let conversation = crate::agent::Conversation::from(&thread);
+        let conversation = Conversation::from(&thread);
         let resolved = resolve_conversation_cwd(&lifecycle.fs, &conversation);
         task_record_from_conversation(&conversation, &[], resolved.as_ref())
     }

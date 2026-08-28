@@ -27,6 +27,8 @@
 @import "./pages/(task-workspace)/tasks/(detail)/layout.css";
 @import "./pages/(task-workspace)/tasks/(detail)/components/detail-view-switch.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(section)/layout.css";
+@import "./pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts.css";
+@import "./pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(section)/components/github-shortcuts.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(section)/components/summary.css";
 @import "./pages/(task-workspace)/tasks/components/composer.css";

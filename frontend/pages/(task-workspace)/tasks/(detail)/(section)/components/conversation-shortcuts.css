@@ -1,0 +1,76 @@
+caffold-section-conversation-shortcuts {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+
+  &[hidden] {
+    display: none;
+  }
+
+  & .section-conversations-heading {
+    display: grid;
+    gap: var(--interface-space-2);
+    min-width: 0;
+    padding: var(--interface-space-5) var(--interface-space-6);
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface-subtle);
+  }
+
+  & .section-conversations-heading > h2,
+  & .section-conversations-heading > p {
+    margin: 0;
+  }
+
+  & .section-conversations-heading > h2 {
+    color: var(--text);
+    font-size: var(--interface-meta-font-size);
+    font-weight: 600;
+  }
+
+  & .section-conversations-heading > p,
+  & .section-conversations-action-reason {
+    color: var(--muted);
+  }
+
+  & .section-conversations-action {
+    display: grid;
+    gap: var(--interface-space-1);
+    width: 100%;
+    min-height: var(--interface-row-size);
+    padding: var(--interface-space-4) var(--interface-space-6);
+    border: 0;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  & .section-conversations-action:hover,
+  & .section-conversations-action:focus-visible {
+    background: var(--control-hover-bg);
+  }
+
+  & .section-conversations-action:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+
+  & .section-conversations-action:disabled {
+    background: var(--surface);
+    cursor: not-allowed;
+    opacity: 0.68;
+  }
+
+  & .section-conversations-action-label {
+    color: var(--text);
+  }
+
+  & caffold-conversation-fork-dialog {
+    display: contents;
+  }
+}
