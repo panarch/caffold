@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
-import { waitForInterfaceFonts } from "../support/interface-fonts.js";
 import {
   openCompletedTaskForReview,
   selectTaskReviewScope,
@@ -730,7 +729,6 @@ test("keeps compact review controls and available panes inside the workspace", {
   page,
 }, testInfo) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
-  await waitForInterfaceFonts(page);
   const branchMode = tasksPage.locator(
     'caffold-segmented-control[data-detail-view-switch] button[data-segmented-value="branch"]',
   );
@@ -940,6 +938,8 @@ test("keeps compact review controls and available panes inside the workspace", {
     const detailSwitch = document.querySelector(
       "caffold-segmented-control[data-detail-view-switch]",
     );
+    const detailSwitchRect = detailSwitch.getBoundingClientRect();
+    const detailSwitchStyle = getComputedStyle(detailSwitch);
     const rootFontSize = Number.parseFloat(
       getComputedStyle(document.documentElement).fontSize,
     );
@@ -951,12 +951,31 @@ test("keeps compact review controls and available panes inside the workspace", {
       viewerWidth: viewer.getBoundingClientRect().width,
       rootFontSize,
       detailSwitch: {
-        width: detailSwitch.getBoundingClientRect().width,
-        height: detailSwitch.getBoundingClientRect().height,
-        textSizeAdjust: getComputedStyle(detailSwitch).textSizeAdjust,
+        width: detailSwitchRect.width,
+        height: detailSwitchRect.height,
+        borderInlineWidth:
+          Number.parseFloat(detailSwitchStyle.borderLeftWidth) +
+          Number.parseFloat(detailSwitchStyle.borderRightWidth),
+        gridAutoColumns: detailSwitchStyle.gridAutoColumns,
+        insidePage:
+          detailSwitchRect.left >= pageRect.left - 1 &&
+          detailSwitchRect.right <= pageRect.right + 1,
         buttonFontSizes: [...detailSwitch.querySelectorAll("button")].map(
           (button) => getComputedStyle(button).fontSize,
         ),
+        segments: [...detailSwitch.querySelectorAll("button")].map((button) => {
+          const label = button.querySelector(":scope > span");
+          const labelStyle = getComputedStyle(label);
+          const textRange = document.createRange();
+          textRange.selectNodeContents(label);
+          return {
+            buttonWidth: button.getBoundingClientRect().width,
+            paddingInline:
+              Number.parseFloat(labelStyle.paddingLeft) +
+              Number.parseFloat(labelStyle.paddingRight),
+            textWidth: textRange.getBoundingClientRect().width,
+          };
+        }),
       },
       axisControlWidths: Object.fromEntries(
         [...element.querySelectorAll(".task-review-pane-axis")]
@@ -1018,11 +1037,25 @@ test("keeps compact review controls and available panes inside the workspace", {
     expect(layout.viewerWidth).toBeGreaterThanOrEqual(360);
   }
   expect(layout.layoutStartsAtWorkspaceTop).toBe(true);
-  expect(layout.detailSwitch.textSizeAdjust).toBe("100%");
-  expect(layout.detailSwitch.width).toBeLessThan(layout.rootFontSize * 15);
-  if (testInfo.project.name === "desktop") {
-    expect(layout.detailSwitch.width).toBeCloseTo(230, 0);
+  expect(layout.detailSwitch.gridAutoColumns).toBe("max-content");
+  expect(layout.detailSwitch.insidePage).toBe(true);
+  const expectedLabelPaddingInline =
+    layout.rootFontSize * (testInfo.project.name === "phone" ? 0.75 : 1);
+  for (const segment of layout.detailSwitch.segments) {
+    expect(segment.paddingInline).toBeCloseTo(expectedLabelPaddingInline, 1);
+    expect(segment.buttonWidth).toBeCloseTo(
+      segment.textWidth + segment.paddingInline,
+      0,
+    );
   }
+  expect(layout.detailSwitch.width).toBeCloseTo(
+    layout.detailSwitch.borderInlineWidth +
+      layout.detailSwitch.segments.reduce(
+        (width, segment) => width + segment.buttonWidth,
+        0,
+      ),
+    0,
+  );
   expect(layout.detailSwitch.height).toBeCloseTo(
     layout.rootFontSize * 1.875,
     0,

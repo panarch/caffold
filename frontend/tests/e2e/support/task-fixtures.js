@@ -1,5 +1,4 @@
 import { expect } from "@playwright/test";
-import { waitForInterfaceFonts } from "./interface-fonts.js";
 
 export {
   emitTaskDetailBootstrap,
@@ -115,7 +114,6 @@ export async function pasteImage(locator, name = "clipboard-image.png") {
 }
 
 export async function captureReviewScreenshot(page, testInfo, name) {
-  await waitForInterfaceFonts(page);
   const path = testInfo.outputPath(`${name}-${testInfo.project.name}.png`);
   await page.screenshot({
     path,

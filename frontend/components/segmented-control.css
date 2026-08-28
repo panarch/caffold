@@ -10,8 +10,6 @@ caffold-segmented-control {
   border-radius: 5px;
   background: var(--surface-muted);
   font-size: var(--interface-meta-font-size);
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
 
   &[hidden],
   &[data-empty] {
