@@ -6,6 +6,7 @@ import {
 import {
   INITIAL_CODEX_STATUS_SNAPSHOT,
   codexBlocksTaskOperations,
+  codexRuntimeRestartAvailable,
   codexSetupVisible,
   codexState,
   findRateWindow,
@@ -32,6 +33,7 @@ export const CODEX_RUNTIME_RESTART_REQUEST_EVENT =
 export {
   INITIAL_CODEX_STATUS_SNAPSHOT,
   codexBlocksTaskOperations,
+  codexRuntimeRestartAvailable,
   codexSetupVisible,
   codexState,
   findRateWindow,

@@ -18,6 +18,98 @@ test.beforeEach(async ({ page }) => {
   await mockAgentModels(page);
 });
 
+test("manually restarts a ready Codex runtime", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  let restarted = false;
+  let restartRequests = 0;
+  let statusRequests = 0;
+  let releaseRestart;
+  const restartGate = new Promise((resolve) => {
+    releaseRestart = resolve;
+  });
+  const status = () => mockCodexStatus({
+    readiness: {
+      ...mockCodexStatus().readiness,
+      detectedExecutable: {
+        path: "/Users/example/.local/bin/codex",
+        version: "0.150.1",
+      },
+      managedExecutable: {
+        path: "/Users/example/.codex/packages/standalone/current/codex",
+        version: restarted ? "0.150.1" : "0.147.0",
+      },
+      runningAppServerVersion: restarted ? "0.150.1" : "0.147.0",
+    },
+  });
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
+    statusRequests += 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(status()),
+    });
+  });
+  await page.route(/\/api\/codex\/restart(?:\?|$)/, async (route) => {
+    restartRequests += 1;
+    expect(route.request().method()).toBe("POST");
+    await restartGate;
+    restarted = true;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "restarted",
+        managedCodexVersion: "0.150.1",
+        appServerVersion: "0.150.1",
+      }),
+    });
+  });
+
+  await page.goto("/settings/codex");
+  const settings = page.locator("caffold-settings-codex-page");
+  const runtime = settings.locator(".settings-runtime-control");
+  const summary = runtime.locator("[data-runtime-summary]");
+  const managedVersion = settings.locator('[data-key="managed-version"] dd');
+  const runtimeVersion = settings.locator('[data-key="runtime-version"] dd');
+  const restart = runtime.getByRole("button", {
+    name: "Restart runtime…",
+    exact: true,
+  });
+  await expect(settings).toContainText("Ready");
+  await expect(runtime).toHaveAttribute("data-restart-emphasis", "neutral");
+  await expect(summary).toHaveText(
+    "The shared Codex runtime is ready.\nYou can restart it manually after confirmation.",
+  );
+  expect(await summary.evaluate((element) => getComputedStyle(element).whiteSpace))
+    .toBe("pre-line");
+  await expect(managedVersion).toHaveText("0.147.0");
+  await expect(runtimeVersion).toHaveText("0.147.0");
+  await expect(restart).toBeEnabled();
+  await runtime.scrollIntoViewIfNeeded();
+  await captureReviewScreenshot(page, testInfo, "settings-codex-ready-runtime");
+  expect(statusRequests).toBe(1);
+
+  await restart.click();
+  const dialog = page.getByRole("dialog", { name: "Restart Codex runtime?" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Wait for running Tasks and tests to finish");
+  await expect(dialog).toContainText("other connected Codex clients");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+  expect(restartRequests).toBe(0);
+
+  await restart.click();
+  await dialog.getByRole("button", { name: "Restart Codex" }).click();
+  await expect(runtime.getByRole("button", { name: "Restarting…" })).toBeDisabled();
+
+  releaseRestart();
+  await expect(settings).toContainText("Codex runtime restarted.");
+  await expect(restart).toBeEnabled();
+  await expect(managedVersion).toHaveText("0.150.1");
+  await expect(runtimeVersion).toHaveText("0.150.1");
+  expect(restartRequests).toBe(1);
+  expect(statusRequests).toBe(2);
+});
+
 test("shows Codex versions and explicitly restarts an outdated runtime", { tag: "@all-viewports" }, async ({
   page,
 }) => {
@@ -75,12 +167,14 @@ test("shows Codex versions and explicitly restarts an outdated runtime", { tag: 
   await expect(settings).toContainText("Detected version");
   await expect(settings).toContainText("0.146.1");
   await expect(settings).toContainText("Restart required");
+  await expect(settings.locator(".settings-runtime-control"))
+    .toHaveAttribute("data-restart-emphasis", "attention");
   expect(statusRequests).toBe(1);
 
-  await settings.getByRole("button", { name: "Restart runtime" }).click();
+  await settings.getByRole("button", { name: "Restart runtime…" }).click();
   const dialog = page.getByRole("dialog", { name: "Restart Codex runtime?" });
   await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText("other Codex clients");
+  await expect(dialog).toContainText("other connected Codex clients");
   const dialogHost = page.locator(
     "caffold-task-workspace > caffold-codex-runtime-restart-dialog",
   );
@@ -125,7 +219,7 @@ test("shows Codex versions and explicitly restarts an outdated runtime", { tag: 
     element.isConnected && document.activeElement === element
   ))).toBe(true);
 
-  await settings.getByRole("button", { name: "Restart runtime" }).click();
+  await settings.getByRole("button", { name: "Restart runtime…" }).click();
   await dialog.getByRole("button", { name: "Restart Codex" }).click();
   await expect(settings.getByRole("button", { name: "Restarting…" })).toBeDisabled();
 
@@ -144,16 +238,7 @@ test("keeps Codex Settings actionable when runtime restart fails", { tag: "@all-
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify(mockCodexStatus({
-        readiness: {
-          ...mockCodexStatus().readiness,
-          state: "restartRequired",
-          blocksTaskOperations: true,
-          reasonCode: "runtimeVersionMismatch",
-          diagnosticMessage: "The installed Codex version differs from the running runtime.",
-          runningAppServerVersion: "0.146.1",
-        },
-      })),
+      body: JSON.stringify(mockCodexStatus()),
     }),
   );
   await page.route(/\/api\/codex\/restart(?:\?|$)/, (route) =>
@@ -171,13 +256,15 @@ test("keeps Codex Settings actionable when runtime restart fails", { tag: "@all-
 
   await page.goto("/settings/codex");
   const settings = page.locator("caffold-settings-codex-page");
-  await settings.getByRole("button", { name: "Restart runtime" }).click();
+  await expect(settings.locator(".settings-runtime-control"))
+    .toHaveAttribute("data-restart-emphasis", "neutral");
+  await settings.getByRole("button", { name: "Restart runtime…" }).click();
   await page.getByRole("dialog", { name: "Restart Codex runtime?" })
     .getByRole("button", { name: "Restart Codex" })
     .click();
 
   await expect(settings).toContainText("Codex runtime could not be restarted.");
-  await expect(settings.getByRole("button", { name: "Restart runtime" })).toBeEnabled();
+  await expect(settings.getByRole("button", { name: "Restart runtime…" })).toBeEnabled();
 });
 
 test("shows what the Claude installation is on its Settings page", { tag: "@all-viewports" }, async ({

@@ -48,7 +48,7 @@ class CaffoldCodexRuntimeRestartDialog extends HTMLElement {
         <form method="dialog" class="codex-runtime-dialog-card">
           <h2 id="codex-runtime-dialog-title">Restart Codex runtime?</h2>
           <p id="codex-runtime-dialog-description">
-            This restarts the shared Codex app-server and interrupts active work in Caffold and other Codex clients.
+            Wait for running Tasks and tests to finish. This restarts the shared Codex runtime Caffold is connected to and may interrupt active work here or in other connected Codex clients.
           </p>
           <footer>
             <button type="submit" value="cancel" autofocus>Cancel</button>

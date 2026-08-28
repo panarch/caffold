@@ -88,17 +88,17 @@ caffold-settings-codex-page {
     cursor: default;
   }
 
-  & .settings-runtime-control button:not(:disabled) {
+  & .settings-runtime-control[data-restart-emphasis="attention"] button:not(:disabled) {
     color: var(--primary-action-fg);
   }
 
-  & .settings-runtime-control button:not(:disabled)::before {
+  & .settings-runtime-control[data-restart-emphasis="attention"] button:not(:disabled)::before {
     border-color: var(--primary-action-border);
     background: var(--primary-action-bg);
   }
 
-  & .settings-runtime-control button:hover:not(:disabled)::before,
-  & .settings-runtime-control button:focus-visible::before {
+  & .settings-runtime-control[data-restart-emphasis="attention"] button:hover:not(:disabled)::before,
+  & .settings-runtime-control[data-restart-emphasis="attention"] button:focus-visible::before {
     border-color: var(--border-strong);
     background: var(--primary-action-bg);
   }
@@ -257,6 +257,7 @@ caffold-settings-codex-page {
     color: var(--muted);
     font-size: var(--settings-small-text-size);
     line-height: var(--interface-line-height);
+    white-space: pre-line;
   }
 
   & .settings-runtime-message {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   codexBlocksTaskOperations,
+  codexRuntimeRestartAvailable,
   codexSetupVisible,
   createCodexStatusSnapshot,
   formatRateWindowLabel,
@@ -29,6 +30,25 @@ function codexStatus(state, blocksTaskOperations = state !== "ready") {
 function loadedSnapshot(status) {
   return createCodexStatusSnapshot({ phase: "loaded", status });
 }
+
+test("manual runtime restart is available only for supported running states", () => {
+  const states = [
+    "missing",
+    "unsupportedInstall",
+    "updateRequired",
+    "signInRequired",
+    "restartRequired",
+    "incompatible",
+    "ready",
+    "error",
+  ];
+
+  assert.deepEqual(
+    [null, ...states.map((state) => codexStatus(state))]
+      .map(codexRuntimeRestartAvailable),
+    [false, false, false, false, false, true, false, true, false],
+  );
+});
 
 test("Codex readiness gates only Codex surfaces, and unknown is not blocked", () => {
   const initial = createCodexStatusSnapshot();

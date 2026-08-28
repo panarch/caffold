@@ -1,5 +1,6 @@
 import {
   INITIAL_CODEX_STATUS_SNAPSHOT,
+  codexRuntimeRestartAvailable,
   createCodexStatusSnapshot,
   sameCodexStatusSnapshot,
 } from "./model.js";
@@ -86,7 +87,7 @@ export class CodexStatusLifecycle {
 
   canRestartRuntime() {
     return (
-      this.statusSnapshot()?.readiness?.state === "restartRequired" &&
+      codexRuntimeRestartAvailable(this.statusSnapshot()) &&
       !["restarting", "refreshing"].includes(
         this.runtimeRestart.snapshot().state,
       )
@@ -94,7 +95,7 @@ export class CodexStatusLifecycle {
   }
 
   requestRuntimeRestart() {
-    if (this.statusSnapshot()?.readiness?.state !== "restartRequired") {
+    if (!codexRuntimeRestartAvailable(this.statusSnapshot())) {
       return Promise.resolve(null);
     }
     return this.runtimeRestart.restart();
