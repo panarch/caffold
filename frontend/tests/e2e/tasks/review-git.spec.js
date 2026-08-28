@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { waitForInterfaceFonts } from "../support/interface-fonts.js";
 import {
   openCompletedTaskForReview,
   selectTaskReviewScope,
@@ -729,6 +730,7 @@ test("keeps compact review controls and available panes inside the workspace", {
   page,
 }, testInfo) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await waitForInterfaceFonts(page);
   const branchMode = tasksPage.locator(
     'caffold-segmented-control[data-detail-view-switch] button[data-segmented-value="branch"]',
   );
