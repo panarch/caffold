@@ -8,6 +8,10 @@ export async function getCodexStatus() {
   return requestJson("/api/codex/status");
 }
 
+export async function getCodexMcpDiagnostics() {
+  return requestJson("/api/codex/mcp-diagnostics", {}, { timeoutMs: 10_000 });
+}
+
 export async function getClaudeStatus() {
   return requestJson("/api/claude/status");
 }

@@ -9,9 +9,14 @@ use super::CodexTurnOptions;
 #[cfg(test)]
 use super::served_tools;
 
+mod mcp_status;
 mod thread_list;
 mod thread_section;
 
+pub(crate) use mcp_status::{
+    CodexMcpServerDiagnostic, MCP_SERVER_STATUS_LIST, McpServerStatusListResponse,
+    mcp_server_status_list_params,
+};
 pub use thread_list::{ThreadListResponse, ThreadSectionFilter};
 pub(crate) use thread_list::{
     archived_thread_list_params, section_thread_list_params, thread_list_params,
@@ -52,8 +57,6 @@ pub(crate) const MODEL_LIST: &str = "model/list";
 pub(crate) const PERMISSION_PROFILE_LIST: &str = "permissionProfile/list";
 pub(crate) const CONFIG_READ: &str = "config/read";
 pub(crate) const MCP_SERVER_RESOURCE_READ: &str = "mcpServer/resource/read";
-#[cfg(test)]
-pub(crate) const MCP_SERVER_STATUS_LIST: &str = "mcpServerStatus/list";
 #[cfg(test)]
 pub(crate) const MCP_SERVER_TOOL_CALL: &str = "mcpServer/tool/call";
 /// How Caffold names itself to Codex. The app-server sends `CAFFOLD_CLIENT_NAME`
