@@ -209,7 +209,9 @@ Settings includes:
 - Remote Access status and constrained Tailscale Serve controls, with the ready
   private Tailnet URL, copy/open actions, QR handoff, and same-tailnet guidance;
 - Codex installation readiness, repair guidance, runtime status, Refresh,
-  restart, and diagnostics;
+  diagnostics, and an explicit confirmed runtime restart available while the
+  canonical runtime is ready or requires restart; the ready-state action is
+  neutral, while a required restart retains attention styling;
 - Claude installation status, shown and never gated on: the binary's version
   and path, the signed-in account and plan, the plan's usage windows as the
   agent itself reports them, and the runner's process state; plus an explicit,
@@ -246,9 +248,12 @@ revalidates them. The surface does not administer accounts, tailnet membership,
 ACLs, arbitrary targets, or Funnel.
 
 Tasks and Codex Settings present the same backend readiness and restart
-outcome, and refreshed readiness releases the Codex surfaces it holds. The
-browser is the complete settings surface, while the macOS menu may expose a
-compact control when both surfaces use the same server state and action.
+outcome. Codex Settings keeps manual restart available for `ready` and
+`restartRequired`, confirms the interruption boundary, and refreshes canonical
+readiness after success. Refreshed readiness releases the Codex surfaces it
+holds. The browser is the complete settings surface, while the macOS menu may
+expose a compact control when both surfaces use the same server state and
+action.
 
 ## Product boundaries
 

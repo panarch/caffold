@@ -101,8 +101,8 @@ test("Task-store migration status polls until startup leaves migrating", async (
   lifecycle.disconnect();
 });
 
-test("Codex status owns one restart request and refreshes canonical readiness", async () => {
-  let status = codexStatus("restartRequired");
+test("Codex status owns one ready-state restart request and refreshes canonical readiness", async () => {
+  let status = codexStatus("ready", false);
   let restartRequests = 0;
   const restartGate = deferred();
   const snapshots = [];
@@ -120,7 +120,7 @@ test("Codex status owns one restart request and refreshes canonical readiness", 
 
   lifecycle.connect();
   await settle();
-  assert.equal(snapshots.at(-1)?.status?.readiness?.state, "restartRequired");
+  assert.equal(snapshots.at(-1)?.status?.readiness?.state, "ready");
   assert.equal(lifecycle.canRestartRuntime(), true);
 
   const first = lifecycle.requestRuntimeRestart();
@@ -128,6 +128,7 @@ test("Codex status owns one restart request and refreshes canonical readiness", 
   assert.strictEqual(first, second);
   assert.equal(restartRequests, 1);
   assert.equal(restartStates.at(-1)?.state, "restarting");
+  assert.equal(lifecycle.canRestartRuntime(), false);
 
   restartGate.resolve();
   await first;
@@ -136,7 +137,34 @@ test("Codex status owns one restart request and refreshes canonical readiness", 
     ["restarting", "refreshing", "succeeded"],
   );
   assert.equal(snapshots.at(-1)?.status?.readiness?.state, "ready");
-  assert.equal(lifecycle.canRestartRuntime(), false);
+  assert.equal(lifecycle.canRestartRuntime(), true);
+});
+
+test("Codex status rejects manual restart without a supported restart target", async () => {
+  for (const state of [
+    "missing",
+    "unsupportedInstall",
+    "updateRequired",
+    "signInRequired",
+    "incompatible",
+    "error",
+  ]) {
+    let restartRequests = 0;
+    const lifecycle = new CodexStatusLifecycle({
+      loadStatus: async () => codexStatus(state),
+      restartRuntime: async () => {
+        restartRequests += 1;
+      },
+    });
+
+    lifecycle.connect();
+    await settle();
+
+    assert.equal(lifecycle.canRestartRuntime(), false, state);
+    assert.equal(await lifecycle.requestRuntimeRestart(), null, state);
+    assert.equal(restartRequests, 0, state);
+    lifecycle.disconnect();
+  }
 });
 
 test("a status refresh keeps the last canonical status while checking", async () => {

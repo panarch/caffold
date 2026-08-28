@@ -676,6 +676,14 @@ asks the installed Codex CLI to restart the persistent daemon. The next status
 request creates a new proxy generation and restores Caffold-managed session
 subscriptions through the normal reconnect path.
 
+The control is available when canonical readiness is `ready` or
+`restartRequired`, except while a restart or its status refresh is already in
+flight. Other readiness states do not establish a supported restart target.
+The ready-state control is a neutral manual capability; `restartRequired`
+retains attention styling because the backend is explicitly asking for
+recovery. Both states require confirmation and warn that work in Caffold and
+other clients connected to the daemon may be interrupted.
+
 Caffold does not restart the daemon automatically when the installed and
 running versions differ. The daemon is user-global and may also serve Codex
 clients outside Caffold, so the user must confirm an interruption before this

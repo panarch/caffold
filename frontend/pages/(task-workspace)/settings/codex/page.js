@@ -1,6 +1,7 @@
 import {
   CODEX_RUNTIME_RESTART_REQUEST_EVENT,
   CODEX_STATUS_REFRESH_REQUEST_EVENT,
+  codexRuntimeRestartAvailable,
   findRateWindow,
   formatCodexAccount,
   formatCodexPlan,
@@ -126,7 +127,7 @@ class CaffoldSettingsCodexPage extends HTMLElement {
                 <h3 id="settings-codex-runtime-title">Runtime</h3>
                 <p data-runtime-summary></p>
               </div>
-              <button type="button" data-action="open-codex-restart">Restart runtime</button>
+              <button type="button" data-action="open-codex-restart">Restart runtime…</button>
             </section>
             <p class="settings-runtime-message" role="status" hidden></p>
             <section class="settings-usage" aria-labelledby="settings-codex-usage-title">
@@ -158,13 +159,15 @@ class CaffoldSettingsCodexPage extends HTMLElement {
     const answered = (value) => (readiness ? value : undefined);
     const connection = CONNECTION_PRESENTATION[codexConnection(status)];
     const restartRequired = readiness?.state === "restartRequired";
-    const canRestart = restartRequired;
+    const canRestart = codexRuntimeRestartAvailable(status);
     const restarting = ["restarting", "refreshing"].includes(
       this.restartState,
     );
     const runtimeSummary = restartRequired
       ? `Codex ${readiness.managedExecutable?.version ?? "target"} is installed while runtime ${readiness.runningAppServerVersion ?? "another version"} is still running.`
-      : "Caffold only restarts the shared runtime after an explicit confirmation when the backend reports a stale runtime.";
+      : readiness?.state === "ready"
+        ? "The shared Codex runtime is ready.\nYou can restart it manually after confirmation."
+        : "Caffold enables an explicit runtime restart only when the backend reports a supported restart target.";
 
     const readinessLabel = formatCodexReadiness(snapshot);
     this.detailList.setRows([
@@ -217,11 +220,13 @@ class CaffoldSettingsCodexPage extends HTMLElement {
 
     const refresh = this.querySelector('[data-action="refresh-codex-status"]');
     refresh.disabled = restarting;
+    this.querySelector(".settings-runtime-control").dataset.restartEmphasis =
+      restartRequired ? "attention" : "neutral";
     const restart = this.querySelector('[data-action="open-codex-restart"]');
     restart.disabled = !canRestart || restarting;
     restart.textContent = this.restartState === "refreshing"
       ? "Checking…"
-      : restarting ? "Restarting…" : "Restart runtime";
+      : restarting ? "Restarting…" : "Restart runtime…";
     this.querySelector("[data-runtime-summary]").textContent = runtimeSummary;
     const restartMessage = this.querySelector(".settings-runtime-message");
     restartMessage.hidden = !this.restartMessage;

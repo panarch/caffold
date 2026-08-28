@@ -106,6 +106,10 @@ export function codexBlocksTaskOperations(status) {
   return status?.readiness?.blocksTaskOperations === true;
 }
 
+export function codexRuntimeRestartAvailable(status) {
+  return ["ready", "restartRequired"].includes(status?.readiness?.state);
+}
+
 export function taskStoreBlocksTaskOperations(status) {
   return status?.taskStoreReadiness?.blocksTaskOperations === true;
 }
