@@ -142,6 +142,15 @@ impl TaskRuntime {
         (status, process.generation, process.client.is_some())
     }
 
+    /// Observe the existing proxy without making a diagnostic request start one.
+    pub(in crate::app) async fn codex_diagnostic_connection(&self) -> Option<CodexConnection> {
+        let process = self.process.state.lock().await;
+        process.client.clone().map(|client| CodexConnection {
+            client,
+            generation: process.generation,
+        })
+    }
+
     async fn refresh_status(&self) -> CodexStatusResponse {
         let installation = match inspect_codex_installation().await {
             Ok(installation) => installation,
@@ -377,6 +386,14 @@ mod tests {
             TaskStore::memory().unwrap(),
             shutdown,
         )
+    }
+
+    #[tokio::test]
+    async fn codex_diagnostic_connection_does_not_start_a_codex_proxy() {
+        let runtime = test_runtime();
+
+        assert!(runtime.codex_diagnostic_connection().await.is_none());
+        assert_eq!(runtime.diagnostics().await, (0, false));
     }
 
     #[tokio::test]

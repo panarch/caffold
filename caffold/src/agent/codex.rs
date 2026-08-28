@@ -37,6 +37,7 @@ pub(crate) use mcp::{
     decode_mcp_request, mcp_error, mcp_initialize_result, mcp_resource_result, mcp_result,
     mcp_tool_result,
 };
+pub(crate) use protocol::CodexMcpServerDiagnostic;
 /// Codex's own thread status, for the tests that build a notification
 /// carrying one. A Task's status is the shared one, converted here.
 #[cfg(test)]
@@ -49,13 +50,14 @@ use protocol::{
     ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse,
     CAFFOLD_CLIENT_NAME, CAFFOLD_CLIENT_TITLE, CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS, CONFIG_READ,
     ConfigReadResponse, EmptyResponse, INITIALIZE, INITIALIZED, JsonRpcError,
-    MCP_SERVER_RESOURCE_READ, MODEL_LIST, PERMISSION_PROFILE_LIST, PermissionProfileListResponse,
-    THREAD_ARCHIVE, THREAD_DELETE, THREAD_FORK, THREAD_LIST, THREAD_NAME_SET, THREAD_READ,
-    THREAD_RESUME, THREAD_SECTION_CREATE, THREAD_SECTION_LIST, THREAD_SECTION_MOVE, THREAD_START,
-    THREAD_TURNS_LIST, THREAD_UNARCHIVE, THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START,
-    TURN_STEER, ThreadForkResponse, ThreadReadResponse, ThreadSectionCreateResponse,
-    ThreadSectionMoveResponse, ThreadStartResponse, TurnStartResponse, TurnSteerResponse,
-    account_read_params, config_read_params, decode_response, model_list_params,
+    MCP_SERVER_RESOURCE_READ, MCP_SERVER_STATUS_LIST, MODEL_LIST, McpServerStatusListResponse,
+    PERMISSION_PROFILE_LIST, PermissionProfileListResponse, THREAD_ARCHIVE, THREAD_DELETE,
+    THREAD_FORK, THREAD_LIST, THREAD_NAME_SET, THREAD_READ, THREAD_RESUME, THREAD_SECTION_CREATE,
+    THREAD_SECTION_LIST, THREAD_SECTION_MOVE, THREAD_START, THREAD_TURNS_LIST, THREAD_UNARCHIVE,
+    THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadForkResponse,
+    ThreadReadResponse, ThreadSectionCreateResponse, ThreadSectionMoveResponse,
+    ThreadStartResponse, TurnStartResponse, TurnSteerResponse, account_read_params,
+    config_read_params, decode_response, mcp_server_status_list_params, model_list_params,
     permission_profile_list_params, section_thread_list_params, thread_archive_params,
     thread_delete_params, thread_fork_params_with_config, thread_list_params, thread_read_params,
     thread_resume_params_with_config, thread_section_create_params, thread_section_list_params,
@@ -70,9 +72,7 @@ pub use protocol::{
     TurnsPage,
 };
 #[cfg(test)]
-pub(crate) use protocol::{
-    MCP_SERVER_STATUS_LIST, MCP_SERVER_TOOL_CALL, decode_notification, decode_server_request,
-};
+pub(crate) use protocol::{MCP_SERVER_TOOL_CALL, decode_notification, decode_server_request};
 use protocol::{
     THREAD_LOADED_LIST, ThreadListResponse, ThreadLoadedListResponse, thread_loaded_list_params,
 };
@@ -545,6 +545,12 @@ impl CodexThreadClient {
         client
     }
 
+    pub(crate) fn app_server_version(&self) -> Option<&str> {
+        self.inner
+            .as_ref()
+            .and_then(|inner| inner.daemon.app_server_version.as_deref())
+    }
+
     #[cfg(test)]
     pub(crate) async fn mock_requests(&self) -> Vec<(String, Value)> {
         self.mock
@@ -780,6 +786,39 @@ impl CodexThreadClient {
             if !seen_cursors.insert(next_cursor.clone()) {
                 return Err(CodexThreadError::Protocol(
                     "Codex app-server repeated a thread/loaded/list cursor".to_string(),
+                ));
+            }
+            cursor = Some(next_cursor);
+        }
+    }
+
+    pub(crate) async fn list_all_mcp_server_diagnostics(
+        &self,
+        thread_id: &str,
+    ) -> Result<Vec<CodexMcpServerDiagnostic>, CodexThreadError> {
+        let mut cursor = None;
+        let mut seen_cursors = HashSet::new();
+        let mut seen_servers = HashSet::new();
+        let mut servers = Vec::new();
+
+        loop {
+            let page: McpServerStatusListResponse = self
+                .request_typed(
+                    MCP_SERVER_STATUS_LIST,
+                    mcp_server_status_list_params(thread_id, cursor.as_deref(), 100),
+                )
+                .await?;
+            for server in page.data {
+                if seen_servers.insert(server.name.clone()) {
+                    servers.push(server);
+                }
+            }
+            let Some(next_cursor) = page.next_cursor.filter(|cursor| !cursor.is_empty()) else {
+                return Ok(servers);
+            };
+            if !seen_cursors.insert(next_cursor.clone()) {
+                return Err(CodexThreadError::Protocol(
+                    "Codex app-server repeated an mcpServerStatus/list cursor".to_string(),
                 ));
             }
             cursor = Some(next_cursor);
@@ -1868,6 +1907,104 @@ mod tests {
 
         assert!(matches!(
             client.list_all_loaded_threads().await,
+            Err(CodexThreadError::Protocol(message)) if message.contains("repeated")
+        ));
+    }
+
+    #[tokio::test]
+    async fn mcp_diagnostics_follow_cursors_and_retain_only_safe_status_fields() {
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                MCP_SERVER_STATUS_LIST,
+                json!({
+                    "data": [{
+                        "name": "caffold",
+                        "runtimeStatus": "connected",
+                        "authStatus": "unsupported",
+                        "tools": { "private": { "description": "not projected" } },
+                        "resources": [{ "uri": "https://private.example/resource" }]
+                    }],
+                    "nextCursor": "mcp-page-2"
+                }),
+            ),
+            MockCodexResponse::ok(
+                MCP_SERVER_STATUS_LIST,
+                json!({
+                    "data": [
+                        {
+                            "name": "caffold",
+                            "runtimeStatus": "failed",
+                            "authStatus": "unsupported"
+                        },
+                        {
+                            "name": "remote-tools",
+                            "runtimeStatus": "authenticationRequired",
+                            "authStatus": "oAuth"
+                        }
+                    ],
+                    "nextCursor": null
+                }),
+            ),
+        ]);
+
+        let servers = client
+            .list_all_mcp_server_diagnostics("thread-1")
+            .await
+            .expect("MCP server diagnostics");
+        assert_eq!(
+            serde_json::to_value(servers).unwrap(),
+            json!([
+                {
+                    "name": "caffold",
+                    "runtimeStatus": "connected",
+                    "authStatus": "unsupported"
+                },
+                {
+                    "name": "remote-tools",
+                    "runtimeStatus": "authenticationRequired",
+                    "authStatus": "oAuth"
+                }
+            ])
+        );
+        assert_eq!(
+            client.mock_requests().await,
+            [
+                (
+                    MCP_SERVER_STATUS_LIST.to_string(),
+                    json!({
+                        "limit": 100,
+                        "detail": "toolsAndAuthOnly",
+                        "threadId": "thread-1"
+                    })
+                ),
+                (
+                    MCP_SERVER_STATUS_LIST.to_string(),
+                    json!({
+                        "cursor": "mcp-page-2",
+                        "limit": 100,
+                        "detail": "toolsAndAuthOnly",
+                        "threadId": "thread-1"
+                    })
+                )
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn mcp_diagnostics_reject_a_repeated_cursor() {
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                MCP_SERVER_STATUS_LIST,
+                json!({ "data": [], "nextCursor": "same" }),
+            ),
+            MockCodexResponse::ok(
+                MCP_SERVER_STATUS_LIST,
+                json!({ "data": [], "nextCursor": "same" }),
+            ),
+        ]);
+
+        assert!(matches!(
+            client.list_all_mcp_server_diagnostics("thread-1").await,
             Err(CodexThreadError::Protocol(message)) if message.contains("repeated")
         ));
     }

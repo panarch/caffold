@@ -663,6 +663,17 @@ Only sessions with viewers, runtime leases, subscription transitions, or errors
 are included in the detailed active-session list. Each entry exposes its lease
 counts, lifecycle, revision, last canonical sync time, and last protocol error.
 
+`GET /api/codex/mcp-diagnostics` is a separate on-demand observation used by
+About Caffold's copied diagnostics. It never starts a missing proxy. When a
+proxy already exists, it intersects `thread/loaded/list` with
+Caffold-managed Codex Task membership and reads each thread's
+`mcpServerStatus/list` pages with bounded concurrency. The browser response
+contains only the server name, runtime connection status, and authentication
+status. Tool and resource inventory, plugin identity, endpoints, headers, and
+tokens remain inside the Codex adapter. A minimum-baseline response without
+`runtimeStatus` reports that field as unavailable, and one thread's failed
+status read does not erase the other thread snapshots.
+
 The Tasks UI gates Codex-dependent actions from `readiness` only. The other
 diagnostics are observational; thread status, turn status, typed notifications,
 and canonical API responses

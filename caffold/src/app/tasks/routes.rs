@@ -320,6 +320,7 @@ pub(super) fn router(state: TaskState) -> Router {
         .merge(super::push::router())
         .merge(fork::routes())
         .route("/api/codex/status", get(codex_status))
+        .route("/api/codex/mcp-diagnostics", get(codex_mcp_diagnostics))
         .route("/api/codex/restart", post(codex_restart))
         .route("/api/claude/status", get(claude_status))
         .route("/api/claude/restart", post(claude_restart))

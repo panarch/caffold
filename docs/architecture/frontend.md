@@ -157,7 +157,12 @@ update availability from the server and browser registration, then allows the
 user to request Reload again. Shell-cache pruning remains disabled
 until no handoff target or prepared generation remains and the active worker
 controls the page. About Caffold copy diagnostics includes the handoff node,
-target and observed worker build IDs, and navigation-attempt count.
+target and observed worker build IDs, and navigation-attempt count. Invoking
+Copy diagnostics also requests the existing Codex proxy's on-demand MCP
+snapshot and appends its runtime generation, app-server version, and per-thread
+server runtime/authentication states. Opening About does not make that request,
+and an unavailable MCP snapshot is recorded without preventing the build and
+update diagnostics from being copied.
 
 The service worker also validates finished-turn and waiting-Task Web Push
 payloads, presents system notifications in foreground and background states, and

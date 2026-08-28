@@ -18,6 +18,102 @@ test.beforeEach(async ({ page }) => {
   await mockAgentModels(page);
 });
 
+test("collects MCP status only when About diagnostics are copied", { tag: "@desktop" }, async ({
+  context,
+  page,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  let diagnosticRequests = 0;
+  await page.route(/\/api\/codex\/mcp-diagnostics(?:\?|$)/, (route) => {
+    diagnosticRequests += 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        available: true,
+        processGeneration: 4,
+        appServerVersion: "0.150.1",
+        threads: [
+          {
+            threadId: "thread-diagnostic",
+            available: true,
+            servers: [
+              {
+                name: "caffold",
+                runtimeStatus: "connected",
+                authStatus: "unsupported",
+                tools: { privateTool: {} },
+                endpoint: "https://private.example/mcp",
+              },
+              {
+                name: "remote-tools",
+                runtimeStatus: null,
+                authStatus: "oAuth",
+              },
+            ],
+            error: null,
+          },
+        ],
+        error: null,
+      }),
+    });
+  });
+
+  await page.goto("/settings/about");
+  expect(diagnosticRequests).toBe(0);
+  const about = page.locator("caffold-settings-about-page");
+  const copy = about.getByRole("button", { name: "Copy diagnostics" });
+  await copy.click();
+  await expect(about.locator("[data-about-copy-status]")).toHaveText("Copied");
+  expect(diagnosticRequests).toBe(1);
+  await expect(copy).toBeEnabled();
+
+  const diagnostics = await page.evaluate(() => navigator.clipboard.readText());
+  expect(diagnostics).toContain("Codex app-server: 0.150.1");
+  expect(diagnostics).toContain("Codex runtime generation: 4");
+  expect(diagnostics).toContain("Codex MCP diagnostics: available");
+  expect(diagnostics).toContain(
+    'Codex MCP thread "thread-diagnostic", server "caffold": runtime=connected; auth=unsupported',
+  );
+  expect(diagnostics).toContain(
+    'Codex MCP thread "thread-diagnostic", server "remote-tools": runtime=unavailable; auth=oAuth',
+  );
+  expect(diagnostics).not.toContain("privateTool");
+  expect(diagnostics).not.toContain("private.example");
+});
+
+test("copies the base About diagnostics when MCP collection is unavailable", { tag: "@desktop" }, async ({
+  context,
+  page,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.route(/\/api\/codex\/mcp-diagnostics(?:\?|$)/, (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: {
+          code: "codex_mcp_diagnostics_unavailable",
+          message: "Codex runtime unavailable.",
+        },
+      }),
+    })
+  );
+
+  await page.goto("/settings/about");
+  const about = page.locator("caffold-settings-about-page");
+  const copy = about.getByRole("button", { name: "Copy diagnostics" });
+  await copy.click();
+  await expect(about.locator("[data-about-copy-status]")).toHaveText("Copied");
+  await expect(copy).toBeEnabled();
+
+  const diagnostics = await page.evaluate(() => navigator.clipboard.readText());
+  expect(diagnostics).toContain("Caffold ");
+  expect(diagnostics).toContain("UI build: ");
+  expect(diagnostics).toContain(
+    'Codex MCP diagnostics: unavailable ("Codex runtime unavailable.")',
+  );
+});
+
 test("manually restarts a ready Codex runtime", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
