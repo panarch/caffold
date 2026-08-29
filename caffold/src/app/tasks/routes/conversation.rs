@@ -1,5 +1,17 @@
-use super::*;
+use super::TaskDetailQuery;
+use super::commands::apply_managed_thread_metadata;
+use super::store::{task_store_get, task_store_mark_seen};
+use crate::agent::Conversation;
+use crate::app::error::ApiError;
 use crate::app::tasks::active_list::unavailable_active_task;
+use crate::app::tasks::generated_images::GeneratedImageError;
+use crate::app::tasks::{TaskDetailResponse, TaskRecord, TaskState, task_activity_ms};
+use axum::Json;
+use axum::body::Body;
+use axum::extract::Path as AxumPath;
+use axum::extract::{Query, State};
+use axum::http::{HeaderValue, header};
+use axum::response::Response;
 
 pub(super) async fn task_detail(
     State(state): State<TaskState>,
@@ -114,6 +126,14 @@ pub(super) fn notify_task_updated(state: &TaskState, task: TaskRecord) {
 
 #[cfg(test)]
 mod tests {
+    use super::super::router;
+    use super::super::test_task_stream;
+    use crate::agent;
+    use crate::agent::codex::CodexThreadClient;
+    use crate::agent::codex::{MockCodexResponse, conversation_item};
+    use crate::app::tasks::detail::DetailLiveEvent;
+    use crate::fs::MAX_IMAGE_BYTES;
+    use futures_util::StreamExt;
     use serde_json::{Value as JsonValue, json};
     use tower::ServiceExt;
 
@@ -183,12 +203,11 @@ mod tests {
         let policy = task.join("docs/review/policy.md");
         std::fs::create_dir_all(policy.parent().unwrap()).unwrap();
         std::fs::write(&policy, "# Review Policy\n").unwrap();
-        let client =
-            CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::delayed_ok(
-                "thread/resume",
-                resumed_task(thread_id, &task),
-                std::time::Duration::from_secs(1),
-            )]);
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::delayed_ok(
+            "thread/resume",
+            resumed_task(thread_id, &task),
+            std::time::Duration::from_secs(1),
+        )]);
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         cache_and_manage_test_thread(&state, thread_id, &task).await;
         state.task_events.publish_local(task_event_record(
@@ -260,21 +279,20 @@ mod tests {
         let task = root.path().join("task");
         std::fs::create_dir(&task).unwrap();
         std::fs::write(task.join("live.rs"), "pub fn live() {}\n").unwrap();
-        let client =
-            CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::delayed_ok(
-                "thread/resume",
-                resumed_task(thread_id, &task),
-                std::time::Duration::from_secs(1),
-            )]);
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::delayed_ok(
+            "thread/resume",
+            resumed_task(thread_id, &task),
+            std::time::Duration::from_secs(1),
+        )]);
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         cache_and_manage_test_thread(&state, thread_id, &task).await;
 
-        let mut events = super::super::test_task_stream(state.clone(), thread_id.to_string())
+        let mut events = test_task_stream(state.clone(), thread_id.to_string())
             .await
             .expect("Task live source");
         assert!(matches!(
             events.next().await,
-            Some(crate::app::tasks::detail::DetailLiveEvent::Sync(_))
+            Some(DetailLiveEvent::Sync(_))
         ));
 
         let published = state.task_events.publish_local(task_event_record(
@@ -289,7 +307,7 @@ mod tests {
         let payload = tokio::time::timeout(std::time::Duration::from_millis(500), async {
             loop {
                 let event = events.next().await.expect("Task live source remains open");
-                if matches!(&event, crate::app::tasks::detail::DetailLiveEvent::Event(_)) {
+                if matches!(&event, DetailLiveEvent::Event(_)) {
                     break serde_json::to_value(event).expect("Task live event JSON");
                 }
             }
@@ -320,7 +338,7 @@ mod tests {
         let thread_id = "thread-seen";
         let mut thread = task_thread_list(thread_id, root.path())["data"][0].clone();
         thread["updatedAt"] = json!(10.0);
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/read",
             json!({ "thread": thread }),
         )]);
@@ -382,7 +400,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let client = CodexThreadClient::mock(Vec::new());
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
-        let item = crate::agent::codex::conversation_item(
+        let item = conversation_item(
             &json!({
                 "type": "imageGeneration",
                 "id": "image_1",
@@ -390,7 +408,7 @@ mod tests {
                 "result": ONE_PIXEL_PNG,
                 "savedPath": null
             }),
-            crate::agent::ActivityStatus::Completed,
+            agent::ActivityStatus::Completed,
         )
         .expect("a generated image item");
         state.task_events.publish_provider_lifecycle(

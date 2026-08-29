@@ -27,23 +27,24 @@ use super::{
     recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason},
 };
 use crate::agent::Conversation;
+use crate::git;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct ActiveTaskSection {
-    pub(in crate::app) id: String,
-    pub(in crate::app) name: String,
-    pub(in crate::app) repository: bool,
-    pub(in crate::app) composer_settings: Option<ActiveTaskComposerSettings>,
-    pub(in crate::app) tasks: Vec<TaskRecord>,
+pub(in crate::app::tasks) struct ActiveTaskSection {
+    pub(in crate::app::tasks) id: String,
+    pub(in crate::app::tasks) name: String,
+    pub(in crate::app::tasks) repository: bool,
+    pub(in crate::app::tasks) composer_settings: Option<ActiveTaskComposerSettings>,
+    pub(in crate::app::tasks) tasks: Vec<TaskRecord>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct ActiveTaskComposerSettings {
-    pub(in crate::app) model: Option<String>,
-    pub(in crate::app) effort: Option<String>,
-    pub(in crate::app) fast_mode: bool,
+pub(in crate::app::tasks) struct ActiveTaskComposerSettings {
+    pub(in crate::app::tasks) model: Option<String>,
+    pub(in crate::app::tasks) effort: Option<String>,
+    pub(in crate::app::tasks) fast_mode: bool,
 }
 
 impl From<&ComposerSettings> for ActiveTaskComposerSettings {
@@ -58,20 +59,20 @@ impl From<&ComposerSettings> for ActiveTaskComposerSettings {
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct ActiveTaskProjection {
-    pub(in crate::app) sections: Vec<ActiveTaskSection>,
-    pub(in crate::app) unsectioned: Vec<ActiveTaskRecovery>,
+pub(in crate::app::tasks) struct ActiveTaskProjection {
+    pub(in crate::app::tasks) sections: Vec<ActiveTaskSection>,
+    pub(in crate::app::tasks) unsectioned: Vec<ActiveTaskRecovery>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub(in crate::app) struct ActiveTaskRuntimeSnapshot {
-    pub(in crate::app) tasks: Vec<TaskRecord>,
+    pub(in crate::app::tasks) tasks: Vec<TaskRecord>,
 }
 
-pub(in crate::app) struct ActiveTaskRuntimeProjection {
-    pub(in crate::app) snapshot: ActiveTaskRuntimeSnapshot,
-    pub(in crate::app) observed_threads: Vec<CodexThread>,
+pub(in crate::app::tasks) struct ActiveTaskRuntimeProjection {
+    pub(in crate::app::tasks) snapshot: ActiveTaskRuntimeSnapshot,
+    pub(in crate::app::tasks) observed_threads: Vec<CodexThread>,
 }
 
 impl ActiveTaskProjection {
@@ -83,7 +84,7 @@ impl ActiveTaskProjection {
     }
 }
 
-pub(in crate::app) async fn load_cached(
+pub(in crate::app::tasks) async fn load_cached(
     fs: Arc<RootedFs>,
     store: TaskStore,
 ) -> Result<ActiveTaskProjection, ApiError> {
@@ -152,7 +153,7 @@ pub(in crate::app) async fn load_cached(
     })
 }
 
-pub(in crate::app) async fn load_runtime_snapshot(
+pub(in crate::app::tasks) async fn load_runtime_snapshot(
     fs: Arc<RootedFs>,
     store: TaskStore,
     sessions: &TaskSessions,
@@ -259,7 +260,7 @@ async fn repository_sections(
             .filter_map(|(section_id, logical_path)| {
                 fs.absolute_directory_path(&logical_path)
                     .ok()
-                    .and_then(|path| crate::git::repository_for(&path))
+                    .and_then(|path| git::repository_for(&path))
                     .map(|_| section_id)
             })
             .collect()
@@ -297,6 +298,9 @@ pub(super) fn unavailable_active_task(managed: &ManagedThread) -> TaskRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent;
+    use crate::agent::codex::MockCodexResponse;
+    use crate::app::tasks::{recovery, sessions};
     use crate::task_store::RunBy;
 
     fn fixture() -> (tempfile::TempDir, Arc<RootedFs>, TaskStore) {
@@ -342,7 +346,7 @@ mod tests {
 
     /// A Claude client watching one conversation the stand-in already greeted.
     async fn watching_a_claude_conversation(thread_id: &str, cwd: &str) -> ClaudeClient {
-        let (claude, runner) = crate::agent::claude::ClaudeClient::mock();
+        let (claude, runner) = agent::claude::ClaudeClient::mock();
         runner
             .greet_next_session_with(vec![serde_json::json!({
                 "type": "system",
@@ -361,13 +365,11 @@ mod tests {
         claude
     }
 
-    fn an_empty_codex() -> crate::agent::codex::CodexThreadClient {
-        crate::agent::codex::CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/list",
-                serde_json::json!({ "data": [], "nextCursor": null, "backwardsCursor": null }),
-            ),
-        ])
+    fn an_empty_codex() -> CodexThreadClient {
+        CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/list",
+            serde_json::json!({ "data": [], "nextCursor": null, "backwardsCursor": null }),
+        )])
     }
 
     #[tokio::test]
@@ -401,7 +403,7 @@ mod tests {
         let projection = load_runtime_snapshot(
             fs,
             store,
-            &super::super::sessions::TaskSessions::default(),
+            &sessions::TaskSessions::default(),
             1,
             &an_empty_codex(),
             &claude,
@@ -421,10 +423,7 @@ mod tests {
                 active_flags: Vec::new(),
             }
         );
-        assert_eq!(
-            row.latest_turn_status,
-            Some(crate::agent::TurnStatus::InProgress)
-        );
+        assert_eq!(row.latest_turn_status, Some(agent::TurnStatus::InProgress));
         assert!(row.conversation_available);
     }
 
@@ -453,7 +452,7 @@ mod tests {
             )
             .unwrap();
         let claude = watching_a_claude_conversation("claude-1", cwd).await;
-        let sessions = super::super::sessions::TaskSessions::default();
+        let sessions = sessions::TaskSessions::default();
         sessions
             .ensure_subscribed(&claude.driver(cwd), 1, "claude-1")
             .await
@@ -479,7 +478,7 @@ mod tests {
             .expect("the session is still known");
         assert_eq!(
             snapshot.lifecycle,
-            super::super::sessions::SessionLifecycle::Subscribed,
+            sessions::SessionLifecycle::Subscribed,
             "and was not swept by Codex's count"
         );
         assert_eq!(snapshot.generation, 1, "its own generation, not Codex's");
@@ -505,12 +504,12 @@ mod tests {
                 500,
             )
             .unwrap();
-        let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
+        let (claude, _runner) = agent::claude::ClaudeClient::mock();
 
         let projection = load_runtime_snapshot(
             fs,
             store,
-            &super::super::sessions::TaskSessions::default(),
+            &sessions::TaskSessions::default(),
             1,
             &an_empty_codex(),
             &claude,
@@ -626,8 +625,8 @@ mod tests {
         assert_eq!(
             projection.unsectioned[0].recovery.actions,
             [
-                super::super::recovery::ActiveTaskRecoveryAction::RestoreToActive,
-                super::super::recovery::ActiveTaskRecoveryAction::Recheck,
+                recovery::ActiveTaskRecoveryAction::RestoreToActive,
+                recovery::ActiveTaskRecoveryAction::Recheck,
             ]
         );
     }

@@ -13,7 +13,7 @@ use super::{
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct CodexStatusResponse {
+pub(crate) struct CodexStatusResponse {
     pub readiness: CodexReadiness,
     pub account: Option<CodexAccount>,
     pub rate_limits: Option<Value>,
@@ -24,7 +24,7 @@ pub struct CodexStatusResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct CodexDaemonInfo {
+pub(crate) struct CodexDaemonInfo {
     pub status: String,
     pub backend: Option<String>,
     pub pid: Option<u32>,

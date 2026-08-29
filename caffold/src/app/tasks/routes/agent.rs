@@ -1,4 +1,10 @@
-use super::*;
+use super::commands::{require_codex_thread_client, task_cwd};
+use crate::agent::PermissionModes;
+use crate::app::error::ApiError;
+use crate::app::tasks::TaskState;
+use axum::Json;
+use axum::extract::{Query, State};
+use serde::{Deserialize, Serialize};
 
 use crate::agent::driver::ModelOption;
 use crate::task_store::TaskProvider;
@@ -127,6 +133,9 @@ fn extend(models: &mut Vec<AgentModel>, provider: TaskProvider, offered: Vec<Mod
 
 #[cfg(test)]
 mod tests {
+    use crate::agent::codex::CodexThreadClient;
+    use crate::agent::codex::CodexThreadError;
+    use crate::agent::codex::MockCodexResponse;
     use serde_json::json;
 
     use super::*;
@@ -140,7 +149,7 @@ mod tests {
         // Choosing a model is how a person chooses an agent, so the answer has
         // to carry that and not leave the interface guessing from the name.
         let root = tempfile::tempdir().unwrap();
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "model/list",
             current_model_list_response(),
         )]);
@@ -168,7 +177,7 @@ mod tests {
     async fn codex_answers_the_shared_permissions_route_with_its_own_profiles() {
         let root = tempfile::tempdir().unwrap();
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok(
+            MockCodexResponse::ok(
                 "permissionProfile/list",
                 json!({
                     "data": [
@@ -186,7 +195,7 @@ mod tests {
                     "nextCursor": null
                 }),
             ),
-            crate::agent::codex::MockCodexResponse::ok(
+            MockCodexResponse::ok(
                 "config/read",
                 json!({
                     "config": {
@@ -241,9 +250,9 @@ mod tests {
         // The interface should offer what can be offered. An agent that could
         // not be asked is named, so the reason is visible rather than absent.
         let root = tempfile::tempdir().unwrap();
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::error(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::error(
             "model/list",
-            crate::agent::codex::CodexThreadError::ProcessUnavailable,
+            CodexThreadError::ProcessUnavailable,
         )]);
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
 

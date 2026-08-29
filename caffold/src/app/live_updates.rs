@@ -25,7 +25,7 @@ use url::Url;
 use uuid::Uuid;
 
 use super::{error::ApiError, tasks::TaskLiveSource};
-use crate::watch::{WatchChange, WatchHub, WatchMessage};
+use crate::watch::{WatchChange, WatchHub, WatchMessage, WatchReady};
 
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 const CHANNEL_QUEUE_CAPACITY: usize = 16;
@@ -522,7 +522,7 @@ struct ChannelEnvelope<'a, T> {
 #[serde(tag = "type", content = "payload")]
 enum WatchLiveEvent {
     #[serde(rename = "ready")]
-    Ready(crate::watch::WatchReady),
+    Ready(WatchReady),
     #[serde(rename = "change")]
     Change(WatchChange),
     #[serde(rename = "watch-error")]
@@ -676,6 +676,7 @@ fn live_session_not_found() -> ApiError {
 
 #[cfg(test)]
 mod tests {
+    use crate::app::router;
     use axum::{body::Body, http::Request};
     use futures_util::StreamExt;
     use tower::ServiceExt;
@@ -789,7 +790,7 @@ mod tests {
     #[tokio::test]
     async fn gateway_registers_controls_and_unregisters_with_the_response_body() {
         let root = tempfile::tempdir().unwrap();
-        let app = super::super::router(RootedFs::new(root.path()).unwrap()).unwrap();
+        let app = router(RootedFs::new(root.path()).unwrap()).unwrap();
         let response = app
             .clone()
             .oneshot(
@@ -935,7 +936,7 @@ mod tests {
     #[tokio::test]
     async fn live_control_rejects_cross_origin_and_legacy_stream_routes_are_absent() {
         let root = tempfile::tempdir().unwrap();
-        let app = super::super::router(RootedFs::new(root.path()).unwrap()).unwrap();
+        let app = router(RootedFs::new(root.path()).unwrap()).unwrap();
         let forbidden = app
             .clone()
             .oneshot(

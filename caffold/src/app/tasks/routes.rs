@@ -1,3 +1,19 @@
+#[cfg(test)]
+use crate::app::error::ApiError;
+#[cfg(test)]
+use crate::app::tasks::TaskDetailResponse;
+#[cfg(test)]
+use crate::task_store::ManagedThread;
+#[cfg(test)]
+use crate::task_store::RunBy;
+#[cfg(test)]
+use axum::Json;
+#[cfg(test)]
+use axum::extract::Path as AxumPath;
+#[cfg(test)]
+use axum::extract::Query;
+#[cfg(test)]
+use axum::extract::State;
 mod agent;
 mod claude;
 mod codex;
@@ -8,57 +24,38 @@ mod list;
 mod membership;
 mod store;
 
-use agent::*;
-use claude::*;
-use codex::*;
-use commands::*;
-use conversation::*;
-use list::*;
-use membership::*;
-use store::*;
+use agent::{agent_models, agent_permissions};
+use claude::{claude_restart, claude_status};
+use codex::{codex_mcp_diagnostics, codex_restart, codex_status};
+#[cfg(test)]
+use commands::managed_thread_from_task_record;
+use commands::{create_task, task_approval, task_interrupt, task_prompt};
+use conversation::{mark_task_seen, task_detail, task_generated_image};
+use list::{list_archived_tasks, list_managed_tasks};
+use membership::{
+    section_reorder, task_archive, task_delete, task_recovery_archive, task_recovery_recheck,
+    task_recovery_remove, task_recovery_restore, task_reorder, task_restore,
+};
+#[cfg(test)]
+use store::{task_store_claim, task_store_get, task_store_update_composer_settings};
 
-use std::path::Path;
-
+use super::lifecycle::ActiveTaskTopPlacement;
 pub(super) use super::live::TaskListEvents;
 #[cfg(test)]
 pub(super) use super::live::TaskListUpdate;
-use super::{
-    ApprovalResolveError, CodexConnection, TaskAgent, TaskDetailResponse, TaskRecord, TaskState,
-    accepted_user_message_event, now_ms, task_activity_ms,
-};
-use super::{
-    lifecycle::{ActiveTaskTopPlacement, CreateTask, ForkCodexSource, ForkCodexTask},
-    recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason, ManagedCodexThreadLocation},
-    worktrees::inspect_ready_worktree,
-};
+use super::{TaskRecord, TaskState};
 use axum::{
-    Json, Router,
-    body::Body,
-    extract::{DefaultBodyLimit, Path as AxumPath, Query, State},
-    http::{HeaderValue, header},
-    response::Response,
+    Router,
+    extract::DefaultBodyLimit,
     routing::{get, post},
 };
-use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use tokio::sync::broadcast;
 
-use super::generated_images::GeneratedImageError;
-
 use crate::{
-    agent::{
-        ApprovalDecision, Conversation, ConversationItem, Driver, ItemKind, PermissionModes,
-        ThreadStatus, Turn, TurnOptions, TurnPage, TurnRejected,
-        codex::{CodexDaemonInfo, CodexStatusResponse, CodexThreadClient, CodexThreadError},
-    },
-    app::error::ApiError,
-    app::tasks::sessions::{PromptTarget, SessionSnapshot, SessionsDiagnostics},
-    fs::MAX_IMAGE_BYTES,
-    task_store::{
-        ManagedSection, ManagedThread, ManagedWorktree, ManagedWorktreeState, RunBy, TaskProvider,
-        TaskStoreError,
-    },
+    agent::{ConversationItem, Turn, TurnOptions, codex::CodexStatusResponse},
+    app::tasks::sessions::SessionsDiagnostics,
 };
 
 const MAX_TASK_IMAGES: usize = 4;
@@ -333,6 +330,8 @@ pub(super) async fn test_store_update_composer_settings(
 
 #[cfg(test)]
 pub(super) mod test_support {
+    use crate::agent::codex::MockCodexResponse;
+    use crate::app::tasks::active_list;
     use serde_json::{Value as JsonValue, json};
 
     use super::*;
@@ -340,9 +339,9 @@ pub(super) mod test_support {
 
     pub(super) fn recovery_location_responses(
         archived_threads: Vec<JsonValue>,
-    ) -> Vec<crate::agent::codex::MockCodexResponse> {
+    ) -> Vec<MockCodexResponse> {
         vec![
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/list",
                 json!({
                     "limit": 100,
@@ -357,7 +356,7 @@ pub(super) mod test_support {
                     "backwardsCursor": null,
                 }),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/list",
                 json!({
                     "limit": 100,
@@ -377,8 +376,8 @@ pub(super) mod test_support {
 
     pub(super) fn active_recovery_location_responses(
         active_threads: Vec<JsonValue>,
-    ) -> Vec<crate::agent::codex::MockCodexResponse> {
-        vec![crate::agent::codex::MockCodexResponse::ok_for(
+    ) -> Vec<MockCodexResponse> {
+        vec![MockCodexResponse::ok_for(
             "thread/list",
             json!({
                 "limit": 100,
@@ -396,7 +395,7 @@ pub(super) mod test_support {
     }
 
     pub(super) fn projected_active_tasks(
-        projection: &super::super::active_list::ActiveTaskProjection,
+        projection: &active_list::ActiveTaskProjection,
     ) -> Vec<&TaskRecord> {
         projection
             .sections

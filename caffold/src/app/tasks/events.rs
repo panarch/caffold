@@ -21,13 +21,13 @@ use super::generated_images::{GeneratedImageObservation, GeneratedImageStore};
 /// direct time evidence belongs to `observed_ms`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct TaskEventPosition {
-    pub(in crate::app) anchor_ms: u64,
-    pub(in crate::app) index: u32,
+pub(in crate::app::tasks) struct TaskEventPosition {
+    pub(in crate::app::tasks) anchor_ms: u64,
+    pub(in crate::app::tasks) index: u32,
 }
 
 impl TaskEventPosition {
-    pub(in crate::app) fn at(anchor_ms: u64) -> Self {
+    pub(in crate::app::tasks) fn at(anchor_ms: u64) -> Self {
         Self {
             anchor_ms,
             index: 0,
@@ -37,29 +37,29 @@ impl TaskEventPosition {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct TaskEventRecord {
-    pub(in crate::app) id: String,
-    pub(in crate::app) thread_id: String,
+pub(in crate::app::tasks) struct TaskEventRecord {
+    pub(in crate::app::tasks) id: String,
+    pub(in crate::app::tasks) thread_id: String,
     #[serde(rename = "type")]
-    pub(in crate::app) event_type: String,
-    pub(in crate::app) summary: String,
-    pub(in crate::app) payload: Option<JsonValue>,
-    pub(in crate::app) position: TaskEventPosition,
+    pub(in crate::app::tasks) event_type: String,
+    pub(in crate::app::tasks) summary: String,
+    pub(in crate::app::tasks) payload: Option<JsonValue>,
+    pub(in crate::app::tasks) position: TaskEventPosition,
     /// Direct time evidence for the first observation of this event.
     ///
     /// `None` means the provider supplied order but no per-item time. It is
     /// deliberately serialized as `null` so a current frontend can distinguish
     /// unknown time from a backend that only supplied conversation position.
     #[serde(default)]
-    pub(in crate::app) observed_ms: Option<u64>,
+    pub(in crate::app::tasks) observed_ms: Option<u64>,
     /// Typed lifecycle evidence retained behind the projection boundary.
     ///
     /// The rendered payload also names status, but merge policy must not infer
     /// lifecycle from arbitrary JSON supplied to the browser.
     #[serde(skip)]
-    pub(in crate::app) activity_status: Option<ActivityStatus>,
+    pub(in crate::app::tasks) activity_status: Option<ActivityStatus>,
     #[serde(skip)]
-    pub(in crate::app) generated_image: Option<GeneratedImageObservation>,
+    pub(in crate::app::tasks) generated_image: Option<GeneratedImageObservation>,
 }
 
 /// Why a live observation entered the Task projection.
@@ -81,28 +81,28 @@ enum TaskEventObservationSource {
 /// before a provider read began. Neither is item identity or conversation
 /// position.
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::app) struct TaskEventObservation {
-    pub(in crate::app) event: TaskEventRecord,
-    pub(in crate::app) publication_revision: u64,
+pub(in crate::app::tasks) struct TaskEventObservation {
+    pub(in crate::app::tasks) event: TaskEventRecord,
+    pub(in crate::app::tasks) publication_revision: u64,
     /// Session causality for the role that owns this record's conflicting
     /// fields. A supplemental exact-identity observation cannot promote it.
-    pub(in crate::app) session_revision: Option<u64>,
+    pub(in crate::app::tasks) session_revision: Option<u64>,
     source: TaskEventObservationSource,
 }
 
 /// A Task-event delta and the revision captured when it entered the projection.
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::app) struct TaskEventPublication {
-    pub(in crate::app) revision: u64,
-    pub(in crate::app) event: TaskEventRecord,
+pub(in crate::app::tasks) struct TaskEventPublication {
+    pub(in crate::app::tasks) revision: u64,
+    pub(in crate::app::tasks) event: TaskEventRecord,
 }
 
 /// An atomic view of retained live evidence and its publication watermark.
 #[derive(Debug, Clone, PartialEq)]
-pub(in crate::app) struct TaskEventSnapshot {
-    pub(in crate::app) revision: u64,
-    pub(in crate::app) observations: Vec<TaskEventObservation>,
-    pub(in crate::app) fully_observed_turns: HashSet<String>,
+pub(in crate::app::tasks) struct TaskEventSnapshot {
+    pub(in crate::app::tasks) revision: u64,
+    pub(in crate::app::tasks) observations: Vec<TaskEventObservation>,
+    pub(in crate::app::tasks) fully_observed_turns: HashSet<String>,
 }
 
 #[derive(Default)]
@@ -125,23 +125,23 @@ struct LiveTaskEventCacheState {
 }
 
 #[derive(Clone, Default)]
-pub(in crate::app) struct LiveTaskEventCache {
+pub(in crate::app::tasks) struct LiveTaskEventCache {
     state: Arc<Mutex<LiveTaskEventCacheState>>,
 }
 
-pub(in crate::app) const LIVE_TASK_EVENT_LIMIT_PER_THREAD: usize = 256;
-pub(in crate::app) const LIVE_TASK_THREAD_LIMIT: usize = 128;
+pub(in crate::app::tasks) const LIVE_TASK_EVENT_LIMIT_PER_THREAD: usize = 256;
+pub(in crate::app::tasks) const LIVE_TASK_THREAD_LIMIT: usize = 128;
 
 impl LiveTaskEventCache {
     #[cfg(test)]
-    pub(in crate::app) fn observe_provider_lifecycle(&self, events: &[TaskEventRecord]) {
+    pub(in crate::app::tasks) fn observe_provider_lifecycle(&self, events: &[TaskEventRecord]) {
         for event in events {
             self.record_provider_lifecycle(event.clone());
         }
     }
 
     #[cfg(test)]
-    pub(in crate::app) fn record_provider_lifecycle(
+    pub(in crate::app::tasks) fn record_provider_lifecycle(
         &self,
         event: TaskEventRecord,
     ) -> TaskEventRecord {
@@ -150,13 +150,13 @@ impl LiveTaskEventCache {
     }
 
     #[cfg(test)]
-    pub(in crate::app) fn record_accepted(&self, event: TaskEventRecord) -> TaskEventRecord {
+    pub(in crate::app::tasks) fn record_accepted(&self, event: TaskEventRecord) -> TaskEventRecord {
         self.record_observation(event, TaskEventObservationSource::AcceptedSubmission, None)
             .event
     }
 
     #[cfg(test)]
-    pub(in crate::app) fn record_local(&self, event: TaskEventRecord) -> TaskEventRecord {
+    pub(in crate::app::tasks) fn record_local(&self, event: TaskEventRecord) -> TaskEventRecord {
         self.record_observation(event, TaskEventObservationSource::LocalProjection, None)
             .event
     }
@@ -219,7 +219,7 @@ impl LiveTaskEventCache {
     }
 
     #[cfg(test)]
-    pub(in crate::app) fn for_thread(&self, thread_id: &str) -> Vec<TaskEventRecord> {
+    pub(in crate::app::tasks) fn for_thread(&self, thread_id: &str) -> Vec<TaskEventRecord> {
         self.state
             .lock()
             .ok()
@@ -251,7 +251,7 @@ impl LiveTaskEventCache {
     /// Turns whose live item journal is known to start at the real turn
     /// boundary and has remained continuous since.
     #[cfg(test)]
-    pub(in crate::app) fn fully_observed_turns(&self, thread_id: &str) -> HashSet<String> {
+    pub(in crate::app::tasks) fn fully_observed_turns(&self, thread_id: &str) -> HashSet<String> {
         let Ok(state) = self.state.lock() else {
             return HashSet::new();
         };
@@ -261,7 +261,7 @@ impl LiveTaskEventCache {
     /// Keep the observations, but withdraw the claim that this thread's live
     /// journal is complete. A reconnect can recover provider history; it cannot
     /// recover reports that may have fallen between two live connections.
-    pub(in crate::app) fn invalidate_continuity(&self, thread_id: &str) {
+    pub(in crate::app::tasks) fn invalidate_continuity(&self, thread_id: &str) {
         let Ok(mut state) = self.state.lock() else {
             return;
         };
@@ -287,7 +287,7 @@ impl LiveTaskEventCache {
 
     /// The receiver cannot identify which conversation its missed reports
     /// belonged to, so every live-ledger claim is withdrawn conservatively.
-    pub(in crate::app) fn invalidate_all_continuity(&self) {
+    pub(in crate::app::tasks) fn invalidate_all_continuity(&self) {
         let Ok(mut state) = self.state.lock() else {
             return;
         };
@@ -317,7 +317,7 @@ impl LiveTaskEventCache {
         }
     }
 
-    pub(in crate::app) fn remove_thread(&self, thread_id: &str) {
+    pub(in crate::app::tasks) fn remove_thread(&self, thread_id: &str) {
         if let Ok(mut state) = self.state.lock() {
             state.events.remove(thread_id);
             state.invalidated_turns.remove(thread_id);
@@ -358,7 +358,7 @@ fn fully_observed_turns(state: &LiveTaskEventCacheState, thread_id: &str) -> Has
 }
 
 #[derive(Clone)]
-pub(in crate::app) struct TaskEvents {
+pub(in crate::app::tasks) struct TaskEvents {
     sender: broadcast::Sender<TaskEventPublication>,
     cache: LiveTaskEventCache,
     generated_images: GeneratedImageStore,
@@ -376,20 +376,23 @@ impl Default for TaskEvents {
 }
 
 impl TaskEvents {
-    pub(in crate::app) fn subscribe(&self) -> broadcast::Receiver<TaskEventPublication> {
+    pub(in crate::app::tasks) fn subscribe(&self) -> broadcast::Receiver<TaskEventPublication> {
         self.sender.subscribe()
     }
 
     /// Publish a Caffold-owned projection event such as an approval lifecycle
     /// or local failure. This does not claim provider-session causality.
-    pub(in crate::app) fn publish_local(&self, event: TaskEventRecord) -> TaskEventPublication {
+    pub(in crate::app::tasks) fn publish_local(
+        &self,
+        event: TaskEventRecord,
+    ) -> TaskEventPublication {
         let event = self.record_local(event);
         self.broadcast(event.clone());
         event
     }
 
     /// Publish a report accepted from the provider's live session.
-    pub(in crate::app) fn publish_provider_lifecycle(
+    pub(in crate::app::tasks) fn publish_provider_lifecycle(
         &self,
         event: TaskEventRecord,
         session_revision: u64,
@@ -405,7 +408,7 @@ impl TaskEvents {
 
     /// Publish a user item after the adapter accepted it and supplied its exact
     /// identity. Provider lifecycle/history may later hand off that same item.
-    pub(in crate::app) fn publish_accepted_submission(
+    pub(in crate::app::tasks) fn publish_accepted_submission(
         &self,
         event: TaskEventRecord,
         session_revision: Option<u64>,
@@ -419,7 +422,10 @@ impl TaskEvents {
         event
     }
 
-    pub(in crate::app) fn record_local(&self, event: TaskEventRecord) -> TaskEventPublication {
+    pub(in crate::app::tasks) fn record_local(
+        &self,
+        event: TaskEventRecord,
+    ) -> TaskEventPublication {
         self.record_inner(event, TaskEventObservationSource::LocalProjection, None)
     }
 
@@ -435,45 +441,45 @@ impl TaskEvents {
             .record_observation(event, source, session_revision)
     }
 
-    pub(in crate::app) fn broadcast(&self, event: TaskEventPublication) {
+    pub(in crate::app::tasks) fn broadcast(&self, event: TaskEventPublication) {
         let _ = self.sender.send(event);
     }
 
     /// Preserve history-backed assets without turning provider history into a
     /// second copy of the live journal.
-    pub(in crate::app) fn observe_history_assets(&self, events: &[TaskEventRecord]) {
+    pub(in crate::app::tasks) fn observe_history_assets(&self, events: &[TaskEventRecord]) {
         for event in events {
             self.generated_images.observe(event);
         }
     }
 
     #[cfg(test)]
-    pub(in crate::app) fn for_thread(&self, thread_id: &str) -> Vec<TaskEventRecord> {
+    pub(in crate::app::tasks) fn for_thread(&self, thread_id: &str) -> Vec<TaskEventRecord> {
         self.cache.for_thread(thread_id)
     }
 
-    pub(in crate::app) fn snapshot_for_thread(&self, thread_id: &str) -> TaskEventSnapshot {
+    pub(in crate::app::tasks) fn snapshot_for_thread(&self, thread_id: &str) -> TaskEventSnapshot {
         self.cache.snapshot_for_thread(thread_id)
     }
 
     #[cfg(test)]
-    pub(in crate::app) fn fully_observed_turns(&self, thread_id: &str) -> HashSet<String> {
+    pub(in crate::app::tasks) fn fully_observed_turns(&self, thread_id: &str) -> HashSet<String> {
         self.cache.fully_observed_turns(thread_id)
     }
 
-    pub(in crate::app) fn invalidate_continuity(&self, thread_id: &str) {
+    pub(in crate::app::tasks) fn invalidate_continuity(&self, thread_id: &str) {
         self.cache.invalidate_continuity(thread_id);
     }
 
-    pub(in crate::app) fn invalidate_all_continuity(&self) {
+    pub(in crate::app::tasks) fn invalidate_all_continuity(&self) {
         self.cache.invalidate_all_continuity();
     }
 
-    pub(in crate::app) fn generated_images(&self) -> &GeneratedImageStore {
+    pub(in crate::app::tasks) fn generated_images(&self) -> &GeneratedImageStore {
         &self.generated_images
     }
 
-    pub(in crate::app) fn remove_thread(&self, thread_id: &str) {
+    pub(in crate::app::tasks) fn remove_thread(&self, thread_id: &str) {
         self.cache.remove_thread(thread_id);
         self.generated_images.remove_thread(thread_id);
     }
@@ -489,7 +495,7 @@ impl TaskEvents {
 /// it began, or whose live connection lost continuity, has no such proof, so
 /// history remains the baseline and only exact identities reconcile. No
 /// content, proximity, or arrival-order matching is involved.
-pub(in crate::app) fn reconcile_provider_history_with_live_observations(
+pub(in crate::app::tasks) fn reconcile_provider_history_with_live_observations(
     history: Vec<TaskEventRecord>,
     live: &[TaskEventObservation],
     history_base_revision: Option<u64>,
@@ -533,7 +539,7 @@ pub(in crate::app) fn reconcile_provider_history_with_live_observations(
 /// an already projected request in place while the runtime-owned record owns
 /// conflicting request fields. This is deliberately not provider-history
 /// reconciliation.
-pub(in crate::app) fn compose_pending_approval_events(
+pub(in crate::app::tasks) fn compose_pending_approval_events(
     mut events: Vec<TaskEventRecord>,
     pending: Vec<TaskEventRecord>,
 ) -> Vec<TaskEventRecord> {
@@ -693,7 +699,7 @@ fn project_primary_record(
     primary
 }
 
-pub(in crate::app) fn sort_task_events(events: &mut [TaskEventRecord]) {
+pub(in crate::app::tasks) fn sort_task_events(events: &mut [TaskEventRecord]) {
     events.sort_by(|left, right| {
         left.position
             .anchor_ms
@@ -708,7 +714,7 @@ pub(in crate::app) fn sort_task_events(events: &mut [TaskEventRecord]) {
 /// as the records the interface shows. Live events carry the same identities,
 /// so a turn watched as it ran and the same turn read back later are one
 /// timeline rather than two.
-pub(in crate::app) fn thread_events(conversation: &Conversation) -> Vec<TaskEventRecord> {
+pub(in crate::app::tasks) fn thread_events(conversation: &Conversation) -> Vec<TaskEventRecord> {
     let thread_id = conversation.id.as_str();
     let mut events = Vec::new();
     let conversation_activity_ms = conversation
@@ -778,7 +784,7 @@ fn assign_anchor_indexes_in_current_order(events: &mut [TaskEventRecord]) {
 ///
 /// Both paths build the same identity and the same payload, so the two records
 /// are one record however the turn was observed.
-pub(in crate::app) fn turn_started_event(
+pub(in crate::app::tasks) fn turn_started_event(
     thread_id: &str,
     turn: &Turn,
     started_ms: u64,
@@ -801,7 +807,7 @@ pub(in crate::app) fn turn_started_event(
     event
 }
 
-pub(in crate::app) fn turn_completed_event(
+pub(in crate::app::tasks) fn turn_completed_event(
     thread_id: &str,
     turn: &Turn,
     completed_ms: u64,
@@ -836,7 +842,7 @@ pub(in crate::app) fn turn_completed_event(
 /// `None` means there is nothing to show: an agent announces a message or a
 /// piece of reasoning before writing any of it, and an empty bubble is worse
 /// than waiting for the words.
-pub(in crate::app) fn task_event_from_item(
+pub(in crate::app::tasks) fn task_event_from_item(
     thread_id: &str,
     turn_id: &str,
     anchor_ms: u64,
@@ -1019,7 +1025,7 @@ fn background_task_payload(task: &BackgroundTask) -> JsonValue {
 /// The driver has already written this for a person to read, so the payload is
 /// the request itself: what is being asked, the specifics worth checking, and
 /// the answers this request accepts.
-pub(in crate::app) fn approval_requested_event(
+pub(in crate::app::tasks) fn approval_requested_event(
     thread_id: &str,
     request: &ApprovalRequest,
     anchor_ms: u64,
@@ -1050,7 +1056,7 @@ pub(in crate::app) fn approval_requested_event(
 }
 
 /// An approval that is no longer pending, however it ended.
-pub(in crate::app) fn approval_resolved_event(
+pub(in crate::app::tasks) fn approval_resolved_event(
     thread_id: &str,
     request: &ApprovalRequest,
     outcome: ApprovalOutcome,
@@ -1081,7 +1087,7 @@ pub(in crate::app) fn approval_resolved_event(
 /// before this event and exact identity merging still produces one message.
 /// Its provisional position is when Caffold observed the submission; waiting
 /// for the adapter to return its identity must not move it behind the answer.
-pub(in crate::app) fn accepted_user_message_event(
+pub(in crate::app::tasks) fn accepted_user_message_event(
     thread_id: &str,
     turn_id: &str,
     item: &ConversationItem,
@@ -1095,7 +1101,7 @@ pub(in crate::app) fn accepted_user_message_event(
 ///
 /// The identifier is scoped to its thread so that events from two Tasks cannot
 /// collide in a cache or a merge.
-pub(in crate::app) fn task_event_record(
+pub(in crate::app::tasks) fn task_event_record(
     thread_id: &str,
     event_id: &str,
     event_type: &str,
@@ -1160,7 +1166,7 @@ fn merged_payload(mut identity: JsonValue, extra: JsonValue) -> JsonValue {
 /// Caffold sends in-app browser context along with a prompt so the agent can
 /// see what the person was looking at. That block is Caffold's own addition, so
 /// Caffold takes it back off before showing the prompt.
-pub(in crate::app) fn strip_ambient_browser_context(text: &str) -> &str {
+pub(in crate::app::tasks) fn strip_ambient_browser_context(text: &str) -> &str {
     const LEGACY_PREFIX: &str =
         "This block is automatically supplied ambient UI state, not part of the user's request.";
     const STRUCTURED_PREFIX: &str = "<in-app-browser-context source=\"ambient-ui-state\">";
@@ -1184,14 +1190,14 @@ pub(in crate::app) fn strip_ambient_browser_context(text: &str) -> &str {
     text
 }
 
-pub(in crate::app) fn non_empty_string(value: Option<&str>) -> Option<String> {
+pub(in crate::app::tasks) fn non_empty_string(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
 }
 
-pub(in crate::app) fn now_ms() -> u64 {
+pub(in crate::app::tasks) fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_millis() as u64)
@@ -1201,12 +1207,14 @@ pub(in crate::app) fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent;
+    use crate::agent::codex::{CodexThread, conversation_item, response_item};
     use crate::agent::{CommandExecution, ThreadStatus};
 
     /// A conversation decoded the way the adapter decodes a real response, so a
     /// test cannot assert against a shape the adapter would have rejected.
     fn conversation(thread: JsonValue) -> Conversation {
-        let thread: crate::agent::codex::CodexThread =
+        let thread: CodexThread =
             serde_json::from_value(thread).expect("the fixture decodes as a Codex thread");
         Conversation::from(&thread)
     }
@@ -1241,7 +1249,7 @@ mod tests {
     }
 
     fn codex_item(reported: ActivityStatus, item: JsonValue) -> Option<ConversationItem> {
-        crate::agent::codex::conversation_item(&item, reported)
+        conversation_item(&item, reported)
     }
 
     fn provider_lifecycle_observation(
@@ -1295,7 +1303,7 @@ mod tests {
         anchor_ms: u64,
         item: JsonValue,
     ) -> Option<TaskEventRecord> {
-        let item = crate::agent::codex::response_item(&item)?;
+        let item = response_item(&item)?;
         task_event_from_item("thread_1", turn_id, anchor_ms, &item)
     }
 
@@ -3355,7 +3363,7 @@ mod tests {
             &ConversationItem {
                 id: "item-1".to_string(),
                 observed_at_ms: None,
-                status: crate::agent::ActivityStatus::Completed,
+                status: agent::ActivityStatus::Completed,
                 kind: ItemKind::Failure {
                     text: "API Error: Connection refused".to_string(),
                 },

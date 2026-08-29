@@ -18,7 +18,8 @@ use crate::{
     task_store::{ManagedSection, TaskStore},
 };
 
-pub(in crate::app) type TaskListLiveStream = Pin<Box<dyn Stream<Item = TaskListLiveEvent> + Send>>;
+pub(in crate::app::tasks) type TaskListLiveStream =
+    Pin<Box<dyn Stream<Item = TaskListLiveEvent> + Send>>;
 
 /// The Task-owned live capabilities consumed by the application live gateway.
 ///
@@ -306,6 +307,7 @@ fn task_list_event_stream(
 
 #[cfg(test)]
 mod tests {
+    use crate::agent;
     use futures_util::StreamExt;
     use serde_json::json;
 
@@ -374,7 +376,7 @@ mod tests {
         second["name"] = json!("Another stale list name");
         let unmanaged = task_thread_list("unmanaged-thread", root.path())["data"][0].clone();
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok_for(
+            agent::codex::MockCodexResponse::ok_for(
                 "thread/list",
                 json!({
                     "limit": 100,
@@ -389,7 +391,7 @@ mod tests {
                     "backwardsCursor": null,
                 }),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            agent::codex::MockCodexResponse::ok_for(
                 "thread/list",
                 json!({
                     "cursor": "page-2",
@@ -452,10 +454,10 @@ mod tests {
         assert_eq!(payload["tasks"][1]["title"], "Persisted second name");
         assert!(!snapshot.to_string().contains("unmanaged-thread"));
         assert!(!snapshot.to_string().contains("managed-but-missing"));
-        client.mock_publish_event(crate::agent::codex::CodexRuntimeEvent::Notification(
-            crate::agent::codex::CodexNotification::ThreadStatusChanged {
+        client.mock_publish_event(agent::codex::CodexRuntimeEvent::Notification(
+            agent::codex::CodexNotification::ThreadStatusChanged {
                 thread_id: first_id.to_string(),
-                status: crate::agent::codex::ThreadStatus::Idle,
+                status: agent::codex::ThreadStatus::Idle,
             },
         ));
         let sync = tokio::time::timeout(std::time::Duration::from_millis(100), events.next())
@@ -499,7 +501,7 @@ mod tests {
         let thread_id = "thread-list-repeated-cursor";
         let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok(
+            agent::codex::MockCodexResponse::ok(
                 "thread/list",
                 json!({
                     "data": [thread],
@@ -507,7 +509,7 @@ mod tests {
                     "backwardsCursor": null,
                 }),
             ),
-            crate::agent::codex::MockCodexResponse::ok(
+            agent::codex::MockCodexResponse::ok(
                 "thread/list",
                 json!({
                     "data": [],
@@ -541,16 +543,15 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-list-snapshot-race";
         let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
-        let client =
-            CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::delayed_ok(
-                "thread/list",
-                json!({
-                    "data": [thread.clone()],
-                    "nextCursor": null,
-                    "backwardsCursor": null,
-                }),
-                std::time::Duration::from_millis(50),
-            )]);
+        let client = CodexThreadClient::mock(vec![agent::codex::MockCodexResponse::delayed_ok(
+            "thread/list",
+            json!({
+                "data": [thread.clone()],
+                "nextCursor": null,
+                "backwardsCursor": null,
+            }),
+            std::time::Duration::from_millis(50),
+        )]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         claim_cached_active(
@@ -570,7 +571,7 @@ mod tests {
                 .expect("Task List live source opens")
         });
         wait_for_mock_method(&client, "thread/list").await;
-        let thread: crate::agent::codex::CodexThread =
+        let thread: agent::codex::CodexThread =
             serde_json::from_value(thread).expect("the fixture decodes as a Codex thread");
         let conversation = Conversation::from(&thread);
         let resolved = resolve_conversation_cwd(&state.fs, &conversation);

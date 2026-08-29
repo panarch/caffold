@@ -1,11 +1,11 @@
-pub const INDEX: &str = include_str!("../../frontend/index.html");
+pub(crate) const INDEX: &str = include_str!("../../frontend/index.html");
 
-pub struct StaticAsset {
+pub(crate) struct StaticAsset {
     pub content_type: &'static str,
     pub body: &'static [u8],
 }
 
-pub fn get(path: &str) -> Option<StaticAsset> {
+pub(crate) fn get(path: &str) -> Option<StaticAsset> {
     match path {
         "manifest.webmanifest" => Some(manifest(include_str!(
             "../../frontend/manifest.webmanifest"

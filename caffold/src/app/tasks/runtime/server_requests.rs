@@ -2,6 +2,7 @@ use serde::Deserialize;
 use serde_json::{Value as JsonValue, json};
 
 use super::{ApprovalResolveError, TaskAgent, TaskRuntime};
+use crate::agent;
 use crate::agent::codex::{
     ApprovalKind, CodexServerRequest, CodexThreadClient, ISOLATE_CURRENT_TASK_TOOL_NAME,
     LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME, RENAME_CURRENT_TASK_TOOL_NAME, approval_request,
@@ -18,6 +19,7 @@ use crate::app::tasks::{
     },
     worktrees::IsolateOutcome,
 };
+use crate::task_store;
 
 /// An approval waiting for an answer.
 ///
@@ -107,7 +109,10 @@ fn codex_mcp_task_tool(tool: &str) -> Result<CaffoldTaskTool, String> {
 }
 
 impl TaskRuntime {
-    pub(in crate::app) async fn approval_events(&self, thread_id: &str) -> Vec<TaskEventRecord> {
+    pub(in crate::app::tasks) async fn approval_events(
+        &self,
+        thread_id: &str,
+    ) -> Vec<TaskEventRecord> {
         self.approvals
             .lock()
             .await
@@ -125,7 +130,7 @@ impl TaskRuntime {
             .collect()
     }
 
-    pub(in crate::app) async fn resolve_approval(
+    pub(in crate::app::tasks) async fn resolve_approval(
         &self,
         agent: &TaskAgent,
         thread_id: &str,
@@ -164,7 +169,7 @@ impl TaskRuntime {
                     .resolve_approval(thread_id, approval_id, decision)
                     .await
                     .map_err(|error| match error {
-                        crate::agent::claude::ClaudeError::NoSuchApproval(_) => {
+                        agent::claude::ClaudeError::NoSuchApproval(_) => {
                             ApprovalResolveError::NotFound
                         }
                         error => ApprovalResolveError::Agent(error.into()),
@@ -530,7 +535,7 @@ impl TaskRuntime {
     async fn managed_thread(
         &self,
         thread_id: &str,
-    ) -> Result<Option<crate::task_store::ManagedThread>, String> {
+    ) -> Result<Option<task_store::ManagedThread>, String> {
         let store = self.task_store.clone();
         let thread_id = thread_id.to_string();
         tokio::task::spawn_blocking(move || store.get(&thread_id))
@@ -638,7 +643,9 @@ mod tests {
     use crate::{
         agent::codex::{self, CodexThreadError, MockCodexResponse, session_event},
         app::tasks::CodexConnection,
+        app::tasks::push::PushService,
         app::tasks::sessions::TaskSessions,
+        app::tasks::worktrees::inspect_ready_worktree,
         app::tasks::{
             events::TaskEvents, lifecycle::TaskLifecycle, routes::TaskListEvents,
             worktrees::ManagedWorktrees,
@@ -745,7 +752,7 @@ mod tests {
     fn test_runtime_with_store(events: TaskEvents, store: TaskStore) -> TaskRuntime {
         let (shutdown, _) = broadcast::channel(1);
         TaskRuntime::new(
-            crate::agent::claude::ClaudeClient::mock().0,
+            agent::claude::ClaudeClient::mock().0,
             TaskSessions::default(),
             events,
             store,
@@ -819,7 +826,7 @@ mod tests {
             .unwrap();
         store
             .upsert_push_installation(
-                crate::task_store::PushSubscriptionInput {
+                task_store::PushSubscriptionInput {
                     client_id: "00000000-0000-4000-8000-000000000001".to_owned(),
                     installation_label: "Chrome on macOS · 00000000".to_owned(),
                     endpoint: "https://push.example.test/subscription".to_owned(),
@@ -830,8 +837,7 @@ mod tests {
                 1_000,
             )
             .unwrap();
-        let (push, mut deliveries) =
-            crate::app::tasks::push::PushService::test_channel(store.clone());
+        let (push, mut deliveries) = PushService::test_channel(store.clone());
         let runtime = test_runtime_with_store(TaskEvents::default(), store).with_push_service(push);
         let client = CodexThreadClient::mock(Vec::new());
 
@@ -1479,7 +1485,7 @@ mod tests {
             root.path().join("managed-worktrees"),
         )
         .unwrap();
-        let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
+        let (claude, _runner) = agent::claude::ClaudeClient::mock();
         let lifecycle = TaskLifecycle::new(
             fs.clone(),
             sessions.clone(),
@@ -1520,9 +1526,7 @@ mod tests {
         let records = store.managed_worktrees().unwrap();
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].thread_id.as_deref(), Some("thread_source"));
-        let live_branch = crate::app::tasks::worktrees::inspect_ready_worktree(&records[0])
-            .unwrap()
-            .branch_name;
+        let live_branch = inspect_ready_worktree(&records[0]).unwrap().branch_name;
         assert!(live_branch.starts_with("caffold/review-issue-42-"));
         assert!(Path::new(&records[0].worktree_path).is_dir());
         let requests = client.mock_requests().await;

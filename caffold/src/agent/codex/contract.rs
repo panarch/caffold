@@ -28,7 +28,7 @@ use super::protocol::{
 use super::{CodexThreadClient, CodexThreadError, CodexTurnOptions, NORMAL_SERVICE_TIER_ID};
 use crate::agent::driver::{ModelOption, PermissionModeOption, TurnOptions, TurnRejected, bounded};
 use crate::agent::{
-    ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, CommandExecution,
+    self, ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, CommandExecution,
     Conversation, ConversationItem, GeneratedImage, ItemKind, MessageContent, MessagePhase,
     PermissionRow, SessionEvent, SessionEventKind, TokenCount, TokenUsage, Turn, TurnOrigin,
     TurnPage,
@@ -480,7 +480,7 @@ fn approval_title(kind: ApprovalKind, has_command: bool, has_network: bool) -> &
 // the browser is promised stops moving when Codex changes, and a second driver
 // maps to Caffold's values rather than to Codex's.
 
-impl From<ThreadStatus> for crate::agent::ThreadStatus {
+impl From<ThreadStatus> for agent::ThreadStatus {
     fn from(status: ThreadStatus) -> Self {
         match status {
             ThreadStatus::NotLoaded => Self::NotLoaded,
@@ -493,7 +493,7 @@ impl From<ThreadStatus> for crate::agent::ThreadStatus {
     }
 }
 
-impl From<ThreadActiveFlag> for crate::agent::ThreadActiveFlag {
+impl From<ThreadActiveFlag> for agent::ThreadActiveFlag {
     fn from(flag: ThreadActiveFlag) -> Self {
         match flag {
             ThreadActiveFlag::WaitingOnApproval => Self::WaitingOnApproval,
@@ -502,7 +502,7 @@ impl From<ThreadActiveFlag> for crate::agent::ThreadActiveFlag {
     }
 }
 
-impl From<TurnStatus> for crate::agent::TurnStatus {
+impl From<TurnStatus> for agent::TurnStatus {
     fn from(status: TurnStatus) -> Self {
         match status {
             TurnStatus::Completed => Self::Completed,
@@ -988,6 +988,7 @@ pub(crate) fn codex_mode_id(mode: CodexPermissionMode) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::codex::protocol;
     use crate::agent::codex::{CodexThreadClient, MockCodexResponse};
 
     fn codex_client(responses: Vec<MockCodexResponse>) -> CodexThreadClient {
@@ -1536,8 +1537,8 @@ mod tests {
         // that is what actually crosses.
         for status in every_thread_status() {
             let expected = serde_json::to_value(&status).expect("encode Codex status");
-            let converted = serde_json::to_value(crate::agent::ThreadStatus::from(status.clone()))
-                .expect("encode");
+            let converted =
+                serde_json::to_value(agent::ThreadStatus::from(status.clone())).expect("encode");
 
             assert_eq!(converted, expected, "{status:?} changed on the wire");
         }
@@ -1547,8 +1548,7 @@ mod tests {
     fn a_converted_turn_status_reaches_the_browser_unchanged() {
         for status in EVERY_TURN_STATUS {
             let expected = serde_json::to_value(status).expect("encode Codex status");
-            let converted =
-                serde_json::to_value(crate::agent::TurnStatus::from(status)).expect("encode");
+            let converted = serde_json::to_value(agent::TurnStatus::from(status)).expect("encode");
 
             assert_eq!(converted, expected, "{status:?} changed on the wire");
         }
@@ -1661,10 +1661,9 @@ mod tests {
 
     /// One notification, translated the way a subscribed thread translates it.
     async fn reported(method: &str, params: serde_json::Value) -> Option<SessionEvent> {
-        let client = super::super::CodexThreadClient::mock(Vec::new());
+        let client = CodexThreadClient::mock(Vec::new());
         client.track_approval("approval-45", json!(45)).await;
-        let notification =
-            super::super::protocol::decode_notification(method, params).expect("Codex sends this");
+        let notification = protocol::decode_notification(method, params).expect("Codex sends this");
         session_event(&notification, &client).await
     }
 
@@ -1683,19 +1682,14 @@ mod tests {
     async fn a_notification_a_newer_app_server_adds_says_nothing() {
         // An app-server that knows more than this Caffold does is not an error;
         // it is a notification with nothing in it for us.
-        let notification = super::super::protocol::decode_notification(
-            "thread/somethingNew",
-            json!({ "threadId": "thread_1" }),
-        )
-        .expect("an unknown method still decodes");
+        let notification =
+            protocol::decode_notification("thread/somethingNew", json!({ "threadId": "thread_1" }))
+                .expect("an unknown method still decodes");
 
         assert!(
-            session_event(
-                &notification,
-                &super::super::CodexThreadClient::mock(Vec::new())
-            )
-            .await
-            .is_none()
+            session_event(&notification, &CodexThreadClient::mock(Vec::new()))
+                .await
+                .is_none()
         );
     }
 
@@ -1742,9 +1736,9 @@ mod tests {
 
     #[tokio::test]
     async fn only_the_first_resolution_names_the_approval_it_answered() {
-        let client = super::super::CodexThreadClient::mock(Vec::new());
+        let client = CodexThreadClient::mock(Vec::new());
         client.track_approval("approval-45", json!(45)).await;
-        let resolved = super::super::protocol::decode_notification(
+        let resolved = protocol::decode_notification(
             "serverRequest/resolved",
             json!({ "threadId": "thread_1", "requestId": 45 }),
         )
@@ -1766,9 +1760,9 @@ mod tests {
 
     #[tokio::test]
     async fn a_resolution_for_something_else_leaves_the_approval_alone() {
-        let client = super::super::CodexThreadClient::mock(Vec::new());
+        let client = CodexThreadClient::mock(Vec::new());
         client.track_approval("approval-45", json!(45)).await;
-        let other = super::super::protocol::decode_notification(
+        let other = protocol::decode_notification(
             "serverRequest/resolved",
             json!({ "threadId": "thread_1", "requestId": 46 }),
         )

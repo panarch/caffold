@@ -440,7 +440,7 @@ mod tests {
             ),
             MockCodexResponse::error(
                 "thread/resume",
-                crate::agent::codex::CodexThreadError::RequestTimeout {
+                CodexThreadError::RequestTimeout {
                     method: "thread/resume",
                     request_id: 2,
                     timeout_ms: 120_000,

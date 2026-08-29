@@ -18,7 +18,7 @@ const REQUIRED_APP_SERVER_COMMANDS: [&str; 2] = ["daemon", "proxy"];
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub enum CodexReadinessState {
+pub(crate) enum CodexReadinessState {
     Missing,
     UnsupportedInstall,
     UpdateRequired,
@@ -31,7 +31,7 @@ pub enum CodexReadinessState {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub enum CodexReadinessReason {
+pub(crate) enum CodexReadinessReason {
     OfficialStandaloneNotFound,
     OverrideNotExecutable,
     UnsupportedPathInstall,
@@ -53,14 +53,14 @@ pub enum CodexReadinessReason {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct CodexExecutableInfo {
+pub(crate) struct CodexExecutableInfo {
     pub path: Option<String>,
     pub version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct CodexReadiness {
+pub(crate) struct CodexReadiness {
     pub state: CodexReadinessState,
     pub blocks_task_operations: bool,
     pub reason_code: CodexReadinessReason,

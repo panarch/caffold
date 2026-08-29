@@ -1,11 +1,21 @@
-use super::*;
+use super::membership::{task_described_as, unavailable_archived_task};
+use super::store::task_store_list_archived;
+use super::{TASK_CANONICAL_READ_CONCURRENCY, TASK_LIST_PAGE_SIZE, TaskListResponse, TasksQuery};
 use crate::agent::AgentError;
+use crate::app::error::ApiError;
+use crate::app::tasks::active_list;
+use crate::app::tasks::{TaskRecord, TaskState, task_activity_ms};
+use crate::task_store::ManagedThread;
+use axum::Json;
+use axum::extract::{Query, State};
+use futures_util::StreamExt;
+use futures_util::stream;
 
 pub(super) async fn list_managed_tasks(
     State(state): State<TaskState>,
     Query(_query): Query<TasksQuery>,
-) -> Result<Json<super::super::active_list::ActiveTaskProjection>, ApiError> {
-    super::super::active_list::load_cached(state.fs, state.task_store)
+) -> Result<Json<active_list::ActiveTaskProjection>, ApiError> {
+    active_list::load_cached(state.fs, state.task_store)
         .await
         .map(Json)
 }
@@ -87,6 +97,12 @@ async fn archived_task(state: &TaskState, managed: &ManagedThread) -> Result<Tas
 
 #[cfg(test)]
 mod tests {
+    use super::super::commands::managed_thread_from_task_record;
+    use super::super::store::task_store_claim;
+    use super::super::store::{task_store_archive, task_store_get_archived};
+    use crate::agent::Conversation;
+    use crate::agent::codex::{CodexThread, MockCodexResponse};
+    use crate::agent::codex::{CodexThreadClient, CodexThreadError};
     use serde_json::json;
 
     use super::super::test_support::*;
@@ -133,7 +149,7 @@ mod tests {
         let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
         let client = CodexThreadClient::mock(Vec::new());
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
-        let thread: crate::agent::codex::CodexThread =
+        let thread: CodexThread =
             serde_json::from_value(thread).expect("the fixture decodes as a Codex thread");
         let conversation = Conversation::from(&thread);
         let resolved = resolve_conversation_cwd(&state.fs, &conversation);
@@ -166,7 +182,7 @@ mod tests {
         let mut thread = task_thread_list(thread_id, root.path())["data"][0].clone();
         thread["name"] = json!("Stale Codex name");
         thread["updatedAt"] = json!(99.0);
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/read",
             json!({ "thread": thread }),
         )]);
@@ -240,14 +256,8 @@ mod tests {
         let mut good_thread = task_thread_list(good_id, root.path())["data"][0].clone();
         good_thread["updatedAt"] = json!(99.0);
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/read",
-                json!({ "thread": good_thread }),
-            ),
-            crate::agent::codex::MockCodexResponse::error(
-                "thread/read",
-                CodexThreadError::ProcessUnavailable,
-            ),
+            MockCodexResponse::ok("thread/read", json!({ "thread": good_thread })),
+            MockCodexResponse::error("thread/read", CodexThreadError::ProcessUnavailable),
         ]);
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         for thread_id in [good_id, failed_id] {

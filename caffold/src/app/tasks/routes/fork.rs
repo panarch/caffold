@@ -4,7 +4,24 @@
 //! here, then hand the provider mutation to the Task lifecycle. Preview remains
 //! read-only; a Task is claimed only after the provider returns a child.
 
-use super::*;
+use axum::extract::Path as AxumPath;
+
+use crate::agent::codex::CodexThreadError;
+use crate::agent::{Conversation, ItemKind, ThreadStatus, TurnPage};
+use crate::app::error::ApiError;
+use crate::app::tasks::lifecycle::{ForkCodexSource, ForkCodexTask};
+use crate::app::tasks::{TaskAgent, TaskDetailResponse, TaskState};
+use crate::task_store::{ManagedSection, ManagedThread, RunBy, TaskProvider};
+use axum::extract::State;
+use axum::routing::post;
+use axum::{Json, Router};
+use serde::{Deserialize, Serialize};
+
+use super::commands::{require_codex_thread_client, require_codex_thread_connection};
+use super::conversation::task_not_managed_error;
+use super::membership::task_store_join_error;
+use super::store::{task_store_api_error, task_store_get};
+use crate::app::tasks::projection;
 
 const TASK_FORK_PREVIEW_TURNS: usize = 4;
 const TASK_FORK_PREVIEW_MESSAGES: usize = 12;
@@ -121,7 +138,7 @@ async fn preview_task_fork_source(
     Ok(Json(TaskForkSourcePreview {
         provider: "codex",
         source_id,
-        display_name: super::super::projection::conversation_display_name(&conversation),
+        display_name: projection::conversation_display_name(&conversation),
         summary: non_empty_fork_metadata(&conversation.preview),
         status: conversation.status,
         cwd: non_empty_fork_metadata(&conversation.cwd),
@@ -362,6 +379,10 @@ async fn fork_source_context(
 
 #[cfg(test)]
 mod tests {
+    use super::super::router;
+    use crate::agent::codex::CodexThreadClient;
+    use crate::agent::codex::MockCodexResponse;
+    use axum::body::Body;
     use serde_json::{Value as JsonValue, json};
     use tower::ServiceExt;
 
@@ -478,12 +499,12 @@ mod tests {
             "turns": []
         });
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/read",
                 json!({ "threadId": source_thread_id, "includeTurns": false }),
                 json!({ "thread": source.clone() }),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/fork",
                 json!({
                     "threadId": source_thread_id,
@@ -503,12 +524,12 @@ mod tests {
                     "sandbox": { "type": "workspaceWrite" }
                 }),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/read",
                 json!({ "threadId": source_thread_id, "includeTurns": false }),
                 json!({ "thread": source }),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/turns/list",
                 json!({
                     "threadId": child_thread_id,
@@ -518,7 +539,7 @@ mod tests {
                 }),
                 inherited_turns_page(),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/name/set",
                 json!({
                     "threadId": child_thread_id,
@@ -623,12 +644,12 @@ mod tests {
         let mut source = fork_thread(source_thread_id, root.path(), 2.0);
         source["status"] = json!({ "type": "notLoaded" });
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/read",
                 json!({ "threadId": source_thread_id, "includeTurns": false }),
                 json!({ "thread": source }),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/turns/list",
                 json!({
                     "threadId": source_thread_id,
@@ -698,7 +719,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let source_thread_id = "thread-requested-preview";
         let different_thread_id = "thread-different-preview";
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok_for(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok_for(
             "thread/read",
             json!({ "threadId": source_thread_id, "includeTurns": false }),
             json!({
@@ -768,12 +789,12 @@ mod tests {
             "turns": []
         });
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/read",
                 json!({ "threadId": source_thread_id, "includeTurns": false }),
                 json!({ "thread": source_before }),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/fork",
                 json!({
                     "threadId": source_thread_id,
@@ -793,12 +814,12 @@ mod tests {
                     "sandbox": { "type": "workspaceWrite" }
                 }),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/read",
                 json!({ "threadId": source_thread_id, "includeTurns": false }),
                 json!({ "thread": source_after }),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/turns/list",
                 json!({
                     "threadId": child_thread_id,
@@ -808,7 +829,7 @@ mod tests {
                 }),
                 inherited_turns_page(),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/name/set",
                 json!({
                     "threadId": child_thread_id,
@@ -883,7 +904,7 @@ mod tests {
         let source_thread_id = "thread-external-active";
         let mut source = fork_thread(source_thread_id, root.path(), 2.0);
         source["status"] = json!({ "type": "active", "activeFlags": [] });
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok_for(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok_for(
             "thread/read",
             json!({ "threadId": source_thread_id, "includeTurns": false }),
             json!({ "thread": source }),
@@ -935,7 +956,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let source_thread_id = "thread-requested-source";
         let different_thread_id = "thread-different-source";
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok_for(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok_for(
             "thread/read",
             json!({ "threadId": source_thread_id, "includeTurns": false }),
             json!({
@@ -1044,7 +1065,7 @@ mod tests {
     async fn fork_preview_reports_an_unresolved_external_id_without_claiming_it() {
         let root = tempfile::tempdir().unwrap();
         let source_thread_id = "missing-external-thread";
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::error(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::error(
             "thread/read",
             CodexThreadError::ThreadUnavailable(source_thread_id.to_string()),
         )]);

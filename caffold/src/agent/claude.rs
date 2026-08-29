@@ -66,7 +66,7 @@ use crate::agent::driver::{
     TurnRejected, bounded,
 };
 use crate::agent::{
-    ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, Conversation,
+    ActivityStatus, AgentError, ApprovalDecision, ApprovalDetail, ApprovalRequest, Conversation,
     ConversationItem, ItemKind, MessageContent, SessionEvent, SessionEventKind, ThreadActiveFlag,
     ThreadStatus, TokenCount, TokenUsage, Turn, TurnOrigin, TurnPage, TurnStatus,
 };
@@ -991,9 +991,8 @@ pub(crate) async fn claude_turn_options(
 /// The runner gone is the agent unreachable; a conversation nobody is
 /// watching is a conversation that is not there to be asked about; the rest
 /// is carried as what happened, in Claude's own words.
-impl From<ClaudeError> for crate::agent::AgentError {
+impl From<ClaudeError> for AgentError {
     fn from(error: ClaudeError) -> Self {
-        use crate::agent::AgentError;
         match error {
             ClaudeError::Runner(_) => AgentError::Unreachable(error.to_string()),
             // Not watching is not unreachable: the runner is fine and the

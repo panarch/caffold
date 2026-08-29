@@ -277,6 +277,7 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::codex::{CodexReadiness, CodexReadinessReason, CodexReadinessState};
 
     #[test]
     fn app_server_timeout_preserves_rpc_context_in_api_error() {
@@ -353,9 +354,9 @@ mod tests {
     #[test]
     fn blocking_readiness_has_a_stable_task_api_error() {
         let error = ApiError::from(CodexThreadError::Readiness(Box::new(
-            crate::agent::codex::CodexReadiness::blocking(
-                crate::agent::codex::CodexReadinessState::UpdateRequired,
-                crate::agent::codex::CodexReadinessReason::VersionBelowMinimum,
+            CodexReadiness::blocking(
+                CodexReadinessState::UpdateRequired,
+                CodexReadinessReason::VersionBelowMinimum,
                 "Codex must be updated.",
                 None,
             ),

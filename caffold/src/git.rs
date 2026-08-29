@@ -19,20 +19,20 @@ pub(crate) use worktree::{
 pub(crate) use worktree::{create_attached_worktree, managed_repository};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Repository {
+pub(crate) struct Repository {
     pub root: PathBuf,
     pub branch: Option<String>,
     pub dirty: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RepositoryMetadataPaths {
+pub(crate) struct RepositoryMetadataPaths {
     pub git_dir: PathBuf,
     pub common_dir: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StatusEntry {
+pub(crate) struct StatusEntry {
     pub repo_relative_path: String,
     pub status: String,
     pub staged: bool,
@@ -41,19 +41,19 @@ pub struct StatusEntry {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct DiffStats {
+pub(crate) struct DiffStats {
     pub additions: u64,
     pub deletions: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FileDiffStats {
+pub(crate) enum FileDiffStats {
     Available(DiffStats),
     Unavailable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LogEntry {
+pub(crate) struct LogEntry {
     pub sha: String,
     pub short_sha: String,
     pub subject: String,
@@ -64,19 +64,19 @@ pub struct LogEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CommitFile {
+pub(crate) struct CommitFile {
     pub repo_relative_path: String,
     pub status: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CompareRefs {
+pub(crate) struct CompareRefs {
     pub base: String,
     pub head: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GitFetchResult {
+pub(crate) struct GitFetchResult {
     pub remote: String,
     pub branch: String,
     pub reference: String,
@@ -85,7 +85,7 @@ pub struct GitFetchResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GitFetchError {
+pub(crate) enum GitFetchError {
     RemoteNotFound,
     RemoteAmbiguous,
     RemoteHeadUnavailable { remote: String },
@@ -94,19 +94,19 @@ pub enum GitFetchError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BranchRef {
+pub(crate) struct BranchRef {
     pub name: String,
     pub kind: BranchRefKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BranchRefKind {
+pub(crate) enum BranchRefKind {
     Head,
     Local,
     Remote,
 }
 
-pub fn repository_for(path: &Path) -> Option<Repository> {
+pub(crate) fn repository_for(path: &Path) -> Option<Repository> {
     let root = PathBuf::from(run_git(path, &["rev-parse", "--show-toplevel"])?)
         .canonicalize()
         .ok()?;
@@ -125,11 +125,13 @@ pub fn repository_for(path: &Path) -> Option<Repository> {
     })
 }
 
-pub fn has_git_marker(path: &Path) -> bool {
+pub(crate) fn has_git_marker(path: &Path) -> bool {
     path.join(".git").exists()
 }
 
-pub fn repository_metadata_paths(repository: &Repository) -> Option<RepositoryMetadataPaths> {
+pub(crate) fn repository_metadata_paths(
+    repository: &Repository,
+) -> Option<RepositoryMetadataPaths> {
     let git_dir = PathBuf::from(run_git(
         &repository.root,
         &["rev-parse", "--absolute-git-dir"],
@@ -149,11 +151,11 @@ pub fn repository_metadata_paths(repository: &Repository) -> Option<RepositoryMe
     })
 }
 
-pub fn head_sha(repository: &Repository) -> Option<String> {
+pub(crate) fn head_sha(repository: &Repository) -> Option<String> {
     run_git(&repository.root, &["rev-parse", "HEAD"]).filter(|head| !head.is_empty())
 }
 
-pub fn status_entries(repository: &Repository) -> Option<Vec<StatusEntry>> {
+pub(crate) fn status_entries(repository: &Repository) -> Option<Vec<StatusEntry>> {
     let output = run_git_bytes(
         &repository.root,
         &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
@@ -162,7 +164,10 @@ pub fn status_entries(repository: &Repository) -> Option<Vec<StatusEntry>> {
     Some(parse_status_entries(&output))
 }
 
-pub fn working_tree_stats(repository: &Repository, entries: &[StatusEntry]) -> Option<DiffStats> {
+pub(crate) fn working_tree_stats(
+    repository: &Repository,
+    entries: &[StatusEntry],
+) -> Option<DiffStats> {
     let has_head = run_git_bytes(&repository.root, &["rev-parse", "--verify", "HEAD"]).is_some();
     let output = if has_head {
         run_git_bytes(
@@ -197,7 +202,7 @@ pub fn working_tree_stats(repository: &Repository, entries: &[StatusEntry]) -> O
     Some(stats)
 }
 
-pub fn ignored_paths(
+pub(crate) fn ignored_paths(
     repository: &Repository,
     repo_relative_paths: impl IntoIterator<Item = String>,
 ) -> HashSet<String> {
@@ -228,7 +233,11 @@ pub fn ignored_paths(
         .collect()
 }
 
-pub fn diff(repository: &Repository, repo_relative_path: &str, kind: &str) -> Option<String> {
+pub(crate) fn diff(
+    repository: &Repository,
+    repo_relative_path: &str,
+    kind: &str,
+) -> Option<String> {
     let null_path = if cfg!(windows) { "NUL" } else { "/dev/null" };
     let args = match kind {
         "staged" => vec!["diff", "--cached", "--", repo_relative_path],
@@ -247,7 +256,7 @@ pub fn diff(repository: &Repository, repo_relative_path: &str, kind: &str) -> Op
         .map(|stdout| stdout.trim_end().to_string())
 }
 
-pub fn diff_stats(
+pub(crate) fn diff_stats(
     repository: &Repository,
     repo_relative_path: &str,
     kind: &str,
@@ -283,7 +292,7 @@ pub fn diff_stats(
     Some(parse_file_diff_stats_for_path(&output, repo_relative_path))
 }
 
-pub fn log_count(repository: &Repository) -> Option<usize> {
+pub(crate) fn log_count(repository: &Repository) -> Option<usize> {
     let output = run_git_owned_allowing_status(
         &repository.root,
         &[
@@ -302,7 +311,11 @@ pub fn log_count(repository: &Repository) -> Option<usize> {
     count.parse().ok()
 }
 
-pub fn log_entries(repository: &Repository, page: usize, per_page: usize) -> Option<Vec<LogEntry>> {
+pub(crate) fn log_entries(
+    repository: &Repository,
+    page: usize,
+    per_page: usize,
+) -> Option<Vec<LogEntry>> {
     let per_page = per_page.clamp(1, 100);
     let offset = page.saturating_sub(1).saturating_mul(per_page);
     let args = vec![
@@ -318,7 +331,7 @@ pub fn log_entries(repository: &Repository, page: usize, per_page: usize) -> Opt
     Some(parse_log_entries(&output))
 }
 
-pub fn commit_summary(repository: &Repository, commit_sha: &str) -> Option<LogEntry> {
+pub(crate) fn commit_summary(repository: &Repository, commit_sha: &str) -> Option<LogEntry> {
     let commit_sha = normalize_commit_sha(commit_sha)?;
     let args = vec![
         "log".to_string(),
@@ -333,7 +346,7 @@ pub fn commit_summary(repository: &Repository, commit_sha: &str) -> Option<LogEn
         .next()
 }
 
-pub fn commit_files(repository: &Repository, commit_sha: &str) -> Option<Vec<CommitFile>> {
+pub(crate) fn commit_files(repository: &Repository, commit_sha: &str) -> Option<Vec<CommitFile>> {
     let commit_sha = normalize_commit_sha(commit_sha)?;
     let args = vec![
         "show".to_string(),
@@ -348,7 +361,7 @@ pub fn commit_files(repository: &Repository, commit_sha: &str) -> Option<Vec<Com
     Some(parse_commit_files(&output))
 }
 
-pub fn commit_stats(repository: &Repository, commit_sha: &str) -> Option<DiffStats> {
+pub(crate) fn commit_stats(repository: &Repository, commit_sha: &str) -> Option<DiffStats> {
     let commit_sha = normalize_commit_sha(commit_sha)?;
     let args = vec![
         "show".to_string(),
@@ -362,7 +375,7 @@ pub fn commit_stats(repository: &Repository, commit_sha: &str) -> Option<DiffSta
     Some(parse_diff_stats(&run_git_owned(&repository.root, &args)?))
 }
 
-pub fn commit_diff(
+pub(crate) fn commit_diff(
     repository: &Repository,
     commit_sha: &str,
     repo_relative_path: &str,
@@ -387,7 +400,7 @@ pub fn commit_diff(
         .map(|stdout| stdout.trim_end().to_string())
 }
 
-pub fn commit_diff_stats(
+pub(crate) fn commit_diff_stats(
     repository: &Repository,
     commit_sha: &str,
     repo_relative_path: &str,
@@ -413,7 +426,7 @@ pub fn commit_diff_stats(
     ))
 }
 
-pub fn compare_refs(
+pub(crate) fn compare_refs(
     repository: &Repository,
     base_ref: Option<&str>,
     head_ref: Option<&str>,
@@ -430,7 +443,7 @@ pub fn compare_refs(
     Some(CompareRefs { base, head })
 }
 
-pub fn branch_refs(repository: &Repository) -> Option<Vec<BranchRef>> {
+pub(crate) fn branch_refs(repository: &Repository) -> Option<Vec<BranchRef>> {
     let output = run_git_bytes(
         &repository.root,
         &[
@@ -457,7 +470,10 @@ pub fn branch_refs(repository: &Repository) -> Option<Vec<BranchRef>> {
     Some(refs)
 }
 
-pub fn compare_files(repository: &Repository, refs: &CompareRefs) -> Option<Vec<CommitFile>> {
+pub(crate) fn compare_files(
+    repository: &Repository,
+    refs: &CompareRefs,
+) -> Option<Vec<CommitFile>> {
     let range = compare_range(refs);
     let args = vec![
         "diff".to_string(),
@@ -470,7 +486,7 @@ pub fn compare_files(repository: &Repository, refs: &CompareRefs) -> Option<Vec<
     Some(parse_commit_files(&output))
 }
 
-pub fn compare_stats(repository: &Repository, refs: &CompareRefs) -> Option<DiffStats> {
+pub(crate) fn compare_stats(repository: &Repository, refs: &CompareRefs) -> Option<DiffStats> {
     let range = compare_range(refs);
     let args = vec![
         "diff".to_string(),
@@ -482,7 +498,7 @@ pub fn compare_stats(repository: &Repository, refs: &CompareRefs) -> Option<Diff
     Some(parse_diff_stats(&run_git_owned(&repository.root, &args)?))
 }
 
-pub fn compare_diff(
+pub(crate) fn compare_diff(
     repository: &Repository,
     refs: &CompareRefs,
     repo_relative_path: &str,
@@ -505,7 +521,7 @@ pub fn compare_diff(
         .map(|stdout| stdout.trim_end().to_string())
 }
 
-pub fn compare_diff_stats(
+pub(crate) fn compare_diff_stats(
     repository: &Repository,
     refs: &CompareRefs,
     repo_relative_path: &str,
@@ -540,7 +556,7 @@ fn current_branch(path: &Path) -> Option<String> {
         .map(|head| format!("HEAD {head}"))
 }
 
-pub fn current_compare_ref(repository: &Repository) -> Option<String> {
+pub(crate) fn current_compare_ref(repository: &Repository) -> Option<String> {
     if let Some(branch) = repository.branch.as_deref()
         && !branch.starts_with("HEAD ")
         && let Some(branch) = resolve_compare_ref(repository, branch)
@@ -551,7 +567,7 @@ pub fn current_compare_ref(repository: &Repository) -> Option<String> {
     resolve_compare_ref(repository, "HEAD")
 }
 
-pub fn default_compare_base_ref(repository: &Repository) -> Option<String> {
+pub(crate) fn default_compare_base_ref(repository: &Repository) -> Option<String> {
     if let Some(remote_head) = run_git(
         &repository.root,
         &[
@@ -569,7 +585,9 @@ pub fn default_compare_base_ref(repository: &Repository) -> Option<String> {
         .find_map(|candidate| resolve_compare_ref(repository, candidate))
 }
 
-pub fn fetch_remote_default(repository: &Repository) -> Result<GitFetchResult, GitFetchError> {
+pub(crate) fn fetch_remote_default(
+    repository: &Repository,
+) -> Result<GitFetchResult, GitFetchError> {
     let remotes = remote_names(repository).ok_or(GitFetchError::RemoteNotFound)?;
     let configured = repository
         .branch

@@ -32,7 +32,7 @@ use server_requests::PendingApproval;
 /// app-server proxy and nothing else has one, because Claude has no daemon to
 /// proxy.
 #[derive(Clone)]
-pub(in crate::app) struct TaskRuntime {
+pub(in crate::app::tasks) struct TaskRuntime {
     process: Arc<CodexProcess>,
     codex_mcp: Option<CodexMcpBindings>,
     claude: ClaudeClient,
@@ -52,26 +52,26 @@ pub(in crate::app) struct TaskRuntime {
 
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct CodexUsageDiagnostics {
-    pub(in crate::app) threads: BTreeMap<String, ThreadUsageDiagnostics>,
+pub(in crate::app::tasks) struct CodexUsageDiagnostics {
+    pub(in crate::app::tasks) threads: BTreeMap<String, ThreadUsageDiagnostics>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct ThreadUsageDiagnostics {
-    pub(in crate::app) turn_id: String,
-    pub(in crate::app) token_usage: TokenUsage,
+pub(in crate::app::tasks) struct ThreadUsageDiagnostics {
+    pub(in crate::app::tasks) turn_id: String,
+    pub(in crate::app::tasks) token_usage: TokenUsage,
 }
 
 #[derive(Clone)]
-pub(in crate::app) struct CodexConnection {
-    pub(in crate::app) client: CodexThreadClient,
-    pub(in crate::app) generation: u64,
+pub(in crate::app::tasks) struct CodexConnection {
+    pub(in crate::app::tasks) client: CodexThreadClient,
+    pub(in crate::app::tasks) generation: u64,
 }
 
 impl CodexConnection {
     /// This connection as the agent it reaches.
-    pub(in crate::app) fn driver(&self) -> Driver {
+    pub(in crate::app::tasks) fn driver(&self) -> Driver {
         self.client.driver()
     }
 }
@@ -83,7 +83,7 @@ impl CodexConnection {
 /// Claude Task through the runner, and neither one needs the other to be
 /// working.
 #[derive(Clone)]
-pub(in crate::app) enum TaskAgent {
+pub(in crate::app::tasks) enum TaskAgent {
     Codex(CodexConnection),
     Claude { driver: Driver },
 }
@@ -96,14 +96,14 @@ pub(in crate::app) enum TaskAgent {
 const CLAUDE_GENERATION: u64 = 1;
 
 impl TaskAgent {
-    pub(in crate::app) fn driver(&self) -> Driver {
+    pub(in crate::app::tasks) fn driver(&self) -> Driver {
         match self {
             Self::Codex(connection) => connection.driver(),
             Self::Claude { driver } => driver.clone(),
         }
     }
 
-    pub(in crate::app) fn generation(&self) -> u64 {
+    pub(in crate::app::tasks) fn generation(&self) -> u64 {
         match self {
             Self::Codex(connection) => connection.generation,
             Self::Claude { .. } => CLAUDE_GENERATION,
@@ -114,7 +114,7 @@ impl TaskAgent {
     ///
     /// Codex holds a thread's working directory and answers for it, so a second
     /// copy in the store would only go stale. Claude has nobody else to ask.
-    pub(in crate::app) fn run_by(&self, cwd: &str) -> RunBy {
+    pub(in crate::app::tasks) fn run_by(&self, cwd: &str) -> RunBy {
         match self {
             Self::Codex(_) => RunBy::Codex,
             Self::Claude { .. } => RunBy::Claude {
@@ -128,7 +128,7 @@ impl TaskAgent {
     /// Reading a rollout file, renaming a thread, and recovering a lost
     /// connection are all Codex's own, and a Claude Task simply has none of
     /// them.
-    pub(in crate::app) fn codex(&self) -> Option<&CodexConnection> {
+    pub(in crate::app::tasks) fn codex(&self) -> Option<&CodexConnection> {
         match self {
             Self::Codex(connection) => Some(connection),
             Self::Claude { .. } => None,
@@ -142,7 +142,7 @@ impl TaskAgent {
 /// should: a session that changed and a session that can no longer be reached
 /// are the same news either way.
 #[derive(Clone)]
-pub(in crate::app) enum TaskRuntimeSignal {
+pub(in crate::app::tasks) enum TaskRuntimeSignal {
     SessionChanged {
         thread_id: String,
         snapshot: Box<SessionSnapshot>,
@@ -154,7 +154,7 @@ pub(in crate::app) enum TaskRuntimeSignal {
 }
 
 #[derive(Debug)]
-pub(in crate::app) enum ApprovalResolveError {
+pub(in crate::app::tasks) enum ApprovalResolveError {
     NotFound,
     ThreadMismatch,
     ResolutionMismatch,
@@ -168,7 +168,7 @@ impl From<CodexThreadError> for ApprovalResolveError {
 }
 
 impl TaskRuntime {
-    pub(in crate::app) fn new(
+    pub(in crate::app::tasks) fn new(
         claude: ClaudeClient,
         sessions: TaskSessions,
         events: TaskEvents,
@@ -205,27 +205,27 @@ impl TaskRuntime {
     /// startup rather than when a connection appears. It is separate from
     /// construction because constructing a runtime is not by itself proof of a
     /// running executor.
-    pub(in crate::app) fn watch_claude(&self) {
+    pub(in crate::app::tasks) fn watch_claude(&self) {
         self.spawn_claude_bridge(self.shutdown.subscribe());
         self.take_up_live_conversations();
     }
 
-    pub(in crate::app) fn with_lifecycle(mut self, lifecycle: TaskLifecycle) -> Self {
+    pub(in crate::app::tasks) fn with_lifecycle(mut self, lifecycle: TaskLifecycle) -> Self {
         self.lifecycle = Some(lifecycle);
         self
     }
 
-    pub(in crate::app) fn with_push_service(mut self, push: PushService) -> Self {
+    pub(in crate::app::tasks) fn with_push_service(mut self, push: PushService) -> Self {
         self.push = Some(push);
         self
     }
 
-    pub(in crate::app) fn subscribe(&self) -> broadcast::Receiver<TaskRuntimeSignal> {
+    pub(in crate::app::tasks) fn subscribe(&self) -> broadcast::Receiver<TaskRuntimeSignal> {
         self.signals.subscribe()
     }
 
     /// Claude, however it is being reached.
-    pub(in crate::app) fn claude(&self) -> &ClaudeClient {
+    pub(in crate::app::tasks) fn claude(&self) -> &ClaudeClient {
         &self.claude
     }
 
@@ -233,7 +233,7 @@ impl TaskRuntime {
     ///
     /// The Task says which one, so a Claude Task is never held up by Codex
     /// being unready and a Codex Task never waits on a runner.
-    pub(in crate::app) async fn task_agent(
+    pub(in crate::app::tasks) async fn task_agent(
         &self,
         thread_id: &str,
     ) -> Result<TaskAgent, AgentError> {
@@ -266,7 +266,7 @@ impl TaskRuntime {
     /// removes the directory, not the transcript the path names — so the
     /// driver is built on it whenever a record exists, and on the row's own
     /// directory only for a Task that never moved.
-    pub(in crate::app) async fn agent_for(
+    pub(in crate::app::tasks) async fn agent_for(
         &self,
         managed: &ManagedThread,
     ) -> Result<TaskAgent, AgentError> {
@@ -293,7 +293,7 @@ impl TaskRuntime {
         }
     }
 
-    pub(in crate::app) fn usage_diagnostics(&self) -> CodexUsageDiagnostics {
+    pub(in crate::app::tasks) fn usage_diagnostics(&self) -> CodexUsageDiagnostics {
         let threads = self
             .usage
             .lock()
@@ -318,15 +318,20 @@ impl TaskRuntime {
 
 #[cfg(test)]
 mod tests {
+    use crate::agent;
     use serde_json::json;
 
     use super::*;
-    use crate::agent::codex::{CodexDaemonInfo, CodexReadiness, MockCodexResponse};
+    use crate::agent::codex::{
+        CodexDaemonInfo, CodexReadiness, CodexReadinessReason, CodexReadinessState,
+        MockCodexResponse,
+    };
+    use crate::app::tasks::sessions::SessionLifecycle;
 
     fn test_runtime(store: TaskStore) -> TaskRuntime {
         let (shutdown, _) = broadcast::channel(1);
         TaskRuntime::new(
-            crate::agent::claude::ClaudeClient::mock().0,
+            agent::claude::ClaudeClient::mock().0,
             TaskSessions::default(),
             TaskEvents::default(),
             store,
@@ -341,8 +346,8 @@ mod tests {
             .install_test_client(3, CodexThreadClient::mock(Vec::new()))
             .await;
         let readiness = CodexReadiness::blocking(
-            crate::agent::codex::CodexReadinessState::UpdateRequired,
-            crate::agent::codex::CodexReadinessReason::VersionBelowMinimum,
+            CodexReadinessState::UpdateRequired,
+            CodexReadinessReason::VersionBelowMinimum,
             "Codex must be updated before Task operations can run.",
             None,
         );
@@ -414,7 +419,7 @@ mod tests {
         let store = TaskStore::memory().expect("in-memory task store");
         let (shutdown, _) = broadcast::channel(1);
         let runtime = TaskRuntime::new(
-            crate::agent::claude::ClaudeClient::mock().0,
+            agent::claude::ClaudeClient::mock().0,
             sessions.clone(),
             events,
             store,
@@ -467,10 +472,7 @@ mod tests {
             .snapshot("thread_restart")
             .await
             .expect("session snapshot");
-        assert_eq!(
-            snapshot.lifecycle,
-            crate::app::tasks::sessions::SessionLifecycle::Error
-        );
+        assert_eq!(snapshot.lifecycle, SessionLifecycle::Error);
         assert_eq!(
             snapshot.last_error.as_deref(),
             Some("Codex runtime is restarting.")

@@ -4,8 +4,8 @@ use futures_util::{StreamExt, stream};
 
 use crate::{
     agent::codex::{
-        CodexStatusResponse, CodexThread, CodexThreadClient, CodexThreadError, ThreadSectionFilter,
-        inspect_codex_installation,
+        CodexStatusResponse, CodexThread, CodexThreadClient, CodexThreadError, ThreadSection,
+        ThreadSectionFilter, inspect_codex_installation,
     },
     task_store::{
         ManagedThreadMigrationInventory, NavigatorMigrationSection, NavigatorMigrationSnapshot,
@@ -203,7 +203,7 @@ async fn collect_snapshot_from_client(
 
 async fn list_all_sections(
     client: &CodexThreadClient,
-) -> Result<Vec<crate::agent::codex::ThreadSection>, CodexThreadError> {
+) -> Result<Vec<ThreadSection>, CodexThreadError> {
     let mut cursor = None;
     let mut seen_cursors = HashSet::new();
     let mut seen_ids = HashSet::new();

@@ -21,7 +21,7 @@ use crate::{
 };
 
 #[derive(Debug, Error)]
-pub(in crate::app) enum ManagedWorktreeError {
+pub(in crate::app::tasks) enum ManagedWorktreeError {
     #[error(transparent)]
     Store(#[from] TaskStoreError),
     #[error(transparent)]
@@ -41,19 +41,19 @@ pub(in crate::app) enum ManagedWorktreeError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::app) enum ArchiveOutcome {
+pub(in crate::app::tasks) enum ArchiveOutcome {
     NotManaged,
     Archived(ManagedWorktree),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::app) enum RestoreOutcome {
+pub(in crate::app::tasks) enum RestoreOutcome {
     NotManaged,
     Restored(ManagedWorktree),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::app) enum IsolateOutcome {
+pub(in crate::app::tasks) enum IsolateOutcome {
     AlreadyReady {
         worktree: ManagedWorktree,
         checkout: WorktreeCheckout,
@@ -66,13 +66,13 @@ pub(in crate::app) enum IsolateOutcome {
 }
 
 #[derive(Clone)]
-pub(in crate::app) struct ManagedWorktrees {
+pub(in crate::app::tasks) struct ManagedWorktrees {
     root: Arc<PathBuf>,
     store: TaskStore,
 }
 
 impl ManagedWorktrees {
-    pub(in crate::app) fn new(
+    pub(in crate::app::tasks) fn new(
         fs: Arc<RootedFs>,
         store: TaskStore,
         root: PathBuf,
@@ -96,7 +96,7 @@ impl ManagedWorktrees {
         Ok(worktrees)
     }
 
-    pub(in crate::app) async fn isolate_current(
+    pub(in crate::app::tasks) async fn isolate_current(
         &self,
         source: PathBuf,
         thread_id: String,
@@ -120,7 +120,7 @@ impl ManagedWorktrees {
         .map_err(|error| ManagedWorktreeError::Worker(error.to_string()))?
     }
 
-    pub(in crate::app) async fn archive_for_thread(
+    pub(in crate::app::tasks) async fn archive_for_thread(
         &self,
         thread_id: String,
     ) -> Result<ArchiveOutcome, ManagedWorktreeError> {
@@ -130,7 +130,7 @@ impl ManagedWorktrees {
             .map_err(|error| ManagedWorktreeError::Worker(error.to_string()))?
     }
 
-    pub(in crate::app) async fn preflight_archive_for_thread(
+    pub(in crate::app::tasks) async fn preflight_archive_for_thread(
         &self,
         thread_id: String,
     ) -> Result<(), ManagedWorktreeError> {
@@ -140,7 +140,7 @@ impl ManagedWorktrees {
             .map_err(|error| ManagedWorktreeError::Worker(error.to_string()))?
     }
 
-    pub(in crate::app) async fn restore_for_thread(
+    pub(in crate::app::tasks) async fn restore_for_thread(
         &self,
         thread_id: String,
     ) -> Result<RestoreOutcome, ManagedWorktreeError> {
@@ -720,6 +720,7 @@ fn normalize_absolute_path(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    use crate::git;
     use std::{fs, process::Command};
 
     use super::*;
@@ -1262,7 +1263,7 @@ mod tests {
         fs::write(source.join("README.md"), "new source edit\n").unwrap();
         fs::write(source.join("untracked.txt"), "stay in source\n").unwrap();
         let source_status = git_output(&source, &["status", "--porcelain=v1"]);
-        let repository = crate::git::managed_repository(&source).unwrap();
+        let repository = git::managed_repository(&source).unwrap();
         let store = TaskStore::memory().unwrap();
         let managed_root = temp.path().join("managed");
         fs::create_dir(&managed_root).unwrap();
@@ -1322,20 +1323,16 @@ mod tests {
         fs::create_dir(&source).unwrap();
         initialize_repository(&source);
         git(&source, &["branch", "-M", "main"]);
-        let repository = crate::git::managed_repository(&source).unwrap();
+        let repository = git::managed_repository(&source).unwrap();
         let store = TaskStore::memory().unwrap();
         let managed_root = temp.path().join("managed");
         fs::create_dir(&managed_root).unwrap();
         let managed_root = managed_root.canonicalize().unwrap();
         let worktree_id = Uuid::new_v4().to_string();
         let worktree_path = managed_root.join(&worktree_id);
-        let checkout = crate::git::create_attached_worktree(
-            &source,
-            &worktree_path,
-            "caffold/recovered-clean",
-            None,
-        )
-        .unwrap();
+        let checkout =
+            git::create_attached_worktree(&source, &worktree_path, "caffold/recovered-clean", None)
+                .unwrap();
         fs::write(worktree_path.join("keep.txt"), "do not reset\n").unwrap();
         store
             .create_worktree(ManagedWorktree {
@@ -1381,7 +1378,7 @@ mod tests {
         initialize_repository(&source);
         git(&source, &["branch", "-M", "main"]);
         git(&source, &["switch", "-c", "review/recover-clean"]);
-        let repository = crate::git::managed_repository(&source).unwrap();
+        let repository = git::managed_repository(&source).unwrap();
         let store = TaskStore::memory().unwrap();
         let managed_root = temp.path().join("managed");
         fs::create_dir(&managed_root).unwrap();
@@ -1437,7 +1434,7 @@ mod tests {
         initialize_repository(&source);
         git(&source, &["branch", "-M", "main"]);
         git(&source, &["switch", "-c", "review/recover-handoff"]);
-        let repository = crate::git::managed_repository(&source).unwrap();
+        let repository = git::managed_repository(&source).unwrap();
         let store = TaskStore::memory().unwrap();
         let managed_root = temp.path().join("managed");
         fs::create_dir(&managed_root).unwrap();
@@ -1503,7 +1500,7 @@ mod tests {
         git(&source, &["branch", "-M", "main"]);
         fs::write(source.join("README.md"), "recover me\n").unwrap();
         fs::write(source.join("untracked.txt"), "also recover me\n").unwrap();
-        let repository = crate::git::managed_repository(&source).unwrap();
+        let repository = git::managed_repository(&source).unwrap();
         let store = TaskStore::memory().unwrap();
         let managed_root = temp.path().join("managed");
         fs::create_dir(&managed_root).unwrap();
@@ -1573,7 +1570,7 @@ mod tests {
         fs::write(source.join("staged.txt"), "keep staged\n").unwrap();
         git(&source, &["add", "staged.txt"]);
 
-        let repository = crate::git::managed_repository(&source).unwrap();
+        let repository = git::managed_repository(&source).unwrap();
         let store = TaskStore::memory().unwrap();
         let managed_root = temp.path().join("managed");
         fs::create_dir(&managed_root).unwrap();
@@ -1581,7 +1578,7 @@ mod tests {
         let worktree_id = Uuid::new_v4().to_string();
         let worktree_path = managed_root.join(&worktree_id);
         protect_transfer_snapshot(&source, &worktree_id);
-        let checkout = crate::git::create_attached_worktree(
+        let checkout = git::create_attached_worktree(
             &source,
             &worktree_path,
             "caffold/recovered-existing",
@@ -1664,7 +1661,7 @@ mod tests {
         git(&source, &["switch", "-c", "review/pr-77"]);
         fs::write(source.join("review.txt"), "recover feature review\n").unwrap();
 
-        let repository = crate::git::managed_repository(&source).unwrap();
+        let repository = git::managed_repository(&source).unwrap();
         let store = TaskStore::memory().unwrap();
         let managed_root = temp.path().join("managed");
         fs::create_dir(&managed_root).unwrap();
@@ -1719,20 +1716,16 @@ mod tests {
         let source = temp.path().join("source");
         fs::create_dir(&source).unwrap();
         initialize_repository(&source);
-        let repository = crate::git::managed_repository(&source).unwrap();
+        let repository = git::managed_repository(&source).unwrap();
         let store = TaskStore::memory().unwrap();
         let managed_root = temp.path().join("managed");
         fs::create_dir(&managed_root).unwrap();
         let managed_root = managed_root.canonicalize().unwrap();
         let worktree_id = Uuid::new_v4().to_string();
         let worktree_path = managed_root.join(&worktree_id);
-        let checkout = crate::git::create_attached_worktree(
-            &source,
-            &worktree_path,
-            "caffold/uncertain",
-            None,
-        )
-        .unwrap();
+        let checkout =
+            git::create_attached_worktree(&source, &worktree_path, "caffold/uncertain", None)
+                .unwrap();
         fs::write(worktree_path.join("uncertain.txt"), "do not delete\n").unwrap();
         store
             .create_worktree(ManagedWorktree {
@@ -1847,8 +1840,7 @@ mod tests {
         let external_path = temp.path().join("external-worktree");
         let branch_name = "caffold/external";
         let checkout =
-            crate::git::create_attached_worktree(&source, &external_path, branch_name, None)
-                .unwrap();
+            git::create_attached_worktree(&source, &external_path, branch_name, None).unwrap();
         let worktree_id = Uuid::new_v4().to_string();
         let owned_slot = managed_root.canonicalize().unwrap().join(&worktree_id);
         symlink(&external_path, &owned_slot).unwrap();
@@ -1997,8 +1989,7 @@ mod tests {
         let creating_path = canonical_managed_root.join(&creating_id);
         let creating_branch = "caffold/interrupted-create";
         let creating_checkout =
-            crate::git::create_attached_worktree(&source, &creating_path, creating_branch, None)
-                .unwrap();
+            git::create_attached_worktree(&source, &creating_path, creating_branch, None).unwrap();
         store
             .create_worktree(ManagedWorktree {
                 worktree_id: creating_id.clone(),
@@ -2045,7 +2036,7 @@ mod tests {
                 200,
             )
             .unwrap();
-        crate::git::remove_attached_worktree(
+        git::remove_attached_worktree(
             Path::new(&removing.worktree_path),
             Path::new(&removing.repository_git_dir),
             &removing_anchor.branch_name,
@@ -2083,7 +2074,7 @@ mod tests {
                 300,
             )
             .unwrap();
-        crate::git::remove_attached_worktree(
+        git::remove_attached_worktree(
             Path::new(&restoring.worktree_path),
             Path::new(&restoring.repository_git_dir),
             &restoring_anchor.branch_name,
@@ -2107,7 +2098,7 @@ mod tests {
                 320,
             )
             .unwrap();
-        crate::git::restore_attached_worktree(
+        git::restore_attached_worktree(
             Path::new(&restoring.repository_git_dir),
             Path::new(&restoring.worktree_path),
             &restoring_anchor.branch_name,
@@ -2221,7 +2212,7 @@ mod tests {
                 300,
             )
             .unwrap();
-        crate::git::remove_attached_worktree(
+        git::remove_attached_worktree(
             Path::new(&restoring.worktree_path),
             Path::new(&restoring.repository_git_dir),
             &restoring_anchor.branch_name,
@@ -2278,7 +2269,7 @@ mod tests {
         let source = temp.path().join("source");
         fs::create_dir(&source).unwrap();
         initialize_repository(&source);
-        let repository = crate::git::managed_repository(&source).unwrap();
+        let repository = git::managed_repository(&source).unwrap();
         let store = TaskStore::memory().unwrap();
         let managed_root = temp.path().join("managed");
         fs::create_dir(&managed_root).unwrap();
@@ -2322,7 +2313,7 @@ mod tests {
         let source = temp.path().join("source");
         fs::create_dir(&source).unwrap();
         initialize_repository(&source);
-        let repository = crate::git::managed_repository(&source).unwrap();
+        let repository = git::managed_repository(&source).unwrap();
         let store = TaskStore::memory().unwrap();
         let managed_root = temp.path().join("managed");
         fs::create_dir(&managed_root).unwrap();

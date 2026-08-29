@@ -447,12 +447,14 @@ fn model_options(answer: &Value) -> Vec<ModelOption> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::claude_turn_options;
+    use crate::agent::TurnStatus;
+    use crate::agent::driver::{TurnOptions, TurnRejected};
     use std::time::Duration;
 
     use serde_json::json;
 
     use super::super::test_support::*;
-    use super::super::*;
     use super::*;
 
     #[tokio::test]

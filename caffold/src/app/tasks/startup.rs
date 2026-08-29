@@ -25,6 +25,7 @@ use crate::{
 };
 
 use super::CodexMcpHost;
+use crate::app::startup_migration;
 
 #[derive(Clone)]
 struct TaskRouterGateway {
@@ -165,9 +166,7 @@ impl PersistentTasksGateway {
     pub(in crate::app) async fn run_startup(&self) {
         let mut shutdown_receiver = self.shutdown.subscribe();
         loop {
-            let result =
-                super::super::startup_migration::migrate_task_store(self.database_path.clone())
-                    .await;
+            let result = startup_migration::migrate_task_store(self.database_path.clone()).await;
             match result {
                 Ok(()) => match TasksApp::persistent(
                     self.fs.clone(),
@@ -190,22 +189,20 @@ impl PersistentTasksGateway {
                         set_storage_failure(self.status.clone(), error.to_string()).await;
                     }
                 },
-                Err(super::super::startup_migration::StartupMigrationError::CodexReadiness(
-                    codex,
-                )) => {
+                Err(startup_migration::StartupMigrationError::CodexReadiness(codex)) => {
                     set_codex_wait(self.status.clone(), *codex).await;
                 }
-                Err(super::super::startup_migration::StartupMigrationError::Codex(error)) => {
+                Err(startup_migration::StartupMigrationError::Codex(error)) => {
                     set_codex_wait(
                         self.status.clone(),
                         CodexThreadClient::unavailable_status(&error),
                     )
                     .await;
                 }
-                Err(super::super::startup_migration::StartupMigrationError::Store(error)) => {
+                Err(startup_migration::StartupMigrationError::Store(error)) => {
                     set_storage_failure(self.status.clone(), error.to_string()).await;
                 }
-                Err(super::super::startup_migration::StartupMigrationError::Worker(error)) => {
+                Err(startup_migration::StartupMigrationError::Worker(error)) => {
                     set_storage_failure(self.status.clone(), error.to_string()).await;
                 }
             }

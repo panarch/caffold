@@ -36,10 +36,10 @@ use detail::{DetailContext, TaskDetailSync};
 use events::TaskEvents;
 use lifecycle::TaskLifecycle;
 use live::TaskListEvents;
-pub(super) use projection::TaskRecord;
+pub(in crate::app::tasks) use projection::TaskRecord;
 use push::{PushRuntime, PushService};
 use runtime::TaskRuntime;
-pub(super) use startup::PersistentTasksGateway;
+pub(in crate::app) use startup::PersistentTasksGateway;
 use sync::TaskSync;
 use worktrees::ManagedWorktrees;
 
@@ -48,7 +48,7 @@ struct TaskState {
     fs: Arc<RootedFs>,
     default_cwd_path: String,
     task_runtime: TaskRuntime,
-    task_sessions: crate::app::tasks::sessions::TaskSessions,
+    task_sessions: sessions::TaskSessions,
     detail: DetailContext,
     task_events: TaskEvents,
     task_sync: TaskSync<TaskDetailSync>,
@@ -100,7 +100,7 @@ impl TaskState {
     ) -> anyhow::Result<Self> {
         let AgentRuntimeDependencies { claude, codex_mcp } = agents;
         let task_events = TaskEvents::default();
-        let task_sessions = crate::app::tasks::sessions::TaskSessions::default();
+        let task_sessions = sessions::TaskSessions::default();
         let task_list_events = TaskListEvents::new();
         let managed_worktrees =
             ManagedWorktrees::new(fs.clone(), task_store.clone(), worktree_root)?;
@@ -157,7 +157,7 @@ impl TaskState {
     }
 }
 
-pub(super) struct TasksApp {
+pub(in crate::app) struct TasksApp {
     router: Router,
     runtime: TaskRuntime,
     push: PushRuntime,
@@ -202,7 +202,7 @@ impl TasksApp {
         })
     }
 
-    pub(super) fn persistent(
+    pub(in crate::app::tasks) fn persistent(
         fs: Arc<RootedFs>,
         default_cwd_path: String,
         shutdown: broadcast::Sender<()>,
@@ -231,7 +231,7 @@ impl TasksApp {
         Ok(app)
     }
 
-    pub(super) fn memory(
+    pub(in crate::app) fn memory(
         fs: Arc<RootedFs>,
         default_cwd_path: String,
         shutdown: broadcast::Sender<()>,
@@ -252,23 +252,25 @@ impl TasksApp {
         )
     }
 
-    pub(super) fn router(&self) -> Router {
+    pub(in crate::app) fn router(&self) -> Router {
         self.router.clone()
     }
 
-    pub(super) async fn shutdown(self) {
+    pub(in crate::app::tasks) async fn shutdown(self) {
         tokio::join!(self.runtime.shutdown(), self.push.shutdown());
     }
 }
 
-pub(super) use detail::TaskDetailResponse;
-pub(super) use events::{TaskEventRecord, accepted_user_message_event, now_ms};
+pub(in crate::app::tasks) use detail::TaskDetailResponse;
+pub(in crate::app::tasks) use events::{TaskEventRecord, accepted_user_message_event, now_ms};
 pub(in crate::app) use live::TaskLiveSource;
-pub(super) use projection::task_activity_ms;
-pub(super) use runtime::{ApprovalResolveError, CodexConnection, TaskAgent};
+pub(in crate::app::tasks) use projection::task_activity_ms;
+pub(in crate::app::tasks) use runtime::{ApprovalResolveError, CodexConnection, TaskAgent};
 
 #[cfg(test)]
 pub(in crate::app::tasks) mod test_support {
+    use crate::agent;
+    use crate::agent::codex::CodexThread;
     use std::{path::Path, sync::Arc, time::Duration};
 
     use serde_json::{Value as JsonValue, json};
@@ -297,7 +299,7 @@ pub(in crate::app::tasks) mod test_support {
     pub(in crate::app::tasks) async fn task_state_with_agents(
         fs: RootedFs,
         client: CodexThreadClient,
-    ) -> (TaskState, crate::agent::claude::MockRunnerHandle) {
+    ) -> (TaskState, agent::claude::MockRunnerHandle) {
         let (shutdown, _) = broadcast::channel(16);
         let worktree_root = fs.root().join(".caffold-test/worktrees");
         // Conversations are kept under the test's own root rather than the
@@ -371,7 +373,7 @@ pub(in crate::app::tasks) mod test_support {
         thread_id: &str,
         cwd: &Path,
     ) {
-        let thread: crate::agent::codex::CodexThread =
+        let thread: CodexThread =
             serde_json::from_value(task_thread_list(thread_id, cwd)["data"][0].clone())
                 .expect("the fixture decodes as a Codex thread");
         let conversation = Conversation::from(&thread);
@@ -387,7 +389,7 @@ pub(in crate::app::tasks) mod test_support {
         thread_id: &str,
         cwd: &Path,
     ) {
-        let thread: crate::agent::codex::CodexThread =
+        let thread: CodexThread =
             serde_json::from_value(task_thread_list(thread_id, cwd)["data"][0].clone())
                 .expect("canonical test thread");
         state

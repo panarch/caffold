@@ -835,6 +835,8 @@ fn bad_push_request(message: &'static str) -> ApiError {
 
 #[cfg(test)]
 mod tests {
+    use crate::agent;
+    use crate::app::tasks::AgentRuntimeDependencies;
     use std::collections::HashMap;
 
     use axum::{body::Body, http::Request};
@@ -1259,8 +1261,8 @@ mod tests {
             store.clone(),
             root.path().join("worktrees"),
             push_runtime.service(),
-            super::super::AgentRuntimeDependencies {
-                claude: crate::agent::claude::ClaudeClient::mock().0,
+            AgentRuntimeDependencies {
+                claude: agent::claude::ClaudeClient::mock().0,
                 codex_mcp: None,
             },
         )

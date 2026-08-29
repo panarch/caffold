@@ -41,11 +41,11 @@ pub(crate) use protocol::CodexMcpServerDiagnostic;
 /// Codex's own thread status, for the tests that build a notification
 /// carrying one. A Task's status is the shared one, converted here.
 #[cfg(test)]
-pub use protocol::ThreadStatus;
+pub(crate) use protocol::ThreadStatus;
 /// Codex's own turn status, for the tests that read a turn straight off the
 /// wire rather than through the conversation.
 #[cfg(test)]
-pub use protocol::TurnStatus;
+pub(crate) use protocol::TurnStatus;
 use protocol::{
     ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse,
     CAFFOLD_CLIENT_NAME, CAFFOLD_CLIENT_TITLE, CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS, CONFIG_READ,
@@ -65,7 +65,7 @@ use protocol::{
     thread_turns_list_params, thread_unarchive_params, thread_unsubscribe_params,
     turn_interrupt_params, turn_start_params, turn_steer_params,
 };
-pub use protocol::{
+pub(crate) use protocol::{
     CodexAppServerInfo, CodexNotification, CodexPermissionMode, CodexServerRequest, CodexThread,
     CodexTurn, ModelListResponse, PermissionProfileSummary, SortDirection, ThreadResumeResponse,
     ThreadSection, ThreadSectionFilter, ThreadSectionListResponse, ThreadUnsubscribeResponse,
@@ -77,9 +77,10 @@ use protocol::{
     THREAD_LOADED_LIST, ThreadListResponse, ThreadLoadedListResponse, thread_loaded_list_params,
 };
 pub(crate) use readiness::{CodexInstallation, inspect_codex_installation};
-pub use readiness::{
-    CodexReadiness, CodexReadinessReason, CodexReadinessState, MINIMUM_SUPPORTED_CODEX_CLI_VERSION,
-};
+pub(crate) use readiness::{CodexReadiness, CodexReadinessReason, CodexReadinessState};
+// The supported baseline is part of Caffold's outward contract, so the protocol
+// contract test in `tests/` reads it from the crate rather than repeating it.
+pub use readiness::MINIMUM_SUPPORTED_CODEX_CLI_VERSION;
 #[cfg(test)]
 pub(crate) use reconnect_spike::SocketAppServer;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -88,7 +89,7 @@ pub(crate) use served_tools::{
     ISOLATE_CURRENT_TASK_TOOL_NAME, LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
     RENAME_CURRENT_TASK_TOOL_NAME,
 };
-pub use status::{CodexDaemonInfo, CodexStatusResponse};
+pub(crate) use status::{CodexDaemonInfo, CodexStatusResponse};
 use status::{status_from_results, unavailable_status};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
@@ -113,7 +114,7 @@ fn request_timeout(method: &str) -> Duration {
 }
 
 #[derive(Clone)]
-pub struct CodexThreadClient {
+pub(crate) struct CodexThreadClient {
     inner: Option<Arc<CodexThreadClientInner>>,
     mcp: Option<CodexMcpBindings>,
     #[cfg(test)]
@@ -223,7 +224,7 @@ struct PendingRequest {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum CodexRuntimeEvent {
+pub(crate) enum CodexRuntimeEvent {
     Notification(CodexNotification),
     ServerRequest(CodexServerRequest),
     Diagnostic { message: String },
@@ -232,7 +233,7 @@ pub enum CodexRuntimeEvent {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct CodexThreadStart {
+pub(crate) struct CodexThreadStart {
     pub thread_id: String,
     pub thread: CodexThread,
     pub permission_mode: Option<CodexPermissionMode>,
@@ -243,7 +244,7 @@ pub struct CodexThreadStart {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct CodexThreadFork {
+pub(crate) struct CodexThreadFork {
     pub source_thread_id: String,
     pub thread_id: String,
     pub thread: CodexThread,
@@ -254,7 +255,7 @@ pub struct CodexThreadFork {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct CodexTurnOptions {
+pub(crate) struct CodexTurnOptions {
     pub model: Option<String>,
     pub effort: Option<String>,
     pub service_tier: Option<String>,
@@ -290,7 +291,7 @@ pub(crate) fn is_fast_service_tier(service_tier: Option<&str>) -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct CodexTurnStart {
+pub(crate) struct CodexTurnStart {
     pub turn_id: String,
     pub turn: CodexTurn,
     /// The identity Caffold supplied for the prompt and Codex returns on the
@@ -300,7 +301,7 @@ pub struct CodexTurnStart {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct CodexTurnSteer {
+pub(crate) struct CodexTurnSteer {
     pub turn_id: String,
     /// The identity Caffold supplied for the prompt and Codex returns on the
     /// corresponding user item.
@@ -308,7 +309,7 @@ pub struct CodexTurnSteer {
 }
 
 #[derive(Debug, thiserror::Error, Clone)]
-pub enum CodexThreadError {
+pub(crate) enum CodexThreadError {
     #[error("{}", .0.diagnostic_message)]
     Readiness(Box<CodexReadiness>),
     #[error("Failed to start Codex app-server: {0}")]
@@ -377,11 +378,11 @@ impl From<CodexThreadError> for super::driver::TurnRejected {
 }
 
 impl CodexThreadError {
-    pub fn is_thread_unavailable(&self) -> bool {
+    pub(crate) fn is_thread_unavailable(&self) -> bool {
         matches!(self, Self::ThreadUnavailable(_))
     }
 
-    pub fn is_connection_failure(&self) -> bool {
+    pub(crate) fn is_connection_failure(&self) -> bool {
         matches!(self, Self::ProcessUnavailable)
     }
 }
@@ -646,7 +647,7 @@ impl CodexThreadClient {
             .send(event);
     }
 
-    pub fn subscribe(&self) -> broadcast::Receiver<CodexRuntimeEvent> {
+    pub(crate) fn subscribe(&self) -> broadcast::Receiver<CodexRuntimeEvent> {
         #[cfg(test)]
         if let Some(mock) = &self.mock {
             return mock.events.subscribe();
@@ -654,7 +655,7 @@ impl CodexThreadClient {
         self.inner().events.subscribe()
     }
 
-    pub async fn shutdown(&self) {
+    pub(crate) async fn shutdown(&self) {
         #[cfg(test)]
         if self.mock.is_some() {
             return;
@@ -667,7 +668,7 @@ impl CodexThreadClient {
         let _ = timeout(SHUTDOWN_TIMEOUT, child.wait()).await;
     }
 
-    pub async fn list_threads(
+    pub(crate) async fn list_threads(
         &self,
         cursor: Option<&str>,
         limit: usize,
@@ -676,7 +677,7 @@ impl CodexThreadClient {
             .await
     }
 
-    pub async fn list_archived_threads(
+    pub(crate) async fn list_archived_threads(
         &self,
         cursor: Option<&str>,
         limit: usize,
@@ -688,7 +689,7 @@ impl CodexThreadClient {
         .await
     }
 
-    pub async fn list_section_threads(
+    pub(crate) async fn list_section_threads(
         &self,
         section: ThreadSectionFilter<'_>,
         cursor: Option<&str>,
@@ -701,7 +702,7 @@ impl CodexThreadClient {
         .await
     }
 
-    pub async fn list_thread_sections(
+    pub(crate) async fn list_thread_sections(
         &self,
         cursor: Option<&str>,
         limit: usize,
@@ -714,7 +715,7 @@ impl CodexThreadClient {
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
-    pub async fn create_thread_section(
+    pub(crate) async fn create_thread_section(
         &self,
         name: &str,
     ) -> Result<ThreadSection, CodexThreadError> {
@@ -725,7 +726,7 @@ impl CodexThreadClient {
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
-    pub async fn move_thread_to_section(
+    pub(crate) async fn move_thread_to_section(
         &self,
         thread_id: &str,
         section_id: Option<&str>,
@@ -740,14 +741,17 @@ impl CodexThreadClient {
         Ok(())
     }
 
-    pub async fn read_thread(&self, thread_id: &str) -> Result<CodexThread, CodexThreadError> {
+    pub(crate) async fn read_thread(
+        &self,
+        thread_id: &str,
+    ) -> Result<CodexThread, CodexThreadError> {
         let response: ThreadReadResponse = self
             .request_typed(THREAD_READ, thread_read_params(thread_id))
             .await?;
         Ok(response.thread)
     }
 
-    pub async fn set_thread_name(
+    pub(crate) async fn set_thread_name(
         &self,
         thread_id: &str,
         name: &str,
@@ -758,7 +762,7 @@ impl CodexThreadClient {
         Ok(())
     }
 
-    pub async fn list_loaded_threads(
+    pub(crate) async fn list_loaded_threads(
         &self,
         cursor: Option<&str>,
         limit: usize,
@@ -767,7 +771,7 @@ impl CodexThreadClient {
             .await
     }
 
-    pub async fn list_all_loaded_threads(&self) -> Result<Vec<String>, CodexThreadError> {
+    pub(crate) async fn list_all_loaded_threads(&self) -> Result<Vec<String>, CodexThreadError> {
         let mut cursor = None;
         let mut seen_cursors = HashSet::new();
         let mut seen_threads = HashSet::new();
@@ -825,7 +829,7 @@ impl CodexThreadClient {
         }
     }
 
-    pub async fn list_thread_turns(
+    pub(crate) async fn list_thread_turns(
         &self,
         thread_id: &str,
         cursor: Option<&str>,
@@ -835,7 +839,7 @@ impl CodexThreadClient {
             .await
     }
 
-    pub async fn list_thread_turns_in_direction(
+    pub(crate) async fn list_thread_turns_in_direction(
         &self,
         thread_id: &str,
         cursor: Option<&str>,
@@ -849,7 +853,7 @@ impl CodexThreadClient {
         .await
     }
 
-    pub async fn start_thread(
+    pub(crate) async fn start_thread(
         &self,
         cwd: &str,
         permission_mode: Option<CodexPermissionMode>,
@@ -967,7 +971,7 @@ impl CodexThreadClient {
     /// the requested cwd and a fresh Caffold MCP session, every failure deletes
     /// that child again. The source thread is never resumed or otherwise
     /// mutated here.
-    pub async fn fork_thread(
+    pub(crate) async fn fork_thread(
         &self,
         source_thread_id: &str,
         cwd: &str,
@@ -1106,7 +1110,7 @@ impl CodexThreadClient {
         }
     }
 
-    pub async fn resume_thread_with_page(
+    pub(crate) async fn resume_thread_with_page(
         &self,
         thread_id: &str,
         initial_turns_page: bool,
@@ -1162,7 +1166,7 @@ impl CodexThreadClient {
         }
     }
 
-    pub async fn unsubscribe_thread(
+    pub(crate) async fn unsubscribe_thread(
         &self,
         thread_id: &str,
     ) -> Result<ThreadUnsubscribeResponse, CodexThreadError> {
@@ -1170,28 +1174,31 @@ impl CodexThreadClient {
             .await
     }
 
-    pub async fn archive_thread(&self, thread_id: &str) -> Result<(), CodexThreadError> {
+    pub(crate) async fn archive_thread(&self, thread_id: &str) -> Result<(), CodexThreadError> {
         let _: EmptyResponse = self
             .request_typed(THREAD_ARCHIVE, thread_archive_params(thread_id))
             .await?;
         Ok(())
     }
 
-    pub async fn delete_thread(&self, thread_id: &str) -> Result<(), CodexThreadError> {
+    pub(crate) async fn delete_thread(&self, thread_id: &str) -> Result<(), CodexThreadError> {
         let _: EmptyResponse = self
             .request_typed(THREAD_DELETE, thread_delete_params(thread_id))
             .await?;
         Ok(())
     }
 
-    pub async fn unarchive_thread(&self, thread_id: &str) -> Result<CodexThread, CodexThreadError> {
+    pub(crate) async fn unarchive_thread(
+        &self,
+        thread_id: &str,
+    ) -> Result<CodexThread, CodexThreadError> {
         let response: protocol::ThreadUnarchiveResponse = self
             .request_typed(THREAD_UNARCHIVE, thread_unarchive_params(thread_id))
             .await?;
         Ok(response.thread)
     }
 
-    pub async fn start_turn(
+    pub(crate) async fn start_turn(
         &self,
         thread_id: &str,
         cwd: &str,
@@ -1221,7 +1228,7 @@ impl CodexThreadClient {
         })
     }
 
-    pub async fn steer_turn(
+    pub(crate) async fn steer_turn(
         &self,
         thread_id: &str,
         expected_turn_id: &str,
@@ -1247,7 +1254,7 @@ impl CodexThreadClient {
         })
     }
 
-    pub async fn interrupt_turn(
+    pub(crate) async fn interrupt_turn(
         &self,
         thread_id: &str,
         turn_id: &str,
@@ -1259,7 +1266,7 @@ impl CodexThreadClient {
     }
 
     /// Remember how to answer one approval, and under what name.
-    pub async fn track_approval(&self, approval_id: &str, request_id: Value) {
+    pub(crate) async fn track_approval(&self, approval_id: &str, request_id: Value) {
         self.approvals()
             .await
             .insert(approval_id.to_string(), request_id);
@@ -1272,11 +1279,11 @@ impl CodexThreadClient {
     /// that has since been replaced is not answerable at all. `None` is an
     /// approval this connection no longer holds — already answered here, or
     /// answered elsewhere first.
-    pub async fn take_approval_request(&self, approval_id: &str) -> Option<Value> {
+    pub(crate) async fn take_approval_request(&self, approval_id: &str) -> Option<Value> {
         self.approvals().await.remove(approval_id)
     }
 
-    pub async fn respond_to_server_request(
+    pub(crate) async fn respond_to_server_request(
         &self,
         request_id: Value,
         result: Value,
@@ -1295,7 +1302,7 @@ impl CodexThreadClient {
 
     /// Which approval app-server answered on its own, if Caffold was tracking
     /// one on that request.
-    pub async fn approval_answered_elsewhere(&self, request_id: &Value) -> Option<String> {
+    pub(crate) async fn approval_answered_elsewhere(&self, request_id: &Value) -> Option<String> {
         let mut approvals = self.approvals().await;
         let approval_id = approvals
             .iter()
@@ -1314,12 +1321,15 @@ impl CodexThreadClient {
         self.inner().approvals.lock().await
     }
 
-    pub async fn list_models(&self, limit: usize) -> Result<ModelListResponse, CodexThreadError> {
+    pub(crate) async fn list_models(
+        &self,
+        limit: usize,
+    ) -> Result<ModelListResponse, CodexThreadError> {
         self.request_typed(MODEL_LIST, model_list_params(limit))
             .await
     }
 
-    pub async fn list_permission_profiles(
+    pub(crate) async fn list_permission_profiles(
         &self,
         cwd: &str,
         limit: usize,
@@ -1333,7 +1343,7 @@ impl CodexThreadClient {
         Ok(response.data)
     }
 
-    pub async fn default_permission_mode(
+    pub(crate) async fn default_permission_mode(
         &self,
         cwd: &str,
     ) -> Result<CodexPermissionMode, CodexThreadError> {
@@ -1364,7 +1374,7 @@ impl CodexThreadClient {
         )
     }
 
-    pub fn unavailable_status(error: &CodexThreadError) -> CodexStatusResponse {
+    pub(crate) fn unavailable_status(error: &CodexThreadError) -> CodexStatusResponse {
         unavailable_status(None, error)
     }
 
@@ -2036,6 +2046,56 @@ mod tests {
                 timeout_ms: HISTORY_REQUEST_TIMEOUT.as_millis() as u64,
             }
             .is_thread_unavailable()
+        );
+    }
+
+    #[tokio::test]
+    async fn external_thread_sync_reads_without_resuming_or_unsubscribing() {
+        let idle_thread = json!({
+            "id": "thread-external",
+            "preview": "External task",
+            "status": { "type": "idle" },
+            "cwd": "Workspace/rust/codger",
+            "createdAt": 1.0,
+            "updatedAt": 2.0,
+            "turns": []
+        });
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/read",
+                json!({
+                    "thread": idle_thread
+                }),
+            ),
+            MockCodexResponse::ok(
+                "thread/turns/list",
+                json!({
+                    "data": [{
+                        "id": "turn-external",
+                        "status": "inProgress",
+                        "items": [],
+                        "error": null
+                    }]
+                }),
+            ),
+        ]);
+        let (thread, turns) = tokio::try_join!(
+            client.read_thread("thread-external"),
+            client.list_thread_turns("thread-external", None, 8),
+        )
+        .unwrap();
+
+        assert_eq!(thread.status, protocol::ThreadStatus::Idle);
+        assert_eq!(turns.data[0].status, protocol::TurnStatus::InProgress);
+
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/read", "thread/turns/list"]
         );
     }
 

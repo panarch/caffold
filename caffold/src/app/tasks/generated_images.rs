@@ -15,10 +15,10 @@ const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 const MAX_ENCODED_IMAGE_BYTES: usize = (MAX_IMAGE_BYTES as usize).div_ceil(3) * 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::app) struct GeneratedImageObservation {
-    pub(in crate::app) item_id: String,
-    pub(in crate::app) saved_path: Option<PathBuf>,
-    pub(in crate::app) result: Option<String>,
+pub(in crate::app::tasks) struct GeneratedImageObservation {
+    pub(in crate::app::tasks) item_id: String,
+    pub(in crate::app::tasks) saved_path: Option<PathBuf>,
+    pub(in crate::app::tasks) result: Option<String>,
 }
 
 impl GeneratedImageObservation {
@@ -26,7 +26,7 @@ impl GeneratedImageObservation {
     ///
     /// An agent still drawing has neither a file nor bytes, and there is
     /// nothing to serve until it does.
-    pub(in crate::app) fn for_item(item_id: &str, image: &GeneratedImage) -> Option<Self> {
+    pub(in crate::app::tasks) fn for_item(item_id: &str, image: &GeneratedImage) -> Option<Self> {
         image.is_available().then(|| Self {
             item_id: item_id.to_string(),
             saved_path: image.saved_path.as_deref().map(PathBuf::from),
@@ -42,13 +42,13 @@ enum GeneratedImageSource {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::app) enum GeneratedImageError {
+pub(in crate::app::tasks) enum GeneratedImageError {
     NotFound,
     Unavailable,
 }
 
 #[derive(Clone)]
-pub(in crate::app) struct GeneratedImageStore {
+pub(in crate::app::tasks) struct GeneratedImageStore {
     root: Option<PathBuf>,
     images: Arc<RwLock<HashMap<(String, String), GeneratedImageSource>>>,
 }
@@ -67,7 +67,7 @@ impl GeneratedImageStore {
         }
     }
 
-    pub(in crate::app) fn observe(&self, event: &TaskEventRecord) {
+    pub(in crate::app::tasks) fn observe(&self, event: &TaskEventRecord) {
         let Some(observation) = event.generated_image.as_ref() else {
             return;
         };
@@ -82,7 +82,7 @@ impl GeneratedImageStore {
         }
     }
 
-    pub(in crate::app) async fn load(
+    pub(in crate::app::tasks) async fn load(
         &self,
         thread_id: &str,
         item_id: &str,
@@ -109,7 +109,7 @@ impl GeneratedImageStore {
         }
     }
 
-    pub(in crate::app) fn remove_thread(&self, thread_id: &str) {
+    pub(in crate::app::tasks) fn remove_thread(&self, thread_id: &str) {
         if let Ok(mut images) = self.images.write() {
             images.retain(|(candidate, _), _| candidate != thread_id);
         }

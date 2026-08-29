@@ -1,4 +1,9 @@
-use super::*;
+use super::membership::task_store_join_error;
+use crate::app::error::ApiError;
+use crate::app::tasks::composer_settings;
+use crate::app::tasks::{TaskState, now_ms};
+use crate::task_store;
+use crate::task_store::{ManagedThread, ManagedWorktree, TaskStoreError};
 
 pub(super) async fn task_store_list_archived(
     state: &TaskState,
@@ -83,10 +88,10 @@ pub(super) async fn task_store_update_composer_settings(
     reasoning_effort: Option<&str>,
     fast_mode: bool,
 ) -> Result<Option<ManagedThread>, ApiError> {
-    let persisted = super::super::composer_settings::persist_started_turn_composer_settings(
+    let persisted = composer_settings::persist_started_turn_composer_settings(
         state.task_store.clone(),
         thread_id,
-        crate::task_store::ComposerSettings {
+        task_store::ComposerSettings {
             model: model.map(str::to_string),
             reasoning_effort: reasoning_effort.map(str::to_string),
             fast_mode,

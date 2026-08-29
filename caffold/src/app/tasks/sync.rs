@@ -14,7 +14,7 @@ const TASK_SYNC_RETRY_BASE: Duration = Duration::from_secs(2);
 const TASK_SYNC_MAX_RETRIES: u8 = 3;
 
 #[derive(Clone)]
-pub(in crate::app) struct TaskSync<T>
+pub(in crate::app::tasks) struct TaskSync<T>
 where
     T: Clone,
 {
@@ -30,7 +30,7 @@ impl<T> TaskSync<T>
 where
     T: Clone + Send + 'static,
 {
-    pub(in crate::app) fn new(shutdown: broadcast::Sender<()>) -> Self {
+    pub(in crate::app::tasks) fn new(shutdown: broadcast::Sender<()>) -> Self {
         let coordinator = TaskSyncCoordinator::new();
         let rollout_coordinator = coordinator.clone();
         let rollout_monitor = TaskRolloutMonitor::new(move |thread_id, signal| {
@@ -48,11 +48,11 @@ where
         }
     }
 
-    pub(in crate::app) fn subscribe(&self, thread_id: &str) -> TaskSyncSubscription {
+    pub(in crate::app::tasks) fn subscribe(&self, thread_id: &str) -> TaskSyncSubscription {
         self.coordinator.subscribe(thread_id)
     }
 
-    pub(in crate::app) fn subscribe_rollout(
+    pub(in crate::app::tasks) fn subscribe_rollout(
         &self,
         thread_id: &str,
         rollout_path: Option<&str>,
@@ -60,15 +60,17 @@ where
         self.rollout_monitor.subscribe(thread_id, rollout_path)
     }
 
-    pub(in crate::app) fn subscribe_updates(&self) -> broadcast::Receiver<T> {
+    pub(in crate::app::tasks) fn subscribe_updates(&self) -> broadcast::Receiver<T> {
         self.updates.subscribe()
     }
 
-    pub(in crate::app) fn publish(&self, update: T) {
+    pub(in crate::app::tasks) fn publish(&self, update: T) {
         let _ = self.updates.send(update);
     }
 
-    pub(in crate::app) async fn take_jobs(&self) -> Option<mpsc::UnboundedReceiver<TaskSyncJob>> {
+    pub(in crate::app::tasks) async fn take_jobs(
+        &self,
+    ) -> Option<mpsc::UnboundedReceiver<TaskSyncJob>> {
         let requests = self.coordinator.take_receiver().await?;
         let jobs = self.due_receiver.lock().await.take()?;
         let coordinator = self.coordinator.clone();
@@ -81,19 +83,19 @@ where
     }
 
     #[cfg(test)]
-    pub(in crate::app) fn observe_rollout_invalidation(&self, thread_id: String) {
+    pub(in crate::app::tasks) fn observe_rollout_invalidation(&self, thread_id: String) {
         self.coordinator
             .observe_rollout_signal(thread_id, TaskRolloutSignal::Invalidated);
     }
 }
 
 #[derive(Clone, Default)]
-pub(in crate::app) struct DeferredTaskRolloutSubscription {
+pub(in crate::app::tasks) struct DeferredTaskRolloutSubscription {
     inner: Arc<Mutex<Option<TaskRolloutSubscription>>>,
 }
 
 impl DeferredTaskRolloutSubscription {
-    pub(in crate::app) fn install_with(
+    pub(in crate::app::tasks) fn install_with(
         &self,
         create: impl FnOnce() -> Option<TaskRolloutSubscription>,
     ) {
@@ -106,20 +108,20 @@ impl DeferredTaskRolloutSubscription {
     }
 }
 
-pub(in crate::app) struct TaskSyncJob {
-    pub(in crate::app) thread_id: String,
-    pub(in crate::app) invalidation_revision: u64,
+pub(in crate::app::tasks) struct TaskSyncJob {
+    pub(in crate::app::tasks) thread_id: String,
+    pub(in crate::app::tasks) invalidation_revision: u64,
     completion: oneshot::Sender<TaskSyncOutcome>,
 }
 
 impl TaskSyncJob {
-    pub(in crate::app) fn complete(self, outcome: TaskSyncOutcome) {
+    pub(in crate::app::tasks) fn complete(self, outcome: TaskSyncOutcome) {
         let _ = self.completion.send(outcome);
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::app) enum TaskSyncOutcome {
+pub(in crate::app::tasks) enum TaskSyncOutcome {
     Synchronized,
     Retry,
 }
@@ -263,7 +265,7 @@ impl TaskSyncCoordinator {
     }
 }
 
-pub(in crate::app) struct TaskSyncSubscription {
+pub(in crate::app::tasks) struct TaskSyncSubscription {
     coordinator: TaskSyncCoordinator,
     thread_id: String,
 }

@@ -23,13 +23,13 @@ use super::{
     managed_thread_from_task_record, task_store_worker_error,
 };
 
-pub(in crate::app) struct ForkCodexTask {
-    pub(in crate::app) source: ForkCodexSource,
-    pub(in crate::app) section: ManagedSection,
-    pub(in crate::app) cwd: String,
+pub(in crate::app::tasks) struct ForkCodexTask {
+    pub(in crate::app::tasks) source: ForkCodexSource,
+    pub(in crate::app::tasks) section: ManagedSection,
+    pub(in crate::app::tasks) cwd: String,
 }
 
-pub(in crate::app) enum ForkCodexSource {
+pub(in crate::app::tasks) enum ForkCodexSource {
     Managed(Box<ManagedThread>),
     External { thread_id: String },
 }
@@ -69,7 +69,7 @@ impl TaskLifecycle {
     /// history natively. The second provider read rejects any source change
     /// Caffold can observe while the provider is forking. Until the local claim
     /// commits, every failure deletes the otherwise unreachable child.
-    pub(in crate::app) async fn fork_codex_task(
+    pub(in crate::app::tasks) async fn fork_codex_task(
         &self,
         connection: &CodexConnection,
         request: ForkCodexTask,

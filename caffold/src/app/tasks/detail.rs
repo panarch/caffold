@@ -22,6 +22,7 @@ use super::{
     sync::{DeferredTaskRolloutSubscription, TaskSync, TaskSyncJob, TaskSyncOutcome},
     worktrees::inspect_ready_worktree,
 };
+use crate::agent;
 use crate::agent::AgentError;
 use crate::{
     agent::{
@@ -39,7 +40,7 @@ pub(super) const TASK_DETAIL_TURNS_PAGE_SIZE: usize = 8;
 type RefreshTaskList = Arc<dyn Fn() + Send + Sync>;
 
 #[derive(Clone)]
-pub(in crate::app) struct DetailContext {
+pub(in crate::app::tasks) struct DetailContext {
     fs: Arc<RootedFs>,
     store: TaskStore,
     runtime: TaskRuntime,
@@ -54,19 +55,19 @@ pub(in crate::app) struct DetailContext {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct TaskDetailResponse {
-    pub(in crate::app) thread_id: String,
-    pub(in crate::app) sync_state: TaskSyncState,
-    pub(in crate::app) revision: u64,
+pub(in crate::app::tasks) struct TaskDetailResponse {
+    pub(in crate::app::tasks) thread_id: String,
+    pub(in crate::app::tasks) sync_state: TaskSyncState,
+    pub(in crate::app::tasks) revision: u64,
     /// Publication watermark for the canonical conversation projection.
-    pub(in crate::app) event_revision: u64,
-    pub(in crate::app) task: Option<TaskRecord>,
-    pub(in crate::app) events: Vec<TaskEventRecord>,
+    pub(in crate::app::tasks) event_revision: u64,
+    pub(in crate::app::tasks) task: Option<TaskRecord>,
+    pub(in crate::app::tasks) events: Vec<TaskEventRecord>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub(in crate::app) file_links: Vec<TaskFileLink>,
-    pub(in crate::app) events_page: TaskEventsPage,
-    pub(in crate::app) pending_approvals: Vec<TaskEventRecord>,
-    pub(in crate::app) history_loading: bool,
+    pub(in crate::app::tasks) file_links: Vec<TaskFileLink>,
+    pub(in crate::app::tasks) events_page: TaskEventsPage,
+    pub(in crate::app::tasks) pending_approvals: Vec<TaskEventRecord>,
+    pub(in crate::app::tasks) history_loading: bool,
     /// Which agent runs this Task, when this answer knows.
     ///
     /// The composer reads it to offer that agent's models and permission modes
@@ -75,37 +76,37 @@ pub(in crate::app) struct TaskDetailResponse {
     /// answer carries no Task either, and a Task nobody can read is one nobody
     /// can prompt — so no surface reads this while it is absent.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(in crate::app) provider: Option<TaskProvider>,
-    pub(in crate::app) permission_mode: Option<String>,
-    pub(in crate::app) model: Option<String>,
-    pub(in crate::app) reasoning_effort: Option<String>,
-    pub(in crate::app) fast_mode: bool,
+    pub(in crate::app::tasks) provider: Option<TaskProvider>,
+    pub(in crate::app::tasks) permission_mode: Option<String>,
+    pub(in crate::app::tasks) model: Option<String>,
+    pub(in crate::app::tasks) reasoning_effort: Option<String>,
+    pub(in crate::app::tasks) fast_mode: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(in crate::app) active_top_placement: Option<ActiveTaskTopPlacement>,
+    pub(in crate::app::tasks) active_top_placement: Option<ActiveTaskTopPlacement>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) enum TaskSyncState {
+pub(in crate::app::tasks) enum TaskSyncState {
     Loading,
     Ready,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct TaskEventsPage {
-    pub(in crate::app) next_cursor: Option<String>,
+pub(in crate::app::tasks) struct TaskEventsPage {
+    pub(in crate::app::tasks) next_cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(in crate::app) struct TaskDetailSync {
-    pub(in crate::app) thread_id: String,
-    pub(in crate::app) revision: u64,
-    pub(in crate::app) detail: TaskDetailResponse,
-    pub(in crate::app) reason: &'static str,
+    pub(in crate::app::tasks) thread_id: String,
+    pub(in crate::app::tasks) revision: u64,
+    pub(in crate::app::tasks) detail: TaskDetailResponse,
+    pub(in crate::app::tasks) reason: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(in crate::app) error: Option<String>,
+    pub(in crate::app::tasks) error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -135,7 +136,7 @@ pub(in crate::app) type DetailLiveStream = Pin<Box<dyn Stream<Item = DetailLiveE
 
 impl DetailContext {
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::app) fn new(
+    pub(in crate::app::tasks) fn new(
         fs: Arc<RootedFs>,
         store: TaskStore,
         runtime: TaskRuntime,
@@ -160,23 +161,28 @@ impl DetailContext {
         }
     }
 
-    pub(in crate::app) async fn client(&self) -> Result<CodexThreadClient, ApiError> {
+    pub(in crate::app::tasks) async fn client(&self) -> Result<CodexThreadClient, ApiError> {
         self.ensure_runtime_signal_driver().await;
         self.runtime.client().await.map_err(ApiError::from)
     }
 
-    pub(in crate::app) async fn connection(&self) -> Result<CodexConnection, CodexThreadError> {
+    pub(in crate::app::tasks) async fn connection(
+        &self,
+    ) -> Result<CodexConnection, CodexThreadError> {
         self.ensure_runtime_signal_driver().await;
         self.runtime.connection().await
     }
 
     /// The agent that owns this Task, ready to be asked about it.
-    pub(in crate::app) async fn agent(&self, thread_id: &str) -> Result<TaskAgent, AgentError> {
+    pub(in crate::app::tasks) async fn agent(
+        &self,
+        thread_id: &str,
+    ) -> Result<TaskAgent, AgentError> {
         self.ensure_runtime_signal_driver().await;
         self.runtime.task_agent(thread_id).await
     }
 
-    pub(in crate::app) async fn get(
+    pub(in crate::app::tasks) async fn get(
         &self,
         thread_id: &str,
         cursor: Option<&str>,
@@ -203,7 +209,7 @@ impl DetailContext {
         Ok(detail)
     }
 
-    pub(in crate::app) async fn stream(
+    pub(in crate::app::tasks) async fn stream(
         &self,
         thread_id: &str,
     ) -> Result<DetailLiveStream, ApiError> {
@@ -388,7 +394,7 @@ impl DetailContext {
         Ok(Box::pin(stream))
     }
 
-    pub(in crate::app) async fn read(
+    pub(in crate::app::tasks) async fn read(
         &self,
         agent: &TaskAgent,
         thread_id: &str,
@@ -418,7 +424,7 @@ impl DetailContext {
         self.assemble_snapshot(snapshot, response_page).await
     }
 
-    pub(in crate::app) async fn cached(
+    pub(in crate::app::tasks) async fn cached(
         &self,
         thread_id: &str,
     ) -> Result<(TaskDetailResponse, u64), ApiError> {
@@ -442,7 +448,7 @@ impl DetailContext {
         Ok((detail, revision))
     }
 
-    pub(in crate::app) async fn bootstrap(&self, thread_id: &str, baseline_revision: u64) {
+    pub(in crate::app::tasks) async fn bootstrap(&self, thread_id: &str, baseline_revision: u64) {
         if let Err(error) = self.restore_managed_fast_mode(thread_id).await {
             self.broadcast_error(thread_id, error.to_string()).await;
             return;
@@ -480,7 +486,7 @@ impl DetailContext {
             .await;
     }
 
-    pub(in crate::app) async fn assemble_snapshot(
+    pub(in crate::app::tasks) async fn assemble_snapshot(
         &self,
         snapshot: SessionSnapshot,
         response_page: Option<(TurnPage, u64)>,
@@ -563,7 +569,7 @@ impl DetailContext {
         Err(not_managed_error())
     }
 
-    pub(in crate::app) fn record_from_conversation(
+    pub(in crate::app::tasks) fn record_from_conversation(
         &self,
         conversation: &Conversation,
     ) -> Result<TaskRecord, ApiError> {
@@ -616,7 +622,7 @@ impl DetailContext {
         });
     }
 
-    pub(in crate::app) async fn ensure_sync_worker(&self) {
+    pub(in crate::app::tasks) async fn ensure_sync_worker(&self) {
         let Some(receiver) = self.sync.take_jobs().await else {
             return;
         };
@@ -719,8 +725,8 @@ impl DetailContext {
     }
 
     /// Codex gone quiet, in the words every agent shares.
-    fn unreachable_codex() -> crate::agent::AgentError {
-        crate::agent::codex::CodexThreadError::ProcessUnavailable.into()
+    fn unreachable_codex() -> agent::AgentError {
+        CodexThreadError::ProcessUnavailable.into()
     }
 
     async fn broadcast_error(&self, thread_id: &str, error: String) {
@@ -766,7 +772,7 @@ impl DetailContext {
 /// An agent reports the directory it was started in, which is no longer where
 /// the work happens once a Task has been isolated. Everything downstream — Git,
 /// review, file links — resolves from this one field.
-pub(in crate::app) fn project_managed_worktree_cwd(
+pub(in crate::app::tasks) fn project_managed_worktree_cwd(
     store: &TaskStore,
     mut conversation: Conversation,
 ) -> Result<Conversation, ApiError> {
@@ -788,7 +794,7 @@ pub(in crate::app) fn project_managed_worktree_cwd(
     Ok(conversation)
 }
 
-pub(in crate::app) fn loading_detail(
+pub(in crate::app::tasks) fn loading_detail(
     thread_id: &str,
     revision: u64,
     managed: Option<&ManagedThread>,
@@ -816,7 +822,7 @@ pub(in crate::app) fn loading_detail(
     }
 }
 
-pub(in crate::app) fn not_managed_error() -> ApiError {
+pub(in crate::app::tasks) fn not_managed_error() -> ApiError {
     ApiError::BadRequest {
         code: "task_not_managed",
         message: "task is not managed by Caffold".to_string(),
@@ -833,6 +839,8 @@ fn store_join_error(error: tokio::task::JoinError) -> ApiError {
 
 #[cfg(test)]
 mod inline_tests {
+    use crate::agent::codex::CodexThread;
+    use crate::git;
     use serde_json::json;
 
     use super::*;
@@ -841,7 +849,7 @@ mod inline_tests {
     /// A conversation whose only interesting field is where it says it is
     /// running, which is what the managed-worktree projection replaces.
     fn codex_thread(cwd: &str) -> Conversation {
-        let thread: crate::agent::codex::CodexThread = serde_json::from_value(json!({
+        let thread: CodexThread = serde_json::from_value(json!({
             "id": "thread-1",
             "cwd": cwd,
             "status": { "type": "idle" },
@@ -857,8 +865,7 @@ mod inline_tests {
         initialize_repository(&source);
         let managed = temp.path().join("managed");
         let checkout =
-            crate::git::create_attached_worktree(&source, &managed, "caffold/review", None)
-                .unwrap();
+            git::create_attached_worktree(&source, &managed, "caffold/review", None).unwrap();
         let store = TaskStore::memory().unwrap();
         store
             .create_worktree(ManagedWorktree {
@@ -901,7 +908,7 @@ mod inline_tests {
         let temp = tempfile::tempdir().unwrap();
         let source = temp.path().join("source");
         initialize_repository(&source);
-        let repository = crate::git::managed_repository(&source).unwrap();
+        let repository = git::managed_repository(&source).unwrap();
         let missing = temp.path().join("missing-managed");
         let store = TaskStore::memory().unwrap();
         store
@@ -1003,6 +1010,7 @@ mod inline_tests {
 
 #[cfg(test)]
 mod request_tests {
+    use crate::agent::codex::{CodexThread, MockCodexResponse, TurnsPage};
     use std::time::Duration;
 
     use futures_util::StreamExt;
@@ -1014,7 +1022,8 @@ mod request_tests {
         events::*,
         projection::*,
         routes::{
-            test_store_get, test_store_update_composer_settings, test_task_detail, test_task_stream,
+            test_store_get, test_store_update_composer_settings, test_task_detail,
+            test_task_stream, test_wait_for_task_list_refresh,
         },
         test_support::*,
     };
@@ -1034,7 +1043,7 @@ mod request_tests {
     async fn event_notification_does_not_broadcast_its_own_full_detail_snapshot() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-event-only-detail";
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             resumed_task(thread_id, root.path()),
         )]);
@@ -1140,7 +1149,7 @@ mod request_tests {
     async fn canonical_resume_refreshes_cached_model_settings() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-canonical-model-settings";
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             json!({
                 "cwd": root.path().display().to_string(),
@@ -1200,7 +1209,7 @@ mod request_tests {
     async fn canonical_resume_without_model_settings_preserves_the_cached_selection() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-canonical-speed-only";
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             "thread/resume",
             json!({
                 "cwd": root.path().display().to_string(),
@@ -1269,7 +1278,7 @@ mod request_tests {
         )
         .await;
         manage_test_thread(&state, thread_id, root.path()).await;
-        let thread: crate::agent::codex::CodexThread = serde_json::from_value(json!({
+        let thread: CodexThread = serde_json::from_value(json!({
             "id": thread_id,
             "preview": "Recovered completion",
             "status": { "type": "idle" },
@@ -1280,7 +1289,7 @@ mod request_tests {
             "turns": []
         }))
         .unwrap();
-        let turns_page: crate::agent::codex::TurnsPage = serde_json::from_value(json!({
+        let turns_page: TurnsPage = serde_json::from_value(json!({
             "data": [
                 {
                     "id": "turn-newest",
@@ -1299,7 +1308,7 @@ mod request_tests {
             "backwardsCursor": null
         }))
         .unwrap();
-        let mut snapshot = crate::app::tasks::sessions::SessionSnapshot {
+        let mut snapshot = SessionSnapshot {
             lifecycle: SessionLifecycle::Subscribed,
             conversation: Some(Conversation::from(&thread)),
             turns_page: Some(TurnPage::from(&turns_page)),
@@ -1354,7 +1363,7 @@ mod request_tests {
         )
         .await;
         manage_test_thread(&state, thread_id, root.path()).await;
-        let thread: crate::agent::codex::CodexThread = serde_json::from_value(json!({
+        let thread: CodexThread = serde_json::from_value(json!({
             "id": thread_id,
             "preview": "History position",
             "status": { "type": "idle" },
@@ -1364,7 +1373,7 @@ mod request_tests {
             "turns": []
         }))
         .unwrap();
-        let turns_page: crate::agent::codex::TurnsPage = serde_json::from_value(json!({
+        let turns_page: TurnsPage = serde_json::from_value(json!({
             "data": [{
                 "id": "turn-1",
                 "status": "completed",
@@ -1389,7 +1398,7 @@ mod request_tests {
             "backwardsCursor": null
         }))
         .unwrap();
-        let snapshot = crate::app::tasks::sessions::SessionSnapshot {
+        let snapshot = SessionSnapshot {
             lifecycle: SessionLifecycle::Subscribed,
             conversation: Some(Conversation::from(&thread)),
             turns_page: Some(TurnPage::from(&turns_page)),
@@ -1477,7 +1486,7 @@ mod request_tests {
             CodexThreadClient::mock(Vec::new()),
         )
         .await;
-        let thread: crate::agent::codex::CodexThread = serde_json::from_value(
+        let thread: CodexThread = serde_json::from_value(
             task_thread_list("thread-unmanaged", root.path())["data"][0].clone(),
         )
         .expect("canonical thread");
@@ -1511,15 +1520,12 @@ mod request_tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-slow-detail-bootstrap";
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::delayed_ok(
+            MockCodexResponse::delayed_ok(
                 "thread/resume",
                 resumed_task(thread_id, root.path()),
                 Duration::from_millis(250),
             ),
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/unsubscribe",
-                json!({ "status": "unsubscribed" }),
-            ),
+            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -1546,15 +1552,12 @@ mod request_tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-blank-history-cursor";
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::delayed_ok(
+            MockCodexResponse::delayed_ok(
                 "thread/resume",
                 resumed_task(thread_id, root.path()),
                 Duration::from_millis(250),
             ),
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/unsubscribe",
-                json!({ "status": "unsubscribed" }),
-            ),
+            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -1581,7 +1584,7 @@ mod request_tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-history-timeout-cache";
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok(
+            MockCodexResponse::ok(
                 "thread/resume",
                 json!({
                     "cwd": root.path().display().to_string(),
@@ -1601,18 +1604,15 @@ mod request_tests {
                     }
                 }),
             ),
-            crate::agent::codex::MockCodexResponse::error(
+            MockCodexResponse::error(
                 "thread/turns/list",
-                crate::agent::codex::CodexThreadError::RequestTimeout {
+                CodexThreadError::RequestTimeout {
                     method: "thread/turns/list",
                     request_id: 31,
                     timeout_ms: 120_000,
                 },
             ),
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/unsubscribe",
-                json!({ "status": "unsubscribed" }),
-            ),
+            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -1667,19 +1667,13 @@ mod request_tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-busy-connection-detail";
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/resume",
-                resumed_task(thread_id, root.path()),
-            ),
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/unsubscribe",
-                json!({ "status": "unsubscribed" }),
-            ),
+            MockCodexResponse::ok("thread/resume", resumed_task(thread_id, root.path())),
+            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;
-        let thread: crate::agent::codex::CodexThread =
+        let thread: CodexThread =
             serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
                 .expect("cached thread metadata");
         state
@@ -1714,15 +1708,12 @@ mod request_tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-slow-stream-bootstrap";
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::delayed_ok(
+            MockCodexResponse::delayed_ok(
                 "thread/resume",
                 resumed_task(thread_id, root.path()),
                 Duration::from_millis(250),
             ),
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/unsubscribe",
-                json!({ "status": "unsubscribed" }),
-            ),
+            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -1748,19 +1739,13 @@ mod request_tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-busy-connection-stream";
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/resume",
-                resumed_task(thread_id, root.path()),
-            ),
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/unsubscribe",
-                json!({ "status": "unsubscribed" }),
-            ),
+            MockCodexResponse::ok("thread/resume", resumed_task(thread_id, root.path())),
+            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;
-        let thread: crate::agent::codex::CodexThread =
+        let thread: CodexThread =
             serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
                 .expect("cached thread metadata");
         state
@@ -1799,14 +1784,8 @@ mod request_tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-uncached-busy-detail";
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/resume",
-                resumed_task(thread_id, root.path()),
-            ),
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/unsubscribe",
-                json!({ "status": "unsubscribed" }),
-            ),
+            MockCodexResponse::ok("thread/resume", resumed_task(thread_id, root.path())),
+            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -1842,14 +1821,8 @@ mod request_tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-uncached-busy-stream";
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/resume",
-                resumed_task(thread_id, root.path()),
-            ),
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/unsubscribe",
-                json!({ "status": "unsubscribed" }),
-            ),
+            MockCodexResponse::ok("thread/resume", resumed_task(thread_id, root.path())),
+            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -1885,9 +1858,9 @@ mod request_tests {
     async fn resume_failure_makes_cached_task_detail_unavailable() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-failed-detail-bootstrap";
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::error(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::error(
             "thread/resume",
-            crate::agent::codex::CodexThreadError::Protocol("resume unavailable".to_string()),
+            CodexThreadError::Protocol("resume unavailable".to_string()),
         )]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -1921,16 +1894,14 @@ mod request_tests {
     async fn unavailable_thread_refreshes_recovery_projection_without_removing_membership() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-unavailable-recovery-refresh";
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::error(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::error(
             "thread/resume",
-            crate::agent::codex::CodexThreadError::ThreadUnavailable(
-                "Thread is archived in Codex".to_string(),
-            ),
+            CodexThreadError::ThreadUnavailable("Thread is archived in Codex".to_string()),
         )]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;
-        let refresh = tokio::spawn(crate::app::tasks::routes::test_wait_for_task_list_refresh(
+        let refresh = tokio::spawn(test_wait_for_task_list_refresh(
             state.task_list_events.clone(),
         ));
         tokio::task::yield_now().await;
@@ -1958,9 +1929,9 @@ mod request_tests {
     async fn resume_timeout_makes_task_detail_unavailable_but_keeps_the_connection() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-timeout-detail-bootstrap";
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::error(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::error(
             "thread/resume",
-            crate::agent::codex::CodexThreadError::RequestTimeout {
+            CodexThreadError::RequestTimeout {
                 method: "thread/resume",
                 request_id: 17,
                 timeout_ms: 120_000,
@@ -2001,27 +1972,26 @@ mod request_tests {
     #[tokio::test]
     async fn app_server_recovery_does_not_block_on_leased_thread_restoration() {
         let sessions = TaskSessions::default();
-        let first_client =
-            CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok(
-                "thread/resume",
-                json!({
+        let first_client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            json!({
+                "cwd": "/tmp",
+                "thread": {
+                    "id": "thread-slow-recovery",
+                    "preview": "Slow recovery regression",
+                    "status": { "type": "idle" },
                     "cwd": "/tmp",
-                    "thread": {
-                        "id": "thread-slow-recovery",
-                        "preview": "Slow recovery regression",
-                        "status": { "type": "idle" },
-                        "cwd": "/tmp",
-                        "createdAt": 1.0,
-                        "updatedAt": 2.0,
-                        "turns": []
-                    },
-                    "initialTurnsPage": {
-                        "data": [],
-                        "nextCursor": null,
-                        "backwardsCursor": null
-                    }
-                }),
-            )]);
+                    "createdAt": 1.0,
+                    "updatedAt": 2.0,
+                    "turns": []
+                },
+                "initialTurnsPage": {
+                    "data": [],
+                    "nextCursor": null,
+                    "backwardsCursor": null
+                }
+            }),
+        )]);
         let _viewer = sessions
             .acquire_viewer(&first_client.driver(), 1, "thread-slow-recovery")
             .await
@@ -2030,34 +2000,33 @@ mod request_tests {
             .codex_connection_lost(1, "process exited".to_string())
             .await;
 
-        let recovered_client =
-            CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::delayed_ok(
-                "thread/resume",
-                json!({
+        let recovered_client = CodexThreadClient::mock(vec![MockCodexResponse::delayed_ok(
+            "thread/resume",
+            json!({
+                "cwd": "/tmp",
+                "thread": {
+                    "id": "thread-slow-recovery",
+                    "preview": "Slow recovery regression",
+                    "status": { "type": "idle" },
                     "cwd": "/tmp",
-                    "thread": {
-                        "id": "thread-slow-recovery",
-                        "preview": "Slow recovery regression",
-                        "status": { "type": "idle" },
-                        "cwd": "/tmp",
-                        "createdAt": 1.0,
-                        "updatedAt": 2.0,
-                        "turns": []
-                    },
-                    "initialTurnsPage": {
-                        "data": [],
-                        "nextCursor": null,
-                        "backwardsCursor": null
-                    }
-                }),
-                Duration::from_millis(120),
-            )]);
+                    "createdAt": 1.0,
+                    "updatedAt": 2.0,
+                    "turns": []
+                },
+                "initialTurnsPage": {
+                    "data": [],
+                    "nextCursor": null,
+                    "backwardsCursor": null
+                }
+            }),
+            Duration::from_millis(120),
+        )]);
         let connection = CodexConnection {
             client: recovered_client.clone(),
             generation: 2,
         };
         let (shutdown, _) = broadcast::channel(1);
-        let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
+        let (claude, _runner) = agent::claude::ClaudeClient::mock();
         let runtime = TaskRuntime::new(
             claude,
             sessions.clone(),
@@ -2088,7 +2057,7 @@ mod request_tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-detail-handler";
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok(
+            MockCodexResponse::ok(
                 "thread/resume",
                 json!({
                     "cwd": root.path().display().to_string(),
@@ -2108,10 +2077,7 @@ mod request_tests {
                     }
                 }),
             ),
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/unsubscribe",
-                json!({ "status": "unsubscribed" }),
-            ),
+            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -2150,7 +2116,7 @@ mod request_tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-detail-stream-handler";
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::delayed_ok(
+            MockCodexResponse::delayed_ok(
                 "thread/resume",
                 json!({
                     "cwd": root.path().display().to_string(),
@@ -2171,10 +2137,7 @@ mod request_tests {
                 }),
                 Duration::from_millis(50),
             ),
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/unsubscribe",
-                json!({ "status": "unsubscribed" }),
-            ),
+            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -2247,17 +2210,14 @@ mod request_tests {
             })
         };
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok("thread/resume", resume()),
-            crate::agent::codex::MockCodexResponse::delayed_ok(
+            MockCodexResponse::ok("thread/resume", resume()),
+            MockCodexResponse::delayed_ok(
                 "thread/unsubscribe",
                 json!({ "status": "unsubscribed" }),
                 Duration::from_millis(250),
             ),
-            crate::agent::codex::MockCodexResponse::ok("thread/resume", resume()),
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/unsubscribe",
-                json!({ "status": "unsubscribed" }),
-            ),
+            MockCodexResponse::ok("thread/resume", resume()),
+            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -2293,10 +2253,7 @@ mod request_tests {
             .snapshot(thread_id)
             .await
             .expect("thread session snapshot");
-        assert_eq!(
-            snapshot.lifecycle,
-            crate::app::tasks::sessions::SessionLifecycle::Subscribed
-        );
+        assert_eq!(snapshot.lifecycle, SessionLifecycle::Subscribed);
         assert_eq!(snapshot.viewer_leases, 1);
 
         drop(stream_response);
@@ -2376,6 +2333,7 @@ mod request_tests {
 
 #[cfg(test)]
 mod sync_tests {
+    use crate::agent::codex::{CodexThread, MockCodexResponse};
     use std::time::Duration;
 
     use serde_json::json;
@@ -2385,11 +2343,7 @@ mod sync_tests {
         test_support::*,
     };
     use super::*;
-    use crate::{
-        agent::{codex, codex::CodexThreadClient},
-        app::error::ApiError,
-        fs::RootedFs,
-    };
+    use crate::{agent::codex::CodexThreadClient, app::error::ApiError, fs::RootedFs};
 
     #[tokio::test(start_paused = true)]
     async fn rollout_invalidation_never_synthesizes_thread_activity() {
@@ -2398,7 +2352,7 @@ mod sync_tests {
         let rollout_path = root.path().join("rollout.jsonl");
         std::fs::write(&rollout_path, "").unwrap();
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok(
+            MockCodexResponse::ok(
                 "thread/resume",
                 json!({
                     "thread": {
@@ -2418,7 +2372,7 @@ mod sync_tests {
                     }
                 }),
             ),
-            crate::agent::codex::MockCodexResponse::ok(
+            MockCodexResponse::ok(
                 "thread/read",
                 json!({
                     "thread": {
@@ -2433,7 +2387,7 @@ mod sync_tests {
                     }
                 }),
             ),
-            crate::agent::codex::MockCodexResponse::ok(
+            MockCodexResponse::ok(
                 "thread/turns/list",
                 json!({
                     "data": [],
@@ -2441,10 +2395,7 @@ mod sync_tests {
                     "backwardsCursor": null
                 }),
             ),
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/unsubscribe",
-                json!({ "status": "unsubscribed" }),
-            ),
+            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -2468,7 +2419,7 @@ mod sync_tests {
         drop(response);
         assert_eq!(
             snapshot.conversation.expect("canonical thread").status,
-            crate::agent::ThreadStatus::Idle,
+            agent::ThreadStatus::Idle,
             "rollout contents only invalidate the canonical app-server snapshot"
         );
         assert_eq!(snapshot.active_turn_id, None);
@@ -2478,9 +2429,9 @@ mod sync_tests {
     async fn background_sync_timeout_broadcasts_error_and_rejects_stale_detail() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-background-sync-timeout";
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::error(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::error(
             "thread/read",
-            crate::agent::codex::CodexThreadError::RequestTimeout {
+            CodexThreadError::RequestTimeout {
                 method: "thread/read",
                 request_id: 29,
                 timeout_ms: 120_000,
@@ -2489,7 +2440,7 @@ mod sync_tests {
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;
-        let thread: crate::agent::codex::CodexThread =
+        let thread: CodexThread =
             serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
                 .expect("cached thread metadata");
         state
@@ -2529,56 +2480,6 @@ mod sync_tests {
         assert!(snapshot.conversation.is_some());
         assert!(snapshot.last_error.is_some());
         assert_eq!(state.task_runtime.diagnostics().await, (1, true));
-    }
-
-    #[tokio::test]
-    async fn external_thread_sync_reads_without_resuming_or_unsubscribing() {
-        let idle_thread = json!({
-            "id": "thread-external",
-            "preview": "External task",
-            "status": { "type": "idle" },
-            "cwd": "Workspace/rust/codger",
-            "createdAt": 1.0,
-            "updatedAt": 2.0,
-            "turns": []
-        });
-        let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/read",
-                json!({
-                    "thread": idle_thread
-                }),
-            ),
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/turns/list",
-                json!({
-                    "data": [{
-                        "id": "turn-external",
-                        "status": "inProgress",
-                        "items": [],
-                        "error": null
-                    }]
-                }),
-            ),
-        ]);
-        let (thread, turns) = tokio::try_join!(
-            client.read_thread("thread-external"),
-            client.list_thread_turns("thread-external", None, TASK_DETAIL_TURNS_PAGE_SIZE),
-        )
-        .unwrap();
-
-        assert_eq!(thread.status, codex::ThreadStatus::Idle);
-        assert_eq!(turns.data[0].status, codex::TurnStatus::InProgress);
-
-        assert_eq!(
-            client
-                .mock_requests()
-                .await
-                .into_iter()
-                .map(|(method, _)| method)
-                .collect::<Vec<_>>(),
-            ["thread/read", "thread/turns/list"]
-        );
     }
 }
 

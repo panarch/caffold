@@ -11,7 +11,7 @@ const DEFAULT_SERVER_NAME: &str = "Caffold";
 const MAX_SERVER_NAME_CHARS: usize = 64;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ServerSettings {
+pub(crate) struct ServerSettings {
     pub name: String,
 }
 
@@ -23,20 +23,20 @@ impl Default for ServerSettings {
     }
 }
 
-pub struct ServerSettingsStore {
+pub(crate) struct ServerSettingsStore {
     settings: RwLock<ServerSettings>,
     path: Option<PathBuf>,
 }
 
 impl ServerSettingsStore {
-    pub fn memory() -> Self {
+    pub(crate) fn memory() -> Self {
         Self {
             settings: RwLock::new(ServerSettings::default()),
             path: None,
         }
     }
 
-    pub fn persistent(path: PathBuf) -> Result<Self, ServerSettingsError> {
+    pub(crate) fn persistent(path: PathBuf) -> Result<Self, ServerSettingsError> {
         let settings = load_settings(&path)?;
         Ok(Self {
             settings: RwLock::new(settings),
@@ -44,14 +44,14 @@ impl ServerSettingsStore {
         })
     }
 
-    pub fn get(&self) -> ServerSettings {
+    pub(crate) fn get(&self) -> ServerSettings {
         self.settings
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone()
     }
 
-    pub fn update_name(&self, name: &str) -> Result<ServerSettings, ServerSettingsError> {
+    pub(crate) fn update_name(&self, name: &str) -> Result<ServerSettings, ServerSettingsError> {
         let name = validate_name(name)?;
         let settings = ServerSettings { name };
         if let Some(path) = &self.path {
@@ -66,7 +66,7 @@ impl ServerSettingsStore {
 }
 
 #[derive(Debug, Error)]
-pub enum ServerSettingsError {
+pub(crate) enum ServerSettingsError {
     #[error("server name cannot be empty")]
     EmptyName,
     #[error("server name cannot exceed {MAX_SERVER_NAME_CHARS} characters")]

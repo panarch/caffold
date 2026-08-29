@@ -1,5 +1,3 @@
-#![cfg_attr(not(test), allow(dead_code))]
-
 use serde::{Deserialize, Serialize};
 
 pub(crate) const THREAD_SECTION_LIST: &str = "threadSection/list";
@@ -8,14 +6,14 @@ pub(crate) const THREAD_SECTION_MOVE: &str = "thread/section/move";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadSection {
+pub(crate) struct ThreadSection {
     pub id: String,
     pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadSectionListResponse {
+pub(crate) struct ThreadSectionListResponse {
     #[serde(default)]
     pub data: Vec<ThreadSection>,
     #[serde(default)]
@@ -24,16 +22,16 @@ pub struct ThreadSectionListResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadSectionCreateResponse {
+pub(crate) struct ThreadSectionCreateResponse {
     pub section: ThreadSection,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-pub struct ThreadSectionMoveResponse {}
+pub(crate) struct ThreadSectionMoveResponse {}
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadSectionListParams<'a> {
+pub(crate) struct ThreadSectionListParams<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     cursor: Option<&'a str>,
     limit: usize,
@@ -41,13 +39,13 @@ pub struct ThreadSectionListParams<'a> {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadSectionCreateParams<'a> {
+pub(crate) struct ThreadSectionCreateParams<'a> {
     name: &'a str,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadSectionMoveParams<'a> {
+pub(crate) struct ThreadSectionMoveParams<'a> {
     thread_id: &'a str,
     section_id: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
