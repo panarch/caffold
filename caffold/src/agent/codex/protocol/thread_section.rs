@@ -1,5 +1,3 @@
-#![cfg_attr(not(test), allow(dead_code))]
-
 use serde::{Deserialize, Serialize};
 
 pub(crate) const THREAD_SECTION_LIST: &str = "threadSection/list";

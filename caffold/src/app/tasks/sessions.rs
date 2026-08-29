@@ -65,23 +65,28 @@ pub(in crate::app::tasks) enum SessionLifecycle {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub(in crate::app::tasks) struct SessionSnapshot {
+    #[allow(dead_code)]
     pub(in crate::app::tasks) lifecycle: SessionLifecycle,
     pub(in crate::app::tasks) conversation: Option<Conversation>,
     pub(in crate::app::tasks) turns_page: Option<TurnPage>,
     pub(in crate::app::tasks) active_turn_id: Option<String>,
     pub(in crate::app::tasks) active_turn_cwd: Option<String>,
+    #[allow(dead_code)]
     pub(in crate::app::tasks) viewer_leases: usize,
+    #[allow(dead_code)]
     pub(in crate::app::tasks) runtime_lease: bool,
     pub(in crate::app::tasks) generation: u64,
     pub(in crate::app::tasks) revision: u64,
     /// Session revision captured before the provider read that supplied the
     /// current latest-turns page began.
     pub(in crate::app::tasks) history_base_revision: Option<u64>,
+    #[allow(dead_code)]
     pub(in crate::app::tasks) last_sync_ms: Option<u64>,
     pub(in crate::app::tasks) last_error: Option<String>,
+    #[allow(dead_code)]
     pub(in crate::app::tasks) external_syncing: bool,
+    #[allow(dead_code)]
     pub(in crate::app::tasks) external_sync_started_ms: Option<u64>,
     pub(in crate::app::tasks) permission_mode: Option<String>,
     pub(in crate::app::tasks) model: Option<String>,
@@ -325,7 +330,6 @@ impl TaskSessions {
         }
     }
 
-    #[allow(dead_code)]
     pub(in crate::app::tasks) async fn snapshot(&self, thread_id: &str) -> Option<SessionSnapshot> {
         let entry = self.existing_entry(thread_id).await?;
         let state = entry.state.lock().await;
