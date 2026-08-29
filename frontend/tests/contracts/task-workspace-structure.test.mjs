@@ -230,7 +230,12 @@ test("common Detail owns shared surfaces while Task and Section keep subject wor
   assert.match(globalNew, /import "\.\.\/components\/task-create\.js"/);
   assert.match(globalNew, /browseCwd: true/);
   assert.match(taskCreate, /class CaffoldTaskCreate/);
-  assert.match(taskCreate, /caffold:task-created/);
+  assert.match(taskCreate, /caffold:task-create-intent/);
+  assert.doesNotMatch(taskCreate, /await createTask|caffold:task-created/);
+  assert.match(tasksLayout, /import \{ createTask \} from/);
+  assert.match(tasksLayout, /pendingTaskCreation/);
+  assert.match(tasksLayout, /startTaskCreation/);
+  assert.match(tasksLayout, /createAndAdoptTask/);
 });
 
 test("Tasks custom elements use routed owners or the nearest components namespace", () => {

@@ -985,6 +985,150 @@ test("uses the Section's last composer settings for its next Task request", { ta
   });
 });
 
+test("keeps the first prompt when the created Task opens before creation answers", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installEventSourceMock(page, {
+    registryKey: "__sectionCreateHandoffSources",
+    autoOpen: true,
+  });
+  await mockAgentModels(page);
+  const sectionId = "section-create-handoff";
+  const rootPath = "frontend/tests/e2e/fixtures/home";
+  const createdThreadId = "thread_section_create_handoff";
+  const seedTask = {
+    id: "thread_section_create_handoff_seed",
+    threadId: "thread_section_create_handoff_seed",
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Section create handoff seed",
+    cwd: rootPath,
+    cwdPath: rootPath,
+    relativeCwd: "",
+    worktree: null,
+    createdMs: Date.now() - 1,
+    updatedMs: Date.now() - 1,
+    lastEventSummary: "Section create handoff seed",
+  };
+  const createdTask = {
+    id: createdThreadId,
+    threadId: createdThreadId,
+    ...canonicalTaskState("idle"),
+    title: "Keep this first prompt",
+    preview: "Keep this first prompt",
+    cwd: rootPath,
+    cwdPath: rootPath,
+    relativeCwd: "",
+    worktree: null,
+    createdMs: Date.now(),
+    updatedMs: Date.now(),
+    recencyMs: Date.now(),
+    lastEventSummary: null,
+    unseen: false,
+  };
+  const placement = {
+    section: {
+      id: sectionId,
+      name: rootPath,
+      repository: false,
+    },
+  };
+  const createdDetail = {
+    ...taskDetailFixture({
+      model: "gpt-5.6-sol",
+      reasoningEffort: "low",
+    }),
+    threadId: createdThreadId,
+    task: createdTask,
+    activeTopPlacement: placement,
+  };
+  const projection = {
+    sections: [{
+      id: sectionId,
+      name: rootPath,
+      repository: false,
+      tasks: [seedTask],
+    }],
+    unsectioned: [],
+  };
+  let resolveCreateRequested;
+  let releaseCreateResponse;
+  const createRequested = new Promise((resolve) => {
+    resolveCreateRequested = resolve;
+  });
+  const createResponseReleased = new Promise((resolve) => {
+    releaseCreateResponse = resolve;
+  });
+  let promptRequests = 0;
+  let promptBody = null;
+
+  await page.route(/\/api\/tasks(?:\?|$)/, async (route) => {
+    if (route.request().method() !== "POST") {
+      return route.fulfill({ json: projection });
+    }
+    expect(route.request().postDataJSON()).toMatchObject({
+      cwd: rootPath,
+      titleSource: "Keep this first prompt",
+    });
+    resolveCreateRequested();
+    await createResponseReleased;
+    return route.fulfill({ json: createdDetail });
+  });
+  await page.route(
+    new RegExp(`/api/tasks/${createdThreadId}(?:\\?|$)`),
+    (route) => route.fulfill({ json: createdDetail }),
+  );
+  await page.route("**/api/tasks/*/prompts", (route) => {
+    promptRequests += 1;
+    promptBody = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        threadId: createdThreadId,
+        turnId: "turn-section-create-handoff",
+        userMessageId: "message-section-create-handoff",
+        steered: false,
+      },
+    });
+  });
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({ json: { tasks: [], nextCursor: null } })
+  );
+
+  await page.goto(`/?section=${sectionId}`);
+  await expect.poll(() => page.evaluate(() =>
+    window.__sectionCreateHandoffSources.some((source) =>
+      source.url.startsWith("/api/tasks/stream")
+    )
+  )).toBe(true);
+  const sectionPrompt = page.locator(
+    'caffold-section-detail textarea[name="prompt"]',
+  );
+  await sectionPrompt.fill("Keep this first prompt");
+  await sectionPrompt.press("Enter");
+  await createRequested;
+
+  await page.evaluate(({ task, placement }) => {
+    const source = window.__sectionCreateHandoffSources.find((candidate) =>
+      candidate.url.startsWith("/api/tasks/stream")
+    );
+    source.emit("task-placed-at-top", { task, placement });
+  }, { task: createdTask, placement });
+  const createdTaskRow = page.locator(
+    `caffold-active-task-row .task-row[data-thread-id="${createdThreadId}"]`,
+  );
+  await expect(createdTaskRow).toBeVisible();
+  await createdTaskRow.click();
+  await expect(page).toHaveURL(`/tasks/${createdThreadId}`);
+  await expect(page.locator("caffold-section-detail caffold-task-create")).toHaveCount(0);
+
+  releaseCreateResponse();
+
+  await expect.poll(() => promptRequests).toBe(1);
+  expect(promptBody).toMatchObject({
+    prompt: "Keep this first prompt",
+    activeTurnId: null,
+  });
+});
+
 test("falls back stale Section settings and applies targeted updates without reloading", { tag: "@desktop" }, async ({
   page,
 }) => {

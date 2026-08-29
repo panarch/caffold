@@ -857,6 +857,35 @@ test("says that a new task is starting until creation is answered", { tag: "@all
   expect(scenario.pageErrors).toEqual([]);
 });
 
+test("restores the exact new task draft when creation is rejected", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const scenario = await installTaskLoopFixture(page, {
+    rejectCreateResponse: true,
+  });
+  await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
+
+  const composer = page.locator("caffold-tasks-page .task-new-form");
+  await composer.locator(".task-model-button").click();
+  await composer.locator('.task-model-popover [data-effort="xhigh"]').click();
+  const prompt = composer.locator('textarea[name="prompt"]');
+  await prompt.fill("Inspect the planner changes");
+  await pasteImage(prompt, "rejected-create.png");
+  await expect(composer.locator(".task-composer-attachment")).toHaveCount(1);
+  await prompt.press("Enter");
+  await scenario.createRequested;
+
+  const error = page.locator("caffold-task-create .task-create-status");
+  await expect(error).toHaveAttribute("data-status-tone", "error");
+  await expect(error).toContainText("Task creation failed");
+  await expect(prompt).toHaveValue("Inspect the planner changes");
+  await expect(composer.locator(".task-composer-attachment")).toHaveCount(1);
+  await expect(composer.locator('input[name="effort"]')).toHaveValue("xhigh");
+  expect(scenario.createTaskRequests).toBe(1);
+  expect(scenario.initialPromptRequests).toBe(0);
+  expect(scenario.pageErrors).toEqual([]);
+});
+
 function expectCssSpacing(cssValue, expected) {
   const actual = cssValue.split(" ").map((value) => Number.parseFloat(value));
   expect(actual).toHaveLength(expected.length);

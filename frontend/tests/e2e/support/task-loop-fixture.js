@@ -13,6 +13,7 @@ export async function installTaskLoopFixture(
     deferInitialPrompt = false,
     fileLinks = [],
     holdCreateResponse = false,
+    rejectCreateResponse = false,
     threadId = "thread_12345678",
   } = {},
 ) {
@@ -287,6 +288,13 @@ export async function installTaskLoopFixture(
       resolveCreateRequest();
       if (holdCreateResponse) {
         await createResponseReleased;
+      }
+      if (rejectCreateResponse) {
+        return route.fulfill({
+          status: 422,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Task creation failed" }),
+        });
       }
       return route.fulfill({
         contentType: "application/json",
