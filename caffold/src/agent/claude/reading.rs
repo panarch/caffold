@@ -681,12 +681,19 @@ fn approval_request(frame: &ControlRequestFrame, turn_id: Option<String>) -> App
 
 #[cfg(test)]
 mod tests {
+    use super::super::protocol::MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION;
+    use super::super::{
+        ClaudeClient, ClaudeError, ClaudeRuntimeEvent, ClaudeTurnOptions, status_of, transcript,
+    };
+    use crate::agent::{
+        ActivityStatus, ApprovalDecision, ItemKind, MessageContent, SessionEventKind, ThreadStatus,
+        TurnStatus,
+    };
     use std::time::Duration;
 
     use serde_json::json;
 
     use super::super::test_support::*;
-    use super::super::*;
 
     #[tokio::test]
     async fn session_activity_changes_without_naming_or_ending_a_turn() {

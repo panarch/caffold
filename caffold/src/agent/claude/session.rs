@@ -304,11 +304,14 @@ fn session_argv(id: &str, start: SessionStart, options: &ClaudeTurnOptions) -> V
 
 #[cfg(test)]
 mod tests {
+    use super::super::session::WorkingDirectoryMove;
+    use super::super::{ClaudeClient, ClaudeRuntimeEvent, ClaudeTurnOptions, protocol, status_of};
+    use crate::agent::{SessionEventKind, ThreadActiveFlag, ThreadStatus, TurnStatus};
+    use serde_json::Value;
 
     use serde_json::json;
 
     use super::super::test_support::*;
-    use super::super::*;
 
     use super::super::test_support::written_conversation;
 

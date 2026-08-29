@@ -192,7 +192,6 @@ mod tests {
     use serde_json::json;
 
     use super::super::test_support::*;
-    use super::super::*;
     use super::*;
 
     fn mcp_frame(id: u64, method: &str, params: Value) -> Value {
