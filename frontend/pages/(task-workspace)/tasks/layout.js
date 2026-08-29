@@ -1,3 +1,4 @@
+import { createTask } from "../../../api.js";
 import { routeDomain, routeTarget } from "../../../navigation-routes.js";
 import {
   INITIAL_CODEX_STATUS_SNAPSHOT,
@@ -38,6 +39,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.codexStatusSnapshotValue = INITIAL_CODEX_STATUS_SNAPSHOT;
     this.codexRestartStateValue = { state: "idle", message: "" };
     this.lastPublishedTransportTargets = "";
+    this.pendingTaskCreation = null;
     this.boundTaskNavigatorIntent = (event) => {
       event.stopPropagation();
       if (event.detail?.type === "select-task") {
@@ -96,6 +98,18 @@ class CaffoldTasksPage extends HTMLElement {
       if (event.detail?.route) {
         this.requestRoute(event.detail.route);
       }
+    });
+    this.addEventListener("caffold:task-create-intent", (event) => {
+      if (event.detail?.type !== "start") {
+        return;
+      }
+      event.stopPropagation();
+      const completion = this.startTaskCreation(
+        event.detail?.request,
+        event.detail?.submission,
+      );
+      event.detail.accepted = Boolean(completion);
+      event.detail.completion = completion;
     });
     this.addEventListener("caffold:task-created", (event) => {
       event.stopPropagation();
@@ -393,6 +407,43 @@ class CaffoldTasksPage extends HTMLElement {
     );
     this.requestRoute({ kind: "tasks", threadId });
     return true;
+  }
+
+  startTaskCreation(request, submission) {
+    // Task and Section routes may replace the originating create component
+    // while POST /tasks is pending. This page remains mounted across those
+    // routes, so it owns the request until Task Detail accepts the submission.
+    const submissionId = `${submission?.submissionId ?? ""}`.trim();
+    if (
+      this.pendingTaskCreation ||
+      !submissionId ||
+      !request ||
+      typeof request !== "object"
+    ) {
+      return null;
+    }
+    const pending = { submissionId, completion: null };
+    this.pendingTaskCreation = pending;
+    pending.completion = this.createAndAdoptTask(
+      pending,
+      { ...request },
+      { ...submission },
+    );
+    return pending.completion;
+  }
+
+  async createAndAdoptTask(pending, request, submission) {
+    try {
+      const detail = await createTask(request);
+      if (!this.adoptCreatedDetail(detail, submission)) {
+        throw new Error("The created Task could not take ownership of its prompt.");
+      }
+      return detail;
+    } finally {
+      if (this.pendingTaskCreation === pending) {
+        this.pendingTaskCreation = null;
+      }
+    }
   }
 
   applyRecheckedRecovery(recovery) {

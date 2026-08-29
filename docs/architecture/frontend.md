@@ -254,11 +254,13 @@ Composer, and Task mutations. It publishes a subject snapshot upward; it does
 not mount Integrated Review, Git, GitHub, or their Summary controls.
 
 One pending prompt per Task belongs to Detail, whether it originated in the
-Task Composer or was transferred synchronously from the New Task or GitHub
-creation surface. The source Composer retains the complete submission until
-Detail adopts it; Detail then owns the text, attachments, options, optimistic
-entry, and retry state. Creation and prompt submission are separate HTTP
-requests, while this in-page ownership transfer preserves the one-action
+Task Composer or was transferred from a New Task or GitHub creation surface.
+For Global and Section New, Task Create transfers the complete submission to
+the persistent Tasks page before that page starts creation. The page retains it
+across Task and Section route changes, then hands it to Detail when the empty
+Task answer arrives. Detail then owns the text, attachments, options,
+optimistic entry, and retry state. Creation and prompt submission are separate
+HTTP requests, while this in-page ownership transfer preserves the one-action
 experience and prevents a duplicate request between them.
 
 Detail shows every prompt optimistically. The prompt response returns the
@@ -495,11 +497,13 @@ repository context from the navigator projection. See
 
 Global New owns its editable cwd and Directory Picker. Section New owns a fixed
 cwd and exposes no picker. Both mount the same Tasks-owned Task Create behavior,
-which owns the Composer, request, status, and error lifecycle. It reports a
-creation still in flight in its own status region. When the empty Task answer
-arrives, Detail adopts the still-pending Composer submission before navigation,
-then sends it through the ordinary prompt API. Only Global New represents its
-selected directory in `/tasks/new?cwd=...`.
+which owns the Composer and its status and error presentation. On submit, Task
+Create transfers the exact submission to the persistent Tasks page. That page
+owns the creation request across Task and Section route changes, so replacing a
+Section Task Create cannot abandon the first prompt. When the empty Task answer
+arrives, the page gives the retained submission to Detail before navigation;
+Detail then sends it through the ordinary prompt API. Only Global New represents
+its selected directory in `/tasks/new?cwd=...`.
 
 The Section-owned Existing conversations card is adjacent to, but independent
 of, Task Create. Its external Codex preview and native fork requests do not

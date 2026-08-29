@@ -1,4 +1,3 @@
-import { createTask } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import { taskStoreBlocksTaskOperations } from "../../codex-status.js";
@@ -30,7 +29,6 @@ class CaffoldTaskCreate extends HTMLElement {
       this.boundComposerSubmit,
     );
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
-    this.cancelActiveSubmission();
   }
 
   ensureState() {
@@ -45,7 +43,6 @@ class CaffoldTaskCreate extends HTMLElement {
     this.taskOperationsBlocked = false;
     this.error = null;
     this.renderedStatus = null;
-    this.requestGeneration = 0;
     this.activeSubmissionId = "";
     this.boundComposerIntent = (event) => this.handleComposerIntent(event);
     this.boundComposerSubmit = (event) => {
@@ -113,15 +110,6 @@ class CaffoldTaskCreate extends HTMLElement {
     this.composer()?.endEditingLifetime();
   }
 
-  reset() {
-    this.ensureState();
-    this.cancelActiveSubmission();
-    this.error = null;
-    this.composer()?.endEditingLifetime();
-    this.renderStatus();
-    this.syncComposer();
-  }
-
   setTransportAvailable(available) {
     this.ensureState();
     const next = Boolean(available);
@@ -179,61 +167,59 @@ class CaffoldTaskCreate extends HTMLElement {
     if (!submissionId || this.activeSubmissionId) {
       return;
     }
-    const prompt = `${event.detail?.prompt ?? ""}`;
     this.activeSubmissionId = submissionId;
     this.error = null;
     this.syncComposer();
     this.renderStatus();
-    const generation = ++this.requestGeneration;
+    let submission = null;
     try {
-      const detail = await createTask({
-        ...(this.selectedContextPath()
-          ? { cwd: this.selectedContextPath() }
-          : {}),
-        titleSource: prompt,
-        ...(event.detail?.options ?? {}),
-      });
-      if (
-        generation !== this.requestGeneration ||
-        submissionId !== this.activeSubmissionId
-      ) {
-        return;
-      }
-      const submission = this.composer()?.submissionSnapshot(submissionId);
+      submission = this.composer()?.takeSubmission(submissionId);
       if (!submission) {
-        throw new Error("The created Task lost the prompt it was meant to submit.");
+        throw new Error("The Task prompt could not be prepared for creation.");
       }
-      // Creation has accepted only the empty Task. The Task Detail composer
-      // takes ownership of the still-pending message before navigation and
-      // sends it through the same prompt path as every later message.
-      const handoff = { detail, submission, adopted: false };
+      const intent = {
+        type: "start",
+        request: {
+          ...(this.selectedContextPath()
+            ? { cwd: this.selectedContextPath() }
+            : {}),
+          titleSource: submission.prompt,
+          ...(submission.options ?? {}),
+        },
+        submission,
+        accepted: false,
+        completion: null,
+      };
       this.dispatchEvent(
-        new CustomEvent("caffold:task-created", {
+        new CustomEvent("caffold:task-create-intent", {
           bubbles: true,
           composed: true,
-          detail: handoff,
+          detail: intent,
         }),
       );
-      if (!handoff.adopted) {
-        throw new Error("The created Task could not take ownership of its prompt.");
+      if (!intent.accepted || !intent.completion) {
+        throw new Error("Another Task is already starting.");
       }
-      this.composer()?.takeSubmission(submissionId);
-      // The pending request and its exact options now belong to the Task
-      // composer. End this New Task editing lifetime so a later New surface
-      // starts from canonical defaults instead of inheriting the old request.
+      await intent.completion;
+      if (submissionId !== this.activeSubmissionId) {
+        return;
+      }
+      // The Tasks page handed the request and its exact options to the new
+      // Task composer. End this New Task editing lifetime so a later New
+      // surface starts from canonical defaults instead of inheriting it.
       this.composer()?.endEditingLifetime();
       this.activeSubmissionId = "";
       this.syncComposer();
       this.renderStatus();
     } catch (error) {
-      if (
-        generation !== this.requestGeneration ||
-        submissionId !== this.activeSubmissionId
-      ) {
+      if (submissionId !== this.activeSubmissionId) {
         return;
       }
       this.activeSubmissionId = "";
       this.error = error instanceof Error ? error : new Error(`${error}`);
+      if (submission) {
+        this.composer()?.adoptSubmission(submission);
+      }
       this.syncComposer();
       this.composer()?.resolveSubmission(submissionId, {
         status: "rejected",
@@ -241,21 +227,6 @@ class CaffoldTaskCreate extends HTMLElement {
       });
       this.renderStatus();
     }
-  }
-
-  cancelActiveSubmission() {
-    this.requestGeneration += 1;
-    if (!this.activeSubmissionId) {
-      return;
-    }
-    const submissionId = this.activeSubmissionId;
-    this.activeSubmissionId = "";
-    this.composer()?.resolveSubmission(submissionId, {
-      status: "outcome-unknown",
-      error: new Error(
-        "Task creation was interrupted before Caffold received a response.",
-      ),
-    });
   }
 
   syncComposer() {
@@ -282,8 +253,9 @@ class CaffoldTaskCreate extends HTMLElement {
 
   // What this surface has to say about the request it is holding.
   //
-  // This surface waits only for the empty Task to be committed. Once that
-  // answers, the retained submission moves into the visible Task composer.
+  // This surface presents a request owned by the persistent Tasks page. Once
+  // the empty Task is committed, that owner moves the retained submission into
+  // the visible Task composer even if this source surface has been removed.
   // The region is left alone while it already says this, so a live region is
   // not re-announced for an unchanged state.
   renderStatus() {
