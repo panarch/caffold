@@ -10,59 +10,59 @@ use crate::{
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct TaskRecord {
-    pub(in crate::app) id: String,
-    pub(in crate::app) thread_id: String,
-    pub(in crate::app) conversation_available: bool,
-    pub(in crate::app) title: String,
-    pub(in crate::app) preview: String,
-    pub(in crate::app) thread_status: ThreadStatus,
-    pub(in crate::app) latest_turn_status: Option<TurnStatus>,
-    pub(in crate::app) active_turn: Option<TaskActiveTurn>,
-    pub(in crate::app) cwd: String,
-    pub(in crate::app) cwd_path: Option<String>,
-    pub(in crate::app) relative_cwd: String,
-    pub(in crate::app) worktree: Option<TaskWorktreeContext>,
-    pub(in crate::app) created_ms: u64,
-    pub(in crate::app) updated_ms: u64,
-    pub(in crate::app) recency_ms: Option<u64>,
-    pub(in crate::app) last_completed_ms: Option<u64>,
-    pub(in crate::app) last_event_summary: Option<String>,
-    pub(in crate::app) unseen: bool,
+pub(in crate::app::tasks) struct TaskRecord {
+    pub(in crate::app::tasks) id: String,
+    pub(in crate::app::tasks) thread_id: String,
+    pub(in crate::app::tasks) conversation_available: bool,
+    pub(in crate::app::tasks) title: String,
+    pub(in crate::app::tasks) preview: String,
+    pub(in crate::app::tasks) thread_status: ThreadStatus,
+    pub(in crate::app::tasks) latest_turn_status: Option<TurnStatus>,
+    pub(in crate::app::tasks) active_turn: Option<TaskActiveTurn>,
+    pub(in crate::app::tasks) cwd: String,
+    pub(in crate::app::tasks) cwd_path: Option<String>,
+    pub(in crate::app::tasks) relative_cwd: String,
+    pub(in crate::app::tasks) worktree: Option<TaskWorktreeContext>,
+    pub(in crate::app::tasks) created_ms: u64,
+    pub(in crate::app::tasks) updated_ms: u64,
+    pub(in crate::app::tasks) recency_ms: Option<u64>,
+    pub(in crate::app::tasks) last_completed_ms: Option<u64>,
+    pub(in crate::app::tasks) last_event_summary: Option<String>,
+    pub(in crate::app::tasks) unseen: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct TaskActiveTurn {
-    pub(in crate::app) id: String,
-    pub(in crate::app) started_at_ms: Option<u64>,
+pub(in crate::app::tasks) struct TaskActiveTurn {
+    pub(in crate::app::tasks) id: String,
+    pub(in crate::app::tasks) started_at_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct TaskWorktreeContext {
-    pub(in crate::app) root_path: String,
-    pub(in crate::app) repository_root_path: String,
-    pub(in crate::app) branch: Option<String>,
-    pub(in crate::app) head_sha: String,
-    pub(in crate::app) relative_cwd: String,
-    pub(in crate::app) linked: bool,
+pub(in crate::app::tasks) struct TaskWorktreeContext {
+    pub(in crate::app::tasks) root_path: String,
+    pub(in crate::app::tasks) repository_root_path: String,
+    pub(in crate::app::tasks) branch: Option<String>,
+    pub(in crate::app::tasks) head_sha: String,
+    pub(in crate::app::tasks) relative_cwd: String,
+    pub(in crate::app::tasks) linked: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::app) struct ResolvedTaskCwd {
-    pub(in crate::app) canonical_cwd: PathBuf,
-    pub(in crate::app) logical_cwd: Option<String>,
-    pub(in crate::app) worktree: Option<TaskWorktreeContext>,
-    pub(in crate::app) worktree_root: Option<PathBuf>,
-    pub(in crate::app) repository_common_dir: Option<PathBuf>,
+pub(in crate::app::tasks) struct ResolvedTaskCwd {
+    pub(in crate::app::tasks) canonical_cwd: PathBuf,
+    pub(in crate::app::tasks) logical_cwd: Option<String>,
+    pub(in crate::app::tasks) worktree: Option<TaskWorktreeContext>,
+    pub(in crate::app::tasks) worktree_root: Option<PathBuf>,
+    pub(in crate::app::tasks) repository_common_dir: Option<PathBuf>,
 }
 
 /// A conversation carrying the turns that were read separately.
 ///
 /// A conversation read without its turns and a page of turns arrive as two
 /// responses, and everything below here wants one subject.
-pub(in crate::app) fn conversation_with_turns(
+pub(in crate::app::tasks) fn conversation_with_turns(
     conversation: &Conversation,
     turns: Vec<Turn>,
 ) -> Conversation {
@@ -72,7 +72,7 @@ pub(in crate::app) fn conversation_with_turns(
     }
 }
 
-pub(in crate::app) fn task_record_from_conversation(
+pub(in crate::app::tasks) fn task_record_from_conversation(
     conversation: &Conversation,
     events: &[TaskEventRecord],
     resolved_cwd: Option<&ResolvedTaskCwd>,
@@ -110,13 +110,13 @@ pub(in crate::app) fn task_record_from_conversation(
     }
 }
 
-pub(in crate::app) fn conversation_display_name(conversation: &Conversation) -> String {
+pub(in crate::app::tasks) fn conversation_display_name(conversation: &Conversation) -> String {
     non_empty_string(conversation.title.as_deref())
         .or_else(|| non_empty_string(Some(conversation.preview.as_str())))
         .unwrap_or_else(|| format!("Thread {}", short_thread_id(&conversation.id)))
 }
 
-pub(in crate::app) fn apply_canonical_turn_projection(
+pub(in crate::app::tasks) fn apply_canonical_turn_projection(
     task: &mut TaskRecord,
     conversation: &Conversation,
 ) {
@@ -138,19 +138,19 @@ pub(in crate::app) fn apply_canonical_turn_projection(
     };
 }
 
-pub(in crate::app) fn task_activity_ms(task: &TaskRecord) -> u64 {
+pub(in crate::app::tasks) fn task_activity_ms(task: &TaskRecord) -> u64 {
     task.recency_ms
         .unwrap_or_else(|| task.updated_ms.max(task.created_ms))
 }
 
-pub(in crate::app) fn resolve_conversation_cwd(
+pub(in crate::app::tasks) fn resolve_conversation_cwd(
     fs: &RootedFs,
     conversation: &Conversation,
 ) -> Option<ResolvedTaskCwd> {
     resolve_task_cwd(fs, &conversation.cwd)
 }
 
-pub(in crate::app) fn resolve_task_cwd(fs: &RootedFs, cwd: &str) -> Option<ResolvedTaskCwd> {
+pub(in crate::app::tasks) fn resolve_task_cwd(fs: &RootedFs, cwd: &str) -> Option<ResolvedTaskCwd> {
     let canonical_cwd = Path::new(cwd).canonicalize().ok()?;
     if !canonical_cwd.is_dir() {
         return None;
@@ -220,15 +220,15 @@ pub(in crate::app) fn resolve_task_cwd(fs: &RootedFs, cwd: &str) -> Option<Resol
     })
 }
 
-pub(in crate::app) fn has_git_ancestor(path: &Path) -> bool {
+pub(in crate::app::tasks) fn has_git_ancestor(path: &Path) -> bool {
     path.ancestors().any(git::has_git_marker)
 }
 
-pub(in crate::app) fn short_thread_id(thread_id: &str) -> &str {
+pub(in crate::app::tasks) fn short_thread_id(thread_id: &str) -> &str {
     thread_id.get(..8).unwrap_or(thread_id)
 }
 
-pub(in crate::app) fn relative_path_string(path: &Path) -> String {
+pub(in crate::app::tasks) fn relative_path_string(path: &Path) -> String {
     path.components()
         .filter_map(|component| match component {
             std::path::Component::Normal(value) => value.to_str(),

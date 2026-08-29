@@ -21,7 +21,7 @@ use crate::{
 };
 
 #[derive(Debug, Error)]
-pub(in crate::app) enum ManagedWorktreeError {
+pub(in crate::app::tasks) enum ManagedWorktreeError {
     #[error(transparent)]
     Store(#[from] TaskStoreError),
     #[error(transparent)]
@@ -41,19 +41,19 @@ pub(in crate::app) enum ManagedWorktreeError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::app) enum ArchiveOutcome {
+pub(in crate::app::tasks) enum ArchiveOutcome {
     NotManaged,
     Archived(ManagedWorktree),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::app) enum RestoreOutcome {
+pub(in crate::app::tasks) enum RestoreOutcome {
     NotManaged,
     Restored(ManagedWorktree),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::app) enum IsolateOutcome {
+pub(in crate::app::tasks) enum IsolateOutcome {
     AlreadyReady {
         worktree: ManagedWorktree,
         checkout: WorktreeCheckout,
@@ -66,13 +66,13 @@ pub(in crate::app) enum IsolateOutcome {
 }
 
 #[derive(Clone)]
-pub(in crate::app) struct ManagedWorktrees {
+pub(in crate::app::tasks) struct ManagedWorktrees {
     root: Arc<PathBuf>,
     store: TaskStore,
 }
 
 impl ManagedWorktrees {
-    pub(in crate::app) fn new(
+    pub(in crate::app::tasks) fn new(
         fs: Arc<RootedFs>,
         store: TaskStore,
         root: PathBuf,
@@ -96,7 +96,7 @@ impl ManagedWorktrees {
         Ok(worktrees)
     }
 
-    pub(in crate::app) async fn isolate_current(
+    pub(in crate::app::tasks) async fn isolate_current(
         &self,
         source: PathBuf,
         thread_id: String,
@@ -120,7 +120,7 @@ impl ManagedWorktrees {
         .map_err(|error| ManagedWorktreeError::Worker(error.to_string()))?
     }
 
-    pub(in crate::app) async fn archive_for_thread(
+    pub(in crate::app::tasks) async fn archive_for_thread(
         &self,
         thread_id: String,
     ) -> Result<ArchiveOutcome, ManagedWorktreeError> {
@@ -130,7 +130,7 @@ impl ManagedWorktrees {
             .map_err(|error| ManagedWorktreeError::Worker(error.to_string()))?
     }
 
-    pub(in crate::app) async fn preflight_archive_for_thread(
+    pub(in crate::app::tasks) async fn preflight_archive_for_thread(
         &self,
         thread_id: String,
     ) -> Result<(), ManagedWorktreeError> {
@@ -140,7 +140,7 @@ impl ManagedWorktrees {
             .map_err(|error| ManagedWorktreeError::Worker(error.to_string()))?
     }
 
-    pub(in crate::app) async fn restore_for_thread(
+    pub(in crate::app::tasks) async fn restore_for_thread(
         &self,
         thread_id: String,
     ) -> Result<RestoreOutcome, ManagedWorktreeError> {

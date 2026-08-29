@@ -109,7 +109,10 @@ fn codex_mcp_task_tool(tool: &str) -> Result<CaffoldTaskTool, String> {
 }
 
 impl TaskRuntime {
-    pub(in crate::app) async fn approval_events(&self, thread_id: &str) -> Vec<TaskEventRecord> {
+    pub(in crate::app::tasks) async fn approval_events(
+        &self,
+        thread_id: &str,
+    ) -> Vec<TaskEventRecord> {
         self.approvals
             .lock()
             .await
@@ -127,7 +130,7 @@ impl TaskRuntime {
             .collect()
     }
 
-    pub(in crate::app) async fn resolve_approval(
+    pub(in crate::app::tasks) async fn resolve_approval(
         &self,
         agent: &TaskAgent,
         thread_id: &str,

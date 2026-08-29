@@ -26,34 +26,34 @@ mod fork;
 mod initial_request_name;
 
 use crate::git;
-pub(in crate::app) use fork::{ForkCodexSource, ForkCodexTask};
+pub(in crate::app::tasks) use fork::{ForkCodexSource, ForkCodexTask};
 
-pub(in crate::app) struct CreateTask {
-    pub(in crate::app) cwd: String,
-    pub(in crate::app) title_source: String,
-    pub(in crate::app) turn_options: TurnOptions,
+pub(in crate::app::tasks) struct CreateTask {
+    pub(in crate::app::tasks) cwd: String,
+    pub(in crate::app::tasks) title_source: String,
+    pub(in crate::app::tasks) turn_options: TurnOptions,
 }
 
-pub(in crate::app) struct CreatedTask {
-    pub(in crate::app) task: TaskRecord,
-    pub(in crate::app) placement: ActiveTaskTopPlacement,
-}
-
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub(in crate::app) struct ActiveTaskSectionIdentity {
-    pub(in crate::app) id: String,
-    pub(in crate::app) name: String,
-    pub(in crate::app) repository: bool,
+pub(in crate::app::tasks) struct CreatedTask {
+    pub(in crate::app::tasks) task: TaskRecord,
+    pub(in crate::app::tasks) placement: ActiveTaskTopPlacement,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct ActiveTaskTopPlacement {
-    pub(in crate::app) section: ActiveTaskSectionIdentity,
-    pub(in crate::app) before_section_id: Option<String>,
+pub(in crate::app::tasks) struct ActiveTaskSectionIdentity {
+    pub(in crate::app::tasks) id: String,
+    pub(in crate::app::tasks) name: String,
+    pub(in crate::app::tasks) repository: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(in crate::app::tasks) struct ActiveTaskTopPlacement {
+    pub(in crate::app::tasks) section: ActiveTaskSectionIdentity,
+    pub(in crate::app::tasks) before_section_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(in crate::app) before_thread_id: Option<String>,
+    pub(in crate::app::tasks) before_thread_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,7 +77,7 @@ enum LocalPlacementMutation {
 }
 
 #[derive(Clone)]
-pub(in crate::app) struct TaskLifecycle {
+pub(in crate::app::tasks) struct TaskLifecycle {
     fs: Arc<RootedFs>,
     sessions: TaskSessions,
     events: TaskEvents,
@@ -88,7 +88,7 @@ pub(in crate::app) struct TaskLifecycle {
 }
 
 impl TaskLifecycle {
-    pub(in crate::app) fn new(
+    pub(in crate::app::tasks) fn new(
         fs: Arc<RootedFs>,
         sessions: TaskSessions,
         events: TaskEvents,
@@ -114,7 +114,7 @@ impl TaskLifecycle {
     /// a record claimed at the top of its Section, and the placement every list
     /// is told about. It contains no turn; any message, including the first,
     /// is submitted separately through the ordinary prompt path.
-    pub(in crate::app) async fn create_task(
+    pub(in crate::app::tasks) async fn create_task(
         &self,
         agent: &TaskAgent,
         request: CreateTask,
@@ -204,7 +204,7 @@ impl TaskLifecycle {
         Ok(CreatedTask { task, placement })
     }
 
-    pub(in crate::app) async fn place_active_task(
+    pub(in crate::app::tasks) async fn place_active_task(
         &self,
         task: &TaskRecord,
     ) -> Result<Option<ActiveTaskTopPlacement>, ApiError> {
@@ -212,7 +212,7 @@ impl TaskLifecycle {
             .await
     }
 
-    pub(in crate::app) async fn restore_active_task(
+    pub(in crate::app::tasks) async fn restore_active_task(
         &self,
         task: &TaskRecord,
     ) -> Result<Option<ActiveTaskTopPlacement>, ApiError> {
@@ -220,7 +220,7 @@ impl TaskLifecycle {
             .await
     }
 
-    pub(in crate::app) async fn isolate_current_task(
+    pub(in crate::app::tasks) async fn isolate_current_task(
         &self,
         source: PathBuf,
         thread_id: String,
@@ -249,7 +249,7 @@ impl TaskLifecycle {
             .map_err(worktree_api_error)
     }
 
-    pub(in crate::app) async fn archive_worktree(
+    pub(in crate::app::tasks) async fn archive_worktree(
         &self,
         thread_id: String,
     ) -> Result<ArchiveOutcome, ApiError> {
@@ -259,7 +259,7 @@ impl TaskLifecycle {
             .map_err(worktree_api_error)
     }
 
-    pub(in crate::app) async fn preflight_archive_worktree(
+    pub(in crate::app::tasks) async fn preflight_archive_worktree(
         &self,
         thread_id: String,
     ) -> Result<(), ApiError> {
@@ -269,7 +269,7 @@ impl TaskLifecycle {
             .map_err(worktree_api_error)
     }
 
-    pub(in crate::app) async fn restore_worktree(
+    pub(in crate::app::tasks) async fn restore_worktree(
         &self,
         thread_id: String,
     ) -> Result<RestoreOutcome, ApiError> {
@@ -279,7 +279,7 @@ impl TaskLifecycle {
             .map_err(worktree_api_error)
     }
 
-    pub(in crate::app) async fn rollback_archived_worktree(
+    pub(in crate::app::tasks) async fn rollback_archived_worktree(
         &self,
         thread_id: &str,
         outcome: &ArchiveOutcome,
@@ -291,7 +291,7 @@ impl TaskLifecycle {
         }
     }
 
-    pub(in crate::app) async fn rollback_restored_worktree(
+    pub(in crate::app::tasks) async fn rollback_restored_worktree(
         &self,
         thread_id: &str,
         outcome: &RestoreOutcome,
@@ -303,7 +303,7 @@ impl TaskLifecycle {
         }
     }
 
-    pub(in crate::app) async fn delete_task_resources(&self, thread_id: &str) {
+    pub(in crate::app::tasks) async fn delete_task_resources(&self, thread_id: &str) {
         self.sessions.forget_thread(thread_id).await;
         self.events.remove_thread(thread_id);
     }
@@ -448,7 +448,7 @@ impl TaskLifecycle {
         result.map_err(|error| ApiError::Internal(error.to_string()))
     }
 
-    pub(in crate::app) fn refresh_task_list(&self) {
+    pub(in crate::app::tasks) fn refresh_task_list(&self) {
         self.list_events.refresh();
     }
 
@@ -510,7 +510,7 @@ fn managed_thread_from_task_record(
     managed
 }
 
-pub(in crate::app) fn worktree_api_error(error: ManagedWorktreeError) -> ApiError {
+pub(in crate::app::tasks) fn worktree_api_error(error: ManagedWorktreeError) -> ApiError {
     match error {
         ManagedWorktreeError::Git(git::WorktreeError::Dirty(_)) => ApiError::BadRequest {
             code: "managed_worktree_dirty",

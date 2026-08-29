@@ -28,17 +28,17 @@ pub(super) struct TaskFileLinkResolver {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct TaskFileLink {
-    pub(in crate::app) event_id: String,
-    pub(in crate::app) link_id: usize,
-    pub(in crate::app) target: String,
+pub(in crate::app::tasks) struct TaskFileLink {
+    pub(in crate::app::tasks) event_id: String,
+    pub(in crate::app::tasks) link_id: usize,
+    pub(in crate::app::tasks) target: String,
     #[serde(flatten)]
-    pub(in crate::app) outcome: TaskFileLinkOutcome,
+    pub(in crate::app::tasks) outcome: TaskFileLinkOutcome,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(tag = "status", rename_all = "snake_case")]
-pub(in crate::app) enum TaskFileLinkOutcome {
+pub(in crate::app::tasks) enum TaskFileLinkOutcome {
     Resolved {
         path: String,
         #[serde(rename = "taskRelativePath")]
@@ -53,7 +53,7 @@ pub(in crate::app) enum TaskFileLinkOutcome {
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub(in crate::app) enum TaskFileLinkRejection {
+pub(in crate::app::tasks) enum TaskFileLinkRejection {
     UnsupportedOrMalformedLocation,
     NotFound,
     NotRegularReadableFile,

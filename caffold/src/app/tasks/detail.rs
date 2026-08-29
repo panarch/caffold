@@ -40,7 +40,7 @@ pub(super) const TASK_DETAIL_TURNS_PAGE_SIZE: usize = 8;
 type RefreshTaskList = Arc<dyn Fn() + Send + Sync>;
 
 #[derive(Clone)]
-pub(in crate::app) struct DetailContext {
+pub(in crate::app::tasks) struct DetailContext {
     fs: Arc<RootedFs>,
     store: TaskStore,
     runtime: TaskRuntime,
@@ -55,19 +55,19 @@ pub(in crate::app) struct DetailContext {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct TaskDetailResponse {
-    pub(in crate::app) thread_id: String,
-    pub(in crate::app) sync_state: TaskSyncState,
-    pub(in crate::app) revision: u64,
+pub(in crate::app::tasks) struct TaskDetailResponse {
+    pub(in crate::app::tasks) thread_id: String,
+    pub(in crate::app::tasks) sync_state: TaskSyncState,
+    pub(in crate::app::tasks) revision: u64,
     /// Publication watermark for the canonical conversation projection.
-    pub(in crate::app) event_revision: u64,
-    pub(in crate::app) task: Option<TaskRecord>,
-    pub(in crate::app) events: Vec<TaskEventRecord>,
+    pub(in crate::app::tasks) event_revision: u64,
+    pub(in crate::app::tasks) task: Option<TaskRecord>,
+    pub(in crate::app::tasks) events: Vec<TaskEventRecord>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub(in crate::app) file_links: Vec<TaskFileLink>,
-    pub(in crate::app) events_page: TaskEventsPage,
-    pub(in crate::app) pending_approvals: Vec<TaskEventRecord>,
-    pub(in crate::app) history_loading: bool,
+    pub(in crate::app::tasks) file_links: Vec<TaskFileLink>,
+    pub(in crate::app::tasks) events_page: TaskEventsPage,
+    pub(in crate::app::tasks) pending_approvals: Vec<TaskEventRecord>,
+    pub(in crate::app::tasks) history_loading: bool,
     /// Which agent runs this Task, when this answer knows.
     ///
     /// The composer reads it to offer that agent's models and permission modes
@@ -76,37 +76,37 @@ pub(in crate::app) struct TaskDetailResponse {
     /// answer carries no Task either, and a Task nobody can read is one nobody
     /// can prompt — so no surface reads this while it is absent.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(in crate::app) provider: Option<TaskProvider>,
-    pub(in crate::app) permission_mode: Option<String>,
-    pub(in crate::app) model: Option<String>,
-    pub(in crate::app) reasoning_effort: Option<String>,
-    pub(in crate::app) fast_mode: bool,
+    pub(in crate::app::tasks) provider: Option<TaskProvider>,
+    pub(in crate::app::tasks) permission_mode: Option<String>,
+    pub(in crate::app::tasks) model: Option<String>,
+    pub(in crate::app::tasks) reasoning_effort: Option<String>,
+    pub(in crate::app::tasks) fast_mode: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(in crate::app) active_top_placement: Option<ActiveTaskTopPlacement>,
+    pub(in crate::app::tasks) active_top_placement: Option<ActiveTaskTopPlacement>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) enum TaskSyncState {
+pub(in crate::app::tasks) enum TaskSyncState {
     Loading,
     Ready,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct TaskEventsPage {
-    pub(in crate::app) next_cursor: Option<String>,
+pub(in crate::app::tasks) struct TaskEventsPage {
+    pub(in crate::app::tasks) next_cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct TaskDetailSync {
-    pub(in crate::app) thread_id: String,
-    pub(in crate::app) revision: u64,
-    pub(in crate::app) detail: TaskDetailResponse,
-    pub(in crate::app) reason: &'static str,
+pub(in crate::app::tasks) struct TaskDetailSync {
+    pub(in crate::app::tasks) thread_id: String,
+    pub(in crate::app::tasks) revision: u64,
+    pub(in crate::app::tasks) detail: TaskDetailResponse,
+    pub(in crate::app::tasks) reason: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(in crate::app) error: Option<String>,
+    pub(in crate::app::tasks) error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -123,10 +123,10 @@ struct TaskEventEnvelope {
     file_links: Vec<TaskFileLink>,
 }
 
-pub(in crate::app) type DetailFrameStream =
+pub(in crate::app::tasks) type DetailFrameStream =
     Pin<Box<dyn Stream<Item = Result<String, Infallible>> + Send>>;
 
-pub(in crate::app) fn task_stream_initial_frames(sync: &TaskDetailSync) -> VecDeque<String> {
+pub(in crate::app::tasks) fn task_stream_initial_frames(sync: &TaskDetailSync) -> VecDeque<String> {
     let payload = serde_json::to_string(sync).expect("task detail sync serializes");
     VecDeque::from([
         ": ready\n\n".to_string(),
@@ -136,7 +136,7 @@ pub(in crate::app) fn task_stream_initial_frames(sync: &TaskDetailSync) -> VecDe
 
 impl DetailContext {
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::app) fn new(
+    pub(in crate::app::tasks) fn new(
         fs: Arc<RootedFs>,
         store: TaskStore,
         runtime: TaskRuntime,
@@ -161,23 +161,28 @@ impl DetailContext {
         }
     }
 
-    pub(in crate::app) async fn client(&self) -> Result<CodexThreadClient, ApiError> {
+    pub(in crate::app::tasks) async fn client(&self) -> Result<CodexThreadClient, ApiError> {
         self.ensure_runtime_signal_driver().await;
         self.runtime.client().await.map_err(ApiError::from)
     }
 
-    pub(in crate::app) async fn connection(&self) -> Result<CodexConnection, CodexThreadError> {
+    pub(in crate::app::tasks) async fn connection(
+        &self,
+    ) -> Result<CodexConnection, CodexThreadError> {
         self.ensure_runtime_signal_driver().await;
         self.runtime.connection().await
     }
 
     /// The agent that owns this Task, ready to be asked about it.
-    pub(in crate::app) async fn agent(&self, thread_id: &str) -> Result<TaskAgent, AgentError> {
+    pub(in crate::app::tasks) async fn agent(
+        &self,
+        thread_id: &str,
+    ) -> Result<TaskAgent, AgentError> {
         self.ensure_runtime_signal_driver().await;
         self.runtime.task_agent(thread_id).await
     }
 
-    pub(in crate::app) async fn get(
+    pub(in crate::app::tasks) async fn get(
         &self,
         thread_id: &str,
         cursor: Option<&str>,
@@ -204,7 +209,7 @@ impl DetailContext {
         Ok(detail)
     }
 
-    pub(in crate::app) async fn stream(
+    pub(in crate::app::tasks) async fn stream(
         &self,
         thread_id: &str,
     ) -> Result<DetailFrameStream, ApiError> {
@@ -398,7 +403,7 @@ impl DetailContext {
         Ok(Box::pin(stream))
     }
 
-    pub(in crate::app) async fn read(
+    pub(in crate::app::tasks) async fn read(
         &self,
         agent: &TaskAgent,
         thread_id: &str,
@@ -428,7 +433,7 @@ impl DetailContext {
         self.assemble_snapshot(snapshot, response_page).await
     }
 
-    pub(in crate::app) async fn cached(
+    pub(in crate::app::tasks) async fn cached(
         &self,
         thread_id: &str,
     ) -> Result<(TaskDetailResponse, u64), ApiError> {
@@ -452,7 +457,7 @@ impl DetailContext {
         Ok((detail, revision))
     }
 
-    pub(in crate::app) async fn bootstrap(&self, thread_id: &str, baseline_revision: u64) {
+    pub(in crate::app::tasks) async fn bootstrap(&self, thread_id: &str, baseline_revision: u64) {
         if let Err(error) = self.restore_managed_fast_mode(thread_id).await {
             self.broadcast_error(thread_id, error.to_string()).await;
             return;
@@ -490,7 +495,7 @@ impl DetailContext {
             .await;
     }
 
-    pub(in crate::app) async fn assemble_snapshot(
+    pub(in crate::app::tasks) async fn assemble_snapshot(
         &self,
         snapshot: SessionSnapshot,
         response_page: Option<(TurnPage, u64)>,
@@ -573,7 +578,7 @@ impl DetailContext {
         Err(not_managed_error())
     }
 
-    pub(in crate::app) fn record_from_conversation(
+    pub(in crate::app::tasks) fn record_from_conversation(
         &self,
         conversation: &Conversation,
     ) -> Result<TaskRecord, ApiError> {
@@ -626,7 +631,7 @@ impl DetailContext {
         });
     }
 
-    pub(in crate::app) async fn ensure_sync_worker(&self) {
+    pub(in crate::app::tasks) async fn ensure_sync_worker(&self) {
         let Some(receiver) = self.sync.take_jobs().await else {
             return;
         };
@@ -776,7 +781,7 @@ impl DetailContext {
 /// An agent reports the directory it was started in, which is no longer where
 /// the work happens once a Task has been isolated. Everything downstream — Git,
 /// review, file links — resolves from this one field.
-pub(in crate::app) fn project_managed_worktree_cwd(
+pub(in crate::app::tasks) fn project_managed_worktree_cwd(
     store: &TaskStore,
     mut conversation: Conversation,
 ) -> Result<Conversation, ApiError> {
@@ -798,7 +803,7 @@ pub(in crate::app) fn project_managed_worktree_cwd(
     Ok(conversation)
 }
 
-pub(in crate::app) fn loading_detail(
+pub(in crate::app::tasks) fn loading_detail(
     thread_id: &str,
     revision: u64,
     managed: Option<&ManagedThread>,
@@ -826,7 +831,7 @@ pub(in crate::app) fn loading_detail(
     }
 }
 
-pub(in crate::app) fn not_managed_error() -> ApiError {
+pub(in crate::app::tasks) fn not_managed_error() -> ApiError {
     ApiError::BadRequest {
         code: "task_not_managed",
         message: "task is not managed by Caffold".to_string(),

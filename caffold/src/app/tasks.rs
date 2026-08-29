@@ -33,11 +33,11 @@ pub(in crate::app) use codex_mcp::CodexMcpHost;
 use detail::{DetailContext, TaskDetailSync};
 use events::TaskEvents;
 use lifecycle::TaskLifecycle;
-pub(super) use projection::TaskRecord;
+pub(in crate::app::tasks) use projection::TaskRecord;
 use push::{PushRuntime, PushService};
 use routes::TaskListEvents;
 use runtime::TaskRuntime;
-pub(super) use startup::PersistentTasksGateway;
+pub(in crate::app) use startup::PersistentTasksGateway;
 use sync::TaskSync;
 use worktrees::ManagedWorktrees;
 
@@ -155,7 +155,7 @@ impl TaskState {
     }
 }
 
-pub(super) struct TasksApp {
+pub(in crate::app) struct TasksApp {
     router: Router,
     runtime: TaskRuntime,
     push: PushRuntime,
@@ -193,7 +193,7 @@ impl TasksApp {
         })
     }
 
-    pub(super) fn persistent(
+    pub(in crate::app::tasks) fn persistent(
         fs: Arc<RootedFs>,
         default_cwd_path: String,
         shutdown: broadcast::Sender<()>,
@@ -220,7 +220,7 @@ impl TasksApp {
         Ok(app)
     }
 
-    pub(super) fn memory(
+    pub(in crate::app) fn memory(
         fs: Arc<RootedFs>,
         default_cwd_path: String,
         shutdown: broadcast::Sender<()>,
@@ -239,19 +239,19 @@ impl TasksApp {
         )
     }
 
-    pub(super) fn router(&self) -> Router {
+    pub(in crate::app) fn router(&self) -> Router {
         self.router.clone()
     }
 
-    pub(super) async fn shutdown(self) {
+    pub(in crate::app::tasks) async fn shutdown(self) {
         tokio::join!(self.runtime.shutdown(), self.push.shutdown());
     }
 }
 
-pub(super) use detail::{DetailFrameStream, TaskDetailResponse};
-pub(super) use events::{TaskEventRecord, accepted_user_message_event, now_ms};
-pub(super) use projection::task_activity_ms;
-pub(super) use runtime::{ApprovalResolveError, CodexConnection, TaskAgent};
+pub(in crate::app::tasks) use detail::{DetailFrameStream, TaskDetailResponse};
+pub(in crate::app::tasks) use events::{TaskEventRecord, accepted_user_message_event, now_ms};
+pub(in crate::app::tasks) use projection::task_activity_ms;
+pub(in crate::app::tasks) use runtime::{ApprovalResolveError, CodexConnection, TaskAgent};
 
 #[cfg(test)]
 pub(in crate::app::tasks) mod test_support {

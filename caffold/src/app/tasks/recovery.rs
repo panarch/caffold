@@ -13,7 +13,7 @@ const CODEX_THREAD_PAGE_SIZE: usize = 100;
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) enum ActiveTaskRecoveryReason {
+pub(in crate::app::tasks) enum ActiveTaskRecoveryReason {
     SectionPlacementPending,
     CodexArchived,
     ThreadMissing,
@@ -22,7 +22,7 @@ pub(in crate::app) enum ActiveTaskRecoveryReason {
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) enum ActiveTaskRecoveryAction {
+pub(in crate::app::tasks) enum ActiveTaskRecoveryAction {
     Recheck,
     RestoreToActive,
     MoveToArchived,
@@ -31,21 +31,21 @@ pub(in crate::app) enum ActiveTaskRecoveryAction {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct ActiveTaskRecoveryContext {
-    pub(in crate::app) reason: ActiveTaskRecoveryReason,
-    pub(in crate::app) actions: Vec<ActiveTaskRecoveryAction>,
+pub(in crate::app::tasks) struct ActiveTaskRecoveryContext {
+    pub(in crate::app::tasks) reason: ActiveTaskRecoveryReason,
+    pub(in crate::app::tasks) actions: Vec<ActiveTaskRecoveryAction>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct ActiveTaskRecovery {
+pub(in crate::app::tasks) struct ActiveTaskRecovery {
     #[serde(flatten)]
-    pub(in crate::app) task: TaskRecord,
-    pub(in crate::app) recovery: ActiveTaskRecoveryContext,
+    pub(in crate::app::tasks) task: TaskRecord,
+    pub(in crate::app::tasks) recovery: ActiveTaskRecoveryContext,
 }
 
 impl ActiveTaskRecovery {
-    pub(in crate::app) fn new(task: TaskRecord, reason: ActiveTaskRecoveryReason) -> Self {
+    pub(in crate::app::tasks) fn new(task: TaskRecord, reason: ActiveTaskRecoveryReason) -> Self {
         let actions = match reason {
             ActiveTaskRecoveryReason::SectionPlacementPending => vec![
                 ActiveTaskRecoveryAction::RestoreToActive,
@@ -79,20 +79,20 @@ impl Deref for ActiveTaskRecovery {
     }
 }
 
-pub(in crate::app) enum ManagedCodexThreadLocation {
+pub(in crate::app::tasks) enum ManagedCodexThreadLocation {
     Active(CodexThread),
     Archived(CodexThread),
     Missing,
 }
 
-pub(in crate::app) fn cached_recovery(
+pub(in crate::app::tasks) fn cached_recovery(
     managed: &ManagedThread,
     reason: ActiveTaskRecoveryReason,
 ) -> ActiveTaskRecovery {
     ActiveTaskRecovery::new(unavailable_active_task(managed), reason)
 }
 
-pub(in crate::app) async fn locate_thread(
+pub(in crate::app::tasks) async fn locate_thread(
     client: &CodexThreadClient,
     thread_id: &str,
 ) -> Result<ManagedCodexThreadLocation, CodexThreadError> {
@@ -119,7 +119,7 @@ pub(in crate::app) async fn locate_thread(
         .unwrap_or(ManagedCodexThreadLocation::Missing))
 }
 
-pub(in crate::app) async fn list_all_global_threads(
+pub(in crate::app::tasks) async fn list_all_global_threads(
     client: &CodexThreadClient,
 ) -> Result<Vec<CodexThread>, CodexThreadError> {
     let mut cursor = None;

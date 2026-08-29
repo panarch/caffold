@@ -31,20 +31,20 @@ use crate::git;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct ActiveTaskSection {
-    pub(in crate::app) id: String,
-    pub(in crate::app) name: String,
-    pub(in crate::app) repository: bool,
-    pub(in crate::app) composer_settings: Option<ActiveTaskComposerSettings>,
-    pub(in crate::app) tasks: Vec<TaskRecord>,
+pub(in crate::app::tasks) struct ActiveTaskSection {
+    pub(in crate::app::tasks) id: String,
+    pub(in crate::app::tasks) name: String,
+    pub(in crate::app::tasks) repository: bool,
+    pub(in crate::app::tasks) composer_settings: Option<ActiveTaskComposerSettings>,
+    pub(in crate::app::tasks) tasks: Vec<TaskRecord>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct ActiveTaskComposerSettings {
-    pub(in crate::app) model: Option<String>,
-    pub(in crate::app) effort: Option<String>,
-    pub(in crate::app) fast_mode: bool,
+pub(in crate::app::tasks) struct ActiveTaskComposerSettings {
+    pub(in crate::app::tasks) model: Option<String>,
+    pub(in crate::app::tasks) effort: Option<String>,
+    pub(in crate::app::tasks) fast_mode: bool,
 }
 
 impl From<&ComposerSettings> for ActiveTaskComposerSettings {
@@ -59,20 +59,20 @@ impl From<&ComposerSettings> for ActiveTaskComposerSettings {
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct ActiveTaskProjection {
-    pub(in crate::app) sections: Vec<ActiveTaskSection>,
-    pub(in crate::app) unsectioned: Vec<ActiveTaskRecovery>,
+pub(in crate::app::tasks) struct ActiveTaskProjection {
+    pub(in crate::app::tasks) sections: Vec<ActiveTaskSection>,
+    pub(in crate::app::tasks) unsectioned: Vec<ActiveTaskRecovery>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app) struct ActiveTaskRuntimeSnapshot {
-    pub(in crate::app) tasks: Vec<TaskRecord>,
+pub(in crate::app::tasks) struct ActiveTaskRuntimeSnapshot {
+    pub(in crate::app::tasks) tasks: Vec<TaskRecord>,
 }
 
-pub(in crate::app) struct ActiveTaskRuntimeProjection {
-    pub(in crate::app) snapshot: ActiveTaskRuntimeSnapshot,
-    pub(in crate::app) observed_threads: Vec<CodexThread>,
+pub(in crate::app::tasks) struct ActiveTaskRuntimeProjection {
+    pub(in crate::app::tasks) snapshot: ActiveTaskRuntimeSnapshot,
+    pub(in crate::app::tasks) observed_threads: Vec<CodexThread>,
 }
 
 impl ActiveTaskProjection {
@@ -84,7 +84,7 @@ impl ActiveTaskProjection {
     }
 }
 
-pub(in crate::app) async fn load_cached(
+pub(in crate::app::tasks) async fn load_cached(
     fs: Arc<RootedFs>,
     store: TaskStore,
 ) -> Result<ActiveTaskProjection, ApiError> {
@@ -153,7 +153,7 @@ pub(in crate::app) async fn load_cached(
     })
 }
 
-pub(in crate::app) async fn load_runtime_snapshot(
+pub(in crate::app::tasks) async fn load_runtime_snapshot(
     fs: Arc<RootedFs>,
     store: TaskStore,
     sessions: &TaskSessions,

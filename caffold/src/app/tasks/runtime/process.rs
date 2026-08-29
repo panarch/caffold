@@ -28,7 +28,7 @@ struct CodexProcessState {
 }
 
 impl TaskRuntime {
-    pub(in crate::app) fn startup(&self) {
+    pub(in crate::app::tasks) fn startup(&self) {
         self.watch_claude();
         let runtime = self.clone();
         tokio::spawn(async move {
@@ -42,7 +42,9 @@ impl TaskRuntime {
         });
     }
 
-    pub(in crate::app) async fn connection(&self) -> Result<CodexConnection, CodexThreadError> {
+    pub(in crate::app::tasks) async fn connection(
+        &self,
+    ) -> Result<CodexConnection, CodexThreadError> {
         let _readiness_check = self.process.readiness_check.lock().await;
         if let Some(connection) = self.classified_connection().await? {
             return Ok(connection);
@@ -134,11 +136,13 @@ impl TaskRuntime {
         Ok(connection)
     }
 
-    pub(in crate::app) async fn status(&self) -> CodexStatusResponse {
+    pub(in crate::app::tasks) async fn status(&self) -> CodexStatusResponse {
         self.status_with_diagnostics().await.0
     }
 
-    pub(in crate::app) async fn status_with_diagnostics(&self) -> (CodexStatusResponse, u64, bool) {
+    pub(in crate::app::tasks) async fn status_with_diagnostics(
+        &self,
+    ) -> (CodexStatusResponse, u64, bool) {
         let _readiness_check = self.process.readiness_check.lock().await;
         let status = self.refresh_status().await;
         let process = self.process.state.lock().await;
@@ -146,7 +150,9 @@ impl TaskRuntime {
     }
 
     /// Observe the existing proxy without making a diagnostic request start one.
-    pub(in crate::app) async fn codex_diagnostic_connection(&self) -> Option<CodexConnection> {
+    pub(in crate::app::tasks) async fn codex_diagnostic_connection(
+        &self,
+    ) -> Option<CodexConnection> {
         let process = self.process.state.lock().await;
         process.client.clone().map(|client| CodexConnection {
             client,
@@ -179,14 +185,16 @@ impl TaskRuntime {
         self.process.state.lock().await.readiness = Some(readiness);
     }
 
-    pub(in crate::app) async fn client(&self) -> Result<CodexThreadClient, CodexThreadError> {
+    pub(in crate::app::tasks) async fn client(
+        &self,
+    ) -> Result<CodexThreadClient, CodexThreadError> {
         self.connection().await.map(|connection| connection.client)
     }
 
     /// Make Codex answer as blocked, so a test can watch what a held agent
     /// costs at the boundary that consults it.
     #[cfg(test)]
-    pub(in crate::app) async fn hold_codex_readiness_for_tests(&self) {
+    pub(in crate::app::tasks) async fn hold_codex_readiness_for_tests(&self) {
         self.process.state.lock().await.readiness = Some(CodexReadiness::blocking(
             CodexReadinessState::Error,
             CodexReadinessReason::ReadyRuntimeUnavailable,
@@ -196,12 +204,14 @@ impl TaskRuntime {
     }
 
     #[cfg(test)]
-    pub(in crate::app) async fn diagnostics(&self) -> (u64, bool) {
+    pub(in crate::app::tasks) async fn diagnostics(&self) -> (u64, bool) {
         let process = self.process.state.lock().await;
         (process.generation, process.client.is_some())
     }
 
-    pub(in crate::app) async fn restart_daemon(&self) -> Result<CodexDaemonInfo, CodexThreadError> {
+    pub(in crate::app::tasks) async fn restart_daemon(
+        &self,
+    ) -> Result<CodexDaemonInfo, CodexThreadError> {
         self.restart_daemon_with(CodexThreadClient::restart_daemon)
             .await
     }
@@ -240,7 +250,7 @@ impl TaskRuntime {
         restart().await
     }
 
-    pub(in crate::app) async fn shutdown(&self) {
+    pub(in crate::app::tasks) async fn shutdown(&self) {
         let _readiness_check = self.process.readiness_check.lock().await;
         let _lifecycle_change = self.process.lifecycle_change.lock().await;
         let client = self.process.state.lock().await.client.take();
@@ -255,7 +265,7 @@ impl TaskRuntime {
     /// every conversation at once and the runtime has to say so. A Claude
     /// session is its own process, and a failure reaching one says nothing
     /// about the rest.
-    pub(in crate::app) async fn recover_connection_error_for(
+    pub(in crate::app::tasks) async fn recover_connection_error_for(
         &self,
         agent: &super::TaskAgent,
         error: &agent::AgentError,
@@ -288,7 +298,7 @@ impl TaskRuntime {
     }
 
     #[cfg(test)]
-    pub(in crate::app) async fn install_test_client(
+    pub(in crate::app::tasks) async fn install_test_client(
         &self,
         generation: u64,
         client: CodexThreadClient,
@@ -310,12 +320,12 @@ impl TaskRuntime {
     }
 
     #[cfg(test)]
-    pub(in crate::app) async fn set_test_readiness(&self, readiness: CodexReadiness) {
+    pub(in crate::app::tasks) async fn set_test_readiness(&self, readiness: CodexReadiness) {
         self.set_readiness(readiness).await;
     }
 
     #[cfg(test)]
-    pub(in crate::app) async fn hold_process_lock_for_test(
+    pub(in crate::app::tasks) async fn hold_process_lock_for_test(
         &self,
         entered: tokio::sync::oneshot::Sender<()>,
         duration: std::time::Duration,

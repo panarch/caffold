@@ -344,12 +344,16 @@ impl TaskRuntime {
     }
 
     #[cfg(test)]
-    pub(in crate::app) fn restore_test_sessions(&self, connection: CodexConnection) {
+    pub(in crate::app::tasks) fn restore_test_sessions(&self, connection: CodexConnection) {
         self.restore_connection_state(connection);
     }
 
     #[cfg(test)]
-    pub(in crate::app) fn spawn_test_bridge(&self, client: CodexThreadClient, generation: u64) {
+    pub(in crate::app::tasks) fn spawn_test_bridge(
+        &self,
+        client: CodexThreadClient,
+        generation: u64,
+    ) {
         self.spawn_bridge(client, generation, self.shutdown.subscribe());
     }
 }
