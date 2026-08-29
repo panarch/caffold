@@ -1,5 +1,8 @@
-use super::*;
 use crate::agent;
+use crate::app::error::ApiError;
+use crate::app::tasks::TaskState;
+use axum::Json;
+use axum::extract::State;
 
 /// What the Claude installation is right now, for showing in Settings.
 ///

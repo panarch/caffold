@@ -1,5 +1,33 @@
-use super::*;
+use super::codex::normalize_approval_decision;
+use super::conversation::task_not_managed_error;
+use super::store::{
+    task_store_get, task_store_update_composer_settings, task_store_worktree_for_thread,
+};
+use super::{
+    CreateTaskRequest, MAX_TASK_IMAGES, TaskApprovalRequest, TaskPromptOutcome, TaskPromptRequest,
+    TaskPromptResponse, TasksQuery,
+};
 use crate::agent::AgentError;
+use crate::agent::codex::{CodexThreadClient, CodexThreadError};
+use crate::agent::{TurnOptions, TurnRejected};
+use crate::app::error::ApiError;
+use crate::app::tasks::lifecycle::CreateTask;
+use crate::app::tasks::sessions::{PromptTarget, SessionSnapshot};
+#[cfg(test)]
+use crate::app::tasks::task_activity_ms;
+use crate::app::tasks::worktrees::inspect_ready_worktree;
+use crate::app::tasks::{
+    ApprovalResolveError, CodexConnection, TaskAgent, TaskDetailResponse, TaskRecord, TaskState,
+    accepted_user_message_event, now_ms,
+};
+use crate::fs::MAX_IMAGE_BYTES;
+#[cfg(test)]
+use crate::task_store::RunBy;
+use crate::task_store::{ManagedThread, ManagedWorktree, ManagedWorktreeState};
+use axum::Json;
+use axum::extract::Path as AxumPath;
+use axum::extract::{Query, State};
+use std::path::Path;
 
 pub(super) async fn create_task(
     State(state): State<TaskState>,
@@ -547,6 +575,9 @@ pub(super) fn validate_task_image_data_url(image: &str) -> Result<(), ApiError> 
 
 #[cfg(test)]
 mod tests {
+    use super::super::TaskListUpdate;
+    use super::super::router;
+    use super::super::store::task_store_get_archived;
     use crate::agent;
     use crate::agent::codex::{
         CodexReadiness, CodexReadinessReason, CodexReadinessState, CodexRuntimeEvent, CodexThread,
@@ -555,6 +586,7 @@ mod tests {
     use crate::app::tasks::active_list::ActiveTaskComposerSettings;
     use crate::git;
     use crate::task_store;
+    use axum::body::Body;
     use serde_json::{Value as JsonValue, json};
     use tower::ServiceExt;
 

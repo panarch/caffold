@@ -1,3 +1,19 @@
+#[cfg(test)]
+use crate::app::error::ApiError;
+#[cfg(test)]
+use crate::app::tasks::TaskDetailResponse;
+#[cfg(test)]
+use crate::task_store::ManagedThread;
+#[cfg(test)]
+use axum::Json;
+#[cfg(test)]
+use axum::extract::Path as AxumPath;
+#[cfg(test)]
+use axum::extract::Query;
+#[cfg(test)]
+use axum::extract::State;
+#[cfg(test)]
+use axum::response::Response;
 mod agent;
 mod claude;
 mod codex;
@@ -8,54 +24,36 @@ mod list;
 mod membership;
 mod store;
 
-use agent::*;
-use claude::*;
-use codex::*;
-use commands::*;
-use conversation::*;
-use list::*;
-use membership::*;
-use store::*;
-
-use std::{collections::VecDeque, convert::Infallible, path::Path};
+use agent::{agent_models, agent_permissions};
+use claude::{claude_restart, claude_status};
+use codex::{codex_mcp_diagnostics, codex_restart, codex_status};
+#[cfg(test)]
+use commands::managed_thread_from_task_record;
+use commands::{create_task, task_approval, task_interrupt, task_prompt};
+use conversation::{mark_task_seen, task_detail, task_generated_image, task_stream};
+use list::{list_archived_tasks, list_managed_tasks, task_list_stream};
+use membership::{
+    section_reorder, task_archive, task_delete, task_recovery_archive, task_recovery_recheck,
+    task_recovery_remove, task_recovery_restore, task_reorder, task_restore,
+};
+#[cfg(test)]
+use store::{task_store_claim, task_store_get, task_store_update_composer_settings};
 
 use axum::{
-    Json, Router,
-    body::{Body, Bytes},
-    extract::{DefaultBodyLimit, Path as AxumPath, Query, State},
-    http::{HeaderValue, header},
-    response::Response,
+    Router,
+    extract::DefaultBodyLimit,
     routing::{get, post},
 };
-use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
-use super::{
-    ApprovalResolveError, CodexConnection, DetailFrameStream, TaskAgent, TaskDetailResponse,
-    TaskDetailSync, TaskRecord, TaskState, accepted_user_message_event, now_ms, task_activity_ms,
-};
-use super::{
-    lifecycle::{ActiveTaskTopPlacement, CreateTask, ForkCodexSource, ForkCodexTask},
-    recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason, ManagedCodexThreadLocation},
-    worktrees::inspect_ready_worktree,
-};
-
-use super::generated_images::GeneratedImageError;
+use super::lifecycle::ActiveTaskTopPlacement;
+use super::{TaskRecord, TaskState};
 
 use crate::{
-    agent::{
-        ApprovalDecision, Conversation, ConversationItem, Driver, ItemKind, PermissionModes,
-        ThreadStatus, Turn, TurnOptions, TurnPage, TurnRejected,
-        codex::{CodexDaemonInfo, CodexStatusResponse, CodexThreadClient, CodexThreadError},
-    },
-    app::error::ApiError,
-    app::tasks::sessions::{PromptTarget, SessionSnapshot, SessionsDiagnostics},
-    fs::MAX_IMAGE_BYTES,
-    task_store::{
-        ManagedSection, ManagedThread, ManagedWorktree, ManagedWorktreeState, RunBy, TaskProvider,
-        TaskStoreError,
-    },
+    agent::{ConversationItem, Turn, TurnOptions, codex::CodexStatusResponse},
+    app::tasks::sessions::SessionsDiagnostics,
+    task_store::ManagedSection,
 };
 
 const MAX_TASK_IMAGES: usize = 4;
@@ -442,6 +440,8 @@ pub(super) async fn test_store_update_composer_settings(
 pub(super) mod test_support {
     use crate::agent::codex::MockCodexResponse;
     use crate::app::tasks::active_list;
+    use crate::task_store::ManagedThread;
+    use crate::task_store::RunBy;
     use serde_json::{Value as JsonValue, json};
 
     use super::*;

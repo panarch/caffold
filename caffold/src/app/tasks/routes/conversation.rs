@@ -1,5 +1,19 @@
-use super::*;
+use super::commands::apply_managed_thread_metadata;
+use super::store::{task_store_get, task_store_mark_seen};
+use super::{TaskDetailQuery, TasksQuery};
+use crate::agent::Conversation;
+use crate::app::error::ApiError;
 use crate::app::tasks::active_list::unavailable_active_task;
+use crate::app::tasks::generated_images::GeneratedImageError;
+use crate::app::tasks::{
+    DetailFrameStream, TaskDetailResponse, TaskRecord, TaskState, task_activity_ms,
+};
+use axum::Json;
+use axum::body::Body;
+use axum::extract::Path as AxumPath;
+use axum::extract::{Query, State};
+use axum::http::{HeaderValue, header};
+use axum::response::Response;
 
 pub(super) async fn task_detail(
     State(state): State<TaskState>,
@@ -131,8 +145,12 @@ pub(super) async fn task_stream(
 
 #[cfg(test)]
 mod tests {
+    use super::super::router;
     use crate::agent;
+    use crate::agent::codex::CodexThreadClient;
     use crate::agent::codex::{MockCodexResponse, conversation_item};
+    use crate::fs::MAX_IMAGE_BYTES;
+    use futures_util::StreamExt;
     use serde_json::{Value as JsonValue, json};
     use tower::ServiceExt;
 

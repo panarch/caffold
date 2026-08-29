@@ -1,6 +1,25 @@
-use super::*;
+use super::commands::{apply_managed_thread_metadata, require_codex_thread_connection};
+use super::conversation::task_not_managed_error;
+use super::store::{
+    ManagedTaskMembership, task_store_api_error, task_store_archive, task_store_delete_task_rows,
+    task_store_get, task_store_get_archived, task_store_worktree_for_thread,
+};
+use super::{
+    SectionReorderRequest, SectionReorderResponse, TaskDeleteResponse, TaskReorderRequest,
+    TaskReorderResponse, TaskRestoreResponse,
+};
 use crate::agent;
+use crate::agent::{Conversation, Driver};
+use crate::app::error::ApiError;
+use crate::app::tasks::recovery::{
+    ActiveTaskRecovery, ActiveTaskRecoveryReason, ManagedCodexThreadLocation,
+};
+use crate::app::tasks::{TaskRecord, TaskState};
 use crate::app::tasks::{recovery, worktrees};
+use crate::task_store::{ManagedThread, ManagedWorktreeState, RunBy};
+use axum::Json;
+use axum::extract::Path as AxumPath;
+use axum::extract::State;
 
 pub(super) async fn task_reorder(
     State(state): State<TaskState>,
@@ -592,10 +611,18 @@ pub(super) fn task_recovery_changed_error() -> ApiError {
 
 #[cfg(test)]
 mod tests {
+    use super::super::TasksQuery;
+    use super::super::list::{list_archived_tasks, list_managed_tasks};
+    use super::super::router;
+    use crate::agent::codex::CodexThreadClient;
+    use crate::agent::codex::CodexThreadError;
     use crate::agent::codex::{
         CodexReadiness, CodexReadinessReason, CodexReadinessState, MockCodexResponse,
     };
+    use crate::app::tasks::worktrees::inspect_ready_worktree;
     use crate::task_store;
+    use axum::body::Body;
+    use axum::extract::Query;
     use serde_json::{Value as JsonValue, json};
     use tower::ServiceExt;
 

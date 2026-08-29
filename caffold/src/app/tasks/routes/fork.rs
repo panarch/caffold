@@ -4,7 +4,23 @@
 //! here, then hand the provider mutation to the Task lifecycle. Preview remains
 //! read-only; a Task is claimed only after the provider returns a child.
 
-use super::*;
+use axum::extract::Path as AxumPath;
+
+use crate::agent::codex::CodexThreadError;
+use crate::agent::{Conversation, ItemKind, ThreadStatus, TurnPage};
+use crate::app::error::ApiError;
+use crate::app::tasks::lifecycle::{ForkCodexSource, ForkCodexTask};
+use crate::app::tasks::{TaskAgent, TaskDetailResponse, TaskState};
+use crate::task_store::{ManagedSection, ManagedThread, RunBy, TaskProvider};
+use axum::extract::State;
+use axum::routing::post;
+use axum::{Json, Router};
+use serde::{Deserialize, Serialize};
+
+use super::commands::{require_codex_thread_client, require_codex_thread_connection};
+use super::conversation::task_not_managed_error;
+use super::membership::task_store_join_error;
+use super::store::{task_store_api_error, task_store_get};
 use crate::app::tasks::projection;
 
 const TASK_FORK_PREVIEW_TURNS: usize = 4;
@@ -363,7 +379,10 @@ async fn fork_source_context(
 
 #[cfg(test)]
 mod tests {
+    use super::super::router;
+    use crate::agent::codex::CodexThreadClient;
     use crate::agent::codex::MockCodexResponse;
+    use axum::body::Body;
     use serde_json::{Value as JsonValue, json};
     use tower::ServiceExt;
 

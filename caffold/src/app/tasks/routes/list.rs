@@ -1,6 +1,27 @@
-use super::*;
+use super::commands::require_codex_thread_connection;
+use super::membership::{task_described_as, unavailable_archived_task};
+use super::store::task_store_list_archived;
+use super::{
+    TASK_CANONICAL_READ_CONCURRENCY, TASK_LIST_PAGE_SIZE, TaskListRemoval, TaskListResponse,
+    TaskListUpdate, TasksQuery,
+};
 use crate::agent::AgentError;
+use crate::agent::Conversation;
+use crate::app::error::ApiError;
 use crate::app::tasks::active_list;
+use crate::app::tasks::{TaskDetailSync, TaskRecord, TaskState, task_activity_ms};
+use crate::task_store::ManagedThread;
+use axum::Json;
+use axum::body::{Body, Bytes};
+use axum::extract::{Query, State};
+use axum::http::{HeaderValue, header};
+use axum::response::Response;
+use futures_util::StreamExt;
+use futures_util::stream;
+use serde::Serialize;
+use std::collections::VecDeque;
+use std::convert::Infallible;
+use tokio::sync::broadcast;
 
 pub(super) async fn list_managed_tasks(
     State(state): State<TaskState>,
@@ -250,6 +271,10 @@ fn task_list_event_stream(
 
 #[cfg(test)]
 mod tests {
+    use super::super::commands::managed_thread_from_task_record;
+    use super::super::store::{task_store_archive, task_store_claim, task_store_get_archived};
+    use crate::agent::codex::CodexThreadClient;
+    use crate::agent::codex::CodexThreadError;
     use serde_json::{Value as JsonValue, json};
 
     use super::super::test_support::*;

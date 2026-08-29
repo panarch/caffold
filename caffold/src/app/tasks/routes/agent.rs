@@ -1,4 +1,10 @@
-use super::*;
+use super::commands::{require_codex_thread_client, task_cwd};
+use crate::agent::PermissionModes;
+use crate::app::error::ApiError;
+use crate::app::tasks::TaskState;
+use axum::Json;
+use axum::extract::{Query, State};
+use serde::{Deserialize, Serialize};
 
 use crate::agent::driver::ModelOption;
 use crate::task_store::TaskProvider;
@@ -127,6 +133,8 @@ fn extend(models: &mut Vec<AgentModel>, provider: TaskProvider, offered: Vec<Mod
 
 #[cfg(test)]
 mod tests {
+    use crate::agent::codex::CodexThreadClient;
+    use crate::agent::codex::CodexThreadError;
     use crate::agent::codex::MockCodexResponse;
     use serde_json::json;
 
