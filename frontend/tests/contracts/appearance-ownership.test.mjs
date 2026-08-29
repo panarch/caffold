@@ -11,6 +11,7 @@ const conversationOwners = new Set([
   "components/file-viewer/components/markdown-preview.css",
   "pages/(task-workspace)/tasks/components/composer.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
   "pages/(task-workspace)/tasks/(detail)/(github)/(issues)/detail/page.css",

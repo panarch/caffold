@@ -76,12 +76,14 @@ caffold-task-work-details {
     background: var(--surface-subtle);
   }
 
-  & .task-work-details-command {
+  & .task-work-details-command,
+  & .task-work-details-message {
     border: 0;
     background: transparent;
   }
 
-  & .task-work-details-command > caffold-task-command {
+  & .task-work-details-command > caffold-task-command,
+  & .task-work-details-message > caffold-task-assistant-message {
     min-width: 0;
     max-width: 100%;
   }

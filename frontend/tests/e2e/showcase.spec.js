@@ -32,7 +32,7 @@ test("renders a representative review-first workspace", { tag: "@desktop" }, asy
   );
 
   const finalResponse = tasksPage.locator(
-    '.task-message[data-message-role="assistant"][data-message-phase="final"]',
+    'caffold-task-assistant-message[data-message-phase="final"]',
   );
   await expect(finalResponse).toContainText("README is ready to review");
   await expect(finalResponse).toContainText("host-local voice input");

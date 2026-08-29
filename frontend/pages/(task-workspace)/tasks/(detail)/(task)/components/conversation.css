@@ -422,11 +422,6 @@ caffold-task-conversation {
     overflow-wrap: anywhere;
   }
 
-  & .task-message[data-message-role="assistant"] .task-message-content {
-    width: min(100%, 850px);
-    padding: 0.0625rem 0 0;
-  }
-
   & .task-thinking details,
   & .task-tool-card,
   & .task-file-change article {

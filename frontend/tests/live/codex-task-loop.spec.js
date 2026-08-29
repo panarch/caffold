@@ -665,7 +665,7 @@ test("creates a real Codex task in Fast mode and restores the task setting", asy
 
   await expect(
     tasksPage
-      .locator('.task-message[data-message-role="assistant"][data-message-phase="final"]')
+      .locator('caffold-task-assistant-message[data-message-phase="final"]')
       .filter({ hasText: reply }),
   ).toBeVisible();
   await expectLiveThreadIdle(request, threadId);
@@ -714,10 +714,10 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   trackLiveThread(threadId, "spark", SPARK_MODEL);
 
   const assistantMessages = tasksPage.locator(
-    '.task-message[data-message-role="assistant"]',
+    'caffold-task-assistant-message',
   );
   const finalAssistantMessages = tasksPage.locator(
-    '.task-message[data-message-role="assistant"][data-message-phase="final"]',
+    'caffold-task-assistant-message[data-message-phase="final"]',
   );
   await expect(assistantMessages.filter({ hasText: initialReply })).toBeVisible();
   await expectLiveThreadIdle(page.request, threadId);
@@ -732,7 +732,7 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   await secondPage.goto(`/tasks/${threadId}`);
   await expect(
     secondPage
-      .locator('caffold-tasks-page .task-message[data-message-role="assistant"]')
+      .locator('caffold-tasks-page caffold-task-assistant-message')
       .filter({ hasText: initialReply }),
   ).toBeVisible();
   await expect
@@ -910,7 +910,7 @@ test("names a new Caffold task at first-turn completion and preserves it", async
   trackLiveThread(threadId, "spark", SPARK_MODEL);
 
   const finalAssistantMessages = tasksPage.locator(
-    '.task-message[data-message-role="assistant"][data-message-phase="final"]',
+    'caffold-task-assistant-message[data-message-phase="final"]',
   );
   // The name Caffold gives the tool it offers Codex for renaming a Task.
   const RENAME_TOOL_NAME = "rename_current_task";
@@ -1044,7 +1044,7 @@ test("moves one dirty Spark task into a worktree and resumes the same thread", a
 
     await expect(
       tasksPage
-        .locator('.task-message[data-message-role="assistant"][data-message-phase="final"]')
+        .locator('caffold-task-assistant-message[data-message-phase="final"]')
         .filter({ hasText: preparedReply }),
     ).toBeVisible({ timeout: 120_000 });
 
@@ -1085,7 +1085,7 @@ test("moves one dirty Spark task into a worktree and resumes the same thread", a
     ).toBe("untracked.txt");
 
     const finalMessages = tasksPage.locator(
-      '.task-message[data-message-role="assistant"][data-message-phase="final"]',
+      'caffold-task-assistant-message[data-message-phase="final"]',
     );
     const followUpForm = tasksPage.locator(
       '.task-follow-up-form[data-task-form="follow-up"]',
@@ -1230,7 +1230,7 @@ test("sends image attachments through Caffold with a multimodal model", async ({
   }
   await expect(
     tasksPage
-      .locator('.task-message[data-message-role="assistant"][data-message-phase="final"]')
+      .locator('caffold-task-assistant-message[data-message-phase="final"]')
       .filter({ hasText: steeredReply }),
   ).toBeVisible({ timeout: 60_000 });
   await expect(activeTurn).toHaveCount(0);
@@ -1263,7 +1263,7 @@ test("reconciles a managed Spark task through a second daemon client", async ({
   trackLiveThread(threadId, "spark", SPARK_MODEL);
 
   const assistantMessages = tasksPage.locator(
-    '.task-message[data-message-role="assistant"][data-message-phase="final"]',
+    'caffold-task-assistant-message[data-message-phase="final"]',
   );
   const userMessages = tasksPage.locator('.task-message[data-message-role="user"]');
   await expect(assistantMessages.filter({ hasText: initialReply })).toBeVisible();
