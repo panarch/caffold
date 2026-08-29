@@ -12,7 +12,7 @@ use crate::git;
 const MAX_PULL_CONNECTION_ITEMS: usize = 1000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GithubRepository {
+pub(crate) struct GithubRepository {
     pub owner: String,
     pub name: String,
     pub name_with_owner: String,
@@ -20,7 +20,7 @@ pub struct GithubRepository {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GithubCapability {
+pub(crate) struct GithubCapability {
     pub repository: GithubRepository,
     pub gh_available: bool,
     pub authenticated: bool,
@@ -30,7 +30,7 @@ pub struct GithubCapability {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GithubIssueSummary {
+pub(crate) struct GithubIssueSummary {
     pub number: u64,
     pub title: String,
     pub state: String,
@@ -43,7 +43,7 @@ pub struct GithubIssueSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GithubIssuePage {
+pub(crate) struct GithubIssuePage {
     pub issues: Vec<GithubIssueSummary>,
     pub page: usize,
     pub per_page: usize,
@@ -54,7 +54,7 @@ pub struct GithubIssuePage {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GithubIssueDetail {
+pub(crate) struct GithubIssueDetail {
     pub number: u64,
     pub title: String,
     pub state: String,
@@ -70,7 +70,7 @@ pub struct GithubIssueDetail {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GithubPullSummary {
+pub(crate) struct GithubPullSummary {
     pub number: u64,
     pub title: String,
     pub state: String,
@@ -83,7 +83,7 @@ pub struct GithubPullSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GithubPullPage {
+pub(crate) struct GithubPullPage {
     pub pulls: Vec<GithubPullSummary>,
     pub page: usize,
     pub per_page: usize,
@@ -94,7 +94,7 @@ pub struct GithubPullPage {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GithubPullDetail {
+pub(crate) struct GithubPullDetail {
     pub number: u64,
     pub title: String,
     pub state: String,
@@ -124,19 +124,19 @@ pub struct GithubPullDetail {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GithubPullRepository {
+pub(crate) struct GithubPullRepository {
     pub name_with_owner: String,
     pub url: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GithubPullHeadRef {
+pub(crate) struct GithubPullHeadRef {
     pub reference: String,
     pub oid: String,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
-pub enum GithubPullHeadError {
+pub(crate) enum GithubPullHeadError {
     #[error("the repository has no GitHub fetch remote")]
     RemoteNotFound,
     #[error("invalid pull request head OID: {0}")]
@@ -150,7 +150,7 @@ pub enum GithubPullHeadError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GithubPullComment {
+pub(crate) struct GithubPullComment {
     pub author: Option<String>,
     pub body: String,
     pub body_html: Option<String>,
@@ -160,7 +160,7 @@ pub struct GithubPullComment {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GithubPullReview {
+pub(crate) struct GithubPullReview {
     pub author: Option<String>,
     pub state: String,
     pub body: String,
@@ -169,7 +169,7 @@ pub struct GithubPullReview {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GithubPullCommit {
+pub(crate) struct GithubPullCommit {
     pub sha: String,
     pub short_sha: String,
     pub subject: String,
@@ -181,12 +181,12 @@ pub struct GithubPullCommit {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GithubPullFiles {
+pub(crate) struct GithubPullFiles {
     pub files: Vec<GithubPullFile>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GithubPullFile {
+pub(crate) struct GithubPullFile {
     pub filename: String,
     pub previous_filename: Option<String>,
     pub status: String,
@@ -198,11 +198,11 @@ pub struct GithubPullFile {
     pub raw_url: Option<String>,
 }
 
-pub fn repository_for(repository: &git::Repository) -> Option<GithubRepository> {
+pub(crate) fn repository_for(repository: &git::Repository) -> Option<GithubRepository> {
     github_remote_for(repository).map(|remote| remote.repository)
 }
 
-pub fn prepare_pull_head(
+pub(crate) fn prepare_pull_head(
     repository: &git::Repository,
     number: u64,
     expected_oid: &str,
@@ -288,7 +288,7 @@ fn prepare_pull_head_from_remote(
     })
 }
 
-pub fn capability(repository: &git::Repository) -> Option<GithubCapability> {
+pub(crate) fn capability(repository: &git::Repository) -> Option<GithubCapability> {
     let repository = repository_for(repository)?;
     let gh_available = command_success(Command::new("gh").arg("--version").output().ok());
     let authenticated =
@@ -313,7 +313,7 @@ pub fn capability(repository: &git::Repository) -> Option<GithubCapability> {
     })
 }
 
-pub fn issue_page(
+pub(crate) fn issue_page(
     repository: &GithubRepository,
     state: &str,
     page: usize,
@@ -382,7 +382,10 @@ fn run_issue_search(
     parse_issue_search(&output.stdout)
 }
 
-pub fn issue_detail(repository: &GithubRepository, number: u64) -> Option<GithubIssueDetail> {
+pub(crate) fn issue_detail(
+    repository: &GithubRepository,
+    number: u64,
+) -> Option<GithubIssueDetail> {
     let output = Command::new("gh")
         .arg("api")
         .arg("graphql")
@@ -404,7 +407,7 @@ pub fn issue_detail(repository: &GithubRepository, number: u64) -> Option<Github
     parse_issue_detail(&output.stdout)
 }
 
-pub fn pull_page(
+pub(crate) fn pull_page(
     repository: &GithubRepository,
     state: &str,
     page: usize,
@@ -473,7 +476,7 @@ fn run_pull_search(
     parse_issue_search(&output.stdout)
 }
 
-pub fn pull_detail(repository: &GithubRepository, number: u64) -> Option<GithubPullDetail> {
+pub(crate) fn pull_detail(repository: &GithubRepository, number: u64) -> Option<GithubPullDetail> {
     let output = run_pull_graphql(repository, number, pull_detail_query(), None)?;
     let mut pull = parse_pull_detail_raw(&output.stdout)?;
     append_pull_comment_pages(repository, number, &mut pull)?;
@@ -482,7 +485,7 @@ pub fn pull_detail(repository: &GithubRepository, number: u64) -> Option<GithubP
     Some(GithubPullDetail::from(pull))
 }
 
-pub fn pull_files(repository: &GithubRepository, number: u64) -> Option<GithubPullFiles> {
+pub(crate) fn pull_files(repository: &GithubRepository, number: u64) -> Option<GithubPullFiles> {
     let mut files = Vec::new();
     let per_page = 100;
     let mut page = 1;

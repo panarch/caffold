@@ -5,7 +5,7 @@ use super::{CodexThread, SortDirection};
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[allow(clippy::enum_variant_names)]
-pub enum ThreadSortKey {
+pub(crate) enum ThreadSortKey {
     CreatedAt,
     UpdatedAt,
     RecencyAt,
@@ -14,7 +14,7 @@ pub enum ThreadSortKey {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadListResponse {
+pub(crate) struct ThreadListResponse {
     #[serde(default)]
     pub data: Vec<CodexThread>,
     #[serde(default)]
@@ -24,14 +24,14 @@ pub struct ThreadListResponse {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ThreadSectionFilter<'a> {
+pub(crate) enum ThreadSectionFilter<'a> {
     Unsectioned,
     Section(&'a str),
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadListParams<'a> {
+pub(crate) struct ThreadListParams<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     cursor: Option<&'a str>,
     limit: usize,

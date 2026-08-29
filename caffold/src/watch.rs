@@ -24,7 +24,7 @@ const MAX_BATCH_PATHS: usize = 128;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct WatchReady {
+pub(crate) struct WatchReady {
     pub revision: u64,
     pub scope_path: String,
     pub repository_root_path: Option<String>,
@@ -32,7 +32,7 @@ pub struct WatchReady {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct WatchChange {
+pub(crate) struct WatchChange {
     pub revision: u64,
     pub paths: Vec<String>,
     pub git_status_changed: bool,
@@ -41,13 +41,13 @@ pub struct WatchChange {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WatchMessage {
+pub(crate) enum WatchMessage {
     Change(WatchChange),
     Error(String),
 }
 
 #[derive(Debug, Error)]
-pub enum WatchError {
+pub(crate) enum WatchError {
     #[error(transparent)]
     Fs(#[from] FsError),
     #[error("native filesystem watcher is unavailable: {0}")]
@@ -55,7 +55,7 @@ pub enum WatchError {
 }
 
 #[derive(Clone)]
-pub struct WatchHub {
+pub(crate) struct WatchHub {
     inner: Arc<WatchHubInner>,
 }
 
@@ -87,7 +87,7 @@ impl Drop for WatchScope {
     }
 }
 
-pub struct WatchSubscription {
+pub(crate) struct WatchSubscription {
     hub: Weak<WatchHubInner>,
     key: String,
     pub ready: WatchReady,
@@ -95,7 +95,7 @@ pub struct WatchSubscription {
 }
 
 impl WatchSubscription {
-    pub async fn recv(&mut self) -> Result<WatchMessage, broadcast::error::RecvError> {
+    pub(crate) async fn recv(&mut self) -> Result<WatchMessage, broadcast::error::RecvError> {
         self.receiver.recv().await
     }
 }
@@ -133,7 +133,7 @@ struct ScopeConfig {
 }
 
 impl WatchHub {
-    pub fn new(fs: Arc<RootedFs>, shutdown: broadcast::Sender<()>) -> Self {
+    pub(crate) fn new(fs: Arc<RootedFs>, shutdown: broadcast::Sender<()>) -> Self {
         Self {
             inner: Arc::new(WatchHubInner {
                 fs,
@@ -143,7 +143,7 @@ impl WatchHub {
         }
     }
 
-    pub fn subscribe(&self, requested_path: &str) -> Result<WatchSubscription, WatchError> {
+    pub(crate) fn subscribe(&self, requested_path: &str) -> Result<WatchSubscription, WatchError> {
         let config = self.scope_config(requested_path)?;
         let key = config.scope_path.clone();
         let mut scopes =

@@ -17,7 +17,7 @@ pub(crate) use mcp_status::{
     CodexMcpServerDiagnostic, MCP_SERVER_STATUS_LIST, McpServerStatusListResponse,
     mcp_server_status_list_params,
 };
-pub use thread_list::{ThreadListResponse, ThreadSectionFilter};
+pub(crate) use thread_list::{ThreadListResponse, ThreadSectionFilter};
 pub(crate) use thread_list::{
     archived_thread_list_params, section_thread_list_params, thread_list_params,
 };
@@ -25,7 +25,7 @@ pub(crate) use thread_section::{
     THREAD_SECTION_CREATE, THREAD_SECTION_LIST, THREAD_SECTION_MOVE, thread_section_create_params,
     thread_section_list_params, thread_section_move_params,
 };
-pub use thread_section::{
+pub(crate) use thread_section::{
     ThreadSection, ThreadSectionCreateResponse, ThreadSectionListResponse,
     ThreadSectionMoveResponse,
 };
@@ -81,7 +81,7 @@ pub(crate) const CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS: &str = concat!(
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct CodexAppServerInfo {
+pub(crate) struct CodexAppServerInfo {
     pub user_agent: Option<String>,
     pub codex_home: Option<String>,
     pub platform_family: Option<String>,
@@ -90,7 +90,7 @@ pub struct CodexAppServerInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct CodexAccount {
+pub(crate) struct CodexAccount {
     #[serde(rename = "accountType", alias = "type")]
     pub account_type: String,
     pub email: Option<String>,
@@ -99,21 +99,21 @@ pub struct CodexAccount {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountReadResponse {
+pub(crate) struct AccountReadResponse {
     pub account: Option<CodexAccount>,
     pub requires_openai_auth: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub enum SortDirection {
+pub(crate) enum SortDirection {
     Asc,
     Desc,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub enum TurnItemsView {
+pub(crate) enum TurnItemsView {
     NotLoaded,
     Summary,
     Full,
@@ -121,7 +121,7 @@ pub enum TurnItemsView {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", tag = "type")]
-pub enum ThreadStatus {
+pub(crate) enum ThreadStatus {
     NotLoaded,
     Idle,
     SystemError,
@@ -133,14 +133,14 @@ pub enum ThreadStatus {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub enum ThreadActiveFlag {
+pub(crate) enum ThreadActiveFlag {
     WaitingOnApproval,
     WaitingOnUserInput,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub enum TurnStatus {
+pub(crate) enum TurnStatus {
     Completed,
     Interrupted,
     Failed,
@@ -149,7 +149,7 @@ pub enum TurnStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct CodexTurn {
+pub(crate) struct CodexTurn {
     pub id: String,
     #[serde(default)]
     pub items: Vec<Value>,
@@ -190,7 +190,7 @@ pub(super) fn seconds_to_ms_value(value: f64) -> u64 {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct CodexThread {
+pub(crate) struct CodexThread {
     pub id: String,
     #[serde(default)]
     pub preview: String,
@@ -214,19 +214,19 @@ pub struct CodexThread {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadReadResponse {
+pub(crate) struct ThreadReadResponse {
     pub thread: CodexThread,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadUnarchiveResponse {
+pub(crate) struct ThreadUnarchiveResponse {
     pub thread: CodexThread,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadLoadedListResponse {
+pub(crate) struct ThreadLoadedListResponse {
     #[serde(default)]
     pub data: Vec<String>,
     #[serde(default)]
@@ -235,7 +235,7 @@ pub struct ThreadLoadedListResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct TurnsPage {
+pub(crate) struct TurnsPage {
     #[serde(default)]
     pub data: Vec<CodexTurn>,
     #[serde(default)]
@@ -246,7 +246,7 @@ pub struct TurnsPage {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadStartResponse {
+pub(crate) struct ThreadStartResponse {
     pub thread: CodexThread,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
@@ -254,7 +254,7 @@ pub struct ThreadStartResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadForkResponse {
+pub(crate) struct ThreadForkResponse {
     pub thread: CodexThread,
     pub cwd: String,
     #[serde(flatten)]
@@ -263,7 +263,7 @@ pub struct ThreadForkResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadResumeResponse {
+pub(crate) struct ThreadResumeResponse {
     pub thread: CodexThread,
     pub cwd: String,
     #[serde(default)]
@@ -274,20 +274,20 @@ pub struct ThreadResumeResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct TurnStartResponse {
+pub(crate) struct TurnStartResponse {
     pub turn: CodexTurn,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct TurnSteerResponse {
+pub(crate) struct TurnSteerResponse {
     pub turn_id: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
-pub enum ThreadUnsubscribeStatus {
+pub(crate) enum ThreadUnsubscribeStatus {
     NotLoaded,
     NotSubscribed,
     Unsubscribed,
@@ -296,13 +296,13 @@ pub enum ThreadUnsubscribeStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
-pub struct ThreadUnsubscribeResponse {
+pub(crate) struct ThreadUnsubscribeResponse {
     pub status: ThreadUnsubscribeStatus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct Model {
+pub(crate) struct Model {
     pub id: String,
     pub model: String,
     pub display_name: String,
@@ -325,14 +325,14 @@ pub struct Model {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ModelServiceTier {
+pub(crate) struct ModelServiceTier {
     pub id: String,
     pub name: String,
     pub description: String,
 }
 
 impl Model {
-    pub fn fast_service_tier_id(&self) -> Option<&str> {
+    pub(crate) fn fast_service_tier_id(&self) -> Option<&str> {
         self.service_tiers
             .iter()
             .find(|tier| tier.name.eq_ignore_ascii_case("Fast"))
@@ -342,7 +342,7 @@ impl Model {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct ModelListResponse {
+pub(crate) struct ModelListResponse {
     #[serde(default)]
     pub data: Vec<Model>,
     #[serde(default)]
@@ -351,7 +351,7 @@ pub struct ModelListResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct PermissionProfileSummary {
+pub(crate) struct PermissionProfileSummary {
     pub id: String,
     pub description: Option<String>,
     pub allowed: bool,
@@ -359,7 +359,7 @@ pub struct PermissionProfileSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct PermissionProfileListResponse {
+pub(crate) struct PermissionProfileListResponse {
     #[serde(default)]
     pub data: Vec<PermissionProfileSummary>,
     #[serde(default)]
@@ -367,29 +367,29 @@ pub struct PermissionProfileListResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ConfigReadResponse {
+pub(crate) struct ConfigReadResponse {
     pub config: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-pub struct EmptyResponse {}
+pub(crate) struct EmptyResponse {}
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountReadParams {
+pub(crate) struct AccountReadParams {
     pub refresh_token: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadReadParams<'a> {
+pub(crate) struct ThreadReadParams<'a> {
     pub thread_id: &'a str,
     pub include_turns: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadLoadedListParams<'a> {
+pub(crate) struct ThreadLoadedListParams<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<&'a str>,
     pub limit: usize,
@@ -397,34 +397,34 @@ pub struct ThreadLoadedListParams<'a> {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadIdParams<'a> {
+pub(crate) struct ThreadIdParams<'a> {
     pub thread_id: &'a str,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ModelListParams {
+pub(crate) struct ModelListParams {
     pub limit: usize,
     pub include_hidden: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct PermissionProfileListParams<'a> {
+pub(crate) struct PermissionProfileListParams<'a> {
     pub limit: usize,
     pub cwd: &'a str,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ConfigReadParams<'a> {
+pub(crate) struct ConfigReadParams<'a> {
     pub include_layers: bool,
     pub cwd: &'a str,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub enum CodexPermissionMode {
+pub(crate) enum CodexPermissionMode {
     #[default]
     AskForApproval,
     ApproveForMe,
@@ -432,7 +432,7 @@ pub enum CodexPermissionMode {
 }
 
 impl CodexPermissionMode {
-    pub fn profile_id(self) -> &'static str {
+    pub(crate) fn profile_id(self) -> &'static str {
         match self {
             Self::AskForApproval | Self::ApproveForMe => ":workspace",
             Self::FullAccess => ":danger-full-access",
@@ -453,7 +453,7 @@ impl CodexPermissionMode {
         }
     }
 
-    pub fn from_settings(settings: &BTreeMap<String, Value>) -> Self {
+    pub(crate) fn from_settings(settings: &BTreeMap<String, Value>) -> Self {
         let approval_policy = settings.get("approvalPolicy").and_then(Value::as_str);
         let reviewer = settings.get("approvalsReviewer").and_then(Value::as_str);
         let profile_id = settings
@@ -476,7 +476,7 @@ impl CodexPermissionMode {
         }
     }
 
-    pub fn from_config(config: &Value) -> Self {
+    pub(crate) fn from_config(config: &Value) -> Self {
         let approval_policy = config
             .get("approval_policy")
             .or_else(|| config.get("approvalPolicy"))
@@ -524,7 +524,7 @@ enum ApprovalsReviewer {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadStartParams<'a> {
+pub(crate) struct ThreadStartParams<'a> {
     pub cwd: &'a str,
     pub runtime_workspace_roots: [&'a str; 1],
     #[cfg(test)]
@@ -546,7 +546,7 @@ pub struct ThreadStartParams<'a> {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadForkParams<'a> {
+pub(crate) struct ThreadForkParams<'a> {
     pub thread_id: &'a str,
     pub cwd: &'a str,
     pub runtime_workspace_roots: [&'a str; 1],
@@ -559,7 +559,7 @@ pub struct ThreadForkParams<'a> {
 #[cfg(test)]
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct DynamicToolSpec {
+pub(crate) struct DynamicToolSpec {
     #[serde(rename = "type")]
     pub kind: DynamicToolType,
     pub name: &'static str,
@@ -569,21 +569,21 @@ pub struct DynamicToolSpec {
 
 #[cfg(test)]
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
-pub enum DynamicToolType {
+pub(crate) enum DynamicToolType {
     #[serde(rename = "function")]
     Function,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadSetNameParams<'a> {
+pub(crate) struct ThreadSetNameParams<'a> {
     pub thread_id: &'a str,
     pub name: &'a str,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(tag = "type")]
-pub enum UserInput<'a> {
+pub(crate) enum UserInput<'a> {
     #[serde(rename = "text")]
     Text {
         text: &'a str,
@@ -595,7 +595,7 @@ pub enum UserInput<'a> {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct TurnStartParams<'a> {
+pub(crate) struct TurnStartParams<'a> {
     pub thread_id: &'a str,
     pub input: Vec<UserInput<'a>>,
     pub client_user_message_id: &'a str,
@@ -616,7 +616,7 @@ pub struct TurnStartParams<'a> {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct TurnSteerParams<'a> {
+pub(crate) struct TurnSteerParams<'a> {
     pub thread_id: &'a str,
     pub input: Vec<UserInput<'a>>,
     pub client_user_message_id: &'a str,
@@ -625,14 +625,14 @@ pub struct TurnSteerParams<'a> {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct TurnInterruptParams<'a> {
+pub(crate) struct TurnInterruptParams<'a> {
     pub thread_id: &'a str,
     pub turn_id: &'a str,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadTurnsListParams<'a> {
+pub(crate) struct ThreadTurnsListParams<'a> {
     pub thread_id: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<&'a str>,
@@ -643,7 +643,7 @@ pub struct ThreadTurnsListParams<'a> {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct InitialTurnsPageParams {
+pub(crate) struct InitialTurnsPageParams {
     pub limit: usize,
     pub sort_direction: SortDirection,
     pub items_view: TurnItemsView,
@@ -651,7 +651,7 @@ pub struct InitialTurnsPageParams {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadResumeParams<'a> {
+pub(crate) struct ThreadResumeParams<'a> {
     pub thread_id: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cwd: Option<&'a str>,
@@ -668,7 +668,7 @@ pub struct ThreadResumeParams<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum CodexNotification {
+pub(crate) enum CodexNotification {
     ThreadStarted {
         thread: CodexThread,
     },
@@ -730,7 +730,7 @@ pub enum CodexNotification {
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct TokenUsageBreakdown {
+pub(crate) struct TokenUsageBreakdown {
     pub total_tokens: u64,
     pub input_tokens: u64,
     pub cached_input_tokens: u64,
@@ -741,14 +741,14 @@ pub struct TokenUsageBreakdown {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ThreadTokenUsage {
+pub(crate) struct ThreadTokenUsage {
     pub total: TokenUsageBreakdown,
     pub last: TokenUsageBreakdown,
     pub model_context_window: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum CodexServerRequest {
+pub(crate) enum CodexServerRequest {
     CommandExecutionApproval {
         id: Value,
         thread_id: String,
@@ -781,7 +781,7 @@ pub enum CodexServerRequest {
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-pub struct JsonRpcError {
+pub(crate) struct JsonRpcError {
     pub code: i64,
     pub message: String,
     #[serde(default)]
