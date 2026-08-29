@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -13,6 +12,7 @@ use crate::fs::RootedFs;
 mod location;
 mod occurrences;
 
+use crate::fs;
 use location::{FileLocation, FileLocationFailure, LocationFallback, parse_file_location};
 use occurrences::{LinkOccurrence, collect_link_occurrences};
 
@@ -567,14 +567,14 @@ fn resolve_candidate(
         .logical_path_for_absolute(&candidate)
         .map_err(resolve_fs_failure)?;
     let canonical = rooted_fs.root().join(&logical);
-    let metadata = fs::metadata(&canonical).map_err(resolve_io_failure)?;
+    let metadata = std::fs::metadata(&canonical).map_err(resolve_io_failure)?;
     if metadata.is_dir() {
         return Err(ResolveFileLinkFailure::Directory);
     }
     if !metadata.is_file() {
         return Err(ResolveFileLinkFailure::NotFile);
     }
-    fs::File::open(canonical).map_err(resolve_io_failure)?;
+    std::fs::File::open(canonical).map_err(resolve_io_failure)?;
     Ok(logical)
 }
 
@@ -605,7 +605,7 @@ fn logical_segments(path: &str) -> Vec<&str> {
         .collect()
 }
 
-fn resolve_fs_failure(error: crate::fs::FsError) -> ResolveFileLinkFailure {
+fn resolve_fs_failure(error: fs::FsError) -> ResolveFileLinkFailure {
     use crate::fs::FsError;
 
     match error {

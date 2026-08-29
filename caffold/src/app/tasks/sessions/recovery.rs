@@ -165,11 +165,12 @@ impl TaskSessions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent;
     use crate::app::tasks::sessions::test_support::*;
 
     /// A Claude session opened on a stand-in that has already greeted it.
     async fn a_claude_session(sessions: &TaskSessions, generation: u64, thread_id: &str) -> Driver {
-        let (client, runner) = crate::agent::claude::ClaudeClient::mock();
+        let (client, runner) = agent::claude::ClaudeClient::mock();
         runner
             .greet_next_session_with(vec![serde_json::json!({
                 "type": "system",

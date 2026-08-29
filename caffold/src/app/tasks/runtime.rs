@@ -318,15 +318,20 @@ impl TaskRuntime {
 
 #[cfg(test)]
 mod tests {
+    use crate::agent;
     use serde_json::json;
 
     use super::*;
-    use crate::agent::codex::{CodexDaemonInfo, CodexReadiness, MockCodexResponse};
+    use crate::agent::codex::{
+        CodexDaemonInfo, CodexReadiness, CodexReadinessReason, CodexReadinessState,
+        MockCodexResponse,
+    };
+    use crate::app::tasks::sessions::SessionLifecycle;
 
     fn test_runtime(store: TaskStore) -> TaskRuntime {
         let (shutdown, _) = broadcast::channel(1);
         TaskRuntime::new(
-            crate::agent::claude::ClaudeClient::mock().0,
+            agent::claude::ClaudeClient::mock().0,
             TaskSessions::default(),
             TaskEvents::default(),
             store,
@@ -341,8 +346,8 @@ mod tests {
             .install_test_client(3, CodexThreadClient::mock(Vec::new()))
             .await;
         let readiness = CodexReadiness::blocking(
-            crate::agent::codex::CodexReadinessState::UpdateRequired,
-            crate::agent::codex::CodexReadinessReason::VersionBelowMinimum,
+            CodexReadinessState::UpdateRequired,
+            CodexReadinessReason::VersionBelowMinimum,
             "Codex must be updated before Task operations can run.",
             None,
         );
@@ -414,7 +419,7 @@ mod tests {
         let store = TaskStore::memory().expect("in-memory task store");
         let (shutdown, _) = broadcast::channel(1);
         let runtime = TaskRuntime::new(
-            crate::agent::claude::ClaudeClient::mock().0,
+            agent::claude::ClaudeClient::mock().0,
             sessions.clone(),
             events,
             store,
@@ -467,10 +472,7 @@ mod tests {
             .snapshot("thread_restart")
             .await
             .expect("session snapshot");
-        assert_eq!(
-            snapshot.lifecycle,
-            crate::app::tasks::sessions::SessionLifecycle::Error
-        );
+        assert_eq!(snapshot.lifecycle, SessionLifecycle::Error);
         assert_eq!(
             snapshot.last_error.as_deref(),
             Some("Codex runtime is restarting.")

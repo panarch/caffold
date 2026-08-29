@@ -362,6 +362,7 @@ async fn fork_source_context(
 
 #[cfg(test)]
 mod tests {
+    use crate::agent::codex::MockCodexResponse;
     use serde_json::{Value as JsonValue, json};
     use tower::ServiceExt;
 
@@ -478,12 +479,12 @@ mod tests {
             "turns": []
         });
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/read",
                 json!({ "threadId": source_thread_id, "includeTurns": false }),
                 json!({ "thread": source.clone() }),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/fork",
                 json!({
                     "threadId": source_thread_id,
@@ -503,12 +504,12 @@ mod tests {
                     "sandbox": { "type": "workspaceWrite" }
                 }),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/read",
                 json!({ "threadId": source_thread_id, "includeTurns": false }),
                 json!({ "thread": source }),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/turns/list",
                 json!({
                     "threadId": child_thread_id,
@@ -518,7 +519,7 @@ mod tests {
                 }),
                 inherited_turns_page(),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/name/set",
                 json!({
                     "threadId": child_thread_id,
@@ -623,12 +624,12 @@ mod tests {
         let mut source = fork_thread(source_thread_id, root.path(), 2.0);
         source["status"] = json!({ "type": "notLoaded" });
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/read",
                 json!({ "threadId": source_thread_id, "includeTurns": false }),
                 json!({ "thread": source }),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/turns/list",
                 json!({
                     "threadId": source_thread_id,
@@ -698,7 +699,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let source_thread_id = "thread-requested-preview";
         let different_thread_id = "thread-different-preview";
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok_for(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok_for(
             "thread/read",
             json!({ "threadId": source_thread_id, "includeTurns": false }),
             json!({
@@ -768,12 +769,12 @@ mod tests {
             "turns": []
         });
         let client = CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/read",
                 json!({ "threadId": source_thread_id, "includeTurns": false }),
                 json!({ "thread": source_before }),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/fork",
                 json!({
                     "threadId": source_thread_id,
@@ -793,12 +794,12 @@ mod tests {
                     "sandbox": { "type": "workspaceWrite" }
                 }),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/read",
                 json!({ "threadId": source_thread_id, "includeTurns": false }),
                 json!({ "thread": source_after }),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/turns/list",
                 json!({
                     "threadId": child_thread_id,
@@ -808,7 +809,7 @@ mod tests {
                 }),
                 inherited_turns_page(),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/name/set",
                 json!({
                     "threadId": child_thread_id,
@@ -883,7 +884,7 @@ mod tests {
         let source_thread_id = "thread-external-active";
         let mut source = fork_thread(source_thread_id, root.path(), 2.0);
         source["status"] = json!({ "type": "active", "activeFlags": [] });
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok_for(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok_for(
             "thread/read",
             json!({ "threadId": source_thread_id, "includeTurns": false }),
             json!({ "thread": source }),
@@ -935,7 +936,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let source_thread_id = "thread-requested-source";
         let different_thread_id = "thread-different-source";
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::ok_for(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok_for(
             "thread/read",
             json!({ "threadId": source_thread_id, "includeTurns": false }),
             json!({
@@ -1044,7 +1045,7 @@ mod tests {
     async fn fork_preview_reports_an_unresolved_external_id_without_claiming_it() {
         let root = tempfile::tempdir().unwrap();
         let source_thread_id = "missing-external-thread";
-        let client = CodexThreadClient::mock(vec![crate::agent::codex::MockCodexResponse::error(
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::error(
             "thread/read",
             CodexThreadError::ThreadUnavailable(source_thread_id.to_string()),
         )]);

@@ -3,6 +3,7 @@ use tokio::sync::broadcast;
 use futures_util::{StreamExt, stream};
 
 use super::{TaskRuntime, TaskRuntimeSignal, server_requests::AskedBy};
+use crate::agent;
 use crate::agent::SessionEventKind;
 use crate::agent::claude::{AskedTool, ClaudeRuntimeEvent, ToolAsk, WorkingDirectoryMove};
 use crate::app::tasks::events::now_ms;
@@ -482,11 +483,7 @@ impl TaskRuntime {
         });
     }
 
-    async fn record_claude_approval(
-        &self,
-        thread_id: &str,
-        request: crate::agent::ApprovalRequest,
-    ) {
+    async fn record_claude_approval(&self, thread_id: &str, request: agent::ApprovalRequest) {
         self.record_pending_approval(thread_id, request, now_ms(), AskedBy::Claude)
             .await;
     }
@@ -494,6 +491,7 @@ impl TaskRuntime {
 
 #[cfg(test)]
 mod tests {
+    use crate::agent::codex::CodexThreadClient;
     use std::time::Duration;
 
     use serde_json::{Value, json};
@@ -520,7 +518,7 @@ mod tests {
         root: &std::path::Path,
         cwd: &std::path::Path,
     ) -> (TaskState, MockRunnerHandle) {
-        let client = crate::agent::codex::CodexThreadClient::mock(Vec::new());
+        let client = CodexThreadClient::mock(Vec::new());
         let (state, runner) = task_state_with_agents(RootedFs::new(root).unwrap(), client).await;
         state.task_runtime.watch_claude();
         state

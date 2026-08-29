@@ -364,6 +364,7 @@ fn at_or_now(reported_ms: u64) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use crate::agent;
     use std::time::Duration;
 
     use serde_json::{Value as JsonValue, json};
@@ -371,6 +372,7 @@ mod tests {
     use super::*;
     use crate::{
         agent::codex::{self, CodexNotification, CodexThreadClient, MockCodexResponse},
+        app::tasks::push::PushService,
         app::tasks::sessions::TaskSessions,
         app::tasks::{
             events::TaskEvents, lifecycle::TaskLifecycle, routes::TaskListEvents,
@@ -382,7 +384,7 @@ mod tests {
 
     fn runtime_with_events_and_store(events: TaskEvents, store: TaskStore) -> TaskRuntime {
         let (shutdown, _) = broadcast::channel(1);
-        let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
+        let (claude, _runner) = agent::claude::ClaudeClient::mock();
         TaskRuntime::new(claude, TaskSessions::default(), events, store, shutdown)
     }
 
@@ -397,7 +399,7 @@ mod tests {
         let worktrees =
             ManagedWorktrees::new(fs.clone(), store.clone(), root.path().join("worktrees"))
                 .unwrap();
-        let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
+        let (claude, _runner) = agent::claude::ClaudeClient::mock();
         let lifecycle = TaskLifecycle::new(
             fs,
             sessions.clone(),
@@ -484,11 +486,11 @@ mod tests {
             thread_id: "thread-old-generation".to_string(),
             kind: SessionEventKind::ItemChanged {
                 turn_id: "turn-active".to_string(),
-                item: crate::agent::ConversationItem {
+                item: agent::ConversationItem {
                     id: "stale-item".to_string(),
                     observed_at_ms: None,
-                    status: crate::agent::ActivityStatus::Completed,
-                    kind: crate::agent::ItemKind::Reasoning {
+                    status: agent::ActivityStatus::Completed,
+                    kind: agent::ItemKind::Reasoning {
                         summary: vec!["stale report".to_string()],
                         content: Vec::new(),
                     },
@@ -573,7 +575,7 @@ mod tests {
         assert_eq!(snapshot.revision, initial_revision + 2);
         assert_eq!(
             snapshot.conversation.expect("canonical thread").status,
-            crate::agent::ThreadStatus::Idle
+            agent::ThreadStatus::Idle
         );
     }
 
@@ -658,8 +660,7 @@ mod tests {
         store
             .upsert_push_installation(subscribed_installation(), 1_000)
             .unwrap();
-        let (push, mut deliveries) =
-            crate::app::tasks::push::PushService::test_channel(store.clone());
+        let (push, mut deliveries) = PushService::test_channel(store.clone());
         let runtime =
             runtime_with_events_and_store(TaskEvents::default(), store).with_push_service(push);
 
@@ -749,8 +750,7 @@ mod tests {
         store
             .upsert_push_installation(subscribed_installation(), 1_000)
             .unwrap();
-        let (push, mut deliveries) =
-            crate::app::tasks::push::PushService::test_channel(store.clone());
+        let (push, mut deliveries) = PushService::test_channel(store.clone());
         let runtime =
             runtime_with_events_and_store(TaskEvents::default(), store).with_push_service(push);
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(

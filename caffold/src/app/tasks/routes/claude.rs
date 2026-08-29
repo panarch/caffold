@@ -1,4 +1,5 @@
 use super::*;
+use crate::agent;
 
 /// What the Claude installation is right now, for showing in Settings.
 ///
@@ -10,7 +11,7 @@ use super::*;
 /// the moment a turn tries it.
 pub(super) async fn claude_status(
     State(state): State<TaskState>,
-) -> Json<crate::agent::claude::status::ClaudeStatus> {
+) -> Json<agent::claude::status::ClaudeStatus> {
     Json(state.task_runtime.claude().introspect().await)
 }
 
@@ -40,6 +41,7 @@ pub(super) async fn claude_restart(
 
 #[cfg(test)]
 mod tests {
+    use crate::agent::codex::CodexThreadClient;
     use tower::ServiceExt;
 
     use crate::{app::tasks::test_support::*, fs::RootedFs};
@@ -47,7 +49,7 @@ mod tests {
     #[tokio::test]
     async fn the_status_answers_every_block_in_one_report() {
         let root = tempfile::tempdir().unwrap();
-        let client = crate::agent::codex::CodexThreadClient::mock(Vec::new());
+        let client = CodexThreadClient::mock(Vec::new());
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         let router = super::super::router(state);
 
@@ -74,7 +76,7 @@ mod tests {
     #[tokio::test]
     async fn restarting_answers_with_the_replacement_runner() {
         let root = tempfile::tempdir().unwrap();
-        let client = crate::agent::codex::CodexThreadClient::mock(Vec::new());
+        let client = CodexThreadClient::mock(Vec::new());
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         let router = super::super::router(state);
 

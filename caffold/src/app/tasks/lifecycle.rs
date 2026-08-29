@@ -25,6 +25,7 @@ use super::{
 mod fork;
 mod initial_request_name;
 
+use crate::git;
 pub(in crate::app) use fork::{ForkCodexSource, ForkCodexTask};
 
 pub(in crate::app) struct CreateTask {
@@ -511,21 +512,19 @@ fn managed_thread_from_task_record(
 
 pub(in crate::app) fn worktree_api_error(error: ManagedWorktreeError) -> ApiError {
     match error {
-        ManagedWorktreeError::Git(crate::git::WorktreeError::Dirty(_)) => ApiError::BadRequest {
+        ManagedWorktreeError::Git(git::WorktreeError::Dirty(_)) => ApiError::BadRequest {
             code: "managed_worktree_dirty",
             message: error.to_string(),
         },
-        ManagedWorktreeError::Git(crate::git::WorktreeError::InvalidBranch(_))
-        | ManagedWorktreeError::Git(crate::git::WorktreeError::BranchAlreadyExists(_))
-        | ManagedWorktreeError::Git(crate::git::WorktreeError::TargetExists(_))
-        | ManagedWorktreeError::Git(crate::git::WorktreeError::LinkedSource(_))
-        | ManagedWorktreeError::Git(crate::git::WorktreeError::UnresolvedOperation(_))
-        | ManagedWorktreeError::Git(crate::git::WorktreeError::DirtySubmodule(_))
-        | ManagedWorktreeError::Git(crate::git::WorktreeError::BaseRefWithChanges)
-        | ManagedWorktreeError::Git(crate::git::WorktreeError::DirtyBranchRequiresTransfer {
-            ..
-        })
-        | ManagedWorktreeError::Git(crate::git::WorktreeError::CurrentBranchConflict { .. }) => {
+        ManagedWorktreeError::Git(git::WorktreeError::InvalidBranch(_))
+        | ManagedWorktreeError::Git(git::WorktreeError::BranchAlreadyExists(_))
+        | ManagedWorktreeError::Git(git::WorktreeError::TargetExists(_))
+        | ManagedWorktreeError::Git(git::WorktreeError::LinkedSource(_))
+        | ManagedWorktreeError::Git(git::WorktreeError::UnresolvedOperation(_))
+        | ManagedWorktreeError::Git(git::WorktreeError::DirtySubmodule(_))
+        | ManagedWorktreeError::Git(git::WorktreeError::BaseRefWithChanges)
+        | ManagedWorktreeError::Git(git::WorktreeError::DirtyBranchRequiresTransfer { .. })
+        | ManagedWorktreeError::Git(git::WorktreeError::CurrentBranchConflict { .. }) => {
             ApiError::BadRequest {
                 code: "managed_worktree_invalid",
                 message: error.to_string(),
@@ -542,6 +541,8 @@ fn task_store_worker_error(error: tokio::task::JoinError) -> ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::codex::CodexThread;
+    use crate::task_store;
     use crate::{
         app::tasks::sessions::TaskSessions,
         task_store::{ManagedWorktreeState, TaskStore},
@@ -583,7 +584,7 @@ mod tests {
             "updatedAt": 2.0,
             "turns": [],
         });
-        let thread: crate::agent::codex::CodexThread =
+        let thread: CodexThread =
             serde_json::from_value(thread).expect("the fixture decodes as a Codex thread");
         let conversation = Conversation::from(&thread);
         let resolved = resolve_conversation_cwd(&lifecycle.fs, &conversation);
@@ -714,9 +715,9 @@ mod tests {
 
     #[test]
     fn worktree_errors_keep_their_public_archive_contract() {
-        let dirty = worktree_api_error(ManagedWorktreeError::Git(
-            crate::git::WorktreeError::Dirty("owned/path".to_string()),
-        ));
+        let dirty = worktree_api_error(ManagedWorktreeError::Git(git::WorktreeError::Dirty(
+            "owned/path".to_string(),
+        )));
         assert!(matches!(
             dirty,
             ApiError::BadRequest {
@@ -726,7 +727,7 @@ mod tests {
         ));
 
         let transfer_required = worktree_api_error(ManagedWorktreeError::Git(
-            crate::git::WorktreeError::DirtyBranchRequiresTransfer {
+            git::WorktreeError::DirtyBranchRequiresTransfer {
                 branch: "review/pr-42".to_string(),
             },
         ));
@@ -740,7 +741,7 @@ mod tests {
 
         let conflict = ManagedWorktreeState::Archived;
         let error = worktree_api_error(ManagedWorktreeError::Store(
-            crate::task_store::TaskStoreError::ManagedWorktreeStateConflict {
+            task_store::TaskStoreError::ManagedWorktreeStateConflict {
                 worktree_id: "worktree-1".to_string(),
                 actual: conflict.as_str().to_string(),
                 expected: ManagedWorktreeState::Ready.as_str().to_string(),

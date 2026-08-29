@@ -28,7 +28,7 @@ use super::protocol::{
 use super::{CodexThreadClient, CodexThreadError, CodexTurnOptions, NORMAL_SERVICE_TIER_ID};
 use crate::agent::driver::{ModelOption, PermissionModeOption, TurnOptions, TurnRejected, bounded};
 use crate::agent::{
-    ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, CommandExecution,
+    self, ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, CommandExecution,
     Conversation, ConversationItem, GeneratedImage, ItemKind, MessageContent, MessagePhase,
     PermissionRow, SessionEvent, SessionEventKind, TokenCount, TokenUsage, Turn, TurnOrigin,
     TurnPage,
@@ -480,7 +480,7 @@ fn approval_title(kind: ApprovalKind, has_command: bool, has_network: bool) -> &
 // the browser is promised stops moving when Codex changes, and a second driver
 // maps to Caffold's values rather than to Codex's.
 
-impl From<ThreadStatus> for crate::agent::ThreadStatus {
+impl From<ThreadStatus> for agent::ThreadStatus {
     fn from(status: ThreadStatus) -> Self {
         match status {
             ThreadStatus::NotLoaded => Self::NotLoaded,
@@ -493,7 +493,7 @@ impl From<ThreadStatus> for crate::agent::ThreadStatus {
     }
 }
 
-impl From<ThreadActiveFlag> for crate::agent::ThreadActiveFlag {
+impl From<ThreadActiveFlag> for agent::ThreadActiveFlag {
     fn from(flag: ThreadActiveFlag) -> Self {
         match flag {
             ThreadActiveFlag::WaitingOnApproval => Self::WaitingOnApproval,
@@ -502,7 +502,7 @@ impl From<ThreadActiveFlag> for crate::agent::ThreadActiveFlag {
     }
 }
 
-impl From<TurnStatus> for crate::agent::TurnStatus {
+impl From<TurnStatus> for agent::TurnStatus {
     fn from(status: TurnStatus) -> Self {
         match status {
             TurnStatus::Completed => Self::Completed,
@@ -1536,8 +1536,8 @@ mod tests {
         // that is what actually crosses.
         for status in every_thread_status() {
             let expected = serde_json::to_value(&status).expect("encode Codex status");
-            let converted = serde_json::to_value(crate::agent::ThreadStatus::from(status.clone()))
-                .expect("encode");
+            let converted =
+                serde_json::to_value(agent::ThreadStatus::from(status.clone())).expect("encode");
 
             assert_eq!(converted, expected, "{status:?} changed on the wire");
         }
@@ -1547,8 +1547,7 @@ mod tests {
     fn a_converted_turn_status_reaches_the_browser_unchanged() {
         for status in EVERY_TURN_STATUS {
             let expected = serde_json::to_value(status).expect("encode Codex status");
-            let converted =
-                serde_json::to_value(crate::agent::TurnStatus::from(status)).expect("encode");
+            let converted = serde_json::to_value(agent::TurnStatus::from(status)).expect("encode");
 
             assert_eq!(converted, expected, "{status:?} changed on the wire");
         }

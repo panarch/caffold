@@ -440,6 +440,7 @@ pub(super) async fn test_store_update_composer_settings(
 
 #[cfg(test)]
 pub(super) mod test_support {
+    use crate::agent::codex::MockCodexResponse;
     use serde_json::{Value as JsonValue, json};
 
     use super::*;
@@ -447,9 +448,9 @@ pub(super) mod test_support {
 
     pub(super) fn recovery_location_responses(
         archived_threads: Vec<JsonValue>,
-    ) -> Vec<crate::agent::codex::MockCodexResponse> {
+    ) -> Vec<MockCodexResponse> {
         vec![
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/list",
                 json!({
                     "limit": 100,
@@ -464,7 +465,7 @@ pub(super) mod test_support {
                     "backwardsCursor": null,
                 }),
             ),
-            crate::agent::codex::MockCodexResponse::ok_for(
+            MockCodexResponse::ok_for(
                 "thread/list",
                 json!({
                     "limit": 100,
@@ -484,8 +485,8 @@ pub(super) mod test_support {
 
     pub(super) fn active_recovery_location_responses(
         active_threads: Vec<JsonValue>,
-    ) -> Vec<crate::agent::codex::MockCodexResponse> {
-        vec![crate::agent::codex::MockCodexResponse::ok_for(
+    ) -> Vec<MockCodexResponse> {
+        vec![MockCodexResponse::ok_for(
             "thread/list",
             json!({
                 "limit": 100,

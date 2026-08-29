@@ -1201,12 +1201,14 @@ pub(in crate::app) fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent;
+    use crate::agent::codex::{CodexThread, conversation_item, response_item};
     use crate::agent::{CommandExecution, ThreadStatus};
 
     /// A conversation decoded the way the adapter decodes a real response, so a
     /// test cannot assert against a shape the adapter would have rejected.
     fn conversation(thread: JsonValue) -> Conversation {
-        let thread: crate::agent::codex::CodexThread =
+        let thread: CodexThread =
             serde_json::from_value(thread).expect("the fixture decodes as a Codex thread");
         Conversation::from(&thread)
     }
@@ -1241,7 +1243,7 @@ mod tests {
     }
 
     fn codex_item(reported: ActivityStatus, item: JsonValue) -> Option<ConversationItem> {
-        crate::agent::codex::conversation_item(&item, reported)
+        conversation_item(&item, reported)
     }
 
     fn provider_lifecycle_observation(
@@ -1295,7 +1297,7 @@ mod tests {
         anchor_ms: u64,
         item: JsonValue,
     ) -> Option<TaskEventRecord> {
-        let item = crate::agent::codex::response_item(&item)?;
+        let item = response_item(&item)?;
         task_event_from_item("thread_1", turn_id, anchor_ms, &item)
     }
 
@@ -3355,7 +3357,7 @@ mod tests {
             &ConversationItem {
                 id: "item-1".to_string(),
                 observed_at_ms: None,
-                status: crate::agent::ActivityStatus::Completed,
+                status: agent::ActivityStatus::Completed,
                 kind: ItemKind::Failure {
                     text: "API Error: Connection refused".to_string(),
                 },

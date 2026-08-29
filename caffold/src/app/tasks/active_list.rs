@@ -27,6 +27,7 @@ use super::{
     recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason},
 };
 use crate::agent::Conversation;
+use crate::git;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -259,7 +260,7 @@ async fn repository_sections(
             .filter_map(|(section_id, logical_path)| {
                 fs.absolute_directory_path(&logical_path)
                     .ok()
-                    .and_then(|path| crate::git::repository_for(&path))
+                    .and_then(|path| git::repository_for(&path))
                     .map(|_| section_id)
             })
             .collect()
@@ -297,6 +298,8 @@ pub(super) fn unavailable_active_task(managed: &ManagedThread) -> TaskRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent;
+    use crate::agent::codex::MockCodexResponse;
     use crate::task_store::RunBy;
 
     fn fixture() -> (tempfile::TempDir, Arc<RootedFs>, TaskStore) {
@@ -342,7 +345,7 @@ mod tests {
 
     /// A Claude client watching one conversation the stand-in already greeted.
     async fn watching_a_claude_conversation(thread_id: &str, cwd: &str) -> ClaudeClient {
-        let (claude, runner) = crate::agent::claude::ClaudeClient::mock();
+        let (claude, runner) = agent::claude::ClaudeClient::mock();
         runner
             .greet_next_session_with(vec![serde_json::json!({
                 "type": "system",
@@ -361,13 +364,11 @@ mod tests {
         claude
     }
 
-    fn an_empty_codex() -> crate::agent::codex::CodexThreadClient {
-        crate::agent::codex::CodexThreadClient::mock(vec![
-            crate::agent::codex::MockCodexResponse::ok(
-                "thread/list",
-                serde_json::json!({ "data": [], "nextCursor": null, "backwardsCursor": null }),
-            ),
-        ])
+    fn an_empty_codex() -> CodexThreadClient {
+        CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/list",
+            serde_json::json!({ "data": [], "nextCursor": null, "backwardsCursor": null }),
+        )])
     }
 
     #[tokio::test]
@@ -421,10 +422,7 @@ mod tests {
                 active_flags: Vec::new(),
             }
         );
-        assert_eq!(
-            row.latest_turn_status,
-            Some(crate::agent::TurnStatus::InProgress)
-        );
+        assert_eq!(row.latest_turn_status, Some(agent::TurnStatus::InProgress));
         assert!(row.conversation_available);
     }
 
@@ -505,7 +503,7 @@ mod tests {
                 500,
             )
             .unwrap();
-        let (claude, _runner) = crate::agent::claude::ClaudeClient::mock();
+        let (claude, _runner) = agent::claude::ClaudeClient::mock();
 
         let projection = load_runtime_snapshot(
             fs,
