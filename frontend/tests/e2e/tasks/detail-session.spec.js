@@ -381,17 +381,19 @@ test("updates stable detail regions and preserves an active IME composition", { 
         ".task-conversation-scroll",
       ),
       message: detailElement.querySelector(
-        '.task-message[data-event-id="event-live-render-boundary"]',
+        '.task-message[data-event-id="event-live-render-boundary"], .task-assistant-message[data-event-id="event-live-render-boundary"]',
       ),
       siblingMessage: detailElement.querySelector(
-        '.task-message[data-event-id="event-stable-sibling"]',
+        '.task-message[data-event-id="event-stable-sibling"], .task-assistant-message[data-event-id="event-stable-sibling"]',
       ),
       prompt: detailElement.querySelector(
         '.task-follow-up-form textarea[name="prompt"]',
       ),
     };
     window.__detailRegionOrderBefore = [
-      ...detailElement.querySelectorAll(".task-message[data-event-id]"),
+      ...detailElement.querySelectorAll(
+        ".task-message[data-event-id], .task-assistant-message[data-event-id]",
+      ),
     ].map((message) => message.dataset.eventId);
   });
   await page.evaluate((nextDetail) => {
@@ -427,15 +429,17 @@ test("updates stable detail regions and preserves an active IME composition", { 
           nodes.conversationScroller,
         messagePreserved:
           detailElement.querySelector(
-            '.task-message[data-event-id="event-live-render-boundary"]',
+            '.task-message[data-event-id="event-live-render-boundary"], .task-assistant-message[data-event-id="event-live-render-boundary"]',
           ) === nodes.message,
         siblingMessagePreserved:
           detailElement.querySelector(
-            '.task-message[data-event-id="event-stable-sibling"]',
+            '.task-message[data-event-id="event-stable-sibling"], .task-assistant-message[data-event-id="event-stable-sibling"]',
           ) === nodes.siblingMessage,
         orderBefore: window.__detailRegionOrderBefore,
         orderAfter: [
-          ...detailElement.querySelectorAll(".task-message[data-event-id]"),
+          ...detailElement.querySelectorAll(
+            ".task-message[data-event-id], .task-assistant-message[data-event-id]",
+          ),
         ].map((message) => message.dataset.eventId),
         promptPreserved:
           element.querySelector(
@@ -517,6 +521,168 @@ test("updates stable detail regions and preserves an active IME composition", { 
       }),
     )
     .toBe(true);
+});
+
+test("keeps a growing agent message inside the element already rendering it", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  const detail = taskDetailFixture({ running: true });
+  const answer = {
+    id: "event-growing-answer",
+    threadId: "thread-1",
+    type: "assistant_message",
+    summary: "Assistant response",
+    payload: {
+      turnId: "turn-1",
+      text: "The first half is written.",
+    },
+    position: { anchorMs: 3, index: 0 },
+  };
+  detail.events = [answer];
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage).toContainText("The first half is written.");
+  await expect
+    .poll(() => page.evaluate(() => Boolean(window.__taskDetailSource)))
+    .toBe(true);
+  await tasksPage.evaluate((element) => {
+    const row = element.querySelector(
+      '.task-assistant-message[data-event-id="event-growing-answer"]',
+    );
+    window.__growingAnswerNodes = {
+      row,
+      markdown: row.querySelector("caffold-task-markdown"),
+    };
+  });
+
+  await page.evaluate((event) => {
+    window.__taskDetailSource.emit("task-event", {
+      threadId: "thread-1",
+      revision: 2,
+      eventRevision: 2,
+      event: {
+        ...event,
+        payload: {
+          ...event.payload,
+          text: "The first half is written. The second half follows.",
+        },
+      },
+    });
+  }, answer);
+
+  await expect(tasksPage).toContainText("The second half follows.");
+  // Longer text is the same message still being written, so the element that
+  // parsed the first half keeps parsing rather than being replaced.
+  expect(
+    await tasksPage.evaluate((element) => {
+      const nodes = window.__growingAnswerNodes;
+      const row = element.querySelector(
+        '.task-assistant-message[data-event-id="event-growing-answer"]',
+      );
+      return {
+        rowPreserved: row === nodes.row,
+        markdownPreserved:
+          row?.querySelector("caffold-task-markdown") === nodes.markdown,
+      };
+    }),
+  ).toEqual({ rowPreserved: true, markdownPreserved: true });
+});
+
+test("keeps a folded agent message inside the element already rendering it", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  const detail = taskDetailFixture();
+  detail.task.latestTurnStatus = "completed";
+  const commentary = {
+    id: "event-folded-commentary",
+    threadId: "thread-1",
+    type: "assistant_message",
+    summary: "Assistant response",
+    payload: {
+      turnId: "turn-1",
+      itemId: "commentary",
+      text: "Checking the planner diff first.",
+    },
+    position: { anchorMs: 2, index: 0 },
+  };
+  const plan = {
+    id: "event-folded-plan",
+    threadId: "thread-1",
+    type: "plan",
+    summary: "Plan",
+    payload: { turnId: "turn-1", itemId: "plan", text: "Inspect the planner" },
+    position: { anchorMs: 3, index: 0 },
+  };
+  const answer = {
+    id: "event-folded-answer",
+    threadId: "thread-1",
+    type: "assistant_message",
+    summary: "Assistant response",
+    payload: {
+      turnId: "turn-1",
+      itemId: "answer",
+      text: "The planner diff is clean.",
+      phase: "final",
+    },
+    position: { anchorMs: 4, index: 0 },
+  };
+  const turnCompleted = {
+    id: "event-folded-turn-end",
+    threadId: "thread-1",
+    type: "turn_completed",
+    summary: "Turn completed",
+    payload: { turnId: "turn-1", status: "completed" },
+    position: { anchorMs: 5, index: 0 },
+  };
+  detail.events = [commentary, plan, answer, turnCompleted];
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const foldedMarkdown =
+    '.task-work-details-item[data-event-type="assistant_message"] caffold-task-markdown';
+  await expect(tasksPage.locator(foldedMarkdown)).toHaveCount(1);
+  await expect
+    .poll(() => page.evaluate(() => Boolean(window.__taskDetailSource)))
+    .toBe(true);
+  await page.evaluate((selector) => {
+    window.__foldedCommentaryMarkdown = document.querySelector(selector);
+  }, foldedMarkdown);
+
+  await page.evaluate((event) => {
+    window.__taskDetailSource.emit("task-event", {
+      threadId: "thread-1",
+      revision: 2,
+      eventRevision: 2,
+      event: {
+        ...event,
+        payload: { ...event.payload, text: "Inspect the planner and its tests" },
+      },
+    });
+  }, plan);
+
+  // Redrawing the work details for a neighbouring item leaves the message
+  // where it is, so what already parsed does not parse again.
+  await expect(
+    tasksPage.locator('.task-work-details-item[data-event-type="plan"]'),
+  ).toContainText("Inspect the planner and its tests");
+  expect(
+    await page.evaluate(
+      (selector) =>
+        document.querySelector(selector) === window.__foldedCommentaryMarkdown,
+      foldedMarkdown,
+    ),
+  ).toBe(true);
 });
 
 test("loading detail accepts a canonical task sync without a synthetic task", { tag: "@all-viewports" }, async ({
@@ -2121,7 +2287,7 @@ test("reconciles a canonical final answer over a retained transient item after r
     });
 
   const finalAnswer = tasksPage.locator(
-    `.task-message[data-event-id="${eventId}"][data-message-role="assistant"]`,
+    `.task-assistant-message[data-event-id="${eventId}"]`,
   );
   await expect(finalAnswer).toContainText(
     "The canonical final answer survived the reconnect.",

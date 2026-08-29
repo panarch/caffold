@@ -39,7 +39,7 @@ test("keeps the code-block toolbar dense and usable across Task viewports", { ta
   const tasksPage = page.locator("caffold-tasks-page");
   const userMessage = tasksPage.locator('.task-message[data-message-role="user"]');
   const finalMarkdown = tasksPage.locator(
-    '.task-message[data-message-role="assistant"][data-message-phase="final"] caffold-task-markdown',
+    'caffold-task-assistant-message[data-message-phase="final"] caffold-task-markdown',
   );
 
   await expect(finalMarkdown).toHaveAttribute("code-block-controls", "");
@@ -194,7 +194,7 @@ test("copies each block exactly with bounded success and retryable failure", { t
 }, testInfo) => {
   const scenario = await seedCodeBlockTask(page, "thread_code_copy");
   const finalMarkdown = page.locator(
-    '.task-message[data-message-role="assistant"][data-message-phase="final"] caffold-task-markdown',
+    'caffold-task-assistant-message[data-message-phase="final"] caffold-task-markdown',
   );
   const blocks = finalMarkdown.locator("caffold-task-markdown-code-block");
   const firstBlock = blocks.nth(0);
@@ -307,11 +307,21 @@ test("keeps excluded conversation surfaces plain", { tag: "@desktop" }, async ({
   await expect(thinking).not.toHaveAttribute("code-block-controls", "");
   await expect(thinking.locator("pre > code")).toHaveText("thinking-only\n");
   await expect(thinking.locator("caffold-task-markdown-code-block")).toHaveCount(0);
+  // A message the agent wrote mid-turn is the same excluded surface whether the
+  // conversation lists it or a finished turn folds it into its work details.
   const interim = page.locator(
-    '.task-message[data-message-phase="progress"] caffold-task-markdown',
+    'caffold-task-assistant-message[data-message-phase="progress"] caffold-task-markdown',
   );
-  await expect(interim).not.toHaveAttribute("code-block-controls", "");
-  await expect(interim.locator("pre > code")).toHaveText("interim-only\n");
+  await expect(interim).toHaveCount(2);
+  await expect(
+    page.locator(
+      'caffold-task-assistant-message[data-message-phase="progress"] caffold-task-markdown[code-block-controls]',
+    ),
+  ).toHaveCount(0);
+  await expect(interim.locator("pre > code")).toHaveText([
+    "interim-only\n",
+    "interim-only\n",
+  ]);
   await expect(interim.locator("caffold-task-markdown-code-block")).toHaveCount(0);
   await expect(page.locator(".task-turn-work [data-code-action]")).toHaveCount(0);
   await expect(page.locator(".task-command [data-code-action]")).toHaveCount(0);
@@ -515,7 +525,7 @@ async function seedCodeBlockTask(page, threadId, { activeThinking = false } = {}
   await page.goto("/tasks/" + scenario.threadId);
   await expect(
     page.locator(
-      '.task-message[data-message-role="assistant"][data-message-phase="final"] caffold-task-markdown',
+      'caffold-task-assistant-message[data-message-phase="final"] caffold-task-markdown',
     ),
   ).toHaveAttribute("data-render-state", "markdown");
   return scenario;

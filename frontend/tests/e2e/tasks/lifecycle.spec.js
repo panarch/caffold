@@ -2167,7 +2167,9 @@ test("isolates task detail responses and conversation scroll by thread", { tag: 
     element.dispatchEvent(new Event("scroll"));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const scrollerRect = element.getBoundingClientRect();
-    const messages = [...element.querySelectorAll(".task-message[data-event-id]")];
+    const messages = [...element.querySelectorAll(
+      ".task-message[data-event-id], .task-assistant-message[data-event-id]",
+    )];
     const index = messages.findIndex(
       (message) => message.getBoundingClientRect().bottom > scrollerRect.top + 1,
     );
@@ -2211,7 +2213,9 @@ test("isolates task detail responses and conversation scroll by thread", { tag: 
       scroller.evaluate(
         (element, anchor) => {
           const scrollerRect = element.getBoundingClientRect();
-          const message = [...element.querySelectorAll(".task-message[data-event-id]")].find(
+          const message = [...element.querySelectorAll(
+            ".task-message[data-event-id], .task-assistant-message[data-event-id]",
+          )].find(
             (candidate) => candidate.dataset.eventId === anchor.eventId,
           );
           return message

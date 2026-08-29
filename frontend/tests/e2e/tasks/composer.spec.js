@@ -670,7 +670,9 @@ test("keeps exact prompt order when Detail or live content arrives before the pr
   }, { threadId, detail: detail() });
 
   await expect(tasksPage).toContainText("Canonical item prompt");
-  const messages = tasksPage.locator(".task-message");
+  const messages = tasksPage.locator(
+    ".task-message, .task-assistant-message",
+  );
   await expect(messages.nth(1)).toContainText("Canonical item prompt");
   await expect(messages.nth(2)).toContainText("Canonical item answer");
   await expect(form).toHaveAttribute("aria-busy", "true");

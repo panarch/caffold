@@ -337,7 +337,7 @@ test("opens resolved Markdown file links through Task Review with native link se
   await page.goto(`/tasks/${scenario.threadId}`);
 
   const markdown = page.locator(
-    '.task-message[data-message-role="assistant"] caffold-task-markdown',
+    '.task-assistant-message caffold-task-markdown',
   ).filter({ hasText: "Planner line" });
   await expect(markdown).toHaveAttribute("data-render-state", "markdown");
   const planner = markdown.getByRole("link", { name: "Planner line" });
@@ -440,7 +440,7 @@ test("opens resolved Markdown file links through Task Review with native link se
   }, { threadId: scenario.threadId, liveFileLinks, liveMarkdownSource });
   await expect(markdown).toHaveAttribute("data-reconnect-probe", "preserved");
   const liveMarkdown = page.locator(
-    '.task-message[data-message-role="assistant"] caffold-task-markdown',
+    '.task-assistant-message caffold-task-markdown',
   ).filter({ hasText: "Live file" });
   await expect(liveMarkdown.getByRole("link", { name: "Live file" })).toHaveAttribute(
     "href",
@@ -595,7 +595,7 @@ test("preserves ordered-list starts through Task Markdown sanitization", { tag: 
 
   const tasksPage = page.locator("caffold-tasks-page");
   const assistantMarkdown = tasksPage.locator(
-    '.task-message[data-message-role="assistant"] caffold-task-markdown',
+    '.task-assistant-message caffold-task-markdown',
   );
   await expect(assistantMarkdown).toHaveAttribute("data-render-state", "markdown");
   await expect(assistantMarkdown.locator("ol")).toHaveCount(3);
@@ -799,7 +799,7 @@ test("shows a prompt as the characters a person typed", { tag: "@all-viewports" 
   const bubble = userMessage.locator(".task-message-content");
   const promptText = userMessage.locator(".task-message-text");
   await expect(
-    tasksPage.locator('.task-message[data-message-role="assistant"] caffold-task-markdown'),
+    tasksPage.locator('.task-assistant-message caffold-task-markdown'),
   ).toHaveAttribute("data-render-state", "markdown");
 
   await expect(userMessage.locator("caffold-task-markdown")).toHaveCount(0);
@@ -849,12 +849,12 @@ test("renders an agent message that ends where its text ends", { tag: "@all-view
   await page.goto(`/tasks/${scenario.threadId}`);
   const tasksPage = page.locator("caffold-tasks-page");
   await expect(
-    tasksPage.locator('.task-message[data-message-role="assistant"] caffold-task-markdown'),
+    tasksPage.locator('.task-assistant-message caffold-task-markdown'),
   ).toHaveAttribute("data-render-state", "markdown");
 
   const edges = await tasksPage.evaluate((root) => {
     const body = root.querySelector(
-      '.task-message[data-message-role="assistant"] .markdown-body',
+      '.task-assistant-message .markdown-body',
     );
     return {
       marginTop: getComputedStyle(body.firstElementChild).marginTop,
@@ -877,11 +877,11 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   await scenario.seedCompletedTask();
   await page.goto(`/tasks/${threadId}`);
   const tasksPage = page.locator("caffold-tasks-page");
-  await expect(tasksPage.locator('.task-message[data-message-role="assistant"]')).toContainText(
+  await expect(tasksPage.locator('.task-assistant-message')).toContainText(
     "The planner changes are ready to review.",
   );
   const assistantMarkdown = tasksPage.locator(
-    '.task-message[data-message-role="assistant"] caffold-task-markdown',
+    '.task-assistant-message caffold-task-markdown',
   );
   await expect(assistantMarkdown).toHaveAttribute("data-render-state", "markdown");
   await expect(assistantMarkdown.locator("h2")).toHaveText("Review ready");
@@ -937,13 +937,13 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     "markdown",
   );
   await expect(page.locator("caffold-task-markdown").last().locator("a")).toHaveCount(0);
-  await expect(tasksPage.locator('.task-message[data-message-role="assistant"]')).toHaveCount(1);
+  await expect(tasksPage.locator(".task-assistant-message")).toHaveCount(1);
   await expect(
     tasksPage.locator(
-      '.task-message[data-message-role="assistant"][data-message-phase="final"]',
+      '.task-assistant-message caffold-task-assistant-message[data-message-phase="final"]',
     ),
   ).toHaveCount(1);
-  await expect(tasksPage.locator('.task-message[data-message-role="assistant"]')).not.toContainText(
+  await expect(tasksPage.locator(".task-assistant-message")).not.toContainText(
     "I am checking the planner diff",
   );
   await expect(tasksPage.locator(".task-turn-work")).toContainText("Worked for");
@@ -955,7 +955,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     .poll(() =>
       tasksPage.evaluate((element) => {
         const work = element.querySelector(".task-turn-work");
-        const assistant = element.querySelector('.task-message[data-message-role="assistant"]');
+        const assistant = element.querySelector(".task-assistant-message");
         const position = work && assistant ? work.compareDocumentPosition(assistant) : 0;
         return Boolean(position & Node.DOCUMENT_POSITION_FOLLOWING);
       }),

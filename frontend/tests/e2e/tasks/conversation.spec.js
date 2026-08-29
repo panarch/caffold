@@ -758,7 +758,9 @@ test("orders separate turns by message chronology when a newer start marker is s
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
   await emitTaskDetailBootstrap(page, detail);
-  const messages = page.locator(".task-conversation .task-message");
+  const messages = page.locator(
+    ".task-conversation .task-message, .task-conversation .task-assistant-message",
+  );
   await expect
     .poll(() =>
       messages.evaluateAll((entries) =>

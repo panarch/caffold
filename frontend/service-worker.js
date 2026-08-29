@@ -155,6 +155,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn/model.js",
+  "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.css",
+  "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.js",
   "/assets/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css",
