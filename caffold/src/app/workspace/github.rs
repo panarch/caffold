@@ -208,7 +208,6 @@ mod tests {
         http::{Request, StatusCode, header},
     };
     use serde_json::{Value as JsonValue, json};
-    use tokio::sync::broadcast;
     use tower::ServiceExt;
 
     use crate::fs::RootedFs;
@@ -265,8 +264,7 @@ mod tests {
         std::fs::write(&fetch_head, "existing fetch state\n").unwrap();
 
         let fs = Arc::new(RootedFs::new(root.path()).unwrap());
-        let (shutdown, _) = broadcast::channel(1);
-        let app = super::super::router(fs, shutdown);
+        let app = super::super::router(fs);
 
         let prepared = post_pull_head(
             app.clone(),

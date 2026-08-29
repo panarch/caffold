@@ -37,6 +37,7 @@ class CaffoldDetailLayout extends HTMLElement {
     this.activeReviewKey = "";
     this.transportAvailable = true;
     this.codexStatusSnapshot = null;
+    this.liveUpdates = null;
     this.innerHTML = `
       <div class="common-detail-shell">
         <header class="detail-layout-summary task-detail-summary">
@@ -153,6 +154,17 @@ class CaffoldDetailLayout extends HTMLElement {
         }),
       );
     });
+    this.taskDetail()?.setLiveUpdates(this.liveUpdates);
+  }
+
+  setLiveUpdates(liveUpdates) {
+    this.ensureRendered();
+    this.liveUpdates = liveUpdates ?? null;
+    this.taskDetail()?.setLiveUpdates(this.liveUpdates);
+    this.gitLayout()?.setLiveUpdates(this.liveUpdates);
+    for (const review of this.reviewComponents.values()) {
+      review.setLiveUpdates(this.liveUpdates);
+    }
   }
 
   disconnectedCallback() {
@@ -900,6 +912,7 @@ class CaffoldDetailLayout extends HTMLElement {
     let review = this.reviewComponents.get(key);
     if (!review) {
       review = document.createElement("caffold-task-review");
+      review.setLiveUpdates(this.liveUpdates);
       this.reviewComponents.set(key, review);
     }
     this.activeReviewKey = key;
@@ -962,6 +975,7 @@ class CaffoldDetailLayout extends HTMLElement {
     let layout = this.gitLayout();
     if (!layout) {
       layout = document.createElement("caffold-task-git-layout");
+      layout.setLiveUpdates(this.liveUpdates);
       this.gitSlot().replaceChildren(layout);
     }
     return layout;

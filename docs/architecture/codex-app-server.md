@@ -128,6 +128,10 @@ For the Codex side of the multi-agent Tasks backend, dependencies keep one
 direction:
 
 ```text
+app/live_updates.rs
+  -> tasks/live.rs
+       -> detail.rs
+       -> sessions.rs
 routes.rs
   -> detail.rs
        -> runtime.rs
@@ -143,9 +147,13 @@ routes.rs
 assembles the owner types, while `TasksApp` exposes only a completed router and
 runtime shutdown lifecycle to `caffold/src/app.rs`.
 
-- `routes.rs` is the only browser-facing Tasks module that imports Axum or
-  receives `TaskState`. It owns browser request/response DTOs, validation,
-  route registration, and REST/SSE adaptation.
+- `routes.rs` is the browser-facing Tasks REST module that imports Axum and
+  receives `TaskState`. It owns request/response DTOs, validation, and Task
+  route registration.
+- `live.rs` exposes typed Task List and Task Detail event sources without Axum
+  framing or `TaskState`. The application-level `live_updates.rs` owns the one
+  SSE gateway, logical subscription control, per-channel generations, and
+  framing shared with filesystem Watch.
 - `runtime.rs` owns per-Task driver routing. Its `process.rs`, `bridge.rs`, and
   `server_requests.rs` children own the app-server proxy generation,
   connection recovery, Codex event/server-request bridge, and pending approval
@@ -159,7 +167,7 @@ runtime shutdown lifecycle to `caffold/src/app.rs`.
   maximum-latency, and retry scheduling. It does not read Codex threads or
   construct browser details.
 - `detail.rs` owns canonical detail assembly, session/viewer lifecycle,
-  history pages, detail SSE frames, and the worker that applies scheduled
+  history pages, typed Detail events, and the worker that applies scheduled
   canonical reads. Source errors produce unavailable detail rather than a Redb
   fallback.
 - `projection.rs` and `events.rs` do not import Axum, Redb, process lifecycle,
@@ -186,7 +194,7 @@ every Codex thread a notification source.
 Caffold keeps an ephemeral session store for that boundary; it does not
 persist a second task ledger.
 
-- The first task detail or SSE viewer resumes the thread with `excludeTurns`
+- The first task detail or live-channel viewer resumes the thread with `excludeTurns`
   and an initial page of the latest eight summary turns.
 - Additional browser viewers share the same subscribed session and do not
   repeat the resume bootstrap.
@@ -212,7 +220,7 @@ persist a second task ledger.
 - Before answering Task creation, Caffold persists the new thread's
   initial app-server name, resolves or creates the matching Caffold-owned local
   Section by logical path, and inserts the managed row at local position zero.
-- After the managed claim succeeds, the create response and Active-list SSE
+- After the managed claim succeeds, the create response and Task List live channel
   carry the same backend-authored Section placement. The navigator can insert
   the row immediately without reconstructing grouping or reloading every
   Section. The response is an idle zero-turn Task and does not schedule
@@ -403,7 +411,7 @@ Codex Task surface. Unmanaged app-server threads are not listed, read through
 Task routes, or implicitly adopted from a direct URL. The dedicated
 fork-preview route may read one explicitly supplied provider ID, but that read
 creates no membership, session lease, or persisted lineage.
-Caffold keeps pending approvals and SSE notifications as ephemeral in-memory
+Caffold keeps pending approvals and live notifications as ephemeral in-memory
 state in this slice. After a backend restart, startup recovery resumes each
 managed loaded thread so app-server can re-emit a pending approval request.
 
@@ -441,7 +449,7 @@ same structured shape:
 - Before canonical metadata arrives, detail returns `syncState: "loading"` and
   `task: null`; it does not manufacture a loading Task record from Redb.
 - If subscription or canonical read fails, REST rejects the stale session
-  snapshot and SSE carries an explicit unavailable detail. If the browser stream
+  snapshot and the Task Detail channel carries an explicit unavailable detail. If the browser stream
   transport fails, Detail may use one REST fallback to provide readable content
   while reporting that live updates are unavailable.
 
@@ -456,7 +464,7 @@ instead publish a `task-sync` snapshot. Their ordering and membership semantics
 belong to the
 [common conversation projection](agent-runtimes.md#conversation-and-event-ownership).
 Task lifecycle changes also arrive through canonical REST responses and the
-Task-list stream's revisioned Task-record syncs.
+Task List channel's revisioned Task-record syncs.
 
 ## Browser boundary
 
@@ -504,8 +512,8 @@ supported baseline, Codex CLI `0.147.0`. The tests are ignored by default
 because they require local authentication and make real model requests; rerun
 them when changing the baseline or daemon/proxy lifecycle.
 
-Caffold watches the rollout path reported by Codex only while a task detail SSE
-viewer is active. The rollout file is an invalidation signal only: Caffold does
+Caffold watches the rollout path reported by Codex only while a Task Detail
+live-channel viewer is active. The rollout file is an invalidation signal only: Caffold does
 not open it, parse JSONL records, or infer running/completed state from its
 contents. Multiple viewers of the same task share one native file watch, and the
 last viewer closing releases that watch.
@@ -518,7 +526,8 @@ Rollout-driven reconciliation never calls `thread/resume` or
 startup-recovery lifecycles. Continuous writes reset the deadline, so a separate
 Codex process produces one canonical read after its write burst. Concurrent changes
 coalesce into one active sync plus at most one trailing sync. The resulting
-revisioned snapshot is broadcast to every Caffold SSE client viewing that task.
+revisioned snapshot is broadcast to every Caffold client subscribed to that
+Task Detail channel.
 Tasks without an active detail subscriber do not trigger rollout-driven reads.
 
 ## Active Navigator Projection and Archived Pagination
@@ -536,7 +545,7 @@ Repository/worktree presentation remains an asynchronous Git-derived projection
 and is not stored with the Section. Rows without a complete placement are
 returned in an explicit recovery group instead of being silently dropped.
 
-The Task-list SSE stream complements that persisted identity with process-local
+The Task List live channel complements that persisted identity with process-local
 runtime state. A new connection registers cached managed Codex threads before
 paging app-server's global state-DB-backed `thread/list`, and also projects the
 managed Claude sessions the runner is currently holding. Only managed IDs are
@@ -547,7 +556,7 @@ The browser therefore renders the cached list immediately and upgrades the
 available status chips without opening Tasks one at a time. Steady-state
 `task-sync` frames contain only the conversation ID, revision, and nullable
 canonical Task record. Transcript, history, approval, file-link, and Task-detail
-settings remain on the per-Task Detail stream. A successfully started
+settings remain on the logical Task Detail channel. A successfully started
 non-steering turn commits its applied composer settings to the Task and its
 parent Section in one local transaction, then publishes a targeted
 `section-composer-settings` frame. The browser patches that Section in its

@@ -78,6 +78,8 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/settings/remote-access/tailscale.js",
   "/assets/pages/(task-workspace)/layout.css",
   "/assets/pages/(task-workspace)/layout.js",
+  "/assets/pages/(task-workspace)/live-updates.js",
+  "/assets/pages/(task-workspace)/live-updates/lifecycle.js",
   "/assets/pages/(task-workspace)/components/navigation.css",
   "/assets/pages/(task-workspace)/components/navigation.js",
   "/assets/pages/(task-workspace)/components/workspace-brand.css",

@@ -191,6 +191,7 @@ owns:
 - Task and Settings navigators;
 - the user-resizable desktop navigation pane;
 - compact top-level Task/New Task Back or Close controls;
+- the one physical live-update connection for this browser tab;
 - forwarding routes to Tasks or Settings.
 
 The workspace consumes the semantic presentation snapshot published by Tasks:
@@ -225,6 +226,14 @@ refresh. Tasks and Settings emit the same restart intent and render its shared
 request snapshot. The workspace mounts one long-lived native confirmation
 dialog. A successful restart response does not release the Codex surfaces it
 holds; only the refreshed backend readiness snapshot can do that.
+
+The adjacent workspace-scoped live-update owner keeps one physical EventSource
+while the document is visible and injects logical Task List, Task Detail, and
+Watch capabilities into their existing domain owners. Task versus Settings
+navigation does not replace that connection. Task changes replace only the Task
+Detail generation, and independently active filesystem scopes remain separate
+logical Watch subscriptions. See [Live Updates](live-updates.md) for the wire,
+ordering, and recovery contract.
 
 This request ownership is scoped to the mounted browser component tree. It is
 not exclusive ownership of Codex settings or actions across Caffold clients.
@@ -333,11 +342,12 @@ conversation-publication revision baselines, and rendering cache.
 
 The session phases are inactive, waiting for bootstrap, waiting for readable
 sync, streaming, REST fallback, and unavailable. It alone transitions the
-active attempt, while shared `tasks/stream.js` owns `EventSource` connection
-generations, timers, and transport state. Cursor pagination stays outside the
-session, and a Task switch replaces the attempt before a late response can
-update Detail. Provider transport and history acquisition remain in their
-native architecture.
+active attempt, while shared `tasks/stream.js` owns logical subscription
+generations, bootstrap timers, reconciliation, and transport presentation. The
+workspace live-update owner separately owns the physical EventSource. Cursor
+pagination stays outside the session, and a Task switch replaces the attempt
+before a late response can update Detail. Provider transport and history
+acquisition remain in their native architecture.
 
 `caffold-section-detail` owns fixed-context Task creation and
 existing-conversation shortcuts for one Section. Switching Section context
@@ -593,6 +603,8 @@ frontend/
 |   |-- pwa-update-lifecycle/...
 |   `-- (task-workspace)/
 |       |-- layout.js
+|       |-- live-updates.js
+|       |-- live-updates/lifecycle.js
 |       |-- codex-status.js
 |       |-- codex-status/...
 |       |-- settings/...

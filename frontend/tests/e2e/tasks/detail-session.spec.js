@@ -799,37 +799,11 @@ test("recovers task detail and prompt submission across bootstrap races", { tag:
       configurable: true,
       value: { register: () => Promise.resolve() },
     });
-    window.__caffoldMockEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        const unavailableDetailThread = sessionStorage.getItem(
-          "unavailableDetailThread",
-        );
-        if (
-          unavailableDetailThread &&
-          url.includes(`/api/tasks/${unavailableDetailThread}/stream`)
-        ) {
-          throw new Error("Task detail stream is unavailable in this fixture");
-        }
-        this.url = url;
-        this.listeners = new Map();
-        this.readyState = 0;
-        window.__caffoldMockEventSources.push(this);
-        window.__caffoldRegisterTaskSseSource?.(this);
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emit(type, payload) {
-        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-      }
-
-      close() {
-        this.readyState = 2;
-      }
-    };
+    window.__detailRaceLiveAvailable =
+      sessionStorage.getItem("detailRaceLiveUnavailable") !== "true";
+  });
+  await installEventSourceMock(page, {
+    detailAvailabilityKey: "__detailRaceLiveAvailable",
   });
   await mockAgentModels(page);
 
@@ -948,20 +922,13 @@ test("recovers task detail and prompt submission across bootstrap races", { tag:
     await expect
       .poll(() =>
         page.evaluate(
-          (id) =>
-            window.__caffoldMockEventSources.some((source) =>
-              source.url.includes(`/api/tasks/${id}/stream`),
-            ),
+          (id) => Boolean(window.__caffoldTaskSse.source(id)),
           threadId,
         ),
       )
       .toBe(true);
     await page.evaluate(({ threadId, detail }) => {
-      const source = [...window.__caffoldMockEventSources]
-        .reverse()
-        .find((candidate) =>
-          candidate.url.includes(`/api/tasks/${threadId}/stream`),
-        );
+      const source = window.__caffoldTaskSse.source(threadId);
       window.__caffoldTaskSse.open(source);
       source.emit("task-sync", {
         threadId,
@@ -991,9 +958,9 @@ test("recovers task detail and prompt submission across bootstrap races", { tag:
     },
   ]);
 
-  await page.evaluate((threadId) => {
-    sessionStorage.setItem("unavailableDetailThread", threadId);
-  }, taskAfterFailure.threadId);
+  await page.evaluate(() => {
+    sessionStorage.setItem("detailRaceLiveUnavailable", "true");
+  });
   await page.goto(`/tasks/${taskAfterFailure.threadId}?cwd=src`);
   await expect(tasksPage).toContainText(
     "The REST fallback kept the Task readable.",
@@ -1005,7 +972,8 @@ test("recovers task detail and prompt submission across bootstrap races", { tag:
   await expect(unavailable).toBeVisible();
 
   await page.evaluate(() => {
-    sessionStorage.removeItem("unavailableDetailThread");
+    sessionStorage.removeItem("detailRaceLiveUnavailable");
+    window.__detailRaceLiveAvailable = true;
   });
   await unavailable.getByRole("button", { name: "Retry" }).click();
   await emitTaskSync(taskAfterFailure.threadId, recoveredDetail);
@@ -1119,7 +1087,12 @@ test("keeps task context and retries after an initial detail timeout", { tag: "@
 test("preserves stable detail children through another task load failure", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  await installTaskApiFixture(page);
+  await page.addInitScript(() => {
+    window.__stableDetailLiveAvailable = true;
+  });
+  await installTaskApiFixture(page, {
+    detailAvailabilityKey: "__stableDetailLiveAvailable",
+  });
   await page.unroute("**/api/tasks");
 
   const now = Date.now();
@@ -1224,15 +1197,7 @@ test("preserves stable detail children through another task load failure", { tag
     .toBe(true);
 
   await page.evaluate(() => {
-    const WorkingEventSource = window.EventSource;
-    window.EventSource = class ConditionalEventSource {
-      constructor(url) {
-        if (url.includes("/api/tasks/thread-stable-b/stream")) {
-          throw new Error("Task B stream is unavailable in this fixture");
-        }
-        return new WorkingEventSource(url);
-      }
-    };
+    window.__stableDetailLiveAvailable = false;
   });
 
   await taskNavigator
@@ -1280,6 +1245,9 @@ test("preserves stable detail children through another task load failure", { tag
   await expect(tasksPage).toContainText("Recover task B canonical response.");
   await expect(conversation).toBeVisible();
 
+  await page.evaluate(() => {
+    window.__stableDetailLiveAvailable = true;
+  });
   await taskNavigator
     .locator('.task-row[data-thread-id="thread-stable-a"]')
     .click();
@@ -1926,40 +1894,9 @@ test("canonical action responses reject foreign tasks and preserve history curso
 });
 
 test("accepts canonical task detail after stream revisions restart", { tag: "@all-viewports" }, async ({ page }) => {
-  await page.addInitScript(() => {
-    window.__taskEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        this.readyState = 0;
-        window.__taskEventSources.push(this);
-        window.__caffoldRegisterTaskSseSource?.(this);
-        queueMicrotask(() => this.emitOpen());
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emit(type, payload) {
-        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-      }
-
-      emitOpen() {
-        this.readyState = 1;
-        this.listeners.get("open")?.({});
-      }
-
-      emitError() {
-        this.readyState = 0;
-        this.listeners.get("error")?.({});
-      }
-
-      close() {
-        this.readyState = 2;
-      }
-    };
+  await installEventSourceMock(page, {
+    registryKey: "__taskEventSources",
+    autoOpen: true,
   });
   await mockAgentModels(page);
 
@@ -2298,39 +2235,9 @@ test("reconciles a canonical final answer over a retained transient item after r
 });
 
 test("accepts canonical task sync after stream revisions restart", { tag: "@all-viewports" }, async ({ page }) => {
-  await page.addInitScript(() => {
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        this.readyState = 0;
-        if (url.startsWith("/api/tasks/stream")) {
-          window.__taskListEventSource = this;
-        }
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emit(type, payload) {
-        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-      }
-
-      emitOpen() {
-        this.readyState = 1;
-        this.listeners.get("open")?.({});
-      }
-
-      emitError() {
-        this.readyState = 0;
-        this.listeners.get("error")?.({});
-      }
-
-      close() {
-        this.readyState = 2;
-      }
-    };
+  await installEventSourceMock(page, {
+    sourceKey: "__taskListEventSource",
+    autoOpen: true,
   });
   await mockAgentModels(page);
 
@@ -2413,41 +2320,9 @@ test("accepts canonical task sync after stream revisions restart", { tag: "@all-
 test("opens a running conversation at the latest message from the stream bootstrap", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  await page.addInitScript(() => {
-    window.__taskEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        this.readyState = 0;
-        window.__taskEventSources.push(this);
-        window.__caffoldRegisterTaskSseSource?.(this);
-        queueMicrotask(() => this.emitOpen());
-      }
-
-      addEventListener(type, listener) {
-        const listeners = this.listeners.get(type) ?? [];
-        listeners.push(listener);
-        this.listeners.set(type, listeners);
-      }
-
-      emit(type, payload) {
-        for (const listener of this.listeners.get(type) ?? []) {
-          listener({ data: JSON.stringify(payload) });
-        }
-      }
-
-      emitOpen() {
-        this.readyState = 1;
-        for (const listener of this.listeners.get("open") ?? []) {
-          listener({});
-        }
-      }
-
-      close() {
-        this.readyState = 2;
-      }
-    };
+  await installEventSourceMock(page, {
+    registryKey: "__taskEventSources",
+    autoOpen: true,
   });
   await page.route("https://esm.sh/**", (route) => route.abort());
   await mockAgentModels(page);
@@ -2521,48 +2396,8 @@ test("opens a running conversation at the latest message from the stream bootstr
 test("makes disconnected task state unavailable and preserves an unidentifiable prompt", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
-  await page.addInitScript(() => {
-    window.__taskEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        this.readyState = 0;
-        window.__taskEventSources.push(this);
-        window.__caffoldRegisterTaskSseSource?.(this);
-      }
-
-      addEventListener(type, listener) {
-        const listeners = this.listeners.get(type) ?? [];
-        listeners.push(listener);
-        this.listeners.set(type, listeners);
-      }
-
-      emit(type, payload) {
-        for (const listener of this.listeners.get(type) ?? []) {
-          listener({ data: JSON.stringify(payload) });
-        }
-      }
-
-      emitOpen() {
-        this.readyState = 1;
-        for (const listener of this.listeners.get("open") ?? []) {
-          listener({});
-        }
-      }
-
-      emitError(closed = false) {
-        this.readyState = closed ? 2 : 0;
-        for (const listener of this.listeners.get("error") ?? []) {
-          listener({});
-        }
-      }
-
-      close() {
-        this.closed = true;
-        this.readyState = 2;
-      }
-    };
+  await installEventSourceMock(page, {
+    registryKey: "__taskEventSources",
   });
   await mockAgentModels(page);
 

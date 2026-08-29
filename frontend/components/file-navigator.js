@@ -32,6 +32,7 @@ class CaffoldFileNavigator extends HTMLElement {
     this.selectedPath ??= "";
     this.storageKey ??= null;
     this.watchActive ??= true;
+    this.liveUpdates ??= null;
     this.watchUnavailable = false;
     this.pendingRefresh = createPendingRefresh();
     this.innerHTML = `<caffold-file-list></caffold-file-list>`;
@@ -216,6 +217,19 @@ class CaffoldFileNavigator extends HTMLElement {
     }
   }
 
+  setLiveUpdates(liveUpdates) {
+    this.ensureRendered();
+    if (this.liveUpdates === liveUpdates) {
+      return;
+    }
+    this.watchUnsubscribe?.();
+    this.watchUnsubscribe = null;
+    this.liveUpdates = liveUpdates ?? null;
+    if (this.isConnected && this.watchActive && this.watchScopePath !== undefined) {
+      this.subscribeWatchScope(this.watchScopePath);
+    }
+  }
+
   setWatchActive(active) {
     this.ensureRendered();
     const nextActive = Boolean(active);
@@ -239,7 +253,7 @@ class CaffoldFileNavigator extends HTMLElement {
     if (this.watchUnsubscribe) {
       return;
     }
-    this.watchUnsubscribe = subscribeToWatch(path, {
+    this.watchUnsubscribe = subscribeToWatch(this.liveUpdates, path, {
       onReady: ({ recovered }) => {
         this.watchUnavailable = false;
         this.setRefreshState("idle");
