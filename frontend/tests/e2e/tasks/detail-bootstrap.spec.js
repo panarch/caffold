@@ -207,6 +207,7 @@ test("uses one SSE snapshot for initial detail, reconnect, and cursor history", 
     "Lower revision stream bootstrap is authoritative.",
     1,
   );
+  await activeDetailSource(page, threadId);
   await page.evaluate(({ threadId: id, detail }) => {
     window.__caffoldTaskSse.source(id).emit("task-sync", {
       threadId: id,
@@ -266,6 +267,7 @@ test("preserves readable detail and buffers events through a loading reconnect b
     "Readable detail stays mounted during reconnect.",
   );
 
+  await activeDetailSource(page, threadId);
   await page.evaluate((id) => {
     const source = window.__caffoldTaskSse.source(id);
     source.emitError();
@@ -312,6 +314,7 @@ test("preserves readable detail and buffers events through a loading reconnect b
       '.app-foreground-recovery[data-recovery-state="reconnecting"]',
     ),
   ).toContainText("Reconnecting to Caffold server");
+  await activeDetailSource(page, threadId);
   await page.evaluate(({ threadId: id, detail }) => {
     window.__caffoldTaskSse.source(id).emit("task-sync", {
       threadId: id,
@@ -428,6 +431,7 @@ test("uses one REST reconciliation when reconnect bootstrap retries exhaust", { 
   await emitTaskDetailBootstrap(page, initialDetail);
   await expect(tasksPage).toContainText("Readable before reconnect exhaustion.");
 
+  await activeDetailSource(page, threadId);
   await page.evaluate((id) => {
     window.__caffoldTaskSse.source(id).emitError({ closed: true });
   }, threadId);

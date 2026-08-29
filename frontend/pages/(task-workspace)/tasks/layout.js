@@ -40,6 +40,7 @@ class CaffoldTasksPage extends HTMLElement {
     this.codexRestartStateValue = { state: "idle", message: "" };
     this.lastPublishedTransportTargets = "";
     this.pendingTaskCreation = null;
+    this.liveUpdates = null;
     this.boundTaskNavigatorIntent = (event) => {
       event.stopPropagation();
       if (event.detail?.type === "select-task") {
@@ -154,7 +155,14 @@ class CaffoldTasksPage extends HTMLElement {
       event.stopPropagation();
       this.imagePreviewDialog()?.openImage(event.detail);
     });
+    this.taskDetail()?.setLiveUpdates(this.liveUpdates);
     this.render();
+  }
+
+  setLiveUpdates(liveUpdates) {
+    this.ensureRendered();
+    this.liveUpdates = liveUpdates ?? null;
+    this.taskDetail()?.setLiveUpdates(this.liveUpdates);
   }
 
   connectTaskNavigator(navigator) {

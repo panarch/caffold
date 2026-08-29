@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, convert::Infallible, pin::Pin, sync::Arc};
+use std::{collections::VecDeque, pin::Pin, sync::Arc};
 
 use futures_util::{Stream, stream};
 use serde::Serialize;
@@ -110,7 +110,7 @@ pub(in crate::app) struct TaskDetailSync {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct TaskEventEnvelope {
+pub(in crate::app) struct TaskEventEnvelope {
     thread_id: String,
     /// Exact revision captured when this delta entered the Task projection.
     event_revision: u64,
@@ -122,16 +122,16 @@ struct TaskEventEnvelope {
     file_links: Vec<TaskFileLink>,
 }
 
-pub(in crate::app) type DetailFrameStream =
-    Pin<Box<dyn Stream<Item = Result<String, Infallible>> + Send>>;
-
-pub(in crate::app) fn task_stream_initial_frames(sync: &TaskDetailSync) -> VecDeque<String> {
-    let payload = serde_json::to_string(sync).expect("task detail sync serializes");
-    VecDeque::from([
-        ": ready\n\n".to_string(),
-        format!("event: task-sync\ndata: {payload}\n\n"),
-    ])
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", content = "payload")]
+pub(in crate::app) enum DetailLiveEvent {
+    #[serde(rename = "task-sync")]
+    Sync(Box<TaskDetailSync>),
+    #[serde(rename = "task-event")]
+    Event(Box<TaskEventEnvelope>),
 }
+
+pub(in crate::app) type DetailLiveStream = Pin<Box<dyn Stream<Item = DetailLiveEvent> + Send>>;
 
 impl DetailContext {
     #[allow(clippy::too_many_arguments)]
@@ -206,7 +206,7 @@ impl DetailContext {
     pub(in crate::app) async fn stream(
         &self,
         thread_id: &str,
-    ) -> Result<DetailFrameStream, ApiError> {
+    ) -> Result<DetailLiveStream, ApiError> {
         self.restore_managed_fast_mode(thread_id).await?;
         let receiver = self.events.subscribe();
         let sync_receiver = self.sync.subscribe_updates();
@@ -218,13 +218,13 @@ impl DetailContext {
             .and_then(|conversation| conversation.transcript_path.clone());
         let (detail, baseline_revision) = self.cached(thread_id).await?;
         let file_link_task_root = detail.task.as_ref().map(file_links::task_root);
-        let initial_frames = task_stream_initial_frames(&TaskDetailSync {
+        let initial_events = VecDeque::from([DetailLiveEvent::Sync(Box::new(TaskDetailSync {
             thread_id: thread_id.to_string(),
             revision: detail.revision,
             detail,
             reason: "stream-bootstrap",
             error: None,
-        });
+        }))]);
         let subscription = self.sync.subscribe(thread_id);
         let rollout_subscription = DeferredTaskRolloutSubscription::default();
         rollout_subscription.install_with(|| {
@@ -259,7 +259,7 @@ impl DetailContext {
         let thread_id = thread_id.to_string();
         let stream = stream::unfold(
             (
-                initial_frames,
+                initial_events,
                 receiver,
                 sync_receiver,
                 shutdown,
@@ -272,7 +272,7 @@ impl DetailContext {
                 file_link_task_root,
             ),
             |(
-                mut initial_frames,
+                mut initial_events,
                 mut receiver,
                 mut sync_receiver,
                 mut shutdown,
@@ -284,11 +284,11 @@ impl DetailContext {
                 file_link_resolver,
                 mut file_link_task_root,
             )| async move {
-                if let Some(frame) = initial_frames.pop_front() {
+                if let Some(event) = initial_events.pop_front() {
                     return Some((
-                        Ok(frame),
+                        event,
                         (
-                            initial_frames,
+                            initial_events,
                             receiver,
                             sync_receiver,
                             shutdown,
@@ -314,14 +314,10 @@ impl DetailContext {
                                         .as_ref()
                                         .map(file_links::task_root)
                                         .or(file_link_task_root);
-                                    let payload = serde_json::to_string(&sync)
-                                        .unwrap_or_else(|_| "{}".to_string());
-                                    let frame =
-                                        format!("event: task-sync\ndata: {payload}\n\n");
                                     return Some((
-                                        Ok(frame),
+                                        DetailLiveEvent::Sync(Box::new(sync)),
                                         (
-                                            initial_frames,
+                                            initial_events,
                                             receiver,
                                             sync_receiver,
                                             shutdown,
@@ -356,22 +352,17 @@ impl DetailContext {
                                             .await,
                                         None => (event, Vec::new()),
                                     };
-                                    let payload = serde_json::to_string(
-                                        &TaskEventEnvelope {
+                                    let event = TaskEventEnvelope {
                                             thread_id: thread_id.clone(),
                                             event_revision,
                                             revision,
                                             event,
                                             file_links: resolved_file_links,
-                                        },
-                                    )
-                                    .unwrap_or_else(|_| "{}".to_string());
-                                    let frame =
-                                        format!("event: task-event\ndata: {payload}\n\n");
+                                        };
                                     return Some((
-                                        Ok(frame),
+                                        DetailLiveEvent::Event(Box::new(event)),
                                         (
-                                            initial_frames,
+                                            initial_events,
                                             receiver,
                                             sync_receiver,
                                             shutdown,
@@ -1014,7 +1005,7 @@ mod inline_tests {
 mod request_tests {
     use std::time::Duration;
 
-    use axum::http::StatusCode;
+    use futures_util::StreamExt;
     use serde_json::json;
     use tokio::sync::broadcast;
 
@@ -1737,7 +1728,7 @@ mod request_tests {
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
         manage_test_thread(&state, thread_id, root.path()).await;
 
-        let response = tokio::time::timeout(
+        let mut response = tokio::time::timeout(
             Duration::from_millis(50),
             test_task_stream(state, thread_id.to_string()),
         )
@@ -1745,7 +1736,10 @@ mod request_tests {
         .expect("task stream must not await a slow thread/resume")
         .expect("task stream starts from cached metadata");
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert!(matches!(
+            response.next().await,
+            Some(DetailLiveEvent::Sync(sync)) if sync.reason == "stream-bootstrap"
+        ));
         wait_for_mock_method(&client, "thread/resume").await;
     }
 
@@ -1783,7 +1777,7 @@ mod request_tests {
         });
         locked_rx.await.expect("runtime lock acquired");
 
-        let response = tokio::time::timeout(
+        let mut response = tokio::time::timeout(
             Duration::from_millis(50),
             test_task_stream(state, thread_id.to_string()),
         )
@@ -1791,7 +1785,10 @@ mod request_tests {
         .expect("task stream must not wait for app-server connection access")
         .expect("task stream starts from cached metadata");
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert!(matches!(
+            response.next().await,
+            Some(DetailLiveEvent::Sync(sync)) if sync.reason == "stream-bootstrap"
+        ));
         drop(response);
         blocker.await.expect("runtime blocker completes");
         wait_for_mock_method(&client, "thread/resume").await;
@@ -1867,7 +1864,7 @@ mod request_tests {
         });
         locked_rx.await.expect("runtime lock acquired");
 
-        let response = tokio::time::timeout(
+        let mut response = tokio::time::timeout(
             Duration::from_millis(50),
             test_task_stream(state, thread_id.to_string()),
         )
@@ -1875,7 +1872,10 @@ mod request_tests {
         .expect("direct task stream must not wait for app-server connection access")
         .expect("direct task stream starts from a loading snapshot");
 
-        assert_eq!(response.status(), StatusCode::OK);
+        assert!(matches!(
+            response.next().await,
+            Some(DetailLiveEvent::Sync(sync)) if sync.reason == "stream-bootstrap"
+        ));
         drop(response);
         blocker.await.expect("runtime blocker completes");
         wait_for_mock_method(&client, "thread/resume").await;
@@ -2358,21 +2358,19 @@ mod request_tests {
             error: None,
         };
 
-        let frames = task_stream_initial_frames(&sync)
-            .into_iter()
-            .collect::<Vec<_>>();
+        let event = serde_json::to_value(DetailLiveEvent::Sync(Box::new(sync))).unwrap();
 
-        assert_eq!(frames[0], ": ready\n\n");
+        assert_eq!(event["type"], "task-sync");
+        assert_eq!(event["payload"]["threadId"], "thread-bootstrap");
+        assert_eq!(event["payload"]["revision"], 7);
         assert_eq!(
-            frames.len(),
-            2,
-            "the initial stream must replay canonical state"
+            event["payload"]["detail"]["events"][0]["type"],
+            "assistant_message"
         );
-        assert!(frames[1].starts_with("event: task-sync\ndata: "));
-        assert!(frames[1].contains("\"threadId\":\"thread-bootstrap\""));
-        assert!(frames[1].contains("\"revision\":7"));
-        assert!(frames[1].contains("\"type\":\"assistant_message\""));
-        assert!(frames[1].contains("canonical assistant response"));
+        assert_eq!(
+            event["payload"]["detail"]["events"][0]["summary"],
+            "canonical assistant response"
+        );
     }
 }
 

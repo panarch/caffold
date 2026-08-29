@@ -9,6 +9,7 @@ use tokio::{net::TcpListener, sync::broadcast};
 use tracing::info;
 
 mod error;
+mod live_updates;
 mod shell;
 mod startup_migration;
 mod tailscale;
@@ -16,7 +17,7 @@ mod tasks;
 mod voice;
 mod workspace;
 
-use crate::{fs::RootedFs, server_settings::ServerSettingsStore};
+use crate::{fs::RootedFs, server_settings::ServerSettingsStore, watch::WatchHub};
 
 #[derive(Debug, Clone)]
 pub struct ServeConfig {
@@ -48,7 +49,8 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let fs = Arc::new(fs);
     let root = fs.root().to_path_buf();
     let shell_router = shell::router(fs.clone(), server_settings, initial_path.clone(), home_path);
-    let workspace_router = workspace::router(fs.clone(), shutdown.clone());
+    let workspace_router = workspace::router(fs.clone());
+    let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
     let voice_router = voice::router(data_dir.join("models/whisper"));
     let listener = TcpListener::bind((config.host, config.port)).await?;
     let addr = listener.local_addr()?;
@@ -62,6 +64,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         data_dir.join("caffold.redb"),
         worktree_root.clone(),
         codex_mcp.clone(),
+        watch_hub,
     );
     let app = router_with_states(
         shell_router,
@@ -117,7 +120,8 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         String::new(),
         None,
     );
-    let workspace_router = workspace::router(fs.clone(), shutdown.clone());
+    let workspace_router = workspace::router(fs.clone());
+    let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
     let voice_router = voice::router(fs.root().join(".caffold-test/models/whisper"));
     let tailscale_router = tailscale::router(5_178);
     let codex_mcp = tasks::CodexMcpHost::memory(codex_mcp_endpoint(SocketAddr::from((
@@ -131,6 +135,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         shutdown,
         worktree_root,
         codex_mcp.clone(),
+        watch_hub,
     )?;
     Ok(router_with_states(
         shell_router,

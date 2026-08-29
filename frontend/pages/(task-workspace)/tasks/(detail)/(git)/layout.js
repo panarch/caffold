@@ -34,6 +34,7 @@ class CaffoldTaskGitLayout extends HTMLElement {
     this.pendingRefresh = false;
     this.watchUnavailable = false;
     this.refreshState = "idle";
+    this.liveUpdates = null;
     this.innerHTML = `
       <section class="task-git-surface" aria-label="Git">
         <header class="task-domain-header">
@@ -149,6 +150,19 @@ class CaffoldTaskGitLayout extends HTMLElement {
     this.updateVisibleMode();
   }
 
+  setLiveUpdates(liveUpdates) {
+    this.ensureRendered();
+    if (this.liveUpdates === liveUpdates) {
+      return;
+    }
+    const path = this.watchScopePath;
+    this.unsubscribeWatchScope();
+    this.liveUpdates = liveUpdates ?? null;
+    if (path && this.active && this.isConnected) {
+      this.subscribeWatchScope(path);
+    }
+  }
+
   async activate(route, options = {}) {
     this.ensureRendered();
     this.active = true;
@@ -227,7 +241,7 @@ class CaffoldTaskGitLayout extends HTMLElement {
     if (this.watchUnsubscribe || !this.active) {
       return;
     }
-    this.watchUnsubscribe = subscribeToWatch(path, {
+    this.watchUnsubscribe = subscribeToWatch(this.liveUpdates, path, {
       onReady: ({ recovered }) => {
         this.watchUnavailable = false;
         this.setRefreshState("idle");

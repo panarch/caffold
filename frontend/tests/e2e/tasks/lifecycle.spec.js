@@ -1138,13 +1138,10 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
 
   const readsBeforeRecovery = statusReads;
   unavailable = true;
-  await page.evaluate((key) => {
-    for (const source of window[key].filter((candidate) => candidate.readyState !== 2)) {
-      source.emitError({ closed: true });
-    }
+  await page.evaluate(() => {
     window.dispatchEvent(new Event("blur"));
     window.dispatchEvent(new Event("focus"));
-  }, registryKey);
+  });
 
   const notice = appShell.locator(".app-foreground-recovery");
   await expect(notice).toBeVisible();
@@ -1275,13 +1272,15 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
   await page.addInitScript(() => {
     window.__taskRecoveryServerAvailable = true;
     window.__taskRecoveryEventSources = [];
+    window.__taskRecoveryPhysicalSources = [];
     window.EventSource = class MockEventSource {
       constructor(url) {
         this.url = url;
         this.listeners = new Map();
         this.readyState = 0;
         this.closed = false;
-        window.__taskRecoveryEventSources.push(this);
+        this.customRegistry = window.__taskRecoveryEventSources;
+        window.__taskRecoveryPhysicalSources.push(this);
         window.__caffoldRegisterTaskSseSource?.(this);
         queueMicrotask(() => {
           if (window.__taskRecoveryServerAvailable && !this.closed) {
@@ -1311,6 +1310,7 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
 
       emitTerminalError() {
         this.readyState = 2;
+        window.__caffoldTaskSse?.forget(this);
         for (const listener of this.listeners.get("error") ?? []) {
           listener({});
         }
@@ -1319,6 +1319,10 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
       close() {
         this.closed = true;
         this.readyState = 2;
+        window.__caffoldTaskSse?.forget(this);
+        for (const source of this.virtuals?.values() ?? []) {
+          source.close();
+        }
       }
     };
   });
@@ -1423,7 +1427,7 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
 
   await page.evaluate(() => {
     window.__taskRecoveryServerAvailable = false;
-    for (const source of window.__taskRecoveryEventSources) {
+    for (const source of window.__taskRecoveryPhysicalSources) {
       source.emitTerminalError();
     }
   });
@@ -1433,11 +1437,19 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
   await expect(
     page.locator('.app-foreground-recovery[data-recovery-state="reconnecting"]'),
   ).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => window.__taskRecoveryPhysicalSources.length))
+    .toBe(2);
 
   canonicalTask = recoveredTask;
   canonicalDetail = detail(recoveredTask, "Recovered canonical baseline.", 1);
   await page.evaluate(() => {
     window.__taskRecoveryServerAvailable = true;
+    for (const source of window.__taskRecoveryPhysicalSources) {
+      if (source.readyState === 0 && !source.closed) {
+        source.emitOpen();
+      }
+    }
     for (const source of window.__taskRecoveryEventSources) {
       if (source.readyState === 0 && !source.closed) {
         source.emitOpen();
@@ -1765,26 +1777,8 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
   });
 });
 test("keeps task list and detail revisions independent", { tag: "@desktop" }, async ({ page }, testInfo) => {
-  await page.addInitScript(() => {
-    window.__taskEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        window.__taskEventSources.push(this);
-        window.__caffoldRegisterTaskSseSource?.(this);
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emit(type, payload) {
-        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-      }
-
-      close() {}
-    };
+  await installEventSourceMock(page, {
+    registryKey: "__taskEventSources",
   });
   await mockAgentModels(page);
 

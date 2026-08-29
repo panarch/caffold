@@ -2,7 +2,6 @@ import {
   getTasks,
   reorderSection,
   reorderTask,
-  taskListStreamUrl,
 } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { taskStoreOperationsPresentation } from "../../codex-status.js";
@@ -84,16 +83,12 @@ class CaffoldActiveTaskList extends HTMLElement {
     this.boundClick = (event) => this.handleClick(event);
     this.boundSectionIntent = (event) => this.handleSectionIntent(event);
     this.taskListStream = new TaskStreamLifecycle({
-      createUrl: () => taskListStreamUrl(),
-      eventTypes: [
-        "task-removed",
-        "task-updated",
-        "task-placed-at-top",
-        "section-composer-settings",
-        "task-list-refresh",
-        "task-list-snapshot",
-        "task-sync",
-      ],
+      subscribe: (_contextKey, listener) => {
+        if (!this.liveUpdates) {
+          throw new Error("Workspace live updates are unavailable.");
+        }
+        return this.liveUpdates.subscribeTaskList(listener);
+      },
       onEvent: (type, event) => this.handleStreamEvent(type, event),
       onReconcile: (_contextKey, isCurrent, metadata) =>
         this.reconcileTaskList(isCurrent, metadata),
@@ -106,6 +101,11 @@ class CaffoldActiveTaskList extends HTMLElement {
     this.ensureState();
     this.active = true;
     return await this.loadTasks({ force });
+  }
+
+  setLiveUpdates(liveUpdates) {
+    this.ensureState();
+    this.liveUpdates = liveUpdates ?? null;
   }
 
   get taskOperationsBlocked() {
@@ -1182,6 +1182,7 @@ class CaffoldActiveTaskList extends HTMLElement {
   }
 
   retryStream() {
+    this.liveUpdates?.retry();
     this.taskListStream.retry({ reconcile: false });
   }
 

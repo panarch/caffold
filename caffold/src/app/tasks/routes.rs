@@ -17,11 +17,23 @@ use list::*;
 use membership::*;
 use store::*;
 
-use std::{collections::VecDeque, convert::Infallible, path::Path};
+use std::path::Path;
 
+pub(super) use super::live::TaskListEvents;
+#[cfg(test)]
+pub(super) use super::live::TaskListUpdate;
+use super::{
+    ApprovalResolveError, CodexConnection, TaskAgent, TaskDetailResponse, TaskRecord, TaskState,
+    accepted_user_message_event, now_ms, task_activity_ms,
+};
+use super::{
+    lifecycle::{ActiveTaskTopPlacement, CreateTask, ForkCodexSource, ForkCodexTask},
+    recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason, ManagedCodexThreadLocation},
+    worktrees::inspect_ready_worktree,
+};
 use axum::{
     Json, Router,
-    body::{Body, Bytes},
+    body::Body,
     extract::{DefaultBodyLimit, Path as AxumPath, Query, State},
     http::{HeaderValue, header},
     response::Response,
@@ -29,17 +41,8 @@ use axum::{
 };
 use futures_util::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
 use tokio::sync::broadcast;
-
-use super::{
-    ApprovalResolveError, CodexConnection, DetailFrameStream, TaskAgent, TaskDetailResponse,
-    TaskDetailSync, TaskRecord, TaskState, accepted_user_message_event, now_ms, task_activity_ms,
-};
-use super::{
-    lifecycle::{ActiveTaskTopPlacement, CreateTask, ForkCodexSource, ForkCodexTask},
-    recovery::{ActiveTaskRecovery, ActiveTaskRecoveryReason, ManagedCodexThreadLocation},
-    worktrees::inspect_ready_worktree,
-};
 
 use super::generated_images::GeneratedImageError;
 
@@ -191,114 +194,11 @@ struct SectionReorderResponse {
     changed: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ActiveTaskPlacementUpdate {
-    task: TaskRecord,
-    placement: ActiveTaskTopPlacement,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ActiveTaskSectionComposerSettingsUpdate {
-    section_id: String,
-    composer_settings: super::active_list::ActiveTaskComposerSettings,
-}
-
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskRestoreResponse {
     task: TaskRecord,
     active_top_placement: ActiveTaskTopPlacement,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct TaskListRemoval {
-    thread_id: String,
-    reason: &'static str,
-}
-
-#[derive(Debug, Clone)]
-enum TaskListUpdate {
-    Task(Box<TaskRecord>),
-    Placement(Box<ActiveTaskPlacementUpdate>),
-    SectionComposerSettings(Box<ActiveTaskSectionComposerSettingsUpdate>),
-    Refresh,
-}
-
-#[derive(Clone)]
-pub(super) struct TaskListEvents {
-    removals: broadcast::Sender<TaskListRemoval>,
-    updates: broadcast::Sender<TaskListUpdate>,
-    #[cfg(test)]
-    refresh_count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-}
-
-impl TaskListEvents {
-    pub(super) fn new() -> Self {
-        let (removals, _) = broadcast::channel(64);
-        let (updates, _) = broadcast::channel(64);
-        Self {
-            removals,
-            updates,
-            #[cfg(test)]
-            refresh_count: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-        }
-    }
-
-    pub(super) fn remove(&self, thread_id: &str, reason: &'static str) {
-        let _ = self.removals.send(TaskListRemoval {
-            thread_id: thread_id.to_string(),
-            reason,
-        });
-    }
-
-    pub(super) fn update(&self, task: TaskRecord) {
-        let _ = self.updates.send(TaskListUpdate::Task(Box::new(task)));
-    }
-
-    pub(super) fn place(&self, task: TaskRecord, placement: ActiveTaskTopPlacement) {
-        let _ = self.updates.send(TaskListUpdate::Placement(Box::new(
-            ActiveTaskPlacementUpdate { task, placement },
-        )));
-    }
-
-    pub(super) fn section_composer_settings(&self, section: &ManagedSection) {
-        let Some(settings) = section.last_composer_settings.as_ref() else {
-            return;
-        };
-        let _ = self
-            .updates
-            .send(TaskListUpdate::SectionComposerSettings(Box::new(
-                ActiveTaskSectionComposerSettingsUpdate {
-                    section_id: section.section_id.clone(),
-                    composer_settings: settings.into(),
-                },
-            )));
-    }
-
-    pub(super) fn refresh(&self) {
-        #[cfg(test)]
-        self.refresh_count
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let _ = self.updates.send(TaskListUpdate::Refresh);
-    }
-
-    #[cfg(test)]
-    pub(super) fn refresh_count(&self) -> usize {
-        self.refresh_count
-            .load(std::sync::atomic::Ordering::Relaxed)
-    }
-
-    fn subscribe(
-        &self,
-    ) -> (
-        broadcast::Receiver<TaskListRemoval>,
-        broadcast::Receiver<TaskListUpdate>,
-    ) {
-        (self.removals.subscribe(), self.updates.subscribe())
-    }
 }
 
 #[cfg(test)]
@@ -333,7 +233,6 @@ pub(super) fn router(state: TaskState) -> Router {
                 .layer(DefaultBodyLimit::max(MAX_TASK_REQUEST_BYTES)),
         )
         .route("/api/tasks/archived", get(list_archived_tasks))
-        .route("/api/tasks/stream", get(task_list_stream))
         .route(
             "/api/tasks/{thread_id}",
             get(task_detail).delete(task_delete),
@@ -342,7 +241,6 @@ pub(super) fn router(state: TaskState) -> Router {
             "/api/tasks/{thread_id}/seen",
             axum::routing::put(mark_task_seen),
         )
-        .route("/api/tasks/{thread_id}/stream", get(task_stream))
         .route(
             "/api/tasks/{thread_id}/generated-images/{item_id}",
             get(task_generated_image),
@@ -400,13 +298,8 @@ pub(super) async fn test_task_detail(
 pub(super) async fn test_task_stream(
     state: TaskState,
     thread_id: String,
-) -> Result<Response, ApiError> {
-    task_stream(
-        State(state),
-        AxumPath(thread_id),
-        Query(TasksQuery { cursor: None }),
-    )
-    .await
+) -> Result<super::detail::DetailLiveStream, ApiError> {
+    state.detail.stream(&thread_id).await
 }
 
 #[cfg(test)]

@@ -73,7 +73,14 @@ class CaffoldTaskDetail extends HTMLElement {
     this.loading = false;
     this.loadingOlderEvents = false;
     this.selectedThreadId = "";
+    this.liveUpdates = null;
     this.detailSession = new TaskDetailSession({
+      subscribe: (threadId, listener) => {
+        if (!this.liveUpdates) {
+          throw new Error("Workspace live updates are unavailable.");
+        }
+        return this.liveUpdates.subscribeTaskDetail(threadId, listener);
+      },
       onTaskSync: (message) => this.applyTaskStreamSync(message),
       onTaskEvent: (message) => this.applyTaskStreamEvent(message),
       onFallbackDetail: (detail, context) =>
@@ -172,6 +179,11 @@ class CaffoldTaskDetail extends HTMLElement {
       this.conversationComponent()?.reconcileViewportResize();
     });
     this.render();
+  }
+
+  setLiveUpdates(liveUpdates) {
+    this.ensureRendered();
+    this.liveUpdates = liveUpdates ?? null;
   }
 
   disconnectedCallback() {
@@ -835,6 +847,7 @@ class CaffoldTaskDetail extends HTMLElement {
       void this.openTask(this.selectedThreadId);
       return;
     }
+    this.liveUpdates?.retry();
     void this.detailSession.retry();
     this.render();
   }

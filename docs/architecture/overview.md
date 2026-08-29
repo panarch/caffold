@@ -101,7 +101,10 @@ native driver translates provider evidence
 Tasks backend reconciles one conversation projection
                         |
                         v
-Detail transport publishes snapshots and deltas
+Task live sources publish typed snapshots and deltas
+                        |
+                        v
+tab-scoped SSE gateway multiplexes logical channels
                         |
                         v
 browser Task Detail renders projection and local layers
@@ -139,9 +142,11 @@ The backend application is split by state and transport owner:
 caffold/src/app.rs                     dependency construction and router composition
 caffold/src/app/error.rs               shared JSON HTTP error contract
 caffold/src/app/shell.rs               shell, health, settings, manifest, static assets
-caffold/src/app/workspace.rs           Files, images, watches, Git, and GitHub adapters
+caffold/src/app/workspace.rs           Files, images, Git, and GitHub adapters
+caffold/src/app/live_updates.rs        tab SSE, logical controls, framing, channel lifetimes
 caffold/src/app/tasks.rs               private Tasks state and runtime shutdown
-caffold/src/app/tasks/routes.rs        Task/agent HTTP DTOs, handlers, REST/SSE routes
+caffold/src/app/tasks/routes.rs        Task/agent HTTP DTOs, handlers, REST routes
+caffold/src/app/tasks/live.rs          typed Task List and Task Detail live capabilities
 caffold/src/app/tasks/detail.rs        canonical Task detail and history application
 caffold/src/app/tasks/sessions.rs      ephemeral viewer, revision, and live-session state
 caffold/src/app/tasks/runtime.rs       per-Task driver routing and orchestration
@@ -159,6 +164,7 @@ caffold/src/agent/codex.rs             Codex app-server boundary
 caffold/src/agent/claude.rs            Claude CLI boundary
 caffold/src/app/voice.rs               model lifecycle, WAV validation, transcription
 caffold/src/app/tailscale.rs           status and constrained Serve orchestration
+caffold/src/watch.rs                   reference-counted native filesystem watches
 caffold/src/task_store.rs              Caffold-owned durable Task and recovery data
 runners/claude/                         transport-only Claude process supervisor
 ```

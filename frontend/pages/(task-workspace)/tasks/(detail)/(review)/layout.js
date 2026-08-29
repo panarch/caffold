@@ -71,6 +71,7 @@ class CaffoldTaskReview extends HTMLElement {
     this.navigatorScroll = new Map();
     this.viewerScroll = new Map();
     this.pendingRepresentationLine = new Map();
+    this.liveUpdates = null;
 
     this.innerHTML = `
       <section class="task-review-workspace" aria-label="Task review">
@@ -114,6 +115,7 @@ class CaffoldTaskReview extends HTMLElement {
     `;
 
     this.fileNavigator()?.setStorageKey(null);
+    this.fileNavigator()?.setLiveUpdates(this.liveUpdates);
     this.fileNavigator()?.setWatchActive(false);
     this.fileNavigator()?.setRefreshVisible(false);
     this.viewer()?.setCloseLabel("Back to navigator");
@@ -167,6 +169,20 @@ class CaffoldTaskReview extends HTMLElement {
       event.stopPropagation();
       this.clearSelectedPath();
     });
+  }
+
+  setLiveUpdates(liveUpdates) {
+    this.ensureRendered();
+    if (this.liveUpdates === liveUpdates) {
+      return;
+    }
+    const path = this.watchPath;
+    this.unsubscribeWatch();
+    this.liveUpdates = liveUpdates ?? null;
+    this.fileNavigator()?.setLiveUpdates(this.liveUpdates);
+    if (this.active && path) {
+      this.subscribeWatch(path);
+    }
   }
 
   setTaskContext({ task = null, route = null } = {}) {
@@ -861,7 +877,7 @@ class CaffoldTaskReview extends HTMLElement {
     }
     this.unsubscribeWatch();
     this.watchPath = path;
-    this.watchUnsubscribe = subscribeToWatch(path, {
+    this.watchUnsubscribe = subscribeToWatch(this.liveUpdates, path, {
       onReady: ({ recovered }) => {
         if (path !== this.watchPath) {
           return;

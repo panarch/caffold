@@ -5,8 +5,10 @@ import {
   createTaskFork,
   forkTask,
   getHealth,
+  liveUpdatesUrl,
   previewTaskForkSource,
   reorderSection,
+  updateLiveSubscriptions,
 } from "./api.js";
 import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "./origin-reachability.js";
 
@@ -114,6 +116,41 @@ test("serializes Section reorder intent at the API owner", async () => {
       },
     },
   ]);
+});
+
+test("publishes one complete live subscription snapshot to its connection", async () => {
+  const requests = [];
+  installBrowserHarness(async (url, options) => {
+    requests.push({ url: `${url}`, options });
+    return jsonResponse(null, { status: 204 });
+  });
+  const subscriptions = {
+    controlRevision: 3,
+    taskList: { generation: 1 },
+    taskDetail: null,
+    watches: [],
+  };
+
+  assert.equal(liveUpdatesUrl(), "/api/live");
+  await updateLiveSubscriptions("connection/id", subscriptions);
+
+  assert.equal(requests.length, 1);
+  assert.ok(requests[0].options.signal instanceof AbortSignal);
+  assert.deepEqual(
+    {
+      ...requests[0],
+      options: { ...requests[0].options, signal: undefined },
+    },
+    {
+      url: "http://127.0.0.1/api/live/connection%2Fid/subscriptions",
+      options: {
+        method: "PUT",
+        signal: undefined,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(subscriptions),
+      },
+    },
+  );
 });
 
 test("forks the encoded managed Task id with an empty POST", async () => {

@@ -6,7 +6,6 @@ import { TASK_TRANSPORT_STATE } from "../../runtime-state.js";
 
 const originalBrowserGlobals = {
   document: globalThis.document,
-  EventSource: globalThis.EventSource,
   window: globalThis.window,
 };
 
@@ -24,56 +23,49 @@ function installBrowserHarness() {
   const sources = [];
   const sourceWaiters = new Map();
 
-  class MockEventSource {
-    constructor(url) {
-      this.url = url;
-      this.listeners = new Map();
-      this.readyState = 0;
+  class MockSubscription {
+    constructor(threadId, listener) {
+      this.threadId = threadId;
+      this.listener = listener;
       this.closed = false;
       const index = sources.push(this) - 1;
       sourceWaiters.get(index)?.(this);
       sourceWaiters.delete(index);
     }
 
-    addEventListener(type, listener) {
-      const listeners = this.listeners.get(type) ?? [];
-      listeners.push(listener);
-      this.listeners.set(type, listeners);
-    }
-
     emit(type, payload = null) {
-      for (const listener of this.listeners.get(type) ?? []) {
-        listener(payload === null ? {} : { data: JSON.stringify(payload) });
-      }
+      this.listener.onEvent?.(type, payload);
     }
 
     emitOpen() {
-      this.readyState = 1;
-      this.emit("open");
+      this.listener.onOpen?.();
     }
 
     emitError({ closed = false } = {}) {
-      this.readyState = closed ? 2 : 0;
-      this.emit("error");
+      this.listener.onError?.(new Error("unavailable"), { closed });
     }
 
     close() {
       this.closed = true;
-      this.readyState = 2;
+    }
+
+    retry() {
+      return !this.closed;
     }
   }
 
   globalThis.window = {
-    EventSource: MockEventSource,
     location: { origin: "http://127.0.0.1" },
     setTimeout,
     clearTimeout,
   };
-  globalThis.EventSource = MockEventSource;
   globalThis.document = { visibilityState: "visible" };
 
   return {
     sources,
+    subscribe(threadId, listener) {
+      return new MockSubscription(threadId, listener);
+    },
     waitForSource(index) {
       if (sources[index]) {
         return Promise.resolve(sources[index]);
@@ -133,6 +125,7 @@ test("waits for a readable bootstrap and buffers connection-local events", async
   const syncs = [];
   const events = [];
   const session = new TaskDetailSession({
+    subscribe: browser.subscribe,
     onTaskSync: (message) => syncs.push(message),
     onTaskEvent: (message) => events.push(message),
   });
@@ -195,6 +188,7 @@ test("applies one valid bootstrap per connection and rejects duplicates", async 
   const syncs = [];
   let rejectNext = true;
   const session = new TaskDetailSession({
+    subscribe: browser.subscribe,
     onTaskSync: (message) => {
       if (rejectNext) {
         rejectNext = false;
@@ -225,6 +219,7 @@ test("rejects late inputs from an invalidated Task generation", async () => {
   const syncs = [];
   const events = [];
   const session = new TaskDetailSession({
+    subscribe: browser.subscribe,
     onTaskSync: (message) => syncs.push(message),
     onTaskEvent: (message) => events.push(message),
   });
@@ -255,7 +250,7 @@ test("rejects late inputs from an invalidated Task generation", async () => {
 
 test("resets or deactivates every incomplete bootstrap phase", () => {
   const browser = installBrowserHarness();
-  const session = new TaskDetailSession();
+  const session = new TaskDetailSession({ subscribe: browser.subscribe });
 
   session.open("thread-a");
   assert.equal(session.phase, "waiting-bootstrap");
@@ -286,6 +281,7 @@ test("requires a new bootstrap on reconnect and accepts its lower baseline", asy
   const browser = installBrowserHarness();
   const syncs = [];
   const session = new TaskDetailSession({
+    subscribe: browser.subscribe,
     onTaskSync: (message) => syncs.push(message),
     reconnectTimeoutMs: 1_000,
   });
@@ -315,6 +311,7 @@ test("bounds invalid bootstrap retries and settles the acquisition once", async 
   const browser = installBrowserHarness();
   let fallbackCalls = 0;
   const session = new TaskDetailSession({
+    subscribe: browser.subscribe,
     bootstrapTimeoutMs: 1,
     retryDelaysMs: [0, 0],
     loadDetail: async () => {
@@ -338,10 +335,8 @@ test("bounds invalid bootstrap retries and settles the acquisition once", async 
   session.deactivate();
 });
 
-test("uses one readable REST fallback when EventSource is unsupported", async () => {
+test("uses one readable REST fallback when the live gateway is unavailable", async () => {
   installBrowserHarness();
-  delete globalThis.window.EventSource;
-  delete globalThis.EventSource;
   const fallbacks = [];
   let fallbackCalls = 0;
   const session = new TaskDetailSession({
@@ -370,6 +365,7 @@ test("falls back after a loading bootstrap and retries from unavailable", async 
   const browser = installBrowserHarness();
   const fallbacks = [];
   const session = new TaskDetailSession({
+    subscribe: browser.subscribe,
     retryDelaysMs: [],
     loadDetail: async (threadId) => detail(threadId, 2),
     onFallbackDetail: (value, context) => {
@@ -411,6 +407,7 @@ test("bounds a connection that neither opens nor errors", async () => {
   const browser = installBrowserHarness();
   let fallbackCalls = 0;
   const session = new TaskDetailSession({
+    subscribe: browser.subscribe,
     connectionTimeoutMs: 1,
     retryDelaysMs: [0, 0],
     loadDetail: async () => {
@@ -431,8 +428,6 @@ test("bounds a connection that neither opens nor errors", async () => {
 
 test("invalidates a pending REST fallback when another Task opens", async () => {
   installBrowserHarness();
-  delete globalThis.window.EventSource;
-  delete globalThis.EventSource;
   const requests = new Map();
   const applied = [];
   const session = new TaskDetailSession({
@@ -467,8 +462,6 @@ test("invalidates a pending REST fallback when another Task opens", async () => 
 
 test("deactivation rejects a pending REST fallback", async () => {
   installBrowserHarness();
-  delete globalThis.window.EventSource;
-  delete globalThis.EventSource;
   const request = deferred();
   let applied = false;
   const session = new TaskDetailSession({
@@ -492,7 +485,7 @@ test("deactivation rejects a pending REST fallback", async () => {
 
 test("foreground recovery settles only after its readable stream bootstrap", async () => {
   const browser = installBrowserHarness();
-  const session = new TaskDetailSession();
+  const session = new TaskDetailSession({ subscribe: browser.subscribe });
 
   session.open("thread-a");
   browser.sources[0].emitOpen();
