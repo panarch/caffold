@@ -217,14 +217,15 @@ class CaffoldTaskCreate extends HTMLElement {
       }
       this.activeSubmissionId = "";
       this.error = error instanceof Error ? error : new Error(`${error}`);
-      if (submission) {
-        this.composer()?.adoptSubmission(submission);
-      }
       this.syncComposer();
-      this.composer()?.resolveSubmission(submissionId, {
-        status: "rejected",
-        error: this.error,
-      });
+      if (submission) {
+        this.composer()?.restoreSubmission(submission, { error: this.error });
+      } else {
+        this.composer()?.resolveSubmission(submissionId, {
+          status: "rejected",
+          error: this.error,
+        });
+      }
       this.renderStatus();
     }
   }
@@ -243,6 +244,7 @@ class CaffoldTaskCreate extends HTMLElement {
       model: settings.model ?? "",
       effort: settings.effort ?? "",
       fastMode: Boolean(settings.fastMode),
+      requestPending: Boolean(this.activeSubmissionId),
       disabled:
         !this.transportAvailable ||
         this.taskOperationsBlocked ||
