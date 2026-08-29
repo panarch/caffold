@@ -106,7 +106,6 @@ class CaffoldTaskComposer extends HTMLElement {
       submitLabel: "Send prompt",
       cancel: false,
       disabled: false,
-      requestPending: false,
       settingsLocked: false,
       requestError: "",
       turnActive: false,
@@ -202,7 +201,6 @@ class CaffoldTaskComposer extends HTMLElement {
         ? Boolean(context.browseCwd)
         : this.context.browseCwd,
       disabled: Boolean(context.disabled),
-      requestPending: Boolean(context.requestPending),
       settingsLocked: Boolean(context.settingsLocked),
       turnActive: Boolean(context.turnActive),
       activeTurnId: `${context.activeTurnId ?? ""}`.trim(),
@@ -275,27 +273,6 @@ class CaffoldTaskComposer extends HTMLElement {
     this.context.requestError = "";
     this.render();
     return submissionDetail(submission, this.context.threadId);
-  }
-
-  // Put a submission taken from this composer back after its new owner rejects
-  // the request. Unlike adopting into a destination composer, this preserves
-  // local input that may have completed asynchronously while the request was
-  // pending, such as an image paste already being read.
-  restoreSubmission(value = {}, result = {}) {
-    this.ensureState();
-    if (this.activeSubmissionFor()) {
-      return false;
-    }
-    const submission = normalizeAdoptedSubmission(value);
-    if (!submission) {
-      return false;
-    }
-    this.activeSubmissions.set(submission.id, submission);
-    this.stateFor().activeSubmissionId = submission.id;
-    return this.resolveSubmission(submission.id, {
-      ...result,
-      status: "rejected",
-    });
   }
 
   submissionSnapshot(submissionId) {
@@ -397,8 +374,7 @@ class CaffoldTaskComposer extends HTMLElement {
 
   primaryActionView() {
     const state = this.stateFor();
-    const submitting =
-      Boolean(this.activeSubmissionFor()) || this.context.requestPending;
+    const submitting = Boolean(this.activeSubmissionFor());
     const hasDraft = Boolean(state.prompt.trim() || state.images.length);
     const voicePhase = this.voice.phase;
     const transportBlocked = this.context.disabled;
@@ -992,8 +968,7 @@ class CaffoldTaskComposer extends HTMLElement {
     this.pendingRender = false;
     this.ensureRendered();
     const state = this.stateFor();
-    const submitting =
-      Boolean(this.activeSubmissionFor()) || this.context.requestPending;
+    const submitting = Boolean(this.activeSubmissionFor());
     const voiceBusy = ["requesting", "recording", "transcribing"].includes(
       this.voice.phase,
     );

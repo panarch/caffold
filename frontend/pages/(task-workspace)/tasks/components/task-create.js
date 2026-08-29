@@ -171,9 +171,8 @@ class CaffoldTaskCreate extends HTMLElement {
     this.error = null;
     this.syncComposer();
     this.renderStatus();
-    let submission = null;
     try {
-      submission = this.composer()?.takeSubmission(submissionId);
+      const submission = this.composer()?.submissionSnapshot(submissionId);
       if (!submission) {
         throw new Error("The Task prompt could not be prepared for creation.");
       }
@@ -201,9 +200,7 @@ class CaffoldTaskCreate extends HTMLElement {
         throw new Error("Another Task is already starting.");
       }
       await intent.completion;
-      if (submissionId !== this.activeSubmissionId) {
-        return;
-      }
+      this.composer()?.takeSubmission(submissionId);
       // The Tasks page handed the request and its exact options to the new
       // Task composer. End this New Task editing lifetime so a later New
       // surface starts from canonical defaults instead of inheriting it.
@@ -212,20 +209,13 @@ class CaffoldTaskCreate extends HTMLElement {
       this.syncComposer();
       this.renderStatus();
     } catch (error) {
-      if (submissionId !== this.activeSubmissionId) {
-        return;
-      }
       this.activeSubmissionId = "";
       this.error = error instanceof Error ? error : new Error(`${error}`);
       this.syncComposer();
-      if (submission) {
-        this.composer()?.restoreSubmission(submission, { error: this.error });
-      } else {
-        this.composer()?.resolveSubmission(submissionId, {
-          status: "rejected",
-          error: this.error,
-        });
-      }
+      this.composer()?.resolveSubmission(submissionId, {
+        status: "rejected",
+        error: this.error,
+      });
       this.renderStatus();
     }
   }
@@ -244,20 +234,18 @@ class CaffoldTaskCreate extends HTMLElement {
       model: settings.model ?? "",
       effort: settings.effort ?? "",
       fastMode: Boolean(settings.fastMode),
-      requestPending: Boolean(this.activeSubmissionId),
-      disabled:
-        !this.transportAvailable ||
-        this.taskOperationsBlocked ||
-        Boolean(this.activeSubmissionId),
+      disabled: !this.transportAvailable || this.taskOperationsBlocked,
       requestError: this.error?.message ?? "",
     });
   }
 
   // What this surface has to say about the request it is holding.
   //
-  // This surface presents a request owned by the persistent Tasks page. Once
-  // the empty Task is committed, that owner moves the retained submission into
-  // the visible Task composer even if this source surface has been removed.
+  // This surface presents a request owned by the persistent Tasks page. Its
+  // Composer retains only the local in-flight state needed to show progress or
+  // restore a rejected draft. Once the empty Task is committed, the page moves
+  // its submission snapshot into the visible Task composer even if this source
+  // surface has been removed.
   // The region is left alone while it already says this, so a live region is
   // not re-announced for an unchanged state.
   renderStatus() {
