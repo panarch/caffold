@@ -441,6 +441,7 @@ pub(super) async fn test_store_update_composer_settings(
 #[cfg(test)]
 pub(super) mod test_support {
     use crate::agent::codex::MockCodexResponse;
+    use crate::app::tasks::active_list;
     use serde_json::{Value as JsonValue, json};
 
     use super::*;
@@ -504,7 +505,7 @@ pub(super) mod test_support {
     }
 
     pub(super) fn projected_active_tasks(
-        projection: &super::super::active_list::ActiveTaskProjection,
+        projection: &active_list::ActiveTaskProjection,
     ) -> Vec<&TaskRecord> {
         projection
             .sections

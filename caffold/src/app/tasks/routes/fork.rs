@@ -5,6 +5,7 @@
 //! read-only; a Task is claimed only after the provider returns a child.
 
 use super::*;
+use crate::app::tasks::projection;
 
 const TASK_FORK_PREVIEW_TURNS: usize = 4;
 const TASK_FORK_PREVIEW_MESSAGES: usize = 12;
@@ -121,7 +122,7 @@ async fn preview_task_fork_source(
     Ok(Json(TaskForkSourcePreview {
         provider: "codex",
         source_id,
-        display_name: super::super::projection::conversation_display_name(&conversation),
+        display_name: projection::conversation_display_name(&conversation),
         summary: non_empty_fork_metadata(&conversation.preview),
         status: conversation.status,
         cwd: non_empty_fork_metadata(&conversation.cwd),

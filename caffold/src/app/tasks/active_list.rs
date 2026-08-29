@@ -300,6 +300,7 @@ mod tests {
     use super::*;
     use crate::agent;
     use crate::agent::codex::MockCodexResponse;
+    use crate::app::tasks::{recovery, sessions};
     use crate::task_store::RunBy;
 
     fn fixture() -> (tempfile::TempDir, Arc<RootedFs>, TaskStore) {
@@ -402,7 +403,7 @@ mod tests {
         let projection = load_runtime_snapshot(
             fs,
             store,
-            &super::super::sessions::TaskSessions::default(),
+            &sessions::TaskSessions::default(),
             1,
             &an_empty_codex(),
             &claude,
@@ -451,7 +452,7 @@ mod tests {
             )
             .unwrap();
         let claude = watching_a_claude_conversation("claude-1", cwd).await;
-        let sessions = super::super::sessions::TaskSessions::default();
+        let sessions = sessions::TaskSessions::default();
         sessions
             .ensure_subscribed(&claude.driver(cwd), 1, "claude-1")
             .await
@@ -477,7 +478,7 @@ mod tests {
             .expect("the session is still known");
         assert_eq!(
             snapshot.lifecycle,
-            super::super::sessions::SessionLifecycle::Subscribed,
+            sessions::SessionLifecycle::Subscribed,
             "and was not swept by Codex's count"
         );
         assert_eq!(snapshot.generation, 1, "its own generation, not Codex's");
@@ -508,7 +509,7 @@ mod tests {
         let projection = load_runtime_snapshot(
             fs,
             store,
-            &super::super::sessions::TaskSessions::default(),
+            &sessions::TaskSessions::default(),
             1,
             &an_empty_codex(),
             &claude,
@@ -624,8 +625,8 @@ mod tests {
         assert_eq!(
             projection.unsectioned[0].recovery.actions,
             [
-                super::super::recovery::ActiveTaskRecoveryAction::RestoreToActive,
-                super::super::recovery::ActiveTaskRecoveryAction::Recheck,
+                recovery::ActiveTaskRecoveryAction::RestoreToActive,
+                recovery::ActiveTaskRecoveryAction::Recheck,
             ]
         );
     }

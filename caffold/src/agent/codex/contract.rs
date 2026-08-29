@@ -988,6 +988,7 @@ pub(crate) fn codex_mode_id(mode: CodexPermissionMode) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::codex::protocol;
     use crate::agent::codex::{CodexThreadClient, MockCodexResponse};
 
     fn codex_client(responses: Vec<MockCodexResponse>) -> CodexThreadClient {
@@ -1660,10 +1661,9 @@ mod tests {
 
     /// One notification, translated the way a subscribed thread translates it.
     async fn reported(method: &str, params: serde_json::Value) -> Option<SessionEvent> {
-        let client = super::super::CodexThreadClient::mock(Vec::new());
+        let client = CodexThreadClient::mock(Vec::new());
         client.track_approval("approval-45", json!(45)).await;
-        let notification =
-            super::super::protocol::decode_notification(method, params).expect("Codex sends this");
+        let notification = protocol::decode_notification(method, params).expect("Codex sends this");
         session_event(&notification, &client).await
     }
 
@@ -1682,19 +1682,14 @@ mod tests {
     async fn a_notification_a_newer_app_server_adds_says_nothing() {
         // An app-server that knows more than this Caffold does is not an error;
         // it is a notification with nothing in it for us.
-        let notification = super::super::protocol::decode_notification(
-            "thread/somethingNew",
-            json!({ "threadId": "thread_1" }),
-        )
-        .expect("an unknown method still decodes");
+        let notification =
+            protocol::decode_notification("thread/somethingNew", json!({ "threadId": "thread_1" }))
+                .expect("an unknown method still decodes");
 
         assert!(
-            session_event(
-                &notification,
-                &super::super::CodexThreadClient::mock(Vec::new())
-            )
-            .await
-            .is_none()
+            session_event(&notification, &CodexThreadClient::mock(Vec::new()))
+                .await
+                .is_none()
         );
     }
 
@@ -1741,9 +1736,9 @@ mod tests {
 
     #[tokio::test]
     async fn only_the_first_resolution_names_the_approval_it_answered() {
-        let client = super::super::CodexThreadClient::mock(Vec::new());
+        let client = CodexThreadClient::mock(Vec::new());
         client.track_approval("approval-45", json!(45)).await;
-        let resolved = super::super::protocol::decode_notification(
+        let resolved = protocol::decode_notification(
             "serverRequest/resolved",
             json!({ "threadId": "thread_1", "requestId": 45 }),
         )
@@ -1765,9 +1760,9 @@ mod tests {
 
     #[tokio::test]
     async fn a_resolution_for_something_else_leaves_the_approval_alone() {
-        let client = super::super::CodexThreadClient::mock(Vec::new());
+        let client = CodexThreadClient::mock(Vec::new());
         client.track_approval("approval-45", json!(45)).await;
-        let other = super::super::protocol::decode_notification(
+        let other = protocol::decode_notification(
             "serverRequest/resolved",
             json!({ "threadId": "thread_1", "requestId": 46 }),
         )

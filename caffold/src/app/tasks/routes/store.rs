@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::tasks::composer_settings;
 use crate::task_store;
 
 pub(super) async fn task_store_list_archived(
@@ -84,7 +85,7 @@ pub(super) async fn task_store_update_composer_settings(
     reasoning_effort: Option<&str>,
     fast_mode: bool,
 ) -> Result<Option<ManagedThread>, ApiError> {
-    let persisted = super::super::composer_settings::persist_started_turn_composer_settings(
+    let persisted = composer_settings::persist_started_turn_composer_settings(
         state.task_store.clone(),
         thread_id,
         task_store::ComposerSettings {

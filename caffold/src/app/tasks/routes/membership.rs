@@ -1,5 +1,6 @@
 use super::*;
 use crate::agent;
+use crate::app::tasks::{recovery, worktrees};
 
 pub(super) async fn task_reorder(
     State(state): State<TaskState>,
@@ -219,14 +220,14 @@ pub(super) async fn task_recovery_restore(
         return Err(task_not_managed_error());
     };
     let connection = require_codex_thread_connection(&state).await?;
-    let (thread, unarchived) =
-        match super::super::recovery::locate_thread(&connection.client, &thread_id).await? {
-            ManagedCodexThreadLocation::Active(thread) => (thread, false),
-            ManagedCodexThreadLocation::Archived(_) => {
-                (connection.client.unarchive_thread(&thread_id).await?, true)
-            }
-            ManagedCodexThreadLocation::Missing => return Err(task_recovery_changed_error()),
-        };
+    let (thread, unarchived) = match recovery::locate_thread(&connection.client, &thread_id).await?
+    {
+        ManagedCodexThreadLocation::Active(thread) => (thread, false),
+        ManagedCodexThreadLocation::Archived(_) => {
+            (connection.client.unarchive_thread(&thread_id).await?, true)
+        }
+        ManagedCodexThreadLocation::Missing => return Err(task_recovery_changed_error()),
+    };
     state.task_sessions.forget_thread(&thread_id).await;
     state
         .task_sessions
@@ -276,9 +277,7 @@ pub(super) async fn task_recovery_recheck(
         return Err(task_not_managed_error());
     };
     let connection = require_codex_thread_connection(&state).await?;
-    let recovery = match super::super::recovery::locate_thread(&connection.client, &thread_id)
-        .await?
-    {
+    let recovery = match recovery::locate_thread(&connection.client, &thread_id).await? {
         ManagedCodexThreadLocation::Active(thread) => {
             match state
                 .detail
@@ -289,7 +288,7 @@ pub(super) async fn task_recovery_recheck(
                     task.conversation_available = false;
                     ActiveTaskRecovery::new(task, ActiveTaskRecoveryReason::SectionPlacementPending)
                 }
-                Err(_) => super::super::recovery::cached_recovery(
+                Err(_) => recovery::cached_recovery(
                     &managed,
                     ActiveTaskRecoveryReason::TemporarilyUnavailable,
                 ),
@@ -305,16 +304,15 @@ pub(super) async fn task_recovery_recheck(
                     task.conversation_available = false;
                     ActiveTaskRecovery::new(task, ActiveTaskRecoveryReason::CodexArchived)
                 }
-                Err(_) => super::super::recovery::cached_recovery(
+                Err(_) => recovery::cached_recovery(
                     &managed,
                     ActiveTaskRecoveryReason::TemporarilyUnavailable,
                 ),
             }
         }
-        ManagedCodexThreadLocation::Missing => super::super::recovery::cached_recovery(
-            &managed,
-            ActiveTaskRecoveryReason::ThreadMissing,
-        ),
+        ManagedCodexThreadLocation::Missing => {
+            recovery::cached_recovery(&managed, ActiveTaskRecoveryReason::ThreadMissing)
+        }
     };
     Ok(Json(recovery))
 }
@@ -327,8 +325,7 @@ pub(super) async fn task_recovery_archive(
         return Err(task_not_managed_error());
     };
     let connection = require_codex_thread_connection(&state).await?;
-    let thread = match super::super::recovery::locate_thread(&connection.client, &thread_id).await?
-    {
+    let thread = match recovery::locate_thread(&connection.client, &thread_id).await? {
         ManagedCodexThreadLocation::Archived(thread) => thread,
         ManagedCodexThreadLocation::Active(_) | ManagedCodexThreadLocation::Missing => {
             return Err(task_recovery_changed_error());
@@ -371,7 +368,7 @@ pub(super) async fn task_recovery_remove(
     }
     let connection = require_codex_thread_connection(&state).await?;
     if !matches!(
-        super::super::recovery::locate_thread(&connection.client, &thread_id).await?,
+        recovery::locate_thread(&connection.client, &thread_id).await?,
         ManagedCodexThreadLocation::Missing
     ) {
         return Err(task_recovery_changed_error());
@@ -508,7 +505,7 @@ pub(super) async fn rollback_task_archive(
     state: &TaskState,
     driver: &Driver,
     thread_id: &str,
-    worktree: &super::super::worktrees::ArchiveOutcome,
+    worktree: &worktrees::ArchiveOutcome,
 ) {
     if let Err(error) = driver.restore_conversation(thread_id).await {
         eprintln!("failed to take a conversation back out while rolling back archive: {error}");
@@ -524,7 +521,7 @@ pub(super) async fn rollback_task_restore(
     driver: &Driver,
     thread_id: &str,
     took_it_back_out: bool,
-    worktree: &super::super::worktrees::RestoreOutcome,
+    worktree: &worktrees::RestoreOutcome,
 ) {
     rollback_restored_conversation(driver, thread_id, took_it_back_out).await;
     state

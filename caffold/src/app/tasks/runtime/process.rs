@@ -361,6 +361,7 @@ impl CodexProcess {
 
 #[cfg(test)]
 mod tests {
+    use crate::app::tasks::runtime::TaskAgent;
     use serde_json::json;
     use tokio::sync::broadcast;
 
@@ -398,7 +399,7 @@ mod tests {
         let runtime = test_runtime();
         let client = CodexThreadClient::mock(Vec::new());
         runtime.install_test_client(7, client.clone()).await;
-        let agent = super::super::TaskAgent::Codex(CodexConnection {
+        let agent = TaskAgent::Codex(CodexConnection {
             client,
             generation: 7,
         });
@@ -417,7 +418,7 @@ mod tests {
         let runtime = test_runtime();
         let client = CodexThreadClient::mock(Vec::new());
         runtime.install_test_client(8, client.clone()).await;
-        let agent = super::super::TaskAgent::Codex(CodexConnection {
+        let agent = TaskAgent::Codex(CodexConnection {
             client,
             generation: 8,
         });
@@ -476,7 +477,7 @@ mod tests {
         );
         assert_eq!(runtime.events.fully_observed_turns(thread_id).len(), 1);
 
-        let agent = super::super::TaskAgent::Codex(CodexConnection {
+        let agent = TaskAgent::Codex(CodexConnection {
             client,
             generation: 10,
         });
@@ -500,7 +501,7 @@ mod tests {
         let runtime = test_runtime();
         let client = CodexThreadClient::mock(Vec::new());
         runtime.install_test_client(9, client.clone()).await;
-        let agent = super::super::TaskAgent::Codex(CodexConnection {
+        let agent = TaskAgent::Codex(CodexConnection {
             client,
             generation: 9,
         });

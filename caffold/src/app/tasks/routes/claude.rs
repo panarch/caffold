@@ -42,6 +42,7 @@ pub(super) async fn claude_restart(
 #[cfg(test)]
 mod tests {
     use crate::agent::codex::CodexThreadClient;
+    use crate::app::tasks::routes::router;
     use tower::ServiceExt;
 
     use crate::{app::tasks::test_support::*, fs::RootedFs};
@@ -51,7 +52,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let client = CodexThreadClient::mock(Vec::new());
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
-        let router = super::super::router(state);
+        let router = router(state);
 
         let response = router
             .oneshot(
@@ -78,7 +79,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let client = CodexThreadClient::mock(Vec::new());
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
-        let router = super::super::router(state);
+        let router = router(state);
 
         let response = router
             .oneshot(

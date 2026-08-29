@@ -1,11 +1,12 @@
 use super::*;
 use crate::agent::AgentError;
+use crate::app::tasks::active_list;
 
 pub(super) async fn list_managed_tasks(
     State(state): State<TaskState>,
     Query(_query): Query<TasksQuery>,
-) -> Result<Json<super::super::active_list::ActiveTaskProjection>, ApiError> {
-    super::super::active_list::load_cached(state.fs, state.task_store)
+) -> Result<Json<active_list::ActiveTaskProjection>, ApiError> {
+    active_list::load_cached(state.fs, state.task_store)
         .await
         .map(Json)
 }
@@ -137,7 +138,7 @@ pub(super) async fn task_list_stream_initial_frames(
     state: &TaskState,
 ) -> Result<VecDeque<Bytes>, ApiError> {
     let connection = require_codex_thread_connection(state).await?;
-    let projection = super::super::active_list::load_runtime_snapshot(
+    let projection = active_list::load_runtime_snapshot(
         state.fs.clone(),
         state.task_store.clone(),
         &state.task_sessions,

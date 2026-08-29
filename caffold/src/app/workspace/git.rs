@@ -213,6 +213,7 @@ async fn git_refs(
 
 #[cfg(test)]
 mod tests {
+    use crate::app::workspace::router;
     use std::{path::Path, process::Command, sync::Arc};
 
     use axum::{
@@ -395,7 +396,7 @@ mod tests {
     fn app(root: &Path) -> axum::Router {
         let fs = Arc::new(RootedFs::new(root).unwrap());
         let (shutdown, _) = broadcast::channel(1);
-        super::super::router(fs, shutdown)
+        router(fs, shutdown)
     }
 
     async fn assert_fetch_error(

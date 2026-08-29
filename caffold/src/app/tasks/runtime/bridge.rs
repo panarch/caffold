@@ -8,6 +8,7 @@ use crate::agent::{SessionEvent, SessionEventKind, ThreadStatus, TurnStatus};
 use crate::app::tasks::events::{
     now_ms, task_event_from_item, task_event_record, turn_completed_event, turn_started_event,
 };
+use crate::app::tasks::push;
 
 impl TaskRuntime {
     pub(super) fn spawn_bridge(
@@ -315,9 +316,9 @@ impl TaskRuntime {
             return;
         };
         let status = match turn.status {
-            TurnStatus::Completed => super::super::push::TerminalPushStatus::Completed,
-            TurnStatus::Failed => super::super::push::TerminalPushStatus::Failed,
-            TurnStatus::Interrupted => super::super::push::TerminalPushStatus::Interrupted,
+            TurnStatus::Completed => push::TerminalPushStatus::Completed,
+            TurnStatus::Failed => push::TerminalPushStatus::Failed,
+            TurnStatus::Interrupted => push::TerminalPushStatus::Interrupted,
             TurnStatus::InProgress => return,
         };
         let thread_id = event.thread_id.as_str();

@@ -201,6 +201,7 @@ async fn github_pull_file(
 
 #[cfg(test)]
 mod tests {
+    use crate::app::workspace::router;
     use std::{process::Command, sync::Arc};
 
     use axum::{
@@ -266,7 +267,7 @@ mod tests {
 
         let fs = Arc::new(RootedFs::new(root.path()).unwrap());
         let (shutdown, _) = broadcast::channel(1);
-        let app = super::super::router(fs, shutdown);
+        let app = router(fs, shutdown);
 
         let prepared = post_pull_head(
             app.clone(),
