@@ -2340,11 +2340,7 @@ mod sync_tests {
         test_support::*,
     };
     use super::*;
-    use crate::{
-        agent::{codex, codex::CodexThreadClient},
-        app::error::ApiError,
-        fs::RootedFs,
-    };
+    use crate::{agent::codex::CodexThreadClient, app::error::ApiError, fs::RootedFs};
 
     #[tokio::test(start_paused = true)]
     async fn rollout_invalidation_never_synthesizes_thread_activity() {
@@ -2481,56 +2477,6 @@ mod sync_tests {
         assert!(snapshot.conversation.is_some());
         assert!(snapshot.last_error.is_some());
         assert_eq!(state.task_runtime.diagnostics().await, (1, true));
-    }
-
-    #[tokio::test]
-    async fn external_thread_sync_reads_without_resuming_or_unsubscribing() {
-        let idle_thread = json!({
-            "id": "thread-external",
-            "preview": "External task",
-            "status": { "type": "idle" },
-            "cwd": "Workspace/rust/codger",
-            "createdAt": 1.0,
-            "updatedAt": 2.0,
-            "turns": []
-        });
-        let client = CodexThreadClient::mock(vec![
-            MockCodexResponse::ok(
-                "thread/read",
-                json!({
-                    "thread": idle_thread
-                }),
-            ),
-            MockCodexResponse::ok(
-                "thread/turns/list",
-                json!({
-                    "data": [{
-                        "id": "turn-external",
-                        "status": "inProgress",
-                        "items": [],
-                        "error": null
-                    }]
-                }),
-            ),
-        ]);
-        let (thread, turns) = tokio::try_join!(
-            client.read_thread("thread-external"),
-            client.list_thread_turns("thread-external", None, TASK_DETAIL_TURNS_PAGE_SIZE),
-        )
-        .unwrap();
-
-        assert_eq!(thread.status, codex::ThreadStatus::Idle);
-        assert_eq!(turns.data[0].status, codex::TurnStatus::InProgress);
-
-        assert_eq!(
-            client
-                .mock_requests()
-                .await
-                .into_iter()
-                .map(|(method, _)| method)
-                .collect::<Vec<_>>(),
-            ["thread/read", "thread/turns/list"]
-        );
     }
 }
 

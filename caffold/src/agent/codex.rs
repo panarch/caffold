@@ -2040,6 +2040,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn external_thread_sync_reads_without_resuming_or_unsubscribing() {
+        let idle_thread = json!({
+            "id": "thread-external",
+            "preview": "External task",
+            "status": { "type": "idle" },
+            "cwd": "Workspace/rust/codger",
+            "createdAt": 1.0,
+            "updatedAt": 2.0,
+            "turns": []
+        });
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/read",
+                json!({
+                    "thread": idle_thread
+                }),
+            ),
+            MockCodexResponse::ok(
+                "thread/turns/list",
+                json!({
+                    "data": [{
+                        "id": "turn-external",
+                        "status": "inProgress",
+                        "items": [],
+                        "error": null
+                    }]
+                }),
+            ),
+        ]);
+        let (thread, turns) = tokio::try_join!(
+            client.read_thread("thread-external"),
+            client.list_thread_turns("thread-external", None, 8),
+        )
+        .unwrap();
+
+        assert_eq!(thread.status, protocol::ThreadStatus::Idle);
+        assert_eq!(turns.data[0].status, protocol::TurnStatus::InProgress);
+
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/read", "thread/turns/list"]
+        );
+    }
+
+    #[tokio::test]
     async fn lists_threads_from_the_app_server_state_db() {
         let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
             THREAD_LIST,
