@@ -1,13 +1,11 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
-import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "../../../origin-reachability.js";
 import { TASK_TRANSPORT_STATE } from "./runtime-state.js";
 import { TaskStreamLifecycle } from "./stream.js";
 
 const originalBrowserGlobals = {
   document: globalThis.document,
-  EventSource: globalThis.EventSource,
   window: globalThis.window,
 };
 
@@ -42,49 +40,39 @@ function installBrowserHarness({ manualTimers = false } = {}) {
     ? (id) => timers.delete(id)
     : clearTimeout;
 
-  class MockEventSource {
-    constructor(url) {
-      this.url = url;
-      this.listeners = new Map();
-      this.readyState = 0;
+  class MockSubscription {
+    constructor(contextKey, listener) {
+      this.contextKey = contextKey;
+      this.listener = listener;
       this.closed = false;
       sources.push(this);
     }
 
-    addEventListener(type, listener) {
-      const listeners = this.listeners.get(type) ?? [];
-      listeners.push(listener);
-      this.listeners.set(type, listeners);
-    }
-
     emit(type, payload = null) {
-      for (const listener of this.listeners.get(type) ?? []) {
-        listener(payload === null ? {} : { data: JSON.stringify(payload) });
-      }
+      this.listener.onEvent?.(type, payload);
     }
 
     emitOpen() {
-      this.readyState = 1;
-      this.emit("open");
+      this.listener.onOpen?.();
     }
 
     emitError({ closed = false } = {}) {
-      this.readyState = closed ? 2 : 0;
-      this.emit("error");
+      this.listener.onError?.(new Error("unavailable"), { closed });
     }
 
     close() {
       this.closed = true;
-      this.readyState = 2;
+    }
+
+    retry() {
+      return !this.closed;
     }
   }
 
   globalThis.window = Object.assign(new EventTarget(), {
-    EventSource: MockEventSource,
     setTimeout: scheduleTimer,
     clearTimeout: cancelTimer,
   });
-  globalThis.EventSource = MockEventSource;
   globalThis.document = {
     visibilityState: "visible",
     addEventListener(type, listener) {
@@ -104,6 +92,9 @@ function installBrowserHarness({ manualTimers = false } = {}) {
 
   return {
     sources,
+    subscribe(contextKey, listener) {
+      return new MockSubscription(contextKey, listener);
+    },
     runAllTimers() {
       let iterations = 0;
       while (timers.size) {
@@ -133,25 +124,21 @@ function deferred() {
   return { promise, resolve };
 }
 
-test("reports reachability only when the current source opens", async () => {
+test("ignores a stale logical subscription after an explicit retry", async () => {
   const browser = installBrowserHarness();
-  let reachable = 0;
-  window.addEventListener(CAFFOLD_ORIGIN_REACHABLE_EVENT, () => {
-    reachable += 1;
-  });
   const lifecycle = new TaskStreamLifecycle({
-    createUrl: () => "/api/tasks/stream",
+    subscribe: browser.subscribe,
   });
 
   lifecycle.activate("task-list");
   const stale = browser.sources[0];
   lifecycle.retry();
   stale.emitOpen();
-  assert.equal(reachable, 0);
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.RECONNECTING);
 
   browser.sources[1].emitOpen();
   await settleAsyncWork();
-  assert.equal(reachable, 1);
+  assert.equal(lifecycle.state, TASK_TRANSPORT_STATE.READY);
   lifecycle.deactivate();
 });
 
@@ -160,7 +147,7 @@ test("replaces a terminal source and ignores its stale generation", async () => 
   const events = [];
   const reconciliations = [];
   const lifecycle = new TaskStreamLifecycle({
-    createUrl: () => "/api/tasks/stream",
+    subscribe: browser.subscribe,
     eventTypes: ["task-updated"],
     onEvent: (_type, event) => events.push(JSON.parse(event.data).value),
     onReconcile: (_contextKey, _isCurrent, metadata) =>
@@ -195,7 +182,7 @@ test("replaces a terminal source and ignores its stale generation", async () => 
 test("bounds replacement attempts and lets an explicit retry start a new cycle", async () => {
   const browser = installBrowserHarness({ manualTimers: true });
   const lifecycle = new TaskStreamLifecycle({
-    createUrl: () => "/api/tasks/stream",
+    subscribe: browser.subscribe,
     retryDelaysMs: [0, 0],
   });
 
@@ -223,7 +210,7 @@ test("bounds replacement attempts and lets an explicit retry start a new cycle",
 test("bounds a source that never opens or errors", () => {
   const browser = installBrowserHarness({ manualTimers: true });
   const lifecycle = new TaskStreamLifecycle({
-    createUrl: () => "/api/tasks/stream",
+    subscribe: browser.subscribe,
     connectionTimeoutMs: 1,
     retryDelaysMs: [0, 0],
   });
@@ -241,7 +228,7 @@ test("keeps transport connecting until its owner reports readiness", async () =>
   const browser = installBrowserHarness();
   const readiness = deferred();
   const lifecycle = new TaskStreamLifecycle({
-    createUrl: () => "/api/tasks/stream",
+    subscribe: browser.subscribe,
     waitUntilReady: () => readiness.promise,
   });
 
@@ -260,7 +247,7 @@ test("lets a stream-bootstrap owner retry without a duplicate reconciliation", a
   const browser = installBrowserHarness();
   let reconciliations = 0;
   const lifecycle = new TaskStreamLifecycle({
-    createUrl: () => "/api/tasks/stream",
+    subscribe: browser.subscribe,
     onReconcile: () => {
       reconciliations += 1;
     },
@@ -281,7 +268,7 @@ test("foreground recovery clears an interrupted stream-bootstrap retry", async (
   const browser = installBrowserHarness();
   let reconciliations = 0;
   const lifecycle = new TaskStreamLifecycle({
-    createUrl: () => "/api/tasks/stream",
+    subscribe: browser.subscribe,
     onReconcile: () => {
       reconciliations += 1;
     },
@@ -306,7 +293,7 @@ test("foreground validation is silent until a real transport failure", async () 
   const reconcileGate = deferred();
   const states = [];
   const lifecycle = new TaskStreamLifecycle({
-    createUrl: () => "/api/tasks/stream",
+    subscribe: browser.subscribe,
     onReconcile: () => reconcileGate.promise,
     onStateChange: (state) => states.push(state),
   });
@@ -330,7 +317,7 @@ test("lets a reconnecting source recover without creating a duplicate", async ()
   const browser = installBrowserHarness();
   let reconciliations = 0;
   const lifecycle = new TaskStreamLifecycle({
-    createUrl: () => "/api/tasks/thread-a/stream",
+    subscribe: browser.subscribe,
     onReconcile: () => {
       reconciliations += 1;
     },
@@ -357,7 +344,7 @@ test("distinguishes requested reconciliation from transport recovery", async () 
   const browser = installBrowserHarness({ manualTimers: true });
   const reconciliations = [];
   const lifecycle = new TaskStreamLifecycle({
-    createUrl: () => "/api/tasks/thread-a/stream",
+    subscribe: browser.subscribe,
     onReconcile: (_contextKey, _isCurrent, metadata) =>
       reconciliations.push(metadata),
     retryDelaysMs: [0],
@@ -387,7 +374,7 @@ test("explicit recovery replaces and reconciles an already-open stream", async (
   });
   let reconciliations = 0;
   const lifecycle = new TaskStreamLifecycle({
-    createUrl: () => "/api/tasks/thread-a/stream",
+    subscribe: browser.subscribe,
     onReconcile: () => {
       reconciliations += 1;
       return reconciliation;
@@ -418,7 +405,7 @@ test("explicit recovery invalidates an older requested reconciliation", async ()
   });
   const reconciliations = [];
   const lifecycle = new TaskStreamLifecycle({
-    createUrl: () => "/api/tasks/thread-a/stream",
+    subscribe: browser.subscribe,
     onReconcile: (_contextKey, _isCurrent, metadata) => {
       reconciliations.push(metadata);
       return reconciliations.length === 1

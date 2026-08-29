@@ -577,7 +577,8 @@ impl Task {
 
 impl Http {
     /// The rows of the list as the stream first paints them: the
-    /// `task-list-snapshot` frame of one fresh connection, read and closed.
+    /// `task-list-snapshot` channel event of one fresh connection, read and
+    /// closed.
     ///
     /// This is what a person's list is drawn from — the cached rows only fill
     /// in until it arrives — so a case about what the list shows reads this
@@ -586,14 +587,51 @@ impl Http {
         use futures_util::StreamExt;
 
         let response = reqwest::Client::new()
-            .get(self.url("/api/tasks/stream"))
+            .get(self.url("/api/live"))
             .send()
             .await
             .ok()?;
         let mut stream = response.bytes_stream();
         let mut body = String::new();
         let deadline = Instant::now() + Duration::from_secs(30);
-        const FRAME: &str = "event: task-list-snapshot\ndata: ";
+        const READY: &str = "event: gateway-ready\ndata: ";
+        let connection_id = loop {
+            let chunk = match tokio::time::timeout(Duration::from_secs(5), stream.next()).await {
+                Ok(Some(Ok(chunk))) => chunk,
+                Ok(_) => return None,
+                Err(_) if Instant::now() < deadline => continue,
+                Err(_) => return None,
+            };
+            body.push_str(&String::from_utf8_lossy(&chunk));
+            let Some(start) = body.find(READY) else {
+                continue;
+            };
+            let Some(end) = body[start..].find("\n\n") else {
+                continue;
+            };
+            let payload = &body[start + READY.len()..start + end];
+            let ready: Value = serde_json::from_str(payload).ok()?;
+            body.drain(..start + end + 2);
+            break ready["connectionId"].as_str()?.to_string();
+        };
+        reqwest::Client::new()
+            .put(self.url(&format!("/api/live/{connection_id}/subscriptions")))
+            .header("origin", self.url(""))
+            .header("content-type", "application/json")
+            .body(
+                json!({
+                    "controlRevision": 1,
+                    "taskList": { "generation": 1 },
+                    "taskDetail": null,
+                    "watches": [],
+                })
+                .to_string(),
+            )
+            .send()
+            .await
+            .ok()?
+            .error_for_status()
+            .ok()?;
         while Instant::now() < deadline {
             let chunk = match tokio::time::timeout(Duration::from_secs(5), stream.next()).await {
                 Ok(Some(Ok(chunk))) => chunk,
@@ -601,12 +639,15 @@ impl Http {
                 Err(_) => continue,
             };
             body.push_str(&String::from_utf8_lossy(&chunk));
-            if let Some(start) = body.find(FRAME)
-                && let Some(end) = body[start..].find("\n\n")
-            {
-                let payload = &body[start + FRAME.len()..start + end];
-                let parsed: Value = serde_json::from_str(payload).ok()?;
-                return parsed["tasks"].as_array().cloned();
+            while let Some(end) = body.find("\n\n") {
+                let frame = body.drain(..end + 2).collect::<String>();
+                let Some(payload) = frame.strip_prefix("event: live-update\ndata: ") else {
+                    continue;
+                };
+                let parsed: Value = serde_json::from_str(payload.trim_end()).ok()?;
+                if parsed["channel"] == "task-list" && parsed["type"] == "task-list-snapshot" {
+                    return parsed["payload"]["tasks"].as_array().cloned();
+                }
             }
         }
         None

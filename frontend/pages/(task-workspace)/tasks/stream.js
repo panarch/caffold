@@ -1,13 +1,11 @@
 import { TASK_TRANSPORT_STATE } from "./runtime-state.js";
-import { reportOriginReachable } from "../../../origin-reachability.js";
 
 const DEFAULT_RECONNECT_TIMEOUT_MS = 8_000;
 const DEFAULT_RETRY_DELAYS_MS = Object.freeze([250, 1_000, 3_000]);
 
 export class TaskStreamLifecycle {
   constructor(options = {}) {
-    this.createUrl = options.createUrl ?? (() => "");
-    this.eventTypes = [...(options.eventTypes ?? [])];
+    this.subscribe = options.subscribe ?? null;
     this.onEvent = options.onEvent ?? (() => {});
     this.onReconcile = options.onReconcile ?? (() => Promise.resolve());
     this.onStateChange = options.onStateChange ?? (() => {});
@@ -85,7 +83,12 @@ export class TaskStreamLifecycle {
     }
     this.skipNextReconciliation = false;
     this.needsReconcile = true;
-    this.resetConnection();
+    this.clearConnectionTimer();
+    this.clearReconnectTimer();
+    this.clearRetryTimer();
+    this.validating = false;
+    this.invalidateReconciliation();
+    this.state = TASK_TRANSPORT_STATE.IDLE;
   }
 
   async recover(contextKey = this.contextKey) {
@@ -145,14 +148,37 @@ export class TaskStreamLifecycle {
     ) {
       return;
     }
-    if (!("EventSource" in window)) {
+    if (!this.subscribe) {
       this.setState(TASK_TRANSPORT_STATE.UNAVAILABLE);
       return;
     }
 
     let source;
     try {
-      source = new EventSource(this.createUrl(contextKey));
+      source = this.subscribe(contextKey, {
+        onOpen: () => {
+          void this.opened(source, contextKey, generation);
+        },
+        onError: (_error, metadata = {}) => {
+          this.errored(source, contextKey, generation, metadata);
+        },
+        onEvent: (type, payload) => {
+          if (this.isCurrent(source, contextKey, generation)) {
+            this.onEvent(
+              type,
+              { data: JSON.stringify(payload ?? null) },
+              contextKey,
+              { source },
+            );
+          }
+        },
+        onInvalidated: () => {
+          this.errored(source, contextKey, generation, { closed: true });
+        },
+      });
+      if (!source?.close || !source?.retry) {
+        throw new Error("Live subscription did not provide a lifecycle handle.");
+      }
     } catch {
       this.needsReconcile = true;
       this.replaceAfterFailure(null, contextKey, generation);
@@ -167,19 +193,6 @@ export class TaskStreamLifecycle {
           ? TASK_TRANSPORT_STATE.RECONNECTING
           : TASK_TRANSPORT_STATE.CONNECTING,
     );
-    source.addEventListener("open", () => {
-      void this.opened(source, contextKey, generation);
-    });
-    source.addEventListener("error", () => {
-      this.errored(source, contextKey, generation);
-    });
-    for (const type of this.eventTypes) {
-      source.addEventListener(type, (event) => {
-        if (this.isCurrent(source, contextKey, generation)) {
-          this.onEvent(type, event, contextKey, { source });
-        }
-      });
-    }
     this.startConnectionTimer(source, contextKey, generation);
   }
 
@@ -187,7 +200,6 @@ export class TaskStreamLifecycle {
     if (!this.isCurrent(source, contextKey, generation)) {
       return;
     }
-    reportOriginReachable();
     this.clearConnectionTimer();
     this.clearReconnectTimer();
     this.hasConnected = true;
@@ -265,7 +277,12 @@ export class TaskStreamLifecycle {
     this.setState(TASK_TRANSPORT_STATE.READY);
   }
 
-  errored(source, contextKey, generation) {
+  errored(
+    source,
+    contextKey,
+    generation,
+    { closed = false, exhausted = false, physical = false } = {},
+  ) {
     if (!this.isCurrent(source, contextKey, generation)) {
       return;
     }
@@ -273,7 +290,15 @@ export class TaskStreamLifecycle {
     this.needsReconcile = true;
     this.validating = false;
     this.invalidateReconciliation();
-    if (source.readyState === 2) {
+    if (physical) {
+      this.setState(
+        exhausted
+          ? TASK_TRANSPORT_STATE.UNAVAILABLE
+          : TASK_TRANSPORT_STATE.RECONNECTING,
+      );
+      return;
+    }
+    if (closed) {
       this.replaceAfterFailure(source, contextKey, generation);
       return;
     }

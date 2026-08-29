@@ -1,13 +1,11 @@
+use super::TaskDetailQuery;
 use super::commands::apply_managed_thread_metadata;
 use super::store::{task_store_get, task_store_mark_seen};
-use super::{TaskDetailQuery, TasksQuery};
 use crate::agent::Conversation;
 use crate::app::error::ApiError;
 use crate::app::tasks::active_list::unavailable_active_task;
 use crate::app::tasks::generated_images::GeneratedImageError;
-use crate::app::tasks::{
-    DetailFrameStream, TaskDetailResponse, TaskRecord, TaskState, task_activity_ms,
-};
+use crate::app::tasks::{TaskDetailResponse, TaskRecord, TaskState, task_activity_ms};
 use axum::Json;
 use axum::body::Body;
 use axum::extract::Path as AxumPath;
@@ -126,29 +124,14 @@ pub(super) fn notify_task_updated(state: &TaskState, task: TaskRecord) {
     state.task_list_events.update(task);
 }
 
-pub(super) async fn task_stream(
-    State(state): State<TaskState>,
-    AxumPath(thread_id): AxumPath<String>,
-    Query(_query): Query<TasksQuery>,
-) -> Result<Response, ApiError> {
-    let stream: DetailFrameStream = state.detail.stream(&thread_id).await?;
-    let mut response = Response::new(Body::from_stream(stream));
-    response.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("text/event-stream; charset=utf-8"),
-    );
-    response
-        .headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
-    Ok(response)
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::router;
+    use super::super::test_task_stream;
     use crate::agent;
     use crate::agent::codex::CodexThreadClient;
     use crate::agent::codex::{MockCodexResponse, conversation_item};
+    use crate::app::tasks::detail::DetailLiveEvent;
     use crate::fs::MAX_IMAGE_BYTES;
     use futures_util::StreamExt;
     use serde_json::{Value as JsonValue, json};
@@ -290,7 +273,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn task_stream_http_projects_live_file_links_in_the_sse_envelope() {
+    async fn task_live_source_projects_live_file_links_before_http_framing() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-file-link-stream-http";
         let task = root.path().join("task");
@@ -304,39 +287,13 @@ mod tests {
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         cache_and_manage_test_thread(&state, thread_id, &task).await;
 
-        let response = router(state.clone())
-            .oneshot(
-                axum::http::Request::builder()
-                    .method("GET")
-                    .uri(format!("/api/tasks/{thread_id}/stream"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+        let mut events = test_task_stream(state.clone(), thread_id.to_string())
             .await
-            .expect("Task stream response");
-
-        assert_eq!(response.status(), axum::http::StatusCode::OK);
-        assert_eq!(
-            response.headers()[axum::http::header::CONTENT_TYPE],
-            "text/event-stream; charset=utf-8"
-        );
-        let mut body = response.into_body().into_data_stream();
-        let ready = tokio::time::timeout(std::time::Duration::from_millis(100), body.next())
-            .await
-            .expect("Task stream ready frame")
-            .expect("Task stream remains open")
-            .unwrap();
-        let bootstrap = tokio::time::timeout(std::time::Duration::from_millis(100), body.next())
-            .await
-            .expect("Task stream bootstrap frame")
-            .expect("Task stream remains open")
-            .unwrap();
-        assert_eq!(ready.as_ref(), b": ready\n\n");
-        assert!(
-            std::str::from_utf8(&bootstrap)
-                .unwrap()
-                .starts_with("event: task-sync\ndata: ")
-        );
+            .expect("Task live source");
+        assert!(matches!(
+            events.next().await,
+            Some(DetailLiveEvent::Sync(_))
+        ));
 
         let published = state.task_events.publish_local(task_event_record(
             thread_id,
@@ -347,26 +304,17 @@ mod tests {
             2,
         ));
 
-        let live_frame = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+        let payload = tokio::time::timeout(std::time::Duration::from_millis(500), async {
             loop {
-                let bytes = body
-                    .next()
-                    .await
-                    .expect("Task stream remains open")
-                    .expect("Task stream frame");
-                let frame = std::str::from_utf8(&bytes).expect("UTF-8 Task stream frame");
-                if frame.starts_with("event: task-event\ndata: ") {
-                    break frame.to_string();
+                let event = events.next().await.expect("Task live source remains open");
+                if matches!(&event, DetailLiveEvent::Event(_)) {
+                    break serde_json::to_value(event).expect("Task live event JSON");
                 }
             }
         })
         .await
-        .expect("Live Task event frame");
-        let payload = live_frame
-            .strip_prefix("event: task-event\ndata: ")
-            .and_then(|frame| frame.strip_suffix("\n\n"))
-            .expect("Task event SSE payload");
-        let payload: JsonValue = serde_json::from_str(payload).expect("Task event SSE JSON");
+        .expect("Live Task event");
+        let payload = &payload["payload"];
 
         assert_eq!(payload["threadId"], thread_id);
         assert_eq!(payload["eventRevision"], published.revision);

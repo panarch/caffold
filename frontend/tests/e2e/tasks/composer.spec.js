@@ -17,26 +17,8 @@ test.beforeEach(async ({ page }) => {
 test("starts a completed task follow-up clock only from canonical turn metadata", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  await page.addInitScript(() => {
-    window.__taskEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        window.__taskEventSources.push(this);
-        window.__caffoldRegisterTaskSseSource?.(this);
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emit(type, payload) {
-        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-      }
-
-      close() {}
-    };
+  await installEventSourceMock(page, {
+    registryKey: "__taskEventSources",
   });
   await mockAgentModels(page);
 
@@ -198,26 +180,8 @@ test("starts a completed task follow-up clock only from canonical turn metadata"
 test("submits completed task follow-ups and reloads canonical messages", { tag: "@all-viewports" }, async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    window.__taskEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        window.__taskEventSources.push(this);
-        window.__caffoldRegisterTaskSseSource?.(this);
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emit(type, payload) {
-        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-      }
-
-      close() {}
-    };
+  await installEventSourceMock(page, {
+    registryKey: "__taskEventSources",
   });
   await mockAgentModels(page);
 
@@ -513,26 +477,8 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
 test("keeps exact prompt order when Detail or live content arrives before the prompt response", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  await page.addInitScript(() => {
-    window.__taskEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        window.__taskEventSources.push(this);
-        window.__caffoldRegisterTaskSseSource?.(this);
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emit(type, payload) {
-        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-      }
-
-      close() {}
-    };
+  await installEventSourceMock(page, {
+    registryKey: "__taskEventSources",
   });
   await mockAgentModels(page);
 
@@ -670,7 +616,9 @@ test("keeps exact prompt order when Detail or live content arrives before the pr
   }, { threadId, detail: detail() });
 
   await expect(tasksPage).toContainText("Canonical item prompt");
-  const messages = tasksPage.locator(".task-message");
+  const messages = tasksPage.locator(
+    ".task-message, .task-assistant-message",
+  );
   await expect(messages.nth(1)).toContainText("Canonical item prompt");
   await expect(messages.nth(2)).toContainText("Canonical item answer");
   await expect(form).toHaveAttribute("aria-busy", "true");

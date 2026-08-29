@@ -223,6 +223,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/layout.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/layout.js"
         ))),
+        "pages/(task-workspace)/live-updates.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/live-updates.js"
+        ))),
+        "pages/(task-workspace)/live-updates/lifecycle.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/live-updates/lifecycle.js"
+        ))),
         "pages/(task-workspace)/components/navigation.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/components/navigation.css"
         ))),
@@ -467,6 +473,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn/model.js" => {
             Some(js(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn/model.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.js"
             )))
         }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css" => {
@@ -1239,6 +1255,25 @@ mod tests {
                 .windows(b"caffold-task-workspace".len())
                 .any(|window| window == b"caffold-task-workspace")
         );
+        for (path, marker) in [
+            (
+                "pages/(task-workspace)/live-updates.js",
+                b"WorkspaceLiveUpdates".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/live-updates/lifecycle.js",
+                b"LIVE_CONNECTION_NODE".as_slice(),
+            ),
+        ] {
+            let asset = get(path).expect("workspace live update asset");
+            assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
+            assert!(
+                asset
+                    .body
+                    .windows(marker.len())
+                    .any(|window| window == marker)
+            );
+        }
         let task_workspace_layout_css =
             get("pages/(task-workspace)/layout.css").expect("task workspace layout css");
         assert_eq!(
@@ -1497,6 +1532,10 @@ mod tests {
                 b"caffold-task-active-turn".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.js",
+                b"caffold-task-assistant-message".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.js",
                 b"caffold-task-changed-files".as_slice(),
             ),
@@ -1597,6 +1636,8 @@ mod tests {
             );
         }
         for path in [
+            "/assets/pages/(task-workspace)/live-updates.js",
+            "/assets/pages/(task-workspace)/live-updates/lifecycle.js",
             "/assets/pages/(task-workspace)/tasks/stream.js",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list.css",
             "/assets/pages/(task-workspace)/tasks/components/active-task-list.js",
@@ -1652,6 +1693,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css",
                 b"caffold-task-active-turn".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.css",
+                b"caffold-task-assistant-message".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css",
@@ -1997,7 +2042,12 @@ mod tests {
         assert!(get("pages/files/components/list.css").is_none());
         let watch_module = get("watch.js").expect("watch js asset");
         assert_eq!(watch_module.content_type, "text/javascript; charset=utf-8");
-        assert!(watch_module.body.starts_with(b"import "));
+        assert!(
+            watch_module
+                .body
+                .windows(b"subscribeToWatch".len())
+                .any(|window| window == b"subscribeToWatch")
+        );
         assert!(get("file-status.test.js").is_none());
         assert!(get("watch.test.js").is_none());
         assert!(get("pages/(task-workspace)/codex-status/model.test.js").is_none());

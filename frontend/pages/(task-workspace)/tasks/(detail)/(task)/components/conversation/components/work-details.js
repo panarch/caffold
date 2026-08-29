@@ -16,6 +16,7 @@ import {
   taskEventObservedMs,
   toolCallPresentation,
 } from "../../../../../task-format.js";
+import "./assistant-message.js";
 import "./changed-files.js";
 import "./command.js";
 
@@ -140,7 +141,13 @@ class CaffoldTaskWorkDetails extends HTMLElement {
       this.snapshot.events,
       this.snapshot.filePathPresentationBase,
     );
-    reconcileWorkItems(body, view.html, view.changedFiles, view.commands);
+    reconcileWorkItems(
+      body,
+      view.html,
+      view.changedFiles,
+      view.commands,
+      view.messages,
+    );
     this.restoreDisclosureState();
     this.renderedIdentity = this.snapshot.identity;
     this.refreshChevronIcons();
@@ -256,6 +263,7 @@ function renderWorkItems(events, filePathPresentationBase) {
   const output = [];
   const changedFiles = new Map();
   const commands = new Map();
+  const messages = new Map();
   let combinedEvents = [];
   let combinedType = "";
   const flushCombinedEvents = () => {
@@ -285,7 +293,13 @@ function renderWorkItems(events, filePathPresentationBase) {
     }
     flushCombinedEvents();
     output.push(
-      renderWorkItem(event, filePathPresentationBase, changedFiles, commands),
+      renderWorkItem(
+        event,
+        filePathPresentationBase,
+        changedFiles,
+        commands,
+        messages,
+      ),
     );
   }
   flushCombinedEvents();
@@ -293,6 +307,7 @@ function renderWorkItems(events, filePathPresentationBase) {
     html: output.filter(Boolean).join(""),
     changedFiles,
     commands,
+    messages,
   };
 }
 
@@ -360,10 +375,11 @@ function renderWorkItem(
   filePathPresentationBase,
   changedFiles,
   commands,
+  messages,
 ) {
   const payload = event.payload ?? {};
   if (event.type === "assistant_message") {
-    return renderWorkItemShell(event, "Update", payload.text);
+    return renderMessageWorkItem(event, messages);
   }
   if (event.type === "reasoning") {
     const summary = Array.isArray(payload.summary)
@@ -414,6 +430,21 @@ function renderWorkItem(
         <strong>${escapeHtml(event.summary)}</strong>
         ${renderObservedTime(event)}
       </header>
+    </article>
+  `;
+}
+
+// A message the agent wrote reads as prose wherever it appears, so a folded
+// turn mounts the same component the conversation shows inline. Only the
+// placement differs.
+function renderMessageWorkItem(event, messages) {
+  const identity = eventIdentityKey(event) || `${event?.id ?? ""}`;
+  if (identity) {
+    messages.set(identity, { event });
+  }
+  return `
+    <article class="task-work-details-item task-work-details-message" data-event-type="assistant_message" data-message-work-identity="${escapeHtml(identity)}">
+      <caffold-task-assistant-message></caffold-task-assistant-message>
     </article>
   `;
 }
@@ -476,7 +507,7 @@ function fileChangeWorkIdentity(events) {
   }`;
 }
 
-function reconcileWorkItems(body, html, changedFiles, commands) {
+function reconcileWorkItems(body, html, changedFiles, commands, messages) {
   const template = document.createElement("template");
   template.innerHTML = html;
   const existingFileChangeItems = new Map(
@@ -489,7 +520,17 @@ function reconcileWorkItems(body, html, changedFiles, commands) {
       .filter((item) => item.hasAttribute("data-command-work-identity"))
       .map((item) => [item.dataset.commandWorkIdentity, item]),
   );
+  const existingMessageItems = new Map(
+    [...body.children]
+      .filter((item) => item.hasAttribute("data-message-work-identity"))
+      .map((item) => [item.dataset.messageWorkIdentity, item]),
+  );
   const desiredItems = [...template.content.children].map((item) => {
+    const messageIdentity = `${item.dataset.messageWorkIdentity ?? ""}`;
+    const existingMessage = existingMessageItems.get(messageIdentity);
+    if (messageIdentity && existingMessage) {
+      return existingMessage;
+    }
     const commandIdentity = `${item.dataset.commandWorkIdentity ?? ""}`;
     const existingCommand = existingCommandItems.get(commandIdentity);
     if (commandIdentity && existingCommand) {
@@ -515,6 +556,14 @@ function reconcileWorkItems(body, html, changedFiles, commands) {
     const commandSnapshot = commands.get(commandIdentity);
     if (commandOwner && commandSnapshot) {
       commandOwner.setSnapshot(commandSnapshot);
+    }
+    const messageIdentity = `${item.dataset.messageWorkIdentity ?? ""}`;
+    const messageOwner = item.querySelector(
+      ":scope > caffold-task-assistant-message",
+    );
+    const messageSnapshot = messages.get(messageIdentity);
+    if (messageOwner && messageSnapshot) {
+      messageOwner.setSnapshot(messageSnapshot);
     }
   }
 }

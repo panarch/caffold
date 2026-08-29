@@ -2567,27 +2567,9 @@ test("switches Tasks to master-detail at the Fold8 landscape boundary", { tag: "
   expect(layout.detailWidth).toBeGreaterThanOrEqual(520);
 });
 test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@all-viewports" }, async ({ page }) => {
-  await page.addInitScript(() => {
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        window.__caffoldRegisterTaskSseSource?.(this);
-        if (url.includes("/api/tasks/stream")) {
-          window.__taskListEventSource = this;
-        }
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emit(type, payload) {
-        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-      }
-
-      close() {}
-    };
+  await installEventSourceMock(page, {
+    sourceKey: "__taskListEventSource",
+    autoOpen: true,
   });
   await mockAgentModels(page);
 
@@ -2983,27 +2965,9 @@ test("patches Task rows in place without reordering and preserves a running spin
   ).toBe(true);
 });
 test("groups Tasks by repository without worktree accordions", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
-  await page.addInitScript(() => {
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        window.__caffoldRegisterTaskSseSource?.(this);
-        if (url.includes("/api/tasks/stream")) {
-          window.__taskListEventSource = this;
-        }
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emit(type, payload) {
-        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-      }
-
-      close() {}
-    };
+  await installEventSourceMock(page, {
+    sourceKey: "__taskListEventSource",
+    autoOpen: true,
   });
   await mockAgentModels(page);
   const now = 1_767_300_000_000;

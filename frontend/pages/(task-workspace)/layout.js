@@ -9,6 +9,7 @@ import {
   CODEX_RUNTIME_RESTART_CONFIRMED_EVENT,
 } from "./codex-status/components/runtime-restart-dialog.js";
 import { restartClaudeRuntime } from "../../api.js";
+import { WorkspaceLiveUpdates } from "./live-updates.js";
 import {
   CLAUDE_RUNTIME_RESTART_REQUEST_EVENT,
 } from "./settings/claude/page.js";
@@ -36,12 +37,14 @@ class CaffoldTaskWorkspace extends HTMLElement {
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.ensureRendered();
     this.attachGlobalListeners();
+    this.liveUpdates.connect();
     this.codexStatusLifecycle.connect();
     void warmIcons();
   }
 
   disconnectedCallback() {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+    this.liveUpdates.disconnect();
     this.codexStatusLifecycle.disconnect();
     this.stopNavigationPaneResize();
     this.detachGlobalListeners();
@@ -60,6 +63,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.globalListenersAttached = false;
     this.currentOpenOptions = {};
     this.codexRestartStateValue = { state: "idle", message: "" };
+    this.liveUpdates = new WorkspaceLiveUpdates();
     this.codexStatusLifecycle = createCodexStatusLifecycle({
       onSnapshotChange: (snapshot) => this.setCodexStatusSnapshot(snapshot),
       onRestartStateChange: (state) => this.setCodexRestartState(state),
@@ -135,6 +139,8 @@ class CaffoldTaskWorkspace extends HTMLElement {
     );
     this.tasksPage.ensureRendered();
     this.settingsWorkspace.ensureRendered();
+    this.taskNavigator.setLiveUpdates(this.liveUpdates);
+    this.tasksPage.setLiveUpdates(this.liveUpdates);
     this.tasksPage.connectTaskNavigator(this.taskNavigator);
     this.settingsWorkspace.connectSettingsNavigator(this.settingsNavigator);
     this.setCodexStatusSnapshot(this.codexStatusSnapshotValue);
@@ -318,6 +324,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
   }
 
   suspendForeground() {
+    this.liveUpdates.suspend();
     this.codexStatusLifecycle.suspend();
     this.tasksPage?.suspendForeground();
   }
@@ -343,13 +350,16 @@ class CaffoldTaskWorkspace extends HTMLElement {
     if (!isCurrent()) {
       return { stale: true, retry: false };
     }
-    const tasks = this.mode === "tasks"
-      ? await this.tasksPage.recoverForeground({
+    const tasksRecovery = this.mode === "tasks"
+      ? this.tasksPage.recoverForeground({
           initialActivation,
           isCurrent,
           progress,
         })
-      : { retry: false };
+      : Promise.resolve({ retry: false });
+    this.liveUpdates.resume();
+    this.liveUpdates.retry();
+    const tasks = await tasksRecovery;
     return {
       retry: Boolean(
         statusError ||

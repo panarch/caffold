@@ -381,17 +381,19 @@ test("updates stable detail regions and preserves an active IME composition", { 
         ".task-conversation-scroll",
       ),
       message: detailElement.querySelector(
-        '.task-message[data-event-id="event-live-render-boundary"]',
+        '.task-message[data-event-id="event-live-render-boundary"], .task-assistant-message[data-event-id="event-live-render-boundary"]',
       ),
       siblingMessage: detailElement.querySelector(
-        '.task-message[data-event-id="event-stable-sibling"]',
+        '.task-message[data-event-id="event-stable-sibling"], .task-assistant-message[data-event-id="event-stable-sibling"]',
       ),
       prompt: detailElement.querySelector(
         '.task-follow-up-form textarea[name="prompt"]',
       ),
     };
     window.__detailRegionOrderBefore = [
-      ...detailElement.querySelectorAll(".task-message[data-event-id]"),
+      ...detailElement.querySelectorAll(
+        ".task-message[data-event-id], .task-assistant-message[data-event-id]",
+      ),
     ].map((message) => message.dataset.eventId);
   });
   await page.evaluate((nextDetail) => {
@@ -427,15 +429,17 @@ test("updates stable detail regions and preserves an active IME composition", { 
           nodes.conversationScroller,
         messagePreserved:
           detailElement.querySelector(
-            '.task-message[data-event-id="event-live-render-boundary"]',
+            '.task-message[data-event-id="event-live-render-boundary"], .task-assistant-message[data-event-id="event-live-render-boundary"]',
           ) === nodes.message,
         siblingMessagePreserved:
           detailElement.querySelector(
-            '.task-message[data-event-id="event-stable-sibling"]',
+            '.task-message[data-event-id="event-stable-sibling"], .task-assistant-message[data-event-id="event-stable-sibling"]',
           ) === nodes.siblingMessage,
         orderBefore: window.__detailRegionOrderBefore,
         orderAfter: [
-          ...detailElement.querySelectorAll(".task-message[data-event-id]"),
+          ...detailElement.querySelectorAll(
+            ".task-message[data-event-id], .task-assistant-message[data-event-id]",
+          ),
         ].map((message) => message.dataset.eventId),
         promptPreserved:
           element.querySelector(
@@ -517,6 +521,168 @@ test("updates stable detail regions and preserves an active IME composition", { 
       }),
     )
     .toBe(true);
+});
+
+test("keeps a growing agent message inside the element already rendering it", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  const detail = taskDetailFixture({ running: true });
+  const answer = {
+    id: "event-growing-answer",
+    threadId: "thread-1",
+    type: "assistant_message",
+    summary: "Assistant response",
+    payload: {
+      turnId: "turn-1",
+      text: "The first half is written.",
+    },
+    position: { anchorMs: 3, index: 0 },
+  };
+  detail.events = [answer];
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage).toContainText("The first half is written.");
+  await expect
+    .poll(() => page.evaluate(() => Boolean(window.__taskDetailSource)))
+    .toBe(true);
+  await tasksPage.evaluate((element) => {
+    const row = element.querySelector(
+      '.task-assistant-message[data-event-id="event-growing-answer"]',
+    );
+    window.__growingAnswerNodes = {
+      row,
+      markdown: row.querySelector("caffold-task-markdown"),
+    };
+  });
+
+  await page.evaluate((event) => {
+    window.__taskDetailSource.emit("task-event", {
+      threadId: "thread-1",
+      revision: 2,
+      eventRevision: 2,
+      event: {
+        ...event,
+        payload: {
+          ...event.payload,
+          text: "The first half is written. The second half follows.",
+        },
+      },
+    });
+  }, answer);
+
+  await expect(tasksPage).toContainText("The second half follows.");
+  // Longer text is the same message still being written, so the element that
+  // parsed the first half keeps parsing rather than being replaced.
+  expect(
+    await tasksPage.evaluate((element) => {
+      const nodes = window.__growingAnswerNodes;
+      const row = element.querySelector(
+        '.task-assistant-message[data-event-id="event-growing-answer"]',
+      );
+      return {
+        rowPreserved: row === nodes.row,
+        markdownPreserved:
+          row?.querySelector("caffold-task-markdown") === nodes.markdown,
+      };
+    }),
+  ).toEqual({ rowPreserved: true, markdownPreserved: true });
+});
+
+test("keeps a folded agent message inside the element already rendering it", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  const detail = taskDetailFixture();
+  detail.task.latestTurnStatus = "completed";
+  const commentary = {
+    id: "event-folded-commentary",
+    threadId: "thread-1",
+    type: "assistant_message",
+    summary: "Assistant response",
+    payload: {
+      turnId: "turn-1",
+      itemId: "commentary",
+      text: "Checking the planner diff first.",
+    },
+    position: { anchorMs: 2, index: 0 },
+  };
+  const plan = {
+    id: "event-folded-plan",
+    threadId: "thread-1",
+    type: "plan",
+    summary: "Plan",
+    payload: { turnId: "turn-1", itemId: "plan", text: "Inspect the planner" },
+    position: { anchorMs: 3, index: 0 },
+  };
+  const answer = {
+    id: "event-folded-answer",
+    threadId: "thread-1",
+    type: "assistant_message",
+    summary: "Assistant response",
+    payload: {
+      turnId: "turn-1",
+      itemId: "answer",
+      text: "The planner diff is clean.",
+      phase: "final",
+    },
+    position: { anchorMs: 4, index: 0 },
+  };
+  const turnCompleted = {
+    id: "event-folded-turn-end",
+    threadId: "thread-1",
+    type: "turn_completed",
+    summary: "Turn completed",
+    payload: { turnId: "turn-1", status: "completed" },
+    position: { anchorMs: 5, index: 0 },
+  };
+  detail.events = [commentary, plan, answer, turnCompleted];
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+  const tasksPage = page.locator("caffold-tasks-page");
+  const foldedMarkdown =
+    '.task-work-details-item[data-event-type="assistant_message"] caffold-task-markdown';
+  await expect(tasksPage.locator(foldedMarkdown)).toHaveCount(1);
+  await expect
+    .poll(() => page.evaluate(() => Boolean(window.__taskDetailSource)))
+    .toBe(true);
+  await page.evaluate((selector) => {
+    window.__foldedCommentaryMarkdown = document.querySelector(selector);
+  }, foldedMarkdown);
+
+  await page.evaluate((event) => {
+    window.__taskDetailSource.emit("task-event", {
+      threadId: "thread-1",
+      revision: 2,
+      eventRevision: 2,
+      event: {
+        ...event,
+        payload: { ...event.payload, text: "Inspect the planner and its tests" },
+      },
+    });
+  }, plan);
+
+  // Redrawing the work details for a neighbouring item leaves the message
+  // where it is, so what already parsed does not parse again.
+  await expect(
+    tasksPage.locator('.task-work-details-item[data-event-type="plan"]'),
+  ).toContainText("Inspect the planner and its tests");
+  expect(
+    await page.evaluate(
+      (selector) =>
+        document.querySelector(selector) === window.__foldedCommentaryMarkdown,
+      foldedMarkdown,
+    ),
+  ).toBe(true);
 });
 
 test("loading detail accepts a canonical task sync without a synthetic task", { tag: "@all-viewports" }, async ({
@@ -633,37 +799,11 @@ test("recovers task detail and prompt submission across bootstrap races", { tag:
       configurable: true,
       value: { register: () => Promise.resolve() },
     });
-    window.__caffoldMockEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        const unavailableDetailThread = sessionStorage.getItem(
-          "unavailableDetailThread",
-        );
-        if (
-          unavailableDetailThread &&
-          url.includes(`/api/tasks/${unavailableDetailThread}/stream`)
-        ) {
-          throw new Error("Task detail stream is unavailable in this fixture");
-        }
-        this.url = url;
-        this.listeners = new Map();
-        this.readyState = 0;
-        window.__caffoldMockEventSources.push(this);
-        window.__caffoldRegisterTaskSseSource?.(this);
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emit(type, payload) {
-        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-      }
-
-      close() {
-        this.readyState = 2;
-      }
-    };
+    window.__detailRaceLiveAvailable =
+      sessionStorage.getItem("detailRaceLiveUnavailable") !== "true";
+  });
+  await installEventSourceMock(page, {
+    detailAvailabilityKey: "__detailRaceLiveAvailable",
   });
   await mockAgentModels(page);
 
@@ -782,20 +922,13 @@ test("recovers task detail and prompt submission across bootstrap races", { tag:
     await expect
       .poll(() =>
         page.evaluate(
-          (id) =>
-            window.__caffoldMockEventSources.some((source) =>
-              source.url.includes(`/api/tasks/${id}/stream`),
-            ),
+          (id) => Boolean(window.__caffoldTaskSse.source(id)),
           threadId,
         ),
       )
       .toBe(true);
     await page.evaluate(({ threadId, detail }) => {
-      const source = [...window.__caffoldMockEventSources]
-        .reverse()
-        .find((candidate) =>
-          candidate.url.includes(`/api/tasks/${threadId}/stream`),
-        );
+      const source = window.__caffoldTaskSse.source(threadId);
       window.__caffoldTaskSse.open(source);
       source.emit("task-sync", {
         threadId,
@@ -825,9 +958,9 @@ test("recovers task detail and prompt submission across bootstrap races", { tag:
     },
   ]);
 
-  await page.evaluate((threadId) => {
-    sessionStorage.setItem("unavailableDetailThread", threadId);
-  }, taskAfterFailure.threadId);
+  await page.evaluate(() => {
+    sessionStorage.setItem("detailRaceLiveUnavailable", "true");
+  });
   await page.goto(`/tasks/${taskAfterFailure.threadId}?cwd=src`);
   await expect(tasksPage).toContainText(
     "The REST fallback kept the Task readable.",
@@ -839,7 +972,8 @@ test("recovers task detail and prompt submission across bootstrap races", { tag:
   await expect(unavailable).toBeVisible();
 
   await page.evaluate(() => {
-    sessionStorage.removeItem("unavailableDetailThread");
+    sessionStorage.removeItem("detailRaceLiveUnavailable");
+    window.__detailRaceLiveAvailable = true;
   });
   await unavailable.getByRole("button", { name: "Retry" }).click();
   await emitTaskSync(taskAfterFailure.threadId, recoveredDetail);
@@ -953,7 +1087,12 @@ test("keeps task context and retries after an initial detail timeout", { tag: "@
 test("preserves stable detail children through another task load failure", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  await installTaskApiFixture(page);
+  await page.addInitScript(() => {
+    window.__stableDetailLiveAvailable = true;
+  });
+  await installTaskApiFixture(page, {
+    detailAvailabilityKey: "__stableDetailLiveAvailable",
+  });
   await page.unroute("**/api/tasks");
 
   const now = Date.now();
@@ -1058,15 +1197,7 @@ test("preserves stable detail children through another task load failure", { tag
     .toBe(true);
 
   await page.evaluate(() => {
-    const WorkingEventSource = window.EventSource;
-    window.EventSource = class ConditionalEventSource {
-      constructor(url) {
-        if (url.includes("/api/tasks/thread-stable-b/stream")) {
-          throw new Error("Task B stream is unavailable in this fixture");
-        }
-        return new WorkingEventSource(url);
-      }
-    };
+    window.__stableDetailLiveAvailable = false;
   });
 
   await taskNavigator
@@ -1114,6 +1245,9 @@ test("preserves stable detail children through another task load failure", { tag
   await expect(tasksPage).toContainText("Recover task B canonical response.");
   await expect(conversation).toBeVisible();
 
+  await page.evaluate(() => {
+    window.__stableDetailLiveAvailable = true;
+  });
   await taskNavigator
     .locator('.task-row[data-thread-id="thread-stable-a"]')
     .click();
@@ -1760,40 +1894,9 @@ test("canonical action responses reject foreign tasks and preserve history curso
 });
 
 test("accepts canonical task detail after stream revisions restart", { tag: "@all-viewports" }, async ({ page }) => {
-  await page.addInitScript(() => {
-    window.__taskEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        this.readyState = 0;
-        window.__taskEventSources.push(this);
-        window.__caffoldRegisterTaskSseSource?.(this);
-        queueMicrotask(() => this.emitOpen());
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emit(type, payload) {
-        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-      }
-
-      emitOpen() {
-        this.readyState = 1;
-        this.listeners.get("open")?.({});
-      }
-
-      emitError() {
-        this.readyState = 0;
-        this.listeners.get("error")?.({});
-      }
-
-      close() {
-        this.readyState = 2;
-      }
-    };
+  await installEventSourceMock(page, {
+    registryKey: "__taskEventSources",
+    autoOpen: true,
   });
   await mockAgentModels(page);
 
@@ -2121,7 +2224,7 @@ test("reconciles a canonical final answer over a retained transient item after r
     });
 
   const finalAnswer = tasksPage.locator(
-    `.task-message[data-event-id="${eventId}"][data-message-role="assistant"]`,
+    `.task-assistant-message[data-event-id="${eventId}"]`,
   );
   await expect(finalAnswer).toContainText(
     "The canonical final answer survived the reconnect.",
@@ -2132,39 +2235,9 @@ test("reconciles a canonical final answer over a retained transient item after r
 });
 
 test("accepts canonical task sync after stream revisions restart", { tag: "@all-viewports" }, async ({ page }) => {
-  await page.addInitScript(() => {
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        this.readyState = 0;
-        if (url.startsWith("/api/tasks/stream")) {
-          window.__taskListEventSource = this;
-        }
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emit(type, payload) {
-        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-      }
-
-      emitOpen() {
-        this.readyState = 1;
-        this.listeners.get("open")?.({});
-      }
-
-      emitError() {
-        this.readyState = 0;
-        this.listeners.get("error")?.({});
-      }
-
-      close() {
-        this.readyState = 2;
-      }
-    };
+  await installEventSourceMock(page, {
+    sourceKey: "__taskListEventSource",
+    autoOpen: true,
   });
   await mockAgentModels(page);
 
@@ -2247,41 +2320,9 @@ test("accepts canonical task sync after stream revisions restart", { tag: "@all-
 test("opens a running conversation at the latest message from the stream bootstrap", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
-  await page.addInitScript(() => {
-    window.__taskEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        this.readyState = 0;
-        window.__taskEventSources.push(this);
-        window.__caffoldRegisterTaskSseSource?.(this);
-        queueMicrotask(() => this.emitOpen());
-      }
-
-      addEventListener(type, listener) {
-        const listeners = this.listeners.get(type) ?? [];
-        listeners.push(listener);
-        this.listeners.set(type, listeners);
-      }
-
-      emit(type, payload) {
-        for (const listener of this.listeners.get(type) ?? []) {
-          listener({ data: JSON.stringify(payload) });
-        }
-      }
-
-      emitOpen() {
-        this.readyState = 1;
-        for (const listener of this.listeners.get("open") ?? []) {
-          listener({});
-        }
-      }
-
-      close() {
-        this.readyState = 2;
-      }
-    };
+  await installEventSourceMock(page, {
+    registryKey: "__taskEventSources",
+    autoOpen: true,
   });
   await page.route("https://esm.sh/**", (route) => route.abort());
   await mockAgentModels(page);
@@ -2355,48 +2396,8 @@ test("opens a running conversation at the latest message from the stream bootstr
 test("makes disconnected task state unavailable and preserves an unidentifiable prompt", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
-  await page.addInitScript(() => {
-    window.__taskEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        this.readyState = 0;
-        window.__taskEventSources.push(this);
-        window.__caffoldRegisterTaskSseSource?.(this);
-      }
-
-      addEventListener(type, listener) {
-        const listeners = this.listeners.get(type) ?? [];
-        listeners.push(listener);
-        this.listeners.set(type, listeners);
-      }
-
-      emit(type, payload) {
-        for (const listener of this.listeners.get(type) ?? []) {
-          listener({ data: JSON.stringify(payload) });
-        }
-      }
-
-      emitOpen() {
-        this.readyState = 1;
-        for (const listener of this.listeners.get("open") ?? []) {
-          listener({});
-        }
-      }
-
-      emitError(closed = false) {
-        this.readyState = closed ? 2 : 0;
-        for (const listener of this.listeners.get("error") ?? []) {
-          listener({});
-        }
-      }
-
-      close() {
-        this.closed = true;
-        this.readyState = 2;
-      }
-    };
+  await installEventSourceMock(page, {
+    registryKey: "__taskEventSources",
   });
   await mockAgentModels(page);
 

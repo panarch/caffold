@@ -1,44 +1,49 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "./origin-reachability.js";
-
-const documentListeners = new Map();
-globalThis.document = {
-  visibilityState: "visible",
-  addEventListener(type, listener) {
-    documentListeners.set(type, listener);
-  },
-};
-
-class MockEventSource {
-  static instances = [];
-
-  constructor(url) {
-    this.url = url;
-    this.listeners = new Map();
+class MockWatchBinding {
+  constructor(path, listener) {
+    this.path = path;
+    this.listener = listener;
     this.closed = false;
-    MockEventSource.instances.push(this);
+    this.retries = 0;
   }
 
-  addEventListener(type, listener) {
-    this.listeners.set(type, listener);
+  emit(type, payload) {
+    this.listener.onEvent?.(type, payload);
   }
 
-  emit(type, payload = null) {
-    this.listeners.get(type)?.({ data: payload === null ? "" : JSON.stringify(payload) });
+  emitError({ closed = false, physical = false } = {}) {
+    this.listener.onError?.(new Error("unavailable"), { closed, physical });
+  }
+
+  emitResume() {
+    this.listener.onResume?.();
   }
 
   close() {
     this.closed = true;
   }
+
+  retry() {
+    this.retries += 1;
+    return true;
+  }
 }
 
-globalThis.window = Object.assign(new EventTarget(), {
-  EventSource: MockEventSource,
-  location: { origin: "http://localhost" },
-});
-globalThis.EventSource = MockEventSource;
+class MockLiveUpdates {
+  constructor() {
+    this.bindings = [];
+  }
+
+  subscribeWatch(path, listener) {
+    const binding = new MockWatchBinding(path, listener);
+    this.bindings.push(binding);
+    return binding;
+  }
+}
+
+globalThis.window = { setTimeout, clearTimeout };
 
 const {
   createRefreshCoordinator,
@@ -48,14 +53,19 @@ const {
   "./watch.js"
 );
 
-test("shares one EventSource until the final scope subscriber leaves", async () => {
+test("shares one gateway Watch binding until the final scope subscriber leaves", async () => {
+  const liveUpdates = new MockLiveUpdates();
   const ready = [];
-  const first = subscribeToWatch("repo", { onReady: (event) => ready.push(event) });
-  const second = subscribeToWatch("repo", { onReady: (event) => ready.push(event) });
+  const first = subscribeToWatch(liveUpdates, "repo", {
+    onReady: (event) => ready.push(event),
+  });
+  const second = subscribeToWatch(liveUpdates, "repo", {
+    onReady: (event) => ready.push(event),
+  });
 
-  assert.equal(MockEventSource.instances.length, 1);
-  const source = MockEventSource.instances[0];
-  assert.equal(source.url, "/api/watch?path=repo");
+  assert.equal(liveUpdates.bindings.length, 1);
+  const source = liveUpdates.bindings[0];
+  assert.equal(source.path, "repo");
   source.emit("ready", { revision: 1, scopePath: "repo", repositoryRootPath: "repo" });
   assert.equal(ready.length, 2);
 
@@ -65,24 +75,17 @@ test("shares one EventSource until the final scope subscriber leaves", async () 
   assert.equal(source.closed, true);
 });
 
-test("reports reachability only when the current watch source opens", () => {
-  let reachable = 0;
-  window.addEventListener(CAFFOLD_ORIGIN_REACHABLE_EVENT, () => {
-    reachable += 1;
-  });
-  const unsubscribe = subscribeToWatch("origin", {});
-  const stale = MockEventSource.instances.at(-1);
+test("keeps distinct Watch scopes independent on the same gateway", () => {
+  const liveUpdates = new MockLiveUpdates();
+  const first = subscribeToWatch(liveUpdates, "first", {});
+  const second = subscribeToWatch(liveUpdates, "second", {});
 
-  document.visibilityState = "hidden";
-  documentListeners.get("visibilitychange")();
-  document.visibilityState = "visible";
-  documentListeners.get("visibilitychange")();
-
-  stale.emit("open");
-  assert.equal(reachable, 0);
-  MockEventSource.instances.at(-1).emit("open");
-  assert.equal(reachable, 1);
-  unsubscribe();
+  assert.deepEqual(
+    liveUpdates.bindings.map((binding) => binding.path),
+    ["first", "second"],
+  );
+  first();
+  second();
 });
 
 test("coalesces an event burst into one trailing refresh", async () => {
@@ -138,26 +141,20 @@ test("matches watch changes to the selected path without treating siblings as re
 });
 
 test("requests recovery after reconnect and visibility resume", () => {
+  const liveUpdates = new MockLiveUpdates();
   const events = [];
-  const unsubscribe = subscribeToWatch("recovery", {
+  const unsubscribe = subscribeToWatch(liveUpdates, "recovery", {
     onReady: (event) => events.push(["ready", event.recovered]),
     onError: () => events.push(["error"]),
     onRecover: () => events.push(["visible"]),
   });
-  const source = MockEventSource.instances.at(-1);
+  const source = liveUpdates.bindings.at(-1);
 
   source.emit("ready", { revision: 1, scopePath: "recovery", repositoryRootPath: null });
-  source.emit("error");
+  source.emitError();
   source.emit("ready", { revision: 2, scopePath: "recovery", repositoryRootPath: null });
-  document.visibilityState = "hidden";
-  documentListeners.get("visibilitychange")();
-  assert.equal(source.closed, true);
-
-  document.visibilityState = "visible";
-  documentListeners.get("visibilitychange")();
-  const resumedSource = MockEventSource.instances.at(-1);
-  assert.notEqual(resumedSource, source);
-  resumedSource.emit("ready", {
+  source.emitResume();
+  source.emit("ready", {
     revision: 3,
     scopePath: "recovery",
     repositoryRootPath: null,
@@ -170,5 +167,20 @@ test("requests recovery after reconnect and visibility resume", () => {
     ["visible"],
     ["ready", false],
   ]);
+  unsubscribe();
+});
+
+test("leaves exhausted physical recovery with the workspace gateway owner", () => {
+  const liveUpdates = new MockLiveUpdates();
+  const errors = [];
+  const unsubscribe = subscribeToWatch(liveUpdates, "physical", {
+    onError: (error) => errors.push(error.message),
+  });
+  const binding = liveUpdates.bindings.at(-1);
+
+  binding.emitError({ closed: true, physical: true });
+
+  assert.deepEqual(errors, ["unavailable"]);
+  assert.equal(binding.retries, 0);
   unsubscribe();
 });

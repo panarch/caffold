@@ -252,14 +252,22 @@ export async function resolveTaskApproval(threadId, approvalId, decision) {
   );
 }
 
-export function taskStreamUrl(threadId) {
-  const url = new URL(`/api/tasks/${encodeURIComponent(threadId)}/stream`, window.location.origin);
+export function liveUpdatesUrl() {
+  const url = new URL("/api/live", window.location.origin);
   return `${url.pathname}${url.search}`;
 }
 
-export function taskListStreamUrl() {
-  const url = new URL("/api/tasks/stream", window.location.origin);
-  return `${url.pathname}${url.search}`;
+export async function updateLiveSubscriptions(connectionId, subscriptions) {
+  return requestJson(
+    `/api/live/${encodeURIComponent(connectionId)}/subscriptions`,
+    {},
+    {
+      method: "PUT",
+      body: subscriptions,
+      expectJson: false,
+      timeoutMs: 8_000,
+    },
+  );
 }
 
 export async function listDirectory(path = "") {
@@ -274,12 +282,6 @@ export function imageUrl(path) {
   const url = new URL("/api/image", window.location.origin);
   url.searchParams.set("path", path);
   return url.toString();
-}
-
-export function watchUrl(path = "") {
-  const url = new URL("/api/watch", window.location.origin);
-  url.searchParams.set("path", path);
-  return `${url.pathname}${url.search}`;
 }
 
 export async function getGitStatus(path = "") {

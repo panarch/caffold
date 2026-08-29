@@ -21,6 +21,7 @@ use crate::{
         CodexThreadClient,
     },
     fs::RootedFs,
+    watch::WatchHub,
 };
 
 use super::CodexMcpHost;
@@ -102,6 +103,7 @@ pub(in crate::app) struct PersistentTasksGateway {
     database_path: PathBuf,
     worktree_root: PathBuf,
     codex_mcp: CodexMcpHost,
+    watch_hub: WatchHub,
 }
 
 impl PersistentTasksGateway {
@@ -112,6 +114,7 @@ impl PersistentTasksGateway {
         database_path: PathBuf,
         worktree_root: PathBuf,
         codex_mcp: CodexMcpHost,
+        watch_hub: WatchHub,
     ) -> Self {
         let status = Arc::new(RwLock::new(StartupTaskStatus {
             codex: pending_codex_status(),
@@ -152,6 +155,7 @@ impl PersistentTasksGateway {
             database_path,
             worktree_root,
             codex_mcp,
+            watch_hub,
         }
     }
 
@@ -171,6 +175,7 @@ impl PersistentTasksGateway {
                     self.database_path.clone(),
                     self.worktree_root.clone(),
                     self.codex_mcp.clone(),
+                    self.watch_hub.clone(),
                 ) {
                     Ok(tasks) => {
                         self.gateway.replace(tasks.router()).await;

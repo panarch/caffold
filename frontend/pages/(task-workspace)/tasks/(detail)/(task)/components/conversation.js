@@ -7,6 +7,7 @@ import {
 import { isTaskTransportStale } from "../../../runtime-state.js";
 import { requestTaskImagePreview } from "../../../components/image-preview-dialog.js";
 import "./conversation/components/active-turn.js";
+import "./conversation/components/assistant-message.js";
 import "./conversation/components/changed-files.js";
 import "./conversation/components/command.js";
 import "./conversation/components/markdown.js";
@@ -269,6 +270,7 @@ class CaffoldTaskConversation extends HTMLElement {
       view.workDetails,
       view.changedFiles,
       view.commands,
+      view.messages,
       this.active,
     );
     const threadId = this.snapshot.threadId;
@@ -848,6 +850,7 @@ function reconcileConversationList(
   workDetails,
   changedFiles = new Map(),
   commands = new Map(),
+  messages = new Map(),
   active = true,
 ) {
   if (!list) {
@@ -886,6 +889,13 @@ function reconcileConversationList(
       )
       .map((entry) => [entry.dataset.conversationEntryKey, entry]),
   );
+  const existingMessageEntries = new Map(
+    [...list.children]
+      .filter((entry) =>
+        entry.matches(".task-assistant-message[data-conversation-entry-key]"),
+      )
+      .map((entry) => [entry.dataset.conversationEntryKey, entry]),
+  );
   const existingActiveTurn = list.querySelector(
     ":scope > .task-turn-active[data-conversation-entry-key]",
   );
@@ -917,6 +927,15 @@ function reconcileConversationList(
         "data-conversation-entry-key",
       ]);
       return existingActiveTurn;
+    }
+    const messageSnapshot = messages.get(key);
+    const existingMessage = existingMessageEntries.get(key);
+    if (
+      messageSnapshot &&
+      existingMessage &&
+      patchMessageEntry(existingMessage, entry)
+    ) {
+      return existingMessage;
     }
     const commandSnapshot = commands.get(key);
     const existingCommand = existingCommandEntries.get(key);
@@ -977,7 +996,30 @@ function reconcileConversationList(
     if (commandOwner && commandSnapshot) {
       commandOwner.setSnapshot(commandSnapshot);
     }
+    const messageSnapshot = messages.get(key);
+    const messageOwner = entry.querySelector(
+      ":scope > caffold-task-assistant-message",
+    );
+    if (messageOwner && messageSnapshot) {
+      messageOwner.setSnapshot(messageSnapshot);
+    }
   }
+}
+
+function patchMessageEntry(current, desired) {
+  const owner = current.querySelector(
+    ":scope > caffold-task-assistant-message",
+  );
+  if (!owner) {
+    return false;
+  }
+  syncElementAttributes(current, desired, [
+    "class",
+    "data-event-id",
+    "data-conversation-entry-key",
+    "data-event-type",
+  ]);
+  return true;
 }
 
 function patchCommandEntry(current, desired) {

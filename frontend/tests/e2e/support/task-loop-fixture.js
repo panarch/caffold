@@ -2,6 +2,7 @@ import { expect } from "@playwright/test";
 import {
   activeTaskProjection,
   canonicalTaskState,
+  installEventSourceMock,
   mockAgentModels,
 } from "./task-fixtures.js";
 
@@ -26,55 +27,10 @@ export async function installTaskLoopFixture(
         register: () => Promise.resolve(),
       },
     });
-    window.__caffoldMockEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        this.readyState = 0;
-        window.__caffoldMockEventSources.push(this);
-        const detailMatch = url.match(/\/api\/tasks\/([^/?]+)\/stream/);
-        if (detailMatch) {
-          queueMicrotask(async () => {
-            const detail = await window.__caffoldTaskDetailBootstrap?.(
-              decodeURIComponent(detailMatch[1]),
-            );
-            if (!detail || this.readyState === 2) {
-              return;
-            }
-            this.emitOpen();
-            this.emit("task-sync", {
-              threadId: detail.threadId,
-              revision: detail.revision,
-              detail,
-              reason: "stream-bootstrap",
-            });
-          });
-        }
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emit(type, payload) {
-        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-      }
-
-      emitOpen() {
-        this.readyState = 1;
-        this.listeners.get("open")?.({});
-      }
-
-      emitError(closed = false) {
-        this.readyState = closed ? 2 : 0;
-        this.listeners.get("error")?.({});
-      }
-
-      close() {
-        this.readyState = 2;
-      }
-    };
+  });
+  await installEventSourceMock(page, {
+    autoOpen: true,
+    bootstrapFunctionKey: "__caffoldTaskDetailBootstrap",
   });
 
   await mockAgentModels(page);

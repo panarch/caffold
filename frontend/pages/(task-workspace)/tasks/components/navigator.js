@@ -113,6 +113,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.reorderPopoverId = `task-list-reorder-${taskNavigatorInstanceId}`;
     this.taskOperations = taskStoreOperationsPresentation(null);
     this.lastPublishedListState = "";
+    this.liveUpdates = null;
     this.boundClick = (event) => this.handleClick(event);
     this.boundIconsReady = () => this.syncPrimaryHeader();
     this.boundSectionStateChange = (event) =>
@@ -148,6 +149,12 @@ class CaffoldTaskNavigator extends HTMLElement {
 
   get taskListStream() {
     return this.activeTaskList?.taskListStream ?? null;
+  }
+
+  setLiveUpdates(liveUpdates) {
+    this.ensureChildren();
+    this.liveUpdates = liveUpdates ?? null;
+    this.activeTaskList.setLiveUpdates(this.liveUpdates);
   }
 
   get streamState() {
@@ -472,6 +479,7 @@ class CaffoldTaskNavigator extends HTMLElement {
       </div>
     `;
     this.activeTaskList.setTaskOperations(this.taskOperations);
+    this.activeTaskList.setLiveUpdates(this.liveUpdates);
     this.activeTaskList.setReorderMode(this.reorderMode);
     this.archivedTaskList.setTaskOperations(this.taskOperations);
   }

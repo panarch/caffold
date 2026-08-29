@@ -1,0 +1,24 @@
+caffold-task-assistant-message {
+  display: grid;
+  gap: 0.3125rem;
+  width: 100%;
+  min-width: 0;
+
+  & > .task-assistant-message-header {
+    display: flex;
+    align-items: center;
+    min-height: 1rem;
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & > .task-assistant-message-body {
+    width: min(100%, 850px);
+    min-width: 0;
+    max-width: 100%;
+    padding: 0.0625rem 0 0;
+    font-size: var(--conversation-font-size);
+    line-height: var(--conversation-line-height);
+  }
+}

@@ -1,18 +1,21 @@
-import { watchUrl } from "./api.js";
-import { reportOriginReachable } from "./origin-reachability.js";
+const scopesByGateway = new WeakMap();
+const WATCH_RETRY_DELAY_MS = 3_000;
 
-const scopes = new Map();
-
-export function subscribeToWatch(path, listener) {
-  if (!("EventSource" in window)) {
+export function subscribeToWatch(liveUpdates, path, listener) {
+  if (!liveUpdates?.subscribeWatch) {
     queueMicrotask(() => listener.onError?.(new Error("Live updates are unavailable.")));
     return () => {};
   }
 
+  let scopes = scopesByGateway.get(liveUpdates);
+  if (!scopes) {
+    scopes = new Map();
+    scopesByGateway.set(liveUpdates, scopes);
+  }
   const key = path ?? "";
   let scope = scopes.get(key);
   if (!scope) {
-    scope = createScope(key);
+    scope = createScope(liveUpdates, key);
     scopes.set(key, scope);
   }
 
@@ -28,7 +31,8 @@ export function subscribeToWatch(path, listener) {
     if (scope.listeners.size > 0) {
       return;
     }
-    scope.source?.close();
+    window.clearTimeout(scope.retryTimer);
+    scope.binding?.close();
     scopes.delete(key);
   };
 }
@@ -92,15 +96,17 @@ export function watchChangeAffectsPath(change, path) {
   });
 }
 
-function createScope(path) {
+function createScope(liveUpdates, path) {
   const scope = {
+    liveUpdates,
     path,
-    source: null,
+    binding: null,
     listeners: new Set(),
     ready: null,
     unavailable: false,
     error: null,
     hasConnected: false,
+    retryTimer: null,
   };
 
   connectScope(scope);
@@ -108,61 +114,67 @@ function createScope(path) {
 }
 
 function connectScope(scope) {
-  if (scope.source || document.visibilityState !== "visible") {
+  if (scope.binding) {
     return;
   }
 
-  const source = new EventSource(watchUrl(scope.path));
-  scope.source = source;
-
-  source.addEventListener("open", () => {
-    if (scope.source !== source) {
-      return;
-    }
-    reportOriginReachable();
+  scope.binding = scope.liveUpdates.subscribeWatch(scope.path, {
+    onEvent: (type, payload) => acceptWatchEvent(scope, type, payload),
+    onError: (error, { closed = false, physical = false } = {}) => {
+      markUnavailable(scope, error);
+      if (closed && !physical) {
+        scheduleWatchRetry(scope);
+      }
+    },
+    onInvalidated: () => {
+      markUnavailable(scope, new Error("Live updates are unavailable."));
+    },
+    onResume: () => {
+      if (scope.ready) {
+        notify(scope, "onRecover", scope.ready);
+      }
+    },
   });
-  source.addEventListener("ready", (event) => {
-    if (scope.source !== source) {
-      return;
-    }
-    const ready = parsePayload(event);
-    if (!ready) {
-      return;
-    }
+}
+
+function acceptWatchEvent(scope, type, payload) {
+  if (type === "ready") {
     const recovered = scope.hasConnected && scope.unavailable;
-    scope.ready = ready;
+    scope.ready = payload;
     scope.hasConnected = true;
     scope.unavailable = false;
     scope.error = null;
-    notify(scope, "onReady", { ...ready, recovered });
-  });
-  source.addEventListener("change", (event) => {
-    if (scope.source !== source) {
-      return;
+    window.clearTimeout(scope.retryTimer);
+    scope.retryTimer = null;
+    notify(scope, "onReady", { ...payload, recovered });
+    return;
+  }
+  if (type === "change") {
+    if (scope.unavailable) {
+      scope.unavailable = false;
+      scope.error = null;
+      notify(scope, "onReady", { ...scope.ready, recovered: true });
     }
-    const change = parsePayload(event);
-    if (change) {
-      if (scope.unavailable) {
-        scope.unavailable = false;
-        scope.error = null;
-        notify(scope, "onReady", { ...scope.ready, recovered: true });
-      }
-      notify(scope, "onChange", change);
-    }
-  });
-  source.addEventListener("watch-error", (event) => {
-    if (scope.source !== source) {
-      return;
-    }
-    const payload = parsePayload(event);
-    markUnavailable(scope, new Error(payload?.message ?? "Live updates are unavailable."));
-  });
-  source.addEventListener("error", () => {
-    if (scope.source !== source) {
-      return;
-    }
-    markUnavailable(scope, new Error("Live updates are unavailable."));
-  });
+    notify(scope, "onChange", payload);
+    return;
+  }
+  if (type === "watch-error") {
+    markUnavailable(
+      scope,
+      new Error(payload?.message ?? "Live updates are unavailable."),
+    );
+    scheduleWatchRetry(scope);
+  }
+}
+
+function scheduleWatchRetry(scope) {
+  if (scope.retryTimer !== null || scope.listeners.size === 0) {
+    return;
+  }
+  scope.retryTimer = window.setTimeout(() => {
+    scope.retryTimer = null;
+    scope.binding?.retry();
+  }, WATCH_RETRY_DELAY_MS);
 }
 
 function markUnavailable(scope, error) {
@@ -177,14 +189,6 @@ function notify(scope, method, value) {
   }
 }
 
-function parsePayload(event) {
-  try {
-    return JSON.parse(event.data);
-  } catch {
-    return null;
-  }
-}
-
 function normalizeWatchPath(path) {
   return `${path ?? ""}`
     .replaceAll("\\", "/")
@@ -192,19 +196,3 @@ function normalizeWatchPath(path) {
     .filter((segment) => segment && segment !== ".")
     .join("/");
 }
-
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState !== "visible") {
-    for (const scope of scopes.values()) {
-      scope.source?.close();
-      scope.source = null;
-    }
-    return;
-  }
-  for (const scope of scopes.values()) {
-    if (scope.ready) {
-      notify(scope, "onRecover", scope.ready);
-    }
-    connectScope(scope);
-  }
-});

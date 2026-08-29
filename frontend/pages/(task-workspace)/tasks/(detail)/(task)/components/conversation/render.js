@@ -38,6 +38,7 @@ export function renderConversation(events, task, approvals = [], options = {}) {
   const workDetails = new Map();
   const changedFiles = new Map();
   const commands = new Map();
+  const messages = new Map();
   const filePathPresentationBase = effectiveTaskFileRoot(task);
   const conversationEvents = sortEventsChronologically(
     dedupeCanonicalEvents(events),
@@ -72,6 +73,7 @@ export function renderConversation(events, task, approvals = [], options = {}) {
           workDetails,
           changedFiles,
           commands,
+          messages,
           filePathPresentationBase,
         });
       }
@@ -100,6 +102,7 @@ export function renderConversation(events, task, approvals = [], options = {}) {
             active: false,
             changedFiles,
             commands,
+            messages,
             filePathPresentationBase,
           }),
           eventOrder,
@@ -121,7 +124,7 @@ export function renderConversation(events, task, approvals = [], options = {}) {
       activeTurns,
     );
   }
-  return { html, activeTurns, workDetails, changedFiles, commands };
+  return { html, activeTurns, workDetails, changedFiles, commands, messages };
 }
 
 function renderedTimelineEntry(events, html, eventOrder) {
@@ -195,6 +198,7 @@ function renderTurnGroupEntries(group, task, options = {}) {
       options.approvalErrors,
       options.eventOrder,
       options.workDetails,
+      options.messages,
       options.filePathPresentationBase,
     );
   }
@@ -212,6 +216,7 @@ function renderTurnGroupEntries(group, task, options = {}) {
           options.filePathPresentationBase,
           options.changedFiles,
           options.commands,
+          options.messages,
         ),
         options.eventOrder,
       ),
@@ -229,6 +234,7 @@ function renderCompletedTurnGroupEntries(
   approvalErrors = new Map(),
   eventOrder = new Map(),
   workDetails = new Map(),
+  messages = new Map(),
   filePathPresentationBase = "",
 ) {
   const output = [];
@@ -322,6 +328,7 @@ function renderCompletedTurnGroupEntries(
         renderConversationEvent(finalAssistantEvent, task, {
           active: false,
           messagePhase: "final",
+          messages,
           filePathPresentationBase,
         }),
         eventOrder,
@@ -340,6 +347,7 @@ function renderActiveTurnTimelineEvent(
   filePathPresentationBase = "",
   changedFiles = new Map(),
   commands = new Map(),
+  messages = new Map(),
 ) {
   if (
     event.type === "approval_requested" &&
@@ -363,6 +371,7 @@ function renderActiveTurnTimelineEvent(
       active: isWorkEvent(event),
       changedFiles,
       commands,
+      messages,
       filePathPresentationBase,
     });
   }
@@ -434,9 +443,11 @@ export function renderConversationEvent(event, task, eventState) {
     });
   }
   if (event.type === "assistant_message") {
-    return renderMessageEvent(event, "assistant", payload.text, {
-      phase: eventState?.messagePhase ?? assistantMessagePhase(payload.phase),
-    });
+    return renderAssistantMessageEvent(
+      event,
+      eventState?.messagePhase,
+      eventState?.messages,
+    );
   }
   if (event.type === "generated_image") {
     return renderMessageEvent(event, "assistant", "", {
@@ -493,15 +504,15 @@ function renderStatusEvent(event) {
   `;
 }
 
+// A prompt or a generated image. The Composer is a plain textarea, so a prompt
+// is shown as the characters it was typed with; markdown is the agent's own
+// formatting and belongs to the message component.
 function renderMessageEvent(event, role, text, options = {}) {
   const value = `${text ?? ""}`.trim();
   const attachments = Array.isArray(options.attachments) ? options.attachments : [];
   if (!value && !attachments.length) {
     return renderStatusEvent(event);
   }
-  const phaseAttribute = options.phase
-    ? ` data-message-phase="${escapeHtml(options.phase)}"`
-    : "";
   const attachmentsAttribute = attachments.length ? " data-has-attachments" : "";
   const submissionState = promptSubmissionState(event);
   const deliveryAttribute = submissionState
@@ -514,7 +525,7 @@ function renderMessageEvent(event, role, text, options = {}) {
   }[submissionState] ?? "";
 
   return `
-    <li class="task-event task-message"${eventIdentityAttribute(event)}${conversationEntryAttributes(event, `${role}:${options.phase ?? ""}:${submissionState}`)} data-event-type="${escapeHtml(event.type)}" data-message-role="${escapeHtml(role)}"${phaseAttribute}${attachmentsAttribute}${deliveryAttribute}>
+    <li class="task-event task-message"${eventIdentityAttribute(event)}${conversationEntryAttributes(event, `${role}:${submissionState}`)} data-event-type="${escapeHtml(event.type)}" data-message-role="${escapeHtml(role)}"${attachmentsAttribute}${deliveryAttribute}>
       <div class="task-message-header">
         ${deliveryLabel ? `<span class="task-message-delivery">${escapeHtml(deliveryLabel)}</span>` : ""}
         ${renderObservedTime(event)}
@@ -522,21 +533,31 @@ function renderMessageEvent(event, role, text, options = {}) {
       ${renderMessageAttachments(attachments)}
       ${value ? `
         <div class="task-message-content">
-          ${renderMessageBody(event, role, value, options.phase)}
+          <div class="task-message-text">${escapeHtml(value)}</div>
         </div>
       ` : ""}
     </li>
   `;
 }
 
-// The Composer is a plain textarea, so a prompt is shown as the characters it
-// was typed with. Markdown is the agent's own formatting.
-function renderMessageBody(event, role, value, phase) {
-  if (role === "user") {
-    return `<div class="task-message-text">${escapeHtml(value)}</div>`;
+// What the agent said, in whichever list the conversation is placing it.
+// An inline message and the same message folded into a finished turn's work
+// details are one component in two positions, so the card itself is owned by
+// `caffold-task-assistant-message` rather than drawn here twice.
+function renderAssistantMessageEvent(event, messagePhase, messages = new Map()) {
+  if (!`${event.payload?.text ?? ""}`.trim()) {
+    return renderStatusEvent(event);
   }
-  const codeBlockControls = phase === "final" ? " code-block-controls" : "";
-  return `<caffold-task-markdown${markdownContextAttributes(event)}${codeBlockControls}>${escapeHtml(value)}</caffold-task-markdown>`;
+  const identity = eventIdentityKey(event) || `${event?.id ?? ""}`;
+  const phase = messagePhase ?? assistantMessagePhase(event.payload?.phase);
+  if (identity) {
+    messages.set(identity, { event, phase });
+  }
+  return `
+    <li class="task-event task-assistant-message"${eventIdentityAttribute(event)} data-conversation-entry-key="${escapeHtml(identity)}" data-event-type="${escapeHtml(event.type)}">
+      <caffold-task-assistant-message></caffold-task-assistant-message>
+    </li>
+  `;
 }
 
 function eventIdentityAttribute(event) {

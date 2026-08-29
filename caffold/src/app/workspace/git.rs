@@ -221,7 +221,6 @@ mod tests {
         http::{Request, StatusCode, header},
     };
     use serde_json::{Value as JsonValue, json};
-    use tokio::sync::broadcast;
     use tower::ServiceExt;
 
     use crate::fs::RootedFs;
@@ -395,8 +394,7 @@ mod tests {
 
     fn app(root: &Path) -> axum::Router {
         let fs = Arc::new(RootedFs::new(root).unwrap());
-        let (shutdown, _) = broadcast::channel(1);
-        router(fs, shutdown)
+        router(fs)
     }
 
     async fn assert_fetch_error(

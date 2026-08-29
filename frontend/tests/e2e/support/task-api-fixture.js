@@ -41,13 +41,14 @@ export async function installTaskApiFixture(page, overrides = {}) {
     }),
   );
   await page.addInitScript(installTaskSseControllerInBrowser);
-  await page.addInitScript(() => {
+  await page.addInitScript((fixtureOptions) => {
     window.__taskPermissionEventSources = [];
     window.EventSource = class MockEventSource {
       constructor(url) {
         this.url = url;
         this.listeners = new Map();
         this.readyState = 0;
+        this.detailAvailabilityKey = fixtureOptions.detailAvailabilityKey;
         window.__taskPermissionEventSources.push(this);
         window.__caffoldRegisterTaskSseSource(this);
         if (url.includes("/api/tasks/thread-1/stream")) {
@@ -75,6 +76,8 @@ export async function installTaskApiFixture(page, overrides = {}) {
         this.readyState = 2;
       }
     };
+  }, {
+    detailAvailabilityKey: overrides.detailAvailabilityKey ?? null,
   });
   await page.route("**/api/agent/permissions*", (route) =>
     route.fulfill({ json: overrides.permissions ?? TASK_PERMISSION_FIXTURE }),

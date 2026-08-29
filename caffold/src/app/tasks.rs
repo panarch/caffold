@@ -5,6 +5,7 @@ mod detail;
 mod events;
 mod generated_images;
 mod lifecycle;
+mod live;
 mod projection;
 mod push;
 mod recovery;
@@ -27,15 +28,16 @@ use crate::{
     agent::{claude::ClaudeClient, codex::CodexMcpBindings},
     fs::RootedFs,
     task_store::TaskStore,
+    watch::WatchHub,
 };
 
 pub(in crate::app) use codex_mcp::CodexMcpHost;
 use detail::{DetailContext, TaskDetailSync};
 use events::TaskEvents;
 use lifecycle::TaskLifecycle;
+use live::TaskListEvents;
 pub(in crate::app::tasks) use projection::TaskRecord;
 use push::{PushRuntime, PushService};
-use routes::TaskListEvents;
 use runtime::TaskRuntime;
 pub(in crate::app) use startup::PersistentTasksGateway;
 use sync::TaskSync;
@@ -162,6 +164,7 @@ pub(in crate::app) struct TasksApp {
 }
 
 impl TasksApp {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         fs: Arc<RootedFs>,
         default_cwd_path: String,
@@ -170,12 +173,13 @@ impl TasksApp {
         worktree_root: PathBuf,
         claude: ClaudeClient,
         codex_mcp: CodexMcpHost,
+        watch_hub: WatchHub,
     ) -> anyhow::Result<Self> {
         let push = PushRuntime::new(task_store.clone())?;
         let state = TaskState::new_with_push(
             fs,
             default_cwd_path,
-            shutdown,
+            shutdown.clone(),
             task_store,
             worktree_root,
             push.service(),
@@ -185,9 +189,14 @@ impl TasksApp {
             },
         )?;
         let runtime = state.task_runtime.clone();
+        let live_source = TaskLiveSource::new(&state);
         codex_mcp.attach_runtime(runtime.clone());
         Ok(Self {
-            router: routes::router(state),
+            router: routes::router(state).merge(super::live_updates::router(
+                live_source,
+                watch_hub,
+                shutdown,
+            )),
             runtime,
             push,
         })
@@ -200,6 +209,7 @@ impl TasksApp {
         database_path: PathBuf,
         worktree_root: PathBuf,
         codex_mcp: CodexMcpHost,
+        watch_hub: WatchHub,
     ) -> anyhow::Result<Self> {
         // The runner's socket lives beside the database, so an installed
         // application and a development server each drive their own.
@@ -215,6 +225,7 @@ impl TasksApp {
             worktree_root,
             ClaudeClient::in_data_dir(&data_dir),
             codex_mcp,
+            watch_hub,
         )?;
         app.runtime.startup();
         Ok(app)
@@ -226,6 +237,7 @@ impl TasksApp {
         shutdown: broadcast::Sender<()>,
         worktree_root: PathBuf,
         codex_mcp: CodexMcpHost,
+        watch_hub: WatchHub,
     ) -> anyhow::Result<Self> {
         let data_dir = worktree_root.clone();
         Self::new(
@@ -236,6 +248,7 @@ impl TasksApp {
             worktree_root,
             ClaudeClient::in_data_dir(&data_dir),
             codex_mcp,
+            watch_hub,
         )
     }
 
@@ -248,8 +261,9 @@ impl TasksApp {
     }
 }
 
-pub(in crate::app::tasks) use detail::{DetailFrameStream, TaskDetailResponse};
+pub(in crate::app::tasks) use detail::TaskDetailResponse;
 pub(in crate::app::tasks) use events::{TaskEventRecord, accepted_user_message_event, now_ms};
+pub(in crate::app) use live::TaskLiveSource;
 pub(in crate::app::tasks) use projection::task_activity_ms;
 pub(in crate::app::tasks) use runtime::{ApprovalResolveError, CodexConnection, TaskAgent};
 

@@ -48,6 +48,7 @@
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info/components/actions.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css";
+@import "./pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css";

@@ -10,7 +10,7 @@ use crate::{
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app::tasks) struct TaskRecord {
+pub(in crate::app) struct TaskRecord {
     pub(in crate::app::tasks) id: String,
     pub(in crate::app::tasks) thread_id: String,
     pub(in crate::app::tasks) conversation_available: bool,

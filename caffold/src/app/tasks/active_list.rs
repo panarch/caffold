@@ -66,7 +66,7 @@ pub(in crate::app::tasks) struct ActiveTaskProjection {
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub(in crate::app::tasks) struct ActiveTaskRuntimeSnapshot {
+pub(in crate::app) struct ActiveTaskRuntimeSnapshot {
     pub(in crate::app::tasks) tasks: Vec<TaskRecord>,
 }
 

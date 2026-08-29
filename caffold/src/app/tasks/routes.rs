@@ -5,6 +5,8 @@ use crate::app::tasks::TaskDetailResponse;
 #[cfg(test)]
 use crate::task_store::ManagedThread;
 #[cfg(test)]
+use crate::task_store::RunBy;
+#[cfg(test)]
 use axum::Json;
 #[cfg(test)]
 use axum::extract::Path as AxumPath;
@@ -12,8 +14,6 @@ use axum::extract::Path as AxumPath;
 use axum::extract::Query;
 #[cfg(test)]
 use axum::extract::State;
-#[cfg(test)]
-use axum::response::Response;
 mod agent;
 mod claude;
 mod codex;
@@ -30,8 +30,8 @@ use codex::{codex_mcp_diagnostics, codex_restart, codex_status};
 #[cfg(test)]
 use commands::managed_thread_from_task_record;
 use commands::{create_task, task_approval, task_interrupt, task_prompt};
-use conversation::{mark_task_seen, task_detail, task_generated_image, task_stream};
-use list::{list_archived_tasks, list_managed_tasks, task_list_stream};
+use conversation::{mark_task_seen, task_detail, task_generated_image};
+use list::{list_archived_tasks, list_managed_tasks};
 use membership::{
     section_reorder, task_archive, task_delete, task_recovery_archive, task_recovery_recheck,
     task_recovery_remove, task_recovery_restore, task_reorder, task_restore,
@@ -39,21 +39,23 @@ use membership::{
 #[cfg(test)]
 use store::{task_store_claim, task_store_get, task_store_update_composer_settings};
 
+use super::lifecycle::ActiveTaskTopPlacement;
+pub(super) use super::live::TaskListEvents;
+#[cfg(test)]
+pub(super) use super::live::TaskListUpdate;
+use super::{TaskRecord, TaskState};
 use axum::{
     Router,
     extract::DefaultBodyLimit,
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
 use tokio::sync::broadcast;
-
-use super::lifecycle::ActiveTaskTopPlacement;
-use super::{TaskRecord, TaskState};
 
 use crate::{
     agent::{ConversationItem, Turn, TurnOptions, codex::CodexStatusResponse},
     app::tasks::sessions::SessionsDiagnostics,
-    task_store::ManagedSection,
 };
 
 const MAX_TASK_IMAGES: usize = 4;
@@ -189,114 +191,11 @@ struct SectionReorderResponse {
     changed: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ActiveTaskPlacementUpdate {
-    task: TaskRecord,
-    placement: ActiveTaskTopPlacement,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ActiveTaskSectionComposerSettingsUpdate {
-    section_id: String,
-    composer_settings: super::active_list::ActiveTaskComposerSettings,
-}
-
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TaskRestoreResponse {
     task: TaskRecord,
     active_top_placement: ActiveTaskTopPlacement,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct TaskListRemoval {
-    thread_id: String,
-    reason: &'static str,
-}
-
-#[derive(Debug, Clone)]
-enum TaskListUpdate {
-    Task(Box<TaskRecord>),
-    Placement(Box<ActiveTaskPlacementUpdate>),
-    SectionComposerSettings(Box<ActiveTaskSectionComposerSettingsUpdate>),
-    Refresh,
-}
-
-#[derive(Clone)]
-pub(super) struct TaskListEvents {
-    removals: broadcast::Sender<TaskListRemoval>,
-    updates: broadcast::Sender<TaskListUpdate>,
-    #[cfg(test)]
-    refresh_count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-}
-
-impl TaskListEvents {
-    pub(super) fn new() -> Self {
-        let (removals, _) = broadcast::channel(64);
-        let (updates, _) = broadcast::channel(64);
-        Self {
-            removals,
-            updates,
-            #[cfg(test)]
-            refresh_count: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-        }
-    }
-
-    pub(super) fn remove(&self, thread_id: &str, reason: &'static str) {
-        let _ = self.removals.send(TaskListRemoval {
-            thread_id: thread_id.to_string(),
-            reason,
-        });
-    }
-
-    pub(super) fn update(&self, task: TaskRecord) {
-        let _ = self.updates.send(TaskListUpdate::Task(Box::new(task)));
-    }
-
-    pub(super) fn place(&self, task: TaskRecord, placement: ActiveTaskTopPlacement) {
-        let _ = self.updates.send(TaskListUpdate::Placement(Box::new(
-            ActiveTaskPlacementUpdate { task, placement },
-        )));
-    }
-
-    pub(super) fn section_composer_settings(&self, section: &ManagedSection) {
-        let Some(settings) = section.last_composer_settings.as_ref() else {
-            return;
-        };
-        let _ = self
-            .updates
-            .send(TaskListUpdate::SectionComposerSettings(Box::new(
-                ActiveTaskSectionComposerSettingsUpdate {
-                    section_id: section.section_id.clone(),
-                    composer_settings: settings.into(),
-                },
-            )));
-    }
-
-    pub(super) fn refresh(&self) {
-        #[cfg(test)]
-        self.refresh_count
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let _ = self.updates.send(TaskListUpdate::Refresh);
-    }
-
-    #[cfg(test)]
-    pub(super) fn refresh_count(&self) -> usize {
-        self.refresh_count
-            .load(std::sync::atomic::Ordering::Relaxed)
-    }
-
-    fn subscribe(
-        &self,
-    ) -> (
-        broadcast::Receiver<TaskListRemoval>,
-        broadcast::Receiver<TaskListUpdate>,
-    ) {
-        (self.removals.subscribe(), self.updates.subscribe())
-    }
 }
 
 #[cfg(test)]
@@ -331,7 +230,6 @@ pub(super) fn router(state: TaskState) -> Router {
                 .layer(DefaultBodyLimit::max(MAX_TASK_REQUEST_BYTES)),
         )
         .route("/api/tasks/archived", get(list_archived_tasks))
-        .route("/api/tasks/stream", get(task_list_stream))
         .route(
             "/api/tasks/{thread_id}",
             get(task_detail).delete(task_delete),
@@ -340,7 +238,6 @@ pub(super) fn router(state: TaskState) -> Router {
             "/api/tasks/{thread_id}/seen",
             axum::routing::put(mark_task_seen),
         )
-        .route("/api/tasks/{thread_id}/stream", get(task_stream))
         .route(
             "/api/tasks/{thread_id}/generated-images/{item_id}",
             get(task_generated_image),
@@ -398,13 +295,8 @@ pub(super) async fn test_task_detail(
 pub(super) async fn test_task_stream(
     state: TaskState,
     thread_id: String,
-) -> Result<Response, ApiError> {
-    task_stream(
-        State(state),
-        AxumPath(thread_id),
-        Query(TasksQuery { cursor: None }),
-    )
-    .await
+) -> Result<super::detail::DetailLiveStream, ApiError> {
+    state.detail.stream(&thread_id).await
 }
 
 #[cfg(test)]
@@ -440,8 +332,6 @@ pub(super) async fn test_store_update_composer_settings(
 pub(super) mod test_support {
     use crate::agent::codex::MockCodexResponse;
     use crate::app::tasks::active_list;
-    use crate::task_store::ManagedThread;
-    use crate::task_store::RunBy;
     use serde_json::{Value as JsonValue, json};
 
     use super::*;

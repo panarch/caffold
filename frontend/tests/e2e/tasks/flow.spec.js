@@ -630,7 +630,7 @@ test("runs a minimal task from creation through follow-up", { tag: "@all-viewpor
     .click();
   await expect.poll(() => scenario.approvalRequests).toBe(1);
   await expect(
-    tasksPage.locator('.task-message[data-message-role="assistant"]'),
+    tasksPage.locator(".task-assistant-message"),
   ).toContainText("The planner changes are ready to review.");
 
   const followUp = tasksPage.locator(

@@ -1,4 +1,4 @@
-import { getTask, taskStreamUrl } from "../../../../../api.js";
+import { getTask } from "../../../../../api.js";
 import { TASK_TRANSPORT_STATE } from "../../runtime-state.js";
 import { TaskStreamLifecycle } from "../../stream.js";
 
@@ -83,8 +83,9 @@ export class TaskDetailSession {
     this.bootstrap = null;
     this.attempt = null;
     this.transport = new TaskStreamLifecycle({
-      createUrl: (threadId) => taskStreamUrl(threadId),
-      eventTypes: ["task-sync", "task-event"],
+      subscribe: callbacks.subscribe
+        ? (threadId, listener) => callbacks.subscribe(threadId, listener)
+        : null,
       onEvent: (type, event, threadId, metadata) =>
         this.handleEvent(type, event, threadId, metadata),
       waitUntilReady: (threadId, isCurrent, metadata) =>

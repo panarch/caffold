@@ -70,25 +70,27 @@ test("shows a prompt as the text it was typed as", () => {
   }
 });
 
-test("opts only final assistant messages into code controls", () => {
-  const finalAssistant = renderConversationEvent(
+test("hands the message component the phase its placement decided", () => {
+  const finalMessages = new Map();
+  renderConversationEvent(
     messageEvent("assistant_message", { phase: "final" }),
     {},
-    { messagePhase: "final" },
+    { messagePhase: "final", messages: finalMessages },
   );
-  const progressAssistant = renderConversationEvent(
+  const progressMessages = new Map();
+  renderConversationEvent(
     messageEvent("assistant_message", { phase: "progress" }),
     {},
-    { messagePhase: "progress" },
+    { messagePhase: "progress", messages: progressMessages },
   );
 
-  assert.equal(hasCodeBlockControls(finalAssistant), true);
-  assert.equal(hasCodeBlockControls(progressAssistant), false);
+  assert.equal([...finalMessages.values()][0].phase, "final");
+  assert.equal([...progressMessages.values()][0].phase, "progress");
 });
 
 test("does not present a history placement anchor as an item timestamp", () => {
   const historyOnly = {
-    ...messageEvent("assistant_message", { phase: "final" }),
+    ...messageEvent("user_message"),
     observedMs: null,
   };
   const directlyObserved = {
@@ -278,10 +280,13 @@ test("a completed background turn renders its answer without a user message", ()
     },
   );
 
-  const { html } = renderConversation([answer, ended], idleTask);
+  const { html, messages } = renderConversation([answer, ended], idleTask);
 
-  assert.match(html, /The background build is done\./);
-  assert.match(html, /data-message-role="assistant"/);
+  assert.equal(
+    [...messages.values()][0].event.payload.text,
+    "The background build is done.",
+  );
+  assert.match(html, /<caffold-task-assistant-message>/);
   assert.doesNotMatch(html, /data-message-role="user"/);
 });
 
@@ -318,6 +323,3 @@ function messageEvent(type, payload = {}) {
   };
 }
 
-function hasCodeBlockControls(html) {
-  return /<caffold-task-markdown[^>]* code-block-controls>/.test(html);
-}

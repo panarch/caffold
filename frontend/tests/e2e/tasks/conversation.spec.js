@@ -24,26 +24,8 @@ test("keeps a large task usable while conversation history is loading", { tag: "
       configurable: true,
       value: { register: () => Promise.resolve() },
     });
-    window.__caffoldMockEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        window.__caffoldMockEventSources.push(this);
-        window.__caffoldRegisterTaskSseSource?.(this);
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emit(type, payload) {
-        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-      }
-
-      close() {}
-    };
   });
+  await installEventSourceMock(page);
   await mockAgentModels(page);
 
   const threadId = "thread_large_history";
@@ -158,26 +140,8 @@ test("keeps a large task usable while conversation history is loading", { tag: "
 test("keeps the visible conversation anchor while loading older events by cursor", { tag: "@all-viewports" }, async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    window.__taskEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        window.__taskEventSources.push(this);
-        window.__caffoldRegisterTaskSseSource?.(this);
-      }
-
-      addEventListener(type, listener) {
-        this.listeners.set(type, listener);
-      }
-
-      emit(type, payload) {
-        this.listeners.get(type)?.({ data: JSON.stringify(payload) });
-      }
-
-      close() {}
-    };
+  await installEventSourceMock(page, {
+    registryKey: "__taskEventSources",
   });
   await mockAgentModels(page);
   const threadId = "thread_cursor_fixture";
@@ -758,7 +722,9 @@ test("orders separate turns by message chronology when a newer start marker is s
 
   await page.goto(`/tasks/${threadId}?cwd=src`);
   await emitTaskDetailBootstrap(page, detail);
-  const messages = page.locator(".task-conversation .task-message");
+  const messages = page.locator(
+    ".task-conversation .task-message, .task-conversation .task-assistant-message",
+  );
   await expect
     .poll(() =>
       messages.evaluateAll((entries) =>
@@ -1004,30 +970,8 @@ test("keeps task event chronology stable through approval, completion, and reloa
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 560 });
-  await page.addInitScript(() => {
-    window.__taskEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        window.__taskEventSources.push(this);
-        window.__caffoldRegisterTaskSseSource?.(this);
-      }
-
-      addEventListener(type, listener) {
-        const listeners = this.listeners.get(type) ?? [];
-        listeners.push(listener);
-        this.listeners.set(type, listeners);
-      }
-
-      emit(type, payload) {
-        for (const listener of this.listeners.get(type) ?? []) {
-          listener({ data: JSON.stringify(payload) });
-        }
-      }
-
-      close() {}
-    };
+  await installEventSourceMock(page, {
+    registryKey: "__taskEventSources",
   });
   await mockAgentModels(page);
 
@@ -1426,48 +1370,8 @@ test("keeps task event chronology stable through approval, completion, and reloa
   ]);
 });
 test("keeps task conversation scroll anchored during live updates", { tag: "@all-viewports" }, async ({ page }) => {
-  await page.addInitScript(() => {
-    window.__taskEventSources = [];
-    window.EventSource = class MockEventSource {
-      constructor(url) {
-        this.url = url;
-        this.listeners = new Map();
-        this.readyState = 0;
-        window.__taskEventSources.push(this);
-        window.__caffoldRegisterTaskSseSource?.(this);
-      }
-
-      addEventListener(type, listener) {
-        const listeners = this.listeners.get(type) ?? [];
-        listeners.push(listener);
-        this.listeners.set(type, listeners);
-      }
-
-      emit(type, data) {
-        for (const listener of this.listeners.get(type) ?? []) {
-          listener({ data: JSON.stringify(data) });
-        }
-      }
-
-      emitOpen() {
-        this.readyState = 1;
-        for (const listener of this.listeners.get("open") ?? []) {
-          listener({});
-        }
-      }
-
-      emitError(closed = false) {
-        this.readyState = closed ? 2 : 0;
-        for (const listener of this.listeners.get("error") ?? []) {
-          listener({});
-        }
-      }
-
-      close() {
-        this.closed = true;
-        this.readyState = 2;
-      }
-    };
+  await installEventSourceMock(page, {
+    registryKey: "__taskEventSources",
   });
 
   await mockAgentModels(page);
