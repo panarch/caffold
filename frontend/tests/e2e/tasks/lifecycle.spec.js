@@ -5,6 +5,7 @@ import {
   mockCodexStatus,
 } from "../support/browser-defaults.js";
 import {
+  activeLiveUpdateChannels,
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
@@ -143,6 +144,7 @@ async function installConnectionMock(page) {
 test("background Task tabs release list and detail streams", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
+  const registryKey = "__taskLifecycleEventSources";
   await page.addInitScript(() => {
     window.__caffoldVisibilityState = "visible";
     Object.defineProperty(document, "visibilityState", {
@@ -151,7 +153,7 @@ test("background Task tabs release list and detail streams", { tag: "@desktop" }
     });
   });
   await installEventSourceMock(page, {
-    registryKey: "__taskLifecycleEventSources",
+    registryKey,
     autoOpen: true,
   });
   await mockAgentModels(page);
@@ -206,14 +208,8 @@ test("background Task tabs release list and detail streams", { tag: "@desktop" }
     "Background stream lifecycle",
   );
   await expect
-    .poll(() =>
-      page.evaluate(() =>
-        window.__taskLifecycleEventSources.filter(
-          (source) => source.readyState !== 2,
-        ).length,
-      ),
-    )
-    .toBe(2);
+    .poll(() => activeLiveUpdateChannels(page, { registryKey }))
+    .toEqual(["task-detail", "task-list", "watch"]);
 
   await page.evaluate(() => {
     window.__caffoldVisibilityState = "hidden";
@@ -235,14 +231,8 @@ test("background Task tabs release list and detail streams", { tag: "@desktop" }
   });
   await expect.poll(() => listReads).toBeGreaterThan(1);
   await expect
-    .poll(() =>
-      page.evaluate(() =>
-        window.__taskLifecycleEventSources.filter(
-          (source) => source.readyState !== 2,
-        ).length,
-      ),
-    )
-    .toBe(2);
+    .poll(() => activeLiveUpdateChannels(page, { registryKey }))
+    .toEqual(["task-detail", "task-list", "watch"]);
   await emitTaskDetailBootstrap(page, detail);
   expect(detailReads).toBe(0);
 });
@@ -250,6 +240,7 @@ test("background Task tabs release list and detail streams", { tag: "@desktop" }
 test("foreground recovery refreshes status and reconciles the Task ledger and transports", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
+  const registryKey = "__foregroundRecoverySources";
   await page.addInitScript(() => {
     window.__caffoldVisibilityState = "visible";
     Object.defineProperty(document, "visibilityState", {
@@ -258,7 +249,7 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
     });
   });
   await installEventSourceMock(page, {
-    registryKey: "__foregroundRecoverySources",
+    registryKey,
     autoOpen: true,
     bootstrapFunctionKey: "__foregroundRecoveryBootstrap",
   });
@@ -358,14 +349,8 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
   await expect(workspace).toContainText("Detail loaded before backgrounding.");
   await composer.fill("Keep this foreground recovery draft");
   await expect
-    .poll(() =>
-      page.evaluate(() =>
-        window.__foregroundRecoverySources.filter(
-          (source) => source.readyState !== 2,
-        ).length,
-      ),
-    )
-    .toBe(2);
+    .poll(() => activeLiveUpdateChannels(page, { registryKey }))
+    .toEqual(["task-detail", "task-list", "watch"]);
 
   const readsBeforeHide = { statusReads, listReads, detailReads };
   foregroundState = true;
@@ -407,14 +392,8 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
   await expect(composer).toHaveValue("Keep this foreground recovery draft");
   await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}(?:\\?|$)`));
   await expect
-    .poll(() =>
-      page.evaluate(() =>
-        window.__foregroundRecoverySources.filter(
-          (source) => source.readyState !== 2,
-        ).length,
-      ),
-    )
-    .toBe(2);
+    .poll(() => activeLiveUpdateChannels(page, { registryKey }))
+    .toEqual(["task-detail", "task-list", "watch"]);
 
   await page.evaluate(({ threadId, runtimeTask }) => {
     const listSource = [...window.__foregroundRecoverySources]
@@ -508,8 +487,9 @@ test("BFCache pageshow and top-level focus use the shared foreground recovery", 
 test("notification activation refreshes stale readiness and opens its Task route", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
+  const registryKey = "__notificationRecoverySources";
   await installEventSourceMock(page, {
-    registryKey: "__notificationRecoverySources",
+    registryKey,
     autoOpen: true,
     bootstrapFunctionKey: "__notificationRecoveryBootstrap",
   });
@@ -608,14 +588,8 @@ test("notification activation refreshes stale readiness and opens its Task route
     "notification",
   );
   await expect
-    .poll(() =>
-      page.evaluate(() =>
-        window.__notificationRecoverySources.filter(
-          (source) => source.readyState !== 2,
-        ).length,
-      ),
-    )
-    .toBe(2);
+    .poll(() => activeLiveUpdateChannels(page, { registryKey }))
+    .toEqual(["task-detail", "task-list", "watch"]);
 });
 
 test("foreground recovery retries a blocking Task-store snapshot with bounded backoff", { tag: "@desktop" }, async ({
@@ -738,11 +712,9 @@ test("fresh origin reachability recovers a foreground offline pause without an o
   await composer.fill("Keep this foreground offline draft");
   await expect
     .poll(() =>
-      page.evaluate((key) =>
-        window[key].filter((source) => source.readyState !== 2).length,
-      registryKey),
+      activeLiveUpdateChannels(page, { registryKey }),
     )
-    .toBe(2);
+    .toEqual(["task-detail", "task-list", "watch"]);
 
   const readsBeforeOffline = {
     detail: detailReads,
@@ -1129,11 +1101,9 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
   await composer.fill("Keep this offline recovery draft");
   await expect
     .poll(() =>
-      page.evaluate((key) =>
-        window[key].filter((source) => source.readyState !== 2).length,
-      registryKey),
+      activeLiveUpdateChannels(page, { registryKey }),
     )
-    .toBe(2);
+    .toEqual(["task-detail", "task-list", "watch"]);
   await page.clock.pauseAt(new Date("2026-01-01T00:01:00Z"));
 
   const readsBeforeRecovery = statusReads;
@@ -1269,6 +1239,7 @@ test("reopened Task detail waits for a readable stream bootstrap", { tag: "@desk
 test("replaces terminal Task streams and reconciles list and detail", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
+  const registryKey = "__taskRecoveryEventSources";
   await page.addInitScript(() => {
     window.__taskRecoveryServerAvailable = true;
     window.__taskRecoveryEventSources = [];
@@ -1422,8 +1393,8 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
   await expect(tasksPage).toContainText("Running before terminal disconnect.");
   await expect(restoreButton).toBeEnabled();
   await expect
-    .poll(() => page.evaluate(() => window.__taskRecoveryEventSources.length))
-    .toBe(2);
+    .poll(() => activeLiveUpdateChannels(page, { registryKey }))
+    .toEqual(["task-detail", "task-list", "watch"]);
 
   await page.evaluate(() => {
     window.__taskRecoveryServerAvailable = false;
@@ -1483,14 +1454,8 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
   await expect(page.locator(".app-foreground-recovery")).toBeHidden();
   await expect(restoreButton).toBeEnabled();
   await expect
-    .poll(() =>
-      page.evaluate(() =>
-        window.__taskRecoveryEventSources.filter(
-          (source) => source.readyState !== 2 && !source.closed,
-        ).length,
-      ),
-    )
-    .toBe(2);
+    .poll(() => activeLiveUpdateChannels(page, { registryKey }))
+    .toEqual(["task-detail", "task-list", "watch"]);
 
   await page.evaluate(
     ({ threadId, staleTask }) => {
@@ -1652,14 +1617,8 @@ test("routes the single viewport Retry through app-shell foreground recovery", {
   await page.goto(`/tasks/${threadId}`);
 
   await expect
-    .poll(() =>
-      page.evaluate(
-        ({ key }) =>
-          window[key].filter((source) => source.readyState !== 2).length,
-        { key: registryKey },
-      ),
-    )
-    .toBe(2);
+    .poll(() => activeLiveUpdateChannels(page, { registryKey }))
+    .toEqual(["task-detail", "task-list", "watch"]);
 
   const sourceCounts = () =>
     page.evaluate(

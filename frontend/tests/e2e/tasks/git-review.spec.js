@@ -7,9 +7,11 @@ import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
 import {
   activeTaskProjection,
+  activeWatchSubscriptionId,
   captureReviewScreenshot,
   canonicalTaskState,
   installEventSourceMock,
+  isWatchSubscriptionClosed,
   mockAgentModels,
 } from "../support/task-fixtures.js";
 
@@ -19,6 +21,7 @@ test.beforeEach(async ({ page }) => {
 
 const THREAD_ID = "thread_task_git_review";
 const ROOT_PATH = "src";
+const GIT_WATCH_REGISTRY_KEY = "__taskGitWatchSources";
 const FIXTURE_HOME = repositoryPath("frontend/tests/e2e/fixtures/home");
 const COMMIT = {
   sha: "abcdef1234567890abcdef1234567890abcdef12",
@@ -95,7 +98,7 @@ async function installTaskGitFixture(
   { rootPath = ROOT_PATH, branch = "feature/review", mockFetch = true } = {},
 ) {
   await installEventSourceMock(page, {
-    registryKey: "__taskGitWatchSources",
+    registryKey: GIT_WATCH_REGISTRY_KEY,
     bootstrapFunctionKey: "__taskGitDetailBootstrap",
   });
   await mockAgentModels(page);
@@ -465,28 +468,45 @@ test("reloads Task-scoped Compare and releases its refs watch while inactive", {
   await layout.evaluate((element) => {
     element.dataset.testIdentity = "retained";
   });
-  await expect.poll(() => page.evaluate(() =>
-    window.__taskGitWatchSources.filter((source) => source.url.includes("/api/watch")).length,
-  )).toBe(1);
+  await expect
+    .poll(() =>
+      activeWatchSubscriptionId(page, {
+        registryKey: GIT_WATCH_REGISTRY_KEY,
+      }),
+    )
+    .not.toBeNull();
+  const initialWatchSubscriptionId = await activeWatchSubscriptionId(page, {
+    registryKey: GIT_WATCH_REGISTRY_KEY,
+  });
 
   await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}`);
   await expect(layout).toBeHidden();
   await expect(layout).toHaveAttribute("data-test-identity", "retained");
-  await expect.poll(() =>
-    page.evaluate(() =>
-      window.__taskGitWatchSources.find((source) => source.url.includes("/api/watch"))?.readyState,
-    ),
-  ).toBe(2);
+  await expect
+    .poll(() =>
+      isWatchSubscriptionClosed(page, initialWatchSubscriptionId, {
+        registryKey: GIT_WATCH_REGISTRY_KEY,
+      }),
+    )
+    .toBe(true);
 
   await chooseGitTool(page, "compare");
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/compare`);
   await expect(layout).toHaveAttribute("data-test-identity", "retained");
   await expect.poll(() => counts.compare).toBe(2);
   await expect.poll(() => counts.refs).toBe(2);
-  await expect.poll(() => page.evaluate(() =>
-    window.__taskGitWatchSources.filter((source) => source.url.includes("/api/watch")).length,
-  )).toBe(2);
+  await expect
+    .poll(() =>
+      activeWatchSubscriptionId(page, {
+        registryKey: GIT_WATCH_REGISTRY_KEY,
+      }),
+    )
+    .not.toBeNull();
+  const resumedWatchSubscriptionId = await activeWatchSubscriptionId(page, {
+    registryKey: GIT_WATCH_REGISTRY_KEY,
+  });
+  expect(resumedWatchSubscriptionId).not.toBe(initialWatchSubscriptionId);
 
   await page.reload();
   await expect(page.locator("caffold-git-compare-page")).toContainText("example.rs");

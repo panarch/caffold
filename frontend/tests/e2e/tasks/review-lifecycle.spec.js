@@ -4,7 +4,11 @@ import {
   openCompletedTaskForReview,
   selectTaskReviewScope,
 } from "../support/task-review-test.js";
-import { scrollTop } from "../support/task-fixtures.js";
+import {
+  activeWatchSubscriptionId,
+  isWatchSubscriptionClosed,
+  scrollTop,
+} from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
@@ -40,10 +44,9 @@ test("preserves conversation and thread-local Review state while lifecycles deac
   });
   await expect(conversation).toBeHidden();
   await expect
-    .poll(() =>
-      review.evaluate((element) => Boolean(element.watchUnsubscribe)),
-    )
-    .toBe(true);
+    .poll(() => activeWatchSubscriptionId(page))
+    .not.toBeNull();
+  const reviewWatchSubscriptionId = await activeWatchSubscriptionId(page);
 
   await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}`);
@@ -61,14 +64,9 @@ test("preserves conversation and thread-local Review state while lifecycles deac
   expect(taskScenario.taskDetailReadRequests).toBe(detailReadsBeforeReview);
   await expect
     .poll(() =>
-      page.evaluate(
-        () =>
-          window.__caffoldMockEventSources.filter(
-            (source) => source.url.startsWith("/api/watch?") && source.readyState !== 2,
-          ).length,
-      ),
+      isWatchSubscriptionClosed(page, reviewWatchSubscriptionId),
     )
-    .toBe(0);
+    .toBe(true);
 
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
   await expect(review).toHaveAttribute("data-persist-probe", "kept");

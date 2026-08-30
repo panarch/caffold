@@ -19,8 +19,8 @@ const ownership = new Map([
     ["caffold-review-file-viewer"],
   ],
   [
-    "components/file-viewer/components/markdown-preview.css",
-    ["caffold-review-markdown-preview"],
+    "components/markdown-preview.css",
+    ["caffold-markdown-preview"],
   ],
   ["components/git-compare-browser.css", ["caffold-git-compare-browser"]],
   [
@@ -89,6 +89,14 @@ const ownership = new Map([
   [
     "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
     ["caffold-task-command-dialog"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.css",
+    ["caffold-task-current-plan"],
+  ],
+  [
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.css",
+    ["caffold-current-plan-document-dialog"],
   ],
   [
     "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css",
@@ -339,7 +347,10 @@ const componentChildren = new Map([
     ],
   ],
   ["caffold-file-navigator", ["caffold-file-list"]],
-  ["caffold-review-file-viewer", ["caffold-code-viewer", "caffold-diff-viewer"]],
+  [
+    "caffold-review-file-viewer",
+    ["caffold-code-viewer", "caffold-diff-viewer", "caffold-markdown-preview"],
+  ],
   [
     "caffold-task-workspace",
     [
@@ -411,11 +422,20 @@ const componentChildren = new Map([
     [
       "caffold-task-conversation",
       "caffold-task-command-dialog",
+      "caffold-task-current-plan",
       "caffold-task-composer",
       "caffold-task-review",
       "caffold-task-git-layout",
       "caffold-task-github-layout",
     ],
+  ],
+  [
+    "caffold-task-current-plan",
+    ["caffold-current-plan-document-dialog"],
+  ],
+  [
+    "caffold-current-plan-document-dialog",
+    ["caffold-markdown-preview"],
   ],
   [
     "caffold-task-conversation",

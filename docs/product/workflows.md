@@ -110,6 +110,53 @@ unclaimed child.
 5. Switching Tasks prevents pending work for the previous selection from
    changing the new Detail.
 
+### Current plan documents
+
+A Task may keep a provider-neutral current plan in two ordinary Markdown files
+relative to its effective working directory:
+
+```text
+.caffold/plans/current/PLAN.md
+.caffold/plans/current/CHECKLIST.md
+```
+
+The convention is optional for a Task, but a current plan is valid only when
+both exact files exist and can be read safely. `PLAN.md` is free-form Markdown;
+its first H1, when present, is the display title. `CHECKLIST.md` is also
+free-form Markdown. Every GFM task-list marker anywhere in that document counts
+toward the completed and total values, regardless of headings, nesting, or
+section layout. Zero task-list items and an entirely checked list are both
+valid. Neither condition ends, resolves, or archives the plan.
+
+The filesystem is the source of truth. Caffold does not copy plan content or
+progress into its database and does not use an agent's native Plan mode as a
+second ledger. The pair remains current for as long as both files remain at
+the exact paths. An agent or user may move or delete both files when they are
+no longer current; Caffold never performs that lifecycle step automatically.
+No frontmatter, schema, format version, identifier, date, or stage structure is
+required.
+
+When the pair is readable, Task Detail floats a compact two-part progress
+control above the follow-up Composer without changing the Composer's position.
+The Plan title opens `PLAN.md`; the completed/total value opens `CHECKLIST.md`.
+Both use the shared read-only Markdown dialog, and checkboxes are presentation
+only. Conversation keeps the same bottom breathing room whether or not a plan
+exists, so a missing pair leaves no placeholder and does not reposition the
+Composer. A partial or unreadable pair shows a non-blocking problem instead of
+guessed progress. Planning questions and design decisions continue through
+ordinary natural-language Composer conversation; Caffold does not add a
+structured clarification form or a Plan/default mode selector.
+
+This convention does not prescribe Git policy. Caffold neither edits
+`.gitignore` nor requires `.caffold` to be tracked, and ignored files remain
+readable through Files and the current-plan surface. Ignored or untracked plan
+documents can disappear with their containing directory or worktree, so users
+who need durable history choose their own tracking, backup, or move policy.
+Directories such as `docs/` or `resolved/`, including numerically prefixed
+history names, are optional organization conventions only. Caffold does not
+parse, validate, or index them and provides no resolved-plan list; they remain
+ordinary files in Files.
+
 ### Start from a GitHub Issue or Pull Request
 
 Issue and Pull Request detail expose the same `Start Task` action from a

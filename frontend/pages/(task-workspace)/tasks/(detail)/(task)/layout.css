@@ -84,6 +84,18 @@ caffold-task-detail {
     overflow: hidden;
   }
 
+  & .task-follow-up-composer-dock {
+    position: relative;
+    min-width: 0;
+  }
+
+  & .task-follow-up-composer-dock > caffold-task-current-plan {
+    position: absolute;
+    z-index: 1;
+    inset-inline: 0;
+    bottom: 100%;
+  }
+
   & .task-follow-up-composer-slot {
     display: contents;
   }

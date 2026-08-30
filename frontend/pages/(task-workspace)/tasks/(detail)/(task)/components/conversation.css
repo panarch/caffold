@@ -1,4 +1,8 @@
 caffold-task-conversation {
+  --task-conversation-block-end-padding: calc(
+    1.125rem + var(--interface-control-hit-size) + var(--interface-space-3)
+  );
+
   & .task-message-content,
   & .task-thinking-content,
   & .task-file-change p {
@@ -48,7 +52,7 @@ caffold-task-conversation {
     min-height: 0;
     overflow: auto;
     overflow-anchor: none;
-    padding: 1rem 0.875rem 1.125rem;
+    padding: 1rem 0.875rem var(--task-conversation-block-end-padding);
   }
 
   & .task-conversation-column {
@@ -559,8 +563,12 @@ caffold-task-conversation {
 
 @media (max-width: 860px) {
   caffold-task-conversation {
+    --task-conversation-block-end-padding: calc(
+      0.875rem + var(--interface-control-hit-size) + var(--interface-space-3)
+    );
+
     & .task-conversation-scroll {
-      padding: 0.75rem 0.625rem 0.875rem;
+      padding: 0.75rem 0.625rem var(--task-conversation-block-end-padding);
     }
 
     & .task-message[data-message-role="user"] .task-message-content {

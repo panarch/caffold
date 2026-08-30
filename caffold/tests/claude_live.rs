@@ -130,6 +130,72 @@ async fn an_empty_task_takes_its_first_prompt_after_the_backend_is_replaced() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn the_current_plan_convention_reaches_a_real_resumed_claude_session() {
+    // The user deliberately names no path. The exact pair therefore comes
+    // from the Caffold convention carried by the fresh and repeated initialize
+    // requests, not from test-specific prompt duplication.
+    let mut backend = Backend::start().await;
+    let task = backend
+        .create_empty_task("Prepare a Caffold current plan", INSTRUCTED_MODEL)
+        .await;
+    backend.replace().await;
+    task.wait_until_known(Duration::from_secs(30)).await;
+
+    task.say_with_options(
+        "Create a written implementation plan for adding one keyboard shortcut to a small app. \
+         Use the Caffold current-plan convention supplied by your environment; the paths are \
+         intentionally not repeated here. Do not modify files outside that convention. Give the \
+         plan an H1 title and create exactly two checklist items, with the first checked and the \
+         second unchecked.",
+        INSTRUCTED_MODEL,
+        "bypassPermissions",
+    )
+    .await;
+    task.wait_for(TurnState::Idle, Duration::from_secs(180))
+        .await;
+    let created = backend
+        .get("/api/current-plan?path=notes")
+        .await
+        .expect("the current plan projection answers");
+    assert_eq!(
+        created["status"], "ready",
+        "the exact pair exists: {created}"
+    );
+    assert_eq!(
+        created["plan"]["completed"], 1,
+        "created progress: {created}"
+    );
+    assert_eq!(created["plan"]["total"], 2, "created progress: {created}");
+
+    backend.replace().await;
+    task.wait_until_known(Duration::from_secs(30)).await;
+    task.say_with_options(
+        "Continue the existing Caffold current plan. Mark the remaining unchecked item complete, \
+         add exactly one new unchecked verification item, and do not modify files outside the \
+         current-plan convention.",
+        INSTRUCTED_MODEL,
+        "bypassPermissions",
+    )
+    .await;
+    task.wait_for(TurnState::Idle, Duration::from_secs(180))
+        .await;
+    let resumed = backend
+        .get("/api/current-plan?path=notes")
+        .await
+        .expect("the resumed current plan projection answers");
+    assert_eq!(
+        resumed["status"], "ready",
+        "the pair remains current: {resumed}"
+    );
+    assert_eq!(
+        resumed["plan"]["completed"], 2,
+        "resumed progress: {resumed}"
+    );
+    assert_eq!(resumed["plan"]["total"], 3, "resumed progress: {resumed}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
 async fn a_turn_running_when_the_backend_is_replaced_is_still_running_afterwards() {
     // The reason the runner exists. The backend is the part that gets replaced
     // — an application update, a crash, a developer restarting it — and the

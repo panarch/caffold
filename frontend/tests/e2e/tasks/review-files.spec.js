@@ -4,7 +4,9 @@ import { repositoryPath } from "../../repository-paths.mjs";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { openCompletedTaskForReview } from "../support/task-review-test.js";
 import {
+  activeWatchSubscriptionId,
   captureReviewScreenshot,
+  isWatchSubscriptionClosed,
   stabilizeDynamicText,
 } from "../support/task-fixtures.js";
 
@@ -107,18 +109,15 @@ test("browses source through the shared Files navigator and one root watch", { t
       `/tasks/${taskScenario.threadId}/review?nav=files&view=source`,
     );
   }
+  const reviewWatchSubscriptionId = await activeWatchSubscriptionId(page);
+  expect(reviewWatchSubscriptionId).not.toBeNull();
   await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
   await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}`);
   await expect
     .poll(() =>
-      page.evaluate(
-        () =>
-          window.__caffoldMockEventSources.filter(
-            (source) => source.url.startsWith("/api/watch?") && source.readyState !== 2,
-          ).length,
-      ),
+      isWatchSubscriptionClosed(page, reviewWatchSubscriptionId),
     )
-    .toBe(0);
+    .toBe(true);
 });
 
 test("renders a route-owned text-only Markdown Preview without changing file selection", { tag: "@all-viewports" }, async ({
@@ -196,7 +195,7 @@ test("renders a route-owned text-only Markdown Preview without changing file sel
   await expect(previewControl).toHaveAttribute("aria-pressed", "true");
 
   const viewer = taskReview.locator("caffold-review-file-viewer");
-  const markdownPreview = viewer.locator("caffold-review-markdown-preview");
+  const markdownPreview = viewer.locator("caffold-markdown-preview");
   const preview = markdownPreview.locator(".markdown-preview-body");
   await expect(markdownPreview).toHaveAttribute("data-render-state", "markdown");
   const previewScroll = await markdownPreview.evaluate((element) => {
@@ -252,7 +251,7 @@ test("renders a route-owned text-only Markdown Preview without changing file sel
       '.task-review-viewer-axis caffold-segmented-control[data-review-axis="viewer"]',
     );
     const labels = [...axis.querySelectorAll("button > span")];
-    const previewScroll = review.querySelector("caffold-review-markdown-preview");
+    const previewScroll = review.querySelector("caffold-markdown-preview");
     return {
       rootFontSize: Number.parseFloat(
         getComputedStyle(document.documentElement).fontSize,

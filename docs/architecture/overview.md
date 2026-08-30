@@ -142,7 +142,9 @@ The backend application is split by state and transport owner:
 caffold/src/app.rs                     dependency construction and router composition
 caffold/src/app/error.rs               shared JSON HTTP error contract
 caffold/src/app/shell.rs               shell, health, settings, manifest, static assets
-caffold/src/app/workspace.rs           Files, images, Git, and GitHub adapters
+caffold/src/app/workspace.rs           Files, current plan, images, Git, and GitHub adapters
+caffold/src/app/workspace/current_plan.rs
+                                      read-only current-plan filesystem projection
 caffold/src/app/live_updates.rs        tab SSE, logical controls, framing, channel lifetimes
 caffold/src/app/tasks.rs               private Tasks state and runtime shutdown
 caffold/src/app/tasks/routes.rs        Task/agent HTTP DTOs, handlers, REST routes
@@ -183,6 +185,7 @@ writers for provider state.
 | Claude conversation history | Claude transcript files |
 | Live Claude process and control requests | Claude process held by the Caffold runner |
 | Task membership, provider, stable navigator name, Section placement, composer state, Push subscriptions, and managed-worktree recovery | Caffold Redb |
+| Current plan documents and checklist markers | Filesystem under the Task's effective working directory |
 | Files, diffs, branches, commits, and worktree contents | Git and the filesystem |
 | Tailscale connection, Serve mapping, and Tailnet address | Tailscale CLI and Serve configuration |
 | Browser presentation, selection, and local Push identity | Browser/PWA |
@@ -220,6 +223,14 @@ Repository and worktree presentation is derived live from that Task context.
 The navigator groups a main checkout and linked worktrees by their common Git
 repository while each Task retains its actual worktree root for Integrated
 Review, Git, and GitHub.
+
+The optional current-plan projection also starts from the Task's actual cwd,
+not a repository or managed-worktree fallback. It reads the exact
+`.caffold/plans/current` pair directly from the filesystem and stores no plan
+record in Redb. The user contract is defined in
+[Product Workflows](../product/workflows.md#current-plan-documents); filesystem
+invalidation and browser recovery are defined in
+[Live Updates](live-updates.md#filesystem-watch).
 
 An eligible Task can explicitly move its same conversation into a
 Caffold-managed worktree. The ownership record permits bounded recovery,

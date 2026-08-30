@@ -1,4 +1,4 @@
-caffold-review-markdown-preview {
+caffold-markdown-preview {
   display: block;
   min-width: 0;
   min-height: 0;
@@ -11,6 +11,10 @@ caffold-review-markdown-preview {
   line-height: var(--conversation-line-height);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+
+  &[hidden] {
+    display: none;
+  }
 
   & .markdown-preview-body {
     width: 100%;

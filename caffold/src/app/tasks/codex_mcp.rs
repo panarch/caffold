@@ -388,6 +388,14 @@ mod tests {
         let session = session_header(&initialized);
         let response = response_json(initialized).await;
         assert_eq!(response["result"]["serverInfo"]["name"], "caffold");
+        let instructions = response["result"]["instructions"]
+            .as_str()
+            .expect("every Codex MCP attachment carries the plan convention");
+        assert!(instructions.contains(".caffold/plans/current/PLAN.md"));
+        assert!(instructions.contains(".caffold/plans/current/CHECKLIST.md"));
+        assert!(instructions.contains("Do not create these files merely"));
+        assert!(instructions.contains("Checked items do not by themselves resolve"));
+        assert!(!instructions.contains("collaborationMode"));
 
         let response = response_json(
             request_with_session(

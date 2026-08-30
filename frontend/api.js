@@ -274,8 +274,12 @@ export async function listDirectory(path = "") {
   return requestJson("/api/list", { path }, { timeoutMs: 7000 });
 }
 
-export async function readFile(path) {
-  return requestJson("/api/file", { path });
+export async function readFile(path, signal) {
+  return requestJson("/api/file", { path }, { signal });
+}
+
+export async function getCurrentPlan(path = "", signal) {
+  return requestJson("/api/current-plan", { path }, { signal });
 }
 
 export function imageUrl(path) {

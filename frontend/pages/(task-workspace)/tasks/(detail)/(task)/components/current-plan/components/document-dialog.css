@@ -1,0 +1,193 @@
+caffold-current-plan-document-dialog {
+  display: contents;
+
+  & dialog {
+    width: min(56rem, calc(100vw - 2rem));
+    max-width: none;
+    height: min(48rem, calc(100dvh - 2rem));
+    max-height: none;
+    margin: auto;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: 0 18px 48px rgb(var(--shadow-rgb) / 24%);
+  }
+
+  & dialog::backdrop {
+    background: rgb(var(--scrim-rgb) / 32%);
+  }
+
+  & .current-plan-document-card {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+  }
+
+  & header {
+    display: flex;
+    align-items: center;
+    gap: var(--interface-space-8);
+    min-width: 0;
+    padding: var(--interface-space-8) var(--interface-space-10);
+    border-bottom: 1px solid var(--border);
+  }
+
+  & header > div {
+    min-width: 0;
+  }
+
+  & header h2,
+  & header p,
+  & header form,
+  & .current-plan-document-status,
+  & .current-plan-document-error p {
+    margin: 0;
+  }
+
+  & header h2 {
+    font-size: var(--interface-heading-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & header p {
+    overflow: hidden;
+    margin-top: var(--interface-space-1);
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & header form {
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+
+  & [data-current-plan-dialog-action="retry"] {
+    min-height: var(--interface-control-hit-size);
+    padding: var(--interface-space-2) var(--interface-control-padding-inline);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    cursor: pointer;
+  }
+
+  & [data-current-plan-dialog-action="retry"]:hover,
+  & [data-current-plan-dialog-action="retry"]:focus-visible {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+    outline: none;
+  }
+
+  & .current-plan-document-close {
+    position: relative;
+    display: grid;
+    width: var(--interface-control-hit-size);
+    height: var(--interface-control-hit-size);
+    place-items: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--control-fg);
+    cursor: pointer;
+  }
+
+  & .current-plan-document-close::before {
+    position: absolute;
+    inset: var(--interface-control-hit-outset);
+    border: 1px solid var(--border);
+    border-radius: 0.25rem;
+    background: var(--surface);
+    content: "";
+  }
+
+  & .current-plan-document-close:hover,
+  & .current-plan-document-close:focus-visible {
+    outline: none;
+  }
+
+  & .current-plan-document-close:hover::before,
+  & .current-plan-document-close:focus-visible::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
+
+  & .current-plan-document-close-icon {
+    position: relative;
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+    stroke-width: 2;
+  }
+
+  & .current-plan-document-body {
+    position: relative;
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  & .current-plan-document-status,
+  & .current-plan-document-error {
+    position: absolute;
+    z-index: 1;
+    top: var(--interface-space-6);
+    left: 50%;
+    max-width: calc(100% - 2rem);
+    transform: translateX(-50%);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    box-shadow: var(--structural-shadow-panel);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .current-plan-document-status {
+    padding: var(--interface-space-3) var(--interface-space-5);
+    color: var(--muted);
+  }
+
+  & .current-plan-document-error {
+    display: flex;
+    align-items: center;
+    gap: var(--interface-space-4);
+    padding: var(--interface-space-4);
+    color: var(--danger);
+  }
+
+  & .current-plan-document-error[hidden],
+  & .current-plan-document-status[hidden] {
+    display: none;
+  }
+
+  & caffold-markdown-preview {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+@media (max-width: 620px) {
+  caffold-current-plan-document-dialog {
+    & dialog {
+      width: calc(100vw - 0.5rem);
+      height: calc(100dvh - 0.5rem);
+    }
+
+    & header {
+      padding: var(--interface-space-6);
+    }
+  }
+}
