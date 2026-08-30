@@ -973,10 +973,8 @@ class CaffoldTaskComposer extends HTMLElement {
       this.voice.phase,
     );
     const interrupting = Boolean(this.context.interrupting);
-    const fieldDisabled =
-      this.context.disabled ||
-      voiceBusy ||
-      (submitting && this.context.mode === "create");
+    const creating = submitting && this.context.mode === "create";
+    const fieldDisabled = this.context.disabled || voiceBusy || creating;
     const requestLocked =
       submitting || this.context.disabled || voiceBusy || interrupting;
     const settingsLocked = requestLocked || this.context.settingsLocked;
@@ -1020,6 +1018,12 @@ class CaffoldTaskComposer extends HTMLElement {
       textarea.setSelectionRange(focus.start, focus.end);
     }
 
+    this.setRegion(
+      "create-status",
+      creating
+        ? '<p class="task-composer-create-status" role="status">Starting the task...</p>'
+        : "",
+    );
     this.setRegion("voice-status", this.renderVoiceStatus());
     this.setRegion(
       "interrupt-error",
@@ -1075,6 +1079,7 @@ class CaffoldTaskComposer extends HTMLElement {
           <div class="task-composer-render-region" data-composer-region="context"></div>
           <div class="task-composer-render-region" data-composer-region="images"></div>
           <textarea name="prompt" rows="1"></textarea>
+          <div class="task-composer-render-region" data-composer-region="create-status"></div>
           <div class="task-composer-render-region" data-composer-region="voice-status"></div>
           <div class="task-composer-render-region" data-composer-region="interrupt-error"></div>
           <div class="task-composer-render-region" data-composer-region="image-error"></div>

@@ -19,18 +19,12 @@ caffold-task-create {
        it so the text starts beside the control rather than under it. */
     padding: 0.625rem 0.75rem 0.625rem
       calc(0.75rem + var(--task-header-leading-space, 0rem));
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--warning-border);
     border-radius: 6px;
-    background: var(--surface-subtle);
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-  }
-
-  & .task-create-status[data-status-tone="error"] {
-    border-color: var(--warning-border);
     background: var(--warning-subtle);
     color: var(--warning-strong);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
   }
 
   & .task-create-status-icon {

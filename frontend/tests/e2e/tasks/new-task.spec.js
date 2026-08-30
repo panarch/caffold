@@ -830,16 +830,23 @@ test("says that a new task is starting until creation is answered", { tag: "@all
   await prompt.fill("Inspect the planner changes");
   await pasteImage(prompt, "planner-layout.png");
   await expect(composer.locator(".task-composer-attachment")).toHaveCount(1);
+  const panelTop = () =>
+    composer
+      .locator(".task-composer-panel")
+      .evaluate((element) => Math.round(element.getBoundingClientRect().top));
+  const topBeforeSubmit = await panelTop();
   await prompt.press("Enter");
 
   await scenario.createRequested;
-  const status = tasksPage.locator("caffold-task-create .task-create-status");
-  await expect(status).toHaveAttribute("data-status-tone", "starting");
+  const status = composer.locator(".task-composer-create-status");
   await expect(status).toHaveText("Starting the task...");
   await expect(prompt).toBeDisabled();
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "new");
-  // The notice shares the composer's width rule, so it has to stay inside the
-  // surface and unclipped at every width the New Task surface is used at.
+  // The notice reports on the request the Composer is holding, so it grows the
+  // panel downward instead of moving the panel the prompt was submitted from.
+  expect(await panelTop()).toBe(topBeforeSubmit);
+  // It also has to stay inside the surface and unclipped at every width the
+  // New Task surface is used at.
   expect(
     await status.evaluate((element) => ({
       clipped: element.scrollWidth > element.clientWidth,
@@ -876,7 +883,6 @@ test("restores the exact new task draft when creation is rejected", { tag: "@des
   await scenario.createRequested;
 
   const error = page.locator("caffold-task-create .task-create-status");
-  await expect(error).toHaveAttribute("data-status-tone", "error");
   await expect(error).toContainText("Task creation failed");
   await expect(prompt).toHaveValue("Inspect the planner changes");
   await expect(composer.locator(".task-composer-attachment")).toHaveCount(1);
