@@ -1,10 +1,13 @@
 import { expect } from "@playwright/test";
 
 export {
+  activeLiveUpdateChannels,
+  activeWatchSubscriptionId,
   emitTaskDetailBootstrap,
   installEventSourceMock,
   installEventSourceMockInBrowser,
   installTaskSseControllerInBrowser,
+  isWatchSubscriptionClosed,
   openTaskWithBootstrap,
 } from "./task-sse-fixture.js";
 

@@ -1003,7 +1003,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   await expect(completedCommandRow).toContainText("cargo test");
   await expect(completedCommandRow).toContainText("1s");
   await expect(completedCommandRow).not.toContainText("test result: ok");
-  await completedCommandAction.scrollIntoViewIfNeeded();
+  await completedCommandAction.click({ trial: true });
   const conversationScrollBeforeDialog = await tasksPage
     .locator(".task-conversation-scroll")
     .evaluate((element) => ({

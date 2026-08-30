@@ -1,5 +1,7 @@
 import { expect } from "@playwright/test";
 
+const DEFAULT_EVENT_SOURCE_REGISTRY_KEY = "__caffoldMockEventSources";
+
 export function installTaskSseControllerInBrowser() {
   if (window.__caffoldTaskSse?.fixtureProtocol === "live-gateway-v1") {
     return;
@@ -428,6 +430,40 @@ export function installEventSourceMockInBrowser({
 export async function installEventSourceMock(page, options = {}) {
   await page.addInitScript(installTaskSseControllerInBrowser);
   await page.addInitScript(installEventSourceMockInBrowser, options);
+}
+
+export function activeLiveUpdateChannels(page, {
+  registryKey = DEFAULT_EVENT_SOURCE_REGISTRY_KEY,
+} = {}) {
+  return page.evaluate((key) =>
+    (window[key] ?? [])
+      .filter((source) => source.readyState !== 2)
+      .map((source) => source.channel)
+      .sort(),
+  registryKey);
+}
+
+export function activeWatchSubscriptionId(page, {
+  registryKey = DEFAULT_EVENT_SOURCE_REGISTRY_KEY,
+} = {}) {
+  return page.evaluate((key) => {
+    const sources = (window[key] ?? []).filter(
+      (source) => source.channel === "watch" && source.readyState !== 2,
+    );
+    return sources.length === 1 ? sources[0].subscriptionId ?? null : null;
+  }, registryKey);
+}
+
+export function isWatchSubscriptionClosed(page, subscriptionId, {
+  registryKey = DEFAULT_EVENT_SOURCE_REGISTRY_KEY,
+} = {}) {
+  return page.evaluate(({ key, id }) => {
+    const source = (window[key] ?? []).find(
+      (candidate) =>
+        candidate.channel === "watch" && candidate.subscriptionId === id,
+    );
+    return source ? source.readyState === 2 : null;
+  }, { key: registryKey, id: subscriptionId });
 }
 
 export async function emitTaskDetailBootstrap(page, detail) {
