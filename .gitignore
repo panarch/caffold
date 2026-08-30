@@ -6,6 +6,7 @@
 /frontend/tests/e2e/fixtures/.caffold-data
 /frontend/tests/e2e/fixtures/home/.caffold-worktrees
 /frontend/tests/e2e/fixtures/**/.git
+/.caffold/
 .caffold-dev/
 .notes/
 .DS_Store
