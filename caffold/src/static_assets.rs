@@ -404,6 +404,31 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/(detail)/(task)/session.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/session.js"
         ))),
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/model.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/model.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css"
@@ -853,11 +878,11 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "components/file-viewer.js" => {
             Some(js(include_str!("../../frontend/components/file-viewer.js")))
         }
-        "components/file-viewer/components/markdown-preview.css" => Some(css(include_str!(
-            "../../frontend/components/file-viewer/components/markdown-preview.css"
+        "components/markdown-preview.css" => Some(css(include_str!(
+            "../../frontend/components/markdown-preview.css"
         ))),
-        "components/file-viewer/components/markdown-preview.js" => Some(js(include_str!(
-            "../../frontend/components/file-viewer/components/markdown-preview.js"
+        "components/markdown-preview.js" => Some(js(include_str!(
+            "../../frontend/components/markdown-preview.js"
         ))),
         "components/file-viewer-presentation.js" => Some(js(include_str!(
             "../../frontend/components/file-viewer-presentation.js"

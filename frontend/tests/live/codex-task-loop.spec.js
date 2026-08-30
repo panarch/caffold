@@ -29,6 +29,7 @@ const PASTED_IMAGE_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 const liveThreadIds = new Set();
 const measuredThreadModels = new Map();
+const removableLiveFixtures = new Set();
 const liveUsageTests = [];
 let liveUsageBefore;
 let liveUsageRunId;
@@ -292,6 +293,16 @@ test.afterAll(async ({ request }) => {
     `${JSON.stringify(report, null, 2)}\n`,
   );
   console.log(formatLiveUsageReport(report));
+
+  for (const repository of removableLiveFixtures) {
+    rmSync(repository, { recursive: true, force: true });
+    try {
+      rmdirSync(dirname(repository));
+    } catch {
+      // Another live fixture may still own the shared parent.
+    }
+  }
+  removableLiveFixtures.clear();
 
   const missingPassedThreads = report.tests
     .filter((measured) => measured.outcome === "passed")
@@ -877,6 +888,115 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   ).toHaveCount(0, { timeout: 5_000 });
   await page.goto("/tasks");
   await expect(navigator.locator(`.task-row[data-thread-id="${threadId}"]`)).toHaveCount(0);
+});
+
+test("uses the current plan convention across a real Codex resume", async ({
+  page,
+}) => {
+  const marker = `${Date.now()}`;
+  const fixture = initializeLiveRepository(`current-plan-${marker}`);
+  const initialReply = `caffold-live-plan-created-${marker}`;
+  const resumedReply = `caffold-live-plan-resumed-${marker}`;
+  let threadId;
+
+  try {
+    await page.goto(`/tasks/new?cwd=${encodeURIComponent(fixture.cwd)}`);
+    const tasksPage = page.locator("caffold-tasks-page");
+    const newTaskForm = tasksPage.locator('.task-new-form[data-task-form="create"]');
+    await expect(newTaskForm).toBeVisible();
+    await chooseModel(newTaskForm, "spark");
+
+    const newTaskPrompt = newTaskForm.getByRole("textbox", {
+      name: "New task prompt",
+    });
+    await newTaskPrompt.fill(
+      [
+        "Create a written implementation plan for adding one keyboard shortcut to a small app.",
+        "Use the Caffold current-plan convention supplied by your environment; the paths are intentionally not repeated here.",
+        "Do not modify any file outside that convention and do not change Git tracking or ignore rules.",
+        "Give the plan an H1 title. In its checklist, create exactly two items, with the first checked and the second unchecked.",
+        `After writing the documents, reply with exactly ${initialReply}.`,
+      ].join("\n"),
+    );
+    await newTaskPrompt.press("Enter");
+    await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
+    threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
+    expect(threadId).toBeTruthy();
+    trackLiveThread(threadId, "spark", SPARK_MODEL);
+
+    const finalMessages = tasksPage.locator(
+      'caffold-task-assistant-message[data-message-phase="final"]',
+    );
+    await expect(finalMessages.filter({ hasText: initialReply })).toBeVisible({
+      timeout: 120_000,
+    });
+    await expectLiveThreadIdle(page.request, threadId);
+
+    const currentPlan = tasksPage.locator("caffold-task-current-plan");
+    await expect(currentPlan.locator("[data-current-plan-progress]")).toHaveText(
+      "1 / 2",
+    );
+    const currentDirectory = join(fixture.repository, ".caffold/plans/current");
+    expect(existsSync(join(currentDirectory, "PLAN.md"))).toBe(true);
+    expect(existsSync(join(currentDirectory, "CHECKLIST.md"))).toBe(true);
+    expect(existsSync(join(fixture.repository, ".gitignore"))).toBe(false);
+
+    await page.goto("/tasks");
+    await expect
+      .poll(() => threadViewerLeases(page, threadId), { timeout: 15_000 })
+      .toBe(0);
+    const createdTask = taskNavigator(page).locator(
+      `.task-row[data-thread-id="${threadId}"]`,
+    );
+    await expect(createdTask).toBeVisible();
+    await createdTask.click();
+    await expect(currentPlan.locator("[data-current-plan-progress]")).toHaveText(
+      "1 / 2",
+    );
+
+    const followUp = tasksPage.getByRole("textbox", { name: "Follow-up prompt" });
+    await followUp.fill(
+      [
+        "Continue the existing Caffold current plan without changing files outside that convention.",
+        "Mark the remaining unchecked item complete and add exactly one new unchecked verification item.",
+        `Then reply with exactly ${resumedReply}.`,
+      ].join("\n"),
+    );
+    await submitPromptAndExpectAccepted(page, threadId, () => followUp.press("Enter"));
+    await expect(finalMessages.filter({ hasText: resumedReply })).toBeVisible({
+      timeout: 120_000,
+    });
+    await expectLiveThreadIdle(page.request, threadId);
+    await expect(currentPlan.locator("[data-current-plan-progress]")).toHaveText(
+      "2 / 3",
+    );
+    expect(
+      execFileSync(
+        "git",
+        ["-C", fixture.repository, "status", "--porcelain=v1", "--untracked-files=all"],
+        { encoding: "utf8" },
+      )
+        .trim()
+        .split("\n")
+        .sort(),
+    ).toEqual([
+      "?? .caffold/plans/current/CHECKLIST.md",
+      "?? .caffold/plans/current/PLAN.md",
+    ]);
+
+    await archiveLiveThread(page.request, threadId);
+  } finally {
+    if (threadId && liveThreadIds.has(threadId)) {
+      try {
+        await archiveLiveThread(page.request, threadId);
+      } catch {
+        // afterEach reports the archive failure and retains the fixture for recovery.
+      }
+    }
+    if (!threadId || !liveThreadIds.has(threadId)) {
+      removableLiveFixtures.add(fixture.repository);
+    }
+  }
 });
 
 test("names a new Caffold task at first-turn completion and preserves it", async ({

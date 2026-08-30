@@ -12,6 +12,7 @@ import { routeDomain } from "../../../../../navigation-routes.js";
 import "../../components/composer.js";
 import "./components/conversation.js";
 import "./components/command-dialog.js";
+import "./components/current-plan.js";
 import { TaskDetailSession } from "./session.js";
 import {
   PROMPT_SUBMISSION_STATE,
@@ -115,7 +116,7 @@ class CaffoldTaskDetail extends HTMLElement {
         if (
           closestElement(
             event.target,
-            "caffold-task-detail-summary, caffold-task-conversation, caffold-task-composer, caffold-task-review, caffold-task-git-layout, caffold-task-github-layout",
+            "caffold-task-detail-summary, caffold-task-conversation, caffold-task-current-plan, caffold-task-composer, caffold-task-review, caffold-task-git-layout, caffold-task-github-layout",
           )
         ) {
           return;
@@ -184,6 +185,7 @@ class CaffoldTaskDetail extends HTMLElement {
   setLiveUpdates(liveUpdates) {
     this.ensureRendered();
     this.liveUpdates = liveUpdates ?? null;
+    this.currentPlanComponent()?.setLiveUpdates(this.liveUpdates);
   }
 
   disconnectedCallback() {
@@ -342,6 +344,7 @@ class CaffoldTaskDetail extends HTMLElement {
       this.deactivateFollowUpComposer();
     }
     this.commandDialog()?.dismiss();
+    this.currentPlanComponent()?.deactivate();
     this.hidden = true;
   }
 
@@ -1312,6 +1315,7 @@ class CaffoldTaskDetail extends HTMLElement {
     this.ensureTaskShell();
     this.renderTaskContentRegion();
     this.commandDialog()?.setThreadId(this.selectedThreadId);
+    this.syncCurrentPlan();
     this.syncFollowUpComposer();
     this.conversationComponent()?.setActive(
       this.reviewView === "conversation",
@@ -1352,6 +1356,12 @@ class CaffoldTaskDetail extends HTMLElement {
   commandDialog() {
     return this.querySelector(
       ".task-conversation-pane caffold-task-command-dialog",
+    );
+  }
+
+  currentPlanComponent() {
+    return this.querySelector(
+      ".task-conversation-pane caffold-task-current-plan",
     );
   }
 
@@ -1518,6 +1528,37 @@ class CaffoldTaskDetail extends HTMLElement {
     this.activateFollowUpComposer(threadId);
   }
 
+  syncCurrentPlan() {
+    const currentPlan = this.currentPlanComponent();
+    const task = this.taskDetail?.task ?? null;
+    const threadId = taskThreadId(task);
+    if (!currentPlan) {
+      return;
+    }
+    currentPlan.setLiveUpdates(this.liveUpdates);
+    if (
+      this.reviewView !== "conversation" ||
+      !task ||
+      threadId !== this.selectedThreadId
+    ) {
+      currentPlan.deactivate();
+      return;
+    }
+    currentPlan.setContext({
+      threadId,
+      cwd: this.currentPlanCwdPath(),
+      rootPath: this.selectedTaskContextPath() || this.currentPlanCwdPath(),
+    });
+  }
+
+  currentPlanCwdPath() {
+    const cwdPath = this.taskDetail?.task?.cwdPath;
+    if (typeof cwdPath !== "string") {
+      return "";
+    }
+    return cleanLogicalPath(cwdPath) || ".";
+  }
+
   isInitialConversationLoadPending(threadId = this.selectedThreadId) {
     return this.initialConversationLoad?.threadId === threadId;
   }
@@ -1624,9 +1665,9 @@ class CaffoldTaskDetail extends HTMLElement {
             ),
           ],
           [
-            "composer-slot",
+            "composer-dock",
             currentConversation.querySelector(
-              ":scope > .task-follow-up-composer-slot",
+              ":scope > .task-follow-up-composer-dock",
             ),
           ],
         ]);
@@ -1635,8 +1676,8 @@ class CaffoldTaskDetail extends HTMLElement {
             ? "conversation"
             : child.matches("caffold-task-command-dialog")
               ? "command-dialog"
-              : child.matches(".task-follow-up-composer-slot")
-                ? "composer-slot"
+              : child.matches(".task-follow-up-composer-dock")
+                ? "composer-dock"
                 : "";
         [...currentConversation.children].forEach((child) => {
           if (![...stableChildren.values()].includes(child)) {
@@ -1771,7 +1812,10 @@ class CaffoldTaskDetail extends HTMLElement {
         <section class="task-conversation-pane" aria-label="Task conversation">
           <caffold-task-conversation></caffold-task-conversation>
           <caffold-task-command-dialog></caffold-task-command-dialog>
-          <div class="task-follow-up-composer-slot"></div>
+          <div class="task-follow-up-composer-dock">
+            <caffold-task-current-plan></caffold-task-current-plan>
+            <div class="task-follow-up-composer-slot"></div>
+          </div>
         </section>
       </div>
     `;

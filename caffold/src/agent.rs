@@ -27,6 +27,25 @@ pub(crate) mod codex;
 pub(crate) mod conversation;
 pub(crate) mod driver;
 
+/// The provider-neutral convention Caffold gives every managed agent session.
+///
+/// The files remain optional filesystem state: the instruction explains how
+/// to participate when a written plan is useful without turning every Task
+/// into a planning workflow or giving Caffold another plan ledger.
+pub(crate) const CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS: &str = concat!(
+    "Caffold supports an optional current plan through two ordinary Markdown files relative ",
+    "to the current working directory: .caffold/plans/current/PLAN.md and ",
+    ".caffold/plans/current/CHECKLIST.md. When the work benefits from a durable written plan, ",
+    "create and maintain both files. PLAN.md is free-form. CHECKLIST.md is free-form, and ",
+    "Caffold counts every GitHub-Flavored Markdown task-list marker in it as progress. ",
+    "If both files already exist, treat them as the current written plan and keep them aligned ",
+    "with the work. Do not create these files merely because Caffold is present. Discuss planning ",
+    "questions and decisions through the normal conversation. Checked items do not by themselves ",
+    "resolve or archive the plan. Do not change Git tracking or .gitignore for these files unless ",
+    "the user asks. When the plan is no longer current, move or delete both files together; any ",
+    "history layout is the user's choice."
+);
+
 pub(crate) use approval::{
     ApprovalDecision, ApprovalDetail, ApprovalOutcome, ApprovalRequest, PermissionRow,
 };

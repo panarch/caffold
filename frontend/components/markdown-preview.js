@@ -2,7 +2,7 @@ const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
 
 let parserPromise;
 
-class CaffoldReviewMarkdownPreview extends HTMLElement {
+class CaffoldMarkdownPreview extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
     this.setAttribute("role", "region");
@@ -92,10 +92,9 @@ class CaffoldReviewMarkdownPreview extends HTMLElement {
   }
 }
 
-customElements.define(
-  "caffold-review-markdown-preview",
-  CaffoldReviewMarkdownPreview,
-);
+if (!customElements.get("caffold-markdown-preview")) {
+  customElements.define("caffold-markdown-preview", CaffoldMarkdownPreview);
+}
 
 async function markdownContent(markdown) {
   const parser = await loadParser();

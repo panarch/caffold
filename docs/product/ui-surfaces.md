@@ -142,6 +142,22 @@ automatic replay.
 The Composer owns its draft, attachments, selection, and voice capture. Task
 child switching does not interrupt the selected Task's stream.
 
+When the selected Task's effective working directory contains the valid
+[current plan document pair](workflows.md#current-plan-documents), a compact
+read-only control floats directly above the follow-up Composer without moving
+it. Its padded left segment shows the optional Plan title and opens the Plan;
+its adjacent completed/total segment opens the Checklist. The visible segments
+use the normal control hit height while the title truncates inside its own
+segment. Both actions use one shared Markdown dialog; task-list checkboxes
+remain disabled, and a document path inside the Task project root is displayed
+relative to that root while its original Files path remains the read target.
+Conversation always retains enough bottom scroll space for the floating
+control. The strip stays available while a turn is active, and when neither
+file exists it occupies no layout space. Partial, unreadable, or temporarily
+unavailable state is explicit and non-blocking rather than projected as
+progress. Other plan or history files remain available through Files without a
+dedicated resolved-plan surface.
+
 ### Integrated Review
 
 Integrated Review is the product surface for Working Tree and current Task
@@ -267,6 +283,8 @@ The browser UI does not provide:
 - force deletion of dirty managed worktrees;
 - split diff, hunk comments, or durable review annotations;
 - a Caffold-owned duplicate of either agent's transcript;
+- editing, checklist mutation, or archive controls for current plan documents;
+- native agent Plan-mode selection or structured clarification forms;
 - switching an existing Task between agents.
 
 Planned additions belong in the [Roadmap](roadmap.md), not in this description

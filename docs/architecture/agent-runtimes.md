@@ -110,6 +110,7 @@ conversation ID and cwd. Neither path deletes a Git branch.
 | Active-turn survival across backend replacement | The daemon owns the turn; a new proxy reconnects | The runner owns the child; a new backend reattaches and asks the session for current state |
 | Working directory | Reported and owned by the Codex thread | Persisted with the Caffold Task and supplied whenever the Claude session starts or resumes |
 | Caffold-served Task tools | Caffold-owned HTTP MCP config on thread start and resume; calls from dynamic tools persisted by pre-MCP threads remain supported | In-process MCP server declared whenever the session is initialized |
+| Current-plan instruction carrier | Caffold MCP `initialize` result `instructions` | Initialize `appendSystemPrompt` on fresh and resumed sessions |
 | Readiness | Typed, blocking installation and app-server readiness | Diagnostic status; an attempted operation reports its own failure |
 | Idle release | A thread subscription may be dropped when no viewer or runtime lease remains | The session stays attached; detaching and immediately reattaching is not a free operation |
 
@@ -281,6 +282,30 @@ vocabulary—allow, allow always, deny, and deny and stop—and each driver offe
 only decisions its agent can carry out. See
 [Security and Approvals](security-and-approvals.md) for the exact mappings.
 
+## Current plan document convention
+
+Caffold owns one provider-neutral instruction describing the optional
+[current plan document pair](../product/workflows.md#current-plan-documents).
+It tells an agent when and how to maintain the two ordinary Markdown files but
+does not require every Task to create them. Filesystem content remains the
+source of truth; the shared agent vocabulary has no plan entity, lifecycle, or
+progress writer.
+
+Each driver carries that same meaning through its native initialization
+boundary. Codex returns it as the Caffold MCP server's `instructions` on MCP
+initialization for thread start and resume. This leaves the project's Codex
+`developer_instructions` and Caffold's separate first-turn naming composition
+unchanged. Claude supplies it through `appendSystemPrompt` on every session
+initialize; only a fresh Task appends the one-time naming instructions, while
+a resumed or reattached session receives the plan convention alone.
+
+Neither driver enables a native Plan or collaboration mode, translates native
+plan events, or exposes structured clarification questions for this feature.
+Planning decisions remain normal conversation, and the browser projects only
+the filesystem pair. Provider-specific transport tests verify both fresh and
+resume carriers without promoting their wire fields into the Tasks
+application.
+
 ## Caffold-served tools and worktrees
 
 Caffold exposes Task naming and managed-worktree isolation through the native
@@ -318,6 +343,7 @@ turn can begin. The full safety and recovery contract belongs to
 | Claude conversation history | Claude's transcript file |
 | Live Claude process and pending control requests | Claude process, held and relayed by the Caffold runner |
 | Task membership, provider, display name, Section placement, composer state, and managed-worktree recovery | Caffold Redb |
+| Current plan documents and checklist markers | Filesystem under the Task's effective working directory |
 | Files, diffs, branches, and commits | Git checkout or worktree |
 | Presentation, selection, and transient request state | Browser/PWA |
 
@@ -351,12 +377,12 @@ by default.
 ## Code and verification map
 
 ```text
-caffold/src/agent.rs                    shared agent vocabulary
+caffold/src/agent.rs                    shared agent vocabulary and plan convention
 caffold/src/agent/driver.rs             closed driver choice and shared Task operations
 caffold/src/agent/codex.rs              Codex entry point
-caffold/src/agent/codex/                app-server transport, protocol, readiness, contract
+caffold/src/agent/codex/                app-server transport, protocol, readiness, contract, MCP carrier
 caffold/src/agent/claude.rs             Claude entry point and live session state
-caffold/src/agent/claude/               protocol, transcript, settings, tools, runner client
+caffold/src/agent/claude/               protocol, transcript, settings, tools, instruction carrier, runner client
 caffold/src/app/tasks/runtime.rs         per-Task routing and cross-agent orchestration
 caffold/src/app/tasks/runtime/bridge.rs  Codex runtime bridge
 caffold/src/app/tasks/runtime/claude_bridge.rs

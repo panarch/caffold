@@ -100,6 +100,17 @@ invalidate status; `HEAD`, refs, and `packed-refs` invalidate status plus
 ref-derived Compare or Log data. Other internal Git object and lock events do
 not refresh the UI.
 
+The Task current-plan projection uses the same invalidation contract. Its REST
+response supplies the deepest existing logical directory on the path from the
+Task cwd through `.caffold/plans/current`. The browser watches that
+`watchPath`, rereads `GET /api/current-plan` after relevant changes, and moves
+the subscription deeper as directories appear or back outward as they are
+removed. A Watch event never supplies plan existence, title, or progress. The
+first ready event triggers one reconciliation to close the initial
+read-to-registration gap; reconnect recovery also rereads before clearing a
+degraded presentation. Leaving Conversation or replacing the Task releases the
+subscription and invalidates pending reads.
+
 ## Frontend ownership and recovery
 
 `frontend/pages/(task-workspace)/live-updates.js` is the workspace-scoped public

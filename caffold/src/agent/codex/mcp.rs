@@ -17,6 +17,8 @@ use std::{
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use crate::agent::CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS;
+
 mod capability;
 
 use capability::{CapabilitySigner, looks_like_thread_session};
@@ -568,6 +570,7 @@ pub(crate) fn mcp_initialize_result(protocol_version: &str) -> Value {
             "name": CAFFOLD_MCP_SERVER_NAME,
             "version": env!("CARGO_PKG_VERSION"),
         },
+        "instructions": CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS,
     })
 }
 

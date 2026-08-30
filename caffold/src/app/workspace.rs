@@ -1,4 +1,5 @@
 mod browse;
+mod current_plan;
 mod git;
 mod github;
 
@@ -30,6 +31,7 @@ pub(super) fn router(fs: Arc<RootedFs>) -> Router {
     let state = WorkspaceState::new(fs);
     Router::new()
         .merge(browse::router())
+        .merge(current_plan::router())
         .merge(git::router())
         .merge(github::router())
         .with_state(state)

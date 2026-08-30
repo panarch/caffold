@@ -5,7 +5,7 @@
 @import "./components/file-tree.css";
 @import "./components/file-navigator.css";
 @import "./components/file-viewer.css";
-@import "./components/file-viewer/components/markdown-preview.css";
+@import "./components/markdown-preview.css";
 @import "./components/review-panel-resizer.css";
 @import "./components/segmented-control.css";
 @import "./pages/(task-workspace)/layout.css";
@@ -39,6 +39,8 @@
 @import "./pages/(task-workspace)/tasks/components/archived-delete-dialog.css";
 @import "./pages/(task-workspace)/tasks/components/image-preview-dialog.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/layout.css";
+@import "./pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.css";
+@import "./pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.css";
 @import "./pages/(task-workspace)/tasks/recovery/page.css";
 @import "./pages/(task-workspace)/tasks/components/codex-readiness-recovery.css";
 @import "./pages/(task-workspace)/tasks/(detail)/(task)/components/summary.css";

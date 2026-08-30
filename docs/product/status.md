@@ -18,6 +18,9 @@ boundaries.
 - shared prompts, active-turn steering, interruption, command and permission
   approvals, images, model/effort/permission choices, and local voice input in
   the Conversation surface;
+- an optional provider-neutral Markdown current plan in each Task working
+  directory, with live checklist progress and read-only Plan/Checklist viewing
+  above the follow-up Composer;
 - agent-owned model and permission semantics rather than Caffold-defined
   provider profiles;
 - separate Codex and Claude Settings diagnostics, including Claude account,
@@ -64,6 +67,11 @@ boundaries.
 - Review uses unified diffs without durable hunk comments or annotations.
 - Caffold does not duplicate either agent's transcript or canonical lifecycle
   state as a local source of truth.
+- Current plans are filesystem documents rather than database or native agent
+  Plan-mode state. Caffold does not edit them, archive their history, select a
+  provider Plan mode, or replace Composer conversation with structured
+  clarification forms. The exact document contract is defined in
+  [Product Workflows](workflows.md#current-plan-documents).
 - Web Push is best-effort while the backend is running. It has no durable
   delivery queue, provider retry, or startup catch-up.
 

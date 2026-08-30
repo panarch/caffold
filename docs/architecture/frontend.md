@@ -46,7 +46,9 @@ caffold-app-shell
     |   |   `-- Directory Picker
     |   `-- Detail Layout
     |       |-- Task subject
-    |       |   `-- Conversation
+    |       |   |-- Conversation
+    |       |   |-- Current plan
+    |       |   `-- Follow-up Composer
     |       |-- Section subject
     |       |   |-- Fixed-context New Task
     |       |   `-- Existing-conversation shortcuts
@@ -258,9 +260,10 @@ home.
 - a bounded Integrated Review cache keyed by subject identity.
 
 `caffold-task-detail` is the canonical owner of the selected Task
-snapshot and live event application, Conversation, Command dialog, follow-up
-Composer, and Task mutations. It publishes a subject snapshot upward; it does
-not mount Integrated Review, Git, GitHub, or their Summary controls.
+snapshot and live event application, Conversation, Command dialog, current-plan
+strip, follow-up Composer, and Task mutations. It publishes a subject snapshot
+upward; it does not mount Integrated Review, Git, GitHub, or their Summary
+controls.
 
 One pending prompt per Task belongs to Detail, whether it originated in the
 Task Composer or was transferred from a New Task or GitHub creation surface.
@@ -397,11 +400,48 @@ Summary components send intents upward and do not own repository requests.
 
 ### Conversation
 
-Conversation owns transcript rendering, disclosure and scroll state, and the
-follow-up Composer. It exists only under the Task subject. Stateful children
-are preserved by Task identity through incremental shell updates. Moving from
-Tasks to Settings ends active editing and transport work without destroying a
-retained Composer draft.
+Conversation owns transcript rendering, disclosure, and scroll state. Task
+Detail owns the follow-up Composer as its stable sibling. Both exist only under
+the Task subject and are preserved by Task identity through incremental shell
+updates. Moving from Tasks to Settings ends active editing and transport work
+without destroying a retained Composer draft.
+
+### Current plan
+
+`caffold-task-current-plan` is another stable child of Task Detail inside the
+stable follow-up Composer dock. The Composer alone determines the dock's flow
+height; the current-plan host is positioned above it, so plan presentation does
+not move the Composer. Conversation keeps a projection-independent bottom
+scroll allowance large enough for the compact floating control. The parent
+supplies the selected Task identity, that Task's canonical `cwdPath`, the Task
+project root used only for file-path presentation, and the workspace live
+updates capability. A missing or unresolved Task cwd deactivates the feature;
+the browser does not substitute the project root or initial workspace path for
+the filesystem query.
+
+The component reads `GET /api/current-plan?path=...` and owns the resulting
+`absent`, `ready`, or `problem` domain projection. It separately owns the
+`inactive`, `resolving`, `subscribed`, and `degraded` control graph, request and
+context generations, the accepted `watchPath` subscription, and cleanup.
+Task/cwd replacement rejects stale completions. Watch events and transport
+recovery trigger a fresh REST read instead of changing plan state directly;
+the first ready event also rereads once to close the gap between the initial
+read and Watch registration. An equivalent projection leaves the DOM alone,
+and `absent` has zero layout height.
+
+The Plan and Checklist actions share the feature-private
+`caffold-current-plan-document-dialog`. It reads current bytes through the
+ordinary Files API whenever a document opens, aborts stale loads, refreshes an
+open document on invalidation while preserving scroll when possible, and
+restores focus on close. The dialog keeps the Files path as request identity and
+uses the shared Task file-path presentation rule to show a project-root-relative
+label only when that path is contained by the root. In the ready summary, the
+Plan title and checklist progress are the two padded action segments; the
+visible `Current plan` label and duplicate document buttons do not form a
+second control row. Rendering delegates to the reusable
+`caffold-markdown-preview`, whose task-list controls are disabled. Neither
+component writes plan files. The product-level file convention belongs to
+[Product Workflows](../product/workflows.md#current-plan-documents).
 
 ### Integrated Review
 
@@ -419,7 +459,8 @@ representation together. Text files support Source, Markdown adds text-only
 Preview, raster images use Preview, and SVG supports both its source text and
 image Preview. The file viewer owns representation chrome and image rendering,
 and delegates Markdown rendering, sanitization, fallback, and local scroll to
-its private Markdown Preview child component.
+the shared `caffold-markdown-preview` component also used by the current-plan
+dialog.
 
 Integrated Review uses a bounded cache keyed by explicit Task or Section
 identity. Disconnecting an inactive entry invalidates its requests and releases
@@ -636,6 +677,10 @@ frontend/
 |               |       |-- summary.js
 |               |       |-- conversation.js
 |               |       |-- command-dialog.js
+|               |       |-- current-plan.js
+|               |       |-- current-plan/
+|               |       |   |-- model.js
+|               |       |   `-- components/document-dialog.js
 |               |       `-- conversation/...
 |               |-- (section)/
 |               |   |-- layout.js
@@ -658,6 +703,7 @@ frontend/
     |-- file-navigator.js
     |-- file-viewer.js
     |-- git-compare-browser.js
+    |-- markdown-preview.js
     |-- review-panel-resizer.js
     `-- segmented-control.js
 ```

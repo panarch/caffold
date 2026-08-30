@@ -196,7 +196,7 @@ test("renders a route-owned text-only Markdown Preview without changing file sel
   await expect(previewControl).toHaveAttribute("aria-pressed", "true");
 
   const viewer = taskReview.locator("caffold-review-file-viewer");
-  const markdownPreview = viewer.locator("caffold-review-markdown-preview");
+  const markdownPreview = viewer.locator("caffold-markdown-preview");
   const preview = markdownPreview.locator(".markdown-preview-body");
   await expect(markdownPreview).toHaveAttribute("data-render-state", "markdown");
   const previewScroll = await markdownPreview.evaluate((element) => {
@@ -252,7 +252,7 @@ test("renders a route-owned text-only Markdown Preview without changing file sel
       '.task-review-viewer-axis caffold-segmented-control[data-review-axis="viewer"]',
     );
     const labels = [...axis.querySelectorAll("button > span")];
-    const previewScroll = review.querySelector("caffold-review-markdown-preview");
+    const previewScroll = review.querySelector("caffold-markdown-preview");
     return {
       rootFontSize: Number.parseFloat(
         getComputedStyle(document.documentElement).fontSize,

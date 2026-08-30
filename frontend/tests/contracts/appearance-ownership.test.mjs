@@ -8,7 +8,7 @@ const frontendRoot = fileURLToPath(new URL("../../", import.meta.url));
 const e2eSupportRoot = fileURLToPath(new URL("../e2e/support/", import.meta.url));
 
 const conversationOwners = new Set([
-  "components/file-viewer/components/markdown-preview.css",
+  "components/markdown-preview.css",
   "pages/(task-workspace)/tasks/components/composer.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.css",
@@ -25,7 +25,7 @@ const conversationOwners = new Set([
 const codeOwners = new Set([
   "components/code-viewer.css",
   "components/diff-viewer.css",
-  "components/file-viewer/components/markdown-preview.css",
+  "components/markdown-preview.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css",
@@ -43,7 +43,7 @@ const codeOwners = new Set([
 const typefaceOwners = new Set([
   "components/code-viewer.css",
   "components/diff-viewer.css",
-  "components/file-viewer/components/markdown-preview.css",
+  "components/markdown-preview.css",
   "fonts.js",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css",
@@ -120,7 +120,7 @@ test("mobile interaction policies preserve pinch zoom and own viewer text sizing
   const codeViewer = readFrontend("components/code-viewer.css");
   const diffViewer = readFrontend("components/diff-viewer.css");
   const markdownPreview = readFrontend(
-    "components/file-viewer/components/markdown-preview.css",
+    "components/markdown-preview.css",
   );
 
   assert.match(cssBlock(root, "html {"), /touch-action: manipulation/);
@@ -133,9 +133,9 @@ test("mobile interaction policies preserve pinch zoom and own viewer text sizing
     ["components/code-viewer.css", codeViewer, "& .code-lines {"],
     ["components/diff-viewer.css", diffViewer, "& .diff-lines {"],
     [
-      "components/file-viewer/components/markdown-preview.css",
+      "components/markdown-preview.css",
       markdownPreview,
-      "caffold-review-markdown-preview {",
+      "caffold-markdown-preview {",
     ],
   ]) {
     const block = cssBlock(source, selector);
@@ -284,6 +284,8 @@ test("structural shadows separate fixed regions from floating elevation", () => 
   assert.deepEqual(
     tokenConsumers(sources, /var\(--structural-shadow-panel\)/),
     [
+      "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan.css",
+      "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.css",
       "pages/(task-workspace)/tasks/components/composer.css",
       "pages/layout.css",
     ],

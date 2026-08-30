@@ -1,0 +1,178 @@
+caffold-task-current-plan {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 980px);
+  justify-content: center;
+  min-width: 0;
+  padding-inline: 0.875rem;
+  font-size: var(--interface-meta-font-size);
+  line-height: var(--interface-line-height);
+
+  & .task-current-plan-strip {
+    box-sizing: border-box;
+    display: grid;
+    justify-self: start;
+    width: fit-content;
+    max-width: min(100%, 48rem);
+    min-width: 0;
+    margin: 0 0 var(--interface-space-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: 14px;
+    background: var(--surface-subtle);
+    box-shadow: var(--structural-shadow-panel);
+    color: var(--text);
+  }
+
+  & .task-current-plan-strip[hidden] {
+    display: none;
+  }
+
+  & .task-current-plan-main {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+
+  & .task-current-plan-strip[data-presentation="ready"] {
+    overflow: hidden;
+  }
+
+  & .task-current-plan-strip[data-presentation="attention"] {
+    padding: var(--interface-space-3) var(--interface-space-5);
+  }
+
+  & .task-current-plan-strip[data-presentation="attention"]
+    .task-current-plan-main {
+    gap: var(--interface-space-4);
+  }
+
+  & .task-current-plan-document-action {
+    box-sizing: border-box;
+    display: grid;
+    height: var(--interface-control-hit-size);
+    min-width: 0;
+    align-items: center;
+    padding: 0 var(--interface-space-6);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--control-fg);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  & .task-current-plan-document-action:hover,
+  & .task-current-plan-document-action:focus-visible {
+    background: var(--control-hover-bg);
+    outline: none;
+  }
+
+  & .task-current-plan-document-action:focus-visible {
+    box-shadow: inset 0 0 0 1px var(--border-strong);
+  }
+
+  & .task-current-plan-plan-action {
+    grid-template-columns: auto minmax(0, 1fr);
+    flex: 1 1 auto;
+    gap: var(--interface-space-3);
+    max-width: 38rem;
+    text-align: left;
+  }
+
+  & .task-current-plan-checklist-action {
+    flex: 0 0 auto;
+    border-inline-start: 1px solid var(--border-subtle);
+  }
+
+  & .task-current-plan-document-icon {
+    display: grid;
+    width: var(--interface-icon-slot-size);
+    height: var(--interface-icon-slot-size);
+    place-items: center;
+    color: var(--muted);
+  }
+
+  & .task-current-plan-document-icon-svg {
+    display: block;
+    width: var(--interface-icon-size);
+    height: var(--interface-icon-size);
+    stroke-width: 2;
+  }
+
+  & .task-current-plan-title {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .task-current-plan-strip[data-complete="true"]
+    .task-current-plan-progress {
+    color: var(--success);
+  }
+
+  & .task-current-plan-progress {
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  & .task-current-plan-attention {
+    font-weight: 600;
+  }
+
+  & [data-current-plan-action="retry"] {
+    position: relative;
+    min-height: var(--interface-compact-visual-size);
+    padding: var(--interface-space-1) var(--interface-space-4);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--control-fg);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  & [data-current-plan-action="retry"]::before {
+    position: absolute;
+    inset-block: calc(0px - var(--interface-compact-hit-outset));
+    inset-inline: 0;
+    content: "";
+  }
+
+  & [data-current-plan-action="retry"]:hover,
+  & [data-current-plan-action="retry"]:focus-visible {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+    outline: none;
+  }
+
+  & .task-current-plan-notice {
+    margin: var(--interface-space-2) 0 0;
+    color: var(--warning);
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 860px), (pointer: coarse) {
+  caffold-task-current-plan {
+    padding-inline: 0.625rem;
+  }
+}
+
+@media (max-width: 520px) and (orientation: portrait) {
+  caffold-task-current-plan {
+    padding-inline: 0.75rem;
+
+    & .task-current-plan-strip {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    & .task-current-plan-plan-action {
+      max-width: none;
+    }
+  }
+}

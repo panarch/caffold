@@ -7,7 +7,7 @@ import { renderInlineIcon, warmIcons } from "./icons.js";
 import { imageUrl } from "../api.js";
 import "./code-viewer.js";
 import "./diff-viewer.js";
-import "./file-viewer/components/markdown-preview.js";
+import "./markdown-preview.js";
 
 let viewerInstanceId = 0;
 
@@ -122,7 +122,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
     if (viewer) {
       return viewer.getScrollState?.() ?? null;
     }
-    return this.querySelector("caffold-review-markdown-preview")
+    return this.querySelector("caffold-markdown-preview")
       ?.getScrollState?.() ?? null;
   }
 
@@ -238,7 +238,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
     const { markdownChanged = false, ...previewOptions } = options;
     const panel = this.querySelector(":scope > .markdown-panel");
     const preview = panel?.querySelector(
-      ":scope > caffold-review-markdown-preview",
+      ":scope > caffold-markdown-preview",
     );
     if (panel && preview) {
       this.replacePresentationHeader(panel, presentation);
@@ -251,10 +251,10 @@ class CaffoldReviewFileViewer extends HTMLElement {
     this.innerHTML = `
       <section class="viewer-panel file-panel markdown-panel">
         ${this.renderPresentationHeader(presentation)}
-        <caffold-review-markdown-preview></caffold-review-markdown-preview>
+        <caffold-markdown-preview></caffold-markdown-preview>
       </section>
     `;
-    this.querySelector("caffold-review-markdown-preview")
+    this.querySelector("caffold-markdown-preview")
       ?.setMarkdown(file.content, previewOptions);
   }
 
