@@ -207,7 +207,6 @@ class CaffoldTaskCreate extends HTMLElement {
       this.composer()?.endEditingLifetime();
       this.activeSubmissionId = "";
       this.syncComposer();
-      this.renderStatus();
     } catch (error) {
       this.activeSubmissionId = "";
       this.error = error instanceof Error ? error : new Error(`${error}`);
@@ -239,13 +238,6 @@ class CaffoldTaskCreate extends HTMLElement {
     });
   }
 
-  // What this surface has to say about the request it is holding.
-  //
-  // This surface presents a request owned by the persistent Tasks page. Its
-  // Composer retains only the local in-flight state needed to show progress or
-  // restore a rejected draft. Once the empty Task is committed, the page moves
-  // its submission snapshot into the visible Task composer even if this source
-  // surface has been removed.
   // The region is left alone while it already says this, so a live region is
   // not re-announced for an unchanged state.
   renderStatus() {
@@ -253,25 +245,15 @@ class CaffoldTaskCreate extends HTMLElement {
     if (!region) {
       return;
     }
-    const status = this.error
-      ? `error:${this.error.message}`
-      : this.activeSubmissionId
-        ? "starting"
-        : "";
+    const status = this.error ? `error:${this.error.message}` : "";
     if (this.renderedStatus === status) {
       return;
     }
     this.renderedStatus = status;
-    if (this.error) {
-      region.innerHTML = `<div class="task-create-status" data-status-tone="error" role="alert">
+    region.innerHTML = this.error
+      ? `<div class="task-create-status" role="alert">
           ${renderInlineIcon("TriangleAlert", "Task creation failed", "task-create-status-icon")}
           <span>${escapeHtml(this.error.message)}</span>
-        </div>`;
-      return;
-    }
-    region.innerHTML = this.activeSubmissionId
-      ? `<div class="task-create-status" data-status-tone="starting" role="status">
-          <span>Starting the task...</span>
         </div>`
       : "";
   }

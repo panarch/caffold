@@ -196,6 +196,7 @@ caffold-task-composer {
     line-height: var(--interface-line-height);
   }
 
+  & .task-composer-create-status,
   & .task-composer-voice-status {
     margin: 0;
     padding: 0 1.125rem 0.25rem;

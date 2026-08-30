@@ -551,7 +551,7 @@ repository context from the navigator projection. See
 
 Global New owns its editable cwd and Directory Picker. Section New owns a fixed
 cwd and exposes no picker. Both mount the same Tasks-owned Task Create behavior,
-which owns the Composer and its status and error presentation. On submit, Task
+which owns the Composer and its creation-rejection presentation. On submit, Task
 Create passes an exact submission snapshot to the persistent Tasks page without
 removing the Composer's local in-flight state. The page owns the creation
 request across Task and Section route changes, so replacing a Section Task
