@@ -1,4 +1,5 @@
 import { renderEntryIcon, warmIcons } from "./icons.js";
+import { emptyActionHintScope } from "../action-hint-scope.js";
 import { fileStatusPresentation } from "../file-status.js";
 import {
   FILE_SORT_MODES,
@@ -206,6 +207,70 @@ class CaffoldFileTree extends HTMLElement {
 
   scroller() {
     return this.querySelector(":scope > .file-tree-scroll");
+  }
+
+  actionHintScope({
+    scopeId = "",
+    actionId = "",
+    clipRoots = [],
+    isCurrent = () => false,
+    labelForNode = (node) => node.ariaLabel ?? node.title ?? node.name ?? "Open file",
+  } = {}) {
+    this.ensureRendered();
+    const scroller = this.scroller();
+    if (!scopeId || !actionId || !scroller || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const targets = [...this.querySelectorAll(
+      ":scope > .file-tree-scroll > .file-tree-rows > .file-tree-row > button[data-file-tree-key]",
+    )].flatMap((control) => {
+      const key = `${control.dataset.fileTreeKey ?? ""}`;
+      const node = this.nodeByKey.get(key);
+      if (
+        !key ||
+        !node ||
+        node.kind === "directory" ||
+        node.selectable === false ||
+        control.disabled ||
+        isCurrent(node)
+      ) {
+        return [];
+      }
+      return [{
+        id: `${scopeId}:file:${encodeURIComponent(key)}`,
+        actionId,
+        label: `${labelForNode(node) ?? ""}` || `${node.name ?? key}`,
+        controlKind: "button",
+        control,
+        anchor: control,
+        clipRoots: uniqueElements([...clipRoots, scroller]),
+        isActionable: () => {
+          const current = this.nodeByKey.get(key);
+          return Boolean(
+            this.isConnected &&
+              !this.hidden &&
+              current &&
+              current.kind !== "directory" &&
+              current.selectable !== false &&
+              !isCurrent(current) &&
+              this.rowForKey(key)?.querySelector(
+                ":scope > button[data-file-tree-key]",
+              ) === control &&
+              !control.disabled,
+          );
+        },
+        activate: () => {
+          control.focus({ preventScroll: true });
+          control.click();
+        },
+      }];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [scroller],
+    };
   }
 
   rows() {
@@ -739,4 +804,8 @@ function cleanTreePath(path) {
 
 function nextAnimationFrame() {
   return new Promise((resolve) => requestAnimationFrame(resolve));
+}
+
+function uniqueElements(elements) {
+  return [...new Set(elements.filter(Boolean))];
 }

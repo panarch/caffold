@@ -4,6 +4,11 @@ import "../../../../../../../components/file-viewer.js";
 import { REVIEW_PANEL_DEFAULT_WIDTH } from "../../../../../../../components/review-panel-resizer.js";
 import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "../../../../../../../components/review-responsive.js";
 import "./components/changes-tree.js";
+import {
+  ACTION_HINT_ACTION,
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../../../action-hints.js";
 
 const LOADING_DELAY_MS = 180;
 
@@ -367,6 +372,34 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     const shortSha = this.selectedCommitSummary?.shortSha ?? "";
     const subject = this.selectedCommitSummary?.subject ?? "";
     return [shortSha, subject].filter(Boolean).join(" ");
+  }
+
+  actionHintScope({ scopeId = "git:commit", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    const sha = this.currentCommitSha();
+    if (!sha || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const listActive = this.detailView === "list" ||
+      !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches;
+    const viewerActive = this.detailView === "viewer";
+    const prefix = `${scopeId}:${encodeURIComponent(sha)}`;
+    return mergeActionHintScopes(
+      listActive
+        ? this.commitTree.actionHintScope({
+            scopeId: `${prefix}:files`,
+            actionId: ACTION_HINT_ACTION.FILE_OPEN,
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
+      viewerActive
+        ? this.fileViewer.actionHintScope({
+            scopeId: `${prefix}:viewer`,
+            actionId: ACTION_HINT_ACTION.PARENT,
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
+    );
   }
 
   setDetailView(view) {

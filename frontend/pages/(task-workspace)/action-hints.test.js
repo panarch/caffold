@@ -3,54 +3,7 @@ import test from "node:test";
 
 import {
   ActionHintController,
-  emptyActionHintScope,
-  mergeActionHintScopes,
 } from "./action-hints.js";
-
-test("Action Hint scopes compose direct owners in declaration order", () => {
-  const firstTarget = { id: "first" };
-  const secondTarget = { id: "second" };
-  const mutationRoot = {};
-  const scrollRoot = {};
-  const first = {
-    targets: [firstTarget],
-    mutationRoots: [mutationRoot],
-  };
-  const second = {
-    blocked: true,
-    targets: [secondTarget],
-    scrollRoots: [scrollRoot],
-  };
-
-  const merged = mergeActionHintScopes(null, first, second);
-
-  assert.deepEqual(merged, {
-    blocked: true,
-    targets: [firstTarget, secondTarget],
-    mutationRoots: [mutationRoot],
-    scrollRoots: [scrollRoot],
-  });
-  assert.notEqual(merged.targets, first.targets);
-  first.targets.push({ id: "later" });
-  assert.deepEqual(merged.targets, [firstTarget, secondTarget]);
-});
-
-test("Action Hint scope helpers return complete shapes and reject malformed lists", () => {
-  const first = emptyActionHintScope();
-  const second = emptyActionHintScope();
-
-  assert.deepEqual(first, {
-    blocked: false,
-    targets: [],
-    mutationRoots: [],
-    scrollRoots: [],
-  });
-  assert.notEqual(first.targets, second.targets);
-  assert.throws(
-    () => mergeActionHintScopes({ targets: {} }),
-    /scope targets must be an array/,
-  );
-});
 
 test("cancel and activation close one session and clean every owned effect", () => {
   const restoreGlobals = installDomGlobals();
@@ -65,7 +18,6 @@ test("cancel and activation close one session and clean every owned effect", () 
     const target = {
       id: "task-a",
       actionId: "task.open",
-      category: "task",
       code: "TA",
       activate: () => {
         activated += 1;
@@ -131,7 +83,6 @@ test("disconnect cancels an open Hint without restoring its invoking focus", () 
     controller.startSession(snapshotFor({
       id: "new",
       actionId: "task.create",
-      category: "new-task",
       code: "N",
       activate: () => {},
     }));
@@ -168,7 +119,6 @@ test("entry closes and restores focus when showModal-time effects stale the snap
     controller.startSession(snapshotFor({
       id: "new",
       actionId: "task.create",
-      category: "new-task",
       code: "N",
       activate: () => {},
     }));
@@ -195,7 +145,6 @@ test("revalidation refreshes a label without replacing its frozen action", () =>
     const target = {
       id: "task:a",
       actionId: "task.open",
-      category: "task",
       controlKind: "button",
       code: "TA",
       control: {},
@@ -249,7 +198,6 @@ test("snapshot capture rejects a descriptor outside the central semantic policy"
       targets: [{
         id: "task:dangerous",
         actionId: "task.delete",
-        category: "task",
         controlKind: "button",
         label: "Delete task",
         control,
@@ -265,7 +213,6 @@ test("snapshot capture rejects a descriptor outside the central semantic policy"
       targets: [{
         id: "task:invalid-anchor",
         actionId: "task.open",
-        category: "task",
         controlKind: "button",
         label: "Open task",
         control,

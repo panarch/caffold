@@ -1,6 +1,7 @@
 import { renderInlineIcon, warmIcons } from "../../../../../../components/icons.js";
 import { taskStoreOperationsPresentation } from "../../../../codex-status.js";
 import { taskThreadId } from "../../../task-list-model.js";
+import { ACTION_HINT_ACTION } from "../../../../action-hints.js";
 import {
   ACTIVE_TASK_ROW_INTENT_EVENT,
 } from "./section/components/row.js";
@@ -150,12 +151,50 @@ class CaffoldActiveTaskSection extends HTMLElement {
   }
 
   actionHintTargets(options = {}) {
-    return [...this.querySelectorAll(
+    const section = this.snapshot.section;
+    const sectionControl = this.querySelector(
+      ':scope > .task-repository-header > button[data-active-task-section-action="open-section"]',
+    );
+    const targets = [];
+    if (
+      section?.id &&
+      !section.recovery &&
+      this.snapshot.reorderMode === "none" &&
+      sectionControl &&
+      !sectionControl.disabled
+    ) {
+      const sectionId = `${section.id}`;
+      const label = section.label ?? activeTaskSectionLabel(section.name);
+      targets.push({
+        id: `section:${sectionId}`,
+        actionId: ACTION_HINT_ACTION.SECTION_OPEN,
+        label: `Open section: ${label}`,
+        controlKind: "button",
+        control: sectionControl,
+        anchor: sectionControl,
+        clipRoots: [...(options.clipRoots ?? [])],
+        isActionable: () =>
+          this.isConnected &&
+          this.snapshot.section?.id === sectionId &&
+          !this.snapshot.section?.recovery &&
+          this.snapshot.reorderMode === "none" &&
+          this.querySelector(
+            ':scope > .task-repository-header > button[data-active-task-section-action="open-section"]',
+          ) === sectionControl &&
+          !sectionControl.disabled,
+        activate: () => {
+          sectionControl.focus({ preventScroll: true });
+          sectionControl.click();
+        },
+      });
+    }
+    targets.push(...[...this.querySelectorAll(
       ":scope > .task-list > li > caffold-active-task-row",
     )].flatMap((row) => {
       const target = row.actionHintTarget(options);
       return target ? [target] : [];
-    });
+    }));
+    return targets;
   }
 
   hasTaskRow(threadId) {

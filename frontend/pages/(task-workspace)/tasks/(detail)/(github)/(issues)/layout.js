@@ -1,6 +1,7 @@
 import { getGitHubIssue, getGitHubIssues } from "../../../../../../api.js";
 import "./list/page.js";
 import "./detail/page.js";
+import { emptyActionHintScope } from "../../../../action-hints.js";
 
 const GITHUB_ISSUES_PER_PAGE = 50;
 const LOADING_DELAY_MS = 180;
@@ -342,6 +343,17 @@ class CaffoldGithubIssuesLayout extends HTMLElement {
 
   currentIssueNumber() {
     return this.selectedIssueSummary?.number ?? null;
+  }
+
+  actionHintScope({ scopeId = "github:issues", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    if (this.hidden || this.view !== "list") {
+      return emptyActionHintScope();
+    }
+    return this.listPage.actionHintScope({
+      scopeId: `${scopeId}:page:${this.page}`,
+      clipRoots: [this, ...clipRoots],
+    });
   }
 
   routeMatchesCurrentContext(route) {

@@ -3,6 +3,7 @@ import {
   installBrowserDefaults,
   mockCodexStatus,
 } from "../support/browser-defaults.js";
+import { activateActionHint } from "../support/action-hints.js";
 import { taskDetailFixture } from "../support/task-api-fixture.js";
 import {
   activeTaskProjection,
@@ -57,14 +58,10 @@ test("selects a Section and opens fixed-directory Task creation", { tag: "@all-v
       )
       ?.closest(".task-repository-select")?.tagName ?? "";
   })).toBe("BUTTON");
-  const headerBounds = await sectionHeader.boundingBox();
-  const countBounds = await sectionCount.boundingBox();
-  await sectionHeader.click({
-    position: {
-      x: countBounds.x + countBounds.width / 2 - headerBounds.x,
-      y: countBounds.y + countBounds.height / 2 - headerBounds.y,
-    },
-  });
+  await activateActionHint(
+    page,
+    /Open section: home$/,
+  );
 
   await expect(page).toHaveURL("/?section=fixture-section-1");
   await expect(section).toHaveAttribute("aria-current", "page");
@@ -247,7 +244,7 @@ test("offers GitHub work shortcuts from repository Task creation", { tag: "@all-
   }
   expect(pullsBox.y).toBeGreaterThanOrEqual(issuesBox.y + issuesBox.height);
 
-  await shortcuts.getByRole("button", { name: "Issues" }).click();
+  await activateActionHint(page, /Open GitHub Issues$/);
   await expect(page).toHaveURL(
     "/?section=fixture-section-1&surface=github&tool=issues",
   );
@@ -749,7 +746,7 @@ test("keeps a repository Section draft while switching shared surfaces", { tag: 
     textarea.value = "Preserve this Section draft";
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
   });
-  await switcher.locator('button[data-segmented-value="working"]').click();
+  await activateActionHint(page, /Open Working Tree$/);
   await expect(page).toHaveURL(
     "/?section=fixture-section-1&surface=review",
   );

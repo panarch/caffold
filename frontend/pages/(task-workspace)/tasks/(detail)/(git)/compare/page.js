@@ -1,4 +1,5 @@
 import "../../../../../../components/git-compare-browser.js";
+import { ACTION_HINT_ACTION } from "../../../../action-hints.js";
 
 class CaffoldGitComparePage extends HTMLElement {
   connectedCallback() {
@@ -132,6 +133,16 @@ class CaffoldGitComparePage extends HTMLElement {
   setView(view) {
     this.ensureRendered();
     return this.browser.setView(view);
+  }
+
+  actionHintScope({ scopeId = "git", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    return this.browser.actionHintScope({
+      scopeId,
+      fileActionId: ACTION_HINT_ACTION.FILE_OPEN,
+      parentActionId: ACTION_HINT_ACTION.PARENT,
+      clipRoots: [this, ...clipRoots],
+    });
   }
 }
 

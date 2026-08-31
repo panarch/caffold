@@ -1,72 +1,140 @@
 export const TASK_HINT_ALPHABET = "ASDFGHJKLQWERTYUIOPZXCVBNM";
 
-export const ACTION_HINT_CATEGORY = Object.freeze({
-  TASK: "task",
-  NEW_TASK: "new-task",
-  MODEL: "model",
-  PROMPT: "prompt",
+export const ACTION_HINT_ACTION = Object.freeze({
+  TASK_OPEN: "task.open",
+  TASK_OPEN_RECOVERY: "task.open-recovery",
+  TASK_CREATE: "task.create",
+  MODEL_CHOOSE: "task.model.choose",
+  PROMPT_FOCUS: "task.prompt.focus",
+  WORKSPACE_SELECT: "navigation.workspace.select",
+  PARENT: "navigation.parent",
+  SETTINGS_SECTION: "navigation.settings.section",
+  SECTION_OPEN: "navigation.section.open",
+  DETAIL_VIEW: "navigation.detail.view",
+  REVIEW_AXIS: "navigation.review.axis",
+  FILE_OPEN: "navigation.file.open",
+  COMMIT_OPEN: "navigation.commit.open",
+  GITHUB_MODE: "navigation.github.mode",
+  ISSUE_OPEN: "navigation.issue.open",
+  PULL_OPEN: "navigation.pull.open",
+  PULL_FILES: "navigation.pull.files",
+  PAGE: "navigation.page",
 });
 
-const FIXED_CODES = Object.freeze({
-  [ACTION_HINT_CATEGORY.NEW_TASK]: "N",
-  [ACTION_HINT_CATEGORY.MODEL]: "M",
-  [ACTION_HINT_CATEGORY.PROMPT]: "P",
+const ACTION_HINT_ALLOCATION = Object.freeze({
+  FIXED: "fixed",
+  PREFIXED: "prefixed",
+  AUTOMATIC: "automatic",
 });
 
 const ACTION_HINT_ACTION_POLICY = Object.freeze({
-  "task.open": Object.freeze({
-    category: ACTION_HINT_CATEGORY.TASK,
+  [ACTION_HINT_ACTION.TASK_OPEN]: Object.freeze({
     controlKind: "button",
+    allocation: ACTION_HINT_ALLOCATION.PREFIXED,
+    prefix: "T",
   }),
-  "task.open-recovery": Object.freeze({
-    category: ACTION_HINT_CATEGORY.TASK,
+  [ACTION_HINT_ACTION.TASK_OPEN_RECOVERY]: Object.freeze({
     controlKind: "button",
+    allocation: ACTION_HINT_ALLOCATION.PREFIXED,
+    prefix: "T",
   }),
-  "task.create": Object.freeze({
-    category: ACTION_HINT_CATEGORY.NEW_TASK,
+  [ACTION_HINT_ACTION.TASK_CREATE]: Object.freeze({
     controlKind: "button",
+    allocation: ACTION_HINT_ALLOCATION.FIXED,
+    code: "N",
   }),
-  "task.model.choose": Object.freeze({
-    category: ACTION_HINT_CATEGORY.MODEL,
+  [ACTION_HINT_ACTION.MODEL_CHOOSE]: Object.freeze({
     controlKind: "button",
+    allocation: ACTION_HINT_ALLOCATION.FIXED,
+    code: "M",
   }),
-  "task.prompt.focus": Object.freeze({
-    category: ACTION_HINT_CATEGORY.PROMPT,
+  [ACTION_HINT_ACTION.PROMPT_FOCUS]: Object.freeze({
     controlKind: "textbox",
+    allocation: ACTION_HINT_ALLOCATION.FIXED,
+    code: "P",
   }),
+  ...Object.fromEntries([
+    ACTION_HINT_ACTION.WORKSPACE_SELECT,
+    ACTION_HINT_ACTION.PARENT,
+    ACTION_HINT_ACTION.SETTINGS_SECTION,
+    ACTION_HINT_ACTION.SECTION_OPEN,
+    ACTION_HINT_ACTION.DETAIL_VIEW,
+    ACTION_HINT_ACTION.REVIEW_AXIS,
+    ACTION_HINT_ACTION.FILE_OPEN,
+    ACTION_HINT_ACTION.COMMIT_OPEN,
+    ACTION_HINT_ACTION.GITHUB_MODE,
+    ACTION_HINT_ACTION.ISSUE_OPEN,
+    ACTION_HINT_ACTION.PULL_OPEN,
+    ACTION_HINT_ACTION.PULL_FILES,
+    ACTION_HINT_ACTION.PAGE,
+  ].map((actionId) => [actionId, Object.freeze({
+    controlKind: "button",
+    allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
+  })])),
 });
+
+const RESERVED_AUTOMATIC_PREFIXES = Object.freeze(["N", "M", "P", "T"]);
 
 export function matchesActionHintPolicy({
   actionId,
-  category,
   controlKind,
 } = {}) {
   const policy = ACTION_HINT_ACTION_POLICY[actionId];
-  return Boolean(
-    policy &&
-      policy.category === category &&
-      policy.controlKind === controlKind,
-  );
+  return Boolean(policy && policy.controlKind === controlKind);
 }
 
 export function allocateActionHintCodes(targets) {
-  const taskCount = targets.filter(
-    (target) => target.category === ACTION_HINT_CATEGORY.TASK,
+  const resolved = targets.map((target) => {
+    const policy = ACTION_HINT_ACTION_POLICY[target.actionId];
+    if (!policy || policy.controlKind !== target.controlKind) {
+      throw new Error(`Unsupported Action Hint action: ${target.actionId}`);
+    }
+    return { target, policy };
+  });
+  assertUniqueTargetIds(targets);
+  const taskCount = resolved.filter(
+    ({ policy }) => policy.allocation === ACTION_HINT_ALLOCATION.PREFIXED,
+  ).length;
+  const automaticCount = resolved.filter(
+    ({ policy }) => policy.allocation === ACTION_HINT_ALLOCATION.AUTOMATIC,
   ).length;
   const suffixWidth = taskHintSuffixWidth(taskCount);
+  const automaticCodes = automaticHintCodes(automaticCount);
   let taskIndex = 0;
-  const allocated = targets.map((target) => {
-    const code = target.category === ACTION_HINT_CATEGORY.TASK
-      ? `T${taskHintSuffix(taskIndex++, suffixWidth)}`
-      : FIXED_CODES[target.category];
-    if (!code) {
-      throw new Error(`Unknown Action Hint category: ${target.category}`);
-    }
+  let automaticIndex = 0;
+  const allocated = resolved.map(({ target, policy }) => {
+    const code = policy.allocation === ACTION_HINT_ALLOCATION.FIXED
+      ? policy.code
+      : policy.allocation === ACTION_HINT_ALLOCATION.PREFIXED
+        ? `${policy.prefix}${taskHintSuffix(taskIndex++, suffixWidth)}`
+        : automaticCodes[automaticIndex++];
     return { ...target, code };
   });
-  assertUniqueTargetIds(allocated);
   assertPrefixFreeCodes(allocated.map((target) => target.code));
   return allocated;
+}
+
+export function automaticHintCodes(count) {
+  if (!Number.isInteger(count) || count < 0) {
+    throw new Error("Automatic Hint count must be a non-negative integer.");
+  }
+  if (count === 0) {
+    return [];
+  }
+  for (let width = 1; ; width += 1) {
+    const codes = [];
+    const capacity = TASK_HINT_ALPHABET.length ** width;
+    for (let index = 0; index < capacity; index += 1) {
+      const code = taskHintSuffix(index, width);
+      if (RESERVED_AUTOMATIC_PREFIXES.some((prefix) => code.startsWith(prefix))) {
+        continue;
+      }
+      codes.push(code);
+      if (codes.length === count) {
+        return codes;
+      }
+    }
+  }
 }
 
 export function taskHintSuffixWidth(count) {
@@ -256,7 +324,6 @@ export function sameActionHintTopology(left, right) {
       other &&
         entry.id === other.id &&
         entry.actionId === other.actionId &&
-        entry.category === other.category &&
         entry.controlKind === other.controlKind &&
         entry.actionable === other.actionable &&
         entry.control === other.control &&
@@ -285,7 +352,6 @@ export function sameActionHintSnapshot(left, right) {
       other &&
         target.id === other.id &&
         target.actionId === other.actionId &&
-        target.category === other.category &&
         target.controlKind === other.controlKind &&
         target.code === other.code &&
         target.control === other.control &&

@@ -834,7 +834,6 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     return {
       id: `task-composer:${scopeId}:model`,
       actionId: "task.model.choose",
-      category: "model",
       label: control.getAttribute("aria-label") || "Choose model and reasoning",
       controlKind: "button",
       control,

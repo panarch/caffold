@@ -16,7 +16,13 @@ import {
 import {
   CLAUDE_RUNTIME_RESTART_CONFIRMED_EVENT,
 } from "./settings/claude/components/runtime-restart-dialog.js";
-import { ActionHintController } from "./action-hints.js";
+import {
+  ACTION_HINT_ACTION,
+  ActionHintController,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  mergeActionHintScopes,
+} from "./action-hints.js";
 import "./action-hints/components/dialog.js";
 import "./components/navigation.js";
 import {
@@ -462,10 +468,71 @@ class CaffoldTaskWorkspace extends HTMLElement {
   }
 
   actionHintScope() {
-    if (this.mode !== "tasks" || this.hidden) {
-      return null;
+    if (this.hidden) {
+      return emptyActionHintScope();
     }
-    return this.tasksPage.actionHintScope();
+    const navigationClipRoots = [this, this.masterPane].filter(Boolean);
+    const detailClipRoots = [this, this.querySelector(
+      ":scope > .task-workspace-surface > .task-workspace-master-detail > .task-workspace-detail-pane",
+    )].filter(Boolean);
+    const routeControl = [this.backButton, this.closeButton].find(
+      (control) =>
+        control && !control.hidden && hasActionHintLayoutBox(control),
+    ) ?? null;
+    const ownScope = routeControl
+      ? {
+          blocked: false,
+          targets: [{
+            id: `workspace:parent:${routeControl === this.backButton ? "tasks" : "close"}`,
+            actionId: ACTION_HINT_ACTION.PARENT,
+            label: routeControl.getAttribute("aria-label") || "Back",
+            controlKind: "button",
+            control: routeControl,
+            anchor: routeControl,
+            clipRoots: [this],
+            isActionable: () =>
+              this.isConnected &&
+              !this.hidden &&
+              !routeControl.hidden &&
+              [this.backButton, this.closeButton].includes(routeControl) &&
+              !routeControl.disabled,
+            activate: () => {
+              routeControl.focus({ preventScroll: true });
+              routeControl.click();
+            },
+          }],
+          mutationRoots: [routeControl],
+          scrollRoots: [],
+        }
+      : emptyActionHintScope();
+    const modeScope = this.mode === "tasks"
+      ? this.tasksPage?.actionHintScope()
+      : this.mode === "settings"
+        ? mergeActionHintScopes(
+            hasActionHintLayoutBox(this.settingsNavigator)
+              ? this.settingsNavigator.actionHintScope({
+                  scopeId: "settings",
+                  clipRoots: navigationClipRoots,
+                })
+              : null,
+            hasActionHintLayoutBox(this.settingsWorkspace)
+              ? this.settingsWorkspace.actionHintScope({
+                  scopeId: "settings",
+                  clipRoots: detailClipRoots,
+                })
+              : null,
+          )
+        : null;
+    return mergeActionHintScopes(
+      ownScope,
+      hasActionHintLayoutBox(this.navigation)
+        ? this.navigation.actionHintScope({
+            scopeId: "workspace",
+            clipRoots: navigationClipRoots,
+          })
+        : null,
+      modeScope,
+    );
   }
 
   actionHintEditingEscapeTarget(editable) {
@@ -481,7 +548,8 @@ class CaffoldTaskWorkspace extends HTMLElement {
   }
 
   afterActionHintActivation(target) {
-    if (target.category !== "task") {
+    if (![ACTION_HINT_ACTION.TASK_OPEN, ACTION_HINT_ACTION.TASK_OPEN_RECOVERY]
+      .includes(target.actionId)) {
       return;
     }
     const threadId = target.id.startsWith("task:")

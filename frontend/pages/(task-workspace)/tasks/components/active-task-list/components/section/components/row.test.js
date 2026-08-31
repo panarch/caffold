@@ -41,14 +41,12 @@ test("provides a frozen Task action through the owned row button", () => {
     {
       id: target.id,
       actionId: target.actionId,
-      category: target.category,
       label: target.label,
       controlKind: target.controlKind,
     },
     {
       id: "task:thread-a",
       actionId: "task.open",
-      category: "task",
       label: "Open task: Alpha",
       controlKind: "button",
     },

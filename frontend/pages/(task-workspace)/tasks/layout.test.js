@@ -19,17 +19,26 @@ test("combines Navigator with only the active direct-child surface", () => {
   const detailRoot = {};
   let newCalls = 0;
   let detailCalls = 0;
+  const navigatorOwner = {
+    visible: true,
+    getClientRects() {
+      return this.visible ? [{}] : [];
+    },
+    actionHintScope: () => ({
+      targets: [navigatorTarget],
+      mutationRoots: [navigatorRoot],
+      scrollRoots: [],
+    }),
+  };
   const owner = {
+    visible: true,
     view: "new",
+    getClientRects() {
+      return this.visible ? [{}] : [];
+    },
     ensureRendered() {},
     taskNavigator() {
-      return {
-        actionHintScope: () => ({
-          targets: [navigatorTarget],
-          mutationRoots: [navigatorRoot],
-          scrollRoots: [],
-        }),
-      };
+      return navigatorOwner;
     },
     taskNew() {
       return {
@@ -86,4 +95,20 @@ test("combines Navigator with only the active direct-child surface", () => {
   });
   assert.equal(newCalls, 1);
   assert.equal(detailCalls, 1);
+
+  owner.view = "new";
+  owner.visible = false;
+  assert.deepEqual(
+    tasksPage.actionHintScope.call(owner).targets,
+    [navigatorTarget],
+  );
+  assert.equal(newCalls, 1);
+
+  owner.visible = true;
+  navigatorOwner.visible = false;
+  assert.deepEqual(
+    tasksPage.actionHintScope.call(owner).targets,
+    [newTarget],
+  );
+  assert.equal(newCalls, 2);
 });

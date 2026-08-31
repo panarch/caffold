@@ -7,6 +7,8 @@ import "./remote-access/page.js";
 import "./codex/page.js";
 import "./claude/page.js";
 import "./about/page.js";
+import { emptyActionHintScope } from "../../../action-hint-scope.js";
+import { ACTION_HINT_ACTION } from "../action-hints.js";
 
 const TITLES = {
   appearance: "Appearance",
@@ -215,6 +217,52 @@ class CaffoldSettingsWorkspace extends HTMLElement {
         detail: { route: { kind: "settings", section: section ?? "" } },
       }),
     );
+  }
+
+  actionHintScope({ scopeId = "settings", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    const control = this.querySelector(
+      ':scope > .settings-workspace-surface > .settings-workspace-detail-pane > .settings-workspace-detail-header > button[data-action="back-to-settings"]',
+    );
+    const header = this.querySelector(
+      ":scope > .settings-workspace-surface > .settings-workspace-detail-pane > .settings-workspace-detail-header",
+    );
+    if (
+      this.hidden ||
+      !this.section ||
+      !control ||
+      control.disabled ||
+      header?.hidden
+    ) {
+      return emptyActionHintScope();
+    }
+    return {
+      blocked: false,
+      targets: [{
+        id: `${scopeId}:parent:list`,
+        actionId: ACTION_HINT_ACTION.PARENT,
+        label: control.getAttribute("aria-label") || "Back to settings",
+        controlKind: "button",
+        control,
+        anchor: control,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          Boolean(this.section) &&
+          !header?.hidden &&
+          this.querySelector(
+            ':scope > .settings-workspace-surface > .settings-workspace-detail-pane > .settings-workspace-detail-header > button[data-action="back-to-settings"]',
+          ) === control &&
+          !control.disabled,
+        activate: () => {
+          control.focus({ preventScroll: true });
+          control.click();
+        },
+      }],
+      mutationRoots: [header, control].filter(Boolean),
+      scrollRoots: [],
+    };
   }
 
   setCodexStatusSnapshot(snapshot) {

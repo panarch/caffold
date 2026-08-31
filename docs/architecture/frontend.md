@@ -208,21 +208,33 @@ workspace width. Foldable and phone presentation is owned by the same
 master/detail layout system.
 
 The workspace Action Hint controller enters from a non-editing `F` key and
-pulls one-shot semantic descriptors from the active Tasks owners. Task rows,
-New Task, and the visible create or active Task follow-up Composer's Model and
-Prompt provide their native control, action meaning, accessible name, anchor,
-and clip dependencies; Conversation content and arbitrary clickable DOM are
-not scanned. Provider collection is hierarchical: each layout selects only its
-active direct child owners and merges their scopes, while ancestor layouts do
-not enumerate descendant target kinds. The controller validates each action,
-allocation category, and control kind against the closed V1 policy, allocates
-frozen `T*`, `N`, `M`, and `P` codes, intersects anchors directly with the
-visual viewport and owning scrollports, and renders buttons in one
-viewport-sized native modal dialog. Scroll, viewport, route, target
-topology, geometry, actionability, or competing modal/popover ownership closes
-the session. A presentation-only accessible-name change refreshes the existing
-badge without changing its code, while equivalent Task presentation and
-Conversation patches do not retarget it.
+pulls one-shot semantic descriptors from explicitly participating owners.
+Workspace and Settings navigation, Task and Section selection, direct Detail
+view choices, Integrated Review, and the direct Git and GitHub navigation
+surfaces provide their native control, stable semantic identity, action
+meaning, accessible name, anchor, and clip dependencies. Conversation content,
+arbitrary clickable DOM, disclosures, mutation controls, external links,
+selects, popovers, and dialogs are not scanned. Reusable controls such as the
+segmented control, file tree, pagination, and file viewer expose public scope
+providers; their screen owner supplies the semantic action and scope context.
+Provider collection is hierarchical: each layout merges its own actions with
+only its active direct child scopes through `action-hint-scope.js`. Ancestors
+do not enumerate or reach through descendant DOM. A retained pane with no
+layout box is omitted before merge, so its hidden mutation and scroll
+dependencies cannot invalidate the visible pane's session.
+
+The controller validates every action and control kind against a closed central
+policy. Task selection retains generated `T*` codes and New Task, Model, and
+Prompt retain `N`, `M`, and `P`. All other direct-navigation actions receive
+same-width automatic codes in `ASDFGHJKLQWERTYUIOPZXCVBNM` order after visual
+sorting; the `N`, `M`, `P`, and `T` prefix namespaces remain reserved. The full
+result must be unique and prefix-free. A session freezes target identity,
+binding, and code, intersects anchors directly with the visual viewport and
+every owning scrollport, and renders buttons in one viewport-sized native
+modal dialog. Scroll, viewport, route, target topology, geometry,
+actionability, or competing modal/popover ownership closes the session. A
+presentation-only accessible-name change refreshes the existing badge without
+changing its code, while equivalent presentation patches do not retarget it.
 
 `normal` and `editing` are derived from current focus and composition; `hint`
 is the only stored Action Hint node. The complete internal edges are
@@ -666,6 +678,7 @@ Relevant source ownership follows the routed hierarchy:
 
 ```text
 frontend/
+|-- action-hint-scope.js
 |-- navigation-routes.js
 |-- pages/
 |   |-- layout.js
@@ -739,10 +752,12 @@ frontend/
 |                   |-- (issues)/...
 |                   `-- (pulls)/...
 `-- components/
+    |-- file-tree.js
     |-- file-navigator.js
     |-- file-viewer.js
     |-- git-compare-browser.js
     |-- markdown-preview.js
+    |-- pagination.js
     |-- review-panel-resizer.js
     `-- segmented-control.js
 ```

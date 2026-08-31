@@ -4,6 +4,11 @@ import { routeMode } from "../../../../../navigation-routes.js";
 import "./components/task-start-dialog.js";
 import "./(issues)/layout.js";
 import "./(pulls)/layout.js";
+import {
+  ACTION_HINT_ACTION,
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../action-hints.js";
 
 class CaffoldTaskGithubLayout extends HTMLElement {
   connectedCallback() {
@@ -661,6 +666,63 @@ class CaffoldTaskGithubLayout extends HTMLElement {
     return null;
   }
 
+  actionHintScope() {
+    this.ensureRendered();
+    if (!this.active || this.hidden || !this.mode) {
+      return emptyActionHintScope();
+    }
+    const scopeId = `github:${encodeURIComponent(
+      this.repository?.rootPath || this.currentPath || "repository",
+    )}`;
+    const body = this.querySelector(
+      ":scope > .task-github-surface > .task-domain-body",
+    );
+    const backAvailable = this.backButton && !this.backButton.hidden &&
+      !this.backButton.disabled;
+    const parentKey = backAvailable
+      ? githubParentKey(this.routeForWorkspaceBack())
+      : "";
+    const back = backAvailable && parentKey
+      ? {
+          targets: [{
+            id: `${scopeId}:parent:${parentKey}`,
+            actionId: ACTION_HINT_ACTION.PARENT,
+            label: this.backButton.getAttribute("aria-label") || "Back",
+            controlKind: "button",
+            control: this.backButton,
+            anchor: this.backButton,
+            clipRoots: [this],
+            isActionable: () =>
+              this.isConnected &&
+              this.active &&
+              !this.hidden &&
+              githubParentKey(this.routeForWorkspaceBack()) === parentKey &&
+              this.backButton === this.querySelector(
+                ':scope > .task-github-surface > .task-domain-header > .task-domain-back[data-action="domain-back"]',
+              ) &&
+              !this.backButton.hidden &&
+              !this.backButton.disabled,
+            activate: () => {
+              this.backButton.focus({ preventScroll: true });
+              this.backButton.click();
+            },
+          }],
+          mutationRoots: [this.backButton],
+          scrollRoots: [],
+        }
+      : null;
+    const activeChild = this.mode === "issues"
+      ? this.issuesLayout.actionHintScope({
+          scopeId: `${scopeId}:issues`,
+          clipRoots: [this, body].filter(Boolean),
+        })
+      : this.pullsLayout.actionHintScope({
+          scopeId: `${scopeId}:pulls`,
+          clipRoots: [this, body].filter(Boolean),
+        });
+    return mergeActionHintScopes(back, activeChild);
+  }
+
   requestGithubRoute(route, options = {}) {
     this.dispatchEvent(
       new CustomEvent("caffold:request-github-route", {
@@ -800,4 +862,14 @@ customElements.define("caffold-task-github-layout", CaffoldTaskGithubLayout);
 
 function normalizeGithubMode(mode) {
   return mode === "pulls" ? "pulls" : "issues";
+}
+
+function githubParentKey(route) {
+  if (!route?.kind) {
+    return "";
+  }
+  if (route.kind === "pulls" && route.number) {
+    return `pull:${encodeURIComponent(route.number)}`;
+  }
+  return `${route.kind}`;
 }

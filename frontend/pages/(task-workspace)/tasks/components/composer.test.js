@@ -18,7 +18,6 @@ test("provides Model and Prompt through their existing component actions", () =>
   const modelTarget = {
     id: "task-composer:task:thread-a:model",
     actionId: "task.model.choose",
-    category: "model",
     label: "Choose model and reasoning",
     controlKind: "button",
     control: modelControl,
@@ -78,14 +77,12 @@ test("provides Model and Prompt through their existing component actions", () =>
     {
       id: prompt.id,
       actionId: prompt.actionId,
-      category: prompt.category,
       label: prompt.label,
       controlKind: prompt.controlKind,
     },
     {
       id: "task-composer:task:thread-a:prompt",
       actionId: "task.prompt.focus",
-      category: "prompt",
       label: "Edit follow-up prompt",
       controlKind: "textbox",
     },

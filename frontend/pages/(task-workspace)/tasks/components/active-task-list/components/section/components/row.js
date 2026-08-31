@@ -124,7 +124,6 @@ class CaffoldActiveTaskRow extends HTMLElement {
     return {
       id: `task:${threadId}`,
       actionId: recovery ? "task.open-recovery" : "task.open",
-      category: "task",
       label: recovery
         ? `Open task recovery: ${task.title}`
         : `Open task: ${task.title}`,

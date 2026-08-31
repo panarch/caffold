@@ -1,5 +1,10 @@
 import { getSettings } from "../../settings.js";
 import {
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  mergeActionHintScopes,
+} from "../../action-hint-scope.js";
+import {
   ACTION_HINT_ACTIVATE_EVENT,
   ACTION_HINT_CANCEL_EVENT,
   ACTION_HINT_CONTROL_EVENT,
@@ -7,7 +12,7 @@ import {
   transitionActionHintControl,
 } from "./action-hints/control.js";
 import {
-  ACTION_HINT_CATEGORY,
+  ACTION_HINT_ACTION,
   advanceHintBuffer,
   allocateActionHintCodes,
   isEditableElement,
@@ -19,45 +24,12 @@ import {
   visibleTargetRect,
 } from "./action-hints/model.js";
 
-const ACTION_HINT_CATEGORIES = new Set(Object.values(ACTION_HINT_CATEGORY));
-const ACTION_HINT_SCOPE_LIST_KEYS = [
-  "targets",
-  "mutationRoots",
-  "scrollRoots",
-];
-
-export function emptyActionHintScope() {
-  return {
-    blocked: false,
-    targets: [],
-    mutationRoots: [],
-    scrollRoots: [],
-  };
-}
-
-export function mergeActionHintScopes(...scopes) {
-  const merged = emptyActionHintScope();
-  for (const scope of scopes) {
-    if (scope == null) {
-      continue;
-    }
-    if (typeof scope !== "object") {
-      throw new TypeError("Action Hint scope must be an object");
-    }
-    merged.blocked ||= Boolean(scope.blocked);
-    for (const key of ACTION_HINT_SCOPE_LIST_KEYS) {
-      const items = scope[key];
-      if (items == null) {
-        continue;
-      }
-      if (!Array.isArray(items)) {
-        throw new TypeError(`Action Hint scope ${key} must be an array`);
-      }
-      merged[key].push(...items);
-    }
-  }
-  return merged;
-}
+export {
+  ACTION_HINT_ACTION,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  mergeActionHintScopes,
+};
 
 export class ActionHintController {
   constructor({
@@ -673,10 +645,8 @@ function normalizeDescriptors(targets) {
       ids.has(id) ||
       !actionId ||
       !label ||
-      !ACTION_HINT_CATEGORIES.has(target?.category) ||
       !matchesActionHintPolicy({
         actionId,
-        category: target?.category,
         controlKind: target?.controlKind,
       }) ||
       !(target?.control instanceof HTMLElement) ||
@@ -719,7 +689,6 @@ function topologyEntry(descriptor, actionable) {
   return {
     id: descriptor.id,
     actionId: descriptor.actionId,
-    category: descriptor.category,
     controlKind: descriptor.controlKind,
     actionable,
     control: descriptor.control,

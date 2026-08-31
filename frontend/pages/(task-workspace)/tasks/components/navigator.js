@@ -165,7 +165,6 @@ class CaffoldTaskNavigator extends HTMLElement {
       targets.push({
         id: "task-create:global",
         actionId: "task.create",
-        category: "new-task",
         label: "Create a new task",
         controlKind: "button",
         control: newTask,

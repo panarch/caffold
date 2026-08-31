@@ -1,5 +1,6 @@
 import { routeDomain, routeMode, sectionDetailRoute } from "../../../../navigation-routes.js";
 import {
+  ACTION_HINT_ACTION,
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "../../action-hints.js";
@@ -581,27 +582,42 @@ class CaffoldDetailLayout extends HTMLElement {
 
   actionHintScope() {
     this.ensureRendered();
-    if (this.subjectKind === "task") {
-      const taskDetail = this.taskDetail();
-      if (
-        this.activeSurface() !== "conversation" ||
-        taskDetail?.hidden
-      ) {
-        return emptyActionHintScope();
-      }
-      return mergeActionHintScopes(
-        { blocked: Boolean(taskDetail?.loading) },
-        taskDetail?.actionHintScope(),
-      );
-    }
-    if (
-      this.subjectKind !== "section" ||
-      this.activeSurface() !== "new" ||
-      this.sectionDetail()?.hidden
-    ) {
+    const identityKey = detailIdentityKey(this.subjectIdentity());
+    if (!identityKey || this.hidden) {
       return emptyActionHintScope();
     }
-    return mergeActionHintScopes(this.sectionDetail()?.actionHintScope());
+    const surface = this.activeSurface();
+    const viewSwitchScope = this.viewSwitch()?.actionHintScope({
+      scopeId: `detail:${identityKey}:view`,
+      actionId: ACTION_HINT_ACTION.DETAIL_VIEW,
+      clipRoots: [this, this.summaryHeader()].filter(Boolean),
+      labelForChoice: (choice) => `Open ${choice.label}`,
+    });
+    let activeChildScope = null;
+    let blocked = false;
+    if (this.subjectKind === "task" && surface === "conversation") {
+      const taskDetail = this.taskDetail();
+      if (!taskDetail?.hidden) {
+        blocked = Boolean(taskDetail.loading);
+        activeChildScope = taskDetail.actionHintScope?.();
+      }
+    } else if (this.subjectKind === "section" && surface === "new") {
+      const sectionDetail = this.sectionDetail();
+      if (!sectionDetail?.hidden) {
+        activeChildScope = sectionDetail.actionHintScope?.();
+      }
+    } else if (surface === "review") {
+      activeChildScope = this.review()?.actionHintScope?.();
+    } else if (surface === "git") {
+      activeChildScope = this.gitLayout()?.actionHintScope?.();
+    } else if (surface === "github") {
+      activeChildScope = this.githubLayout()?.actionHintScope?.();
+    }
+    return mergeActionHintScopes(
+      { blocked },
+      viewSwitchScope,
+      activeChildScope,
+    );
   }
 
   subjectIdentity() {

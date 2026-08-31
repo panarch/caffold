@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { copyFile, rm, writeFile } from "node:fs/promises";
 import { repositoryPath } from "../../repository-paths.mjs";
+import {
+  actionHintDialog,
+  activateActionHint,
+  enterActionHints,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { openCompletedTaskForReview } from "../support/task-review-test.js";
 import {
@@ -25,12 +30,19 @@ test("browses source through the shared Files navigator and one root watch", { t
   });
   const { taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
-  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
-  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  await activateActionHint(page, /Open Working Tree$/);
+  await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}/review`);
+  await activateActionHint(page, /Show Files$/);
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?nav=files`,
+  );
+  await expect(
+    taskReview.getByRole("button", { name: "Files", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   if (testInfo.project.name === "phone") {
     await taskReview.evaluate((review) => review.updateAxis("viewer", "source"));
   } else {
-    await taskReview.getByRole("button", { name: "Source", exact: true }).click();
+    await activateActionHint(page, /Show Source$/);
   }
   await expect(taskReview.getByRole("button", { name: "Refresh review" })).toHaveCount(0);
   await expect(taskReview.getByRole("button", { name: "Refresh files" })).toHaveCount(0);
@@ -47,6 +59,11 @@ test("browses source through the shared Files navigator and one root watch", { t
     'button[data-file-tree-path="src/alpha.rs"]',
   );
   await expect(rootFolder).toBeVisible();
+  await enterActionHints(page);
+  await navigator.locator(".file-tree-scroll").evaluate((scroller) => {
+    scroller.dispatchEvent(new Event("scroll"));
+  });
+  await expect(actionHintDialog(page)).toBeHidden();
   expect((await rootFolder.boundingBox()).y).toBeLessThan(
     (await rootFile.boundingBox()).y,
   );
@@ -93,7 +110,7 @@ test("browses source through the shared Files navigator and one root watch", { t
     await rm(livePath, { force: true });
   }
 
-  await navigator.locator('button[data-file-tree-path="src/alpha.rs"]').click();
+  await activateActionHint(page, /alpha\.rs file$/);
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=alpha.rs`,
   );
@@ -104,7 +121,13 @@ test("browses source through the shared Files navigator and one root watch", { t
   await captureReviewScreenshot(page, testInfo, "tasks-file-browser");
 
   if (testInfo.project.name === "phone") {
-    await taskReview.getByRole("button", { name: "Back to navigator" }).click();
+    await enterActionHints(page);
+    await navigator.locator(".file-tree-scroll").evaluate((scroller) => {
+      scroller.dispatchEvent(new Event("scroll"));
+    });
+    await expect(actionHintDialog(page)).toBeVisible();
+    await page.keyboard.press("Escape");
+    await activateActionHint(page, /Back to navigator$/);
     await expect(page).toHaveURL(
       `/tasks/${taskScenario.threadId}/review?nav=files&view=source`,
     );

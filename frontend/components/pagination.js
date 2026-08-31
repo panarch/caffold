@@ -1,5 +1,6 @@
 import { escapeHtml } from "./dom.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
+import { emptyActionHintScope } from "../action-hint-scope.js";
 
 class CaffoldPagination extends HTMLElement {
   static observedAttributes = [
@@ -62,12 +63,14 @@ class CaffoldPagination extends HTMLElement {
     this.innerHTML = `
       <nav class="pagination-panel" aria-label="${escapeHtml(this.ariaLabel())}">
         ${this.renderPageButton({
+          kind: "first",
           icon: "ChevronFirst",
           label: this.labelAttribute("first-label", "First page"),
           page: 1,
           disabled: page <= 1,
         })}
         ${this.renderPageButton({
+          kind: "previous",
           icon: "ChevronLeft",
           label: this.labelAttribute("previous-label", "Previous page"),
           page: page - 1,
@@ -80,12 +83,14 @@ class CaffoldPagination extends HTMLElement {
           ${escapeHtml(`${page} / ${totalPages}`)}
         </span>
         ${this.renderPageButton({
+          kind: "next",
           icon: "ChevronRight",
           label: this.labelAttribute("next-label", "Next page"),
           page: page + 1,
           disabled: !this.hasAttribute("has-next"),
         })}
         ${this.renderPageButton({
+          kind: "last",
           icon: "ChevronLast",
           label: this.labelAttribute("last-label", "Last page"),
           page: totalPages,
@@ -95,11 +100,53 @@ class CaffoldPagination extends HTMLElement {
     `;
   }
 
-  renderPageButton({ icon, label, page, disabled }) {
+  actionHintScope({ scopeId = "", actionId = "", clipRoots = [] } = {}) {
+    if (!scopeId || !actionId || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const targets = [...this.querySelectorAll(
+      ":scope > .pagination-panel > button[data-page-kind][data-page]",
+    )].flatMap((control) => {
+      const kind = `${control.dataset.pageKind ?? ""}`;
+      const page = `${control.dataset.page ?? ""}`;
+      if (!kind || !page || control.disabled) {
+        return [];
+      }
+      return [{
+        id: `${scopeId}:page:${kind}:${encodeURIComponent(page)}`,
+        actionId,
+        label: control.getAttribute("aria-label") || `Open page ${page}`,
+        controlKind: "button",
+        control,
+        anchor: control,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.querySelector(
+            `:scope > .pagination-panel > button[data-page-kind="${CSS.escape(kind)}"][data-page="${CSS.escape(page)}"]`,
+          ) === control &&
+          !control.disabled,
+        activate: () => {
+          control.focus({ preventScroll: true });
+          control.click();
+        },
+      }];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
+  }
+
+  renderPageButton({ kind, icon, label, page, disabled }) {
     return `
       <button
         type="button"
         class="pagination-button"
+        data-page-kind="${escapeHtml(kind)}"
         data-page="${escapeHtml(`${page}`)}"
         aria-label="${escapeHtml(label)}"
         title="${escapeHtml(label)}"

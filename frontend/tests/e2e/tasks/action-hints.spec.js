@@ -65,7 +65,7 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
     "N — Create a new task",
   );
   await expect(dialog.getByLabel(/Browse Files/)).toHaveCount(0);
-  await expect(dialog.getByLabel(/Section/)).toHaveCount(0);
+  await expect(dialog.getByLabel(/Open section:/i)).toHaveCount(1);
 
   const createPrompt = page.locator(
     'caffold-task-new textarea[name="prompt"]',
@@ -176,7 +176,83 @@ test("activates a Task through its existing route and responsive focus owner", {
     "aria-label",
     "P — Edit follow-up prompt",
   );
-  await page.keyboard.press("Escape");
+  await page.locator(".task-list-scroll").evaluate((scroller) => {
+    scroller.dispatchEvent(new Event("scroll"));
+  });
+  if (testInfo.project.name === "phone") {
+    await expect(dialog).toBeVisible();
+    await page.keyboard.press("Escape");
+  } else {
+    await expect(dialog).toBeHidden();
+  }
+});
+
+test("allocates Settings navigation automatically and accepts F inside Hint mode", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  await installActionHintFixture(page, actionHintTasks(2));
+  await page.goto("/settings");
+
+  await enterActionHints(page);
+  const dialog = actionHintDialog(page);
+  await page.locator(".settings-navigator-list").evaluate((scroller) => {
+    scroller.dispatchEvent(new Event("scroll"));
+  });
+  await expect(dialog).toBeHidden();
+  await enterActionHints(page);
+  const codes = await dialog.locator("button[data-action-hint-code]").evaluateAll(
+    (badges) => badges.map((badge) => badge.dataset.actionHintCode),
+  );
+  expect(codes.length).toBeGreaterThanOrEqual(4);
+  expect(new Set(codes.map((code) => code.length)).size).toBe(1);
+  expect(codes.every((code) => !["N", "M", "P", "T"].includes(code[0])))
+    .toBe(true);
+  const fBadge = dialog.locator('[data-action-hint-code="F"]');
+  await expect(fBadge).toBeVisible();
+  const fLabel = (await fBadge.getAttribute("aria-label")).replace(/^F — /, "");
+  const sectionByLabel = new Map([
+    ["Open Appearance settings", "appearance"],
+    ["Open Keyboard settings", "keyboard"],
+    ["Open Files settings", "files"],
+    ["Open Notifications settings", "notifications"],
+    ["Open Remote Access settings", "remote-access"],
+    ["Open Codex settings", "codex"],
+    ["Open Claude settings", "claude"],
+    ["Open About Caffold settings", "about"],
+  ]);
+  expect(sectionByLabel.has(fLabel)).toBe(true);
+  await page.keyboard.press("f");
+  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(`/settings/${sectionByLabel.get(fLabel)}`);
+
+  await page.goto("/settings");
+  await enterActionHints(page);
+  await dialog.getByLabel(/Open Tasks$/).click();
+  await expect(page).toHaveURL("/");
+
+  await page.goto("/settings/keyboard");
+  await enterActionHints(page);
+  await expect(dialog.getByLabel(/Open Keyboard settings$/)).toHaveCount(0);
+  await expect(dialog.getByLabel(/Action Hints/)).toHaveCount(0);
+  await page.locator(".settings-navigator-list").evaluate((scroller) => {
+    scroller.dispatchEvent(new Event("scroll"));
+  });
+  if (testInfo.project.name === "phone") {
+    await expect(dialog).toBeVisible();
+  } else {
+    await expect(dialog).toBeHidden();
+    await enterActionHints(page);
+  }
+  const back = dialog.getByLabel(/Back to settings$/);
+  if (testInfo.project.name === "phone") {
+    await expect(back).toBeVisible();
+    const code = await back.getAttribute("data-action-hint-code");
+    await page.keyboard.type(code.toLowerCase());
+    await expect(page).toHaveURL("/settings");
+  } else {
+    await expect(back).toHaveCount(0);
+    await page.keyboard.press("Escape");
+  }
 });
 
 test("keeps badge Tab order and native click, Enter, and Space activation", { tag: "@all-viewports" }, async ({
@@ -862,6 +938,30 @@ async function captureActionHintVisualState(page) {
       ["M", target(taskNew?.querySelector(".task-model-button"), [taskNew, createScroll])],
       ["P", target(taskNew?.querySelector("textarea[name='prompt']"), [taskNew, createScroll])],
     ]);
+    const automaticTargets = new Map();
+    for (const control of document.querySelectorAll(
+      'caffold-active-task-section .task-repository-select[data-active-task-section-action="open-section"]',
+    )) {
+      const name = control.querySelector(".task-repository-label")?.textContent ?? "";
+      automaticTargets.set(`Open section: ${name}`, target(control, [navigator, taskScroll]));
+    }
+    const workspaceNavigation = document.querySelector(
+      "caffold-task-workspace-navigation",
+    );
+    for (const control of workspaceNavigation?.querySelectorAll(
+      "button[data-workspace-mode]",
+    ) ?? []) {
+      if (control.hasAttribute("aria-current")) {
+        continue;
+      }
+      const mode = control.dataset.workspaceMode;
+      const label = control.getAttribute("aria-label") ||
+        `Open ${mode === "tasks" ? "Tasks" : "Settings"}`;
+      automaticTargets.set(label, target(control, [
+        document.querySelector("caffold-task-workspace"),
+        document.querySelector(".task-workspace-master-pane"),
+      ]));
+    }
     let taskIndex = 0;
     const alignmentErrors = [];
     const viewportEscapes = [];
@@ -870,9 +970,11 @@ async function captureActionHintVisualState(page) {
     )];
     for (const badge of badges) {
       const code = badge.dataset.actionHintCode;
+      const label = badge.getAttribute("aria-label")
+        ?.replace(new RegExp(`^${code} — `), "") ?? "";
       const visible = code.startsWith("T")
         ? taskTargets[taskIndex++]
-        : fixedTargets.get(code);
+        : fixedTargets.get(code) ?? automaticTargets.get(label);
       const bounds = badge.getBoundingClientRect();
       if (!visible) {
         alignmentErrors.push(`${code}:missing-target`);

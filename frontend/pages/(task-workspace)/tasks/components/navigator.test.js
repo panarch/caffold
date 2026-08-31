@@ -65,14 +65,12 @@ test("provides owned New Task and delegated row actions with navigator geometry"
     {
       id: target.id,
       actionId: target.actionId,
-      category: target.category,
       label: target.label,
       controlKind: target.controlKind,
     },
     {
       id: "task-create:global",
       actionId: "task.create",
-      category: "new-task",
       label: "Create a new task",
       controlKind: "button",
     },

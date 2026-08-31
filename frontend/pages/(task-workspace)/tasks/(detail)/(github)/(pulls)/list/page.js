@@ -1,6 +1,11 @@
 import { escapeHtml } from "../../../../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../../../../components/icons.js";
 import "../../../../../../../components/pagination.js";
+import {
+  ACTION_HINT_ACTION,
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../../../action-hints.js";
 
 class CaffoldGithubPullsListPage extends HTMLElement {
   connectedCallback() {
@@ -90,6 +95,70 @@ class CaffoldGithubPullsListPage extends HTMLElement {
         button.removeAttribute("aria-current");
       }
     }
+  }
+
+  actionHintScope({ scopeId = "github:pulls", clipRoots = [] } = {}) {
+    if (this.hidden || this.state?.status !== "ready") {
+      return emptyActionHintScope();
+    }
+    const pulls = new Map(
+      (this.state.payload?.pulls ?? []).map((pull) => [`${pull.number}`, pull]),
+    );
+    const scroller = this.querySelector(
+      ":scope > .github-pulls-panel > .github-pulls-list",
+    );
+    const rowClipRoots = [this, scroller, ...clipRoots].filter(Boolean);
+    const targets = [...this.querySelectorAll(
+      ":scope > .github-pulls-panel > .github-pulls-list > .github-pull-row > button.github-pull-button[data-pull-number]",
+    )].flatMap((control) => {
+      const number = `${control.dataset.pullNumber ?? ""}`;
+      const pull = pulls.get(number);
+      if (
+        !number ||
+        !pull ||
+        control.disabled ||
+        pull.number === this.selectedPullNumber
+      ) {
+        return [];
+      }
+      return [{
+        id: `${scopeId}:pull:${number}`,
+        actionId: ACTION_HINT_ACTION.PULL_OPEN,
+        label: `Open pull request #${number}: ${pull.title || "(no title)"}`,
+        controlKind: "button",
+        control,
+        anchor: control,
+        clipRoots: rowClipRoots,
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state?.status === "ready" &&
+          `${this.selectedPullNumber ?? ""}` !== number &&
+          this.querySelector(
+            `:scope > .github-pulls-panel > .github-pulls-list > .github-pull-row > button.github-pull-button[data-pull-number="${CSS.escape(number)}"]`,
+          ) === control &&
+          !control.disabled,
+        activate: () => {
+          control.focus({ preventScroll: true });
+          control.click();
+        },
+      }];
+    });
+    const pagination = this.querySelector(
+      ":scope > .github-pulls-panel > caffold-pagination",
+    );
+    return mergeActionHintScopes(
+      {
+        targets,
+        mutationRoots: [this],
+        scrollRoots: [scroller].filter(Boolean),
+      },
+      pagination?.actionHintScope({
+        scopeId: `${scopeId}:pagination`,
+        actionId: ACTION_HINT_ACTION.PAGE,
+        clipRoots: [this, ...clipRoots],
+      }),
+    );
   }
 
   render() {

@@ -9,6 +9,7 @@ import {
   unloadedFileTreeChildren,
 } from "../file-tree.js";
 import { renderInlineIcon } from "../icons.js";
+import { emptyActionHintScope } from "../../action-hint-scope.js";
 
 const TREE_LOADING_DELAY_MS = 180;
 
@@ -180,6 +181,27 @@ class CaffoldFileList extends HTMLElement {
 
   fileTree() {
     return this.querySelector("caffold-file-tree");
+  }
+
+  actionHintScope({ scopeId = "", actionId = "", clipRoots = [] } = {}) {
+    const tree = this.fileTree();
+    if (
+      !scopeId ||
+      !actionId ||
+      this.hidden ||
+      this.state?.status !== "ready" ||
+      !tree
+    ) {
+      return emptyActionHintScope();
+    }
+    return tree.actionHintScope({
+      scopeId,
+      actionId,
+      clipRoots: [this, ...clipRoots],
+      isCurrent: (node) => node.source?.path === this.selectedPath,
+      labelForNode: (node) =>
+        node.ariaLabel || `Open ${node.source?.name ?? node.name}`,
+    });
   }
 
   patchReadyHeader(directory) {

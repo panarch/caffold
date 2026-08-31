@@ -1,4 +1,8 @@
 import { expect, test } from "@playwright/test";
+import {
+  activateActionHint,
+  enterActionHints,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
 import {
@@ -292,6 +296,7 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
   await page.route(/\/api\/github\/pulls(?:\?|$)/, (route) => {
     counts.pulls += 1;
     const url = new URL(route.request().url());
+    const requestedPage = Number.parseInt(url.searchParams.get("page") ?? "1", 10);
     expect(url.searchParams.get("path")).toBe(WORKTREE_ROOT);
     expect(url.searchParams.get("state")).toBe("open");
     expect(url.searchParams.get("perPage")).toBe("50");
@@ -313,12 +318,12 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
             url: "https://github.com/gluesql/gluesql/pull/1983",
           },
         ],
-        page: 1,
+        page: requestedPage,
         perPage: 50,
         totalPulls: 53,
         totalPages: 2,
-        hasPrevious: false,
-        hasNext: true,
+        hasPrevious: requestedPage > 1,
+        hasNext: requestedPage < 2,
       },
     });
   });
@@ -519,7 +524,7 @@ async function rootPullTreeNames(tree) {
 async function openLinkedWorktreeIssue(page) {
   await page.goto(`/tasks/${THREAD_ID}`);
   await chooseLinkedWorktreeGithubList(page, "issues");
-  await page.locator('button[data-issue-number="1984"]').click();
+  await activateActionHint(page, /Open issue #1984: Keep task GitHub lists fresh$/);
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/issues/1984`);
   return page.locator("caffold-github-issue-detail-page");
 }
@@ -1360,21 +1365,32 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
 
   await chooseLinkedWorktreeGithubList(page, "pulls");
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls`);
-  await page.locator('button[data-pull-number="1983"]').click();
+  await activateActionHint(page, /Older pull request page$/);
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls?page=2`);
+  await activateActionHint(page, /Newest pull request page$/);
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls`);
+  await activateActionHint(
+    page,
+    /Open pull request #1983: Reject unsupported table function arguments$/,
+  );
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls/1983`);
   const pullDetail = page.locator("caffold-github-pull-detail-page");
   await expect(pullDetail).toContainText("Task-owned Pull Request detail");
   await page.reload();
   await expect(pullDetail).toContainText("Task-owned Pull Request detail");
 
-  await pullDetail.getByRole("button", { name: "Open files for PR #1983" }).click();
+  const pullHints = await enterActionHints(page);
+  await expect(pullHints.getByLabel(/Start Task for pull request/)).toHaveCount(0);
+  await expect(pullHints.getByLabel(/GitHub$/)).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await activateActionHint(page, /Open files for PR #1983$/);
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls/1983/files`);
   const pullFile = page.locator(`button[data-file-tree-path="${PULL_FILE_PATH}"]`);
   await expect(pullFile).toBeVisible();
   await page.reload();
   await expect(pullFile).toBeVisible();
 
-  await pullFile.click();
+  await activateActionHint(page, /Show pull request diff for src\/review\.rs$/);
   await expect(page).toHaveURL(
     `/tasks/${THREAD_ID}/github/pulls/1983/files?file=src%2Freview.rs`,
   );
@@ -1387,12 +1403,19 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
   );
   expect(fixture.counts.pullFile).toBeGreaterThanOrEqual(2);
 
-  await page.goBack();
+  const fileBack = page.getByRole("button", { name: "Back to files" });
+  if (await fileBack.isVisible()) {
+    await activateActionHint(page, /Back to files$/);
+  } else {
+    await page.goBack();
+  }
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls/1983/files`);
   await expect(pullFile).toBeVisible();
-  await page.getByRole("button", { name: "Back to PR" }).click();
+  await activateActionHint(page, /Back to PR$/);
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls/1983`);
-  await page.getByRole("button", { name: "Back to pull requests" }).click();
+  await expect(pullDetail).toBeVisible();
+  await expect(page.locator("caffold-github-pull-files-page")).toBeHidden();
+  await activateActionHint(page, /Back to pull requests$/);
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls`);
 });
 

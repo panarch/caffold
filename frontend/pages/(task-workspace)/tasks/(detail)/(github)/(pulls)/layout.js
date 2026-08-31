@@ -5,6 +5,7 @@ import {
 import "./list/page.js";
 import "./detail/page.js";
 import "./files/page.js";
+import { emptyActionHintScope } from "../../../../action-hints.js";
 
 const GITHUB_PULLS_PER_PAGE = 50;
 const LOADING_DELAY_MS = 180;
@@ -416,6 +417,29 @@ class CaffoldGithubPullsLayout extends HTMLElement {
 
   currentPullNumber() {
     return this.selectedPullSummary?.number ?? this.filesPage.currentPullNumber();
+  }
+
+  actionHintScope({ scopeId = "github:pulls", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    if (this.hidden) {
+      return emptyActionHintScope();
+    }
+    if (this.view === "detail") {
+      return this.detailPage.actionHintScope({
+        scopeId: `${scopeId}:detail`,
+        clipRoots: [this, ...clipRoots],
+      });
+    }
+    if (this.view === "files") {
+      return this.filesPage.actionHintScope({
+        scopeId: `${scopeId}:files`,
+        clipRoots: [this, ...clipRoots],
+      });
+    }
+    return this.listPage.actionHintScope({
+      scopeId: `${scopeId}:page:${this.page}`,
+      clipRoots: [this, ...clipRoots],
+    });
   }
 
   routeMatchesCurrentContext(route) {

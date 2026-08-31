@@ -5,6 +5,7 @@ import {
   FILE_TREE_SELECT_EVENT,
   readyFileTreeChildren,
 } from "../../../../../../components/file-tree.js";
+import { emptyActionHintScope } from "../../../../../../action-hint-scope.js";
 
 const SECTIONS = [
   ["unstaged", "Unstaged"],
@@ -84,6 +85,26 @@ class CaffoldGitDiffChangesTree extends HTMLElement {
 
   selectedKey() {
     return this.fileKeyByPath?.get(this.selectedPath) ?? "";
+  }
+
+  actionHintScope({ scopeId = "", actionId = "", clipRoots = [] } = {}) {
+    const tree = this.fileTree();
+    if (
+      !scopeId ||
+      !actionId ||
+      this.hidden ||
+      this.state?.status !== "ready" ||
+      !tree
+    ) {
+      return emptyActionHintScope();
+    }
+    return tree.actionHintScope({
+      scopeId,
+      actionId,
+      clipRoots: [this, ...clipRoots],
+      isCurrent: (node) => node.source?.path === this.selectedPath,
+      labelForNode: (node) => node.ariaLabel || `Open ${node.name}`,
+    });
   }
 
   renderState() {

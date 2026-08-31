@@ -1,6 +1,10 @@
 import { escapeHtml } from "../../../../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../../../../components/icons.js";
 import "../../components/markdown.js";
+import {
+  ACTION_HINT_ACTION,
+  emptyActionHintScope,
+} from "../../../../../action-hints.js";
 
 class CaffoldGithubPullDetailPage extends HTMLElement {
   connectedCallback() {
@@ -68,6 +72,50 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
   setError(number, error) {
     this.state = { status: "error", number, error };
     this.render();
+  }
+
+  actionHintScope({ scopeId = "github:pull", clipRoots = [] } = {}) {
+    const control = this.querySelector(
+      ':scope > .github-pull-viewer-panel > header > .github-pull-viewer-title-row > .github-pull-actions > button.github-pull-files-button[data-action="open-github-pull-files"][data-pull-number]',
+    );
+    if (
+      this.hidden ||
+      this.state?.status !== "ready" ||
+      !control ||
+      control.disabled
+    ) {
+      return emptyActionHintScope();
+    }
+    const number = `${control.dataset.pullNumber ?? ""}`;
+    if (!number) {
+      return emptyActionHintScope();
+    }
+    return {
+      blocked: false,
+      targets: [{
+        id: `${scopeId}:${number}:files`,
+        actionId: ACTION_HINT_ACTION.PULL_FILES,
+        label: control.getAttribute("aria-label") || `Open files for PR #${number}`,
+        controlKind: "button",
+        control,
+        anchor: control,
+        clipRoots: [this, ...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state?.status === "ready" &&
+          this.querySelector(
+            `:scope > .github-pull-viewer-panel > header > .github-pull-viewer-title-row > .github-pull-actions > button.github-pull-files-button[data-action="open-github-pull-files"][data-pull-number="${CSS.escape(number)}"]`,
+          ) === control &&
+          !control.disabled,
+        activate: () => {
+          control.focus({ preventScroll: true });
+          control.click();
+        },
+      }],
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
   }
 
   render() {

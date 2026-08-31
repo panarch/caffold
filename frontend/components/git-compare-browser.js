@@ -3,6 +3,10 @@ import { diffViewerPresentation } from "./file-viewer-presentation.js";
 import "./file-viewer.js";
 import "./git-compare-browser/compare-tree.js";
 import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "./review-responsive.js";
+import {
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../action-hint-scope.js";
 
 const LOADING_DELAY_MS = 180;
 const PANEL_DEFAULT_WIDTH = 320;
@@ -483,6 +487,37 @@ class CaffoldGitCompareBrowser extends HTMLElement {
   isFileViewer(target) {
     this.ensureRendered();
     return target === this.viewer;
+  }
+
+  actionHintScope({
+    scopeId = "",
+    fileActionId = "",
+    parentActionId = "",
+    clipRoots = [],
+  } = {}) {
+    this.ensureRendered();
+    if (!scopeId || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const listActive = this.detailView === "list" ||
+      !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches;
+    const viewerActive = this.detailView === "viewer";
+    return mergeActionHintScopes(
+      listActive
+        ? this.compareTree.actionHintScope({
+            scopeId: `${scopeId}:compare`,
+            actionId: fileActionId,
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
+      viewerActive
+        ? this.viewer.actionHintScope({
+            scopeId: `${scopeId}:viewer`,
+            actionId: parentActionId,
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
+    );
   }
 
   compareSubtitle(fallback = "Branches") {

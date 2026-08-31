@@ -1,4 +1,5 @@
 import { escapeHtml, formatBytes, formatModified } from "./dom.js";
+import { emptyActionHintScope } from "../action-hint-scope.js";
 import {
   diffViewerPresentation,
   sourceViewerPresentation,
@@ -148,6 +149,83 @@ class CaffoldReviewFileViewer extends HTMLElement {
     if (this.state && this.state.status !== "empty") {
       this.render();
     }
+  }
+
+  actionHintScope({
+    scopeId = "",
+    actionId = "",
+    noticeActionId = "",
+    clipRoots = [],
+  } = {}) {
+    const control = this.querySelector(
+      ':scope > .viewer-panel > .viewer-header > .viewer-title-row > button.viewer-close-button[data-action="close-browser-viewer"]',
+    );
+    if (!scopeId || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const targets = [];
+    if (actionId && control && !control.disabled) {
+      targets.push({
+        id: `${scopeId}:close`,
+        actionId,
+        label: control.getAttribute("aria-label") || this.closeLabel || "Back to files",
+        controlKind: "button",
+        control,
+        anchor: control,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.querySelector(
+            ':scope > .viewer-panel > .viewer-header > .viewer-title-row > button.viewer-close-button[data-action="close-browser-viewer"]',
+          ) === control &&
+          !control.disabled,
+        activate: () => {
+          control.focus({ preventScroll: true });
+          control.click();
+        },
+      });
+    }
+    const noticeControl = noticeActionId
+      ? this.querySelector(
+          ':scope > .viewer-panel.notice-panel > .viewer-notice-content > button[data-action="view-source"], :scope > .viewer-panel.notice-panel > .viewer-notice-content > button[data-action="view-preview"]',
+        )
+      : null;
+    const noticeAction = `${noticeControl?.dataset?.action ?? ""}`;
+    if (
+      noticeControl &&
+      !noticeControl.disabled &&
+      ["view-source", "view-preview"].includes(noticeAction)
+    ) {
+      targets.push({
+        id: `${scopeId}:notice:${noticeAction}`,
+        actionId: noticeActionId,
+        label: noticeControl.getAttribute("aria-label") ||
+          noticeControl.textContent?.trim() ||
+          (noticeAction === "view-preview" ? "View preview" : "View source"),
+        controlKind: "button",
+        control: noticeControl,
+        anchor: noticeControl,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.querySelector(
+            `:scope > .viewer-panel.notice-panel > .viewer-notice-content > button[data-action="${noticeAction}"]`,
+          ) === noticeControl &&
+          !noticeControl.disabled,
+        activate: () => {
+          noticeControl.focus({ preventScroll: true });
+          noticeControl.click();
+        },
+      });
+    }
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
   }
 
   ensureDetailsPopoverId() {

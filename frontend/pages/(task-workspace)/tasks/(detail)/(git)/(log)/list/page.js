@@ -1,6 +1,11 @@
 import { escapeHtml } from "../../../../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../../../../components/icons.js";
 import "../../../../../../../components/pagination.js";
+import {
+  ACTION_HINT_ACTION,
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../../../action-hints.js";
 
 class CaffoldGitLogListPage extends HTMLElement {
   connectedCallback() {
@@ -128,6 +133,60 @@ class CaffoldGitLogListPage extends HTMLElement {
 
   findCommit(sha) {
     return (this.state?.log?.commits ?? []).find((commit) => commit.sha === sha);
+  }
+
+  actionHintScope({ scopeId = "git:log", clipRoots = [] } = {}) {
+    if (this.hidden || this.state?.status !== "ready") {
+      return emptyActionHintScope();
+    }
+    const scroller = this.querySelector(
+      ":scope > .log-list-panel > .log-list",
+    );
+    const listClipRoots = [this, scroller, ...clipRoots].filter(Boolean);
+    const targets = [...this.querySelectorAll(
+      ':scope > .log-list-panel > .log-list > .log-entry > button[data-action="open-commit"][data-commit-sha]',
+    )].flatMap((control) => {
+      const sha = `${control.dataset.commitSha ?? ""}`;
+      if (!sha || control.disabled) {
+        return [];
+      }
+      return [{
+        id: `${scopeId}:commit:${encodeURIComponent(sha)}`,
+        actionId: ACTION_HINT_ACTION.COMMIT_OPEN,
+        label: control.getAttribute("aria-label") || `Open commit ${sha.slice(0, 7)}`,
+        controlKind: "button",
+        control,
+        anchor: control,
+        clipRoots: listClipRoots,
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state?.status === "ready" &&
+          this.querySelector(
+            `:scope > .log-list-panel > .log-list > .log-entry > button[data-action="open-commit"][data-commit-sha="${CSS.escape(sha)}"]`,
+          ) === control &&
+          !control.disabled,
+        activate: () => {
+          control.focus({ preventScroll: true });
+          control.click();
+        },
+      }];
+    });
+    const pagination = this.querySelector(
+      ":scope > .log-list-panel > caffold-pagination",
+    );
+    return mergeActionHintScopes(
+      {
+        targets,
+        mutationRoots: [this],
+        scrollRoots: [scroller].filter(Boolean),
+      },
+      pagination?.actionHintScope({
+        scopeId: `${scopeId}:pagination`,
+        actionId: ACTION_HINT_ACTION.PAGE,
+        clipRoots: [this, ...clipRoots],
+      }),
+    );
   }
 
   patchCommitBody(commit, expanded) {

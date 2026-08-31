@@ -7,6 +7,11 @@ import {
 import "./components/controls.js";
 import "./compare/page.js";
 import "./(log)/layout.js";
+import {
+  ACTION_HINT_ACTION,
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../action-hints.js";
 
 class CaffoldTaskGitLayout extends HTMLElement {
   connectedCallback() {
@@ -465,6 +470,58 @@ class CaffoldTaskGitLayout extends HTMLElement {
       return { kind: "log", page: this.logPage };
     }
     return null;
+  }
+
+  actionHintScope() {
+    this.ensureRendered();
+    if (!this.active || this.hidden || !this.mode) {
+      return emptyActionHintScope();
+    }
+    const scopeId = `git:${encodeURIComponent(
+      this.repository?.rootPath || this.currentPath || "repository",
+    )}`;
+    const body = this.querySelector(
+      ":scope > .task-git-surface > .task-domain-body",
+    );
+    const back = this.backButton && !this.backButton.hidden &&
+        !this.backButton.disabled
+      ? {
+          targets: [{
+            id: `${scopeId}:parent:log`,
+            actionId: ACTION_HINT_ACTION.PARENT,
+            label: this.backButton.getAttribute("aria-label") || "Back to log",
+            controlKind: "button",
+            control: this.backButton,
+            anchor: this.backButton,
+            clipRoots: [this],
+            isActionable: () =>
+              this.isConnected &&
+              this.active &&
+              !this.hidden &&
+              this.backButton === this.querySelector(
+                ':scope > .task-git-surface > .task-domain-header > .task-domain-back[data-action="domain-back"]',
+              ) &&
+              !this.backButton.hidden &&
+              !this.backButton.disabled,
+            activate: () => {
+              this.backButton.focus({ preventScroll: true });
+              this.backButton.click();
+            },
+          }],
+          mutationRoots: [this.backButton],
+          scrollRoots: [],
+        }
+      : null;
+    const activeChild = this.mode === "compare"
+      ? this.comparePage.actionHintScope({
+          scopeId: `${scopeId}:compare`,
+          clipRoots: [this, body].filter(Boolean),
+        })
+      : this.logLayout.actionHintScope({
+          scopeId: `${scopeId}:log`,
+          clipRoots: [this, body].filter(Boolean),
+        });
+    return mergeActionHintScopes(back, activeChild);
   }
 
   routeForCompareRefs(baseRef, headRef) {

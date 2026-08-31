@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  ACTION_HINT_CATEGORY,
+  ACTION_HINT_ACTION,
   TASK_HINT_ALPHABET,
   advanceHintBuffer,
   allocateActionHintCodes,
+  automaticHintCodes,
   clampBadgePosition,
   matchesActionHintPolicy,
   normalizeActionHintKey,
@@ -17,18 +18,19 @@ import {
   visibleTargetRect,
 } from "./model.js";
 
-function target(id, category) {
-  return { id, category };
+function target(id, actionId, controlKind = "button") {
+  return { id, actionId, controlKind };
 }
 
-test("allocates semantic fixed codes and ASDF-ordered Task codes", () => {
+test("allocates fixed, ASDF-ordered Task, and automatic codes centrally", () => {
   const allocated = allocateActionHintCodes([
-    target("new", ACTION_HINT_CATEGORY.NEW_TASK),
-    target("task-a", ACTION_HINT_CATEGORY.TASK),
-    target("task-b", ACTION_HINT_CATEGORY.TASK),
-    target("task-c", ACTION_HINT_CATEGORY.TASK),
-    target("model", ACTION_HINT_CATEGORY.MODEL),
-    target("prompt", ACTION_HINT_CATEGORY.PROMPT),
+    target("new", ACTION_HINT_ACTION.TASK_CREATE),
+    target("task-a", ACTION_HINT_ACTION.TASK_OPEN),
+    target("task-b", ACTION_HINT_ACTION.TASK_OPEN),
+    target("task-c", ACTION_HINT_ACTION.TASK_OPEN_RECOVERY),
+    target("settings", ACTION_HINT_ACTION.WORKSPACE_SELECT),
+    target("model", ACTION_HINT_ACTION.MODEL_CHOOSE),
+    target("prompt", ACTION_HINT_ACTION.PROMPT_FOCUS, "textbox"),
   ]);
 
   assert.equal(TASK_HINT_ALPHABET, "ASDFGHJKLQWERTYUIOPZXCVBNM");
@@ -39,6 +41,7 @@ test("allocates semantic fixed codes and ASDF-ordered Task codes", () => {
       ["task-a", "TA"],
       ["task-b", "TS"],
       ["task-c", "TD"],
+      ["settings", "A"],
       ["model", "M"],
       ["prompt", "P"],
     ],
@@ -47,7 +50,7 @@ test("allocates semantic fixed codes and ASDF-ordered Task codes", () => {
 
 test("grows every Task suffix to the same prefix-free width after 26", () => {
   const tasks = Array.from({ length: 27 }, (_, index) =>
-    target(`task-${index}`, ACTION_HINT_CATEGORY.TASK)
+    target(`task-${index}`, ACTION_HINT_ACTION.TASK_OPEN)
   );
   const codes = allocateActionHintCodes(tasks).map(({ code }) => code);
 
@@ -62,41 +65,39 @@ test("grows every Task suffix to the same prefix-free width after 26", () => {
   ));
 });
 
-test("rejects unknown categories and duplicate identities", () => {
+test("rejects unknown actions, duplicate identities, and fixed-code conflicts", () => {
   assert.throws(
     () => allocateActionHintCodes([target("unknown", "anything")]),
-    /Unknown Action Hint category/,
+    /Unsupported Action Hint action/,
   );
   assert.throws(
     () => allocateActionHintCodes([
-      target("same", ACTION_HINT_CATEGORY.NEW_TASK),
-      target("same", ACTION_HINT_CATEGORY.MODEL),
+      target("same", ACTION_HINT_ACTION.TASK_CREATE),
+      target("same", ACTION_HINT_ACTION.MODEL_CHOOSE),
     ]),
     /Duplicate or empty Action Hint target id/,
   );
   assert.throws(
     () => allocateActionHintCodes([
-      target("new-a", ACTION_HINT_CATEGORY.NEW_TASK),
-      target("new-b", ACTION_HINT_CATEGORY.NEW_TASK),
+      target("new-a", ACTION_HINT_ACTION.TASK_CREATE),
+      target("new-b", ACTION_HINT_ACTION.TASK_CREATE),
     ]),
     /codes must be unique/,
   );
 });
 
-test("accepts only the central semantic action, category, and control-kind policy", () => {
-  for (const descriptor of [
-    { actionId: "task.open", category: "task", controlKind: "button" },
-    { actionId: "task.open-recovery", category: "task", controlKind: "button" },
-    { actionId: "task.create", category: "new-task", controlKind: "button" },
-    { actionId: "task.model.choose", category: "model", controlKind: "button" },
-    { actionId: "task.prompt.focus", category: "prompt", controlKind: "textbox" },
-  ]) {
-    assert.equal(matchesActionHintPolicy(descriptor), true);
+test("accepts only the central semantic action and control-kind policy", () => {
+  for (const actionId of Object.values(ACTION_HINT_ACTION)) {
+    assert.equal(matchesActionHintPolicy({
+      actionId,
+      controlKind: actionId === ACTION_HINT_ACTION.PROMPT_FOCUS
+        ? "textbox"
+        : "button",
+    }), true, actionId);
   }
   assert.equal(
     matchesActionHintPolicy({
       actionId: "task.delete",
-      category: "task",
       controlKind: "button",
     }),
     false,
@@ -104,11 +105,28 @@ test("accepts only the central semantic action, category, and control-kind polic
   assert.equal(
     matchesActionHintPolicy({
       actionId: "task.prompt.focus",
-      category: "task",
       controlKind: "button",
     }),
     false,
   );
+});
+
+test("automatic codes reserve fixed and Task prefixes and grow uniformly", () => {
+  const oneCharacterCodes = automaticHintCodes(22);
+  assert.deepEqual(oneCharacterCodes, [
+    "A", "S", "D", "F", "G", "H", "J", "K", "L", "Q", "W",
+    "E", "R", "Y", "U", "I", "O", "Z", "X", "C", "V", "B",
+  ]);
+  assert.ok(oneCharacterCodes.includes("F"));
+  assert.ok(oneCharacterCodes.every((code) => !/[NMPT]/.test(code[0])));
+
+  const twoCharacterCodes = automaticHintCodes(23);
+  assert.equal(twoCharacterCodes[0], "AA");
+  assert.ok(twoCharacterCodes.every((code) => code.length === 2));
+  assert.ok(twoCharacterCodes.every((code) => !/[NMPT]/.test(code[0])));
+
+  const threeCharacterCodes = automaticHintCodes(573);
+  assert.ok(threeCharacterCodes.every((code) => code.length === 3));
 });
 
 test("normalizes Latin keys and uses physical Latin fallback only outside composition", () => {
@@ -218,7 +236,6 @@ test("freezes target topology by semantic order and DOM identity", () => {
     {
       id: "task-a",
       actionId: "task.open",
-      category: ACTION_HINT_CATEGORY.TASK,
       controlKind: "button",
       actionable: true,
       control: firstControl,
@@ -228,7 +245,6 @@ test("freezes target topology by semantic order and DOM identity", () => {
     {
       id: "new",
       actionId: "task.create",
-      category: ACTION_HINT_CATEGORY.NEW_TASK,
       controlKind: "button",
       actionable: true,
       control: secondControl,
@@ -270,7 +286,6 @@ test("keeps presentation label changes but rejects frozen binding changes", () =
     topology: [{
       id: "task-a",
       actionId: "task.open",
-      category: ACTION_HINT_CATEGORY.TASK,
       controlKind: "button",
       actionable: true,
       control,
@@ -280,7 +295,6 @@ test("keeps presentation label changes but rejects frozen binding changes", () =
     targets: [{
       id: "task-a",
       actionId: "task.open",
-      category: ACTION_HINT_CATEGORY.TASK,
       controlKind: "button",
       code: "TA",
       control,

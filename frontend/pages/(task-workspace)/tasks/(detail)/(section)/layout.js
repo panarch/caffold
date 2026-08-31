@@ -2,6 +2,7 @@ import "../../components/task-create.js";
 import "./components/conversation-shortcuts.js";
 import "./components/github-shortcuts.js";
 import { cleanLogicalPath } from "../../task-format.js";
+import { mergeActionHintScopes } from "../../../action-hints.js";
 
 class CaffoldSectionDetail extends HTMLElement {
   ensureState() {
@@ -86,16 +87,23 @@ class CaffoldSectionDetail extends HTMLElement {
     this.ensureRendered();
     const taskCreate = this.taskCreate();
     const sectionId = `${this.section?.id ?? ""}`;
-    return {
-      targets: sectionId
-        ? taskCreate?.actionHintTargets({
-            scopeId: `section:${sectionId}`,
-            clipRoots: [this],
-          }) ?? []
-        : [],
-      mutationRoots: [taskCreate].filter(Boolean),
-      scrollRoots: [this],
-    };
+    const scopeId = `section:${sectionId}`;
+    return mergeActionHintScopes(
+      {
+        targets: sectionId
+          ? taskCreate?.actionHintTargets({
+              scopeId,
+              clipRoots: [this],
+            }) ?? []
+          : [],
+        mutationRoots: [taskCreate].filter(Boolean),
+        scrollRoots: [this],
+      },
+      this.githubShortcuts()?.actionHintScope({
+        scopeId,
+        clipRoots: [this],
+      }),
+    );
   }
 
   sectionContextKey(section) {

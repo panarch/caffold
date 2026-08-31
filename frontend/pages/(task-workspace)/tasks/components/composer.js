@@ -389,7 +389,6 @@ class CaffoldTaskComposer extends HTMLElement {
           ? {
               id: `task-composer:${scopeId}:prompt`,
               actionId: "task.prompt.focus",
-              category: "prompt",
               label: mode === "create"
                 ? "Edit new task prompt"
                 : "Edit follow-up prompt",

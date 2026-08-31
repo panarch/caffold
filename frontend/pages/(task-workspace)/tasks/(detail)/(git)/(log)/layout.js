@@ -1,6 +1,7 @@
 import { fetchGitRemote, getGitLog } from "../../../../../../api.js";
 import "./commit/page.js";
 import "./list/page.js";
+import { emptyActionHintScope } from "../../../../action-hints.js";
 
 const LOADING_DELAY_MS = 180;
 
@@ -275,6 +276,22 @@ class CaffoldGitLogLayout extends HTMLElement {
 
   currentCommitSha() {
     return this.commitPage.currentCommitSha();
+  }
+
+  actionHintScope({ scopeId = "git:log", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    if (this.hidden) {
+      return emptyActionHintScope();
+    }
+    return this.view === "detail"
+      ? this.commitPage.actionHintScope({
+          scopeId: `${scopeId}:commit`,
+          clipRoots: [this, ...clipRoots],
+        })
+      : this.list.actionHintScope({
+          scopeId: `${scopeId}:list:${this.page}`,
+          clipRoots: [this, ...clipRoots],
+        });
   }
 
   findCommitFile(path) {

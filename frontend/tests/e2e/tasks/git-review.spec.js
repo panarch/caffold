@@ -3,6 +3,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { repositoryPath } from "../../repository-paths.mjs";
+import {
+  actionHintDialog,
+  activateActionHint,
+  enterActionHints,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
 import {
@@ -95,7 +100,12 @@ function taskRecord(
 async function installTaskGitFixture(
   page,
   tasks = [taskRecord()],
-  { rootPath = ROOT_PATH, branch = "feature/review", mockFetch = true } = {},
+  {
+    rootPath = ROOT_PATH,
+    branch = "feature/review",
+    mockFetch = true,
+    logTotalPages = 1,
+  } = {},
 ) {
   await installEventSourceMock(page, {
     registryKey: GIT_WATCH_REGISTRY_KEY,
@@ -217,16 +227,20 @@ async function installTaskGitFixture(
   });
   await page.route(/\/api\/git\/log(?:\?|$)/, (route) => {
     counts.log += 1;
+    const requestedPage = Number.parseInt(
+      new URL(route.request().url()).searchParams.get("page") ?? "1",
+      10,
+    );
     return route.fulfill({
       json: {
         repository,
         commits: [COMMIT],
-        page: 1,
+        page: requestedPage,
         perPage: 50,
-        totalCommits: 1,
-        totalPages: 1,
-        hasPrevious: false,
-        hasNext: false,
+        totalCommits: logTotalPages,
+        totalPages: logTotalPages,
+        hasPrevious: requestedPage > 1,
+        hasNext: requestedPage < logTotalPages,
       },
     });
   });
@@ -564,11 +578,17 @@ test("keeps the loaded Git route stable across unrelated Task stream updates", {
 });
 
 test("navigates Compare files and Log commits with deterministic domain Back", { tag: "@all-viewports" }, async ({ page }) => {
-  await installTaskGitFixture(page);
+  await installTaskGitFixture(page, [taskRecord()], { logTotalPages: 2 });
   await page.goto(
     `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview`,
   );
-  await page.locator('button[data-file-tree-path="src/example.rs"]').click();
+  await enterActionHints(page);
+  await page.locator(".task-list-scroll").evaluate((scroller) => {
+    scroller.dispatchEvent(new Event("scroll"));
+  });
+  await expect(actionHintDialog(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await activateActionHint(page, /Show compare diff for example\.rs$/);
   await expect(page).toHaveURL(
     `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview&file=example.rs`,
   );
@@ -589,7 +609,7 @@ test("navigates Compare files and Log commits with deterministic domain Back", {
   const logCount = logHeader.locator(".task-domain-count");
   const logBranch = logHeader.locator(".task-domain-primary-meta");
   const logRelationship = logHeader.locator(".task-domain-secondary-meta");
-  await expect(logCount).toHaveText("1 commit");
+  await expect(logCount).toHaveText("2 commits");
   await expect(logBranch).toHaveText("feature/review");
   await expect(logBranch).toHaveAttribute("title", "feature/review");
   await expect(logRelationship).toBeHidden();
@@ -637,10 +657,14 @@ test("navigates Compare files and Log commits with deterministic domain Back", {
     refreshAtTrailingEdge: true,
     noHorizontalOverflow: true,
   });
-  await page
-    .locator(`.log-entry[data-commit-sha="${COMMIT.sha}"]`)
-    .getByRole("button", { name: /Open commit diff/ })
-    .click();
+  await activateActionHint(page, /Older page$/);
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/log?page=2`);
+  await activateActionHint(page, /Newest page$/);
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/log`);
+  await activateActionHint(
+    page,
+    new RegExp(`Open commit diff for ${COMMIT.shortSha} ${COMMIT.subject}$`),
+  );
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}`);
   await page.reload();
   await expect(page.locator("caffold-task-git-layout .task-domain-title h2")).toHaveText(
@@ -651,7 +675,7 @@ test("navigates Compare files and Log commits with deterministic domain Back", {
     name: "Show commit diff for example.rs",
   });
   await expect(commitFile).toBeVisible();
-  await commitFile.click();
+  await activateActionHint(page, /Show commit diff for example\.rs$/);
   await expect(page).toHaveURL(
     `/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}&file=example.rs`,
   );
@@ -661,14 +685,14 @@ test("navigates Compare files and Log commits with deterministic domain Back", {
   await expect(commitDiff).toContainText("new commit");
   const fileBack = page.getByRole("button", { name: "Back to commit" });
   if (await fileBack.isVisible()) {
-    await fileBack.click();
+    await activateActionHint(page, /Back to commit$/);
   } else {
     await page.goBack();
   }
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}`);
   const back = page.getByRole("button", { name: "Back to log" });
   await expect(back).toBeVisible();
-  await back.click();
+  await activateActionHint(page, /Back to log$/);
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/log`);
   await expect(page.locator("caffold-git-log-list-page")).toBeVisible();
 });

@@ -28,6 +28,12 @@ import {
 } from "../../../../../watch.js";
 import { cleanLogicalPath } from "../../task-format.js";
 import { taskThreadId } from "../../task-list-model.js";
+import {
+  ACTION_HINT_ACTION,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  mergeActionHintScopes,
+} from "../../../action-hints.js";
 
 const REVIEW_PANEL_DEFAULT_WIDTH = 320;
 
@@ -261,6 +267,105 @@ class CaffoldTaskReview extends HTMLElement {
       return null;
     }
     return taskRouteForReview(threadId, this.route);
+  }
+
+  actionHintScope() {
+    this.ensureRendered();
+    const subjectId = taskThreadId(this.task);
+    if (!this.active || this.hidden || !subjectId || !this.contextKey) {
+      return emptyActionHintScope();
+    }
+    const scopeId = `review:${encodeURIComponent(subjectId)}`;
+    const navigatorPane = this.querySelector(
+      ":scope > .task-review-workspace > .task-review-layout > .task-review-navigator-pane",
+    );
+    const viewerPane = this.querySelector(
+      ":scope > .task-review-workspace > .task-review-layout > .task-review-viewer-pane",
+    );
+    const navigatorActive = hasActionHintLayoutBox(navigatorPane);
+    const viewerActive = hasActionHintLayoutBox(viewerPane);
+    const navigatorClipRoots = [this, navigatorPane].filter(Boolean);
+    const viewerClipRoots = [this, viewerPane].filter(Boolean);
+    const navigatorAxis = navigatorActive
+      ? this.axisControl("navigator")?.actionHintScope({
+          scopeId: `${scopeId}:navigator-axis`,
+          actionId: ACTION_HINT_ACTION.REVIEW_AXIS,
+          clipRoots: navigatorClipRoots,
+          labelForChoice: (choice) => `Show ${choice.label}`,
+        })
+      : null;
+    const viewerAxis = viewerActive
+      ? this.axisControl("viewer")?.actionHintScope({
+          scopeId: `${scopeId}:viewer-axis`,
+          actionId: ACTION_HINT_ACTION.REVIEW_AXIS,
+          clipRoots: viewerClipRoots,
+          labelForChoice: (choice) => `Show ${choice.label}`,
+        })
+      : null;
+    const emptyControl = this.querySelector(
+      ':scope > .task-review-workspace > .task-review-layout > .task-review-navigator-pane > .task-review-navigator[data-review-navigator="working"] > .task-review-empty-action:not([hidden]) > button[data-review-action="review-branch"]',
+    );
+    const emptyScope = navigatorActive && emptyControl && !emptyControl.disabled
+      ? {
+          targets: [{
+            id: `${scopeId}:scope:branch`,
+            actionId: ACTION_HINT_ACTION.REVIEW_AXIS,
+            label: emptyControl.textContent?.trim() || "Review branch changes",
+            controlKind: "button",
+            control: emptyControl,
+            anchor: emptyControl,
+            clipRoots: navigatorClipRoots,
+            isActionable: () =>
+              this.isConnected &&
+              this.active &&
+              !this.hidden &&
+              this.querySelector(
+                ':scope > .task-review-workspace > .task-review-layout > .task-review-navigator-pane > .task-review-navigator[data-review-navigator="working"] > .task-review-empty-action:not([hidden]) > button[data-review-action="review-branch"]',
+              ) === emptyControl &&
+              !emptyControl.disabled,
+            activate: () => {
+              emptyControl.focus({ preventScroll: true });
+              emptyControl.click();
+            },
+          }],
+          mutationRoots: [emptyControl.parentElement].filter(Boolean),
+          scrollRoots: [],
+        }
+      : null;
+    const navigatorScope = !navigatorActive
+      ? null
+      : this.route.navigator === "files"
+        ? this.fileNavigator()?.actionHintScope({
+            scopeId: `${scopeId}:files`,
+            actionId: ACTION_HINT_ACTION.FILE_OPEN,
+            clipRoots: navigatorClipRoots,
+          })
+        : this.route.scope === "branch"
+          ? this.branchTree()?.actionHintScope({
+              scopeId: `${scopeId}:branch`,
+              actionId: ACTION_HINT_ACTION.FILE_OPEN,
+              clipRoots: navigatorClipRoots,
+            })
+          : this.workingTree()?.actionHintScope({
+              scopeId: `${scopeId}:working`,
+              actionId: ACTION_HINT_ACTION.FILE_OPEN,
+              clipRoots: navigatorClipRoots,
+            });
+    const viewerScope = viewerActive && this.route.path
+      ? this.viewer()?.actionHintScope({
+          scopeId: `${scopeId}:viewer`,
+          actionId: ACTION_HINT_ACTION.PARENT,
+          noticeActionId: ACTION_HINT_ACTION.REVIEW_AXIS,
+          clipRoots: viewerClipRoots,
+        })
+      : null;
+    return mergeActionHintScopes(
+      navigatorAxis,
+      viewerAxis,
+      emptyScope,
+      navigatorScope,
+      viewerScope,
+    );
   }
 
   resetContext() {

@@ -56,14 +56,12 @@ test("provides Model through the owned native popover button", () => {
     {
       id: target.id,
       actionId: target.actionId,
-      category: target.category,
       label: target.label,
       controlKind: target.controlKind,
     },
     {
       id: "task-composer:task:thread-a:model",
       actionId: "task.model.choose",
-      category: "model",
       label: "Choose GPT-5.6 and reasoning",
       controlKind: "button",
     },

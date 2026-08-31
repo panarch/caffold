@@ -4,6 +4,8 @@ import {
   formatCodexReadiness,
 } from "../codex-status.js";
 import "../components/workspace-brand.js";
+import { emptyActionHintScope } from "../../../action-hint-scope.js";
+import { ACTION_HINT_ACTION } from "../action-hints.js";
 
 // Each brand mark is published in a single color so it can be tinted, and the
 // theme tints it through --brand-monochrome-filter.
@@ -56,6 +58,55 @@ class CaffoldSettingsNavigator extends HTMLElement {
   setCodexStatusSnapshot(snapshot) {
     this.codexStatusSnapshotValue = snapshot ?? null;
     this.syncCodexStatus();
+  }
+
+  actionHintScope({ scopeId = "settings", clipRoots = [] } = {}) {
+    if (!this.initialized || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const scroller = this.querySelector(":scope > .settings-navigator-list");
+    if (!scroller) {
+      return emptyActionHintScope();
+    }
+    const targets = ITEMS.flatMap((item) => {
+      const control = this.querySelector(
+        `:scope > .settings-navigator-list > button[data-settings-section="${item.section}"]`,
+      );
+      if (
+        !control ||
+        control.disabled ||
+        item.section === this.selectedSection
+      ) {
+        return [];
+      }
+      return [{
+        id: `${scopeId}:section:${item.section}`,
+        actionId: ACTION_HINT_ACTION.SETTINGS_SECTION,
+        label: control.getAttribute("aria-label") || `Open ${item.label} settings`,
+        controlKind: "button",
+        control,
+        anchor: control,
+        clipRoots: [...clipRoots, scroller],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.selectedSection !== item.section &&
+          this.querySelector(
+            `:scope > .settings-navigator-list > button[data-settings-section="${item.section}"]`,
+          ) === control &&
+          !control.disabled,
+        activate: () => {
+          control.focus({ preventScroll: true });
+          control.click();
+        },
+      }];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [scroller],
+    };
   }
 
   render() {

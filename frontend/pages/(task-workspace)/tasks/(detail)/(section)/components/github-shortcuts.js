@@ -1,4 +1,8 @@
 import { getGitHubStatus } from "../../../../../../api.js";
+import {
+  ACTION_HINT_ACTION,
+  emptyActionHintScope,
+} from "../../../../action-hints.js";
 
 const SECTION_DETAIL_INTENT_EVENT = "caffold:section-detail-intent";
 const GITHUB_KINDS = new Set(["issues", "pulls"]);
@@ -153,6 +157,55 @@ class CaffoldSectionGithubShortcuts extends HTMLElement {
     if (name) {
       name.textContent = `${github?.nameWithOwner ?? ""}`;
     }
+  }
+
+  actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    if (
+      !scopeId ||
+      !this.active ||
+      !this.githubStatus?.github ||
+      this.hidden
+    ) {
+      return emptyActionHintScope();
+    }
+    const targets = [...GITHUB_KINDS].flatMap((kind) => {
+      const control = this.querySelector(
+        `:scope > nav > button[data-section-github-kind="${kind}"]`,
+      );
+      if (!control || control.disabled) {
+        return [];
+      }
+      const label = kind === "issues" ? "Open GitHub Issues" : "Open GitHub Pull Requests";
+      return [{
+        id: `${scopeId}:github:${kind}`,
+        actionId: ACTION_HINT_ACTION.GITHUB_MODE,
+        label,
+        controlKind: "button",
+        control,
+        anchor: control,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.active &&
+          Boolean(this.githubStatus?.github) &&
+          this.querySelector(
+            `:scope > nav > button[data-section-github-kind="${kind}"]`,
+          ) === control &&
+          !control.disabled,
+        activate: () => {
+          control.focus({ preventScroll: true });
+          control.click();
+        },
+      }];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
   }
 
   handleClick(event) {

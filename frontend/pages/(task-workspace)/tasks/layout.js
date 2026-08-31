@@ -1,6 +1,9 @@
 import { createTask } from "../../../api.js";
 import { routeDomain, routeTarget } from "../../../navigation-routes.js";
-import { mergeActionHintScopes } from "../action-hints.js";
+import {
+  hasActionHintLayoutBox,
+  mergeActionHintScopes,
+} from "../action-hints.js";
 import {
   INITIAL_CODEX_STATUS_SNAPSHOT,
   codexBlocksTaskOperations,
@@ -547,13 +550,18 @@ class CaffoldTasksPage extends HTMLElement {
 
   actionHintScope() {
     this.ensureRendered();
-    const activeSurfaceScope = this.view === "home" || this.view === "new"
-      ? this.taskNew()?.actionHintScope()
-      : this.view === "detail"
-        ? this.taskDetail()?.actionHintScope()
-        : null;
+    const navigator = this.taskNavigator();
+    const activeSurfaceScope = !hasActionHintLayoutBox(this)
+      ? null
+      : this.view === "home" || this.view === "new"
+        ? this.taskNew()?.actionHintScope()
+        : this.view === "detail"
+          ? this.taskDetail()?.actionHintScope()
+          : null;
     return mergeActionHintScopes(
-      this.taskNavigator()?.actionHintScope(),
+      hasActionHintLayoutBox(navigator)
+        ? navigator.actionHintScope()
+        : null,
       activeSurfaceScope,
     );
   }
