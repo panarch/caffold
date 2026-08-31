@@ -106,6 +106,20 @@ class CaffoldTaskNew extends HTMLElement {
     return cleanLogicalPath(this.cwd);
   }
 
+  actionHintScope() {
+    this.ensureRendered();
+    const scrollRoot = this.querySelector(":scope > .task-new-workspace");
+    const taskCreate = this.taskCreate();
+    return {
+      targets: taskCreate?.actionHintTargets({
+        scopeId: "new",
+        clipRoots: [this, scrollRoot].filter(Boolean),
+      }) ?? [],
+      mutationRoots: [taskCreate].filter(Boolean),
+      scrollRoots: [scrollRoot].filter(Boolean),
+    };
+  }
+
   taskCreate() {
     return this.querySelector(
       ":scope > .task-new-workspace > caffold-task-create",

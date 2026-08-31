@@ -151,6 +151,48 @@ class CaffoldTaskNavigator extends HTMLElement {
     return this.activeTaskList?.taskListStream ?? null;
   }
 
+  actionHintScope() {
+    this.ensureChildren();
+    const scrollRoot = this.querySelector(":scope > .task-list-scroll");
+    const primaryHeader = this.querySelector(
+      ":scope > .task-list-primary-header",
+    );
+    const newTask = primaryHeader?.querySelector(
+      ":scope .task-list-new-task[data-task-action='open-new']",
+    );
+    const targets = [];
+    if (newTask) {
+      targets.push({
+        id: "task-create:global",
+        actionId: "task.create",
+        category: "new-task",
+        label: "Create a new task",
+        controlKind: "button",
+        control: newTask,
+        anchor: newTask,
+        clipRoots: [this],
+        isActionable: () =>
+          this.querySelector(
+            ":scope > .task-list-primary-header .task-list-new-task[data-task-action='open-new']",
+          ) === newTask &&
+          !this.taskOperations.blocked &&
+          !newTask.disabled,
+        activate: () => newTask.click(),
+      });
+    }
+    if (scrollRoot) {
+      targets.push(...this.activeTaskList.actionHintTargets({
+        clipRoots: [this, scrollRoot],
+      }));
+    }
+    return {
+      blocked: this.reorderMode !== "none",
+      targets,
+      mutationRoots: [primaryHeader, this.activeTaskList].filter(Boolean),
+      scrollRoots: [scrollRoot].filter(Boolean),
+    };
+  }
+
   setLiveUpdates(liveUpdates) {
     this.ensureChildren();
     this.liveUpdates = liveUpdates ?? null;

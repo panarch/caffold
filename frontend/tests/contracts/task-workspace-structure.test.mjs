@@ -42,6 +42,15 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   const settingsWorkspace = readFrontend(
     "pages/(task-workspace)/settings/layout.js",
   );
+  const actionHints = readFrontend(
+    "pages/(task-workspace)/action-hints.js",
+  );
+  const actionHintDialog = readFrontend(
+    "pages/(task-workspace)/action-hints/components/dialog.js",
+  );
+  const keyboardSettings = readFrontend(
+    "pages/(task-workspace)/settings/keyboard/page.js",
+  );
 
   const masterPane = workspace.match(
     /<aside class="task-workspace-master-pane"[\s\S]*?<\/aside>/,
@@ -77,6 +86,25 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   assert.doesNotMatch(
     settingsWorkspace,
     /<caffold-settings-navigator|workspaceNavigationHost/,
+  );
+  assert.equal(
+    [...workspace.matchAll(/<caffold-action-hint-dialog>/g)].length,
+    1,
+  );
+  assert.match(workspace, /new ActionHintController\(/);
+  assert.doesNotMatch(actionHints, /customElements\.define/);
+  assert.match(
+    actionHintDialog,
+    /customElements\.define\(\s*"caffold-action-hint-dialog"/,
+  );
+  assert.match(settingsWorkspace, /import "\.\/keyboard\/page\.js"/);
+  assert.equal(
+    [...settingsWorkspace.matchAll(/<caffold-settings-keyboard-page/g)].length,
+    1,
+  );
+  assert.match(
+    keyboardSettings,
+    /customElements\.define\(\s*"caffold-settings-keyboard-page"/,
   );
 });
 

@@ -1,4 +1,8 @@
 import { routeDomain, routeMode, sectionDetailRoute } from "../../../../navigation-routes.js";
+import {
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../action-hints.js";
 import { cleanLogicalPath } from "../task-format.js";
 import "./(task)/layout.js";
 import "./(git)/layout.js";
@@ -573,6 +577,31 @@ class CaffoldDetailLayout extends HTMLElement {
     }
     const domain = routeDomain(this.taskRoute);
     return domain || (this.taskRoute?.review ? "review" : "conversation");
+  }
+
+  actionHintScope() {
+    this.ensureRendered();
+    if (this.subjectKind === "task") {
+      const taskDetail = this.taskDetail();
+      if (
+        this.activeSurface() !== "conversation" ||
+        taskDetail?.hidden
+      ) {
+        return emptyActionHintScope();
+      }
+      return mergeActionHintScopes(
+        { blocked: Boolean(taskDetail?.loading) },
+        taskDetail?.actionHintScope(),
+      );
+    }
+    if (
+      this.subjectKind !== "section" ||
+      this.activeSurface() !== "new" ||
+      this.sectionDetail()?.hidden
+    ) {
+      return emptyActionHintScope();
+    }
+    return mergeActionHintScopes(this.sectionDetail()?.actionHintScope());
   }
 
   subjectIdentity() {

@@ -149,6 +149,15 @@ class CaffoldActiveTaskSection extends HTMLElement {
     ) ?? null;
   }
 
+  actionHintTargets(options = {}) {
+    return [...this.querySelectorAll(
+      ":scope > .task-list > li > caffold-active-task-row",
+    )].flatMap((row) => {
+      const target = row.actionHintTarget(options);
+      return target ? [target] : [];
+    });
+  }
+
   hasTaskRow(threadId) {
     return Boolean(this.rowFor(threadId));
   }

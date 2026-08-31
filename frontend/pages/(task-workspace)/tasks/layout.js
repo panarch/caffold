@@ -1,5 +1,6 @@
 import { createTask } from "../../../api.js";
 import { routeDomain, routeTarget } from "../../../navigation-routes.js";
+import { mergeActionHintScopes } from "../action-hints.js";
 import {
   INITIAL_CODEX_STATUS_SNAPSHOT,
   codexBlocksTaskOperations,
@@ -85,7 +86,7 @@ class CaffoldTasksPage extends HTMLElement {
 
     this.innerHTML = `
       <section class="tasks-surface" aria-label="Tasks">
-        <div class="tasks-detail-pane" role="region" aria-label="Task content">
+        <div class="tasks-detail-pane" role="region" aria-label="Task content" tabindex="-1">
           <caffold-codex-readiness-recovery hidden></caffold-codex-readiness-recovery>
           <caffold-task-new hidden></caffold-task-new>
           <caffold-detail-layout hidden></caffold-detail-layout>
@@ -542,6 +543,25 @@ class CaffoldTasksPage extends HTMLElement {
 
   taskNavigator() {
     return this.connectedTaskNavigator ?? null;
+  }
+
+  actionHintScope() {
+    this.ensureRendered();
+    const activeSurfaceScope = this.view === "home" || this.view === "new"
+      ? this.taskNew()?.actionHintScope()
+      : this.view === "detail"
+        ? this.taskDetail()?.actionHintScope()
+        : null;
+    return mergeActionHintScopes(
+      this.taskNavigator()?.actionHintScope(),
+      activeSurfaceScope,
+    );
+  }
+
+  focusActionHintDestination() {
+    this.querySelector(":scope > .tasks-surface .tasks-detail-pane")?.focus({
+      preventScroll: true,
+    });
   }
 
   taskNew() {

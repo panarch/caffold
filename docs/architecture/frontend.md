@@ -59,7 +59,9 @@ caffold-app-shell
     |       `-- GitHub
     |           |-- Issues
     |           `-- Pull Requests
+    |-- Action Hint dialog
     `-- Settings
+        `-- Keyboard
 |-- caffold-build-mismatch-alert
 `-- caffold-update-dialog
 ```
@@ -194,6 +196,7 @@ owns:
 - the user-resizable desktop navigation pane;
 - compact top-level Task/New Task Back or Close controls;
 - the one physical live-update connection for this browser tab;
+- the one Action Hint controller and native modal dialog;
 - forwarding routes to Tasks or Settings.
 
 The workspace consumes the semantic presentation snapshot published by Tasks:
@@ -203,6 +206,32 @@ query nested Git/GitHub DOM or read their private state.
 Reading surfaces keep the Task navigator on desktop. Code surfaces use the full
 workspace width. Foldable and phone presentation is owned by the same
 master/detail layout system.
+
+The workspace Action Hint controller enters from a non-editing `F` key and
+pulls one-shot semantic descriptors from the active Tasks owners. Task rows,
+New Task, and the visible create or active Task follow-up Composer's Model and
+Prompt provide their native control, action meaning, accessible name, anchor,
+and clip dependencies; Conversation content and arbitrary clickable DOM are
+not scanned. Provider collection is hierarchical: each layout selects only its
+active direct child owners and merges their scopes, while ancestor layouts do
+not enumerate descendant target kinds. The controller validates each action,
+allocation category, and control kind against the closed V1 policy, allocates
+frozen `T*`, `N`, `M`, and `P` codes, intersects anchors directly with the
+visual viewport and owning scrollports, and renders buttons in one
+viewport-sized native modal dialog. Scroll, viewport, route, target
+topology, geometry, actionability, or competing modal/popover ownership closes
+the session. A presentation-only accessible-name change refreshes the existing
+badge without changing its code, while equivalent Task presentation and
+Conversation patches do not retarget it.
+
+`normal` and `editing` are derived from current focus and composition; `hint`
+is the only stored Action Hint node. The complete internal edges are
+`normal -> normal | editing | hint`, `editing -> editing | normal`, and
+`hint -> hint | normal`. One transition table gates session creation, input,
+cancel, and activation close. Closing the Hint releases its scoped listeners
+and observers before an existing route, model popover, or prompt-focus owner
+takes control. Composition and another open modal or popover keep their own key
+and Escape ownership.
 
 The workspace also owns the one browser lifecycle for backend-owned Codex
 readiness requests and forwards a request snapshot to Tasks, Settings, and the
@@ -585,10 +614,12 @@ lifetime.
 ## Settings
 
 Settings lives inside Task Workspace. Appearance owns theme and Interface,
-Conversation, and Code scales. Settings Codex renders the shared status and
-runtime-restart request snapshots, repair guidance, diagnostics, and intents
-for Refresh or restart. The workspace Codex status lifecycle remains active
-across Tasks and Settings route changes and owns the HTTP request generations.
+Conversation, and Code scales. Keyboard owns the persisted Action Hints On/Off
+control; Off leaves every Action Hint key unhandled. Settings Codex renders the
+shared status and runtime-restart request snapshots, repair guidance,
+diagnostics, and intents for Refresh or restart. The workspace Codex status
+lifecycle remains active across Tasks and Settings route changes and owns the
+HTTP request generations.
 
 `caffold-settings-detail-list` renders the label and value rows that Codex,
 Claude, and About report. It owns row identity, the placeholder a row shows
@@ -644,11 +675,18 @@ frontend/
 |   |-- pwa-update-lifecycle/...
 |   `-- (task-workspace)/
 |       |-- layout.js
+|       |-- action-hints.js
+|       |-- action-hints/
+|       |   |-- control.js
+|       |   |-- model.js
+|       |   `-- components/dialog.js
 |       |-- live-updates.js
 |       |-- live-updates/lifecycle.js
 |       |-- codex-status.js
 |       |-- codex-status/...
-|       |-- settings/...
+|       |-- settings/
+|       |   |-- keyboard/page.js
+|       |   `-- ...
 |       `-- tasks/
 |           |-- layout.js
 |           |-- stream.js
@@ -664,7 +702,8 @@ frontend/
 |           |   |       |-- section.js
 |           |   |       `-- section/components/row.js
 |           |   |-- task-create.js
-|           |   `-- composer.js
+|           |   |-- composer.js
+|           |   `-- composer/action-hints.js
 |           `-- (detail)/
 |               |-- layout.js
 |               |-- components/

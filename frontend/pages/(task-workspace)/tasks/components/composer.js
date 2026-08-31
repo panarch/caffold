@@ -7,6 +7,7 @@ import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import { cleanLogicalPath } from "../task-format.js";
 import { requestTaskImagePreview } from "./image-preview-dialog.js";
+import { collectComposerActionHintTargets } from "./composer/action-hints.js";
 import "./task-turn-options.js";
 import "./voice-level-meter.js";
 import {
@@ -359,6 +360,52 @@ class CaffoldTaskComposer extends HTMLElement {
         this.stateFor().selectionEnd,
       );
     }
+  }
+
+  actionHintTargets({ scopeId, clipRoots = [] } = {}) {
+    this.ensureState();
+    const mode = this.context.mode;
+    return collectComposerActionHintTargets({
+      mode,
+      scopeId,
+      modelTarget: () => {
+        const target = this.turnOptions()?.actionHintModelTarget({
+          scopeId,
+          clipRoots,
+        });
+        if (!target) {
+          return null;
+        }
+        const isActionable = target.isActionable;
+        return {
+          ...target,
+          isActionable: () =>
+            this.context.mode === mode && isActionable(),
+        };
+      },
+      promptTarget: () => {
+        const textarea = this.querySelector("textarea[name='prompt']");
+        return textarea
+          ? {
+              id: `task-composer:${scopeId}:prompt`,
+              actionId: "task.prompt.focus",
+              category: "prompt",
+              label: mode === "create"
+                ? "Edit new task prompt"
+                : "Edit follow-up prompt",
+              controlKind: "textbox",
+              control: textarea,
+              anchor: textarea,
+              clipRoots: [...clipRoots],
+              isActionable: () =>
+                this.context.mode === mode &&
+                this.querySelector("textarea[name='prompt']") === textarea &&
+                !textarea.disabled,
+              activate: () => this.focus(),
+            }
+          : null;
+      },
+    });
   }
 
   stateFor() {

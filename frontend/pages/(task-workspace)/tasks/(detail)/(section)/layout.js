@@ -82,6 +82,22 @@ class CaffoldSectionDetail extends HTMLElement {
     return `${this.section?.name ?? ""}`;
   }
 
+  actionHintScope() {
+    this.ensureRendered();
+    const taskCreate = this.taskCreate();
+    const sectionId = `${this.section?.id ?? ""}`;
+    return {
+      targets: sectionId
+        ? taskCreate?.actionHintTargets({
+            scopeId: `section:${sectionId}`,
+            clipRoots: [this],
+          }) ?? []
+        : [],
+      mutationRoots: [taskCreate].filter(Boolean),
+      scrollRoots: [this],
+    };
+  }
+
   sectionContextKey(section) {
     return JSON.stringify([
       `${section?.id ?? ""}`,

@@ -60,6 +60,7 @@ export const DEFAULT_APPEARANCE_SETTINGS = Object.freeze({
 export const DEFAULT_SETTINGS = Object.freeze({
   ...DEFAULT_APPEARANCE_SETTINGS,
   fileSortMode: DEFAULT_FILE_SORT_MODE,
+  actionHintsEnabled: true,
 });
 
 let currentSettings = readStoredSettings();
@@ -108,6 +109,15 @@ export function setFileSortMode(value) {
   const settings = normalizeSettings({
     ...currentSettings,
     fileSortMode: normalizeFileSortMode(value),
+  });
+  persistApplyAndPublish(settings);
+  return getSettings();
+}
+
+export function setActionHintsEnabled(value) {
+  const settings = normalizeSettings({
+    ...currentSettings,
+    actionHintsEnabled: Boolean(value),
   });
   persistApplyAndPublish(settings);
   return getSettings();
@@ -170,6 +180,10 @@ export function normalizeSettings(value) {
       APPEARANCE_RANGE_SETTINGS.codeTextPx,
     ),
     fileSortMode: normalizeFileSortMode(value?.fileSortMode),
+    actionHintsEnabled:
+      typeof value?.actionHintsEnabled === "boolean"
+        ? value.actionHintsEnabled
+        : true,
   };
 }
 

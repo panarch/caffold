@@ -367,6 +367,37 @@ class CaffoldTaskDetail extends HTMLElement {
     };
   }
 
+  actionHintScope() {
+    this.ensureRendered();
+    const empty = {
+      targets: [],
+      mutationRoots: [],
+      scrollRoots: [],
+    };
+    if (
+      this.hidden ||
+      this.view !== "detail" ||
+      this.reviewView !== "conversation" ||
+      !this.selectedThreadId
+    ) {
+      return empty;
+    }
+    const composer = this.followUpComposer();
+    const slot = this.followUpComposerSlot();
+    const conversation = this.querySelector(":scope .task-conversation-pane");
+    if (!composer || !slot || composer.parentElement !== slot || !conversation) {
+      return empty;
+    }
+    return {
+      targets: composer.actionHintTargets({
+        scopeId: `task:${this.selectedThreadId}`,
+        clipRoots: [this, conversation],
+      }),
+      mutationRoots: [slot],
+      scrollRoots: [],
+    };
+  }
+
   emitTaskSnapshot() {
     this.dispatchEvent(
       new CustomEvent("caffold:task-snapshot", {

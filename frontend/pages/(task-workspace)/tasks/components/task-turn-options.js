@@ -818,6 +818,40 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     return this.querySelector(":scope .task-model-button");
   }
 
+  actionHintModelTarget({ scopeId, clipRoots = [] } = {}) {
+    this.ensureRendered();
+    const control = this.modelButton();
+    const popover = this.modelPopover();
+    if (
+      !control ||
+      !popover ||
+      !scopeId ||
+      control.getAttribute("popovertarget") !== popover.id ||
+      control.getAttribute("popovertargetaction") !== "toggle"
+    ) {
+      return null;
+    }
+    return {
+      id: `task-composer:${scopeId}:model`,
+      actionId: "task.model.choose",
+      category: "model",
+      label: control.getAttribute("aria-label") || "Choose model and reasoning",
+      controlKind: "button",
+      control,
+      anchor: control,
+      clipRoots: [...clipRoots],
+      isActionable: () =>
+        this.modelButton() === control &&
+        this.modelPopover() === popover &&
+        control.getAttribute("popovertarget") === popover.id &&
+        control.getAttribute("popovertargetaction") === "toggle" &&
+        !this.context.locked &&
+        !control.disabled &&
+        !this.modelPopover()?.matches(":popover-open"),
+      activate: () => control.click(),
+    };
+  }
+
   permissionButton() {
     return this.querySelector(":scope .task-permission-button");
   }

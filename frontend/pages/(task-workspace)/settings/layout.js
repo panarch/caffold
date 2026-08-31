@@ -1,5 +1,6 @@
 import { renderInlineIcon, warmIcons } from "../../../components/icons.js";
 import "./appearance/page.js";
+import "./keyboard/page.js";
 import "./files/page.js";
 import "./notifications/page.js";
 import "./remote-access/page.js";
@@ -9,6 +10,7 @@ import "./about/page.js";
 
 const TITLES = {
   appearance: "Appearance",
+  keyboard: "Keyboard",
   files: "Files",
   notifications: "Notifications",
   "remote-access": "Remote Access",
@@ -57,6 +59,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
           class="settings-workspace-detail-pane"
           role="region"
           aria-labelledby="settings-workspace-title"
+          tabindex="-1"
         >
           <header class="settings-workspace-detail-header" hidden>
             <button
@@ -72,6 +75,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
             <h1 id="settings-workspace-title"></h1>
           </header>
           <caffold-settings-appearance-page hidden></caffold-settings-appearance-page>
+          <caffold-settings-keyboard-page hidden></caffold-settings-keyboard-page>
           <caffold-settings-files-page hidden></caffold-settings-files-page>
           <caffold-settings-notifications-page hidden></caffold-settings-notifications-page>
           <caffold-settings-remote-access-page hidden></caffold-settings-remote-access-page>
@@ -163,6 +167,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
 
     const pages = {
       appearance: this.querySelector("caffold-settings-appearance-page"),
+      keyboard: this.querySelector("caffold-settings-keyboard-page"),
       files: this.querySelector("caffold-settings-files-page"),
       notifications: this.querySelector("caffold-settings-notifications-page"),
       "remote-access": this.querySelector("caffold-settings-remote-access-page"),
@@ -194,6 +199,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
       pages["remote-access"]?.deactivate();
     }
     pages.appearance?.prepareRoute?.();
+    pages.keyboard?.prepareRoute?.();
     pages.files?.prepareRoute?.();
     this.dispatchEvent(
       new CustomEvent("caffold:settings-presentation-change", {

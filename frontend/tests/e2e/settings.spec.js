@@ -876,6 +876,7 @@ test("gives every Settings route one page title and landmark hierarchy", { tag: 
 }) => {
   const routes = [
     ["/settings/appearance", "Appearance", "caffold-settings-appearance-page"],
+    ["/settings/keyboard", "Keyboard", "caffold-settings-keyboard-page"],
     ["/settings/files", "Files", "caffold-settings-files-page"],
     ["/settings/notifications", "Notifications", "caffold-settings-notifications-page"],
     ["/settings/remote-access", "Remote Access", "caffold-settings-remote-access-page"],
@@ -1101,6 +1102,7 @@ test("persists file ordering and keeps it across appearance reset", { tag: "@all
       conversationTextPx: 14,
       codeTextPx: 13,
       fileSortMode: "folders-first",
+      actionHintsEnabled: true,
     });
 
   await byName.check();

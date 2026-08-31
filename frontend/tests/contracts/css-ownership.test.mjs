@@ -39,6 +39,10 @@ const ownership = new Map([
   ["components/segmented-control.css", ["caffold-segmented-control"]],
   ["pages/(task-workspace)/layout.css", ["caffold-task-workspace"]],
   [
+    "pages/(task-workspace)/action-hints/components/dialog.css",
+    ["caffold-action-hint-dialog"],
+  ],
+  [
     "pages/(task-workspace)/components/navigation.css",
     ["caffold-task-workspace-navigation"],
   ],
@@ -295,6 +299,10 @@ const ownership = new Map([
     ["caffold-settings-appearance-page"],
   ],
   [
+    "pages/(task-workspace)/settings/keyboard/page.css",
+    ["caffold-settings-keyboard-page"],
+  ],
+  [
     "pages/(task-workspace)/settings/files/page.css",
     ["caffold-settings-files-page"],
   ],
@@ -360,12 +368,14 @@ const componentChildren = new Map([
       "caffold-settings-workspace",
       "caffold-task-archived-delete-dialog",
       "caffold-codex-runtime-restart-dialog",
+      "caffold-action-hint-dialog",
     ],
   ],
   [
     "caffold-settings-workspace",
     [
       "caffold-settings-appearance-page",
+      "caffold-settings-keyboard-page",
       "caffold-settings-files-page",
       "caffold-settings-codex-page",
       "caffold-settings-about-page",

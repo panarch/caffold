@@ -1,0 +1,128 @@
+caffold-action-hint-dialog {
+  display: contents;
+
+  & > .action-hint-dialog {
+    box-sizing: border-box;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    border: 0;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+    color: var(--text);
+    font-size: var(--interface-font-size);
+    touch-action: pinch-zoom;
+  }
+
+  & > .action-hint-dialog::backdrop {
+    background: rgb(var(--shadow-rgb) / 4%);
+  }
+
+  & .action-hint-instructions {
+    position: absolute;
+    inset: auto 50% var(--interface-space-5) auto;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: var(--interface-space-4);
+    max-width: calc(100% - var(--interface-space-8));
+    padding: var(--interface-space-3) var(--interface-space-5);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: var(--surface);
+    box-shadow: 0 0.25rem 1rem rgb(var(--shadow-rgb) / 16%);
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    white-space: nowrap;
+    transform: translateX(50%);
+  }
+
+  & #action-hint-title {
+    color: var(--text);
+  }
+
+  & .action-hint-input-status:empty {
+    display: none;
+  }
+
+  & .action-hint-input-status {
+    color: var(--text);
+  }
+
+  & .action-hint-dialog[data-input-state="no-match"]
+    .action-hint-input-status {
+    color: var(--danger);
+  }
+
+  & .action-hint-badges {
+    position: absolute;
+    inset: 0;
+  }
+
+  & .action-hint-badge {
+    position: absolute;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    min-width: 1.5rem;
+    min-height: 1.5rem;
+    border: 1px solid var(--primary-control-bg);
+    border-radius: 0.25rem;
+    padding: 0.125rem 0.375rem;
+    background: var(--primary-control-bg);
+    box-shadow: 0 0.125rem 0.375rem rgb(var(--shadow-rgb) / 24%);
+    color: var(--text-inverse);
+    font-size: var(--interface-meta-font-size);
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+  }
+
+  & .action-hint-badge::before {
+    position: absolute;
+    inset: min(
+      0px,
+      calc((1.5rem - var(--interface-target-floor)) / 2)
+    );
+    content: "";
+  }
+
+  & .action-hint-badge[data-match="false"] {
+    border-color: var(--border-strong);
+    background: var(--surface-muted);
+    box-shadow: none;
+    color: var(--muted);
+  }
+
+  & .action-hint-badge:hover {
+    background: var(--primary-control-hover-bg);
+  }
+
+  & .action-hint-badge[data-match="false"]:hover {
+    background: var(--control-hover-bg);
+    color: var(--text);
+  }
+
+  & .action-hint-badge:focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+@media (max-width: 520px) {
+  caffold-action-hint-dialog .action-hint-instructions {
+    max-width: calc(100% - var(--interface-space-5) * 2);
+    white-space: normal;
+  }
+
+  caffold-action-hint-dialog #action-hint-description {
+    display: none;
+  }
+}

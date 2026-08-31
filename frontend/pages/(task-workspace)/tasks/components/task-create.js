@@ -141,6 +141,11 @@ class CaffoldTaskCreate extends HTMLElement {
     return this.querySelector(":scope > caffold-task-composer");
   }
 
+  actionHintTargets(options = {}) {
+    this.ensureRendered();
+    return this.composer()?.actionHintTargets(options) ?? [];
+  }
+
   handleComposerIntent(event) {
     if (event.target !== this.composer()) {
       return;

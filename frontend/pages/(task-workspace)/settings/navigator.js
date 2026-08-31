@@ -9,6 +9,7 @@ import "../components/workspace-brand.js";
 // theme tints it through --brand-monochrome-filter.
 const ITEMS = [
   { section: "appearance", label: "Appearance", icon: "Settings" },
+  { section: "keyboard", label: "Keyboard", icon: "Keyboard" },
   { section: "files", label: "Files", icon: "File" },
   { section: "notifications", label: "Notifications", icon: "Bell" },
   { section: "remote-access", label: "Remote Access", icon: "Link" },

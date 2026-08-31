@@ -144,6 +144,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/appearance/page.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/settings/appearance/page.js"
         ))),
+        "pages/(task-workspace)/settings/keyboard/page.css" => Some(css(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/keyboard/page.css"
+        ))),
+        "pages/(task-workspace)/settings/keyboard/page.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/keyboard/page.js"
+        ))),
         "pages/(task-workspace)/settings/files/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/files/page.css"
         ))),
@@ -222,6 +228,21 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "pages/(task-workspace)/layout.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/layout.js"
+        ))),
+        "pages/(task-workspace)/action-hints.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/action-hints.js"
+        ))),
+        "pages/(task-workspace)/action-hints/control.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/action-hints/control.js"
+        ))),
+        "pages/(task-workspace)/action-hints/model.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/action-hints/model.js"
+        ))),
+        "pages/(task-workspace)/action-hints/components/dialog.css" => Some(css(include_str!(
+            "../../frontend/pages/(task-workspace)/action-hints/components/dialog.css"
+        ))),
+        "pages/(task-workspace)/action-hints/components/dialog.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/action-hints/components/dialog.js"
         ))),
         "pages/(task-workspace)/live-updates.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/live-updates.js"
@@ -347,6 +368,11 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/composer.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/composer.js"
         ))),
+        "pages/(task-workspace)/tasks/components/composer/action-hints.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/components/composer/action-hints.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/components/task-turn-options.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/task-turn-options.css"
         ))),
@@ -1124,8 +1150,13 @@ mod tests {
         assert!(settings_page.body.starts_with(b"import "));
 
         for path in [
+            "pages/(task-workspace)/action-hints.js",
+            "pages/(task-workspace)/action-hints/control.js",
+            "pages/(task-workspace)/action-hints/model.js",
+            "pages/(task-workspace)/action-hints/components/dialog.js",
             "pages/(task-workspace)/settings/layout.js",
             "pages/(task-workspace)/settings/navigator.js",
+            "pages/(task-workspace)/settings/keyboard/page.js",
             "pages/(task-workspace)/settings/files/page.js",
             "pages/(task-workspace)/settings/notifications/page.js",
             "pages/(task-workspace)/settings/remote-access/page.js",
@@ -1135,12 +1166,22 @@ mod tests {
             "pages/(task-workspace)/settings/claude/display.js",
             "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
             "pages/(task-workspace)/settings/about/page.js",
+            "pages/(task-workspace)/tasks/components/composer/action-hints.js",
         ] {
-            let asset = get(path).unwrap_or_else(|| panic!("missing settings asset {path}"));
+            let asset = get(path).unwrap_or_else(|| panic!("missing frontend asset {path}"));
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
             // The body is the module itself, not an HTML error page. A module
             // with no imports of its own opens with what it exports.
             assert!(asset.body.starts_with(b"import ") || asset.body.starts_with(b"export "));
+        }
+
+        for path in [
+            "pages/(task-workspace)/action-hints/components/dialog.css",
+            "pages/(task-workspace)/settings/keyboard/page.css",
+        ] {
+            let asset = get(path).unwrap_or_else(|| panic!("missing frontend CSS asset {path}"));
+            assert_eq!(asset.content_type, "text/css; charset=utf-8");
+            assert!(asset.body.starts_with(b"caffold-"));
         }
 
         let notification_lifecycle =

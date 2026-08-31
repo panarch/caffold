@@ -104,6 +104,48 @@ class CaffoldActiveTaskRow extends HTMLElement {
     );
   }
 
+  actionHintTarget({ clipRoots = [] } = {}) {
+    this.ensureState();
+    const task = this.snapshot.task;
+    const threadId = taskThreadId(task);
+    const control = this.querySelector(
+      ":scope > button.task-row[data-active-task-row-action]",
+    );
+    const action = control?.dataset.activeTaskRowAction;
+    if (
+      !task ||
+      !threadId ||
+      !control ||
+      !["open-task", "open-task-recovery"].includes(action)
+    ) {
+      return null;
+    }
+    const recovery = action === "open-task-recovery";
+    return {
+      id: `task:${threadId}`,
+      actionId: recovery ? "task.open-recovery" : "task.open",
+      category: "task",
+      label: recovery
+        ? `Open task recovery: ${task.title}`
+        : `Open task: ${task.title}`,
+      controlKind: "button",
+      control,
+      anchor: control,
+      clipRoots: [...clipRoots],
+      isActionable: () =>
+        taskThreadId(this.snapshot.task) === threadId &&
+        this.querySelector(
+          ":scope > button.task-row[data-active-task-row-action]",
+        ) === control &&
+        control.dataset.activeTaskRowAction === action &&
+        !control.disabled,
+      activate: () => {
+        control.focus({ preventScroll: true });
+        control.click();
+      },
+    };
+  }
+
   setDropPosition(position = "") {
     this.toggleAttribute("data-task-drop-before", position === "before");
     this.toggleAttribute("data-task-drop-after", position === "after");

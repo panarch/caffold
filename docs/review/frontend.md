@@ -270,11 +270,9 @@ action kinds or reimplement scope composition field by field.
 
 The central keyboard mode owns supported-action policy, key allocation,
 ordering, and conflict validation; component providers do not assign global
-keys. A temporary key remains bound to one action snapshot for the interaction.
-If its identity, meaning, actionability, ownership, or required dependencies
-change, cancel or explicitly restart instead of silently retargeting the key.
-Activation must reuse the existing component action rather than becoming a
-second navigation or mutation owner.
+keys. A temporary key must not silently invoke a different action from the one
+presented when the interaction began. Activation must reuse the existing
+component action rather than becoming a second navigation or mutation owner.
 
 Keyboard input has one interaction owner at a time. The keyboard mode must
 define eligible entry, accepted keys, ownership transfer or exit, and cleanup.

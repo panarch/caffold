@@ -16,6 +16,8 @@ import {
 import {
   CLAUDE_RUNTIME_RESTART_CONFIRMED_EVENT,
 } from "./settings/claude/components/runtime-restart-dialog.js";
+import { ActionHintController } from "./action-hints.js";
+import "./action-hints/components/dialog.js";
 import "./components/navigation.js";
 import {
   TASK_ARCHIVED_DELETE_CONFIRMED_EVENT,
@@ -36,6 +38,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.boundIconsReady ??= () => this.renderIcons();
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.ensureRendered();
+    this.actionHints.connect();
     this.attachGlobalListeners();
     this.liveUpdates.connect();
     this.codexStatusLifecycle.connect();
@@ -44,6 +47,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
 
   disconnectedCallback() {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+    this.actionHints?.disconnect();
     this.liveUpdates.disconnect();
     this.codexStatusLifecycle.disconnect();
     this.stopNavigationPaneResize();
@@ -91,7 +95,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
       >
         ${renderInlineIcon("X", "Close new task", "task-workspace-route-control-icon")}
       </button>
-      <section class="task-workspace-surface">
+      <section class="task-workspace-surface" aria-label="Task workspace" tabindex="-1">
         <div class="task-workspace-master-detail">
           <aside class="task-workspace-master-pane" aria-label="Workspace navigation">
             <caffold-task-navigator class="tasks-list-region"></caffold-task-navigator>
@@ -117,6 +121,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
       <caffold-task-archived-delete-dialog></caffold-task-archived-delete-dialog>
       <caffold-codex-runtime-restart-dialog></caffold-codex-runtime-restart-dialog>
       <caffold-claude-runtime-restart-dialog></caffold-claude-runtime-restart-dialog>
+      <caffold-action-hint-dialog></caffold-action-hint-dialog>
     `;
     this.backButton = this.querySelector(".task-workspace-back");
     this.closeButton = this.querySelector(".task-workspace-close");
@@ -137,6 +142,17 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.claudeRuntimeRestartDialog = this.querySelector(
       ":scope > caffold-claude-runtime-restart-dialog",
     );
+    this.actionHintDialog = this.querySelector(
+      ":scope > caffold-action-hint-dialog",
+    );
+    this.actionHints = new ActionHintController({
+      workspace: this,
+      dialog: this.actionHintDialog,
+      collectScope: () => this.actionHintScope(),
+      editingEscapeTarget: (editable) =>
+        this.actionHintEditingEscapeTarget(editable),
+      afterActivation: (target) => this.afterActionHintActivation(target),
+    });
     this.tasksPage.ensureRendered();
     this.settingsWorkspace.ensureRendered();
     this.taskNavigator.setLiveUpdates(this.liveUpdates);
@@ -292,6 +308,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
 
   prepareRoute(route, options = {}) {
     this.ensureRendered();
+    this.actionHints.routeWillChange();
     const previousMode = this.mode;
     this.route = route;
     this.mode = route?.kind === "settings" ? "settings" : "tasks";
@@ -442,6 +459,57 @@ class CaffoldTaskWorkspace extends HTMLElement {
   setUpdateStatus(status) {
     this.ensureRendered();
     this.settingsWorkspace.setUpdateStatus(status);
+  }
+
+  actionHintScope() {
+    if (this.mode !== "tasks" || this.hidden) {
+      return null;
+    }
+    return this.tasksPage.actionHintScope();
+  }
+
+  actionHintEditingEscapeTarget(editable) {
+    if (this.tasksPage?.contains(editable)) {
+      return this.tasksPage.querySelector(":scope .tasks-detail-pane");
+    }
+    if (this.settingsWorkspace?.contains(editable)) {
+      return this.settingsWorkspace.querySelector(
+        ":scope .settings-workspace-detail-pane",
+      );
+    }
+    return this.querySelector(":scope > .task-workspace-surface");
+  }
+
+  afterActionHintActivation(target) {
+    if (target.category !== "task") {
+      return;
+    }
+    const threadId = target.id.startsWith("task:")
+      ? target.id.slice("task:".length)
+      : "";
+    const focusDestination = () => {
+      if (
+        !this.isConnected ||
+        this.mode !== "tasks" ||
+        !threadId ||
+        this.route?.threadId !== threadId
+      ) {
+        return;
+      }
+      if (window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches) {
+        if (target.control?.isConnected && !target.control.disabled) {
+          target.control.focus({ preventScroll: true });
+        }
+        return;
+      }
+      this.tasksPage.focusActionHintDestination();
+    };
+    const navigationFinished = window.navigation?.transition?.finished;
+    if (navigationFinished && typeof navigationFinished.then === "function") {
+      void navigationFinished.then(focusDestination, () => {});
+      return;
+    }
+    queueMicrotask(focusDestination);
   }
 
   updateChrome() {
