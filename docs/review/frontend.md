@@ -251,6 +251,43 @@ code for drafts, focus, scroll, selection, subscriptions, timers, or watchers.
 If a container patches its own Light DOM, preserve stateful child elements by
 identity and interact with them only through their public component boundary.
 
+### Keyboard Action Ownership
+
+When a document- or workspace-level keyboard mode exposes actions owned by
+multiple components, the component that owns the existing control and
+activation path must provide its keyboard action through an explicit public
+component contract. That provider supplies the action's stable semantic
+identity, accessible meaning, current actionability, and existing click, focus,
+or intent path. An ancestor must not infer keyboard actions by scanning generic
+interactive DOM, attaching markers outside the owner, or reaching through a
+child's Light DOM to reconstruct them.
+
+A container may provide actions for controls it owns, select its active direct
+child providers, and combine their scopes through the shared composition
+contract. It may add only the context and geometry, scroll, topology, or
+invalidation dependencies that it owns. It must not enumerate descendant
+action kinds or reimplement scope composition field by field.
+
+The central keyboard mode owns supported-action policy, key allocation,
+ordering, and conflict validation; component providers do not assign global
+keys. A temporary key remains bound to one action snapshot for the interaction.
+If its identity, meaning, actionability, ownership, or required dependencies
+change, cancel or explicitly restart instead of silently retargeting the key.
+Activation must reuse the existing component action rather than becoming a
+second navigation or mutation owner.
+
+Keyboard input has one interaction owner at a time. The keyboard mode must
+define eligible entry, accepted keys, ownership transfer or exit, and cleanup.
+Editable controls and active text composition own character input, including
+composition-time `Escape`. Competing handlers must not act on the same input or
+rely on propagation order to decide ownership.
+
+Review modifier, repeat, key normalization, and non-Latin input-source behavior
+at the same boundary; report unperformed real input-source checks as unverified.
+Keep provider and native activation tests with the component, scope-composition
+tests with the container, central policy tests with the keyboard mode, and the
+complete input-to-action handoff in the owning browser spec.
+
 ### Coordinated Lifecycle Control
 
 For every lifecycle-owning frontend owner, review initial connection,
