@@ -3,6 +3,7 @@ import { renderInlineIcon, warmIcons } from "../../../../../../../components/ico
 import "../../../../../../../components/pagination.js";
 import {
   ACTION_HINT_ACTION,
+  buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "../../../../../action-hints.js";
@@ -121,13 +122,11 @@ class CaffoldGithubPullsListPage extends HTMLElement {
       ) {
         return [];
       }
-      return [{
+      return [buttonActionHintTarget({
         id: `${scopeId}:pull:${number}`,
         actionId: ACTION_HINT_ACTION.PULL_OPEN,
         label: `Open pull request #${number}: ${pull.title || "(no title)"}`,
-        controlKind: "button",
         control,
-        anchor: control,
         clipRoots: rowClipRoots,
         isActionable: () =>
           this.isConnected &&
@@ -138,11 +137,7 @@ class CaffoldGithubPullsListPage extends HTMLElement {
             `:scope > .github-pulls-panel > .github-pulls-list > .github-pull-row > button.github-pull-button[data-pull-number="${CSS.escape(number)}"]`,
           ) === control &&
           !control.disabled,
-        activate: () => {
-          control.focus({ preventScroll: true });
-          control.click();
-        },
-      }];
+      })];
     });
     const pagination = this.querySelector(
       ":scope > .github-pulls-panel > caffold-pagination",

@@ -13,6 +13,30 @@ export function emptyActionHintScope() {
   };
 }
 
+export function buttonActionHintTarget({
+  id,
+  actionId,
+  label,
+  control,
+  clipRoots,
+  isActionable,
+}) {
+  return {
+    id,
+    actionId,
+    label,
+    controlKind: "button",
+    control,
+    anchor: control,
+    clipRoots,
+    isActionable,
+    activate: () => {
+      control.focus({ preventScroll: true });
+      control.click();
+    },
+  };
+}
+
 export function hasActionHintLayoutBox(element) {
   return Boolean(element?.getClientRects?.().length);
 }

@@ -1,5 +1,8 @@
 import { renderEntryIcon, warmIcons } from "./icons.js";
-import { emptyActionHintScope } from "../action-hint-scope.js";
+import {
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../action-hint-scope.js";
 import { fileStatusPresentation } from "../file-status.js";
 import {
   FILE_SORT_MODES,
@@ -236,13 +239,11 @@ class CaffoldFileTree extends HTMLElement {
       ) {
         return [];
       }
-      return [{
+      return [buttonActionHintTarget({
         id: `${scopeId}:file:${encodeURIComponent(key)}`,
         actionId,
         label: `${labelForNode(node) ?? ""}` || `${node.name ?? key}`,
-        controlKind: "button",
         control,
-        anchor: control,
         clipRoots: uniqueElements([...clipRoots, scroller]),
         isActionable: () => {
           const current = this.nodeByKey.get(key);
@@ -259,11 +260,7 @@ class CaffoldFileTree extends HTMLElement {
               !control.disabled,
           );
         },
-        activate: () => {
-          control.focus({ preventScroll: true });
-          control.click();
-        },
-      }];
+      })];
     });
     return {
       blocked: false,

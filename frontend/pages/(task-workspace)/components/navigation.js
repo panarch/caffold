@@ -3,7 +3,10 @@ import {
   codexState,
   formatCodexReadiness,
 } from "../codex-status.js";
-import { emptyActionHintScope } from "../../../action-hint-scope.js";
+import {
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../../action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "../action-hints.js";
 
 const ICONS = {
@@ -95,13 +98,11 @@ class CaffoldTaskWorkspaceNavigation extends HTMLElement {
       }
       const label = control.getAttribute("aria-label") ||
         `Open ${mode === "tasks" ? "Tasks" : "Settings"}`;
-      return [{
+      return [buttonActionHintTarget({
         id: `${scopeId}:mode:${mode}`,
         actionId: ACTION_HINT_ACTION.WORKSPACE_SELECT,
         label,
-        controlKind: "button",
         control,
-        anchor: control,
         clipRoots: [...clipRoots],
         isActionable: () =>
           this.isConnected &&
@@ -111,11 +112,7 @@ class CaffoldTaskWorkspaceNavigation extends HTMLElement {
             `:scope > .task-workspace-navigation > button[data-workspace-mode="${mode}"]`,
           ) === control &&
           !control.disabled,
-        activate: () => {
-          control.focus({ preventScroll: true });
-          control.click();
-        },
-      }];
+      })];
     });
     return {
       blocked: false,

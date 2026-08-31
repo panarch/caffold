@@ -9,6 +9,7 @@ import "./compare/page.js";
 import "./(log)/layout.js";
 import {
   ACTION_HINT_ACTION,
+  buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "../../../action-hints.js";
@@ -486,13 +487,11 @@ class CaffoldTaskGitLayout extends HTMLElement {
     const back = this.backButton && !this.backButton.hidden &&
         !this.backButton.disabled
       ? {
-          targets: [{
+          targets: [buttonActionHintTarget({
             id: `${scopeId}:parent:log`,
             actionId: ACTION_HINT_ACTION.PARENT,
             label: this.backButton.getAttribute("aria-label") || "Back to log",
-            controlKind: "button",
             control: this.backButton,
-            anchor: this.backButton,
             clipRoots: [this],
             isActionable: () =>
               this.isConnected &&
@@ -503,11 +502,7 @@ class CaffoldTaskGitLayout extends HTMLElement {
               ) &&
               !this.backButton.hidden &&
               !this.backButton.disabled,
-            activate: () => {
-              this.backButton.focus({ preventScroll: true });
-              this.backButton.click();
-            },
-          }],
+          })],
           mutationRoots: [this.backButton],
           scrollRoots: [],
         }

@@ -3,6 +3,7 @@ import { renderInlineIcon, warmIcons } from "../../../../../../../components/ico
 import "../../../../../../../components/pagination.js";
 import {
   ACTION_HINT_ACTION,
+  buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "../../../../../action-hints.js";
@@ -150,13 +151,11 @@ class CaffoldGitLogListPage extends HTMLElement {
       if (!sha || control.disabled) {
         return [];
       }
-      return [{
+      return [buttonActionHintTarget({
         id: `${scopeId}:commit:${encodeURIComponent(sha)}`,
         actionId: ACTION_HINT_ACTION.COMMIT_OPEN,
         label: control.getAttribute("aria-label") || `Open commit ${sha.slice(0, 7)}`,
-        controlKind: "button",
         control,
-        anchor: control,
         clipRoots: listClipRoots,
         isActionable: () =>
           this.isConnected &&
@@ -166,11 +165,7 @@ class CaffoldGitLogListPage extends HTMLElement {
             `:scope > .log-list-panel > .log-list > .log-entry > button[data-action="open-commit"][data-commit-sha="${CSS.escape(sha)}"]`,
           ) === control &&
           !control.disabled,
-        activate: () => {
-          control.focus({ preventScroll: true });
-          control.click();
-        },
-      }];
+      })];
     });
     const pagination = this.querySelector(
       ":scope > .log-list-panel > caffold-pagination",

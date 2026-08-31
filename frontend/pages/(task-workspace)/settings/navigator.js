@@ -4,7 +4,10 @@ import {
   formatCodexReadiness,
 } from "../codex-status.js";
 import "../components/workspace-brand.js";
-import { emptyActionHintScope } from "../../../action-hint-scope.js";
+import {
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../../action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "../action-hints.js";
 
 // Each brand mark is published in a single color so it can be tinted, and the
@@ -79,13 +82,11 @@ class CaffoldSettingsNavigator extends HTMLElement {
       ) {
         return [];
       }
-      return [{
+      return [buttonActionHintTarget({
         id: `${scopeId}:section:${item.section}`,
         actionId: ACTION_HINT_ACTION.SETTINGS_SECTION,
         label: control.getAttribute("aria-label") || `Open ${item.label} settings`,
-        controlKind: "button",
         control,
-        anchor: control,
         clipRoots: [...clipRoots, scroller],
         isActionable: () =>
           this.isConnected &&
@@ -95,11 +96,7 @@ class CaffoldSettingsNavigator extends HTMLElement {
             `:scope > .settings-navigator-list > button[data-settings-section="${item.section}"]`,
           ) === control &&
           !control.disabled,
-        activate: () => {
-          control.focus({ preventScroll: true });
-          control.click();
-        },
-      }];
+      })];
     });
     return {
       blocked: false,

@@ -7,7 +7,10 @@ import "./remote-access/page.js";
 import "./codex/page.js";
 import "./claude/page.js";
 import "./about/page.js";
-import { emptyActionHintScope } from "../../../action-hint-scope.js";
+import {
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../../action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "../action-hints.js";
 
 const TITLES = {
@@ -238,13 +241,11 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     }
     return {
       blocked: false,
-      targets: [{
+      targets: [buttonActionHintTarget({
         id: `${scopeId}:parent:list`,
         actionId: ACTION_HINT_ACTION.PARENT,
         label: control.getAttribute("aria-label") || "Back to settings",
-        controlKind: "button",
         control,
-        anchor: control,
         clipRoots: [...clipRoots],
         isActionable: () =>
           this.isConnected &&
@@ -255,11 +256,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
             ':scope > .settings-workspace-surface > .settings-workspace-detail-pane > .settings-workspace-detail-header > button[data-action="back-to-settings"]',
           ) === control &&
           !control.disabled,
-        activate: () => {
-          control.focus({ preventScroll: true });
-          control.click();
-        },
-      }],
+      })],
       mutationRoots: [header, control].filter(Boolean),
       scrollRoots: [],
     };

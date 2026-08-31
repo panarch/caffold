@@ -2,6 +2,7 @@ import { escapeHtml } from "../../../../../../../components/dom.js";
 import "../../../../../../../components/pagination.js";
 import {
   ACTION_HINT_ACTION,
+  buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "../../../../../action-hints.js";
@@ -108,13 +109,11 @@ class CaffoldGithubIssuesListPage extends HTMLElement {
       ) {
         return [];
       }
-      return [{
+      return [buttonActionHintTarget({
         id: `${scopeId}:issue:${number}`,
         actionId: ACTION_HINT_ACTION.ISSUE_OPEN,
         label: `Open issue #${number}: ${issue.title || "(no title)"}`,
-        controlKind: "button",
         control,
-        anchor: control,
         clipRoots: rowClipRoots,
         isActionable: () =>
           this.isConnected &&
@@ -125,11 +124,7 @@ class CaffoldGithubIssuesListPage extends HTMLElement {
             `:scope > .github-issues-panel > .github-issues-list > .github-issue-row > button.github-issue-button[data-issue-number="${CSS.escape(number)}"]`,
           ) === control &&
           !control.disabled,
-        activate: () => {
-          control.focus({ preventScroll: true });
-          control.click();
-        },
-      }];
+      })];
     });
     const pagination = this.querySelector(
       ":scope > .github-issues-panel > caffold-pagination",

@@ -1,7 +1,10 @@
 import { renderInlineIcon, warmIcons } from "../../../../../../components/icons.js";
 import { taskStoreOperationsPresentation } from "../../../../codex-status.js";
 import { taskThreadId } from "../../../task-list-model.js";
-import { ACTION_HINT_ACTION } from "../../../../action-hints.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+} from "../../../../action-hints.js";
 import {
   ACTIVE_TASK_ROW_INTENT_EVENT,
 } from "./section/components/row.js";
@@ -165,13 +168,11 @@ class CaffoldActiveTaskSection extends HTMLElement {
     ) {
       const sectionId = `${section.id}`;
       const label = section.label ?? activeTaskSectionLabel(section.name);
-      targets.push({
+      targets.push(buttonActionHintTarget({
         id: `section:${sectionId}`,
         actionId: ACTION_HINT_ACTION.SECTION_OPEN,
         label: `Open section: ${label}`,
-        controlKind: "button",
         control: sectionControl,
-        anchor: sectionControl,
         clipRoots: [...(options.clipRoots ?? [])],
         isActionable: () =>
           this.isConnected &&
@@ -182,11 +183,7 @@ class CaffoldActiveTaskSection extends HTMLElement {
             ':scope > .task-repository-header > button[data-active-task-section-action="open-section"]',
           ) === sectionControl &&
           !sectionControl.disabled,
-        activate: () => {
-          sectionControl.focus({ preventScroll: true });
-          sectionControl.click();
-        },
-      });
+      }));
     }
     targets.push(...[...this.querySelectorAll(
       ":scope > .task-list > li > caffold-active-task-row",

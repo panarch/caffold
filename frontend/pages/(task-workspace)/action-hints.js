@@ -1,5 +1,6 @@
 import { getSettings } from "../../settings.js";
 import {
+  buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
@@ -26,6 +27,7 @@ import {
 
 export {
   ACTION_HINT_ACTION,
+  buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,

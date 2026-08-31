@@ -1,6 +1,9 @@
 import { escapeHtml } from "./dom.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
-import { emptyActionHintScope } from "../action-hint-scope.js";
+import {
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../action-hint-scope.js";
 
 class CaffoldPagination extends HTMLElement {
   static observedAttributes = [
@@ -112,13 +115,11 @@ class CaffoldPagination extends HTMLElement {
       if (!kind || !page || control.disabled) {
         return [];
       }
-      return [{
+      return [buttonActionHintTarget({
         id: `${scopeId}:page:${kind}:${encodeURIComponent(page)}`,
         actionId,
         label: control.getAttribute("aria-label") || `Open page ${page}`,
-        controlKind: "button",
         control,
-        anchor: control,
         clipRoots: [...clipRoots],
         isActionable: () =>
           this.isConnected &&
@@ -127,11 +128,7 @@ class CaffoldPagination extends HTMLElement {
             `:scope > .pagination-panel > button[data-page-kind="${CSS.escape(kind)}"][data-page="${CSS.escape(page)}"]`,
           ) === control &&
           !control.disabled,
-        activate: () => {
-          control.focus({ preventScroll: true });
-          control.click();
-        },
-      }];
+      })];
     });
     return {
       blocked: false,

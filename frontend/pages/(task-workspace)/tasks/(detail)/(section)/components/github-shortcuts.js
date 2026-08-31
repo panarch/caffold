@@ -1,6 +1,7 @@
 import { getGitHubStatus } from "../../../../../../api.js";
 import {
   ACTION_HINT_ACTION,
+  buttonActionHintTarget,
   emptyActionHintScope,
 } from "../../../../action-hints.js";
 
@@ -177,13 +178,11 @@ class CaffoldSectionGithubShortcuts extends HTMLElement {
         return [];
       }
       const label = kind === "issues" ? "Open GitHub Issues" : "Open GitHub Pull Requests";
-      return [{
+      return [buttonActionHintTarget({
         id: `${scopeId}:github:${kind}`,
         actionId: ACTION_HINT_ACTION.GITHUB_MODE,
         label,
-        controlKind: "button",
         control,
-        anchor: control,
         clipRoots: [...clipRoots],
         isActionable: () =>
           this.isConnected &&
@@ -194,11 +193,7 @@ class CaffoldSectionGithubShortcuts extends HTMLElement {
             `:scope > nav > button[data-section-github-kind="${kind}"]`,
           ) === control &&
           !control.disabled,
-        activate: () => {
-          control.focus({ preventScroll: true });
-          control.click();
-        },
-      }];
+      })];
     });
     return {
       blocked: false,

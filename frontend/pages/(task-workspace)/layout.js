@@ -19,6 +19,7 @@ import {
 import {
   ACTION_HINT_ACTION,
   ActionHintController,
+  buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
@@ -482,13 +483,11 @@ class CaffoldTaskWorkspace extends HTMLElement {
     const ownScope = routeControl
       ? {
           blocked: false,
-          targets: [{
+          targets: [buttonActionHintTarget({
             id: `workspace:parent:${routeControl === this.backButton ? "tasks" : "close"}`,
             actionId: ACTION_HINT_ACTION.PARENT,
             label: routeControl.getAttribute("aria-label") || "Back",
-            controlKind: "button",
             control: routeControl,
-            anchor: routeControl,
             clipRoots: [this],
             isActionable: () =>
               this.isConnected &&
@@ -496,11 +495,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
               !routeControl.hidden &&
               [this.backButton, this.closeButton].includes(routeControl) &&
               !routeControl.disabled,
-            activate: () => {
-              routeControl.focus({ preventScroll: true });
-              routeControl.click();
-            },
-          }],
+          })],
           mutationRoots: [routeControl],
           scrollRoots: [],
         }

@@ -3,6 +3,7 @@ import { renderInlineIcon, warmIcons } from "../../../../../../../components/ico
 import "../../components/markdown.js";
 import {
   ACTION_HINT_ACTION,
+  buttonActionHintTarget,
   emptyActionHintScope,
 } from "../../../../../action-hints.js";
 
@@ -92,13 +93,11 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
     }
     return {
       blocked: false,
-      targets: [{
+      targets: [buttonActionHintTarget({
         id: `${scopeId}:${number}:files`,
         actionId: ACTION_HINT_ACTION.PULL_FILES,
         label: control.getAttribute("aria-label") || `Open files for PR #${number}`,
-        controlKind: "button",
         control,
-        anchor: control,
         clipRoots: [this, ...clipRoots],
         isActionable: () =>
           this.isConnected &&
@@ -108,11 +107,7 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
             `:scope > .github-pull-viewer-panel > header > .github-pull-viewer-title-row > .github-pull-actions > button.github-pull-files-button[data-action="open-github-pull-files"][data-pull-number="${CSS.escape(number)}"]`,
           ) === control &&
           !control.disabled,
-        activate: () => {
-          control.focus({ preventScroll: true });
-          control.click();
-        },
-      }],
+      })],
       mutationRoots: [this],
       scrollRoots: [],
     };

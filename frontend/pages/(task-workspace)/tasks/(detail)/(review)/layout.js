@@ -30,6 +30,7 @@ import { cleanLogicalPath } from "../../task-format.js";
 import { taskThreadId } from "../../task-list-model.js";
 import {
   ACTION_HINT_ACTION,
+  buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
@@ -307,13 +308,11 @@ class CaffoldTaskReview extends HTMLElement {
     );
     const emptyScope = navigatorActive && emptyControl && !emptyControl.disabled
       ? {
-          targets: [{
+          targets: [buttonActionHintTarget({
             id: `${scopeId}:scope:branch`,
             actionId: ACTION_HINT_ACTION.REVIEW_AXIS,
             label: emptyControl.textContent?.trim() || "Review branch changes",
-            controlKind: "button",
             control: emptyControl,
-            anchor: emptyControl,
             clipRoots: navigatorClipRoots,
             isActionable: () =>
               this.isConnected &&
@@ -323,11 +322,7 @@ class CaffoldTaskReview extends HTMLElement {
                 ':scope > .task-review-workspace > .task-review-layout > .task-review-navigator-pane > .task-review-navigator[data-review-navigator="working"] > .task-review-empty-action:not([hidden]) > button[data-review-action="review-branch"]',
               ) === emptyControl &&
               !emptyControl.disabled,
-            activate: () => {
-              emptyControl.focus({ preventScroll: true });
-              emptyControl.click();
-            },
-          }],
+          })],
           mutationRoots: [emptyControl.parentElement].filter(Boolean),
           scrollRoots: [],
         }

@@ -1,4 +1,7 @@
-import { emptyActionHintScope } from "../action-hint-scope.js";
+import {
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../action-hint-scope.js";
 
 class CaffoldSegmentedControl extends HTMLElement {
   connectedCallback() {
@@ -70,13 +73,11 @@ class CaffoldSegmentedControl extends HTMLElement {
       if (!control || value === this.snapshot.selected || control.disabled) {
         return [];
       }
-      return [{
+      return [buttonActionHintTarget({
         id: `${scopeId}:choice:${encodeURIComponent(value)}`,
         actionId,
         label: `${labelForChoice(choice) ?? ""}` || choice.label,
-        controlKind: "button",
         control,
-        anchor: control,
         clipRoots: [...clipRoots],
         isActionable: () =>
           this.isConnected &&
@@ -86,11 +87,7 @@ class CaffoldSegmentedControl extends HTMLElement {
             `:scope > button[data-segmented-value="${CSS.escape(value)}"]`,
           ) === control &&
           !control.disabled,
-        activate: () => {
-          control.focus({ preventScroll: true });
-          control.click();
-        },
-      }];
+      })];
     });
     return {
       blocked: false,

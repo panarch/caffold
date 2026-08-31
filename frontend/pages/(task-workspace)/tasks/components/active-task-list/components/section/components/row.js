@@ -1,6 +1,7 @@
 import { escapeHtml } from "../../../../../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../../../../../components/icons.js";
 import { taskStoreOperationsPresentation } from "../../../../../../codex-status.js";
+import { buttonActionHintTarget } from "../../../../../../action-hints.js";
 import {
   taskStatusView,
   taskThreadStatusType,
@@ -121,15 +122,13 @@ class CaffoldActiveTaskRow extends HTMLElement {
       return null;
     }
     const recovery = action === "open-task-recovery";
-    return {
+    return buttonActionHintTarget({
       id: `task:${threadId}`,
       actionId: recovery ? "task.open-recovery" : "task.open",
       label: recovery
         ? `Open task recovery: ${task.title}`
         : `Open task: ${task.title}`,
-      controlKind: "button",
       control,
-      anchor: control,
       clipRoots: [...clipRoots],
       isActionable: () =>
         taskThreadId(this.snapshot.task) === threadId &&
@@ -138,11 +137,7 @@ class CaffoldActiveTaskRow extends HTMLElement {
         ) === control &&
         control.dataset.activeTaskRowAction === action &&
         !control.disabled,
-      activate: () => {
-        control.focus({ preventScroll: true });
-        control.click();
-      },
-    };
+    });
   }
 
   setDropPosition(position = "") {
