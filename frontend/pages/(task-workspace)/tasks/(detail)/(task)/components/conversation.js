@@ -5,6 +5,11 @@ import {
   pendingApprovals,
 } from "../../../task-events.js";
 import { isTaskTransportStale } from "../../../runtime-state.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../../../../scroll-scope.js";
 import { requestTaskImagePreview } from "../../../components/image-preview-dialog.js";
 import "./conversation/components/active-turn.js";
 import "./conversation/components/assistant-message.js";
@@ -188,6 +193,37 @@ class CaffoldTaskConversation extends HTMLElement {
 
   scroller() {
     return this.querySelector(":scope > .task-conversation-scroll");
+  }
+
+  scrollSurfaceScope() {
+    this.ensureState();
+    const scrollport = this.scroller();
+    const threadId = `${this.snapshot.threadId ?? ""}`;
+    if (!scrollport || !threadId) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `task:${threadId}:conversation`,
+        label: "Conversation",
+        scrollport,
+        clipRoots: [this, scrollport],
+        isEligible: () =>
+          this.isConnected &&
+          this.active &&
+          !this.hidden &&
+          this.snapshot.threadId === threadId &&
+          Boolean(this.snapshot.task) &&
+          this.scroller() === scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport) &&
+          hasVerticalScrollOverflow(scrollport),
+      }],
+      mutationRoots: [this, scrollport],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   conversationList() {

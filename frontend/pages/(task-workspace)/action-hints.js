@@ -1,4 +1,3 @@
-import { getSettings } from "../../settings.js";
 import {
   buttonActionHintTarget,
   emptyActionHintScope,
@@ -8,29 +7,41 @@ import {
 import {
   ACTION_HINT_ACTIVATE_EVENT,
   ACTION_HINT_CANCEL_EVENT,
-  ACTION_HINT_CONTROL_EVENT,
-  ACTION_HINT_CONTROL_NODE,
-  transitionActionHintControl,
 } from "./action-hints/control.js";
 import {
   ACTION_HINT_ACTION,
+  TASK_HINT_ALPHABET,
   advanceHintBuffer,
   allocateActionHintCodes,
+  clampBadgePosition,
+  intersectRects,
   isEditableElement,
   matchesActionHintPolicy,
   normalizeActionHintKey,
   normalizeRect,
+  rectsEqual,
   sameActionHintSnapshot,
   sortByVisualOrder,
+  taskHintSuffix,
   visibleTargetRect,
 } from "./action-hints/model.js";
 
 export {
   ACTION_HINT_ACTION,
+  TASK_HINT_ALPHABET,
+  advanceHintBuffer,
   buttonActionHintTarget,
+  clampBadgePosition,
   emptyActionHintScope,
   hasActionHintLayoutBox,
+  intersectRects,
+  isEditableElement,
   mergeActionHintScopes,
+  normalizeActionHintKey,
+  normalizeRect,
+  rectsEqual,
+  sortByVisualOrder,
+  taskHintSuffix,
 };
 
 export class ActionHintController {
@@ -38,31 +49,20 @@ export class ActionHintController {
     workspace,
     dialog,
     collectScope,
-    editingEscapeTarget = () => null,
     afterActivation = () => {},
+    hasOtherInteractionOwner = () => false,
+    isCompositionActive = () => false,
+    onSessionExit = () => {},
   }) {
     this.workspace = workspace;
     this.dialog = dialog;
     this.collectScope = collectScope;
-    this.editingEscapeTarget = editingEscapeTarget;
     this.afterActivation = afterActivation;
+    this.hasOtherInteractionOwner = hasOtherInteractionOwner;
+    this.isCompositionActive = isCompositionActive;
+    this.onSessionExit = onSessionExit;
     this.connected = false;
-    this.compositionActive = false;
-    this.compositionOwner = null;
     this.session = null;
-    this.boundKeydown = (event) => this.handleKeydown(event);
-    this.boundCompositionStart = (event) => {
-      this.compositionActive = true;
-      this.compositionOwner = event.target;
-    };
-    this.boundCompositionEnd = () => {
-      this.clearComposition();
-    };
-    this.boundFocusOut = (event) => {
-      if (event.target === this.compositionOwner) {
-        this.clearComposition();
-      }
-    };
     this.boundActivate = (event) => {
       event.stopPropagation();
       this.activate(event.detail?.code);
@@ -71,19 +71,12 @@ export class ActionHintController {
       event.stopPropagation();
       if (
         event.detail?.reason === "escape" &&
-        (this.compositionActive || event.detail?.originalEvent?.isComposing)
+        (this.isCompositionActive() ||
+          event.detail?.originalEvent?.isComposing)
       ) {
         return;
       }
       this.cancel(event.detail?.reason ?? "dialog");
-    };
-    this.boundSettingsChange = (event) => {
-      if (
-        this.session &&
-        event.detail?.settings?.actionHintsEnabled === false
-      ) {
-        this.cancel("setting-disabled");
-      }
     };
   }
 
@@ -92,21 +85,8 @@ export class ActionHintController {
       return;
     }
     this.connected = true;
-    document.addEventListener("keydown", this.boundKeydown, true);
-    this.workspace.addEventListener(
-      "compositionstart",
-      this.boundCompositionStart,
-      true,
-    );
-    this.workspace.addEventListener(
-      "compositionend",
-      this.boundCompositionEnd,
-      true,
-    );
-    this.workspace.addEventListener("focusout", this.boundFocusOut, true);
     this.dialog.addEventListener(ACTION_HINT_ACTIVATE_EVENT, this.boundActivate);
     this.dialog.addEventListener(ACTION_HINT_CANCEL_EVENT, this.boundCancel);
-    window.addEventListener("caffold:settings-change", this.boundSettingsChange);
   }
 
   disconnect() {
@@ -115,87 +95,26 @@ export class ActionHintController {
     }
     this.cancel("disconnect", { restoreFocus: false });
     this.connected = false;
-    this.clearComposition();
-    document.removeEventListener("keydown", this.boundKeydown, true);
-    this.workspace.removeEventListener(
-      "compositionstart",
-      this.boundCompositionStart,
-      true,
-    );
-    this.workspace.removeEventListener(
-      "compositionend",
-      this.boundCompositionEnd,
-      true,
-    );
-    this.workspace.removeEventListener("focusout", this.boundFocusOut, true);
     this.dialog.removeEventListener(
       ACTION_HINT_ACTIVATE_EVENT,
       this.boundActivate,
     );
     this.dialog.removeEventListener(ACTION_HINT_CANCEL_EVENT, this.boundCancel);
-    window.removeEventListener(
-      "caffold:settings-change",
-      this.boundSettingsChange,
-    );
   }
 
-  routeWillChange() {
-    this.clearComposition();
-    this.cancel("route", { restoreFocus: false });
-  }
-
-  handleKeydown(event) {
-    if (this.session) {
-      this.handleHintKeydown(event);
-      return;
-    }
-    if (getSettings().actionHintsEnabled === false) {
-      return;
-    }
-    const editable = editableOwner(event.target) ?? editableOwner(
-      document.activeElement,
-    );
-    if (editable) {
-      if (
-        event.key === "Escape" &&
-        !event.isComposing &&
-        !this.compositionActive &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !event.metaKey &&
-        !this.hasOtherInteractionOwner()
-      ) {
-        event.preventDefault();
-        event.stopPropagation();
-        this.leaveEditing(editable);
-      }
-      return;
-    }
-    if (
-      normalizeActionHintKey(event, {
-        compositionActive: this.compositionActive,
-      }) !== "F" ||
-      this.hasOtherInteractionOwner()
-    ) {
-      return;
-    }
+  prepareSnapshot() {
     const scope = this.safeCollectScope();
     if (!scope || scope.blocked) {
-      return;
+      return null;
     }
     const snapshot = this.captureSnapshot(scope);
-    if (!snapshot?.targets.length) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    this.startSession(snapshot);
+    return snapshot?.targets.length ? snapshot : null;
   }
 
-  handleHintKeydown(event) {
+  handleHintKeydown(event, { compositionActive = false } = {}) {
     if (
       event.isComposing ||
-      this.compositionActive ||
+      compositionActive ||
       event.repeat ||
       event.ctrlKey ||
       event.altKey ||
@@ -233,12 +152,7 @@ export class ActionHintController {
 
   applyInput(key) {
     const session = this.session;
-    if (
-      !session ||
-      !this.applyControlTransition(
-        ACTION_HINT_CONTROL_EVENT.HINT_INPUT_CHANGED,
-      )
-    ) {
+    if (!session) {
       return;
     }
     const progression = advanceHintBuffer(
@@ -254,6 +168,9 @@ export class ActionHintController {
   }
 
   startSession(snapshot) {
+    if (this.session || !snapshot?.targets?.length) {
+      return false;
+    }
     const opener = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
@@ -267,27 +184,20 @@ export class ActionHintController {
       revalidationQueued: false,
       resizeObserver: null,
     };
-    if (
-      !this.applyControlTransition(
-        ACTION_HINT_CONTROL_EVENT.HINT_STARTED,
-        { nextSession: session },
-      )
-    ) {
-      return;
-    }
+    this.session = session;
     try {
       this.dialog.open(session.targets, session.viewport.rect);
       this.attachSessionSignals(session);
       if (!this.snapshotIsCurrent(session, { refreshPresentation: true })) {
         this.cancel("snapshot-invalidated");
       }
+      return this.session === session;
     } catch {
-      if (this.closeSession(
-        session,
-        ACTION_HINT_CONTROL_EVENT.HINT_CANCELLED,
-      )) {
+      if (this.closeSession(session)) {
         this.restoreFocus(opener);
+        this.onSessionExit({ activated: false, reason: "open-failed" });
       }
+      return false;
     }
   }
 
@@ -296,16 +206,14 @@ export class ActionHintController {
     if (!session) {
       return false;
     }
-    if (!this.closeSession(
-      session,
-      ACTION_HINT_CONTROL_EVENT.HINT_CANCELLED,
-    )) {
+    if (!this.closeSession(session)) {
       return false;
     }
     if (restoreFocus) {
       this.restoreFocus(session.opener);
     }
     this.workspace.dataset.actionHintLastExit = reason;
+    this.onSessionExit({ activated: false, reason });
     return true;
   }
 
@@ -315,12 +223,10 @@ export class ActionHintController {
     if (!session || !target) {
       return false;
     }
-    if (!this.closeSession(
-      session,
-      ACTION_HINT_CONTROL_EVENT.HINT_CLOSED_FOR_ACTIVATION,
-    )) {
+    if (!this.closeSession(session)) {
       return false;
     }
+    this.onSessionExit({ activated: true, target });
     if (!this.snapshotIsCurrent(session)) {
       this.restoreFocus(session.opener);
       this.workspace.dataset.actionHintLastExit = "activation-invalidated";
@@ -338,23 +244,6 @@ export class ActionHintController {
     }
   }
 
-  leaveEditing(editable) {
-    if (
-      !this.applyControlTransition(
-        ACTION_HINT_CONTROL_EVENT.EDITING_ENDED,
-        { editable },
-      )
-    ) {
-      return;
-    }
-    const target = this.editingEscapeTarget(editable);
-    if (focusableTarget(target)) {
-      target.focus({ preventScroll: true });
-    } else {
-      editable.blur?.();
-    }
-  }
-
   restoreFocus(element) {
     if (!focusableTarget(element)) {
       return;
@@ -366,53 +255,14 @@ export class ActionHintController {
     }
   }
 
-  applyControlTransition(event, { editable = null, nextSession } = {}) {
-    const current = this.controlNode(editable);
-    const next = transitionActionHintControl(current, event);
-    if (!next) {
-      return null;
-    }
-    if (next === ACTION_HINT_CONTROL_NODE.HINT) {
-      const session = nextSession ?? this.session;
-      if (!session) {
-        return null;
-      }
-      this.session = session;
-    } else if (current === ACTION_HINT_CONTROL_NODE.HINT) {
-      this.session = null;
-    }
-    return { current, next };
-  }
-
-  controlNode(editable = null) {
-    if (this.session) {
-      return ACTION_HINT_CONTROL_NODE.HINT;
-    }
-    if (
-      this.compositionActive ||
-      editable ||
-      editableOwner(document.activeElement)
-    ) {
-      return ACTION_HINT_CONTROL_NODE.EDITING;
-    }
-    return ACTION_HINT_CONTROL_NODE.NORMAL;
-  }
-
-  closeSession(session, event) {
-    if (
-      this.session !== session ||
-      !this.applyControlTransition(event)
-    ) {
+  closeSession(session) {
+    if (this.session !== session) {
       return false;
     }
+    this.session = null;
     this.detachSessionSignals(session);
     this.dialog.close();
     return true;
-  }
-
-  clearComposition() {
-    this.compositionActive = false;
-    this.compositionOwner = null;
   }
 
   attachSessionSignals(session) {
@@ -623,13 +473,6 @@ export class ActionHintController {
     }
   }
 
-  hasOtherInteractionOwner() {
-    const modal = document.querySelector("dialog:modal");
-    if (modal && !this.dialog.ownsModal(modal)) {
-      return true;
-    }
-    return Boolean(document.querySelector(":popover-open"));
-  }
 }
 
 function normalizeDescriptors(targets) {
@@ -748,19 +591,6 @@ function normalizeElementList(elements) {
     return null;
   }
   return uniqueElements(elements);
-}
-
-function editableOwner(element) {
-  if (!(element instanceof Element)) {
-    return null;
-  }
-  if (isEditableElement(element)) {
-    return element;
-  }
-  const owner = element.closest(
-    "[contenteditable]:not([contenteditable='false'])",
-  );
-  return isEditableElement(owner) ? owner : null;
 }
 
 function focusableTarget(element) {

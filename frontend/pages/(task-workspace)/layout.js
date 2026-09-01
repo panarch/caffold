@@ -18,12 +18,17 @@ import {
 } from "./settings/claude/components/runtime-restart-dialog.js";
 import {
   ACTION_HINT_ACTION,
-  ActionHintController,
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
 } from "./action-hints.js";
+import { KeyboardNavigationController } from "./keyboard-navigation.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  scrollContextScope,
+} from "./scroll-scope.js";
 import "./action-hints/components/dialog.js";
 import "./components/navigation.js";
 import {
@@ -45,7 +50,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.boundIconsReady ??= () => this.renderIcons();
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.ensureRendered();
-    this.actionHints.connect();
+    this.keyboardNavigation.connect();
     this.attachGlobalListeners();
     this.liveUpdates.connect();
     this.codexStatusLifecycle.connect();
@@ -54,7 +59,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
 
   disconnectedCallback() {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
-    this.actionHints?.disconnect();
+    this.keyboardNavigation?.disconnect();
     this.liveUpdates.disconnect();
     this.codexStatusLifecycle.disconnect();
     this.stopNavigationPaneResize();
@@ -129,6 +134,8 @@ class CaffoldTaskWorkspace extends HTMLElement {
       <caffold-codex-runtime-restart-dialog></caffold-codex-runtime-restart-dialog>
       <caffold-claude-runtime-restart-dialog></caffold-claude-runtime-restart-dialog>
       <caffold-action-hint-dialog></caffold-action-hint-dialog>
+      <caffold-scroll-mode-hud></caffold-scroll-mode-hud>
+      <caffold-scroll-surface-selector></caffold-scroll-surface-selector>
     `;
     this.backButton = this.querySelector(".task-workspace-back");
     this.closeButton = this.querySelector(".task-workspace-close");
@@ -152,14 +159,24 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.actionHintDialog = this.querySelector(
       ":scope > caffold-action-hint-dialog",
     );
-    this.actionHints = new ActionHintController({
+    this.scrollModeHud = this.querySelector(
+      ":scope > caffold-scroll-mode-hud",
+    );
+    this.scrollSurfaceSelector = this.querySelector(
+      ":scope > caffold-scroll-surface-selector",
+    );
+    this.keyboardNavigation = new KeyboardNavigationController({
       workspace: this,
-      dialog: this.actionHintDialog,
-      collectScope: () => this.actionHintScope(),
+      actionHintDialog: this.actionHintDialog,
+      scrollSelector: this.scrollSurfaceSelector,
+      collectActionHintScope: () => this.actionHintScope(),
+      collectScrollContexts: () => this.scrollContextScopes(),
       editingEscapeTarget: (editable) =>
         this.actionHintEditingEscapeTarget(editable),
-      afterActivation: (target) => this.afterActionHintActivation(target),
+      afterActionHintActivation: (target) =>
+        this.afterActionHintActivation(target),
     });
+    this.actionHints = this.keyboardNavigation.actionHints;
     this.tasksPage.ensureRendered();
     this.settingsWorkspace.ensureRendered();
     this.taskNavigator.setLiveUpdates(this.liveUpdates);
@@ -315,7 +332,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
 
   prepareRoute(route, options = {}) {
     this.ensureRendered();
-    this.actionHints.routeWillChange();
+    this.keyboardNavigation.routeWillChange();
     const previousMode = this.mode;
     this.route = route;
     this.mode = route?.kind === "settings" ? "settings" : "tasks";
@@ -528,6 +545,28 @@ class CaffoldTaskWorkspace extends HTMLElement {
         : null,
       modeScope,
     );
+  }
+
+  scrollContextScopes() {
+    this.ensureRendered();
+    const workspaceScope =
+      !this.hidden &&
+        this.mode === "tasks" &&
+        hasScrollLayoutBox(this.tasksPage)
+        ? this.tasksPage.scrollSurfaceScope()
+        : emptyScrollSurfaceScope();
+    const workspaceContext = scrollContextScope({
+      id: "workspace",
+      kind: "workspace",
+      root: this,
+      hud: this.scrollModeHud,
+      scope: workspaceScope,
+    });
+    const modalContexts =
+      !this.hidden && this.mode === "tasks"
+        ? this.tasksPage.scrollContextScopes()
+        : [];
+    return [workspaceContext, ...modalContexts];
   }
 
   actionHintEditingEscapeTarget(editable) {

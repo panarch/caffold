@@ -6,6 +6,7 @@ export const ACTION_HINT_ACTION = Object.freeze({
   TASK_CREATE: "task.create",
   MODEL_CHOOSE: "task.model.choose",
   PROMPT_FOCUS: "task.prompt.focus",
+  CURRENT_PLAN_DOCUMENT_OPEN: "task.current-plan.document.open",
   WORKSPACE_SELECT: "navigation.workspace.select",
   PARENT: "navigation.parent",
   SETTINGS_SECTION: "navigation.settings.section",
@@ -67,6 +68,7 @@ const ACTION_HINT_ACTION_POLICY = Object.freeze({
     ACTION_HINT_ACTION.PULL_OPEN,
     ACTION_HINT_ACTION.PULL_FILES,
     ACTION_HINT_ACTION.PAGE,
+    ACTION_HINT_ACTION.CURRENT_PLAN_DOCUMENT_OPEN,
   ].map((actionId) => [actionId, Object.freeze({
     controlKind: "button",
     allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
@@ -170,12 +172,12 @@ export function taskHintSuffix(index, width) {
 
 export function normalizeActionHintKey(
   event,
-  { compositionActive = false } = {},
+  { compositionActive = false, allowRepeat = false } = {},
 ) {
   if (
     compositionActive ||
     event?.isComposing ||
-    event?.repeat ||
+    (!allowRepeat && event?.repeat) ||
     event?.ctrlKey ||
     event?.altKey ||
     event?.metaKey

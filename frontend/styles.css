@@ -10,6 +10,8 @@
 @import "./components/segmented-control.css";
 @import "./pages/(task-workspace)/layout.css";
 @import "./pages/(task-workspace)/action-hints/components/dialog.css";
+@import "./pages/(task-workspace)/keyboard-navigation/components/hud.css";
+@import "./pages/(task-workspace)/keyboard-navigation/components/selector.css";
 @import "./pages/(task-workspace)/components/navigation.css";
 @import "./pages/(task-workspace)/components/workspace-brand.css";
 @import "./pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css";

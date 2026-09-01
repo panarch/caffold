@@ -436,7 +436,7 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
   await installActionHintFixture(page, []);
   await page.goto("/settings/keyboard");
 
-  const setting = page.getByRole("switch", { name: "Action Hints" });
+  const setting = page.getByRole("switch", { name: "Keyboard navigation" });
   await expect(setting).toBeChecked();
   await setting.uncheck();
   await page.goto("/tasks");
@@ -511,7 +511,26 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
       key: "ㄹ",
     }));
   });
-  await expect(actionHintDialog(page)).toBeVisible();
+  const dialog = actionHintDialog(page);
+  await expect(dialog).toBeVisible();
+  await dialog.evaluate((element) => {
+    element.dispatchEvent(new CompositionEvent("compositionstart", {
+      bubbles: true,
+      data: "ㅎ",
+    }));
+    element.dispatchEvent(new Event("cancel", {
+      cancelable: true,
+    }));
+  });
+  await expect(dialog).toBeVisible();
+  await dialog.evaluate((element) => {
+    element.dispatchEvent(new CompositionEvent("compositionend", {
+      bubbles: true,
+      data: "ㅎ",
+    }));
+  });
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
 });
 
 test("keeps harmless row patches but cancels on actionability, scroll, and topology changes", { tag: "@all-viewports" }, async ({

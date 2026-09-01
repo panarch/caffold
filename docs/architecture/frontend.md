@@ -60,6 +60,8 @@ caffold-app-shell
     |           |-- Issues
     |           `-- Pull Requests
     |-- Action Hint dialog
+    |-- Scroll selector
+    |-- Scroll HUD
     `-- Settings
         `-- Keyboard
 |-- caffold-build-mismatch-alert
@@ -196,7 +198,8 @@ owns:
 - the user-resizable desktop navigation pane;
 - compact top-level Task/New Task Back or Close controls;
 - the one physical live-update connection for this browser tab;
-- the one Action Hint controller and native modal dialog;
+- the one keyboard-navigation coordinator, Action Hint dialog, Scroll selector,
+  and workspace-local Scroll HUD;
 - forwarding routes to Tasks or Settings.
 
 The workspace consumes the semantic presentation snapshot published by Tasks:
@@ -207,11 +210,20 @@ Reading surfaces keep the Task navigator on desktop. Code surfaces use the full
 workspace width. Foldable and phone presentation is owned by the same
 master/detail layout system.
 
-The workspace Action Hint controller enters from a non-editing `F` key and
+The workspace keyboard-navigation coordinator is the only document-level key
+owner. It derives normal versus editing state from focus and composition, and
+stores at most one mutually exclusive Action Hint, Scroll selection, or active
+Scroll mode. Keyboard navigation being disabled closes the stored mode and
+leaves both `F` and `S` unhandled. Route changes, disconnect, competing native
+modal or product-popover ownership, and composition changes run through the
+same cleanup authority.
+
+The coordinator enters Action Hint mode from a non-editing `F` key and
 pulls one-shot semantic descriptors from explicitly participating owners.
 Workspace and Settings navigation, Task and Section selection, direct Detail
-view choices, Integrated Review, and the direct Git and GitHub navigation
-surfaces provide their native control, stable semantic identity, action
+view choices, the Current Plan document openers for Plan and Checklist,
+Integrated Review, and the direct Git and GitHub navigation surfaces provide
+their native control, stable semantic identity, action
 meaning, accessible name, anchor, and clip dependencies. Conversation content,
 arbitrary clickable DOM, disclosures, mutation controls, external links,
 selects, popovers, and dialogs are not scanned. Reusable controls such as the
@@ -236,14 +248,49 @@ actionability, or competing modal/popover ownership closes the session. A
 presentation-only accessible-name change refreshes the existing badge without
 changing its code, while equivalent presentation patches do not retarget it.
 
-`normal` and `editing` are derived from current focus and composition; `hint`
-is the only stored Action Hint node. The complete internal edges are
-`normal -> normal | editing | hint`, `editing -> editing | normal`, and
-`hint -> hint | normal`. One transition table gates session creation, input,
-cancel, and activation close. Closing the Hint releases its scoped listeners
-and observers before an existing route, model popover, or prompt-focus owner
-takes control. Composition and another open modal or popover keep their own key
-and Escape ownership.
+`normal` and `editing` are derived from current focus and composition; `hint`,
+`scroll-selecting`, and `scroll-active` are the stored keyboard-navigation
+nodes. The complete node edges are
+`normal -> normal | editing | hint | scroll-selecting | scroll-active`,
+`editing -> editing | normal`, `hint -> hint | normal`,
+`scroll-selecting -> scroll-selecting | scroll-active | normal`, and
+`scroll-active -> scroll-active | normal`. One transition table gates session
+creation, input, cancel, selection, commands, and activation close. Closing a
+stored mode releases its scoped listeners and observers before an existing
+route, model popover, document dialog, or prompt-focus owner takes control.
+Composition and unregistered modal or popover owners keep their own key and
+Escape ownership.
+
+Scroll mode enters from a non-editing `S` key and uses only vertical surfaces
+explicitly published through `scroll-scope.js`; it does not discover generic
+scrollable DOM. Task Navigator publishes its exact Task-list scrollport,
+Conversation publishes its exact active reading scrollport, and the Current
+Plan document dialog publishes its exact visible Markdown preview. Containers
+merge only active direct-child scopes. Workspace and an open registered modal
+are exclusive interaction contexts, so a Current Plan preview never shares a
+selection set with the background Task list or Conversation.
+
+Eligibility directly checks the bound element, vertical overflow, layout box,
+visual viewport, clip roots, and owner revalidation. One eligible surface
+enters active mode directly. Multiple workspace surfaces receive temporary
+same-width `ASDFGHJKLQWERTYUIOPZXCVBNM` codes in visual order and appear in a
+native modal selector; multiple surfaces in a modal context are rejected.
+The selector session freezes the context, surface IDs, element bindings,
+geometry, and codes. Scroll, viewport, zoom, geometry, visibility, overflow,
+topology, route, or context changes close that session instead of reallocating
+or retargeting it.
+
+Active Scroll mode sends `J/K` by 10 percent and `D/U` by 50 percent of the
+selected scrollport height, clamps immediately at its boundaries, and accepts
+key repeat without chaining into a parent or the window. `Escape` closes only
+Scroll mode. Active revalidation preserves the exact context, surface ID, and
+element binding; label or layout changes on that binding reposition its HUD,
+while loss of visibility, overflow, or ownership closes the mode. The reusable
+non-interactive HUD and outline are mounted by the active context itself: the
+workspace owns one for Task list or Conversation, while the Current Plan
+dialog owns one inside its modal top layer. Native scroll events, focus,
+Conversation anchoring, and Current Plan refresh/close lifecycle remain owned
+by those components.
 
 The workspace also owns the one browser lifecycle for backend-owned Codex
 readiness requests and forwards a request snapshot to Tasks, Settings, and the
@@ -626,9 +673,10 @@ lifetime.
 ## Settings
 
 Settings lives inside Task Workspace. Appearance owns theme and Interface,
-Conversation, and Code scales. Keyboard owns the persisted Action Hints On/Off
-control; Off leaves every Action Hint key unhandled. Settings Codex renders the
-shared status and runtime-restart request snapshots, repair guidance,
+Conversation, and Code scales. Keyboard owns the persisted Keyboard navigation
+On/Off control; Off closes active Action Hint or Scroll mode and leaves their
+keys unhandled. Settings Codex renders the shared status and runtime-restart
+request snapshots, repair guidance,
 diagnostics, and intents for Refresh or restart. The workspace Codex status
 lifecycle remains active across Tasks and Settings route changes and owns the
 HTTP request generations.

@@ -9,6 +9,14 @@ import {
 } from "../../../../../api.js";
 import { escapeHtml } from "../../../../../components/dom.js";
 import { routeDomain } from "../../../../../navigation-routes.js";
+import {
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../scroll-scope.js";
 import "../../components/composer.js";
 import "./components/conversation.js";
 import "./components/command-dialog.js";
@@ -369,33 +377,68 @@ class CaffoldTaskDetail extends HTMLElement {
 
   actionHintScope() {
     this.ensureRendered();
-    const empty = {
-      targets: [],
-      mutationRoots: [],
-      scrollRoots: [],
-    };
     if (
       this.hidden ||
       this.view !== "detail" ||
       this.reviewView !== "conversation" ||
       !this.selectedThreadId
     ) {
-      return empty;
+      return emptyActionHintScope();
     }
     const composer = this.followUpComposer();
     const slot = this.followUpComposerSlot();
     const conversation = this.querySelector(":scope .task-conversation-pane");
-    if (!composer || !slot || composer.parentElement !== slot || !conversation) {
-      return empty;
+    if (!conversation) {
+      return emptyActionHintScope();
     }
-    return {
-      targets: composer.actionHintTargets({
-        scopeId: `task:${this.selectedThreadId}`,
-        clipRoots: [this, conversation],
-      }),
-      mutationRoots: [slot],
-      scrollRoots: [],
-    };
+    const scopeId = `task:${this.selectedThreadId}`;
+    const clipRoots = [this, conversation];
+    const composerScope = composer && slot && composer.parentElement === slot
+      ? {
+          targets: composer.actionHintTargets({
+            scopeId,
+            clipRoots,
+          }),
+          mutationRoots: [slot],
+          scrollRoots: [],
+        }
+      : null;
+    const currentPlanScope = this.currentPlanComponent()?.actionHintScope({
+      scopeId: `${scopeId}:current-plan`,
+      clipRoots,
+    });
+    return mergeActionHintScopes(composerScope, currentPlanScope);
+  }
+
+  scrollSurfaceScope() {
+    this.ensureRendered();
+    if (
+      this.hidden ||
+      this.view !== "detail" ||
+      this.reviewView !== "conversation" ||
+      !this.selectedThreadId ||
+      !hasScrollLayoutBox(this)
+    ) {
+      return emptyScrollSurfaceScope();
+    }
+    const conversation = this.conversationComponent();
+    return conversation && hasScrollLayoutBox(conversation)
+      ? conversation.scrollSurfaceScope()
+      : emptyScrollSurfaceScope();
+  }
+
+  scrollContextScopes() {
+    this.ensureRendered();
+    if (
+      this.hidden ||
+      this.view !== "detail" ||
+      this.reviewView !== "conversation" ||
+      !this.selectedThreadId ||
+      !hasScrollLayoutBox(this)
+    ) {
+      return [];
+    }
+    return this.currentPlanComponent()?.scrollContextScopes() ?? [];
   }
 
   emitTaskSnapshot() {

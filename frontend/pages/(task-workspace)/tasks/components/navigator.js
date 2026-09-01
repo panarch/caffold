@@ -5,6 +5,11 @@ import {
   taskStoreOperationsPresentation,
 } from "../../codex-status.js";
 import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../../scroll-scope.js";
+import {
   TASK_TRANSPORT_STATE,
 } from "../runtime-state.js";
 import { taskThreadId } from "../task-list-model.js";
@@ -189,6 +194,37 @@ class CaffoldTaskNavigator extends HTMLElement {
       targets,
       mutationRoots: [primaryHeader, this.activeTaskList].filter(Boolean),
       scrollRoots: [scrollRoot].filter(Boolean),
+    };
+  }
+
+  scrollSurfaceScope() {
+    this.ensureChildren();
+    const scrollport = this.querySelector(":scope > .task-list-scroll");
+    if (!scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: this.reorderMode !== "none",
+      surfaces: [{
+        id: "task-list",
+        label: "Task list",
+        scrollport,
+        clipRoots: [this, scrollport],
+        isEligible: () =>
+          this.isConnected &&
+          this.active &&
+          !this.hidden &&
+          this.reorderMode === "none" &&
+          this.querySelector(":scope > .task-list-scroll") === scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport) &&
+          hasVerticalScrollOverflow(scrollport),
+      }],
+      mutationRoots: [this, this.activeTaskList, this.archivedTaskList].filter(
+        Boolean,
+      ),
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
     };
   }
 

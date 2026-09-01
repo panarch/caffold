@@ -4,6 +4,13 @@ import {
   warmIcons,
 } from "../../../../../../../../components/icons.js";
 import "../../../../../../../../components/markdown-preview.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+  scrollContextScope,
+} from "../../../../../../scroll-scope.js";
+import "../../../../../../keyboard-navigation/components/hud.js";
 
 class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
   connectedCallback() {
@@ -50,6 +57,48 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
 
   preview() {
     return this.querySelector(":scope > dialog caffold-markdown-preview");
+  }
+
+  scrollContextScope() {
+    const dialog = this.dialog();
+    const preview = this.preview();
+    const hud = dialog?.querySelector(":scope > caffold-scroll-mode-hud");
+    if (!dialog || !preview || !hud) {
+      return null;
+    }
+    const path = `${this.current?.path ?? ""}`;
+    const label = `${this.current?.label ?? "Document"}`.trim() || "Document";
+    const scope = !path
+      ? emptyScrollSurfaceScope()
+      : {
+          blocked: false,
+          surfaces: [{
+            id: `current-plan:${path}:preview`,
+            label: `${label} document`,
+            scrollport: preview,
+            clipRoots: [dialog, preview],
+            isEligible: () =>
+              this.isConnected &&
+              this.dialog() === dialog &&
+              dialog.open &&
+              this.current?.path === path &&
+              this.preview() === preview &&
+              !preview.hidden &&
+              hasScrollLayoutBox(dialog) &&
+              hasScrollLayoutBox(preview) &&
+              hasVerticalScrollOverflow(preview),
+          }],
+          mutationRoots: [this, dialog, preview],
+          resizeElements: [dialog, preview],
+          scrollRoots: [preview],
+        };
+    return scrollContextScope({
+      id: path ? `current-plan-document:${path}` : "current-plan-document",
+      kind: "modal",
+      root: dialog,
+      hud,
+      scope,
+    });
   }
 
   openDocument({ label, document, displayPath, opener } = {}) {
@@ -199,6 +248,7 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
             <caffold-markdown-preview hidden></caffold-markdown-preview>
           </div>
         </article>
+        <caffold-scroll-mode-hud></caffold-scroll-mode-hud>
       </dialog>
     `;
   }

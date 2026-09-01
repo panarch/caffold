@@ -146,3 +146,33 @@ test("merges the view switch with only the active direct-child surface", () => {
     [viewTarget, githubTarget],
   );
 });
+
+test("delegates Scroll contracts only to the active Task conversation owner", () => {
+  const surfaceScope = { surfaces: [{ id: "conversation" }] };
+  const modalContext = { id: "current-plan" };
+  const task = {
+    hidden: false,
+    loading: false,
+    scrollSurfaceScope: () => surfaceScope,
+    scrollContextScopes: () => [modalContext],
+  };
+  let activeSurface = "conversation";
+  const owner = {
+    subjectKind: "task",
+    hidden: false,
+    ensureRendered() {},
+    subjectIdentity: () => ({ kind: "task", id: "thread-a" }),
+    activeSurface: () => activeSurface,
+    taskDetail: () => task,
+  };
+
+  assert.equal(detailLayout.scrollSurfaceScope.call(owner), surfaceScope);
+  assert.deepEqual(detailLayout.scrollContextScopes.call(owner), [modalContext]);
+  activeSurface = "review";
+  assert.deepEqual(detailLayout.scrollSurfaceScope.call(owner).surfaces, []);
+  assert.deepEqual(detailLayout.scrollContextScopes.call(owner), []);
+  activeSurface = "conversation";
+  task.loading = true;
+  assert.deepEqual(detailLayout.scrollSurfaceScope.call(owner).surfaces, []);
+  assert.deepEqual(detailLayout.scrollContextScopes.call(owner), []);
+});

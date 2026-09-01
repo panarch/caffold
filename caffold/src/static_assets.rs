@@ -230,6 +230,34 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/layout.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/layout.js"
         ))),
+        "pages/(task-workspace)/keyboard-navigation.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/keyboard-navigation.js"
+        ))),
+        "pages/(task-workspace)/scroll-scope.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/scroll-scope.js"
+        ))),
+        "pages/(task-workspace)/keyboard-navigation/control.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/keyboard-navigation/control.js"
+        ))),
+        "pages/(task-workspace)/keyboard-navigation/model.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/keyboard-navigation/model.js"
+        ))),
+        "pages/(task-workspace)/keyboard-navigation/components/hud.css" => Some(css(include_str!(
+            "../../frontend/pages/(task-workspace)/keyboard-navigation/components/hud.css"
+        ))),
+        "pages/(task-workspace)/keyboard-navigation/components/hud.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/keyboard-navigation/components/hud.js"
+        ))),
+        "pages/(task-workspace)/keyboard-navigation/components/selector.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/keyboard-navigation/components/selector.css"
+            )))
+        }
+        "pages/(task-workspace)/keyboard-navigation/components/selector.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/keyboard-navigation/components/selector.js"
+            )))
+        }
         "pages/(task-workspace)/action-hints.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/action-hints.js"
         ))),
@@ -1151,6 +1179,11 @@ mod tests {
         assert!(settings_page.body.starts_with(b"import "));
 
         for path in [
+            "pages/(task-workspace)/keyboard-navigation.js",
+            "pages/(task-workspace)/keyboard-navigation/control.js",
+            "pages/(task-workspace)/keyboard-navigation/model.js",
+            "pages/(task-workspace)/keyboard-navigation/components/hud.js",
+            "pages/(task-workspace)/keyboard-navigation/components/selector.js",
             "pages/(task-workspace)/action-hints.js",
             "pages/(task-workspace)/action-hints/control.js",
             "pages/(task-workspace)/action-hints/model.js",
@@ -1176,7 +1209,18 @@ mod tests {
             assert!(asset.body.starts_with(b"import ") || asset.body.starts_with(b"export "));
         }
 
+        let scroll_scope =
+            get("pages/(task-workspace)/scroll-scope.js").expect("Scroll scope module asset");
+        assert_eq!(scroll_scope.content_type, "text/javascript; charset=utf-8");
+        assert!(
+            scroll_scope
+                .body
+                .starts_with(b"const SCROLL_SCOPE_LIST_KEYS")
+        );
+
         for path in [
+            "pages/(task-workspace)/keyboard-navigation/components/hud.css",
+            "pages/(task-workspace)/keyboard-navigation/components/selector.css",
             "pages/(task-workspace)/action-hints/components/dialog.css",
             "pages/(task-workspace)/settings/keyboard/page.css",
         ] {

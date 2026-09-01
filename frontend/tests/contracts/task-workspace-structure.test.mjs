@@ -45,6 +45,9 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   const actionHints = readFrontend(
     "pages/(task-workspace)/action-hints.js",
   );
+  const keyboardNavigation = readFrontend(
+    "pages/(task-workspace)/keyboard-navigation.js",
+  );
   const actionHintDialog = readFrontend(
     "pages/(task-workspace)/action-hints/components/dialog.js",
   );
@@ -91,7 +94,17 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     [...workspace.matchAll(/<caffold-action-hint-dialog>/g)].length,
     1,
   );
-  assert.match(workspace, /new ActionHintController\(/);
+  assert.match(workspace, /new KeyboardNavigationController\(/);
+  assert.match(
+    keyboardNavigation,
+    /document\.addEventListener\("keydown", this\.boundKeydown, true\)/,
+  );
+  assert.doesNotMatch(actionHints, /document\.addEventListener\("keydown"/);
+  for (const [path, source] of frontendJavascriptFiles()) {
+    if (path.startsWith("pages/(task-workspace)/keyboard-navigation")) {
+      assert.doesNotMatch(source, /(?:\.\.\/)+action-hints\//, path);
+    }
+  }
   assert.doesNotMatch(actionHints, /customElements\.define/);
   assert.match(
     actionHintDialog,
@@ -106,6 +119,39 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     keyboardSettings,
     /customElements\.define\(\s*"caffold-settings-keyboard-page"/,
   );
+});
+
+test("Task Workspace owns one global keyboard listener over explicit Scroll providers", () => {
+  const keyboardOwners = frontendJavascriptFiles()
+    .filter(([, source]) =>
+      /document\.addEventListener\(\s*["']keydown["']/.test(source)
+    )
+    .map(([path]) => path);
+  assert.deepEqual(keyboardOwners, [
+    "pages/(task-workspace)/keyboard-navigation.js",
+  ]);
+
+  const keyboardNavigation = readFrontend(
+    "pages/(task-workspace)/keyboard-navigation.js",
+  );
+  const taskNavigator = readFrontend(
+    "pages/(task-workspace)/tasks/components/navigator.js",
+  );
+  const conversation = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js",
+  );
+  const currentPlanDialog = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.js",
+  );
+
+  assert.doesNotMatch(
+    keyboardNavigation,
+    /querySelector(?:All)?\([^\n]*(?:scroll|overflow)|elementFromPoint|last(?:Pointer|Scroll)/i,
+  );
+  assert.match(taskNavigator, /:scope > \.task-list-scroll/);
+  assert.match(conversation, /:scope > \.task-conversation-scroll/);
+  assert.match(currentPlanDialog, /this\.preview\(\)/);
+  assert.match(currentPlanDialog, /scrollport: preview/);
 });
 
 test("Git and GitHub detail components independently own their native auto popovers", () => {

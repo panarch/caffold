@@ -102,6 +102,44 @@ test("disconnect cancels an open Hint without restoring its invoking focus", () 
   }
 });
 
+test("native dialog Escape keeps Hint open while the coordinator owns composition", () => {
+  const restoreGlobals = installDomGlobals();
+  try {
+    let compositionActive = true;
+    const dialog = new FakeDialog();
+    const controller = new ActionHintController({
+      workspace: Object.assign(new FakeEventTarget(), { dataset: {} }),
+      dialog,
+      collectScope: () => null,
+      isCompositionActive: () => compositionActive,
+    });
+    controller.snapshotIsCurrent = () => true;
+    controller.startSession(snapshotFor({
+      id: "new",
+      actionId: "task.create",
+      code: "N",
+      activate: () => {},
+    }));
+
+    controller.boundCancel({
+      detail: { reason: "escape", originalEvent: { isComposing: false } },
+      stopPropagation() {},
+    });
+    assert.ok(controller.session);
+    assert.equal(dialog.closeCount, 0);
+
+    compositionActive = false;
+    controller.boundCancel({
+      detail: { reason: "escape", originalEvent: { isComposing: false } },
+      stopPropagation() {},
+    });
+    assert.equal(controller.session, null);
+    assert.equal(dialog.closeCount, 1);
+  } finally {
+    restoreGlobals();
+  }
+});
+
 test("entry closes and restores focus when showModal-time effects stale the snapshot", () => {
   const restoreGlobals = installDomGlobals();
   try {

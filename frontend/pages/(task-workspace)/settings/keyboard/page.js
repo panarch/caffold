@@ -55,9 +55,9 @@ class CaffoldSettingsKeyboardPage extends HTMLElement {
           </header>
           <label class="settings-keyboard-toggle">
             <span class="settings-keyboard-copy">
-              <strong>Action Hints</strong>
+              <strong>Keyboard navigation</strong>
               <span id="settings-action-hints-description">
-                Press F outside an editing field to show the keys for available Task actions.
+                Press F outside an editing field to show available actions. Press S to select a scroll area, then use J/K or D/U to move it.
               </span>
             </span>
             <input

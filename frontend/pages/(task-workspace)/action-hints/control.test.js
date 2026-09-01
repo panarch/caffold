@@ -2,48 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  ACTION_HINT_CONTROL_EVENT,
-  ACTION_HINT_CONTROL_GRAPH,
-  ACTION_HINT_CONTROL_NODE,
-  transitionActionHintControl,
+  ACTION_HINT_ACTIVATE_EVENT,
+  ACTION_HINT_CANCEL_EVENT,
 } from "./control.js";
 
-test("declares every Action Hint control edge and reaches every node", () => {
-  assert.deepEqual(ACTION_HINT_CONTROL_GRAPH, {
-    normal: {
-      "entry-rejected": "normal",
-      "editing-started": "editing",
-      "hint-started": "hint",
-    },
-    editing: {
-      "editing-continued": "editing",
-      "editing-ended": "normal",
-    },
-    hint: {
-      "hint-input-changed": "hint",
-      "hint-cancelled": "normal",
-      "hint-closed-for-activation": "normal",
-    },
-  });
-
-  const reached = new Set(Object.values(ACTION_HINT_CONTROL_GRAPH).flatMap(
-    (edges) => Object.values(edges),
-  ));
-  assert.deepEqual(
-    [...reached].sort(),
-    Object.values(ACTION_HINT_CONTROL_NODE).sort(),
-  );
-});
-
-test("accepts only the event owned by the current Action Hint node", () => {
-  for (const node of Object.values(ACTION_HINT_CONTROL_NODE)) {
-    for (const event of Object.values(ACTION_HINT_CONTROL_EVENT)) {
-      assert.equal(
-        transitionActionHintControl(node, event),
-        ACTION_HINT_CONTROL_GRAPH[node][event] ?? null,
-        `${node} + ${event}`,
-      );
-    }
-  }
-  assert.equal(transitionActionHintControl("unknown", "unknown"), null);
+test("keeps Action Hint presentation events inside the Action Hint boundary", () => {
+  assert.equal(ACTION_HINT_ACTIVATE_EVENT, "caffold:action-hint-activate");
+  assert.equal(ACTION_HINT_CANCEL_EVENT, "caffold:action-hint-cancel");
 });

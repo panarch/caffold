@@ -112,3 +112,37 @@ test("combines Navigator with only the active direct-child surface", () => {
   );
   assert.equal(newCalls, 2);
 });
+
+test("composes Scroll surfaces and modal contexts only from the active Detail", () => {
+  const navigatorSurface = { id: "task-list" };
+  const detailSurface = { id: "conversation" };
+  const modalContext = { id: "current-plan" };
+  const navigator = {
+    getClientRects: () => [{}],
+    scrollSurfaceScope: () => ({ surfaces: [navigatorSurface] }),
+  };
+  const detail = {
+    getClientRects: () => [{}],
+    scrollSurfaceScope: () => ({ surfaces: [detailSurface] }),
+    scrollContextScopes: () => [modalContext],
+  };
+  const owner = {
+    view: "detail",
+    ensureRendered() {},
+    getClientRects: () => [{}],
+    taskNavigator: () => navigator,
+    taskDetail: () => detail,
+  };
+
+  assert.deepEqual(
+    tasksPage.scrollSurfaceScope.call(owner).surfaces,
+    [navigatorSurface, detailSurface],
+  );
+  assert.deepEqual(tasksPage.scrollContextScopes.call(owner), [modalContext]);
+  owner.view = "new";
+  assert.deepEqual(
+    tasksPage.scrollSurfaceScope.call(owner).surfaces,
+    [navigatorSurface],
+  );
+  assert.deepEqual(tasksPage.scrollContextScopes.call(owner), []);
+});

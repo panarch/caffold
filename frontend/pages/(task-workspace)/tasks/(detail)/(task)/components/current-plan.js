@@ -5,6 +5,11 @@ import {
 } from "../../../../../../components/icons.js";
 import { subscribeToWatch, watchChangeAffectsPath } from "../../../../../../watch.js";
 import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../../../action-hints.js";
+import {
   CURRENT_PLAN_NODE,
   currentPlanDocumentDisplayPath,
   currentPlanDocumentPaths,
@@ -321,6 +326,82 @@ class CaffoldTaskCurrentPlan extends HTMLElement {
 
   documentDialog() {
     return this.querySelector(":scope > caffold-current-plan-document-dialog");
+  }
+
+  actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
+    this.ensureState();
+    const strip = this.querySelector(":scope > .task-current-plan-strip");
+    const plan = this.projection?.status === "ready" ? this.projection.plan : null;
+    const threadId = `${this.context?.threadId ?? ""}`;
+    if (
+      !this.isConnected ||
+      this.hidden ||
+      !threadId ||
+      !plan ||
+      !strip ||
+      strip.hidden
+    ) {
+      return emptyActionHintScope();
+    }
+    const generation = this.contextGeneration;
+    const targetScopeId = scopeId || `task:${threadId}:current-plan`;
+    const targets = [
+      ["plan", plan.planDocument],
+      ["checklist", plan.checklistDocument],
+    ].flatMap(([action, document]) => {
+      const control = this.querySelector(
+        `:scope > .task-current-plan-strip [data-current-plan-action="${action}"]`,
+      );
+      const documentPath = `${document?.path ?? ""}`;
+      if (
+        !documentPath ||
+        !control ||
+        control.hidden ||
+        control.disabled
+      ) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        id: `${targetScopeId}:${action}`,
+        actionId: ACTION_HINT_ACTION.CURRENT_PLAN_DOCUMENT_OPEN,
+        label: control.getAttribute("aria-label") ||
+          `Open ${action === "plan" ? "plan" : "checklist"}`,
+        control,
+        clipRoots: [this, strip, ...clipRoots],
+        isActionable: () => {
+          const currentPlan = this.projection?.status === "ready"
+            ? this.projection.plan
+            : null;
+          const currentDocument = action === "plan"
+            ? currentPlan?.planDocument
+            : currentPlan?.checklistDocument;
+          return (
+            this.isConnected &&
+            !this.hidden &&
+            this.contextGeneration === generation &&
+            this.context?.threadId === threadId &&
+            !strip.hidden &&
+            this.querySelector(
+              `:scope > .task-current-plan-strip [data-current-plan-action="${action}"]`,
+            ) === control &&
+            !control.hidden &&
+            !control.disabled &&
+            currentDocument?.path === documentPath
+          );
+        },
+      })];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
+  }
+
+  scrollContextScopes() {
+    const scope = this.documentDialog()?.scrollContextScope();
+    return scope ? [scope] : [];
   }
 
   patch() {

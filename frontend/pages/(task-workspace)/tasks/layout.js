@@ -5,6 +5,11 @@ import {
   mergeActionHintScopes,
 } from "../action-hints.js";
 import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  mergeScrollSurfaceScopes,
+} from "../scroll-scope.js";
+import {
   INITIAL_CODEX_STATUS_SNAPSHOT,
   codexBlocksTaskOperations,
   codexSetupVisible,
@@ -564,6 +569,35 @@ class CaffoldTasksPage extends HTMLElement {
         : null,
       activeSurfaceScope,
     );
+  }
+
+  scrollSurfaceScope() {
+    this.ensureRendered();
+    if (!hasScrollLayoutBox(this)) {
+      return emptyScrollSurfaceScope();
+    }
+    const navigator = this.taskNavigator();
+    const detail = this.view === "detail" ? this.taskDetail() : null;
+    return mergeScrollSurfaceScopes(
+      hasScrollLayoutBox(navigator)
+        ? navigator.scrollSurfaceScope()
+        : null,
+      detail && hasScrollLayoutBox(detail)
+        ? detail.scrollSurfaceScope()
+        : null,
+    );
+  }
+
+  scrollContextScopes() {
+    this.ensureRendered();
+    if (
+      !hasScrollLayoutBox(this) ||
+      this.view !== "detail" ||
+      !hasScrollLayoutBox(this.taskDetail())
+    ) {
+      return [];
+    }
+    return this.taskDetail().scrollContextScopes();
   }
 
   focusActionHintDestination() {

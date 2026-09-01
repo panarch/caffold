@@ -4,6 +4,7 @@ import {
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "../../action-hints.js";
+import { emptyScrollSurfaceScope } from "../../scroll-scope.js";
 import { cleanLogicalPath } from "../task-format.js";
 import "./(task)/layout.js";
 import "./(git)/layout.js";
@@ -618,6 +619,40 @@ class CaffoldDetailLayout extends HTMLElement {
       viewSwitchScope,
       activeChildScope,
     );
+  }
+
+  scrollSurfaceScope() {
+    this.ensureRendered();
+    const taskDetail = this.taskDetail();
+    if (
+      !detailIdentityKey(this.subjectIdentity()) ||
+      this.hidden ||
+      this.subjectKind !== "task" ||
+      this.activeSurface() !== "conversation" ||
+      !taskDetail ||
+      taskDetail.hidden ||
+      taskDetail.loading
+    ) {
+      return emptyScrollSurfaceScope();
+    }
+    return taskDetail.scrollSurfaceScope();
+  }
+
+  scrollContextScopes() {
+    this.ensureRendered();
+    const taskDetail = this.taskDetail();
+    if (
+      !detailIdentityKey(this.subjectIdentity()) ||
+      this.hidden ||
+      this.subjectKind !== "task" ||
+      this.activeSurface() !== "conversation" ||
+      !taskDetail ||
+      taskDetail.hidden ||
+      taskDetail.loading
+    ) {
+      return [];
+    }
+    return taskDetail.scrollContextScopes();
   }
 
   subjectIdentity() {

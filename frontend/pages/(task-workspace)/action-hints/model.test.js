@@ -111,6 +111,18 @@ test("accepts only the central semantic action and control-kind policy", () => {
   );
 });
 
+test("allocates Current Plan document openers through the automatic pool", () => {
+  const allocated = allocateActionHintCodes([
+    target("plan", ACTION_HINT_ACTION.CURRENT_PLAN_DOCUMENT_OPEN),
+    target("checklist", ACTION_HINT_ACTION.CURRENT_PLAN_DOCUMENT_OPEN),
+  ]);
+
+  assert.deepEqual(
+    allocated.map(({ id, code }) => [id, code]),
+    [["plan", "A"], ["checklist", "S"]],
+  );
+});
+
 test("automatic codes reserve fixed and Task prefixes and grow uniformly", () => {
   const oneCharacterCodes = automaticHintCodes(22);
   assert.deepEqual(oneCharacterCodes, [
