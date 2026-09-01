@@ -36,7 +36,7 @@ export async function enterActionHints(page) {
   return dialog;
 }
 
-export async function activateActionHint(page, accessibleName) {
+export async function waitForActionHintTarget(page, accessibleName) {
   await expect.poll(async () => {
     const labels = await page.locator("caffold-task-workspace").evaluate(
       (workspace) => workspace.actionHintScope().targets.map((target) => target.label),
@@ -45,6 +45,10 @@ export async function activateActionHint(page, accessibleName) {
       ? accessibleName.test(label)
       : label === accessibleName);
   }).toBe(true);
+}
+
+export async function activateActionHint(page, accessibleName) {
+  await waitForActionHintTarget(page, accessibleName);
   const dialog = await enterActionHints(page);
   const badge = dialog.getByLabel(accessibleName);
   await expect(badge).toBeVisible();

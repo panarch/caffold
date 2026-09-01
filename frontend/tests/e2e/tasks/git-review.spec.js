@@ -8,6 +8,7 @@ import {
   actionHintDialog,
   activateActionHint,
   enterActionHints,
+  waitForActionHintTarget,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
@@ -913,6 +914,10 @@ test("navigates Compare files and Log commits with deterministic domain Back", {
   await page.goto(
     `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview`,
   );
+  await waitForActionHintTarget(
+    page,
+    /Show compare diff for example\.rs$/,
+  );
   await enterActionHints(page);
   await page.locator(".task-list-scroll").evaluate((scroller) => {
     scroller.dispatchEvent(new Event("scroll"));
@@ -992,6 +997,9 @@ test("navigates Compare files and Log commits with deterministic domain Back", {
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/log?page=2`);
   await activateActionHint(page, /Newest page$/);
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/log`);
+  await expect(
+    logPage.getByRole("button", { name: "Newest page" }),
+  ).toBeDisabled();
   await activateActionHint(
     page,
     new RegExp(`Open commit diff for ${COMMIT.shortSha} ${COMMIT.subject}$`),
