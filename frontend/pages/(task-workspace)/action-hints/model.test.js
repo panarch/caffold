@@ -190,7 +190,7 @@ test("normalizes Latin keys and uses physical Latin fallback only outside compos
   assert.equal(normalizeActionHintKey({ key: "/", code: "Slash" }), "");
 });
 
-test("keeps invalid input until Backspace recovers and reports exact matches", () => {
+test("reports partial, unmatched, recoverable, and exact buffer progression", () => {
   const codes = ["TA", "TS", "N"];
   assert.deepEqual(advanceHintBuffer("", "T", codes), {
     buffer: "T",

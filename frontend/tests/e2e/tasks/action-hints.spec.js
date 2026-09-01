@@ -112,13 +112,6 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
   });
   expect(touchPolicy).toEqual({ panPrevented: true, pinchPrevented: false });
 
-  await page.keyboard.press("x");
-  await expect(dialog).toHaveAttribute("data-input-state", "no-match");
-  expect(
-    (await captureActionHintVisualState(page)).contrastRatio,
-  ).toBeGreaterThanOrEqual(4.5);
-  await page.keyboard.press("Backspace");
-  await expect(dialog).toHaveAttribute("data-input-state", "idle");
   await captureReviewScreenshot(page, testInfo, "action-hints-overlay");
   const routeBeforeOverlayCancel = page.url();
   await page.mouse.click(5, 5);
@@ -131,6 +124,37 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
   await expect(dialog).toBeHidden();
   await expect(newTask).toBeFocused();
   await expect(surface).toBeVisible();
+});
+
+test("closes Hint when an entered prefix has no remaining action", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installActionHintFixture(page, actionHintTasks(2));
+  await page.goto("/tasks");
+
+  const opener = page.locator(".task-list-new-task");
+  await opener.focus();
+  await page.keyboard.press("f");
+  const dialog = actionHintDialog(page);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[data-action-hint-code="TA"]')).toBeVisible();
+  await expect(dialog.locator('[data-action-hint-code^="TX"]')).toHaveCount(0);
+
+  await page.keyboard.press("t");
+  await expect(dialog).toHaveAttribute("data-input-state", "partial");
+  await page.keyboard.press("x");
+
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+    "data-action-hint-last-exit",
+    "no-match",
+  );
+
+  await page.keyboard.press("f");
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
 });
 
 test("keeps Hint ownership across an unrelated disclosure change", { tag: "@all-viewports" }, async ({
@@ -1156,11 +1180,6 @@ test("keeps badges aligned and legible at appearance and zoom extremes", { tag: 
     expect(visual.contrastRatio).toBeGreaterThanOrEqual(4.5);
     expect(visual.outlineStyle).not.toBe("none");
     expect(visual.outlineWidth).toBeGreaterThanOrEqual(2);
-    await page.keyboard.press("x");
-    expect(
-      (await captureActionHintVisualState(page)).contrastRatio,
-    ).toBeGreaterThanOrEqual(4.5);
-    await page.keyboard.press("Backspace");
     if (scenario.interfaceScalePercent === 120) {
       await captureReviewScreenshot(
         page,

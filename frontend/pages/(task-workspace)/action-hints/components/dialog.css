@@ -55,11 +55,6 @@ caffold-action-hint-dialog {
     color: var(--text);
   }
 
-  & .action-hint-dialog[data-input-state="no-match"]
-    .action-hint-input-status {
-    color: var(--danger);
-  }
-
   & .action-hint-badges {
     position: absolute;
     inset: 0;

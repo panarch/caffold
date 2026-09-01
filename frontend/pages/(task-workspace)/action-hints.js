@@ -162,6 +162,10 @@ export class ActionHintController {
       key,
       session.targets.map(({ code }) => code),
     );
+    if (progression.status === "no-match") {
+      this.cancel("no-match");
+      return;
+    }
     session.buffer = progression.buffer;
     session.dialog.updateInput(progression);
     if (progression.exact) {

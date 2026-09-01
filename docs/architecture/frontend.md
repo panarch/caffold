@@ -293,6 +293,10 @@ modal dialog. Scroll, viewport, route, target topology, geometry,
 actionability, or competing modal/popover ownership closes the session. A
 presentation-only accessible-name change refreshes the existing badge without
 changing its code, while equivalent presentation patches do not retarget it.
+A partial prefix keeps Hint open while at least one frozen code still
+matches. A character that leaves no match is consumed and closes Hint while
+restoring its invoking focus; Scroll selection retains its separate input
+policy.
 
 Each registered popover retains a small shared presentation host containing its
 own Action Hint dialog and Scroll HUD. Dynamic Model and Permission rendering

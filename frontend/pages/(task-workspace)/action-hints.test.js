@@ -64,6 +64,51 @@ test("cancel and activation close one session and clean every owned effect", () 
   }
 });
 
+test("unmatched Hint input closes without presenting a recoverable error", () => {
+  const restoreGlobals = installDomGlobals();
+  try {
+    const workspace = Object.assign(new FakeEventTarget(), { dataset: {} });
+    const dialog = new FakeDialog();
+    const opener = new FakeHTMLElement();
+    const exits = [];
+    document.activeElement = opener;
+    const controller = new ActionHintController({
+      workspace,
+      dialog,
+      collectScope: () => null,
+      onSessionExit: (exit) => exits.push(exit),
+    });
+    controller.snapshotIsCurrent = () => true;
+
+    controller.startSession(snapshotFor({
+      id: "task-a",
+      actionId: "task.open",
+      code: "TA",
+      activate: () => {},
+    }));
+    controller.applyInput("T");
+    assert.equal(controller.session?.buffer, "T");
+    assert.deepEqual(dialog.inputUpdates, [{
+      buffer: "T",
+      matches: ["TA"],
+      exact: "",
+      status: "partial",
+    }]);
+
+    controller.applyInput("X");
+    assert.equal(controller.session, null);
+    assert.equal(dialog.closeCount, 1);
+    assert.equal(opener.focusCount, 1);
+    assert.equal(workspace.dataset.actionHintLastExit, "no-match");
+    assert.equal(dialog.inputUpdates.length, 1);
+    assert.deepEqual(exits, [{ activated: false, reason: "no-match" }]);
+    assert.equal(window.listenerCount(), 0);
+    assert.equal(document.listenerCount(), 0);
+  } finally {
+    restoreGlobals();
+  }
+});
+
 test("disconnect cancels an open Hint without restoring its invoking focus", () => {
   const restoreGlobals = installDomGlobals();
   try {
@@ -482,6 +527,7 @@ class FakeDialog extends FakeEventTarget {
   constructor() {
     super();
     this.closeCount = 0;
+    this.inputUpdates = [];
     this.labelUpdates = [];
     this.openCount = 0;
   }
@@ -504,6 +550,13 @@ class FakeDialog extends FakeEventTarget {
 
   updateTargetLabels(targets) {
     this.labelUpdates.push(targets.map(({ code, label }) => ({ code, label })));
+  }
+
+  updateInput(progression) {
+    this.inputUpdates.push({
+      ...progression,
+      matches: [...progression.matches],
+    });
   }
 }
 

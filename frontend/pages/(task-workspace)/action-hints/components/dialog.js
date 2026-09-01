@@ -158,11 +158,7 @@ class CaffoldActionHintDialog extends HTMLElement {
     if (!this.status) {
       return;
     }
-    this.status.textContent = status === "no-match"
-      ? `${buffer}: no matching action`
-      : buffer
-        ? `Typed ${buffer}`
-        : "";
+    this.status.textContent = buffer ? `Typed ${buffer}` : "";
   }
 
   handleClick(event) {
