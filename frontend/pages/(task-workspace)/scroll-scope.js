@@ -39,23 +39,6 @@ export function mergeScrollSurfaceScopes(...scopes) {
   return merged;
 }
 
-export function scrollContextScope({
-  id,
-  kind,
-  root,
-  hud,
-  scope = emptyScrollSurfaceScope(),
-} = {}) {
-  const merged = mergeScrollSurfaceScopes(scope);
-  return {
-    id,
-    kind,
-    root,
-    hud,
-    ...merged,
-  };
-}
-
 export function hasScrollLayoutBox(element) {
   return Boolean(element?.getClientRects?.().length);
 }

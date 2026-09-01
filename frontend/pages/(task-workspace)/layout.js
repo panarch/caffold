@@ -27,8 +27,11 @@ import { KeyboardNavigationController } from "./keyboard-navigation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  scrollContextScope,
 } from "./scroll-scope.js";
+import {
+  keyboardNavigationContext,
+  mergeKeyboardNavigationContexts,
+} from "./keyboard-navigation-context.js";
 import "./action-hints/components/dialog.js";
 import "./components/navigation.js";
 import {
@@ -169,8 +172,8 @@ class CaffoldTaskWorkspace extends HTMLElement {
       workspace: this,
       actionHintDialog: this.actionHintDialog,
       scrollSelector: this.scrollSurfaceSelector,
-      collectActionHintScope: () => this.actionHintScope(),
-      collectScrollContexts: () => this.scrollContextScopes(),
+      collectKeyboardNavigationContexts: () =>
+        this.keyboardNavigationContexts(),
       editingEscapeTarget: (editable) =>
         this.actionHintEditingEscapeTarget(editable),
       afterActionHintActivation: (target) =>
@@ -547,7 +550,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     );
   }
 
-  scrollContextScopes() {
+  keyboardNavigationContexts() {
     this.ensureRendered();
     const workspaceScope =
       !this.hidden &&
@@ -555,18 +558,24 @@ class CaffoldTaskWorkspace extends HTMLElement {
         hasScrollLayoutBox(this.tasksPage)
         ? this.tasksPage.scrollSurfaceScope()
         : emptyScrollSurfaceScope();
-    const workspaceContext = scrollContextScope({
+    const workspaceContext = keyboardNavigationContext({
       id: "workspace",
       kind: "workspace",
       root: this,
-      hud: this.scrollModeHud,
-      scope: workspaceScope,
+      actionHints: {
+        dialog: this.actionHintDialog,
+        scope: this.actionHintScope(),
+      },
+      scroll: {
+        hud: this.scrollModeHud,
+        scope: workspaceScope,
+      },
     });
-    const modalContexts =
+    const childContexts =
       !this.hidden && this.mode === "tasks"
-        ? this.tasksPage.scrollContextScopes()
+        ? this.tasksPage.keyboardNavigationContexts()
         : [];
-    return [workspaceContext, ...modalContexts];
+    return mergeKeyboardNavigationContexts([workspaceContext], childContexts);
   }
 
   actionHintEditingEscapeTarget(editable) {

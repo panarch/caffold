@@ -113,8 +113,17 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
 
   setView(view) {
     this.ensureRendered();
-    this.detailView = normalizeDetailView(view);
+    const nextView = normalizeDetailView(view);
+    if (nextView !== "viewer") {
+      this.fileViewer.deactivate();
+    }
+    this.detailView = nextView;
     this.dataset.detailView = this.detailView;
+  }
+
+  deactivate() {
+    this.ensureRendered();
+    this.fileViewer.deactivate();
   }
 
   setLoading(repository, number = null, options = {}) {
@@ -362,10 +371,21 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
         ? this.fileViewer.actionHintScope({
             scopeId: `${prefix}:viewer`,
             actionId: ACTION_HINT_ACTION.PARENT,
+            detailsActionId: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
             clipRoots: [this, ...clipRoots],
           })
         : null,
     );
+  }
+
+  keyboardNavigationContexts({ scopeId = "github:pull-files" } = {}) {
+    this.ensureRendered();
+    const number = this.currentPullNumber();
+    return number && !this.hidden && this.detailView === "viewer"
+      ? this.fileViewer.keyboardNavigationContexts({
+          scopeId: `${scopeId}:${number}:viewer`,
+        })
+      : [];
   }
 
   rememberScroll() {

@@ -106,6 +106,16 @@ class CaffoldSectionDetail extends HTMLElement {
     );
   }
 
+  keyboardNavigationContexts() {
+    this.ensureRendered();
+    const sectionId = `${this.section?.id ?? ""}`;
+    return !this.hidden && sectionId
+      ? this.taskCreate()?.keyboardNavigationContexts({
+          scopeId: `section:${sectionId}`,
+        }) ?? []
+      : [];
+  }
+
   sectionContextKey(section) {
     return JSON.stringify([
       `${section?.id ?? ""}`,

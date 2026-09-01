@@ -9,6 +9,17 @@ import {
   patchTaskStatusChip,
   renderTaskStatusChip,
 } from "../../../../../components/task-status.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../../../../action-hints.js";
+import {
+  keyboardNavigationContext,
+  popoverScrollSurfaceScope,
+} from "../../../../../../keyboard-navigation-context.js";
+import "../../../../../../components/keyboard-navigation-presentation.js";
 import "./info/components/actions.js";
 
 let taskInfoInstanceId = 0;
@@ -34,6 +45,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.deactivate();
     if (!this.listenersAttached) {
       return;
     }
@@ -108,6 +120,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
   }
 
   render() {
+    this.deactivate();
     const task = this.snapshot.task;
     if (!task) {
       this.replaceChildren();
@@ -155,6 +168,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
           </div>
         </dl>
         <caffold-task-detail-info-actions></caffold-task-detail-info-actions>
+        <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
       </div>
     `;
     this.renderedThreadId = taskThreadId(task);
@@ -223,6 +237,79 @@ class CaffoldTaskDetailInfo extends HTMLElement {
       statusLabel,
     );
     this.renderedStatusKey = renderKey;
+  }
+
+  actionHintScope({ scopeId = "task-detail", clipRoots = [] } = {}) {
+    const threadId = taskThreadId(this.snapshot.task);
+    const control = this.infoButton();
+    const popover = this.infoPopover();
+    if (!threadId || !scopeId || !control || !popover) {
+      return emptyActionHintScope();
+    }
+    return {
+      blocked: false,
+      targets: [buttonActionHintTarget({
+        id: `${scopeId}:${threadId}:details:open`,
+        actionId: ACTION_HINT_ACTION.TASK_DETAILS_OPEN,
+        label: control.getAttribute("aria-label") || "Task details",
+        control,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          taskThreadId(this.snapshot.task) === threadId &&
+          this.infoButton() === control &&
+          this.infoPopover() === popover &&
+          control.getAttribute("popovertarget") === popover.id &&
+          !control.disabled &&
+          !popover.matches(":popover-open"),
+      })],
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
+  }
+
+  keyboardNavigationContexts({ scopeId = "task-detail" } = {}) {
+    const threadId = taskThreadId(this.snapshot.task);
+    const popover = this.infoPopover();
+    const presentation = popover?.querySelector(
+      ":scope > caffold-keyboard-navigation-presentation",
+    );
+    const dialog = presentation?.actionHintDialog?.();
+    const hud = presentation?.scrollModeHud?.();
+    if (!threadId || !scopeId || !popover || !dialog || !hud) {
+      return [];
+    }
+    const contextId = `${scopeId}:${threadId}:details`;
+    return [keyboardNavigationContext({
+      id: contextId,
+      kind: "popover",
+      root: popover,
+      actionHints: {
+        dialog,
+        scope: mergeActionHintScopes(
+          this.actions()?.actionHintScope({
+            scopeId: contextId,
+            clipRoots: [popover],
+          }),
+          {
+            mutationRoots: [popover],
+            scrollRoots: [popover],
+          },
+        ),
+      },
+      scroll: {
+        hud,
+        scope: popoverScrollSurfaceScope({
+          id: contextId,
+          label: "Task details",
+          popover,
+          isCurrent: () =>
+            this.isConnected &&
+            taskThreadId(this.snapshot.task) === threadId &&
+            this.infoPopover() === popover,
+        }),
+      },
+    })];
   }
 
   infoButton() {

@@ -43,7 +43,7 @@ caffold-action-hint-dialog {
     transform: translateX(50%);
   }
 
-  & #action-hint-title {
+  & .action-hint-title {
     color: var(--text);
   }
 
@@ -122,7 +122,7 @@ caffold-action-hint-dialog {
     white-space: normal;
   }
 
-  caffold-action-hint-dialog #action-hint-description {
+  caffold-action-hint-dialog .action-hint-description {
     display: none;
   }
 }

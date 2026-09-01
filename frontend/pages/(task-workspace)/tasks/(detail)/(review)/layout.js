@@ -46,6 +46,7 @@ class CaffoldTaskReview extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.viewer()?.deactivate?.();
     this.active = false;
     this.unsubscribeWatch();
     this.invalidateRequests();
@@ -351,6 +352,7 @@ class CaffoldTaskReview extends HTMLElement {
           scopeId: `${scopeId}:viewer`,
           actionId: ACTION_HINT_ACTION.PARENT,
           noticeActionId: ACTION_HINT_ACTION.REVIEW_AXIS,
+          detailsActionId: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
           clipRoots: viewerClipRoots,
         })
       : null;
@@ -361,6 +363,27 @@ class CaffoldTaskReview extends HTMLElement {
       navigatorScope,
       viewerScope,
     );
+  }
+
+  keyboardNavigationContexts() {
+    this.ensureRendered();
+    const subjectId = taskThreadId(this.task);
+    const viewerPane = this.querySelector(
+      ":scope > .task-review-workspace > .task-review-layout > .task-review-viewer-pane",
+    );
+    if (
+      !this.active ||
+      this.hidden ||
+      !subjectId ||
+      !this.contextKey ||
+      !this.route.path ||
+      !hasActionHintLayoutBox(viewerPane)
+    ) {
+      return [];
+    }
+    return this.viewer()?.keyboardNavigationContexts({
+      scopeId: `review:${encodeURIComponent(subjectId)}:viewer`,
+    }) ?? [];
   }
 
   resetContext() {

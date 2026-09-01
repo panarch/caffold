@@ -157,13 +157,18 @@ test("active repeated commands move only the bound scrollport and consume bounda
   }
 });
 
-test("resolves only the active registered workspace or exact modal context", () => {
+test("resolves workspace, exact modal, and registered popover ownership", () => {
   const restoreDom = installEventGlobals();
   try {
     const controller = createController();
     const workspace = context("workspace", "workspace");
     const modal = context("current-plan", "modal");
-    controller.collectScrollContexts = () => [workspace, modal];
+    const popover = context("popover:model", "popover");
+    controller.collectKeyboardNavigationContexts = () => [
+      workspace,
+      modal,
+      popover,
+    ];
 
     assert.equal(controller.resolveInteractionContext()?.root, workspace.root);
     document.modal = modal.root;
@@ -175,7 +180,18 @@ test("resolves only the active registered workspace or exact modal context", () 
     document.modal = element();
     assert.equal(controller.resolveInteractionContext(), null);
     document.modal = null;
+    document.popover = popover.root;
+    assert.equal(controller.resolveInteractionContext()?.root, popover.root);
+
+    document.modal = element({ contains: (candidate) => candidate === popover.root });
+    assert.equal(controller.resolveInteractionContext()?.root, popover.root);
+    document.modal = element({ contains: () => false });
+    assert.equal(controller.resolveInteractionContext(), null);
+
+    document.modal = null;
     document.popover = element();
+    assert.equal(controller.resolveInteractionContext(), null);
+    document.popovers = [popover.root, element()];
     assert.equal(controller.resolveInteractionContext(), null);
   } finally {
     restoreDom();
@@ -196,20 +212,28 @@ test("rejects malformed and duplicate provider identities centrally", () => {
       clipRoots: [],
       isEligible: () => true,
     };
-    controller.collectScrollContexts = () => [{
+    controller.collectKeyboardNavigationContexts = () => [{
       id: "workspace",
       kind: "workspace",
       root,
-      hud,
-      surfaces: [surface, { ...surface }],
+      scroll: {
+        hud,
+        scope: {
+          blocked: false,
+          surfaces: [surface, { ...surface }],
+          mutationRoots: [],
+          resizeElements: [],
+          scrollRoots: [],
+        },
+      },
     }];
-    assert.equal(controller.safeCollectScrollContexts(), null);
+    assert.equal(controller.safeCollectKeyboardNavigationContexts(), null);
 
-    controller.collectScrollContexts = () => [
+    controller.collectKeyboardNavigationContexts = () => [
       context("duplicate", "workspace"),
       context("duplicate", "modal"),
     ];
-    assert.equal(controller.safeCollectScrollContexts(), null);
+    assert.equal(controller.safeCollectKeyboardNavigationContexts(), null);
   } finally {
     restoreDom();
   }
@@ -415,8 +439,7 @@ function createController() {
     workspace,
     actionHintDialog,
     scrollSelector,
-    collectActionHintScope: () => null,
-    collectScrollContexts: () => [],
+    collectKeyboardNavigationContexts: () => [],
   });
 }
 
@@ -492,6 +515,9 @@ function installEventGlobals() {
       if (selector === "dialog:modal") {
         return this.modals ?? (this.modal ? [this.modal] : []);
       }
+      if (selector === ":popover-open") {
+        return this.popovers ?? (this.popover ? [this.popover] : []);
+      }
       return [];
     },
   });
@@ -507,16 +533,23 @@ function installEventGlobals() {
 }
 
 function context(id, kind) {
+  const root = element();
+  const hud = element({ show() {}, close() {}, updateLabel() {} });
+  root.contains = (candidate) => candidate === root || candidate === hud;
   return {
     id,
     kind,
-    root: element(),
-    hud: element({ show() {}, close() {}, updateLabel() {} }),
-    blocked: false,
-    surfaces: [],
-    mutationRoots: [],
-    resizeElements: [],
-    scrollRoots: [],
+    root,
+    scroll: {
+      hud,
+      scope: {
+        blocked: false,
+        surfaces: [],
+        mutationRoots: [],
+        resizeElements: [],
+        scrollRoots: [],
+      },
+    },
   };
 }
 

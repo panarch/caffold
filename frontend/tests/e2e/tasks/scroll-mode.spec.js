@@ -331,6 +331,65 @@ test("keeps keyboard scrolling on the Conversation native anchor path", { tag: "
   await expect(scrollHud(page)).toContainText("Scroll: Conversation");
 });
 
+test("scrolls a mouse-open retained Model popover and preserves native Escape", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const { detail } = await installScrollFixture(page);
+  await page.route("**/api/agent/models", (route) =>
+    route.fulfill({
+      json: {
+        models: Array.from({ length: 18 }, (_, index) => ({
+          provider: "codex",
+          model: `gpt-scroll-${index + 1}`,
+          displayName: `GPT Scroll Model ${index + 1}`,
+          description: `Scrollable model option ${index + 1}`,
+          isDefault: index === 0,
+          defaultEffort: "medium",
+          efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+          supportsFastMode: true,
+        })),
+        unavailable: [],
+      },
+    })
+  );
+  await openScrollTask(page, detail);
+
+  const modelButton = page.locator(
+    "caffold-task-detail .task-follow-up-form .task-model-button",
+  );
+  const modelPopover = page.locator(
+    "caffold-task-detail .task-follow-up-form .task-model-popover",
+  );
+  const popoverHud = modelPopover.locator(
+    "caffold-scroll-mode-hud .scroll-mode-status",
+  );
+  await modelButton.click();
+  await expect(modelPopover).toBeVisible();
+  await expect.poll(() => modelPopover.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  const before = await modelPopover.evaluate((element) => element.scrollTop);
+
+  await page.keyboard.press("s");
+  await expect(scrollSelector(page)).toBeHidden();
+  await expect(popoverHud).toContainText("Scroll: Model options");
+  await expect(scrollHud(page)).toBeHidden();
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "scroll-mode-model-popover",
+  );
+  await page.keyboard.press("j");
+  await expect.poll(() => modelPopover.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(before);
+
+  await page.keyboard.press("Escape");
+  await expect(popoverHud).toBeHidden();
+  await expect(modelPopover).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(modelPopover).toBeHidden();
+});
+
 test("scrolls the Current Plan preview inside its modal and preserves native Escape", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
@@ -757,7 +816,7 @@ function scrollSelector(page) {
 }
 
 function actionHintDialog(page) {
-  return page.locator("caffold-action-hint-dialog > dialog");
+  return page.locator("caffold-action-hint-dialog > dialog:modal");
 }
 
 function scrollHud(page) {

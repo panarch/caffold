@@ -98,6 +98,19 @@ test("excludes stale, hidden, and non-ready Current Plan owners", () => {
   assert.deepEqual(currentPlan.actionHintScope.call(owner).targets, []);
 });
 
+test("passes through only the document dialog keyboard contexts", () => {
+  const modal = { id: "modal" };
+  const owner = {
+    documentDialog: () => ({
+      keyboardNavigationContexts: () => [modal],
+    }),
+  };
+  assert.deepEqual(
+    currentPlan.keyboardNavigationContexts.call(owner),
+    [modal],
+  );
+});
+
 function currentPlanOwner({ strip, controls }) {
   return {
     context: { threadId: "thread-a" },

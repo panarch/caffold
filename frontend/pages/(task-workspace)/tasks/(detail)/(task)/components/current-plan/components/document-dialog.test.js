@@ -35,12 +35,12 @@ test("provides its exact modal document context and preview scrollport", () => {
     preview: () => preview,
   };
 
-  const context = documentDialog.scrollContextScope.call(owner);
-  const surface = context.surfaces[0];
+  const [context] = documentDialog.keyboardNavigationContexts.call(owner);
+  const surface = context.scroll.scope.surfaces[0];
   assert.equal(context.id, "current-plan-document:task/PLAN.md");
   assert.equal(context.kind, "modal");
   assert.equal(context.root, dialog);
-  assert.equal(context.hud, hud);
+  assert.equal(context.scroll.hud, hud);
   assert.equal(surface.id, "current-plan:task/PLAN.md:preview");
   assert.equal(surface.label, "Plan document");
   assert.equal(surface.scrollport, preview);

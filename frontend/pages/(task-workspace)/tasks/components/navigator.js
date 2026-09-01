@@ -5,6 +5,16 @@ import {
   taskStoreOperationsPresentation,
 } from "../../codex-status.js";
 import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../action-hints.js";
+import {
+  keyboardNavigationContext,
+  popoverScrollSurfaceScope,
+} from "../../keyboard-navigation-context.js";
+import "../../components/keyboard-navigation-presentation.js";
+import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   hasVerticalScrollOverflow,
@@ -70,6 +80,7 @@ class CaffoldTaskNavigator extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.closeReorderPopover();
     this.removeEventListener("click", this.boundClick);
     this.removeEventListener(
       ACTIVE_TASK_LIST_STATE_EVENT,
@@ -166,6 +177,10 @@ class CaffoldTaskNavigator extends HTMLElement {
       ":scope .task-list-new-task[data-task-action='open-new']",
     );
     const targets = [];
+    const reorderTarget = this.actionHintReorderTarget();
+    if (reorderTarget) {
+      targets.push(reorderTarget);
+    }
     if (newTask) {
       targets.push({
         id: "task-create:global",
@@ -194,6 +209,106 @@ class CaffoldTaskNavigator extends HTMLElement {
       targets,
       mutationRoots: [primaryHeader, this.activeTaskList].filter(Boolean),
       scrollRoots: [scrollRoot].filter(Boolean),
+    };
+  }
+
+  actionHintReorderTarget() {
+    const control = this.reorderButton;
+    const popover = this.reorderPopover();
+    if (!control || !popover) {
+      return null;
+    }
+    return buttonActionHintTarget({
+      id: "task-list:reorder:open",
+      actionId: ACTION_HINT_ACTION.REORDER_OPEN,
+      label: control.getAttribute("aria-label") || "Choose what to reorder",
+      control,
+      clipRoots: [this],
+      isActionable: () =>
+        this.isConnected &&
+        this.active &&
+        !this.hidden &&
+        this.reorderMode === "none" &&
+        this.reorderButton === control &&
+        this.reorderPopover() === popover &&
+        control.getAttribute("popovertarget") === popover.id &&
+        !control.disabled &&
+        !popover.matches(":popover-open"),
+    });
+  }
+
+  keyboardNavigationContexts() {
+    this.ensureChildren();
+    const popover = this.reorderPopover();
+    const presentation = popover?.querySelector(
+      ":scope > caffold-keyboard-navigation-presentation",
+    );
+    const dialog = presentation?.actionHintDialog?.();
+    const hud = presentation?.scrollModeHud?.();
+    if (!popover || !dialog || !hud) {
+      return [];
+    }
+    const contextId = "task-list:reorder";
+    return [keyboardNavigationContext({
+      id: contextId,
+      kind: "popover",
+      root: popover,
+      actionHints: {
+        dialog,
+        scope: this.reorderActionHintScope({ contextId, popover }),
+      },
+      scroll: {
+        hud,
+        scope: popoverScrollSurfaceScope({
+          id: contextId,
+          label: "Reorder options",
+          popover,
+          isCurrent: () =>
+            this.isConnected &&
+            this.active &&
+            !this.hidden &&
+            this.reorderMode === "none" &&
+            this.reorderPopover() === popover,
+        }),
+      },
+    })];
+  }
+
+  reorderActionHintScope({ contextId, popover }) {
+    if (!popover) {
+      return emptyActionHintScope();
+    }
+    const targets = [...popover.querySelectorAll(
+      ":scope > button[data-task-action='select-reorder-mode']",
+    )].flatMap((control) => {
+      const mode = `${control.dataset.reorderMode ?? ""}`;
+      if (!["tasks", "sections"].includes(mode) || control.disabled) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        id: `${contextId}:${mode}`,
+        actionId: ACTION_HINT_ACTION.REORDER_SELECT,
+        label: control.textContent?.trim() || `Reorder ${mode}`,
+        control,
+        clipRoots: [popover],
+        isActionable: () =>
+          this.isConnected &&
+          this.active &&
+          !this.hidden &&
+          this.reorderMode === "none" &&
+          this.reorderPopover() === popover &&
+          popover.matches(":popover-open") &&
+          popover.contains(control) &&
+          control.dataset.taskAction === "select-reorder-mode" &&
+          control.dataset.reorderMode === mode &&
+          !control.disabled,
+      })];
+    });
+    return {
+      blocked: this.reorderMode !== "none",
+      targets,
+      mutationRoots: [popover],
+      scrollRoots: [popover],
     };
   }
 
@@ -386,7 +501,20 @@ class CaffoldTaskNavigator extends HTMLElement {
   }
 
   exitReorderMode(options = {}) {
+    this.closeReorderPopover();
     this.setReorderMode("none", options);
+  }
+
+  closeReorderPopover() {
+    const popover = this.reorderPopover();
+    if (!popover?.matches?.(":popover-open")) {
+      return;
+    }
+    try {
+      popover.hidePopover();
+    } catch {
+      // A parent transition may already have detached the retained shell.
+    }
   }
 
   setCodexStatusSnapshot(snapshot) {
@@ -633,6 +761,7 @@ class CaffoldTaskNavigator extends HTMLElement {
               popovertarget="${this.reorderPopoverId}"
               popovertargetaction="hide"
             >Reorder Sections</button>
+            <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
           </div>
           <button
             type="button"
@@ -645,6 +774,12 @@ class CaffoldTaskNavigator extends HTMLElement {
         </span>
       </header>
     `;
+  }
+
+  reorderPopover() {
+    return this.querySelector(
+      `:scope > .task-list-primary-header #${this.reorderPopoverId}`,
+    );
   }
 
 }

@@ -1273,12 +1273,16 @@ test("text actions use the shared Interface metadata scale instead of root body 
   const owners = [
     ["pages/(task-workspace)/tasks/controls.css", ".task-primary-button"],
     [
+      "pages/(task-workspace)/tasks/components/navigator.css",
+      '.task-list-reorder-popover > button[data-task-action="select-reorder-mode"]',
+    ],
+    [
       "pages/(task-workspace)/tasks/(detail)/components/git-menu.css",
-      ".task-git-popover button",
+      ".task-git-popover > button[data-git-button-action]",
     ],
     [
       "pages/(task-workspace)/tasks/(detail)/components/github-menu.css",
-      ".task-github-popover button",
+      ".task-github-popover > button[data-github-button-action]",
     ],
     ["pages/(task-workspace)/tasks/(detail)/(task)/components/summary/components/info.css", ".task-detail-popover dd"],
     ["pages/(task-workspace)/tasks/(detail)/(github)/(pulls)/detail/page.css", ".github-pull-commit a"],

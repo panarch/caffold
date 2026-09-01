@@ -59,6 +59,15 @@ test("merges the view switch with only the active direct-child surface", () => {
     summaryHeader() {
       return {};
     },
+    gitMenu() {
+      return null;
+    },
+    githubMenu() {
+      return null;
+    },
+    taskSummary() {
+      return null;
+    },
     viewSwitch() {
       return {
         actionHintScope(options) {
@@ -147,14 +156,14 @@ test("merges the view switch with only the active direct-child surface", () => {
   );
 });
 
-test("delegates Scroll contracts only to the active Task conversation owner", () => {
+test("delegates Scroll and keyboard contexts only to the active direct owner", () => {
   const surfaceScope = { surfaces: [{ id: "conversation" }] };
   const modalContext = { id: "current-plan" };
   const task = {
     hidden: false,
     loading: false,
     scrollSurfaceScope: () => surfaceScope,
-    scrollContextScopes: () => [modalContext],
+    keyboardNavigationContexts: () => [modalContext],
   };
   let activeSurface = "conversation";
   const owner = {
@@ -164,15 +173,48 @@ test("delegates Scroll contracts only to the active Task conversation owner", ()
     subjectIdentity: () => ({ kind: "task", id: "thread-a" }),
     activeSurface: () => activeSurface,
     taskDetail: () => task,
+    gitMenu: () => null,
+    githubMenu: () => null,
+    taskSummary: () => null,
+    review: () => null,
+    gitLayout: () => null,
+    githubLayout: () => null,
   };
 
   assert.equal(detailLayout.scrollSurfaceScope.call(owner), surfaceScope);
-  assert.deepEqual(detailLayout.scrollContextScopes.call(owner), [modalContext]);
+  assert.deepEqual(detailLayout.keyboardNavigationContexts.call(owner), [modalContext]);
   activeSurface = "review";
   assert.deepEqual(detailLayout.scrollSurfaceScope.call(owner).surfaces, []);
-  assert.deepEqual(detailLayout.scrollContextScopes.call(owner), []);
+  assert.deepEqual(detailLayout.keyboardNavigationContexts.call(owner), []);
   activeSurface = "conversation";
   task.loading = true;
   assert.deepEqual(detailLayout.scrollSurfaceScope.call(owner).surfaces, []);
-  assert.deepEqual(detailLayout.scrollContextScopes.call(owner), []);
+  assert.deepEqual(detailLayout.keyboardNavigationContexts.call(owner), []);
+});
+
+test("deactivation closes the persistent Task summary interaction owner", () => {
+  const calls = [];
+  const owner = {
+    taskSummary: () => ({ deactivate: () => calls.push("summary") }),
+    deactivateReview: () => calls.push("review"),
+    gitLayout: () => ({ deactivate: () => calls.push("git") }),
+    githubLayout: () => ({ deactivate: () => calls.push("github") }),
+    gitMenu: () => ({ deactivate: () => calls.push("git-menu") }),
+    githubMenu: () => ({ deactivate: () => calls.push("github-menu") }),
+    sectionActivationKey: "section",
+    domainActivationPromise: Promise.resolve(),
+  };
+
+  detailLayout.deactivateSharedChildren.call(owner);
+
+  assert.deepEqual(calls, [
+    "summary",
+    "review",
+    "git",
+    "github",
+    "git-menu",
+    "github-menu",
+  ]);
+  assert.equal(owner.sectionActivationKey, "");
+  assert.equal(owner.domainActivationPromise, null);
 });

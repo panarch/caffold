@@ -4,6 +4,8 @@ import {
   ACTION_HINT_CANCEL_EVENT,
 } from "../control.js";
 
+let actionHintDialogInstanceId = 0;
+
 class CaffoldActionHintDialog extends HTMLElement {
   connectedCallback() {
     this.ensureState();
@@ -39,6 +41,10 @@ class CaffoldActionHintDialog extends HTMLElement {
       return;
     }
     this.stateReady = true;
+    actionHintDialogInstanceId += 1;
+    this.titleId = `action-hint-title-${actionHintDialogInstanceId}`;
+    this.descriptionId =
+      `action-hint-description-${actionHintDialogInstanceId}`;
     this.targets = [];
     this.viewportRect = null;
     this.boundClick = (event) => this.handleClick(event);
@@ -66,13 +72,13 @@ class CaffoldActionHintDialog extends HTMLElement {
     this.innerHTML = `
       <dialog
         class="action-hint-dialog"
-        aria-labelledby="action-hint-title"
-        aria-describedby="action-hint-description"
+        aria-labelledby="${this.titleId}"
+        aria-describedby="${this.descriptionId}"
         tabindex="-1"
       >
         <div class="action-hint-instructions">
-          <span id="action-hint-title">Action Hints</span>
-          <span id="action-hint-description">Type a shown code, or press Escape to cancel.</span>
+          <span id="${this.titleId}" class="action-hint-title">Action Hints</span>
+          <span id="${this.descriptionId}" class="action-hint-description">Type a shown code, or press Escape to cancel.</span>
           <output class="action-hint-input-status" aria-live="polite"></output>
         </div>
         <div class="action-hint-badges"></div>

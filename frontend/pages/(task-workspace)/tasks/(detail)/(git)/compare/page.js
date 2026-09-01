@@ -105,6 +105,11 @@ class CaffoldGitComparePage extends HTMLElement {
     return this.browser.setEmpty();
   }
 
+  deactivate() {
+    this.ensureRendered();
+    return this.browser.deactivate();
+  }
+
   showList() {
     this.ensureRendered();
     return this.browser.showList();
@@ -141,7 +146,15 @@ class CaffoldGitComparePage extends HTMLElement {
       scopeId,
       fileActionId: ACTION_HINT_ACTION.FILE_OPEN,
       parentActionId: ACTION_HINT_ACTION.PARENT,
+      detailsActionId: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
       clipRoots: [this, ...clipRoots],
+    });
+  }
+
+  keyboardNavigationContexts({ scopeId = "git" } = {}) {
+    this.ensureRendered();
+    return this.browser.keyboardNavigationContexts({
+      scopeId,
     });
   }
 }

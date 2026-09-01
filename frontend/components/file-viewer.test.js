@@ -128,3 +128,62 @@ test("provides a direct notice representation action through its owned button", 
   noticeControl = null;
   assert.equal(target.isActionable(), false);
 });
+
+test("provides file details opener but no invented action inside its popover", () => {
+  const control = {
+    disabled: false,
+    focus() {},
+    click() {},
+    getAttribute(name) {
+      return name === "aria-label"
+        ? "Show details for PLAN.md"
+        : name === "popovertarget"
+          ? "file-details"
+          : null;
+    },
+  };
+  const dialog = {};
+  const hud = {};
+  const presentation = {
+    actionHintDialog: () => dialog,
+    scrollModeHud: () => hud,
+  };
+  const popover = {
+    id: "file-details",
+    matches: () => false,
+    querySelector(selector) {
+      return selector.includes("keyboard-navigation-presentation")
+        ? presentation
+        : {};
+    },
+  };
+  const owner = {
+    hidden: false,
+    isConnected: true,
+    detailsPopover: () => popover,
+    hasDetailsMetadata: () => true,
+    querySelector(selector) {
+      if (selector.includes("viewer-info-button")) {
+        return control;
+      }
+      return null;
+    },
+  };
+
+  const scope = fileViewer.actionHintScope.call(owner, {
+    scopeId: "review:viewer",
+    detailsActionId: "navigation.file-details.open",
+  });
+  assert.equal(scope.targets[0].actionId, "navigation.file-details.open");
+  assert.equal(scope.targets[0].label, "Show details for PLAN.md");
+  assert.equal(scope.targets[0].isActionable(), true);
+
+  const [context] = fileViewer.keyboardNavigationContexts.call(owner, {
+    scopeId: "review:viewer",
+  });
+  assert.equal(context.root, popover);
+  assert.equal(context.actionHints.dialog, dialog);
+  assert.deepEqual(context.actionHints.scope.targets, []);
+  assert.equal(context.scroll.hud, hud);
+  assert.equal(context.scroll.scope.surfaces[0].scrollport, popover);
+});

@@ -49,6 +49,7 @@ export class ActionHintController {
     workspace,
     dialog,
     collectScope,
+    collectBinding = null,
     afterActivation = () => {},
     hasOtherInteractionOwner = () => false,
     isCompositionActive = () => false,
@@ -57,6 +58,7 @@ export class ActionHintController {
     this.workspace = workspace;
     this.dialog = dialog;
     this.collectScope = collectScope;
+    this.collectBinding = collectBinding;
     this.afterActivation = afterActivation;
     this.hasOtherInteractionOwner = hasOtherInteractionOwner;
     this.isCompositionActive = isCompositionActive;
@@ -85,8 +87,6 @@ export class ActionHintController {
       return;
     }
     this.connected = true;
-    this.dialog.addEventListener(ACTION_HINT_ACTIVATE_EVENT, this.boundActivate);
-    this.dialog.addEventListener(ACTION_HINT_CANCEL_EVENT, this.boundCancel);
   }
 
   disconnect() {
@@ -95,20 +95,16 @@ export class ActionHintController {
     }
     this.cancel("disconnect", { restoreFocus: false });
     this.connected = false;
-    this.dialog.removeEventListener(
-      ACTION_HINT_ACTIVATE_EVENT,
-      this.boundActivate,
-    );
-    this.dialog.removeEventListener(ACTION_HINT_CANCEL_EVENT, this.boundCancel);
   }
 
   prepareSnapshot() {
-    const scope = this.safeCollectScope();
+    const binding = this.safeCollectBinding();
+    const scope = binding?.scope;
     if (!scope || scope.blocked) {
       return null;
     }
     const snapshot = this.captureSnapshot(scope);
-    return snapshot?.targets.length ? snapshot : null;
+    return snapshot?.targets.length ? { ...snapshot, binding } : null;
   }
 
   handleHintKeydown(event, { compositionActive = false } = {}) {
@@ -122,7 +118,8 @@ export class ActionHintController {
     ) {
       return;
     }
-    if (this.dialog.allowsNativeActivation(event)) {
+    const dialog = this.session?.dialog ?? this.dialog;
+    if (dialog?.allowsNativeActivation(event)) {
       return;
     }
     if (event.key === "Escape") {
@@ -161,7 +158,7 @@ export class ActionHintController {
       session.targets.map(({ code }) => code),
     );
     session.buffer = progression.buffer;
-    this.dialog.updateInput(progression);
+    session.dialog.updateInput(progression);
     if (progression.exact) {
       this.activate(progression.exact);
     }
@@ -171,11 +168,22 @@ export class ActionHintController {
     if (this.session || !snapshot?.targets?.length) {
       return false;
     }
+    const binding = snapshot.binding ?? {
+      context: null,
+      dialog: this.dialog,
+      scope: null,
+    };
+    const dialog = binding?.dialog;
+    if (!dialog) {
+      return false;
+    }
     const opener = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
     const session = {
       ...snapshot,
+      binding,
+      dialog,
       opener,
       buffer: "",
       cleanup: [],
@@ -186,7 +194,8 @@ export class ActionHintController {
     };
     this.session = session;
     try {
-      this.dialog.open(session.targets, session.viewport.rect);
+      this.attachDialogSignals(session);
+      dialog.open(session.targets, session.viewport.rect);
       this.attachSessionSignals(session);
       if (!this.snapshotIsCurrent(session, { refreshPresentation: true })) {
         this.cancel("snapshot-invalidated");
@@ -261,8 +270,26 @@ export class ActionHintController {
     }
     this.session = null;
     this.detachSessionSignals(session);
-    this.dialog.close();
+    session.dialog.close();
     return true;
+  }
+
+  attachDialogSignals(session) {
+    session.dialog.addEventListener(
+      ACTION_HINT_ACTIVATE_EVENT,
+      this.boundActivate,
+    );
+    session.dialog.addEventListener(ACTION_HINT_CANCEL_EVENT, this.boundCancel);
+    session.cleanup.push(() => {
+      session.dialog.removeEventListener(
+        ACTION_HINT_ACTIVATE_EVENT,
+        this.boundActivate,
+      );
+      session.dialog.removeEventListener(
+        ACTION_HINT_CANCEL_EVENT,
+        this.boundCancel,
+      );
+    });
   }
 
   attachSessionSignals(session) {
@@ -317,7 +344,7 @@ export class ActionHintController {
     }
     if (typeof MutationObserver === "function" && document.documentElement) {
       session.ownershipObserver = new MutationObserver(() => {
-        if (this.hasOtherInteractionOwner()) {
+        if (this.hasOtherInteractionOwner(session.binding ?? null)) {
           this.cancel("interaction-owner");
         }
       });
@@ -329,8 +356,15 @@ export class ActionHintController {
     }
     const handleBeforeToggle = (event) => {
       if (
+        event.newState === "closed" &&
+        event.target === session.binding?.context?.root
+      ) {
+        this.cancel("context-closed", { restoreFocus: false });
+        return;
+      }
+      if (
         event.newState === "open" &&
-        !this.dialog.contains(event.target)
+        !session.dialog.contains?.(event.target)
       ) {
         this.cancel("interaction-owner");
       }
@@ -368,10 +402,14 @@ export class ActionHintController {
   }
 
   snapshotIsCurrent(snapshot, { refreshPresentation = false } = {}) {
-    if (this.hasOtherInteractionOwner()) {
+    if (this.hasOtherInteractionOwner(snapshot.binding ?? null)) {
       return false;
     }
-    const scope = this.safeCollectScope();
+    const binding = snapshot.binding ? this.safeCollectBinding() : null;
+    if (snapshot.binding && !sameActionHintBinding(snapshot.binding, binding)) {
+      return false;
+    }
+    const scope = binding?.scope ?? this.safeCollectScope();
     if (!scope || scope.blocked) {
       return false;
     }
@@ -397,7 +435,7 @@ export class ActionHintController {
       changed.push(target);
     }
     if (changed.length) {
-      this.dialog.updateTargetLabels(changed);
+      (snapshot.binding?.dialog ?? this.dialog).updateTargetLabels(changed);
     }
   }
 
@@ -473,6 +511,35 @@ export class ActionHintController {
     }
   }
 
+  safeCollectBinding() {
+    if (typeof this.collectBinding !== "function") {
+      const scope = this.safeCollectScope();
+      return scope && this.dialog
+        ? { context: null, dialog: this.dialog, scope }
+        : null;
+    }
+    try {
+      const binding = this.collectBinding();
+      return binding?.dialog && binding?.scope ? binding : null;
+    } catch {
+      return null;
+    }
+  }
+
+}
+
+function sameActionHintBinding(left, right) {
+  if (!left || !right || left.dialog !== right.dialog) {
+    return false;
+  }
+  if (!left.context || !right.context) {
+    return left.context === right.context;
+  }
+  return Boolean(
+    left.context.id === right.context.id &&
+      left.context.kind === right.context.kind &&
+      left.context.root === right.context.root,
+  );
 }
 
 function normalizeDescriptors(targets) {

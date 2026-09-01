@@ -19,6 +19,14 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     this.ensureRendered();
   }
 
+  disconnectedCallback() {
+    this.deactivate();
+  }
+
+  deactivate() {
+    this.viewer?.deactivate?.();
+  }
+
   ensureRendered() {
     if (this.rendered) {
       return;
@@ -493,6 +501,7 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     scopeId = "",
     fileActionId = "",
     parentActionId = "",
+    detailsActionId = "",
     clipRoots = [],
   } = {}) {
     this.ensureRendered();
@@ -514,10 +523,20 @@ class CaffoldGitCompareBrowser extends HTMLElement {
         ? this.viewer.actionHintScope({
             scopeId: `${scopeId}:viewer`,
             actionId: parentActionId,
+            detailsActionId,
             clipRoots: [this, ...clipRoots],
           })
         : null,
     );
+  }
+
+  keyboardNavigationContexts({ scopeId = "" } = {}) {
+    this.ensureRendered();
+    return scopeId && !this.hidden && this.detailView === "viewer"
+      ? this.viewer.keyboardNavigationContexts({
+          scopeId: `${scopeId}:viewer`,
+        })
+      : [];
   }
 
   compareSubtitle(fallback = "Branches") {
@@ -536,6 +555,9 @@ class CaffoldGitCompareBrowser extends HTMLElement {
 
   setView(view) {
     const nextView = view === "viewer" ? "viewer" : "list";
+    if (nextView !== "viewer") {
+      this.viewer?.deactivate?.();
+    }
     const changed = this.detailView !== nextView || this.dataset.detailView !== nextView;
     this.detailView = nextView;
     this.dataset.detailView = this.detailView;

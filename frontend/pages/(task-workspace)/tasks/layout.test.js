@@ -113,18 +113,21 @@ test("combines Navigator with only the active direct-child surface", () => {
   assert.equal(newCalls, 2);
 });
 
-test("composes Scroll surfaces and modal contexts only from the active Detail", () => {
+test("composes Scroll surfaces and keyboard contexts only from active owners", () => {
   const navigatorSurface = { id: "task-list" };
   const detailSurface = { id: "conversation" };
+  const navigatorContext = { id: "reorder" };
   const modalContext = { id: "current-plan" };
+  const newContext = { id: "new-model" };
   const navigator = {
     getClientRects: () => [{}],
     scrollSurfaceScope: () => ({ surfaces: [navigatorSurface] }),
+    keyboardNavigationContexts: () => [navigatorContext],
   };
   const detail = {
     getClientRects: () => [{}],
     scrollSurfaceScope: () => ({ surfaces: [detailSurface] }),
-    scrollContextScopes: () => [modalContext],
+    keyboardNavigationContexts: () => [modalContext],
   };
   const owner = {
     view: "detail",
@@ -132,17 +135,36 @@ test("composes Scroll surfaces and modal contexts only from the active Detail", 
     getClientRects: () => [{}],
     taskNavigator: () => navigator,
     taskDetail: () => detail,
+    taskNew: () => ({
+      keyboardNavigationContexts: () => [newContext],
+    }),
   };
 
   assert.deepEqual(
     tasksPage.scrollSurfaceScope.call(owner).surfaces,
     [navigatorSurface, detailSurface],
   );
-  assert.deepEqual(tasksPage.scrollContextScopes.call(owner), [modalContext]);
+  assert.deepEqual(
+    tasksPage.keyboardNavigationContexts.call(owner),
+    [navigatorContext, modalContext],
+  );
   owner.view = "new";
   assert.deepEqual(
     tasksPage.scrollSurfaceScope.call(owner).surfaces,
     [navigatorSurface],
   );
-  assert.deepEqual(tasksPage.scrollContextScopes.call(owner), []);
+  assert.deepEqual(
+    tasksPage.keyboardNavigationContexts.call(owner),
+    [navigatorContext, newContext],
+  );
+
+  owner.getClientRects = () => [];
+  assert.deepEqual(
+    tasksPage.scrollSurfaceScope.call(owner).surfaces,
+    [navigatorSurface],
+  );
+  assert.deepEqual(
+    tasksPage.keyboardNavigationContexts.call(owner),
+    [navigatorContext],
+  );
 });

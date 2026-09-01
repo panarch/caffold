@@ -222,6 +222,142 @@ test("revalidation refreshes a label without replacing its frozen action", () =>
   }
 });
 
+test("binds one session to the selected context-local dialog", () => {
+  const restoreGlobals = installDomGlobals();
+  try {
+    const fallbackDialog = new FakeDialog();
+    const localDialog = new FakeDialog();
+    const context = {
+      id: "popover:model",
+      kind: "popover",
+      root: new FakeHTMLElement(),
+    };
+    const target = {
+      id: "model:gpt",
+      actionId: "task.model.select",
+      code: "A",
+      activate: () => {},
+    };
+    const controller = new ActionHintController({
+      workspace: Object.assign(new FakeEventTarget(), { dataset: {} }),
+      dialog: fallbackDialog,
+      collectScope: () => null,
+    });
+    controller.snapshotIsCurrent = () => true;
+
+    controller.startSession({
+      ...snapshotFor(target),
+      binding: { context, dialog: localDialog, scope: {} },
+    });
+
+    assert.equal(localDialog.openCount, 1);
+    assert.equal(fallbackDialog.openCount, 0);
+    assert.equal(localDialog.listenerCount(), 2);
+    controller.cancel("unit");
+    assert.equal(localDialog.closeCount, 1);
+    assert.equal(localDialog.listenerCount(), 0);
+  } finally {
+    restoreGlobals();
+  }
+});
+
+test("ownership revalidation compares against the frozen context binding", () => {
+  const restoreGlobals = installDomGlobals();
+  try {
+    const observerCallbacks = [];
+    globalThis.MutationObserver = class {
+      constructor(callback) {
+        observerCallbacks.push(callback);
+      }
+
+      observe() {}
+
+      disconnect() {}
+    };
+    document.documentElement = new FakeHTMLElement();
+    const dialog = new FakeDialog();
+    const context = {
+      id: "popover:model",
+      kind: "popover",
+      root: new FakeHTMLElement(),
+    };
+    const binding = { context, dialog, scope: {} };
+    const observedBindings = [];
+    const controller = new ActionHintController({
+      workspace: Object.assign(new FakeEventTarget(), { dataset: {} }),
+      dialog: new FakeDialog(),
+      collectScope: () => null,
+      hasOtherInteractionOwner: (candidate) => {
+        observedBindings.push(candidate);
+        return false;
+      },
+    });
+    controller.snapshotIsCurrent = () => true;
+    controller.startSession({
+      ...snapshotFor({
+        id: "model:gpt",
+        actionId: "task.model.select",
+        code: "A",
+        activate: () => {},
+      }),
+      binding,
+    });
+
+    assert.equal(observerCallbacks.length, 1);
+    observerCallbacks[0]([]);
+    assert.equal(observedBindings.at(-1), binding);
+    assert.ok(controller.session);
+    controller.cancel("unit");
+  } finally {
+    restoreGlobals();
+  }
+});
+
+test("revalidation rejects a changed context or presentation binding", () => {
+  const restoreGlobals = installDomGlobals();
+  try {
+    const dialog = new FakeDialog();
+    const context = {
+      id: "popover:model",
+      kind: "popover",
+      root: new FakeHTMLElement(),
+    };
+    const target = {
+      id: "model:gpt",
+      actionId: "task.model.select",
+      controlKind: "button",
+      code: "A",
+      control: {},
+      anchor: {},
+      label: "GPT",
+      visibleRect: { left: 0, top: 0, right: 20, bottom: 20 },
+      activate: () => {},
+    };
+    const scope = {};
+    let binding = { context, dialog, scope };
+    const controller = new ActionHintController({
+      workspace: Object.assign(new FakeEventTarget(), { dataset: {} }),
+      dialog: new FakeDialog(),
+      collectScope: () => null,
+      collectBinding: () => binding,
+    });
+    controller.captureSnapshot = () => snapshotFor(target);
+    const snapshot = { ...snapshotFor(target), binding };
+
+    assert.equal(controller.snapshotIsCurrent(snapshot), true);
+    binding = { ...binding, dialog: new FakeDialog() };
+    assert.equal(controller.snapshotIsCurrent(snapshot), false);
+    binding = {
+      context: { ...context, root: new FakeHTMLElement() },
+      dialog,
+      scope,
+    };
+    assert.equal(controller.snapshotIsCurrent(snapshot), false);
+  } finally {
+    restoreGlobals();
+  }
+});
+
 test("snapshot capture rejects a descriptor outside the central semantic policy", () => {
   const restoreGlobals = installDomGlobals();
   try {
@@ -356,6 +492,14 @@ class FakeDialog extends FakeEventTarget {
 
   open() {
     this.openCount += 1;
+  }
+
+  allowsNativeActivation() {
+    return false;
+  }
+
+  contains() {
+    return false;
   }
 
   updateTargetLabels(targets) {

@@ -239,6 +239,9 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/keyboard-navigation/control.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/keyboard-navigation/control.js"
         ))),
+        "pages/(task-workspace)/keyboard-navigation-context.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/keyboard-navigation-context.js"
+        ))),
         "pages/(task-workspace)/keyboard-navigation/model.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/keyboard-navigation/model.js"
         ))),
@@ -256,6 +259,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/keyboard-navigation/components/selector.js" => {
             Some(js(include_str!(
                 "../../frontend/pages/(task-workspace)/keyboard-navigation/components/selector.js"
+            )))
+        }
+        "pages/(task-workspace)/components/keyboard-navigation-presentation.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/components/keyboard-navigation-presentation.css"
+            )))
+        }
+        "pages/(task-workspace)/components/keyboard-navigation-presentation.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/components/keyboard-navigation-presentation.js"
             )))
         }
         "pages/(task-workspace)/action-hints.js" => Some(js(include_str!(
@@ -1091,7 +1104,7 @@ mod tests {
                 task_button_js.content_type,
                 "text/javascript; charset=utf-8"
             );
-            assert!(task_button_js.body.starts_with(b"const "));
+            assert!(task_button_js.body.starts_with(b"import "));
         }
 
         for (path, owner) in [
@@ -1181,9 +1194,11 @@ mod tests {
         for path in [
             "pages/(task-workspace)/keyboard-navigation.js",
             "pages/(task-workspace)/keyboard-navigation/control.js",
+            "pages/(task-workspace)/keyboard-navigation-context.js",
             "pages/(task-workspace)/keyboard-navigation/model.js",
             "pages/(task-workspace)/keyboard-navigation/components/hud.js",
             "pages/(task-workspace)/keyboard-navigation/components/selector.js",
+            "pages/(task-workspace)/components/keyboard-navigation-presentation.js",
             "pages/(task-workspace)/action-hints.js",
             "pages/(task-workspace)/action-hints/control.js",
             "pages/(task-workspace)/action-hints/model.js",
@@ -1221,6 +1236,7 @@ mod tests {
         for path in [
             "pages/(task-workspace)/keyboard-navigation/components/hud.css",
             "pages/(task-workspace)/keyboard-navigation/components/selector.css",
+            "pages/(task-workspace)/components/keyboard-navigation-presentation.css",
             "pages/(task-workspace)/action-hints/components/dialog.css",
             "pages/(task-workspace)/settings/keyboard/page.css",
         ] {

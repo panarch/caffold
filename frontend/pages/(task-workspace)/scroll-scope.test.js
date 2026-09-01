@@ -6,7 +6,6 @@ import {
   hasScrollLayoutBox,
   hasVerticalScrollOverflow,
   mergeScrollSurfaceScopes,
-  scrollContextScope,
 } from "./scroll-scope.js";
 
 test("Scroll surface scopes compose direct owners in declaration order", () => {
@@ -37,30 +36,6 @@ test("Scroll surface scopes compose direct owners in declaration order", () => {
     () => mergeScrollSurfaceScopes({ surfaces: {} }),
     /scope surfaces must be an array/,
   );
-});
-
-test("Scroll context keeps its exact root and context-local HUD", () => {
-  const root = {};
-  const hud = {};
-  const context = scrollContextScope({
-    id: "workspace",
-    kind: "workspace",
-    root,
-    hud,
-    scope: { surfaces: [{ id: "task-list" }] },
-  });
-
-  assert.deepEqual(context, {
-    id: "workspace",
-    kind: "workspace",
-    root,
-    hud,
-    blocked: false,
-    surfaces: [{ id: "task-list" }],
-    mutationRoots: [],
-    resizeElements: [],
-    scrollRoots: [],
-  });
   assert.notEqual(emptyScrollSurfaceScope().surfaces, emptyScrollSurfaceScope().surfaces);
 });
 

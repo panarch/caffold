@@ -383,6 +383,21 @@ class CaffoldTaskComposer extends HTMLElement {
             this.context.mode === mode && isActionable(),
         };
       },
+      permissionTarget: () => {
+        const target = this.turnOptions()?.actionHintPermissionTarget({
+          scopeId,
+          clipRoots,
+        });
+        if (!target) {
+          return null;
+        }
+        const isActionable = target.isActionable;
+        return {
+          ...target,
+          isActionable: () =>
+            this.context.mode === mode && isActionable(),
+        };
+      },
       promptTarget: () => {
         const textarea = this.querySelector("textarea[name='prompt']");
         return textarea
@@ -405,6 +420,14 @@ class CaffoldTaskComposer extends HTMLElement {
           : null;
       },
     });
+  }
+
+  keyboardNavigationContexts({ scopeId = "" } = {}) {
+    this.ensureState();
+    if (!COMPOSER_KEYBOARD_CONTEXT_MODES.has(this.context.mode)) {
+      return [];
+    }
+    return this.turnOptions()?.keyboardNavigationContexts({ scopeId }) ?? [];
   }
 
   stateFor() {
@@ -1287,6 +1310,8 @@ class CaffoldTaskComposer extends HTMLElement {
   }
 
 }
+
+const COMPOSER_KEYBOARD_CONTEXT_MODES = new Set(["create", "follow-up"]);
 
 function renderImages(images) {
   if (!images.length) {

@@ -8,8 +8,10 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   hasVerticalScrollOverflow,
-  scrollContextScope,
 } from "../../../../../../scroll-scope.js";
+import {
+  keyboardNavigationContext,
+} from "../../../../../../keyboard-navigation-context.js";
 import "../../../../../../keyboard-navigation/components/hud.js";
 
 class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
@@ -59,12 +61,12 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
     return this.querySelector(":scope > dialog caffold-markdown-preview");
   }
 
-  scrollContextScope() {
+  keyboardNavigationContexts() {
     const dialog = this.dialog();
     const preview = this.preview();
     const hud = dialog?.querySelector(":scope > caffold-scroll-mode-hud");
     if (!dialog || !preview || !hud) {
-      return null;
+      return [];
     }
     const path = `${this.current?.path ?? ""}`;
     const label = `${this.current?.label ?? "Document"}`.trim() || "Document";
@@ -92,13 +94,12 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
           resizeElements: [dialog, preview],
           scrollRoots: [preview],
         };
-    return scrollContextScope({
+    return [keyboardNavigationContext({
       id: path ? `current-plan-document:${path}` : "current-plan-document",
       kind: "modal",
       root: dialog,
-      hud,
-      scope,
-    });
+      scroll: { hud, scope },
+    })];
   }
 
   openDocument({ label, document, displayPath, opener } = {}) {

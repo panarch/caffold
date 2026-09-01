@@ -363,6 +363,11 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     this.commitTree.setSelectedPath(path ?? "");
   }
 
+  deactivate() {
+    this.ensureRendered();
+    this.fileViewer.deactivate();
+  }
+
   isFileViewer(target) {
     this.ensureRendered();
     return target === this.fileViewer;
@@ -396,15 +401,30 @@ class CaffoldGitLogCommitPage extends HTMLElement {
         ? this.fileViewer.actionHintScope({
             scopeId: `${prefix}:viewer`,
             actionId: ACTION_HINT_ACTION.PARENT,
+            detailsActionId: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
             clipRoots: [this, ...clipRoots],
           })
         : null,
     );
   }
 
+  keyboardNavigationContexts({ scopeId = "git:commit" } = {}) {
+    this.ensureRendered();
+    const sha = this.currentCommitSha();
+    return sha && !this.hidden && this.detailView === "viewer"
+      ? this.fileViewer.keyboardNavigationContexts({
+          scopeId: `${scopeId}:${encodeURIComponent(sha)}:viewer`,
+        })
+      : [];
+  }
+
   setDetailView(view) {
     this.ensureRendered();
-    this.detailView = view === "viewer" ? "viewer" : "list";
+    const nextView = view === "viewer" ? "viewer" : "list";
+    if (nextView !== "viewer") {
+      this.fileViewer.deactivate();
+    }
+    this.detailView = nextView;
     this.dataset.detailView = this.detailView;
   }
 

@@ -294,6 +294,20 @@ class CaffoldGitLogLayout extends HTMLElement {
         });
   }
 
+  keyboardNavigationContexts({ scopeId = "git:log" } = {}) {
+    this.ensureRendered();
+    return !this.hidden && this.view === "detail"
+      ? this.commitPage.keyboardNavigationContexts({
+          scopeId: `${scopeId}:commit`,
+        })
+      : [];
+  }
+
+  deactivate() {
+    this.ensureRendered();
+    this.commitPage.deactivate();
+  }
+
   findCommitFile(path) {
     return this.commitPage.findFile(path);
   }

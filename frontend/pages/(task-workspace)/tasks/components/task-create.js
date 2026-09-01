@@ -146,6 +146,11 @@ class CaffoldTaskCreate extends HTMLElement {
     return this.composer()?.actionHintTargets(options) ?? [];
   }
 
+  keyboardNavigationContexts(options = {}) {
+    this.ensureRendered();
+    return this.composer()?.keyboardNavigationContexts(options) ?? [];
+  }
+
   handleComposerIntent(event) {
     if (event.target !== this.composer()) {
       return;

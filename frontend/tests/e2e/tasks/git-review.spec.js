@@ -4,6 +4,7 @@ import { relative, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { repositoryPath } from "../../repository-paths.mjs";
 import {
+  actionHintBadgePresentation,
   actionHintDialog,
   activateActionHint,
   enterActionHints,
@@ -340,6 +341,49 @@ async function rootTreeNames(tree) {
     )
     .allTextContents();
 }
+
+test("opens Git and selects its destination through declared keyboard contexts", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installTaskGitFixture(page);
+  await page.goto(`/tasks/${THREAD_ID}`);
+
+  await activateActionHint(page, /Open Git workspace$/);
+  const popover = page.locator(
+    ".detail-layout-summary caffold-task-detail-git > .task-git-popover",
+  );
+  await expect(popover).toBeVisible();
+  await page.keyboard.press("s");
+  await expect(
+    popover.locator("caffold-scroll-mode-hud .scroll-mode-status"),
+  ).toBeHidden();
+  await expect(popover).toBeVisible();
+
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await expect(
+    hint.getByRole("button", { name: / — Log$/ }),
+  ).toBeVisible();
+  const compare = hint.getByRole("button", { name: / — Compare$/ });
+  await expect(compare).toHaveAttribute("data-match", "true");
+  await expect.poll(() => actionHintBadgePresentation(compare)).toEqual({
+    backgroundMatches: true,
+    borderVisible: true,
+    colorMatches: true,
+    hasBlockPadding: true,
+    position: "absolute",
+  });
+  const compareCode = await compare.getAttribute("data-action-hint-code");
+  expect(compareCode).toBeTruthy();
+  await page.keyboard.type(compareCode.toLowerCase());
+
+  await expect(popover).toBeHidden();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/compare`);
+  await expect(page.locator("caffold-git-compare-page")).toContainText(
+    "example.rs",
+  );
+});
 
 test("applies the global ordering to Compare and Commit without refetching", { tag: "@all-viewports" }, async ({
   page,
@@ -683,6 +727,25 @@ test("navigates Compare files and Log commits with deterministic domain Back", {
   await expect(commitDiff).toContainText("new commit");
   await page.reload();
   await expect(commitDiff).toContainText("new commit");
+
+  await activateActionHint(page, /Show details for example\.rs$/);
+  const fileViewer = page.locator(
+    ".git-mode-log caffold-review-file-viewer:not([hidden])",
+  );
+  const detailsPopover = fileViewer.locator(".viewer-meta-popover");
+  await expect(detailsPopover).toBeVisible();
+  await page.keyboard.press("f");
+  await expect(actionHintDialog(page)).toBeHidden();
+  await expect(detailsPopover).toBeVisible();
+  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}`);
+  await expect(detailsPopover).toBeHidden();
+  await page.goBack();
+  await expect(page).toHaveURL(
+    `/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}&file=example.rs`,
+  );
+  await expect(commitDiff).toContainText("new commit");
+
   const fileBack = page.getByRole("button", { name: "Back to commit" });
   if (await fileBack.isVisible()) {
     await activateActionHint(page, /Back to commit$/);

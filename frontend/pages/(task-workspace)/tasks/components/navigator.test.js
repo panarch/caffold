@@ -38,6 +38,9 @@ test("provides owned New Task and delegated row actions with navigator geometry"
     reorderMode: "none",
     taskOperations: { blocked: false },
     ensureChildren() {},
+    actionHintReorderTarget() {
+      return null;
+    },
     querySelector(selector) {
       if (selector === ":scope > .task-list-scroll") {
         return scrollRoot;
@@ -142,3 +145,71 @@ test("provides only its exact active Task list scrollport", () => {
   assert.equal(scope.surfaces[0].isEligible(), false);
   assert.equal(navigator.scrollSurfaceScope.call(owner).blocked, true);
 });
+
+test("provides Reorder opener and exact semantic popover options", () => {
+  const control = {
+    disabled: false,
+    clicks: 0,
+    focus() {},
+    click() {
+      this.clicks += 1;
+    },
+    getAttribute(name) {
+      return name === "aria-label"
+        ? "Choose what to reorder"
+        : name === "popovertarget"
+          ? "reorder-options"
+          : null;
+    },
+  };
+  const options = [reorderOption("tasks"), reorderOption("sections")];
+  const popover = {
+    id: "reorder-options",
+    open: false,
+    matches: () => popover.open,
+    contains: (candidate) => options.includes(candidate),
+    querySelectorAll: () => options,
+  };
+  const owner = {
+    active: true,
+    hidden: false,
+    isConnected: true,
+    reorderMode: "none",
+    get reorderButton() {
+      return control;
+    },
+    reorderPopover: () => popover,
+  };
+
+  const opener = navigator.actionHintReorderTarget.call(owner);
+  assert.equal(opener.actionId, "task.reorder.open");
+  assert.equal(opener.isActionable(), true);
+  opener.activate();
+  assert.equal(control.clicks, 1);
+
+  popover.open = true;
+  const scope = navigator.reorderActionHintScope.call(owner, {
+    contextId: "task-list:reorder",
+    popover,
+  });
+  assert.deepEqual(
+    scope.targets.map(({ id, actionId }) => ({ id, actionId })),
+    [
+      { id: "task-list:reorder:tasks", actionId: "task.reorder.select" },
+      { id: "task-list:reorder:sections", actionId: "task.reorder.select" },
+    ],
+  );
+});
+
+function reorderOption(mode) {
+  return {
+    dataset: {
+      taskAction: "select-reorder-mode",
+      reorderMode: mode,
+    },
+    disabled: false,
+    textContent: `Reorder ${mode}`,
+    focus() {},
+    click() {},
+  };
+}

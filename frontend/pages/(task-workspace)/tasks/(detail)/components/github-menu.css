@@ -69,7 +69,7 @@ caffold-task-detail-github {
     align-content: start;
   }
 
-  & > .task-github-popover button {
+  & > .task-github-popover > button[data-github-button-action] {
     box-sizing: border-box;
     height: var(--interface-compact-control-size);
     min-height: var(--interface-compact-control-size);
@@ -84,8 +84,8 @@ caffold-task-detail-github {
     cursor: pointer;
   }
 
-  & > .task-github-popover button:hover,
-  & > .task-github-popover button:focus-visible {
+  & > .task-github-popover > button[data-github-button-action]:hover,
+  & > .task-github-popover > button[data-github-button-action]:focus-visible {
     background: var(--control-hover-bg);
     outline: none;
   }

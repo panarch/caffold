@@ -9,6 +9,11 @@ import {
 } from "./file-viewer-presentation.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
 import { imageUrl } from "../api.js";
+import {
+  keyboardNavigationContext,
+  popoverScrollSurfaceScope,
+} from "../pages/(task-workspace)/keyboard-navigation-context.js";
+import "../pages/(task-workspace)/components/keyboard-navigation-presentation.js";
 import "./code-viewer.js";
 import "./diff-viewer.js";
 import "./markdown-preview.js";
@@ -41,7 +46,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
           }),
         );
       });
-      this.boundIconsReady = () => this.render();
+      this.boundIconsReady = () => this.patchViewerIcons();
       window.addEventListener("caffold:icons-ready", this.boundIconsReady);
       warmIcons();
     }
@@ -52,7 +57,20 @@ class CaffoldReviewFileViewer extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.deactivate();
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+  }
+
+  deactivate() {
+    const popover = this.detailsPopover();
+    if (!popover?.matches?.(":popover-open")) {
+      return;
+    }
+    try {
+      popover.hidePopover();
+    } catch {
+      // A parent transition may already have detached the viewer.
+    }
   }
 
   setEmpty() {
@@ -158,6 +176,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
     scopeId = "",
     actionId = "",
     noticeActionId = "",
+    detailsActionId = "",
     clipRoots = [],
   } = {}) {
     const control = this.querySelector(
@@ -167,6 +186,38 @@ class CaffoldReviewFileViewer extends HTMLElement {
       return emptyActionHintScope();
     }
     const targets = [];
+    const detailsControl = detailsActionId
+      ? this.querySelector(
+          ':scope > .viewer-panel > .viewer-header > .viewer-title-row .viewer-info-button',
+        )
+      : null;
+    const detailsPopover = detailsActionId ? this.detailsPopover() : null;
+    if (
+      detailsActionId &&
+      detailsControl &&
+      detailsPopover &&
+      this.hasDetailsMetadata(detailsPopover) &&
+      !detailsControl.disabled
+    ) {
+      targets.push(buttonActionHintTarget({
+        id: `${scopeId}:details:open`,
+        actionId: detailsActionId,
+        label: detailsControl.getAttribute("aria-label") || "Show file details",
+        control: detailsControl,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.querySelector(
+            ':scope > .viewer-panel > .viewer-header > .viewer-title-row .viewer-info-button',
+          ) === detailsControl &&
+          this.detailsPopover() === detailsPopover &&
+          detailsControl.getAttribute("popovertarget") === detailsPopover.id &&
+          this.hasDetailsMetadata(detailsPopover) &&
+          !detailsControl.disabled &&
+          !detailsPopover.matches(":popover-open"),
+      }));
+    }
     if (actionId && control && !control.disabled) {
       targets.push(buttonActionHintTarget({
         id: `${scopeId}:close`,
@@ -219,6 +270,48 @@ class CaffoldReviewFileViewer extends HTMLElement {
     };
   }
 
+  keyboardNavigationContexts({ scopeId = "" } = {}) {
+    const popover = this.detailsPopover();
+    const presentation = popover?.querySelector(
+      ":scope > caffold-keyboard-navigation-presentation",
+    );
+    const dialog = presentation?.actionHintDialog?.();
+    const hud = presentation?.scrollModeHud?.();
+    if (
+      !scopeId ||
+      this.hidden ||
+      !popover ||
+      !this.hasDetailsMetadata(popover) ||
+      !dialog ||
+      !hud
+    ) {
+      return [];
+    }
+    const contextId = `${scopeId}:details`;
+    return [keyboardNavigationContext({
+      id: contextId,
+      kind: "popover",
+      root: popover,
+      actionHints: {
+        dialog,
+        scope: emptyActionHintScope(),
+      },
+      scroll: {
+        hud,
+        scope: popoverScrollSurfaceScope({
+          id: contextId,
+          label: "File details",
+          popover,
+          isCurrent: () =>
+            this.isConnected &&
+            !this.hidden &&
+            this.detailsPopover() === popover &&
+            this.hasDetailsMetadata(popover),
+        }),
+      },
+    })];
+  }
+
   ensureDetailsPopoverId() {
     if (!this.detailsPopoverId) {
       viewerInstanceId += 1;
@@ -227,6 +320,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
   }
 
   render(options = {}) {
+    this.deactivate();
     if (!this.state || this.state.status === "empty") {
       this.innerHTML = `
         <section class="viewer-panel empty-panel">
@@ -328,6 +422,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
   }
 
   replacePresentationHeader(panel, presentation) {
+    this.deactivate();
     const template = document.createElement("template");
     template.innerHTML = this.renderPresentationHeader(presentation);
     panel.querySelector(":scope > header")?.replaceWith(
@@ -438,6 +533,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
               )
               .join("")}
           </dl>
+          <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
         </div>
       </header>
     `;
@@ -553,6 +649,47 @@ class CaffoldReviewFileViewer extends HTMLElement {
     button.classList.toggle("is-unavailable", unavailable);
     button.setAttribute("aria-label", title);
     button.title = title;
+  }
+
+  detailsPopover() {
+    return this.querySelector(
+      `:scope > .viewer-panel > .viewer-header > #${this.detailsPopoverId}`,
+    );
+  }
+
+  hasDetailsMetadata(popover = this.detailsPopover()) {
+    return Boolean(popover?.querySelector(":scope > dl > div"));
+  }
+
+  patchViewerIcons() {
+    patchInlineIcon(
+      this.querySelector(".viewer-close-button"),
+      this.closeMode === "back" ? "ArrowLeft" : "X",
+      this.closeLabel ?? "Back to files",
+      "viewer-close-icon",
+    );
+    patchInlineIcon(
+      this.querySelector(".viewer-refresh-button"),
+      "RefreshCw",
+      "Refresh file",
+      "viewer-refresh-icon",
+    );
+    patchInlineIcon(
+      this.querySelector(".viewer-info-button"),
+      "Info",
+      "Details",
+      "viewer-info-icon",
+    );
+  }
+}
+
+function patchInlineIcon(button, name, label, className) {
+  if (!button || button.querySelector(`:scope > .${className}`)) {
+    return;
+  }
+  const markup = renderInlineIcon(name, label, className);
+  if (button.innerHTML !== markup) {
+    button.innerHTML = markup;
   }
 }
 

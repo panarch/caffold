@@ -47,6 +47,10 @@ const ownership = new Map([
     ["caffold-scroll-surface-selector"],
   ],
   [
+    "pages/(task-workspace)/components/keyboard-navigation-presentation.css",
+    ["caffold-keyboard-navigation-presentation"],
+  ],
+  [
     "pages/(task-workspace)/action-hints/components/dialog.css",
     ["caffold-action-hint-dialog"],
   ],

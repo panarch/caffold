@@ -117,6 +117,50 @@ test("browses source through the shared Files navigator and one root watch", { t
   await expect(taskReview.locator("caffold-review-file-viewer")).toContainText(
     "pub const ALPHA",
   );
+  await activateActionHint(page, /Show details for alpha\.rs$/);
+  const detailsPopover = taskReview.locator(
+    "caffold-review-file-viewer:not([hidden]) .viewer-meta-popover",
+  );
+  await expect(detailsPopover).toBeVisible();
+  await expect.poll(() => detailsPopover.evaluate(
+    (popover) => popover.scrollHeight <= popover.clientHeight + 1,
+  )).toBe(true);
+  await page.keyboard.press("f");
+  await expect(actionHintDialog(page)).toBeHidden();
+  await expect(detailsPopover).toBeVisible();
+  await page.keyboard.press("s");
+  await expect(
+    detailsPopover.locator("caffold-scroll-mode-hud .scroll-mode-status"),
+  ).toBeHidden();
+  await expect(detailsPopover).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(detailsPopover).toBeHidden();
+
+  if (testInfo.project.name === "desktop") {
+    await taskReview.locator(
+      "caffold-review-file-viewer:not([hidden]) .viewer-info-button",
+    ).click();
+    await expect(detailsPopover).toBeVisible();
+    await page.setViewportSize({ width: 1280, height: 160 });
+    await expect.poll(() => detailsPopover.evaluate(
+      (popover) => popover.scrollHeight > popover.clientHeight + 1,
+    )).toBe(true);
+    const before = await detailsPopover.evaluate((popover) => popover.scrollTop);
+    await page.keyboard.press("s");
+    const localHud = detailsPopover.locator(
+      "caffold-scroll-mode-hud .scroll-mode-status",
+    );
+    await expect(localHud).toContainText("Scroll: File details");
+    await page.keyboard.press("j");
+    await expect.poll(() => detailsPopover.evaluate((popover) => popover.scrollTop))
+      .toBeGreaterThan(before);
+    await page.keyboard.press("Escape");
+    await expect(localHud).toBeHidden();
+    await expect(detailsPopover).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(detailsPopover).toBeHidden();
+    await page.setViewportSize({ width: 1280, height: 800 });
+  }
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-file-browser");
 

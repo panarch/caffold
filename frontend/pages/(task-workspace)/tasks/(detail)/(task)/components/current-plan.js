@@ -399,9 +399,8 @@ class CaffoldTaskCurrentPlan extends HTMLElement {
     };
   }
 
-  scrollContextScopes() {
-    const scope = this.documentDialog()?.scrollContextScope();
-    return scope ? [scope] : [];
+  keyboardNavigationContexts() {
+    return this.documentDialog()?.keyboardNavigationContexts() ?? [];
   }
 
   patch() {

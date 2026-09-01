@@ -115,6 +115,7 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
     this.restoreFocus = false;
     this.issueSource().deactivate();
     this.pullSource().deactivate();
+    this.turnOptions()?.hidePopovers();
     if (this.dialog().open) {
       this.dialog().close("cancel");
     }
@@ -128,6 +129,15 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
     this.turnOptions().setContext({
       initialSelection: this.composerSettings ?? {},
     });
+  }
+
+  keyboardNavigationContexts() {
+    const dialog = this.dialog();
+    return dialog?.open
+      ? this.turnOptions()?.keyboardNavigationContexts({
+          scopeId: `github-task-start:${this.sourceKind ?? "source"}`,
+        }) ?? []
+      : [];
   }
 
   async startTask() {
@@ -205,6 +215,7 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
     if (this.pending) {
       return;
     }
+    this.turnOptions()?.hidePopovers();
     const opener = this.opener;
     const restoreFocus = this.restoreFocus;
     this.opener = null;

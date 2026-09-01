@@ -1,9 +1,12 @@
 import { expect, test } from "@playwright/test";
 import {
+  actionHintBadgePresentation,
+  actionHintDialog,
   activateActionHint,
   enterActionHints,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { TASK_PERMISSION_FIXTURE } from "../support/task-api-fixture.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
 import {
   activeTaskProjection,
@@ -75,6 +78,9 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
     bootstrapFunctionKey: "__taskGithubDetailBootstrap",
   });
   await mockAgentModels(page);
+  await page.route(/\/api\/agent\/permissions(?:\?|$)/, (route) =>
+    route.fulfill({ json: TASK_PERMISSION_FIXTURE })
+  );
 
   const task = linkedWorktreeTask();
   const repository = {
@@ -922,13 +928,45 @@ test("preserves Issue Start Task setup, focus return, and created Task selection
   const opener = issueDetail.getByRole("button", {
     name: "Start Task for issue #1984",
   });
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
 
   await opener.click();
   await expect(dialog).toBeVisible();
   await expect(dialog.locator("select[name='baseRef']")).toHaveValue("origin/main");
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+
+  const modelButton = dialog.locator(".task-model-button");
+  const modelPopover = dialog.locator(".task-model-popover");
+  await modelButton.click();
+  await expect(modelPopover).toBeVisible();
+  await page.keyboard.press("f");
+  let hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await expect(
+    hint.getByRole("button", { name: / — GPT-5\.6-Sol.*Selected$/ }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(hint).toBeHidden();
+  await expect(modelPopover).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(modelPopover).toBeHidden();
+
+  const permissionButton = dialog.locator(".task-permission-button");
+  const permissionPopover = dialog.locator(".task-permission-popover");
+  await permissionButton.click();
+  await expect(permissionPopover).toBeVisible();
+  await page.keyboard.press("f");
+  hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await expect(
+    hint.getByRole("button", { name: / — Approve for me.*Selected$/ }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(hint).toBeHidden();
+  await expect(permissionPopover).toBeVisible();
+
+  await dialog.evaluate((element) => element.close("cancel"));
   await expect(dialog).toBeHidden();
+  await expect(permissionPopover).toBeHidden();
   await expect(opener).toBeFocused();
 
   await opener.click();
@@ -978,7 +1016,7 @@ test("starts a Task from a Section-scoped GitHub Issue", { tag: "@desktop" }, as
   });
   await opener.click();
 
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
   await expect(dialog).toBeVisible();
   await expect.poll(() =>
     dialog.locator("caffold-task-turn-options").evaluate((options) =>
@@ -1048,7 +1086,7 @@ test("names the tools a Claude Task actually has in its issue setup prompt", { t
     name: "Start Task for issue #1984",
   });
   await opener.click();
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
   await expect(dialog).toBeVisible();
   await expect.poll(() =>
     dialog.locator("caffold-task-turn-options").evaluate((options) =>
@@ -1074,7 +1112,7 @@ test("names the tools a Claude Task actually has in its issue setup prompt", { t
 test("starts a same-repository PR Task from the exact prepared head", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   const pullDetail = await openLinkedWorktreePull(page);
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
 
   await pullDetail.getByRole("button", {
     name: "Start Task for pull request #1983",
@@ -1121,7 +1159,7 @@ test("keeps long PR refs in one shared horizontal scroll with sticky labels", { 
     },
   });
   const pullDetail = await openLinkedWorktreePull(page);
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
 
   await pullDetail.getByRole("button", {
     name: "Start Task for pull request #1983",
@@ -1172,7 +1210,7 @@ test("starts a fork PR Task through the base repository pull ref", { tag: "@all-
     },
   });
   const pullDetail = await openLinkedWorktreePull(page);
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
 
   await pullDetail.getByRole("button", {
     name: "Start Task for pull request #1983",
@@ -1205,7 +1243,7 @@ test("keeps PR Task setup recoverable when the canonical head is unavailable", {
     message: "Pull request head is unavailable. Refresh the PR details and try again.",
   };
   const pullDetail = await openLinkedWorktreePull(page);
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
 
   await pullDetail.getByRole("button", {
     name: "Start Task for pull request #1983",
@@ -1229,7 +1267,7 @@ test("requires an explicit PR refresh after the head moves", { tag: "@all-viewpo
     message: `Pull request head moved from ${PULL_HEAD_OID} to ${movedOid}. Refresh the PR details before starting a Task.`,
   };
   const pullDetail = await openLinkedWorktreePull(page);
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
 
   await pullDetail.getByRole("button", {
     name: "Start Task for pull request #1983",
@@ -1258,7 +1296,7 @@ test("invalidates a pending GitHub Task start when the GitHub surface deactivate
     releasePullHead = resolve;
   });
   const pullDetail = await openLinkedWorktreePull(page);
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
 
   await pullDetail.getByRole("button", {
     name: "Start Task for pull request #1983",
@@ -1340,7 +1378,34 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
 }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   await page.goto(`/tasks/${THREAD_ID}`);
-  await chooseLinkedWorktreeGithubList(page, "issues");
+  await activateActionHint(page, /Open GitHub workspace$/);
+  const githubPopover = page.locator(
+    ".detail-layout-summary caffold-task-detail-github > .task-github-popover",
+  );
+  await expect(githubPopover).toBeVisible();
+  await page.keyboard.press("s");
+  await expect(
+    githubPopover.locator("caffold-scroll-mode-hud .scroll-mode-status"),
+  ).toBeHidden();
+  await page.keyboard.press("f");
+  const githubHint = actionHintDialog(page);
+  await expect(githubHint).toBeVisible();
+  await expect(
+    githubHint.getByRole("button", { name: / — Pull Requests$/ }),
+  ).toBeVisible();
+  const issues = githubHint.getByRole("button", { name: / — Issues$/ });
+  await expect(issues).toHaveAttribute("data-match", "true");
+  await expect.poll(() => actionHintBadgePresentation(issues)).toEqual({
+    backgroundMatches: true,
+    borderVisible: true,
+    colorMatches: true,
+    hasBlockPadding: true,
+    position: "absolute",
+  });
+  const issuesCode = await issues.getAttribute("data-action-hint-code");
+  expect(issuesCode).toBeTruthy();
+  await page.keyboard.type(issuesCode.toLowerCase());
+  await expect(githubPopover).toBeHidden();
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/issues`);
   await page.reload();
   await expect(page.locator("caffold-github-issues-list-page")).toContainText(
@@ -1403,6 +1468,26 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
   );
   expect(fixture.counts.pullFile).toBeGreaterThanOrEqual(2);
 
+  await activateActionHint(page, /Show details for .*review\.rs$/);
+  const fileViewer = page.locator(
+    "caffold-github-pull-files-page caffold-review-file-viewer:not([hidden])",
+  );
+  const detailsPopover = fileViewer.locator(".viewer-meta-popover");
+  await expect(detailsPopover).toBeVisible();
+  await page.keyboard.press("f");
+  await expect(actionHintDialog(page)).toBeHidden();
+  await expect(detailsPopover).toBeVisible();
+  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}`);
+  await expect(detailsPopover).toBeHidden();
+  await page.goBack();
+  await expect(page).toHaveURL(
+    `/tasks/${THREAD_ID}/github/pulls/1983/files?file=src%2Freview.rs`,
+  );
+  await expect(page.locator("caffold-diff-viewer")).toContainText(
+    "new Task-owned review",
+  );
+
   const fileBack = page.getByRole("button", { name: "Back to files" });
   if (await fileBack.isVisible()) {
     await activateActionHint(page, /Back to files$/);
@@ -1415,6 +1500,11 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls/1983`);
   await expect(pullDetail).toBeVisible();
   await expect(page.locator("caffold-github-pull-files-page")).toBeHidden();
+  const backToPulls = page.getByRole("button", {
+    name: "Back to pull requests",
+  });
+  await backToPulls.scrollIntoViewIfNeeded();
+  await expect(backToPulls).toBeInViewport();
   await activateActionHint(page, /Back to pull requests$/);
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls`);
 });

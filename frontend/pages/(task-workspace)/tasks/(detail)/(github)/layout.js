@@ -10,6 +10,9 @@ import {
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "../../../action-hints.js";
+import {
+  mergeKeyboardNavigationContexts,
+} from "../../../keyboard-navigation-context.js";
 
 class CaffoldTaskGithubLayout extends HTMLElement {
   connectedCallback() {
@@ -213,13 +216,17 @@ class CaffoldTaskGithubLayout extends HTMLElement {
   }
 
   deactivate() {
-    if (!this.rendered || !this.active) {
+    if (!this.rendered) {
+      return;
+    }
+    this.taskStartDialog.deactivate();
+    this.pullsLayout.deactivate();
+    if (!this.active) {
       return;
     }
     this.active = false;
     this.activationGeneration += 1;
     this.githubStatusRequestId += 1;
-    this.taskStartDialog.deactivate();
     this.issuesLayout.invalidateRequests();
     this.pullsLayout.invalidateRequests();
   }
@@ -445,6 +452,7 @@ class CaffoldTaskGithubLayout extends HTMLElement {
 
   prepareRoute(route) {
     this.ensureRendered();
+    this.taskStartDialog.deactivate();
     const mode = routeMode(route);
     if (mode === "issues") {
       this.setMode("issues");
@@ -718,6 +726,25 @@ class CaffoldTaskGithubLayout extends HTMLElement {
     return mergeActionHintScopes(back, activeChild);
   }
 
+  keyboardNavigationContexts() {
+    this.ensureRendered();
+    if (!this.active || this.hidden || !this.mode) {
+      return [];
+    }
+    const scopeId = `github:${encodeURIComponent(
+      this.repository?.rootPath || this.currentPath || "repository",
+    )}`;
+    const activeChild = this.mode === "pulls"
+      ? this.pullsLayout.keyboardNavigationContexts({
+          scopeId: `${scopeId}:pulls`,
+        })
+      : [];
+    return mergeKeyboardNavigationContexts(
+      activeChild,
+      this.taskStartDialog.keyboardNavigationContexts(),
+    );
+  }
+
   requestGithubRoute(route, options = {}) {
     this.dispatchEvent(
       new CustomEvent("caffold:request-github-route", {
@@ -797,6 +824,10 @@ class CaffoldTaskGithubLayout extends HTMLElement {
     const nextMode = normalizeGithubMode(mode);
     if (this.mode === nextMode) {
       return;
+    }
+
+    if (nextMode !== "pulls") {
+      this.pullsLayout.deactivate();
     }
 
     this.mode = nextMode;

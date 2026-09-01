@@ -5,6 +5,9 @@ import {
   mergeActionHintScopes,
 } from "../../action-hints.js";
 import { emptyScrollSurfaceScope } from "../../scroll-scope.js";
+import {
+  mergeKeyboardNavigationContexts,
+} from "../../keyboard-navigation-context.js";
 import { cleanLogicalPath } from "../task-format.js";
 import "./(task)/layout.js";
 import "./(git)/layout.js";
@@ -617,7 +620,57 @@ class CaffoldDetailLayout extends HTMLElement {
     return mergeActionHintScopes(
       { blocked },
       viewSwitchScope,
+      this.gitMenu()?.actionHintScope({
+        scopeId: `detail:${identityKey}`,
+        clipRoots: [this, this.summaryHeader()].filter(Boolean),
+      }),
+      this.githubMenu()?.actionHintScope({
+        scopeId: `detail:${identityKey}`,
+        clipRoots: [this, this.summaryHeader()].filter(Boolean),
+      }),
+      this.subjectKind === "task"
+        ? this.taskSummary()?.actionHintScope({
+            scopeId: `detail:${identityKey}`,
+            clipRoots: [this, this.summaryHeader()].filter(Boolean),
+          })
+        : null,
       activeChildScope,
+    );
+  }
+
+  keyboardNavigationContexts() {
+    this.ensureRendered();
+    const identityKey = detailIdentityKey(this.subjectIdentity());
+    if (!identityKey || this.hidden) {
+      return [];
+    }
+    const scopeId = `detail:${identityKey}`;
+    const surface = this.activeSurface();
+    let activeChild = [];
+    if (this.subjectKind === "task" && surface === "conversation") {
+      const taskDetail = this.taskDetail();
+      activeChild = !taskDetail?.hidden && !taskDetail?.loading
+        ? taskDetail.keyboardNavigationContexts?.() ?? []
+        : [];
+    } else if (this.subjectKind === "section" && surface === "new") {
+      const sectionDetail = this.sectionDetail();
+      activeChild = !sectionDetail?.hidden
+        ? sectionDetail.keyboardNavigationContexts?.() ?? []
+        : [];
+    } else if (surface === "review") {
+      activeChild = this.review()?.keyboardNavigationContexts?.() ?? [];
+    } else if (surface === "git") {
+      activeChild = this.gitLayout()?.keyboardNavigationContexts?.() ?? [];
+    } else if (surface === "github") {
+      activeChild = this.githubLayout()?.keyboardNavigationContexts?.() ?? [];
+    }
+    return mergeKeyboardNavigationContexts(
+      this.gitMenu()?.keyboardNavigationContexts({ scopeId }) ?? [],
+      this.githubMenu()?.keyboardNavigationContexts({ scopeId }) ?? [],
+      this.subjectKind === "task"
+        ? this.taskSummary()?.keyboardNavigationContexts({ scopeId }) ?? []
+        : [],
+      activeChild,
     );
   }
 
@@ -636,23 +689,6 @@ class CaffoldDetailLayout extends HTMLElement {
       return emptyScrollSurfaceScope();
     }
     return taskDetail.scrollSurfaceScope();
-  }
-
-  scrollContextScopes() {
-    this.ensureRendered();
-    const taskDetail = this.taskDetail();
-    if (
-      !detailIdentityKey(this.subjectIdentity()) ||
-      this.hidden ||
-      this.subjectKind !== "task" ||
-      this.activeSurface() !== "conversation" ||
-      !taskDetail ||
-      taskDetail.hidden ||
-      taskDetail.loading
-    ) {
-      return [];
-    }
-    return taskDetail.scrollContextScopes();
   }
 
   subjectIdentity() {
@@ -748,6 +784,7 @@ class CaffoldDetailLayout extends HTMLElement {
   }
 
   deactivateSharedChildren() {
+    this.taskSummary()?.deactivate();
     this.deactivateReview();
     this.gitLayout()?.deactivate();
     this.githubLayout()?.deactivate();

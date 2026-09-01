@@ -1,7 +1,17 @@
 import { getAgentModels, getAgentPermissions } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../action-hints.js";
+import {
+  keyboardNavigationContext,
+  popoverScrollSurfaceScope,
+} from "../../keyboard-navigation-context.js";
 import { cleanLogicalPath } from "../task-format.js";
+import "../../components/keyboard-navigation-presentation.js";
 
 let turnOptionsInstanceSequence = 0;
 
@@ -40,6 +50,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.hidePopovers();
     if (!this.listenersAttached) {
       return;
     }
@@ -115,7 +126,10 @@ class CaffoldTaskTurnOptions extends HTMLElement {
             popover="auto"
             role="menu"
             aria-label="Model and reasoning options"
-          ></div>
+          >
+            <div class="task-model-popover-content"></div>
+            <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
+          </div>
         </div>
         <div class="task-permission-picker">
           <button
@@ -131,7 +145,10 @@ class CaffoldTaskTurnOptions extends HTMLElement {
             popover="auto"
             role="menu"
             aria-label="Approval modes"
-          ></div>
+          >
+            <div class="task-permission-popover-content"></div>
+            <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
+          </div>
         </div>
       </div>
     `;
@@ -426,7 +443,10 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     }
     const selection = this.selection;
     const model =
-      offered.find((option) => option.model === selection.model) ??
+      offered.find((option) =>
+        option.model === selection.model &&
+        (!selection.provider || option.provider === selection.provider)
+      ) ??
       offered.find((option) => option.isDefault) ??
       offered[0];
     selection.model ||= model.model;
@@ -467,7 +487,11 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     const offered = this.offeredModels();
     const selectedModel = this.selection.model;
     return (
-      offered.find((option) => option.model === selectedModel) ??
+      offered.find((option) =>
+        option.model === selectedModel &&
+        (!this.selection.provider ||
+          option.provider === this.selection.provider)
+      ) ??
       offered.find((option) => option.isDefault) ??
       offered[0] ??
       null
@@ -514,13 +538,13 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     }
     const type = action.dataset.turnOptionsAction;
     if (type === "select-model") {
-      this.selectModel(action.dataset.model);
+      this.selectModel(action.dataset.model, action.dataset.provider);
     } else if (type === "select-effort") {
       this.selectEffort(action.dataset.effort);
     } else if (type === "select-fast-mode") {
       this.selectFastMode(action.dataset.fastMode === "true");
     } else if (type === "select-permission") {
-      this.selectPermission(action.dataset.permissionMode);
+      this.selectPermission(action.dataset.permissionMode, action);
     }
   }
 
@@ -583,9 +607,10 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     }
   }
 
-  selectModel(modelValue) {
+  selectModel(modelValue, providerValue = "") {
     const selection = this.selection;
     selection.model = `${modelValue ?? ""}`;
+    selection.provider = `${providerValue ?? ""}`;
     selection.modelExplicit = true;
     const model = this.selectedModel();
     const supported = model?.supportedReasoningEfforts ?? [];
@@ -625,7 +650,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.emitChange();
   }
 
-  selectPermission(permissionMode) {
+  selectPermission(permissionMode, control = null) {
     const option = this.permissionOptions.find(
       (candidate) => candidate.mode === permissionMode,
     );
@@ -639,6 +664,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
         "Full access removes sandbox restrictions and approval prompts for subsequent turns. Continue?",
       )
     ) {
+      this.restorePermissionOptionFocus(control, permissionMode);
       return;
     }
     this.selection.permissionMode = permissionMode;
@@ -646,6 +672,24 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.hidePopover(this.permissionPopover());
     this.render();
     this.emitChange();
+  }
+
+  restorePermissionOptionFocus(control, permissionMode) {
+    const popover = this.permissionPopover();
+    window.requestAnimationFrame(() => {
+      if (
+        !this.isConnected ||
+        this.permissionPopover() !== popover ||
+        !popover?.matches(":popover-open") ||
+        !popover.contains(control) ||
+        control?.dataset?.turnOptionsAction !== "select-permission" ||
+        control.dataset.permissionMode !== permissionMode ||
+        control.disabled
+      ) {
+        return;
+      }
+      control.focus({ preventScroll: true });
+    });
   }
 
   hidePopovers() {
@@ -732,7 +776,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
           offered.length
             ? offered
                 .map((option) =>
-                  renderModelOption(option, model?.model ?? ""),
+                  renderModelOption(option, model),
                 )
                 .join("")
             : renderModelFallback(this.modelLoading, this.modelError)
@@ -801,14 +845,17 @@ class CaffoldTaskTurnOptions extends HTMLElement {
   }
 
   patchPopover(popover, html) {
-    if (popover.renderedHtml === html) {
+    const content = popover.querySelector(
+      ":scope > .task-model-popover-content, :scope > .task-permission-popover-content",
+    );
+    if (!content || content.renderedHtml === html) {
       return;
     }
-    const focused = popover.contains(document.activeElement)
+    const focused = content.contains(document.activeElement)
       ? optionFocusKey(document.activeElement)
       : null;
-    popover.innerHTML = html;
-    popover.renderedHtml = html;
+    content.innerHTML = html;
+    content.renderedHtml = html;
     if (focused && popover.matches(":popover-open")) {
       optionForFocusKey(popover, focused)?.focus();
     }
@@ -831,15 +878,14 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     ) {
       return null;
     }
-    return {
+    return buttonActionHintTarget({
       id: `task-composer:${scopeId}:model`,
-      actionId: "task.model.choose",
+      actionId: ACTION_HINT_ACTION.MODEL_CHOOSE,
       label: control.getAttribute("aria-label") || "Choose model and reasoning",
-      controlKind: "button",
       control,
-      anchor: control,
       clipRoots: [...clipRoots],
       isActionable: () =>
+        this.isConnected &&
         this.modelButton() === control &&
         this.modelPopover() === popover &&
         control.getAttribute("popovertarget") === popover.id &&
@@ -847,7 +893,135 @@ class CaffoldTaskTurnOptions extends HTMLElement {
         !this.context.locked &&
         !control.disabled &&
         !this.modelPopover()?.matches(":popover-open"),
-      activate: () => control.click(),
+    });
+  }
+
+  actionHintPermissionTarget({ scopeId, clipRoots = [] } = {}) {
+    this.ensureRendered();
+    const control = this.permissionButton();
+    const popover = this.permissionPopover();
+    if (
+      !control ||
+      !popover ||
+      !scopeId ||
+      control.getAttribute("popovertarget") !== popover.id ||
+      control.getAttribute("popovertargetaction") !== "toggle"
+    ) {
+      return null;
+    }
+    return buttonActionHintTarget({
+      id: `task-composer:${scopeId}:permission`,
+      actionId: ACTION_HINT_ACTION.PERMISSION_OPEN,
+      label: control.getAttribute("aria-label") || "Choose approval mode",
+      control,
+      clipRoots: [...clipRoots],
+      isActionable: () =>
+        this.isConnected &&
+        this.permissionButton() === control &&
+        this.permissionPopover() === popover &&
+        control.getAttribute("popovertarget") === popover.id &&
+        control.getAttribute("popovertargetaction") === "toggle" &&
+        !this.context.locked &&
+        !control.disabled &&
+        !this.permissionPopover()?.matches(":popover-open"),
+    });
+  }
+
+  keyboardNavigationContexts({ scopeId = "" } = {}) {
+    this.ensureRendered();
+    if (!scopeId || !this.isConnected) {
+      return [];
+    }
+    return [
+      this.popoverKeyboardNavigationContext({
+        scopeId,
+        kind: "model",
+        label: "Model options",
+        popover: this.modelPopover(),
+      }),
+      this.popoverKeyboardNavigationContext({
+        scopeId,
+        kind: "permission",
+        label: "Permission options",
+        popover: this.permissionPopover(),
+      }),
+    ].filter(Boolean);
+  }
+
+  popoverKeyboardNavigationContext({ scopeId, kind, label, popover }) {
+    const presentation = popover?.querySelector(
+      ":scope > caffold-keyboard-navigation-presentation",
+    );
+    const dialog = presentation?.actionHintDialog?.();
+    const hud = presentation?.scrollModeHud?.();
+    if (!popover || !presentation || !dialog || !hud) {
+      return null;
+    }
+    const contextId = `task-composer:${scopeId}:${kind}-options`;
+    return keyboardNavigationContext({
+      id: contextId,
+      kind: "popover",
+      root: popover,
+      actionHints: {
+        dialog,
+        scope: this.popoverActionHintScope({ contextId, kind, popover }),
+      },
+      scroll: {
+        hud,
+        scope: popoverScrollSurfaceScope({
+          id: contextId,
+          label,
+          popover,
+          isCurrent: () =>
+            this.isConnected &&
+            !this.context.locked &&
+            (kind === "model"
+              ? this.modelPopover() === popover
+              : this.permissionPopover() === popover),
+        }),
+      },
+    });
+  }
+
+  popoverActionHintScope({ contextId, kind, popover }) {
+    if (!popover) {
+      return emptyActionHintScope();
+    }
+    const targets = [...popover.querySelectorAll(
+      ":scope [data-turn-options-action]",
+    )].flatMap((control) => {
+      const identity = turnOptionIdentity(control, kind);
+      if (!identity || control.disabled) {
+        return [];
+      }
+      const label = control.getAttribute("aria-label") ||
+        control.textContent?.trim();
+      if (!label) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        id: `${contextId}:${identity.id}`,
+        actionId: identity.actionId,
+        label,
+        control,
+        clipRoots: [popover],
+        isActionable: () =>
+          this.isConnected &&
+          !this.context.locked &&
+          popover.matches(":popover-open") &&
+          (kind === "model"
+            ? this.modelPopover() === popover
+            : this.permissionPopover() === popover) &&
+          popover.contains(control) &&
+          !control.disabled &&
+          sameTurnOptionIdentity(control, identity),
+      })];
+    });
+    return {
+      blocked: this.context.locked,
+      targets,
+      mutationRoots: [popover],
+      scrollRoots: [popover],
     };
   }
 
@@ -864,13 +1038,83 @@ class CaffoldTaskTurnOptions extends HTMLElement {
   }
 }
 
+function turnOptionIdentity(control, kind) {
+  const action = `${control?.dataset?.turnOptionsAction ?? ""}`;
+  if (kind === "model" && action === "select-model") {
+    const value = `${control.dataset.model ?? ""}`;
+    const provider = `${control.dataset.provider ?? ""}`;
+    return value && provider
+      ? {
+          id: `model:${encodeURIComponent(provider)}:${encodeURIComponent(value)}`,
+          actionId: ACTION_HINT_ACTION.MODEL_SELECT,
+          action,
+          value: `${provider}:${value}`,
+        }
+      : null;
+  }
+  if (kind === "model" && action === "select-effort") {
+    const value = `${control.dataset.effort ?? ""}`;
+    return value
+      ? {
+          id: `reasoning:${encodeURIComponent(value)}`,
+          actionId: ACTION_HINT_ACTION.REASONING_SELECT,
+          action,
+          value,
+        }
+      : null;
+  }
+  if (kind === "model" && action === "select-fast-mode") {
+    const value = `${control.dataset.fastMode ?? ""}`;
+    return ["true", "false"].includes(value)
+      ? {
+          id: `speed:${value}`,
+          actionId: ACTION_HINT_ACTION.SPEED_SELECT,
+          action,
+          value,
+        }
+      : null;
+  }
+  if (kind === "permission" && action === "select-permission") {
+    const value = `${control.dataset.permissionMode ?? ""}`;
+    return value
+      ? {
+          id: `permission:${encodeURIComponent(value)}`,
+          actionId: ACTION_HINT_ACTION.PERMISSION_SELECT,
+          action,
+          value,
+        }
+      : null;
+  }
+  return null;
+}
+
+function sameTurnOptionIdentity(control, identity) {
+  const current = turnOptionIdentity(
+    control,
+    identity.action === "select-permission" ? "permission" : "model",
+  );
+  return Boolean(
+    current &&
+      current.id === identity.id &&
+      current.actionId === identity.actionId &&
+      current.action === identity.action &&
+      current.value === identity.value,
+  );
+}
+
 function optionFocusKey(element) {
   if (!(element instanceof HTMLElement)) {
     return null;
   }
   for (const key of ["model", "effort", "fastMode", "permissionMode"]) {
     if (element.dataset[key] !== undefined) {
-      return { key, value: element.dataset[key] };
+      return {
+        key,
+        value: element.dataset[key],
+        ...(key === "model"
+          ? { provider: `${element.dataset.provider ?? ""}` }
+          : {}),
+      };
     }
   }
   return null;
@@ -878,7 +1122,10 @@ function optionFocusKey(element) {
 
 function optionForFocusKey(popover, focus) {
   return [...popover.querySelectorAll("[data-turn-options-action]")].find(
-    (element) => element.dataset[focus.key] === focus.value,
+    (element) =>
+      element.dataset[focus.key] === focus.value &&
+      (focus.key !== "model" ||
+        `${element.dataset.provider ?? ""}` === focus.provider),
   );
 }
 
@@ -960,12 +1207,15 @@ function listPhrase(parts) {
 }
 
 function renderModelOption(option, selectedModel) {
-  const selected = option.model === selectedModel;
+  const selected =
+    option.model === selectedModel?.model &&
+    option.provider === selectedModel?.provider;
   return `
     <button
       type="button"
       class="task-model-option"
       data-turn-options-action="select-model"
+      data-provider="${escapeHtml(option.provider)}"
       data-model="${escapeHtml(option.model)}"
       aria-pressed="${selected ? "true" : "false"}"
     >

@@ -1,7 +1,31 @@
 import { expect } from "@playwright/test";
 
 export function actionHintDialog(page) {
-  return page.locator("caffold-action-hint-dialog > dialog");
+  return page.locator("caffold-action-hint-dialog > dialog:modal");
+}
+
+export function actionHintBadgePresentation(badge) {
+  return badge.evaluate((element) => {
+    const probe = document.createElement("span");
+    probe.style.cssText = `
+      position: fixed;
+      visibility: hidden;
+      background: var(--primary-control-bg);
+      color: var(--text-inverse);
+    `;
+    document.body.append(probe);
+    const style = getComputedStyle(element);
+    const expected = getComputedStyle(probe);
+    const result = {
+      backgroundMatches: style.backgroundColor === expected.backgroundColor,
+      borderVisible: Number.parseFloat(style.borderTopWidth) > 0,
+      colorMatches: style.color === expected.color,
+      hasBlockPadding: Number.parseFloat(style.paddingTop) > 0,
+      position: style.position,
+    };
+    probe.remove();
+    return result;
+  });
 }
 
 export async function enterActionHints(page) {

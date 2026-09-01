@@ -120,6 +120,14 @@ class CaffoldTaskNew extends HTMLElement {
     };
   }
 
+  keyboardNavigationContexts() {
+    this.ensureRendered();
+    if (this.hidden) {
+      return [];
+    }
+    return this.taskCreate()?.keyboardNavigationContexts({ scopeId: "new" }) ?? [];
+  }
+
   taskCreate() {
     return this.querySelector(
       ":scope > .task-new-workspace > caffold-task-create",

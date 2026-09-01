@@ -14,6 +14,9 @@ import {
   transitionKeyboardNavigation,
 } from "./keyboard-navigation/control.js";
 import {
+  normalizeKeyboardNavigationContexts,
+} from "./keyboard-navigation-context.js";
+import {
   allocateScrollSurfaceCodes,
   normalizedContextRect,
   orderScrollSurfaces,
@@ -33,14 +36,13 @@ export class KeyboardNavigationController {
     workspace,
     actionHintDialog,
     scrollSelector,
-    collectActionHintScope,
-    collectScrollContexts,
+    collectKeyboardNavigationContexts,
     editingEscapeTarget = () => null,
     afterActionHintActivation = () => {},
   }) {
     this.workspace = workspace;
     this.scrollSelector = scrollSelector;
-    this.collectScrollContexts = collectScrollContexts;
+    this.collectKeyboardNavigationContexts = collectKeyboardNavigationContexts;
     this.editingEscapeTarget = editingEscapeTarget;
     this.connected = false;
     this.compositionActive = false;
@@ -51,9 +53,11 @@ export class KeyboardNavigationController {
     this.actionHints = new ActionHintController({
       workspace,
       dialog: actionHintDialog,
-      collectScope: collectActionHintScope,
+      collectScope: () => null,
+      collectBinding: () => this.resolveActionHintBinding(),
       afterActivation: afterActionHintActivation,
-      hasOtherInteractionOwner: () => this.hasHintInteractionOwner(),
+      hasOtherInteractionOwner: (binding) =>
+        this.hasHintInteractionOwner(binding),
       isCompositionActive: () => this.compositionActive,
       onSessionExit: (detail) => this.handleHintSessionExit(detail),
     });
@@ -208,10 +212,6 @@ export class KeyboardNavigationController {
       compositionActive: this.compositionActive,
     });
     if (key === "F") {
-      if (this.hasHintInteractionOwner()) {
-        this.applyTransition(KEYBOARD_NAVIGATION_EVENT.ENTRY_REJECTED);
-        return;
-      }
       const snapshot = this.actionHints.prepareSnapshot();
       if (!snapshot) {
         this.applyTransition(KEYBOARD_NAVIGATION_EVENT.ENTRY_REJECTED);
@@ -549,18 +549,34 @@ export class KeyboardNavigationController {
     return KEYBOARD_NAVIGATION_NODE.NORMAL;
   }
 
-  resolveInteractionContext({ ignoreOwnedSelector = false } = {}) {
-    if (hasOpenPopover()) {
-      return null;
-    }
-    const contexts = this.safeCollectScrollContexts();
+  resolveInteractionContext({
+    ignoreOwnedSelector = false,
+    ownedHintDialog = null,
+  } = {}) {
+    const contexts = this.safeCollectKeyboardNavigationContexts();
     if (!contexts) {
       return null;
     }
     const modals = openModalDialogs().filter(
       (modal) =>
-        !(ignoreOwnedSelector && this.scrollSelector.ownsModal(modal)),
+        !(ignoreOwnedSelector && this.scrollSelector.ownsModal(modal)) &&
+        !(ownedHintDialog?.ownsModal?.(modal)),
     );
+    const popovers = openPopovers();
+    if (popovers.length) {
+      if (popovers.length !== 1) {
+        return null;
+      }
+      const [popover] = popovers;
+      const context = contexts.find((candidate) => candidate.root === popover);
+      if (
+        context?.kind !== "popover" ||
+        modals.some((modal) => !modal.contains(popover))
+      ) {
+        return null;
+      }
+      return context;
+    }
     if (modals.length) {
       if (modals.length !== 1) {
         return null;
@@ -575,32 +591,58 @@ export class KeyboardNavigationController {
     return workspaceContexts.length === 1 ? workspaceContexts[0] : null;
   }
 
-  safeCollectScrollContexts() {
+  safeCollectKeyboardNavigationContexts() {
     try {
-      return normalizeContexts(this.collectScrollContexts?.() ?? []);
+      return normalizeKeyboardNavigationContexts(
+        this.collectKeyboardNavigationContexts?.() ?? [],
+      );
     } catch {
       return null;
     }
   }
 
+  resolveActionHintBinding() {
+    const ownedHintDialog = this.actionHints.session?.dialog ?? null;
+    const context = this.resolveInteractionContext({ ownedHintDialog });
+    return context?.actionHints
+      ? {
+          context,
+          dialog: context.actionHints.dialog,
+          scope: context.actionHints.scope,
+        }
+      : null;
+  }
+
   captureScrollSnapshot(context) {
-    if (!context?.root.isConnected || !hasLayoutBox(context.root)) {
+    const capability = context?.scroll;
+    if (
+      !capability ||
+      !context.root.isConnected ||
+      !hasLayoutBox(context.root)
+    ) {
       return null;
     }
+    const scrollContext = {
+      id: context.id,
+      kind: context.kind,
+      root: context.root,
+      hud: capability.hud,
+      ...capability.scope,
+    };
     const viewport = captureViewport();
-    const contextRect = normalizedContextRect(context.root, viewport.rect);
+    const contextRect = normalizedContextRect(scrollContext.root, viewport.rect);
     if (!contextRect) {
       return null;
     }
     const visible = [];
-    for (const surface of context.surfaces) {
-      if (!scrollSurfaceIsEligible(surface, context)) {
+    for (const surface of scrollContext.surfaces) {
+      if (!scrollSurfaceIsEligible(surface, scrollContext)) {
         continue;
       }
       const visibleRect = visibleScrollSurfaceRect(
         surface.scrollport.getBoundingClientRect(),
         [
-          context.root.getBoundingClientRect(),
+          scrollContext.root.getBoundingClientRect(),
           ...surface.clipRoots.map((root) => root.getBoundingClientRect()),
         ],
         viewport.rect,
@@ -617,7 +659,7 @@ export class KeyboardNavigationController {
       return null;
     }
     return {
-      context,
+      context: scrollContext,
       contextRect,
       viewport,
       surfaces,
@@ -764,6 +806,16 @@ export class KeyboardNavigationController {
       session.cleanup.push(() =>
         session.context.root.removeEventListener("close", close)
       );
+    } else if (session.context.kind === "popover") {
+      const close = (event) => {
+        if (event.newState === "closed") {
+          this.cancelActive("context-closed");
+        }
+      };
+      session.context.root.addEventListener("beforetoggle", close);
+      session.cleanup.push(() =>
+        session.context.root.removeEventListener("beforetoggle", close)
+      );
     }
     this.attachOwnershipSignals(session, (signal) => {
       if (
@@ -852,27 +904,23 @@ export class KeyboardNavigationController {
     });
   }
 
-  hasHintInteractionOwner() {
-    return hasOpenPopover() || openModalDialogs().some(
-      (modal) => !this.actionHints.dialog.ownsModal(modal),
-    );
+  hasHintInteractionOwner(binding = null) {
+    const context = this.resolveInteractionContext({
+      ownedHintDialog: binding?.dialog ?? null,
+    });
+    return !sameContextOwner(context, binding?.context ?? null);
   }
 
   hasUnregisteredInteractionOwner({ ignoreOwnedSelector = false } = {}) {
-    if (hasOpenPopover()) {
-      return true;
-    }
+    const popovers = openPopovers();
     const modals = openModalDialogs().filter(
       (modal) =>
         !(ignoreOwnedSelector && this.scrollSelector.ownsModal(modal)),
     );
-    if (!modals.length) {
+    if (!popovers.length && !modals.length) {
       return false;
     }
-    const contexts = this.safeCollectScrollContexts();
-    return modals.some(
-      (modal) => !contexts?.some((context) => context.root === modal),
-    );
+    return !this.resolveInteractionContext({ ignoreOwnedSelector });
   }
 
   restoreFocus(element) {
@@ -890,105 +938,6 @@ export class KeyboardNavigationController {
     this.compositionActive = false;
     this.compositionOwner = null;
   }
-}
-
-function normalizeContexts(contexts) {
-  if (!Array.isArray(contexts)) {
-    return null;
-  }
-  const ids = new Set();
-  const normalized = [];
-  for (const context of contexts) {
-    const id = `${context?.id ?? ""}`.trim();
-    const kind = `${context?.kind ?? ""}`;
-    if (
-      !id ||
-      ids.has(id) ||
-      !["workspace", "modal"].includes(kind) ||
-      !(context?.root instanceof HTMLElement) ||
-      !(context?.hud instanceof HTMLElement) ||
-      typeof context.hud.show !== "function" ||
-      typeof context.hud.close !== "function" ||
-      typeof context.hud.updateLabel !== "function" ||
-      !Array.isArray(context?.surfaces)
-    ) {
-      return null;
-    }
-    const mutationRoots = normalizeElementList([
-      context.root,
-      ...(context.mutationRoots ?? []),
-    ]);
-    const resizeElements = normalizeElementList([
-      context.root,
-      ...(context.resizeElements ?? []),
-    ]);
-    const scrollRoots = normalizeElementList(context.scrollRoots ?? []);
-    const surfaces = normalizeSurfaces(context.surfaces);
-    if (!mutationRoots || !resizeElements || !scrollRoots || !surfaces) {
-      return null;
-    }
-    ids.add(id);
-    normalized.push({
-      ...context,
-      id,
-      kind,
-      blocked: Boolean(context.blocked),
-      surfaces,
-      mutationRoots,
-      resizeElements,
-      scrollRoots,
-    });
-  }
-  return normalized;
-}
-
-function normalizeSurfaces(surfaces) {
-  const ids = new Set();
-  const normalized = [];
-  for (const surface of surfaces) {
-    const id = `${surface?.id ?? ""}`.trim();
-    const label = `${surface?.label ?? ""}`.trim();
-    const clipRoots = normalizeElementList(surface?.clipRoots ?? []);
-    if (
-      !id ||
-      ids.has(id) ||
-      !label ||
-      !(surface?.scrollport instanceof HTMLElement) ||
-      !clipRoots ||
-      typeof surface?.isEligible !== "function"
-    ) {
-      return null;
-    }
-    ids.add(id);
-    normalized.push({ ...surface, id, label, clipRoots });
-  }
-  return normalized;
-}
-
-function normalizeElementList(elements) {
-  if (
-    !Array.isArray(elements) ||
-    elements.some(
-      (element) =>
-        !(element instanceof Element) ||
-        typeof element.getBoundingClientRect !== "function",
-    )
-  ) {
-    return null;
-  }
-  return uniqueElements(elements);
-}
-
-function uniqueElements(elements) {
-  const unique = [];
-  const seen = new Set();
-  for (const element of elements) {
-    if (!seen.has(element)) {
-      seen.add(element);
-      unique.push(element);
-    }
-  }
-  return unique;
 }
 
 function scrollSurfaceIsEligible(surface, context) {
@@ -1054,12 +1003,22 @@ function focusableTarget(element) {
   );
 }
 
-function hasOpenPopover() {
+function openPopovers() {
   try {
-    return Boolean(document.querySelector(":popover-open"));
+    return [...document.querySelectorAll(":popover-open")];
   } catch {
-    return false;
+    return [];
   }
+}
+
+function sameContextOwner(left, right) {
+  return Boolean(
+    left &&
+      right &&
+      left.id === right.id &&
+      left.kind === right.kind &&
+      left.root === right.root,
+  );
 }
 
 function openModalDialogs() {

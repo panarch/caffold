@@ -10,9 +10,10 @@ await import("./composer.js");
 const composer = registry.element("caffold-task-composer").prototype;
 after(() => registry.restore());
 
-test("provides Model and Prompt through their existing component actions", () => {
+test("provides Model, Permission, and Prompt through their existing component actions", () => {
   const clipRoot = {};
   let modelClicks = 0;
+  let permissionClicks = 0;
   let promptFocuses = 0;
   const modelControl = {};
   const modelTarget = {
@@ -28,11 +29,29 @@ test("provides Model and Prompt through their existing component actions", () =>
       modelClicks += 1;
     },
   };
+  const permissionControl = {};
+  const permissionTarget = {
+    id: "task-composer:task:thread-a:permission",
+    actionId: "task.permission.open",
+    label: "Choose approval mode",
+    controlKind: "button",
+    control: permissionControl,
+    anchor: permissionControl,
+    clipRoots: [clipRoot],
+    isActionable: () => true,
+    activate: () => {
+      permissionClicks += 1;
+    },
+  };
   let delegatedOptions = null;
   const options = {
     actionHintModelTarget(value) {
       delegatedOptions = value;
       return modelTarget;
+    },
+    actionHintPermissionTarget(value) {
+      assert.deepEqual(value, delegatedOptions);
+      return permissionTarget;
     },
   };
   const textarea = {
@@ -62,16 +81,21 @@ test("provides Model and Prompt through their existing component actions", () =>
     clipRoots: [clipRoot],
   });
 
-  assert.equal(targets.length, 2);
+  assert.equal(targets.length, 3);
   assert.deepEqual(delegatedOptions, {
     scopeId: "task:thread-a",
     clipRoots: [clipRoot],
   });
-  const [model, prompt] = targets;
+  const [model, permission, prompt] = targets;
   assert.equal(model.control, modelControl);
   assert.equal(model.isActionable(), true);
   model.activate();
   assert.equal(modelClicks, 1);
+
+  assert.equal(permission.control, permissionControl);
+  assert.equal(permission.isActionable(), true);
+  permission.activate();
+  assert.equal(permissionClicks, 1);
 
   assert.deepEqual(
     {
@@ -96,5 +120,6 @@ test("provides Model and Prompt through their existing component actions", () =>
 
   owner.context.mode = "review";
   assert.equal(model.isActionable(), false);
+  assert.equal(permission.isActionable(), false);
   assert.equal(prompt.isActionable(), false);
 });

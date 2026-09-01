@@ -5,10 +5,12 @@ import {
   mergeActionHintScopes,
 } from "../action-hints.js";
 import {
-  emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
 } from "../scroll-scope.js";
+import {
+  mergeKeyboardNavigationContexts,
+} from "../keyboard-navigation-context.js";
 import {
   INITIAL_CODEX_STATUS_SNAPSHOT,
   codexBlocksTaskOperations,
@@ -573,11 +575,11 @@ class CaffoldTasksPage extends HTMLElement {
 
   scrollSurfaceScope() {
     this.ensureRendered();
-    if (!hasScrollLayoutBox(this)) {
-      return emptyScrollSurfaceScope();
-    }
     const navigator = this.taskNavigator();
-    const detail = this.view === "detail" ? this.taskDetail() : null;
+    const activeSurfaceVisible = hasScrollLayoutBox(this);
+    const detail = activeSurfaceVisible && this.view === "detail"
+      ? this.taskDetail()
+      : null;
     return mergeScrollSurfaceScopes(
       hasScrollLayoutBox(navigator)
         ? navigator.scrollSurfaceScope()
@@ -588,16 +590,23 @@ class CaffoldTasksPage extends HTMLElement {
     );
   }
 
-  scrollContextScopes() {
+  keyboardNavigationContexts() {
     this.ensureRendered();
-    if (
-      !hasScrollLayoutBox(this) ||
-      this.view !== "detail" ||
-      !hasScrollLayoutBox(this.taskDetail())
-    ) {
-      return [];
-    }
-    return this.taskDetail().scrollContextScopes();
+    const navigator = this.taskNavigator();
+    const activeSurfaceVisible = hasScrollLayoutBox(this);
+    const activeSurface = activeSurfaceVisible
+      ? this.view === "home" || this.view === "new"
+        ? this.taskNew()?.keyboardNavigationContexts?.() ?? []
+        : this.view === "detail" && hasScrollLayoutBox(this.taskDetail())
+          ? this.taskDetail()?.keyboardNavigationContexts?.() ?? []
+          : []
+      : [];
+    return mergeKeyboardNavigationContexts(
+      hasScrollLayoutBox(navigator)
+        ? navigator.keyboardNavigationContexts?.() ?? []
+        : [],
+      activeSurface,
+    );
   }
 
   focusActionHintDestination() {

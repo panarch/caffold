@@ -17,6 +17,9 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
 } from "../../../scroll-scope.js";
+import {
+  mergeKeyboardNavigationContexts,
+} from "../../../keyboard-navigation-context.js";
 import "../../components/composer.js";
 import "./components/conversation.js";
 import "./components/command-dialog.js";
@@ -427,18 +430,26 @@ class CaffoldTaskDetail extends HTMLElement {
       : emptyScrollSurfaceScope();
   }
 
-  scrollContextScopes() {
+  keyboardNavigationContexts() {
     this.ensureRendered();
     if (
       this.hidden ||
       this.view !== "detail" ||
       this.reviewView !== "conversation" ||
-      !this.selectedThreadId ||
-      !hasScrollLayoutBox(this)
+      !this.selectedThreadId
     ) {
       return [];
     }
-    return this.currentPlanComponent()?.scrollContextScopes() ?? [];
+    const composer = this.followUpComposer();
+    const slot = this.followUpComposerSlot();
+    return mergeKeyboardNavigationContexts(
+      composer && slot && composer.parentElement === slot
+        ? composer.keyboardNavigationContexts({
+            scopeId: `task:${this.selectedThreadId}`,
+          })
+        : [],
+      this.currentPlanComponent()?.keyboardNavigationContexts() ?? [],
+    );
   }
 
   emitTaskSnapshot() {

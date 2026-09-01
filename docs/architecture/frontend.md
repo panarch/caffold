@@ -215,8 +215,19 @@ owner. It derives normal versus editing state from focus and composition, and
 stores at most one mutually exclusive Action Hint, Scroll selection, or active
 Scroll mode. Keyboard navigation being disabled closes the stored mode and
 leaves both `F` and `S` unhandled. Route changes, disconnect, competing native
-modal or product-popover ownership, and composition changes run through the
-same cleanup authority.
+overlay ownership, and composition changes run through the same cleanup
+authority.
+
+Workspace, registered modal, and registered popover owners publish one thin
+keyboard-navigation context identified by stable ID, ownership kind, and exact
+retained root. Action Hint and Scroll remain separate optional capabilities on
+that context. The same fresh context resolution serves both `F` and `S`: one
+open registered popover wins over the workspace, including when it is an exact
+descendant of the currently open product modal; otherwise an unknown or
+unrelated open overlay, duplicate root, or ambiguous popover rejects entry. The
+coordinator reads native
+`:popover-open` and `dialog:modal` state only to validate ownership. It does not
+infer actions or scrollports from overlay descendants.
 
 The coordinator enters Action Hint mode from a non-editing `F` key and
 pulls one-shot semantic descriptors from explicitly participating owners.
@@ -226,7 +237,13 @@ Integrated Review, and the direct Git and GitHub navigation surfaces provide
 their native control, stable semantic identity, action
 meaning, accessible name, anchor, and clip dependencies. Conversation content,
 arbitrary clickable DOM, disclosures, mutation controls, external links,
-selects, popovers, and dialogs are not scanned. Reusable controls such as the
+selects, popovers, and dialogs are not scanned. The native Model, Permission,
+Reorder, Git, GitHub, Task details, and File details popover owners explicitly
+provide their own opener target and exact open-popover context. Model,
+Reasoning, Speed, Permission, Reorder, Git/GitHub destination, and enabled
+Fork/Archive buttons are declared by the component that owns their existing
+activation path; File details deliberately declares no internal Action Hint
+target. Reusable controls such as the
 segmented control, file tree, pagination, and file viewer expose public scope
 providers; their screen owner supplies the semantic action and scope context.
 Provider collection is hierarchical: each layout merges its own actions with
@@ -237,7 +254,7 @@ dependencies cannot invalidate the visible pane's session.
 
 The controller validates every action and control kind against a closed central
 policy. Task selection retains generated `T*` codes and New Task, Model, and
-Prompt retain `N`, `M`, and `P`. All other direct-navigation actions receive
+Prompt retain `N`, `M`, and `P`. All other supported actions receive
 same-width automatic codes in `ASDFGHJKLQWERTYUIOPZXCVBNM` order after visual
 sorting; the `N`, `M`, `P`, and `T` prefix namespaces remain reserved. The full
 result must be unique and prefix-free. A session freezes target identity,
@@ -247,6 +264,15 @@ modal dialog. Scroll, viewport, route, target topology, geometry,
 actionability, or competing modal/popover ownership closes the session. A
 presentation-only accessible-name change refreshes the existing badge without
 changing its code, while equivalent presentation patches do not retarget it.
+
+Each registered popover retains a small shared presentation host containing its
+own Action Hint dialog and Scroll HUD. Dynamic Model and Permission rendering
+replaces only an option-content child, preserving the popover root and
+presentation identity. If a frozen option control is replaced, the current
+Hint session closes even when its semantic value is unchanged; a later `F`
+collects a fresh binding. Product owners continue to own native open, light
+dismiss, deactivation, and focus-return lifecycle, while the coordinator only
+cleans its current keyboard session.
 
 `normal` and `editing` are derived from current focus and composition; `hint`,
 `scroll-selecting`, and `scroll-active` are the stored keyboard-navigation
@@ -265,10 +291,13 @@ Scroll mode enters from a non-editing `S` key and uses only vertical surfaces
 explicitly published through `scroll-scope.js`; it does not discover generic
 scrollable DOM. Task Navigator publishes its exact Task-list scrollport,
 Conversation publishes its exact active reading scrollport, and the Current
-Plan document dialog publishes its exact visible Markdown preview. Containers
-merge only active direct-child scopes. Workspace and an open registered modal
-are exclusive interaction contexts, so a Current Plan preview never shares a
-selection set with the background Task list or Conversation.
+Plan document dialog publishes its exact visible Markdown preview. Each
+registered popover publishes only its own root as an optional surface; actual
+overflow is still required and no CSS overflow is manufactured for short
+menus. Containers merge only active direct-child contexts. Workspace, an open
+registered modal, and an open registered popover are exclusive interaction
+contexts, so Current Plan or popover scrolling never shares a selection set
+with the background Task list or Conversation.
 
 Eligibility directly checks the bound element, vertical overflow, layout box,
 visual viewport, clip roots, and owner revalidation. One eligible surface
@@ -288,9 +317,10 @@ element binding; label or layout changes on that binding reposition its HUD,
 while loss of visibility, overflow, or ownership closes the mode. The reusable
 non-interactive HUD and outline are mounted by the active context itself: the
 workspace owns one for Task list or Conversation, while the Current Plan
-dialog owns one inside its modal top layer. Native scroll events, focus,
-Conversation anchoring, and Current Plan refresh/close lifecycle remain owned
-by those components.
+dialog owns one inside its modal top layer and each registered popover owns one
+inside its retained root. Native scroll events, focus, Conversation anchoring,
+popover light dismiss, and Current Plan refresh/close lifecycle remain owned by
+those components.
 
 The workspace also owns the one browser lifecycle for backend-owned Codex
 readiness requests and forwards a request snapshot to Tasks, Settings, and the
@@ -741,6 +771,13 @@ frontend/
 |       |   |-- control.js
 |       |   |-- model.js
 |       |   `-- components/dialog.js
+|       |-- keyboard-navigation.js
+|       |-- keyboard-navigation-context.js
+|       |-- keyboard-navigation/
+|       |   |-- control.js
+|       |   |-- model.js
+|       |   `-- components/...
+|       |-- components/keyboard-navigation-presentation.js
 |       |-- live-updates.js
 |       |-- live-updates/lifecycle.js
 |       |-- codex-status.js
@@ -763,6 +800,7 @@ frontend/
 |           |   |       |-- section.js
 |           |   |       `-- section/components/row.js
 |           |   |-- task-create.js
+|           |   |-- task-turn-options.js
 |           |   |-- composer.js
 |           |   `-- composer/action-hints.js
 |           `-- (detail)/

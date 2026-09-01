@@ -3,8 +3,9 @@ import test from "node:test";
 
 import { collectComposerActionHintTargets } from "./action-hints.js";
 
-test("collects Model and Prompt targets for named create and follow-up scopes", () => {
+test("collects Model, Permission, and Prompt targets for named create and follow-up scopes", () => {
   const model = { id: "model" };
+  const permission = { id: "permission" };
   const prompt = { id: "prompt" };
   for (const mode of ["create", "follow-up"]) {
     assert.deepEqual(
@@ -12,9 +13,10 @@ test("collects Model and Prompt targets for named create and follow-up scopes", 
         mode,
         scopeId: mode === "create" ? "new" : "task:a",
         modelTarget: () => model,
+        permissionTarget: () => permission,
         promptTarget: () => prompt,
       }),
-      [model, prompt],
+      [model, permission, prompt],
     );
   }
 });
@@ -25,6 +27,10 @@ test("does not ask unsupported or unnamed composers for Action Hint targets", ()
     modelTarget: () => {
       providerCalls += 1;
       return { id: "model" };
+    },
+    permissionTarget: () => {
+      providerCalls += 1;
+      return { id: "permission" };
     },
     promptTarget: () => {
       providerCalls += 1;

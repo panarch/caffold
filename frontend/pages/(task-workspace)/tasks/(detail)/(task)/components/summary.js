@@ -71,6 +71,14 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     this.taskInfo()?.deactivate();
   }
 
+  actionHintScope(options = {}) {
+    return this.taskInfo()?.actionHintScope(options) ?? { targets: [] };
+  }
+
+  keyboardNavigationContexts(options = {}) {
+    return this.taskInfo()?.keyboardNavigationContexts(options) ?? [];
+  }
+
   handleInfoIntent(event) {
     if (
       event.target !== this.taskInfo() ||

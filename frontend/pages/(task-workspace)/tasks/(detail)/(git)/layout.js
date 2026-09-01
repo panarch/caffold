@@ -188,7 +188,12 @@ class CaffoldTaskGitLayout extends HTMLElement {
   }
 
   deactivate() {
-    if (!this.rendered || !this.active) {
+    if (!this.rendered) {
+      return;
+    }
+    this.comparePage.deactivate();
+    this.logLayout.deactivate();
+    if (!this.active) {
       return;
     }
     this.active = false;
@@ -519,6 +524,23 @@ class CaffoldTaskGitLayout extends HTMLElement {
     return mergeActionHintScopes(back, activeChild);
   }
 
+  keyboardNavigationContexts() {
+    this.ensureRendered();
+    if (!this.active || this.hidden || !this.mode) {
+      return [];
+    }
+    const scopeId = `git:${encodeURIComponent(
+      this.repository?.rootPath || this.currentPath || "repository",
+    )}`;
+    return this.mode === "compare"
+      ? this.comparePage.keyboardNavigationContexts({
+          scopeId: `${scopeId}:compare`,
+        })
+      : this.logLayout.keyboardNavigationContexts({
+          scopeId: `${scopeId}:log`,
+        });
+  }
+
   routeForCompareRefs(baseRef, headRef) {
     return { kind: "compare", baseRef, headRef, path: "" };
   }
@@ -535,6 +557,11 @@ class CaffoldTaskGitLayout extends HTMLElement {
   setMode(mode) {
     const nextMode = mode === "log" ? "log" : "compare";
     if (this.mode !== nextMode) {
+      if (nextMode === "compare") {
+        this.logLayout.deactivate();
+      } else {
+        this.comparePage.deactivate();
+      }
       this.mode = nextMode;
       this.updateVisibleMode();
     }

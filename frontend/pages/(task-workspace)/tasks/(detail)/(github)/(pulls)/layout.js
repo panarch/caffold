@@ -442,6 +442,20 @@ class CaffoldGithubPullsLayout extends HTMLElement {
     });
   }
 
+  keyboardNavigationContexts({ scopeId = "github:pulls" } = {}) {
+    this.ensureRendered();
+    return !this.hidden && this.view === "files"
+      ? this.filesPage.keyboardNavigationContexts({
+          scopeId: `${scopeId}:files`,
+        })
+      : [];
+  }
+
+  deactivate() {
+    this.ensureRendered();
+    this.filesPage.deactivate();
+  }
+
   routeMatchesCurrentContext(route) {
     return Boolean(route && this.repository);
   }

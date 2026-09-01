@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { actionHintBadgePresentation } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { TASK_PERMISSION_FIXTURE } from "../support/task-api-fixture.js";
 import {
   activeTaskProjection,
   canonicalTaskState,
@@ -128,6 +130,34 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
   await expect(dialog).toBeHidden();
   await expect(newTask).toBeFocused();
   await expect(surface).toBeVisible();
+});
+
+test("keeps Hint ownership across an unrelated disclosure change", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installActionHintFixture(page, actionHintTasks(2));
+  await page.goto("/tasks");
+  await enterActionHints(page);
+  const hint = actionHintDialog(page);
+
+  await page.evaluate(() => {
+    const details = document.createElement("details");
+    details.dataset.actionHintUnrelatedDisclosure = "";
+    details.append(document.createElement("summary"));
+    document.body.append(details);
+  });
+  await page.locator("details[data-action-hint-unrelated-disclosure]").evaluate(
+    (details) => {
+      details.open = true;
+    },
+  );
+
+  await expect(hint).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(hint).toBeHidden();
+  await page.locator("details[data-action-hint-unrelated-disclosure]").evaluate(
+    (details) => details.remove(),
+  );
 });
 
 test("activates a Task through its existing route and responsive focus owner", { tag: "@all-viewports" }, async ({
@@ -355,7 +385,56 @@ test("hands create M to the native model popover and P to prompt editing", { tag
     ),
   ).toBeFocused();
   await page.keyboard.press("f");
-  await expect(actionHintDialog(page)).toBeHidden();
+  const popoverHint = actionHintDialog(page);
+  await expect(popoverHint).toBeVisible();
+  await expect(
+    popoverHint.getByRole("button", { name: / — low.*Selected$/ }),
+  ).toBeVisible();
+  const high = popoverHint.getByRole("button", { name: / — high$/ });
+  const highCode = await high.getAttribute("data-action-hint-code");
+  expect(highCode).toBeTruthy();
+  await page.keyboard.type(highCode.toLowerCase());
+  await expect(popoverHint).toBeHidden();
+  await expect(modelPopover).toBeHidden();
+  await expect(
+    page.locator("caffold-task-new .task-model-button"),
+  ).toContainText("high");
+
+  await page.locator("caffold-task-new .task-model-button").click();
+  await expect(modelPopover).toBeVisible();
+  await page.keyboard.press("f");
+  await expect(popoverHint).toBeVisible();
+  const retained = await page.locator(
+    "caffold-task-new caffold-task-turn-options",
+  ).evaluate((options) => {
+    const root = options.modelPopover();
+    const presentation = root.querySelector(
+      ":scope > caffold-keyboard-navigation-presentation",
+    );
+    options.modelOptions = options.modelOptions.map((option, index) =>
+      index === 0
+        ? { ...option, displayName: `${option.displayName} Refreshed` }
+        : option
+    );
+    options.render();
+    return {
+      presentation: root.querySelector(
+        ":scope > caffold-keyboard-navigation-presentation",
+      ) === presentation,
+      root: options.modelPopover() === root,
+    };
+  });
+  expect(retained).toEqual({ presentation: true, root: true });
+  await expect(popoverHint).toBeHidden();
+  await expect(modelPopover).toBeVisible();
+  await page.keyboard.press("f");
+  await expect(popoverHint).toBeVisible();
+  await expect(
+    popoverHint.getByRole("button", { name: / — GPT-5\.6-Sol Refreshed.*Selected$/ }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(popoverHint).toBeHidden();
+  await expect(modelPopover).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(modelPopover).toBeHidden();
 
@@ -371,19 +450,40 @@ test("hands create M to the native model popover and P to prompt editing", { tag
   await page.evaluate(() => {
     const dialog = document.createElement("dialog");
     dialog.dataset.actionHintExternalOwner = "";
+    dialog.tabIndex = -1;
     const input = document.createElement("input");
     dialog.append(input);
     document.body.append(dialog);
     dialog.showModal();
-    input.focus();
+    dialog.focus();
   });
   const externalDialog = page.locator(
     "dialog[data-action-hint-external-owner]",
   );
   await expect(externalDialog).toBeVisible();
+  await page.keyboard.press("f");
+  await expect(actionHintDialog(page)).toBeHidden();
   await page.keyboard.press("Escape");
   await expect(externalDialog).toBeHidden();
   await externalDialog.evaluate((dialog) => dialog.remove());
+
+  await page.evaluate(() => {
+    const popover = document.createElement("div");
+    popover.popover = "manual";
+    popover.tabIndex = -1;
+    popover.dataset.actionHintExternalPopover = "";
+    popover.textContent = "External popover owner";
+    document.body.append(popover);
+    popover.showPopover();
+    popover.focus();
+  });
+  const externalPopover = page.locator(
+    "[data-action-hint-external-popover]:popover-open",
+  );
+  await expect(externalPopover).toBeVisible();
+  await page.keyboard.press("f");
+  await expect(actionHintDialog(page)).toBeHidden();
+  await externalPopover.evaluate((popover) => popover.remove());
 
   await page.keyboard.press("f");
   await expect(actionHintDialog(page)).toBeVisible();
@@ -428,6 +528,168 @@ test("hands follow-up M to the native model popover and P to prompt editing", { 
   await page.keyboard.type("follow-up f");
   await expect(prompt).toHaveValue("follow-up f");
   await expect(dialog).toBeHidden();
+});
+
+test("keeps same-named models distinct by provider through native selection", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installActionHintFixture(page, []);
+  await page.route(/\/api\/agent\/models(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        models: [
+          {
+            provider: "codex",
+            model: "shared-model",
+            displayName: "Codex Shared",
+            isDefault: true,
+            defaultEffort: "medium",
+            efforts: ["medium"],
+            supportsFastMode: false,
+          },
+          {
+            provider: "claude",
+            model: "shared-model",
+            displayName: "Claude Shared",
+            isDefault: false,
+            defaultEffort: "high",
+            efforts: ["high"],
+            supportsFastMode: false,
+          },
+        ],
+        unavailable: [],
+      },
+    })
+  );
+  await page.goto("/tasks");
+
+  const options = page.locator("caffold-task-new caffold-task-turn-options");
+  await options.locator(".task-model-button").click();
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await expect(
+    hint.getByRole("button", { name: / — Codex Shared.*Selected$/ }),
+  ).toBeVisible();
+  const claude = hint.getByRole("button", { name: / — Claude Shared$/ });
+  const claudeCode = await claude.getAttribute("data-action-hint-code");
+  expect(claudeCode).toBeTruthy();
+  await page.keyboard.type(claudeCode.toLowerCase());
+
+  await expect(options.locator(".task-model-popover")).toBeHidden();
+  await expect(options.locator(".task-model-button")).toContainText(
+    "Claude Shared",
+  );
+  await expect.poll(() => options.evaluate((element) =>
+    element.submissionOptions()
+  )).toMatchObject({ provider: "claude", model: "shared-model" });
+});
+
+test("uses a mouse-open Permission context and preserves its existing confirmation", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installActionHintFixture(page, []);
+  await page.goto("/tasks");
+
+  const permissionButton = page.locator(
+    "caffold-task-new .task-permission-button",
+  );
+  const permissionPopover = page.locator(
+    "caffold-task-new .task-permission-popover",
+  );
+  await expect(permissionButton).toBeEnabled();
+  await permissionButton.click();
+  await expect(permissionPopover).toBeVisible();
+
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await expect(
+    hint.getByRole("button", { name: / — Approve for me.*Selected$/ }),
+  ).toBeVisible();
+  let fullAccess = hint.getByRole("button", { name: / — Full access/ });
+  let fullAccessCode = await fullAccess.getAttribute("data-action-hint-code");
+  expect(fullAccessCode).toBeTruthy();
+  page.once("dialog", async (dialog) => {
+    expect(dialog.type()).toBe("confirm");
+    expect(dialog.message()).toContain("Full access removes sandbox restrictions");
+    await dialog.dismiss();
+  });
+  await page.keyboard.type(fullAccessCode.toLowerCase());
+  await expect(hint).toBeHidden();
+  await expect(permissionPopover).toBeVisible();
+  await expect(
+    permissionPopover.locator(
+      '[data-permission-mode="approveForMe"][aria-pressed="true"]',
+    ),
+  ).toBeVisible();
+  await expect(
+    permissionPopover.locator('[data-permission-mode="fullAccess"]'),
+  ).toBeFocused();
+
+  await page.keyboard.press("f");
+  await expect(hint).toBeVisible();
+  fullAccess = hint.getByRole("button", { name: / — Full access/ });
+  fullAccessCode = await fullAccess.getAttribute("data-action-hint-code");
+  page.once("dialog", async (dialog) => {
+    await dialog.accept();
+  });
+  await page.keyboard.type(fullAccessCode.toLowerCase());
+  await expect(hint).toBeHidden();
+  await expect(permissionPopover).toBeHidden();
+  await expect(permissionButton).toContainText("Full access");
+});
+
+test("selects Reorder through its declared popover context and blocks the entered mode", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  await installActionHintFixture(page, actionHintTasks(2));
+  await page.goto("/tasks");
+
+  await enterActionHints(page);
+  let hint = actionHintDialog(page);
+  const reorderOpener = hint.getByRole("button", {
+    name: / — Choose what to reorder$/,
+  });
+  const openerCode = await reorderOpener.getAttribute("data-action-hint-code");
+  expect(openerCode).toBeTruthy();
+  await page.keyboard.type(openerCode.toLowerCase());
+
+  const navigator = page.locator("caffold-task-navigator");
+  const popover = navigator.locator(".task-list-reorder-popover");
+  await expect(popover).toBeVisible();
+  await page.keyboard.press("f");
+  hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await expect(
+    hint.getByRole("button", { name: / — Reorder Sections$/ }),
+  ).toBeVisible();
+  const tasks = hint.getByRole("button", { name: / — Reorder Tasks$/ });
+  await expect(tasks).toHaveAttribute("data-match", "true");
+  await expect.poll(() => actionHintBadgePresentation(tasks)).toEqual({
+    backgroundMatches: true,
+    borderVisible: true,
+    colorMatches: true,
+    hasBlockPadding: true,
+    position: "absolute",
+  });
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "action-hints-reorder-popover",
+  );
+  const tasksCode = await tasks.getAttribute("data-action-hint-code");
+  expect(tasksCode).toBeTruthy();
+  await page.keyboard.type(tasksCode.toLowerCase());
+
+  await expect(popover).toBeHidden();
+  await expect(navigator).toHaveAttribute("data-reorder-mode", "tasks");
+  await page.keyboard.press("f");
+  await expect(actionHintDialog(page)).toBeHidden();
+  await navigator.getByRole("button", {
+    name: "Finish reordering Tasks",
+  }).click();
+  await expect(navigator).toHaveAttribute("data-reorder-mode", "none");
 });
 
 test("honors the setting, editing ownership, and composition-safe Latin fallback", { tag: "@all-viewports" }, async ({
@@ -789,7 +1051,7 @@ test("keeps badges aligned and legible at appearance and zoom extremes", { tag: 
 });
 
 function actionHintDialog(page) {
-  return page.locator("caffold-action-hint-dialog > dialog");
+  return page.locator("caffold-action-hint-dialog > dialog:modal");
 }
 
 async function enterActionHints(page) {
@@ -838,6 +1100,9 @@ async function installActionHintFixture(
     bootstrapFunctionKey: "__actionHintTaskDetailBootstrap",
   });
   await mockAgentModels(page);
+  await page.route(/\/api\/agent\/permissions(?:\?|$)/, (route) =>
+    route.fulfill({ json: TASK_PERMISSION_FIXTURE })
+  );
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -958,6 +1223,18 @@ async function captureActionHintVisualState(page) {
       ["P", target(taskNew?.querySelector("textarea[name='prompt']"), [taskNew, createScroll])],
     ]);
     const automaticTargets = new Map();
+    const reorder = navigator.querySelector(":scope .task-list-reorder");
+    automaticTargets.set(
+      reorder.getAttribute("aria-label"),
+      target(reorder, [navigator]),
+    );
+    const permission = taskNew?.querySelector(".task-permission-button");
+    if (permission) {
+      automaticTargets.set(
+        permission.getAttribute("aria-label"),
+        target(permission, [taskNew, createScroll]),
+      );
+    }
     for (const control of document.querySelectorAll(
       'caffold-active-task-section .task-repository-select[data-active-task-section-action="open-section"]',
     )) {
