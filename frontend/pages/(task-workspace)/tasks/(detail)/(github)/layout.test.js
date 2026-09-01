@@ -95,3 +95,35 @@ test("binds domain Back to its canonical GitHub parent", () => {
   parentRoute = { kind: "pulls", page: 1 };
   assert.equal(target.isActionable(), false);
 });
+
+test("merges Task Start contexts independently from the active GitHub child", () => {
+  const pullContext = { id: "pull-popover" };
+  const startContext = { id: "task-start" };
+  const owner = {
+    active: true,
+    hidden: false,
+    mode: "pulls",
+    repository: { rootPath: "/repo" },
+    currentPath: "/repo",
+    ensureRendered() {},
+    pullsLayout: {
+      keyboardNavigationContexts(options) {
+        assert.equal(options.scopeId, "github:%2Frepo:pulls");
+        return [pullContext];
+      },
+    },
+    taskStartDialog: {
+      keyboardNavigationContexts: () => [startContext],
+    },
+  };
+
+  assert.deepEqual(
+    githubLayout.keyboardNavigationContexts.call(owner),
+    [pullContext, startContext],
+  );
+  owner.mode = "issues";
+  assert.deepEqual(
+    githubLayout.keyboardNavigationContexts.call(owner),
+    [startContext],
+  );
+});

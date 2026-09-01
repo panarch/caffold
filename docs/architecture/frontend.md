@@ -59,9 +59,9 @@ caffold-app-shell
     |       `-- GitHub
     |           |-- Issues
     |           `-- Pull Requests
-    |-- Action Hint dialog
-    |-- Scroll selector
-    |-- Scroll HUD
+    |-- Workspace Action Hint dialog
+    |-- Workspace Scroll selector
+    |-- Workspace Scroll HUD
     `-- Settings
         `-- Keyboard
 |-- caffold-build-mismatch-alert
@@ -246,11 +246,31 @@ activation path; File details deliberately declares no internal Action Hint
 target. Reusable controls such as the
 segmented control, file tree, pagination, and file viewer expose public scope
 providers; their screen owner supplies the semantic action and scope context.
+GitHub Issue and Pull Request detail owners also declare their exact visible
+and enabled `Start Task` button. Pull Request detail composes that opener beside
+its existing Files target. Activation reuses the native button click and Task
+Start event path; after the dialog opens, the user explicitly presses `F` again
+to enter its separate modal context.
 Provider collection is hierarchical: each layout merges its own actions with
 only its active direct child scopes through `action-hint-scope.js`. Ancestors
 do not enumerate or reach through descendant DOM. A retained pane with no
 layout box is omitted before merge, so its hidden mutation and scroll
 dependencies cannot invalidate the visible pane's session.
+
+The nine registered Task Workspace product dialogs follow the same owner-first
+contract: Codex restart, Claude restart, archived-task deletion, image preview,
+directory picker, Conversation fork, command output, Current Plan document,
+and GitHub Task Start. Every currently visible and enabled button has an owner
+declaration, without semantic deduplication, and controls owned by a direct
+child compose through the same public scope interface. Fork additionally
+declares its Thread-ID textbox, while the Task Start issue child declares its
+native Base branch select. Textbox activation only focuses the retained input.
+Select activation focuses and calls native `showPicker()` synchronously in the
+original trusted key stack, falling back to focus only when that API is absent
+or throws; native options and change handling remain with the browser and
+product state owners. These registrations do not create a generic dialog
+registry or DOM discovery path. The App Shell update dialog is outside this
+Task Workspace context set and retains native keyboard ownership.
 
 The controller validates every action and control kind against a closed central
 policy. Task selection retains generated `T*` codes and New Task, Model, and
@@ -274,6 +294,14 @@ collects a fresh binding. Product owners continue to own native open, light
 dismiss, deactivation, and focus-return lifecycle, while the coordinator only
 cleans its current keyboard session.
 
+Each registered product dialog likewise retains one shared presentation host
+as a direct child of its exact native `<dialog>`. The host owns only that
+context's Action Hint dialog and Scroll HUD; it neither discovers product
+controls nor owns product open, close, return-value, submission, mutation, or
+external focus-return behavior. Product content patches preserve the dialog,
+presentation, and declared control or scrollport identities unless a real
+topology change requires a fresh session.
+
 `normal` and `editing` are derived from current focus and composition; `hint`,
 `scroll-selecting`, and `scroll-active` are the stored keyboard-navigation
 nodes. The complete node edges are
@@ -287,17 +315,27 @@ route, model popover, document dialog, or prompt-focus owner takes control.
 Composition and unregistered modal or popover owners keep their own key and
 Escape ownership.
 
+An editable inside a registered modal may publish one exact same-modal Editing
+escape destination. Its first non-composing `Escape` ends Editing by focusing
+that retained control without changing the input value or closing the product
+dialog; a following `Escape` is left to the native dialog close path. Fork and
+Task Start use their own Cancel button for this handoff. Missing, stale,
+hidden, disabled, outside-root, composing, or unregistered destinations do not
+cause the coordinator to infer a fallback or consume the key.
+
 Scroll mode enters from a non-editing `S` key and uses only vertical surfaces
 explicitly published through `scroll-scope.js`; it does not discover generic
 scrollable DOM. Task Navigator publishes its exact Task-list scrollport,
-Conversation publishes its exact active reading scrollport, and the Current
-Plan document dialog publishes its exact visible Markdown preview. Each
-registered popover publishes only its own root as an optional surface; actual
-overflow is still required and no CSS overflow is manufactured for short
-menus. Containers merge only active direct-child contexts. Workspace, an open
+Conversation publishes its exact active reading scrollport, and five
+registered product dialogs publish one exact vertical surface each: directory
+picker `.file-tree-scroll`, Conversation fork body, command-output body,
+Current Plan Markdown preview, and Task Start body. Each registered popover
+publishes only its own root as an optional surface; actual overflow is still
+required and no CSS overflow is manufactured for short dialogs or menus.
+Containers merge only active direct-child contexts. Workspace, an open
 registered modal, and an open registered popover are exclusive interaction
-contexts, so Current Plan or popover scrolling never shares a selection set
-with the background Task list or Conversation.
+contexts, so modal or popover scrolling never shares a selection set with the
+background Task list or Conversation.
 
 Eligibility directly checks the bound element, vertical overflow, layout box,
 visual viewport, clip roots, and owner revalidation. One eligible surface
@@ -316,11 +354,10 @@ Scroll mode. Active revalidation preserves the exact context, surface ID, and
 element binding; label or layout changes on that binding reposition its HUD,
 while loss of visibility, overflow, or ownership closes the mode. The reusable
 non-interactive HUD and outline are mounted by the active context itself: the
-workspace owns one for Task list or Conversation, while the Current Plan
-dialog owns one inside its modal top layer and each registered popover owns one
-inside its retained root. Native scroll events, focus, Conversation anchoring,
-popover light dismiss, and Current Plan refresh/close lifecycle remain owned by
-those components.
+workspace owns one for Task list or Conversation, while each registered product
+dialog or popover owns one inside its retained root. Native scroll events,
+focus, Conversation anchoring, popover light dismiss, and product-dialog
+refresh/close lifecycle remain owned by those components.
 
 The workspace also owns the one browser lifecycle for backend-owned Codex
 readiness requests and forwards a request snapshot to Tasks, Settings, and the

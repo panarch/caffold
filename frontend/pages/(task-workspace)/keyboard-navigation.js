@@ -37,13 +37,11 @@ export class KeyboardNavigationController {
     actionHintDialog,
     scrollSelector,
     collectKeyboardNavigationContexts,
-    editingEscapeTarget = () => null,
     afterActionHintActivation = () => {},
   }) {
     this.workspace = workspace;
     this.scrollSelector = scrollSelector;
     this.collectKeyboardNavigationContexts = collectKeyboardNavigationContexts;
-    this.editingEscapeTarget = editingEscapeTarget;
     this.connected = false;
     this.compositionActive = false;
     this.compositionOwner = null;
@@ -195,17 +193,19 @@ export class KeyboardNavigationController {
         !this.compositionActive &&
         !event.ctrlKey &&
         !event.altKey &&
-        !event.metaKey &&
-        !this.hasUnregisteredInteractionOwner()
+        !event.metaKey
       ) {
-        event.preventDefault();
-        event.stopPropagation();
-        this.leaveEditing(editable);
-      } else {
-        this.applyTransition(KEYBOARD_NAVIGATION_EVENT.EDITING_CONTINUED, {
-          editable,
-        });
+        const target = this.resolveEditingEscapeTarget(editable);
+        if (target) {
+          event.preventDefault();
+          event.stopPropagation();
+          this.leaveEditing(editable, target);
+          return;
+        }
       }
+      this.applyTransition(KEYBOARD_NAVIGATION_EVENT.EDITING_CONTINUED, {
+        editable,
+      });
       return;
     }
     const key = normalizeActionHintKey(event, {
@@ -315,18 +315,38 @@ export class KeyboardNavigationController {
     session.scrollport.scrollTop = next;
   }
 
-  leaveEditing(editable) {
+  leaveEditing(editable, target) {
     if (!this.applyTransition(KEYBOARD_NAVIGATION_EVENT.EDITING_ENDED, {
       editable,
     })) {
       return;
     }
-    const target = this.editingEscapeTarget(editable);
-    if (focusableTarget(target)) {
+    try {
       target.focus({ preventScroll: true });
-    } else {
-      editable.blur?.();
+    } catch {
+      // A control can become non-focusable after the key event was accepted.
     }
+  }
+
+  resolveEditingEscapeTarget(editable) {
+    const context = this.resolveInteractionContext();
+    const escapeTarget = context?.editing?.escapeTarget;
+    if (
+      !context ||
+      typeof escapeTarget !== "function" ||
+      !context.root.contains(editable)
+    ) {
+      return null;
+    }
+    let target;
+    try {
+      target = escapeTarget(editable);
+    } catch {
+      return null;
+    }
+    return context.root.contains(target) && focusableTarget(target)
+      ? target
+      : null;
   }
 
   startScroll() {

@@ -154,6 +154,85 @@ test("Task Workspace owns one global keyboard listener over explicit Scroll prov
   assert.match(currentPlanDialog, /scrollport: preview/);
 });
 
+test("registered dialog contexts stay owned and compose through public providers", () => {
+  const workspace = readFrontend("pages/(task-workspace)/layout.js");
+  const tasks = readFrontend("pages/(task-workspace)/tasks/layout.js");
+  const taskNew = readFrontend("pages/(task-workspace)/tasks/new/page.js");
+  const section = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/(section)/layout.js",
+  );
+  const task = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/(task)/layout.js",
+  );
+  const github = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/(github)/layout.js",
+  );
+
+  for (const source of [workspace, tasks, taskNew, section, task, github]) {
+    assert.match(source, /mergeKeyboardNavigationContexts\(/);
+  }
+  assert.match(workspace, /this\.codexRuntimeRestartDialog\?\.keyboardNavigationContexts/);
+  assert.match(workspace, /this\.claudeRuntimeRestartDialog\?\.keyboardNavigationContexts/);
+  assert.match(workspace, /this\.archivedDeleteDialog\?\.keyboardNavigationContexts/);
+  assert.match(tasks, /this\.imagePreviewDialog\?\.\(\)\?\.keyboardNavigationContexts/);
+  assert.match(taskNew, /this\.directoryPicker\(\)\?\.keyboardNavigationContexts/);
+  assert.match(section, /this\.conversationShortcuts\(\)\?\.keyboardNavigationContexts/);
+  assert.match(task, /this\.currentPlanComponent\(\)\?\.keyboardNavigationContexts/);
+  assert.match(task, /this\.commandDialog\(\)\?\.keyboardNavigationContexts/);
+  assert.match(github, /this\.taskStartDialog\.keyboardNavigationContexts/);
+  assert.doesNotMatch(
+    workspace,
+    /querySelectorAll\([^\n]*(?:dialog[^\n]*button|button[^\n]*dialog)/,
+  );
+});
+
+test("registered product dialogs retain one context-local keyboard presentation", () => {
+  const dialogs = [
+    "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
+    "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
+    "pages/(task-workspace)/tasks/components/archived-delete-dialog.js",
+    "pages/(task-workspace)/tasks/components/image-preview-dialog.js",
+    "pages/(task-workspace)/tasks/new/components/directory-picker.js",
+    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.js",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.js",
+    "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.js",
+  ];
+
+  for (const path of dialogs) {
+    const source = readFrontend(path);
+    assert.equal(
+      [...source.matchAll(/<caffold-keyboard-navigation-presentation>/g)].length,
+      1,
+      path,
+    );
+    assert.match(
+      source,
+      /:scope > caffold-keyboard-navigation-presentation/,
+      path,
+    );
+    assert.match(source, /kind: "modal"/, path);
+  }
+});
+
+test("product dialog CSS does not style nested keyboard presentation dialogs", () => {
+  const styles = [
+    "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
+    "pages/(task-workspace)/tasks/new/components/directory-picker.css",
+    "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.css",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/current-plan/components/document-dialog.css",
+    "pages/(task-workspace)/tasks/(detail)/(github)/components/task-start-dialog.css",
+  ];
+
+  for (const path of styles) {
+    const source = readFrontend(path);
+    assert.match(source, /& > dialog \{/m, path);
+    assert.match(source, /& > dialog::backdrop \{/m, path);
+    assert.doesNotMatch(source, /^\s*& dialog(?:\b|::|\[)/m, path);
+  }
+});
+
 test("Git and GitHub detail components independently own their native auto popovers", () => {
   const detailLayout = readFrontend(
     "pages/(task-workspace)/tasks/(detail)/layout.js",

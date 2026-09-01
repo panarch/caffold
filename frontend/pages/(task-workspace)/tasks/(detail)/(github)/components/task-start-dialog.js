@@ -3,6 +3,22 @@ import { escapeHtml } from "../../../../../../components/dom.js";
 import "../../../components/task-turn-options.js";
 import "./task-start-dialog/components/github-issue.js";
 import "./task-start-dialog/components/github-pull.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../../action-hints.js";
+import {
+  keyboardNavigationContext,
+  mergeKeyboardNavigationContexts,
+} from "../../../../keyboard-navigation-context.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../../../../scroll-scope.js";
+import "../../../../components/keyboard-navigation-presentation.js";
 
 class CaffoldGithubTaskStartDialog extends HTMLElement {
   connectedCallback() {
@@ -72,6 +88,109 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
     return this.querySelector(":scope caffold-task-turn-options");
   }
 
+  actionHintScope() {
+    const dialog = this.dialog();
+    const body = dialog?.querySelector(".github-task-start-body");
+    const source = this.sourceComponent();
+    const sourceNumber = `${source?.source?.()?.number ?? ""}`;
+    const sourceKind = `${this.sourceKind ?? ""}`;
+    if (!dialog || !body || !sourceKind || !sourceNumber) {
+      return emptyActionHintScope();
+    }
+    const scopeId = `github-task-start:${sourceKind}:${encodeURIComponent(
+      sourceNumber,
+    )}`;
+    const ownScope = {
+      blocked: false,
+      targets: [
+        ["cancel", '[data-task-start-dialog-action="cancel"]'],
+        ["start", 'button[type="submit"]'],
+      ].flatMap(([identity, selector]) => {
+        const control = dialog.querySelector(selector);
+        if (!control) {
+          return [];
+        }
+        return [buttonActionHintTarget({
+          id: `${scopeId}:${identity}`,
+          actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
+          label: control.textContent?.trim() || identity,
+          control,
+          clipRoots: [dialog],
+          isActionable: () =>
+            this.isConnected &&
+            this.dialog() === dialog &&
+            dialog.open &&
+            this.sourceKind === sourceKind &&
+            `${this.sourceComponent()?.source?.()?.number ?? ""}` ===
+              sourceNumber &&
+            dialog.querySelector(selector) === control &&
+            !control.disabled,
+        })];
+      }),
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
+    const turnOptions = this.turnOptions();
+    const turnScope = {
+      blocked: this.pending,
+      targets: [
+        turnOptions?.actionHintModelTarget({
+          scopeId,
+          clipRoots: [dialog, body],
+        }),
+        turnOptions?.actionHintPermissionTarget({
+          scopeId,
+          clipRoots: [dialog, body],
+        }),
+      ].filter(Boolean),
+      mutationRoots: [turnOptions].filter(Boolean),
+      scrollRoots: [],
+    };
+    return mergeActionHintScopes(
+      ownScope,
+      turnScope,
+      source.actionHintScope?.({
+        scopeId,
+        clipRoots: [dialog, body],
+      }),
+    );
+  }
+
+  scrollSurfaceScope() {
+    const dialog = this.dialog();
+    const scrollport = dialog?.querySelector(".github-task-start-body");
+    const sourceKind = `${this.sourceKind ?? ""}`;
+    const sourceNumber = `${this.sourceComponent()?.source?.()?.number ?? ""}`;
+    if (!dialog || !scrollport || !sourceKind || !sourceNumber) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `github-task-start:${sourceKind}:${encodeURIComponent(
+          sourceNumber,
+        )}:setup`,
+        label: "GitHub Task setup",
+        scrollport,
+        clipRoots: [dialog, scrollport],
+        isEligible: () =>
+          this.isConnected &&
+          this.dialog() === dialog &&
+          dialog.open &&
+          this.sourceKind === sourceKind &&
+          `${this.sourceComponent()?.source?.()?.number ?? ""}` ===
+            sourceNumber &&
+          dialog.querySelector(".github-task-start-body") === scrollport &&
+          hasScrollLayoutBox(dialog) &&
+          hasScrollLayoutBox(scrollport) &&
+          hasVerticalScrollOverflow(scrollport),
+      }],
+      mutationRoots: [this, scrollport],
+      resizeElements: [dialog, scrollport],
+      scrollRoots: [scrollport],
+    };
+  }
+
   open({ kind, payload, repository, composerSettings, opener } = {}) {
     const sourceKind = kind === "pull" ? "pull" : kind === "issue" ? "issue" : null;
     const source = sourceKind ? payload?.[sourceKind] : null;
@@ -133,11 +252,49 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
 
   keyboardNavigationContexts() {
     const dialog = this.dialog();
-    return dialog?.open
-      ? this.turnOptions()?.keyboardNavigationContexts({
-          scopeId: `github-task-start:${this.sourceKind ?? "source"}`,
-        }) ?? []
-      : [];
+    const presentation = dialog?.querySelector(
+      ":scope > caffold-keyboard-navigation-presentation",
+    );
+    const hintDialog = presentation?.actionHintDialog?.();
+    const hud = presentation?.scrollModeHud?.();
+    const source = this.sourceComponent();
+    const sourceNumber = `${source?.source?.()?.number ?? ""}`;
+    const sourceKind = `${this.sourceKind ?? ""}`;
+    if (!dialog?.open || !hintDialog || !hud || !sourceKind || !sourceNumber) {
+      return [];
+    }
+    const scopeId = `github-task-start:${sourceKind}:${encodeURIComponent(
+      sourceNumber,
+    )}`;
+    const modalContext = keyboardNavigationContext({
+      id: scopeId,
+      kind: "modal",
+      root: dialog,
+      actionHints: {
+        dialog: hintDialog,
+        scope: this.actionHintScope(),
+      },
+      scroll: {
+        hud,
+        scope: this.scrollSurfaceScope(),
+      },
+      editing: {
+        escapeTarget: (editable) => {
+          const select = this.issueSource()?.querySelector(
+            "select[name='baseRef']",
+          );
+          return editable === select
+            ? dialog.querySelector(
+                '[data-task-start-dialog-action="cancel"]',
+              )
+            : null;
+        },
+      },
+    });
+    return mergeKeyboardNavigationContexts(
+      [modalContext],
+      this.turnOptions()?.keyboardNavigationContexts({ scopeId }) ?? [],
+    );
   }
 
   async startTask() {
@@ -258,6 +415,7 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
             >Start Task</button>
           </footer>
         </form>
+        <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
       </dialog>
     `;
   }

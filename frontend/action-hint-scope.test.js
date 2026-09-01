@@ -6,6 +6,8 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
+  selectActionHintTarget,
+  textboxActionHintTarget,
 } from "./action-hint-scope.js";
 
 test("button Action Hint targets preserve owner state and native activation", () => {
@@ -66,6 +68,64 @@ test("Action Hint scopes compose direct owners in declaration order", () => {
   assert.notEqual(merged.targets, first.targets);
   first.targets.push({ id: "later" });
   assert.deepEqual(merged.targets, [firstTarget, secondTarget]);
+});
+
+test("editable Action Hint targets focus synchronously and select uses native picker", () => {
+  const calls = [];
+  const textbox = {
+    focus: (options) => calls.push(["textbox-focus", options]),
+  };
+  const select = {
+    focus: (options) => calls.push(["select-focus", options]),
+    showPicker: () => calls.push(["show-picker"]),
+  };
+  const common = {
+    id: "dialog:editable",
+    actionId: "dialog.textbox.focus",
+    label: "Edit value",
+    clipRoots: [],
+    isActionable: () => true,
+  };
+
+  const textboxTarget = textboxActionHintTarget({ ...common, control: textbox });
+  const selectTarget = selectActionHintTarget({
+    ...common,
+    id: "dialog:select",
+    actionId: "dialog.select.open",
+    label: "Choose value",
+    control: select,
+  });
+
+  assert.equal(textboxTarget.controlKind, "textbox");
+  assert.equal(selectTarget.controlKind, "select");
+  textboxTarget.activate();
+  selectTarget.activate();
+  assert.deepEqual(calls, [
+    ["textbox-focus", { preventScroll: true }],
+    ["select-focus", { preventScroll: true }],
+    ["show-picker"],
+  ]);
+});
+
+test("native select activation keeps focus when showPicker is absent or throws", () => {
+  for (const showPicker of [undefined, () => { throw new Error("blocked"); }]) {
+    let focused = 0;
+    const control = {
+      focus() {
+        focused += 1;
+      },
+      showPicker,
+    };
+    selectActionHintTarget({
+      id: "dialog:select",
+      actionId: "dialog.select.open",
+      label: "Choose value",
+      control,
+      clipRoots: [],
+      isActionable: () => true,
+    }).activate();
+    assert.equal(focused, 1);
+  }
 });
 
 test("Action Hint scope helpers return complete shapes and reject malformed lists", () => {

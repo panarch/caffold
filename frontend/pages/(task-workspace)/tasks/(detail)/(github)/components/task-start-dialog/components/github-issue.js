@@ -1,5 +1,12 @@
 import { getGitRefs } from "../../../../../../../../api.js";
 import { escapeHtml } from "../../../../../../../../components/dom.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  mergeActionHintScopes,
+  selectActionHintTarget,
+} from "../../../../../../action-hints.js";
 
 class CaffoldGithubIssueTaskSource extends HTMLElement {
   connectedCallback() {
@@ -85,6 +92,67 @@ class CaffoldGithubIssueTaskSource extends HTMLElement {
       !this.refsLoading &&
       !this.refsError,
     );
+  }
+
+  actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
+    const select = this.querySelector("select[name='baseRef']");
+    if (!scopeId || !select || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const rootPath = `${this.repository?.rootPath ?? ""}`;
+    const sourceNumber = `${this.source()?.number ?? ""}`;
+    const selectScope = {
+      blocked: false,
+      targets: [selectActionHintTarget({
+        id: `${scopeId}:base-ref`,
+        actionId: ACTION_HINT_ACTION.DIALOG_SELECT_OPEN,
+        label: "Choose Base branch",
+        control: select,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.repository?.rootPath === rootPath &&
+          `${this.source()?.number ?? ""}` === sourceNumber &&
+          Boolean(rootPath && sourceNumber && this.baseRef) &&
+          !this.refsLoading &&
+          !this.refsError &&
+          !this.locked &&
+          this.querySelector("select[name='baseRef']") === select &&
+          !select.disabled,
+      })],
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
+    const retry = this.querySelector(
+      '[data-github-issue-source-action="retry-refs"]',
+    );
+    const retryScope = !retry
+      ? null
+      : {
+          blocked: false,
+          targets: [buttonActionHintTarget({
+            id: `${scopeId}:retry-refs`,
+            actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
+            label: retry.textContent?.trim() || "Retry branches",
+            control: retry,
+            clipRoots: [...clipRoots],
+            isActionable: () =>
+              this.isConnected &&
+              !this.hidden &&
+              this.repository?.rootPath === rootPath &&
+              `${this.source()?.number ?? ""}` === sourceNumber &&
+              this.querySelector(
+                '[data-github-issue-source-action="retry-refs"]',
+              ) === retry &&
+              !this.refsLoading &&
+              !this.locked &&
+              !retry.disabled,
+          })],
+          mutationRoots: [this],
+          scrollRoots: [],
+        };
+    return mergeActionHintScopes(selectScope, retryScope);
   }
 
   async prepareSetup(provider) {

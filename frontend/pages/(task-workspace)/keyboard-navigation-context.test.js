@@ -33,12 +33,13 @@ test("composes context lists without rebuilding owner capabilities", () => {
   );
 });
 
-test("keeps Action Hint and Scroll as separate optional capabilities", () => {
+test("keeps Action Hint, Scroll, and Editing as separate optional capabilities", () => {
   const root = element();
   const dialog = actionHintDialog();
   const hud = scrollHud();
   const target = { id: "target" };
   const surface = { id: "surface" };
+  const escapeTarget = () => root;
   const context = keyboardNavigationContext({
     id: "workspace",
     kind: "workspace",
@@ -51,6 +52,7 @@ test("keeps Action Hint and Scroll as separate optional capabilities", () => {
       hud,
       scope: { surfaces: [surface] },
     },
+    editing: { escapeTarget },
   });
 
   assert.equal(context.actionHints.dialog, dialog);
@@ -59,6 +61,7 @@ test("keeps Action Hint and Scroll as separate optional capabilities", () => {
   assert.equal(context.scroll.hud, hud);
   assert.deepEqual(context.scroll.scope.surfaces, [surface]);
   assert.deepEqual(context.scroll.scope.resizeElements, []);
+  assert.equal(context.editing.escapeTarget, escapeTarget);
 });
 
 test("normalizes exact owners and rejects duplicate or malformed providers", () => {
@@ -109,6 +112,7 @@ test("normalizes exact owners and rejects duplicate or malformed providers", () 
   const normalized = normalizeKeyboardNavigationContexts(contexts);
   assert.equal(normalized.length, 2);
   assert.deepEqual(normalized[0].actionHints.scope.mutationRoots, []);
+  assert.equal(normalized[0].editing, null);
   assert.equal(normalized[1].scroll.scope.surfaces[0].scrollport, popoverRoot);
   assert.deepEqual(normalized[1].scroll.scope.resizeElements, [popoverRoot]);
 
@@ -146,6 +150,31 @@ test("normalizes exact owners and rejects duplicate or malformed providers", () 
       hud: scrollHud(),
     },
   }]), null);
+  assert.equal(normalizeKeyboardNavigationContexts([{
+    id: "bad-editing",
+    kind: "modal",
+    root: element(),
+    editing: { escapeTarget: null },
+  }]), null);
+});
+
+test("normalizes an Editing-only owner-declared escape destination", () => {
+  const root = element();
+  const destination = element();
+  root.append(destination);
+  const escapeTarget = () => destination;
+  const [context] = normalizeKeyboardNavigationContexts([
+    keyboardNavigationContext({
+      id: "modal:editing",
+      kind: "modal",
+      root,
+      editing: { escapeTarget },
+    }),
+  ]);
+
+  assert.equal(context.actionHints, null);
+  assert.equal(context.scroll, null);
+  assert.equal(context.editing.escapeTarget, escapeTarget);
 });
 
 test("popover Scroll helper binds one exact declared root", () => {

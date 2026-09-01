@@ -3,6 +3,19 @@ import {
   previewTaskForkSource,
 } from "../../../../../../../../api.js";
 import { formatDate } from "../../../../../task-format.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  textboxActionHintTarget,
+} from "../../../../../../action-hints.js";
+import { keyboardNavigationContext } from "../../../../../../keyboard-navigation-context.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../../../../../../scroll-scope.js";
+import "../../../../../../components/keyboard-navigation-presentation.js";
 
 const CODEX_THREAD_URI_PREFIX = "codex://threads/";
 
@@ -62,6 +75,129 @@ class CaffoldConversationForkDialog extends HTMLElement {
 
   threadIdInput() {
     return this.querySelector("#conversation-fork-thread-id");
+  }
+
+  keyboardNavigationContexts() {
+    const dialog = this.dialog();
+    const presentation = dialog?.querySelector(
+      ":scope > caffold-keyboard-navigation-presentation",
+    );
+    const hintDialog = presentation?.actionHintDialog?.();
+    const hud = presentation?.scrollModeHud?.();
+    if (!dialog || !hintDialog || !hud) {
+      return [];
+    }
+    const sectionId = `${this.context?.sectionId ?? ""}`;
+    return [keyboardNavigationContext({
+      id: sectionId
+        ? `conversation-fork:${encodeURIComponent(sectionId)}`
+        : "conversation-fork",
+      kind: "modal",
+      root: dialog,
+      actionHints: {
+        dialog: hintDialog,
+        scope: this.actionHintScope(),
+      },
+      scroll: {
+        hud,
+        scope: this.scrollSurfaceScope(),
+      },
+      editing: {
+        escapeTarget: (editable) =>
+          editable === this.threadIdInput()
+            ? dialog.querySelector("[data-fork-dialog-action='cancel']")
+            : null,
+      },
+    })];
+  }
+
+  actionHintScope() {
+    const dialog = this.dialog();
+    const body = dialog?.querySelector(".conversation-fork-body");
+    const input = this.threadIdInput();
+    const sectionId = `${this.context?.sectionId ?? ""}`;
+    if (!dialog || !input) {
+      return emptyActionHintScope();
+    }
+    const inputTarget = textboxActionHintTarget({
+      id: `conversation-fork:${encodeURIComponent(sectionId)}:thread-id`,
+      actionId: ACTION_HINT_ACTION.DIALOG_TEXTBOX_FOCUS,
+      label: "Focus Thread ID",
+      control: input,
+      clipRoots: [dialog, body].filter(Boolean),
+      isActionable: () =>
+        this.isConnected &&
+        this.dialog() === dialog &&
+        dialog.open &&
+        `${this.context?.sectionId ?? ""}` === sectionId &&
+        Boolean(sectionId) &&
+        this.threadIdInput() === input &&
+        !input.disabled,
+    });
+    const buttons = ["preview", "cancel", "fork"].flatMap((action) => {
+      const control = dialog.querySelector(
+        `[data-fork-dialog-action="${action}"]`,
+      );
+      if (!control) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        id: `conversation-fork:${encodeURIComponent(sectionId)}:${action}`,
+        actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
+        label: control.textContent?.trim() || action,
+        control,
+        clipRoots: action === "preview"
+          ? [dialog, body].filter(Boolean)
+          : [dialog],
+        isActionable: () =>
+          this.isConnected &&
+          this.dialog() === dialog &&
+          dialog.open &&
+          `${this.context?.sectionId ?? ""}` === sectionId &&
+          Boolean(sectionId) &&
+          dialog.querySelector(
+            `[data-fork-dialog-action="${action}"]`,
+          ) === control &&
+          !control.disabled,
+      })];
+    });
+    return {
+      blocked: false,
+      targets: [inputTarget, ...buttons],
+      mutationRoots: [this],
+      scrollRoots: [body].filter(Boolean),
+    };
+  }
+
+  scrollSurfaceScope() {
+    const dialog = this.dialog();
+    const scrollport = dialog?.querySelector(".conversation-fork-body");
+    const sectionId = `${this.context?.sectionId ?? ""}`;
+    if (!dialog || !scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `conversation-fork:${encodeURIComponent(sectionId)}:preview`,
+        label: "Fork preview",
+        scrollport,
+        clipRoots: [dialog, scrollport],
+        isEligible: () =>
+          this.isConnected &&
+          this.dialog() === dialog &&
+          dialog.open &&
+          `${this.context?.sectionId ?? ""}` === sectionId &&
+          Boolean(sectionId) &&
+          dialog.querySelector(".conversation-fork-body") === scrollport &&
+          hasScrollLayoutBox(dialog) &&
+          hasScrollLayoutBox(scrollport) &&
+          hasVerticalScrollOverflow(scrollport),
+      }],
+      mutationRoots: [this, scrollport],
+      resizeElements: [dialog, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   open({ sectionId, sectionPath = "", opener } = {}) {
@@ -318,6 +454,7 @@ class CaffoldConversationForkDialog extends HTMLElement {
             >Fork task</button>
           </footer>
         </form>
+        <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
       </dialog>
     `;
   }

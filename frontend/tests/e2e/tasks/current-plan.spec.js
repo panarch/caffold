@@ -8,6 +8,7 @@ import {
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { actionHintDialog } from "../support/action-hints.js";
 import {
   installTaskApiFixture,
   taskDetailFixture,
@@ -220,7 +221,9 @@ test("floats ignored current documents above the stable composer and updates the
   );
   await planButton.click();
   await planFileResponse;
-  const dialog = currentPlan.locator("caffold-current-plan-document-dialog dialog");
+  const dialog = currentPlan.locator(
+    "caffold-current-plan-document-dialog > dialog",
+  );
   await expect(dialog).toHaveAttribute("open", "");
   const dialogPath = dialog.locator("[data-current-plan-dialog-path]");
   await expect(dialogPath).toHaveText(".caffold/plans/current/PLAN.md");
@@ -228,7 +231,10 @@ test("floats ignored current documents above the stable composer and updates the
     "title",
     `${workspace.logicalPath}/.caffold/plans/current/PLAN.md`,
   );
-  const closeButton = dialog.getByRole("button", { name: "Close document" });
+  const closeButton = dialog.getByRole("button", {
+    name: "Close document",
+    exact: true,
+  });
   await expect(
     closeButton.locator(".current-plan-document-close-icon"),
   ).toBeVisible();
@@ -339,6 +345,23 @@ test("floats ignored current documents above the stable composer and updates the
   expect((await (await unreadableProjection).json()).status).toBe("problem");
   expect((await unreadableChecklist).status()).toBe(404);
   await expect(dialog.locator("[data-current-plan-dialog-error]")).toBeVisible();
+  await page.keyboard.press("f");
+  const errorHint = actionHintDialog(page);
+  await expect(
+    errorHint.getByRole("button", { name: / — Close document$/ }),
+  ).toBeVisible();
+  const retryHint = errorHint.getByRole("button", {
+    name: / — Retry$/,
+  });
+  await expect(retryHint).toBeVisible();
+  const retryCode = await retryHint.getAttribute("data-action-hint-code");
+  expect(retryCode).toBeTruthy();
+  const retriedChecklist = fileResponse(page, checklistPath);
+  await page.keyboard.type(retryCode.toLowerCase());
+  expect((await retriedChecklist).status()).toBe(404);
+  await expect(errorHint).toBeHidden();
+  await expect(dialog).toHaveAttribute("open", "");
+  await expect(dialog.locator("[data-current-plan-dialog-error]")).toBeVisible();
 
   writeFileSync(
     join(workspace.absolutePath, ".caffold/plans/current/CHECKLIST.md"),
@@ -358,7 +381,10 @@ test("floats ignored current documents above the stable composer and updates the
     preview.getByText("Recovered checkpoint", { exact: true }),
   ).toBeVisible();
 
-  await dialog.getByRole("button", { name: "Close" }).click();
+  await dialog.getByRole("button", {
+    name: "Close document",
+    exact: true,
+  }).click();
   await expect(checklistButton).toBeFocused();
 
   writeFileSync(

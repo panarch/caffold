@@ -3,6 +3,7 @@ import "./components/conversation-shortcuts.js";
 import "./components/github-shortcuts.js";
 import { cleanLogicalPath } from "../../task-format.js";
 import { mergeActionHintScopes } from "../../../action-hints.js";
+import { mergeKeyboardNavigationContexts } from "../../../keyboard-navigation-context.js";
 
 class CaffoldSectionDetail extends HTMLElement {
   ensureState() {
@@ -110,9 +111,12 @@ class CaffoldSectionDetail extends HTMLElement {
     this.ensureRendered();
     const sectionId = `${this.section?.id ?? ""}`;
     return !this.hidden && sectionId
-      ? this.taskCreate()?.keyboardNavigationContexts({
-          scopeId: `section:${sectionId}`,
-        }) ?? []
+      ? mergeKeyboardNavigationContexts(
+          this.taskCreate()?.keyboardNavigationContexts({
+            scopeId: `section:${sectionId}`,
+          }) ?? [],
+          this.conversationShortcuts()?.keyboardNavigationContexts?.() ?? [],
+        )
       : [];
   }
 

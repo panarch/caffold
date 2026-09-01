@@ -34,7 +34,11 @@ export const ACTION_HINT_ACTION = Object.freeze({
   ISSUE_OPEN: "navigation.issue.open",
   PULL_OPEN: "navigation.pull.open",
   PULL_FILES: "navigation.pull.files",
+  GITHUB_TASK_START: "task.github.start",
   PAGE: "navigation.page",
+  DIALOG_BUTTON: "dialog.button",
+  DIALOG_TEXTBOX_FOCUS: "dialog.textbox.focus",
+  DIALOG_SELECT_OPEN: "dialog.select.open",
 });
 
 const ACTION_HINT_ALLOCATION = Object.freeze({
@@ -69,6 +73,14 @@ const ACTION_HINT_ACTION_POLICY = Object.freeze({
     allocation: ACTION_HINT_ALLOCATION.FIXED,
     code: "P",
   }),
+  [ACTION_HINT_ACTION.DIALOG_TEXTBOX_FOCUS]: Object.freeze({
+    controlKind: "textbox",
+    allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
+  }),
+  [ACTION_HINT_ACTION.DIALOG_SELECT_OPEN]: Object.freeze({
+    controlKind: "select",
+    allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
+  }),
   ...Object.fromEntries([
     ACTION_HINT_ACTION.WORKSPACE_SELECT,
     ACTION_HINT_ACTION.PARENT,
@@ -82,7 +94,9 @@ const ACTION_HINT_ACTION_POLICY = Object.freeze({
     ACTION_HINT_ACTION.ISSUE_OPEN,
     ACTION_HINT_ACTION.PULL_OPEN,
     ACTION_HINT_ACTION.PULL_FILES,
+    ACTION_HINT_ACTION.GITHUB_TASK_START,
     ACTION_HINT_ACTION.PAGE,
+    ACTION_HINT_ACTION.DIALOG_BUTTON,
     ACTION_HINT_ACTION.CURRENT_PLAN_DOCUMENT_OPEN,
     ACTION_HINT_ACTION.MODEL_SELECT,
     ACTION_HINT_ACTION.REASONING_SELECT,

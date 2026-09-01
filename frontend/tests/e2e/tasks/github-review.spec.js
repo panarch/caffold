@@ -930,9 +930,30 @@ test("preserves Issue Start Task setup, focus return, and created Task selection
   });
   const dialog = page.locator("caffold-github-task-start-dialog > dialog");
 
-  await opener.click();
+  await opener.focus();
+  await page.keyboard.press("f");
+  const openerHint = actionHintDialog(page);
+  const issueStartHint = openerHint.getByRole("button", {
+    name: / — Start Task for issue #1984$/,
+  });
+  await expect(issueStartHint).toBeVisible();
+  const issueStartCode = await issueStartHint.getAttribute(
+    "data-action-hint-code",
+  );
+  expect(issueStartCode).toBeTruthy();
+  await page.keyboard.type(issueStartCode.toLowerCase());
+  await expect(openerHint).toBeHidden();
   await expect(dialog).toBeVisible();
   await expect(dialog.locator("select[name='baseRef']")).toHaveValue("origin/main");
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).focus();
+  await page.keyboard.press("f");
+  const dialogHint = actionHintDialog(page);
+  await expect(
+    dialogHint.getByRole("button", { name: / — Start Task$/ }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialogHint).toBeHidden();
+  await expect(dialog).toBeVisible();
 
   const modelButton = dialog.locator(".task-model-button");
   const modelPopover = dialog.locator(".task-model-popover");
@@ -994,6 +1015,184 @@ test("preserves Issue Start Task setup, focus return, and created Task selection
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
 });
 
+test("owns Issue Task Start Hint, native select, Editing Escape, and Scroll contexts", { tag: "@desktop" }, async ({
+  page,
+}, testInfo) => {
+  await installLinkedWorktreeGithubFixture(page);
+  const issueDetail = await openLinkedWorktreeIssue(page);
+  const opener = issueDetail.getByRole("button", {
+    name: "Start Task for issue #1984",
+  });
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
+  const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+  const select = dialog.locator("select[name='baseRef']");
+
+  await opener.click();
+  await expect(dialog).toBeVisible();
+  await expect(select).toHaveValue("origin/main");
+  await cancel.focus();
+  await page.keyboard.press("f");
+  let hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await expect(hint.locator('[data-action-hint-code="M"]')).toHaveAttribute(
+    "aria-label",
+    / — Choose model/,
+  );
+  for (const name of [
+    / — Cancel$/,
+    / — Start Task$/,
+    / — Choose approval mode$/,
+    / — Choose Base branch$/,
+  ]) {
+    await expect(hint.getByRole("button", { name })).toBeVisible();
+  }
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "github-issue-task-start-action-hints",
+  );
+
+  await page.keyboard.press("m");
+  await expect(hint).toBeHidden();
+  const modelPopover = dialog.locator(".task-model-popover");
+  await expect(modelPopover).toBeVisible();
+  await page.keyboard.press("f");
+  hint = actionHintDialog(page);
+  await expect(
+    hint.getByRole("button", { name: / — GPT-5\.6-Sol.*Selected$/ }),
+  ).toBeVisible();
+  await expect(hint.getByRole("button", { name: / — Start Task$/ }))
+    .toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(hint).toBeHidden();
+  await expect(modelPopover).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(modelPopover).toBeHidden();
+
+  await cancel.focus();
+  await page.keyboard.press("f");
+  hint = actionHintDialog(page);
+  const permissionHint = hint.getByRole("button", {
+    name: / — Choose approval mode$/,
+  });
+  const permissionCode = await permissionHint.getAttribute(
+    "data-action-hint-code",
+  );
+  expect(permissionCode).toBeTruthy();
+  await page.keyboard.type(permissionCode.toLowerCase());
+  await expect(hint).toBeHidden();
+  const permissionPopover = dialog.locator(".task-permission-popover");
+  await expect(permissionPopover).toBeVisible();
+  await page.keyboard.press("f");
+  hint = actionHintDialog(page);
+  await expect(
+    hint.getByRole("button", { name: / — Approve for me.*Selected$/ }),
+  ).toBeVisible();
+  await expect(hint.getByRole("button", { name: / — Choose Base branch$/ }))
+    .toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(hint).toBeHidden();
+  await expect(permissionPopover).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(permissionPopover).toBeHidden();
+
+  await cancel.focus();
+  await page.keyboard.press("f");
+  hint = actionHintDialog(page);
+  const baseHint = hint.getByRole("button", {
+    name: / — Choose Base branch$/,
+  });
+  expect(await actionHintBadgePresentation(baseHint)).toEqual({
+    backgroundMatches: true,
+    borderVisible: true,
+    colorMatches: true,
+    hasBlockPadding: true,
+    position: "absolute",
+  });
+  const baseCode = await baseHint.getAttribute("data-action-hint-code");
+  expect(baseCode).toBeTruthy();
+  await page.keyboard.type(baseCode.toLowerCase());
+  await expect(hint).toBeHidden();
+  await expect(select).toBeFocused();
+  await expect.poll(() => select.evaluate((element) => element.matches(":open")))
+    .toBe(true);
+  await page.keyboard.press("f");
+  await expect(actionHintDialog(page)).toBeHidden();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(cancel).toBeFocused();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+
+  await opener.click();
+  await expect(dialog).toBeVisible();
+  await expect(select).toHaveValue("origin/main");
+  const body = dialog.locator(".github-task-start-body");
+  const hud = dialog.locator(
+    ":scope > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud",
+  );
+  await expect.poll(() => body.evaluate(
+    (element) => element.scrollHeight <= element.clientHeight + 1,
+  )).toBe(true);
+  await cancel.focus();
+  await page.keyboard.press("s");
+  await expect(hud).toBeHidden();
+  await body.evaluate((element) => {
+    element.style.height = "120px";
+    element.style.maxHeight = "120px";
+  });
+  await expect.poll(() => body.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await cancel.focus();
+  await page.keyboard.press("s");
+  await expect(hud).toContainText("Scroll: GitHub Task setup");
+  await page.keyboard.press("j");
+  await expect.poll(() => body.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await expect(hud).toBeHidden();
+  await expect(dialog).toBeVisible();
+  await body.evaluate((element) => {
+    if (element.scrollTop === 0) {
+      return;
+    }
+    return new Promise((resolve) => {
+      element.addEventListener("scroll", () => resolve(), { once: true });
+      element.scrollTop = 0;
+    });
+  });
+
+  await select.evaluate((element) => {
+    element.showPicker = () => {
+      throw new DOMException("Picker blocked by fixture", "NotAllowedError");
+    };
+  });
+  await cancel.focus();
+  await page.keyboard.press("f");
+  hint = actionHintDialog(page);
+  const fallbackHint = hint.getByRole("button", {
+    name: / — Choose Base branch$/,
+  });
+  const fallbackCode = await fallbackHint.getAttribute("data-action-hint-code");
+  expect(fallbackCode).toBeTruthy();
+  await page.keyboard.type(fallbackCode.toLowerCase());
+  await expect(hint).toBeHidden();
+  await expect(select).toBeFocused();
+  expect(await select.evaluate((element) => element.matches(":open"))).toBe(false);
+  await select.evaluate((element) => {
+    delete element.showPicker;
+  });
+  await page.keyboard.press("Escape");
+  await expect(cancel).toBeFocused();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+});
+
 test("starts a Task from a Section-scoped GitHub Issue", { tag: "@desktop" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page, {
     sectionComposerSettings: {
@@ -1028,7 +1227,10 @@ test("starts a Task from a Section-scoped GitHub Issue", { tag: "@desktop" }, as
     fastMode: true,
   });
   await dialog.locator("select[name='baseRef']").selectOption("main");
-  await dialog.getByRole("button", { name: "Start Task" }).click();
+  await dialog.getByRole("button", {
+    name: "Start Task",
+    exact: true,
+  }).click();
 
   await expect.poll(() => fixture.counts.taskCreates).toBe(1);
   expect(fixture.requests.taskCreates[0].cwd).toBe(WORKTREE_ROOT);
@@ -1114,9 +1316,25 @@ test("starts a same-repository PR Task from the exact prepared head", { tag: "@a
   const pullDetail = await openLinkedWorktreePull(page);
   const dialog = page.locator("caffold-github-task-start-dialog > dialog");
 
-  await pullDetail.getByRole("button", {
+  const opener = pullDetail.getByRole("button", {
     name: "Start Task for pull request #1983",
-  }).click();
+  });
+  await opener.focus();
+  await page.keyboard.press("f");
+  const openerHint = actionHintDialog(page);
+  await expect(
+    openerHint.getByRole("button", { name: / — Open files for PR #1983$/ }),
+  ).toBeVisible();
+  const pullStartHint = openerHint.getByRole("button", {
+    name: / — Start Task for pull request #1983$/,
+  });
+  await expect(pullStartHint).toBeVisible();
+  const pullStartCode = await pullStartHint.getAttribute(
+    "data-action-hint-code",
+  );
+  expect(pullStartCode).toBeTruthy();
+  await page.keyboard.type(pullStartCode.toLowerCase());
+  await expect(openerHint).toBeHidden();
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('[data-pull-ref="base"]')).toContainText(
     "gluesql/gluesql:main @ 111111111111",
@@ -1126,7 +1344,14 @@ test("starts a same-repository PR Task from the exact prepared head", { tag: "@a
   );
   await expect(dialog.locator("select[name='baseRef']")).toBeHidden();
   await captureReviewScreenshot(page, testInfo, "github-pr-start-task-dialog");
-  await dialog.getByRole("button", { name: "Start Task" }).click();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).focus();
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  const startHint = hint.getByRole("button", { name: / — Start Task$/ });
+  const startCode = await startHint.getAttribute("data-action-hint-code");
+  expect(startCode).toBeTruthy();
+  await page.keyboard.type(startCode.toLowerCase());
+  await expect(hint).toBeHidden();
 
   await expect.poll(() => fixture.counts.taskCreates).toBe(1);
   expect(fixture.requests.pullHeads).toEqual([{
@@ -1278,11 +1503,24 @@ test("requires an explicit PR refresh after the head moves", { tag: "@all-viewpo
 
   fixture.pull.headRefOid = movedOid;
   fixture.controls.pullHeadFailure = null;
-  await dialog.getByRole("button", { name: "Refresh PR" }).click();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).focus();
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  const refreshHint = hint.getByRole("button", { name: / — Refresh PR$/ });
+  await expect(refreshHint).toBeVisible();
+  await expect(hint.getByRole("button", { name: / — Choose Base branch$/ }))
+    .toHaveCount(0);
+  const refreshCode = await refreshHint.getAttribute("data-action-hint-code");
+  expect(refreshCode).toBeTruthy();
+  await page.keyboard.type(refreshCode.toLowerCase());
+  await expect(hint).toBeHidden();
   await expect(dialog.locator('[data-pull-ref="head"]')).toContainText(
     "@ 333333333333",
   );
-  await dialog.getByRole("button", { name: "Start Task" }).click();
+  await dialog.getByRole("button", {
+    name: "Start Task",
+    exact: true,
+  }).click();
   await expect.poll(() => fixture.counts.taskCreates).toBe(1);
   expect(fixture.requests.pullHeads.at(-1).headOid).toBe(movedOid);
 });
@@ -1445,7 +1683,9 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
   await expect(pullDetail).toContainText("Task-owned Pull Request detail");
 
   const pullHints = await enterActionHints(page);
-  await expect(pullHints.getByLabel(/Start Task for pull request/)).toHaveCount(0);
+  await expect(
+    pullHints.getByLabel(/Start Task for pull request #1983$/),
+  ).toBeVisible();
   await expect(pullHints.getByLabel(/GitHub$/)).toHaveCount(0);
   await page.keyboard.press("Escape");
   await activateActionHint(page, /Open files for PR #1983$/);

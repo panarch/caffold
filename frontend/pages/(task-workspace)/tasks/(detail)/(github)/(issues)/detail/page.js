@@ -1,6 +1,11 @@
 import { escapeHtml } from "../../../../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../../../../components/icons.js";
 import "../../components/markdown.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../../../../action-hints.js";
 
 class CaffoldGithubIssueDetailPage extends HTMLElement {
   connectedCallback() {
@@ -60,6 +65,43 @@ class CaffoldGithubIssueDetailPage extends HTMLElement {
   setError(number, error) {
     this.state = { status: "error", number, error };
     this.render();
+  }
+
+  actionHintScope({ scopeId = "github:issue", clipRoots = [] } = {}) {
+    const issue = this.state?.payload?.issue;
+    const number = `${issue?.number ?? ""}`;
+    const selector =
+      ':scope > .github-issue-viewer-panel > header > .github-issue-viewer-title-row > .github-issue-actions > button.github-issue-start-button[data-action="start-github-task"]';
+    const control = this.querySelector(selector);
+    if (
+      this.hidden ||
+      this.state?.status !== "ready" ||
+      !number ||
+      !control ||
+      control.disabled
+    ) {
+      return emptyActionHintScope();
+    }
+    return {
+      blocked: false,
+      targets: [buttonActionHintTarget({
+        id: `${scopeId}:${encodeURIComponent(number)}:start-task`,
+        actionId: ACTION_HINT_ACTION.GITHUB_TASK_START,
+        label: control.getAttribute("aria-label") ||
+          `Start Task for issue #${number}`,
+        control,
+        clipRoots: [this, ...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state?.status === "ready" &&
+          `${this.state?.payload?.issue?.number ?? ""}` === number &&
+          this.querySelector(selector) === control &&
+          !control.disabled,
+      })],
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
   }
 
   render() {

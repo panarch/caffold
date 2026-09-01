@@ -174,8 +174,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
       scrollSelector: this.scrollSurfaceSelector,
       collectKeyboardNavigationContexts: () =>
         this.keyboardNavigationContexts(),
-      editingEscapeTarget: (editable) =>
-        this.actionHintEditingEscapeTarget(editable),
       afterActionHintActivation: (target) =>
         this.afterActionHintActivation(target),
     });
@@ -570,12 +568,22 @@ class CaffoldTaskWorkspace extends HTMLElement {
         hud: this.scrollModeHud,
         scope: workspaceScope,
       },
+      editing: {
+        escapeTarget: (editable) =>
+          this.actionHintEditingEscapeTarget(editable),
+      },
     });
     const childContexts =
       !this.hidden && this.mode === "tasks"
         ? this.tasksPage.keyboardNavigationContexts()
         : [];
-    return mergeKeyboardNavigationContexts([workspaceContext], childContexts);
+    return mergeKeyboardNavigationContexts(
+      [workspaceContext],
+      this.codexRuntimeRestartDialog?.keyboardNavigationContexts?.() ?? [],
+      this.claudeRuntimeRestartDialog?.keyboardNavigationContexts?.() ?? [],
+      this.archivedDeleteDialog?.keyboardNavigationContexts?.() ?? [],
+      childContexts,
+    );
   }
 
   actionHintEditingEscapeTarget(editable) {

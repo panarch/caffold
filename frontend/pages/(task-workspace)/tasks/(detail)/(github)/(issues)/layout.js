@@ -347,8 +347,14 @@ class CaffoldGithubIssuesLayout extends HTMLElement {
 
   actionHintScope({ scopeId = "github:issues", clipRoots = [] } = {}) {
     this.ensureRendered();
-    if (this.hidden || this.view !== "list") {
+    if (this.hidden) {
       return emptyActionHintScope();
+    }
+    if (this.view === "detail") {
+      return this.detailPage.actionHintScope({
+        scopeId: `${scopeId}:detail`,
+        clipRoots: [this, ...clipRoots],
+      });
     }
     return this.listPage.actionHintScope({
       scopeId: `${scopeId}:page:${this.page}`,

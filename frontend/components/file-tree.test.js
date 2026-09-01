@@ -102,3 +102,49 @@ test("provides selectable non-current file leaves through owned row buttons", ()
   nodes.delete("src/next.js");
   assert.equal(target.isActionable(), false);
 });
+
+test("includes enabled directory rows only when an owner explicitly requests them", () => {
+  let clicks = 0;
+  const directoryControl = {
+    dataset: { fileTreeKey: "folder" },
+    disabled: false,
+    focus() {},
+    click() {
+      clicks += 1;
+    },
+  };
+  const nodes = new Map([
+    ["folder", {
+      key: "folder",
+      kind: "directory",
+      name: "folder",
+      ariaLabel: "Open folder",
+    }],
+  ]);
+  const owner = {
+    hidden: false,
+    isConnected: true,
+    nodeByKey: nodes,
+    ensureRendered() {},
+    scroller: () => ({}),
+    querySelectorAll: () => [directoryControl],
+    rowForKey: () => ({ querySelector: () => directoryControl }),
+  };
+  const options = {
+    scopeId: "directory-picker",
+    actionId: "dialog.button",
+    isCurrent: () => false,
+  };
+
+  assert.equal(fileTree.actionHintScope.call(owner, options).targets.length, 0);
+  const scope = fileTree.actionHintScope.call(owner, {
+    ...options,
+    includeDirectories: true,
+  });
+  assert.equal(scope.targets.length, 1);
+  assert.equal(scope.targets[0].label, "Open folder");
+  scope.targets[0].activate();
+  assert.equal(clicks, 1);
+  directoryControl.disabled = true;
+  assert.equal(scope.targets[0].isActionable(), false);
+});

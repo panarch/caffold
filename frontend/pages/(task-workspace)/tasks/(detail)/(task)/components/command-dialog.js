@@ -8,6 +8,18 @@ import {
   formatDuration,
   taskEventObservedMs,
 } from "../../../task-format.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../../../action-hints.js";
+import { keyboardNavigationContext } from "../../../../keyboard-navigation-context.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../../../../scroll-scope.js";
+import "../../../../components/keyboard-navigation-presentation.js";
 
 class CaffoldTaskCommandDialog extends HTMLElement {
   connectedCallback() {
@@ -43,6 +55,98 @@ class CaffoldTaskCommandDialog extends HTMLElement {
 
   dialog() {
     return this.querySelector(":scope > dialog");
+  }
+
+  keyboardNavigationContexts() {
+    const dialog = this.dialog();
+    const presentation = dialog?.querySelector(
+      ":scope > caffold-keyboard-navigation-presentation",
+    );
+    const hintDialog = presentation?.actionHintDialog?.();
+    const hud = presentation?.scrollModeHud?.();
+    if (!dialog || !hintDialog || !hud) {
+      return [];
+    }
+    const threadId = `${this.threadId ?? ""}`;
+    return [keyboardNavigationContext({
+      id: threadId
+        ? `task-command:${encodeURIComponent(threadId)}`
+        : "task-command",
+      kind: "modal",
+      root: dialog,
+      actionHints: {
+        dialog: hintDialog,
+        scope: this.actionHintScope(),
+      },
+      scroll: {
+        hud,
+        scope: this.scrollSurfaceScope(),
+      },
+    })];
+  }
+
+  actionHintScope() {
+    const dialog = this.dialog();
+    const control = dialog?.querySelector(
+      '[data-command-dialog-action="close"]',
+    );
+    const threadId = `${this.threadId ?? ""}`;
+    if (!dialog || !control) {
+      return emptyActionHintScope();
+    }
+    return {
+      blocked: false,
+      targets: [buttonActionHintTarget({
+        id: `task-command:${encodeURIComponent(threadId)}:close`,
+        actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
+        label: control.getAttribute("aria-label") || "Close command output",
+        control,
+        clipRoots: [dialog],
+        isActionable: () =>
+          this.isConnected &&
+          this.dialog() === dialog &&
+          dialog.open &&
+          `${this.threadId ?? ""}` === threadId &&
+          Boolean(threadId) &&
+          dialog.querySelector(
+            '[data-command-dialog-action="close"]',
+          ) === control &&
+          !control.disabled,
+      })],
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
+  }
+
+  scrollSurfaceScope() {
+    const dialog = this.dialog();
+    const scrollport = dialog?.querySelector(".task-command-dialog-body");
+    const threadId = `${this.threadId ?? ""}`;
+    if (!dialog || !scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `task-command:${encodeURIComponent(threadId)}:output`,
+        label: "Command output",
+        scrollport,
+        clipRoots: [dialog, scrollport],
+        isEligible: () =>
+          this.isConnected &&
+          this.dialog() === dialog &&
+          dialog.open &&
+          `${this.threadId ?? ""}` === threadId &&
+          Boolean(threadId) &&
+          dialog.querySelector(".task-command-dialog-body") === scrollport &&
+          hasScrollLayoutBox(dialog) &&
+          hasScrollLayoutBox(scrollport) &&
+          hasVerticalScrollOverflow(scrollport),
+      }],
+      mutationRoots: [this, scrollport],
+      resizeElements: [dialog, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   setThreadId(threadId) {
@@ -123,6 +227,7 @@ class CaffoldTaskCommandDialog extends HTMLElement {
           </header>
           <div class="task-command-dialog-body" data-command-dialog-body></div>
         </article>
+        <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
       </dialog>
     `;
   }

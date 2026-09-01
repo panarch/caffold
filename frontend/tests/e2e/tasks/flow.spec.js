@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { actionHintDialog } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import {
@@ -310,7 +311,7 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
   const prompt = tasksPage.locator('textarea[name="prompt"]');
   const browseCwd = tasksPage.getByRole("button", { name: "Browse Files" });
   const directoryPicker = tasksPage.locator("caffold-task-directory-picker");
-  const directoryDialog = directoryPicker.locator("dialog");
+  const directoryDialog = directoryPicker.locator(":scope > dialog");
   await prompt.fill("Say hello globally");
   await browseCwd.click();
   await expect(directoryDialog).toBeVisible();
@@ -345,6 +346,73 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
     name: "Use This Folder",
     exact: true,
   });
+  await cancelCwd.focus();
+  await page.keyboard.press("f");
+  const directoryHint = actionHintDialog(page);
+  await expect(directoryHint).toBeVisible();
+  await expect(
+    directoryHint.getByRole("button", { name: / — Close directory picker$/ }),
+  ).toBeVisible();
+  await expect(
+    directoryHint.getByRole("button", { name: / — Cancel$/ }),
+  ).toBeVisible();
+  await expect(
+    directoryHint.getByRole("button", { name: / — Use This Folder$/ }),
+  ).toBeVisible();
+  await expect(
+    directoryHint.getByRole("button", { name: / — Open src folder$/ }),
+  ).toBeVisible();
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "tasks-new-directory-picker-action-hints",
+  );
+  await pickerTree.evaluate((tree) => {
+    tree.setModel({
+      entityKey: tree.entityKey,
+      nodes: [
+        ...tree.nodes,
+        {
+          key: "directory-picker:directory:late-folder",
+          kind: "directory",
+          name: "late-folder",
+          path: "late-folder",
+          ariaLabel: "Open late folder",
+        },
+      ],
+      expandNewDirectories: false,
+    });
+  });
+  await expect(directoryHint).toBeHidden();
+  await page.keyboard.press("f");
+  const refreshedDirectoryHint = actionHintDialog(page);
+  await expect(
+    refreshedDirectoryHint.getByRole("button", {
+      name: / — Open late folder$/,
+    }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(refreshedDirectoryHint).toBeHidden();
+  await expect(directoryDialog).toBeVisible();
+
+  const pickerScroll = pickerTree.locator(".file-tree-scroll");
+  await pickerScroll.evaluate((element) => {
+    element.style.height = "24px";
+  });
+  await expect.poll(() => pickerScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await page.keyboard.press("s");
+  const directoryHud = directoryDialog.locator(
+    "caffold-keyboard-navigation-presentation caffold-scroll-mode-hud",
+  );
+  await expect(directoryHud).toContainText("Scroll: Directory folders");
+  await page.keyboard.press("j");
+  await expect.poll(() => pickerScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await expect(directoryHud).toBeHidden();
+  await expect(directoryDialog).toBeVisible();
   const cwdActionGeometry = await Promise.all(
     [cancelCwd, chooseCwd].map((control) =>
       control.evaluate((element) => {
@@ -408,7 +476,27 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
 
   await browseCwd.click();
   await expect(directoryDialog).toBeVisible();
-  await directoryPicker.locator('button[data-file-tree-path="src"]').click();
+  const srcRow = directoryPicker.locator(
+    'button[data-file-tree-path="src"]',
+  );
+  await expect(srcRow).toBeVisible();
+  await pickerScroll.evaluate((element) => {
+    if (element.scrollTop === 0) {
+      return;
+    }
+    return new Promise((resolve) => {
+      element.addEventListener("scroll", () => resolve(), { once: true });
+      element.scrollTop = 0;
+    });
+  });
+  await page.keyboard.press("f");
+  const srcHint = actionHintDialog(page).getByRole("button", {
+    name: / — Open src folder$/,
+  });
+  const srcCode = await srcHint.getAttribute("data-action-hint-code");
+  expect(srcCode).toBeTruthy();
+  await page.keyboard.type(srcCode.toLowerCase());
+  await expect(actionHintDialog(page)).toBeHidden();
   await expect(directoryPicker.locator("[data-directory-picker-path]")).toContainText(
     "/src",
   );

@@ -76,38 +76,61 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
   }
 
   actionHintScope({ scopeId = "github:pull", clipRoots = [] } = {}) {
-    const control = this.querySelector(
-      ':scope > .github-pull-viewer-panel > header > .github-pull-viewer-title-row > .github-pull-actions > button.github-pull-files-button[data-action="open-github-pull-files"][data-pull-number]',
-    );
+    const pull = this.state?.payload?.pull;
+    const number = `${pull?.number ?? ""}`;
     if (
       this.hidden ||
       this.state?.status !== "ready" ||
-      !control ||
-      control.disabled
+      !number
     ) {
       return emptyActionHintScope();
     }
-    const number = `${control.dataset.pullNumber ?? ""}`;
-    if (!number) {
-      return emptyActionHintScope();
-    }
+    const definitions = [
+      {
+        identity: "start-task",
+        actionId: ACTION_HINT_ACTION.GITHUB_TASK_START,
+        selector:
+          ':scope > .github-pull-viewer-panel > header > .github-pull-viewer-title-row > .github-pull-actions > button.github-pull-start-button[data-action="start-github-task"]',
+        fallbackLabel: `Start Task for pull request #${number}`,
+        matchesControl: () => true,
+      },
+      {
+        identity: "files",
+        actionId: ACTION_HINT_ACTION.PULL_FILES,
+        selector:
+          ':scope > .github-pull-viewer-panel > header > .github-pull-viewer-title-row > .github-pull-actions > button.github-pull-files-button[data-action="open-github-pull-files"][data-pull-number]',
+        fallbackLabel: `Open files for PR #${number}`,
+        matchesControl: (control) =>
+          `${control.dataset.pullNumber ?? ""}` === number,
+      },
+    ];
     return {
       blocked: false,
-      targets: [buttonActionHintTarget({
-        id: `${scopeId}:${number}:files`,
-        actionId: ACTION_HINT_ACTION.PULL_FILES,
-        label: control.getAttribute("aria-label") || `Open files for PR #${number}`,
-        control,
-        clipRoots: [this, ...clipRoots],
-        isActionable: () =>
-          this.isConnected &&
-          !this.hidden &&
-          this.state?.status === "ready" &&
-          this.querySelector(
-            `:scope > .github-pull-viewer-panel > header > .github-pull-viewer-title-row > .github-pull-actions > button.github-pull-files-button[data-action="open-github-pull-files"][data-pull-number="${CSS.escape(number)}"]`,
-          ) === control &&
-          !control.disabled,
-      })],
+      targets: definitions.flatMap((definition) => {
+        const control = this.querySelector(definition.selector);
+        if (
+          !control ||
+          control.disabled ||
+          !definition.matchesControl(control)
+        ) {
+          return [];
+        }
+        return [buttonActionHintTarget({
+          id: `${scopeId}:${encodeURIComponent(number)}:${definition.identity}`,
+          actionId: definition.actionId,
+          label: control.getAttribute("aria-label") || definition.fallbackLabel,
+          control,
+          clipRoots: [this, ...clipRoots],
+          isActionable: () =>
+            this.isConnected &&
+            !this.hidden &&
+            this.state?.status === "ready" &&
+            `${this.state?.payload?.pull?.number ?? ""}` === number &&
+            this.querySelector(definition.selector) === control &&
+            definition.matchesControl(control) &&
+            !control.disabled,
+        })];
+      }),
       mutationRoots: [this],
       scrollRoots: [],
     };

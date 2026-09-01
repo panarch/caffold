@@ -9,6 +9,7 @@ export function keyboardNavigationContext({
   root,
   actionHints = null,
   scroll = null,
+  editing = null,
 } = {}) {
   const context = { id, kind, root };
   if (actionHints != null) {
@@ -27,6 +28,14 @@ export function keyboardNavigationContext({
     context.scroll = {
       hud: scroll.hud,
       scope: mergeScrollSurfaceScopes(scroll.scope),
+    };
+  }
+  if (editing != null) {
+    if (typeof editing !== "object") {
+      throw new TypeError("Editing capability must be an object");
+    }
+    context.editing = {
+      escapeTarget: editing.escapeTarget,
     };
   }
   return context;
@@ -72,18 +81,28 @@ export function normalizeKeyboardNavigationContexts(contexts) {
     const scroll = context.scroll == null
       ? null
       : normalizeScrollCapability(context.scroll, root);
+    const editing = context.editing == null
+      ? null
+      : normalizeEditingCapability(context.editing);
     if (
       (context.actionHints != null && !actionHints) ||
       (context.scroll != null && !scroll) ||
-      (!actionHints && !scroll)
+      (context.editing != null && !editing) ||
+      (!actionHints && !scroll && !editing)
     ) {
       return null;
     }
     ids.add(id);
     roots.add(root);
-    normalized.push({ id, kind, root, actionHints, scroll });
+    normalized.push({ id, kind, root, actionHints, scroll, editing });
   }
   return normalized;
+}
+
+function normalizeEditingCapability(capability) {
+  return typeof capability?.escapeTarget === "function"
+    ? { escapeTarget: capability.escapeTarget }
+    : null;
 }
 
 export function popoverScrollSurfaceScope({

@@ -88,11 +88,15 @@ test("rejects unknown actions, duplicate identities, and fixed-code conflicts", 
 
 test("accepts only the central semantic action and control-kind policy", () => {
   for (const actionId of Object.values(ACTION_HINT_ACTION)) {
+    const controlKind = actionId === ACTION_HINT_ACTION.PROMPT_FOCUS ||
+        actionId === ACTION_HINT_ACTION.DIALOG_TEXTBOX_FOCUS
+      ? "textbox"
+      : actionId === ACTION_HINT_ACTION.DIALOG_SELECT_OPEN
+        ? "select"
+        : "button";
     assert.equal(matchesActionHintPolicy({
       actionId,
-      controlKind: actionId === ACTION_HINT_ACTION.PROMPT_FOCUS
-        ? "textbox"
-        : "button",
+      controlKind,
     }), true, actionId);
   }
   assert.equal(
@@ -108,6 +112,19 @@ test("accepts only the central semantic action and control-kind policy", () => {
       controlKind: "button",
     }),
     false,
+  );
+});
+
+test("allocates dialog buttons, textboxes, and selects through one automatic pool", () => {
+  const allocated = allocateActionHintCodes([
+    target("cancel", ACTION_HINT_ACTION.DIALOG_BUTTON),
+    target("thread", ACTION_HINT_ACTION.DIALOG_TEXTBOX_FOCUS, "textbox"),
+    target("base", ACTION_HINT_ACTION.DIALOG_SELECT_OPEN, "select"),
+  ]);
+
+  assert.deepEqual(
+    allocated.map(({ id, code }) => [id, code]),
+    [["cancel", "A"], ["thread", "S"], ["base", "D"]],
   );
 });
 

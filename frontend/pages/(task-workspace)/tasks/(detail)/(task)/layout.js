@@ -449,6 +449,7 @@ class CaffoldTaskDetail extends HTMLElement {
           })
         : [],
       this.currentPlanComponent()?.keyboardNavigationContexts() ?? [],
+      this.commandDialog()?.keyboardNavigationContexts?.() ?? [],
     );
   }
 

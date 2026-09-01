@@ -605,6 +605,7 @@ class CaffoldTasksPage extends HTMLElement {
       hasScrollLayoutBox(navigator)
         ? navigator.keyboardNavigationContexts?.() ?? []
         : [],
+      this.imagePreviewDialog?.()?.keyboardNavigationContexts?.() ?? [],
       activeSurface,
     );
   }

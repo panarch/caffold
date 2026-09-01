@@ -1,4 +1,11 @@
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../action-hints.js";
+import { keyboardNavigationContext } from "../../keyboard-navigation-context.js";
+import "../../components/keyboard-navigation-presentation.js";
 
 export const TASK_IMAGE_PREVIEW_EVENT = "caffold:task-image-preview";
 
@@ -58,6 +65,52 @@ class CaffoldTaskImagePreviewDialog extends HTMLElement {
 
   image() {
     return this.querySelector("[data-task-image-preview-image]");
+  }
+
+  keyboardNavigationContexts() {
+    const dialog = this.dialog();
+    const presentation = dialog?.querySelector(
+      ":scope > caffold-keyboard-navigation-presentation",
+    );
+    const hintDialog = presentation?.actionHintDialog?.();
+    if (!dialog || !hintDialog) {
+      return [];
+    }
+    return [keyboardNavigationContext({
+      id: "task-image-preview",
+      kind: "modal",
+      root: dialog,
+      actionHints: {
+        dialog: hintDialog,
+        scope: this.actionHintScope(),
+      },
+    })];
+  }
+
+  actionHintScope() {
+    const dialog = this.dialog();
+    const control = dialog?.querySelector(".task-image-preview-close");
+    if (!dialog || !control) {
+      return emptyActionHintScope();
+    }
+    return {
+      blocked: false,
+      targets: [buttonActionHintTarget({
+        id: "task-image-preview:close",
+        actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
+        label: control.getAttribute("aria-label") || "Close image preview",
+        control,
+        clipRoots: [dialog],
+        isActionable: () =>
+          this.isConnected &&
+          this.dialog() === dialog &&
+          dialog.open &&
+          dialog.querySelector(".task-image-preview-close") === control &&
+          !control.disabled,
+      })],
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
   }
 
   openImage(image = {}) {
@@ -133,6 +186,7 @@ class CaffoldTaskImagePreviewDialog extends HTMLElement {
             </div>
           </div>
         </article>
+        <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
       </dialog>
     `;
   }

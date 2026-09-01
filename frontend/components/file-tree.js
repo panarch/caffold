@@ -217,6 +217,7 @@ class CaffoldFileTree extends HTMLElement {
     actionId = "",
     clipRoots = [],
     isCurrent = () => false,
+    includeDirectories = false,
     labelForNode = (node) => node.ariaLabel ?? node.title ?? node.name ?? "Open file",
   } = {}) {
     this.ensureRendered();
@@ -232,7 +233,7 @@ class CaffoldFileTree extends HTMLElement {
       if (
         !key ||
         !node ||
-        node.kind === "directory" ||
+        (node.kind === "directory" && !includeDirectories) ||
         node.selectable === false ||
         control.disabled ||
         isCurrent(node)
@@ -251,7 +252,7 @@ class CaffoldFileTree extends HTMLElement {
             this.isConnected &&
               !this.hidden &&
               current &&
-              current.kind !== "directory" &&
+              (current.kind !== "directory" || includeDirectories) &&
               current.selectable !== false &&
               !isCurrent(current) &&
               this.rowForKey(key)?.querySelector(

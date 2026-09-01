@@ -3,6 +3,11 @@ import {
   prepareGitHubPullHead,
 } from "../../../../../../../../api.js";
 import { escapeHtml } from "../../../../../../../../components/dom.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../../../../../action-hints.js";
 
 class CaffoldGithubPullTaskSource extends HTMLElement {
   connectedCallback() {
@@ -66,6 +71,40 @@ class CaffoldGithubPullTaskSource extends HTMLElement {
 
   readyForSubmission() {
     return Boolean(this.repository?.rootPath && pullIsValid(this.source()) && !this.pending);
+  }
+
+  actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
+    const control = this.querySelector(
+      '[data-github-pull-source-action="refresh"]',
+    );
+    if (!scopeId || !control || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const rootPath = `${this.repository?.rootPath ?? ""}`;
+    const sourceNumber = `${this.source()?.number ?? ""}`;
+    return {
+      blocked: false,
+      targets: [buttonActionHintTarget({
+        id: `${scopeId}:refresh`,
+        actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
+        label: control.textContent?.trim() || "Refresh PR",
+        control,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.repository?.rootPath === rootPath &&
+          `${this.source()?.number ?? ""}` === sourceNumber &&
+          this.querySelector(
+            '[data-github-pull-source-action="refresh"]',
+          ) === control &&
+          !this.pending &&
+          !this.locked &&
+          !control.disabled,
+      })],
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
   }
 
   async prepareSetup(provider) {

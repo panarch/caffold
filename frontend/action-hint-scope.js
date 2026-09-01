@@ -37,6 +37,55 @@ export function buttonActionHintTarget({
   };
 }
 
+export function textboxActionHintTarget({
+  id,
+  actionId,
+  label,
+  control,
+  clipRoots,
+  isActionable,
+}) {
+  return focusActionHintTarget({
+    id,
+    actionId,
+    label,
+    controlKind: "textbox",
+    control,
+    clipRoots,
+    isActionable,
+  });
+}
+
+export function selectActionHintTarget({
+  id,
+  actionId,
+  label,
+  control,
+  clipRoots,
+  isActionable,
+}) {
+  const target = focusActionHintTarget({
+    id,
+    actionId,
+    label,
+    controlKind: "select",
+    control,
+    clipRoots,
+    isActionable,
+  });
+  return {
+    ...target,
+    activate: () => {
+      control.focus({ preventScroll: true });
+      try {
+        control.showPicker?.();
+      } catch {
+        // Focus is the progressive fallback when a native picker is unavailable.
+      }
+    },
+  };
+}
+
 export function hasActionHintLayoutBox(element) {
   return Boolean(element?.getClientRects?.().length);
 }
@@ -63,4 +112,26 @@ export function mergeActionHintScopes(...scopes) {
     }
   }
   return merged;
+}
+
+function focusActionHintTarget({
+  id,
+  actionId,
+  label,
+  controlKind,
+  control,
+  clipRoots,
+  isActionable,
+}) {
+  return {
+    id,
+    actionId,
+    label,
+    controlKind,
+    control,
+    anchor: control,
+    clipRoots,
+    isActionable,
+    activate: () => control.focus({ preventScroll: true }),
+  };
 }

@@ -3,6 +3,8 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
+  selectActionHintTarget,
+  textboxActionHintTarget,
 } from "../../action-hint-scope.js";
 import {
   ACTION_HINT_ACTIVATE_EVENT,
@@ -41,7 +43,9 @@ export {
   normalizeRect,
   rectsEqual,
   sortByVisualOrder,
+  selectActionHintTarget,
   taskHintSuffix,
+  textboxActionHintTarget,
 };
 
 export class ActionHintController {

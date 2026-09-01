@@ -64,3 +64,42 @@ test("merges the follow-up composer and Current Plan direct-owner scopes", () =>
     scrollRoots: [planScrollRoot],
   });
 });
+
+test("merges composer popovers, Current Plan, and Command modal independently", () => {
+  const composerContext = { id: "composer-popover" };
+  const planContext = { id: "current-plan" };
+  const commandContext = { id: "command-output" };
+  const slot = {};
+  const composer = {
+    parentElement: slot,
+    keyboardNavigationContexts(options) {
+      assert.equal(options.scopeId, "task:thread-a");
+      return [composerContext];
+    },
+  };
+  const owner = {
+    hidden: false,
+    view: "detail",
+    reviewView: "conversation",
+    selectedThreadId: "thread-a",
+    ensureRendered() {},
+    followUpComposer: () => composer,
+    followUpComposerSlot: () => slot,
+    currentPlanComponent: () => ({
+      keyboardNavigationContexts: () => [planContext],
+    }),
+    commandDialog: () => ({
+      keyboardNavigationContexts: () => [commandContext],
+    }),
+  };
+
+  assert.deepEqual(
+    taskDetail.keyboardNavigationContexts.call(owner),
+    [composerContext, planContext, commandContext],
+  );
+  owner.currentPlanComponent = () => null;
+  assert.deepEqual(
+    taskDetail.keyboardNavigationContexts.call(owner),
+    [composerContext, commandContext],
+  );
+});

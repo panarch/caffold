@@ -39,3 +39,32 @@ test("combines New Task actions with the direct Section GitHub shortcuts", () =>
     scrollRoots: [owner],
   });
 });
+
+test("merges Task Create popovers and the Fork modal independently", () => {
+  const createContext = { id: "task-create-popover" };
+  const forkContext = { id: "fork-dialog" };
+  const owner = {
+    hidden: false,
+    section: { id: "section-a" },
+    ensureRendered() {},
+    taskCreate: () => ({
+      keyboardNavigationContexts(options) {
+        assert.equal(options.scopeId, "section:section-a");
+        return [createContext];
+      },
+    }),
+    conversationShortcuts: () => ({
+      keyboardNavigationContexts: () => [forkContext],
+    }),
+  };
+
+  assert.deepEqual(
+    sectionDetail.keyboardNavigationContexts.call(owner),
+    [createContext, forkContext],
+  );
+  owner.taskCreate = () => null;
+  assert.deepEqual(
+    sectionDetail.keyboardNavigationContexts.call(owner),
+    [forkContext],
+  );
+});

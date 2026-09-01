@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { actionHintDialog } from "./support/action-hints.js";
 import {
   installBrowserDefaults,
   mockClaudeStatus,
@@ -189,12 +190,39 @@ test("manually restarts a ready Codex runtime", { tag: "@all-viewports" }, async
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("Wait for running Tasks and tests to finish");
   await expect(dialog).toContainText("other connected Codex clients");
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+  const cancel = dialog.getByRole("button", { name: "Cancel" });
+  await cancel.focus();
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await expect(hint.getByRole("button", { name: / — Cancel$/ })).toBeVisible();
+  await expect(
+    hint.getByRole("button", { name: / — Restart Codex$/ }),
+  ).toBeVisible();
+  const cancelCode = await hint.getByRole("button", {
+    name: / — Cancel$/,
+  }).getAttribute("data-action-hint-code");
+  expect(cancelCode).toBeTruthy();
+  await page.keyboard.type(cancelCode.toLowerCase());
+  await expect(hint).toBeHidden();
   await expect(dialog).toBeHidden();
+  await expect(restart).toBeFocused();
   expect(restartRequests).toBe(0);
 
   await restart.click();
-  await dialog.getByRole("button", { name: "Restart Codex" }).click();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(restart).toBeFocused();
+
+  await restart.click();
+  await dialog.getByRole("button", { name: "Cancel" }).focus();
+  await page.keyboard.press("f");
+  const restartHint = actionHintDialog(page).getByRole("button", {
+    name: / — Restart Codex$/,
+  });
+  const restartCode = await restartHint.getAttribute("data-action-hint-code");
+  expect(restartCode).toBeTruthy();
+  await page.keyboard.type(restartCode.toLowerCase());
   await expect(runtime.getByRole("button", { name: "Restarting…" })).toBeDisabled();
 
   releaseRestart();
@@ -591,14 +619,38 @@ test("explicitly restarts the Claude runner from its Settings item", { tag: "@al
 
   await page.goto("/settings/claude");
   const settings = page.locator("caffold-settings-claude-page");
+  const restart = settings.getByRole("button", { name: "Restart runtime" });
   await expect(settings).toContainText("Restarting stops the runner");
   await expect(settings).toContainText("Running · pid 4242");
 
-  await settings.getByRole("button", { name: "Restart runtime" }).click();
+  await restart.click();
   const dialog = page.getByRole("dialog", { name: "Restart Claude runtime?" });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("ends every running Claude turn");
-  await dialog.getByRole("button", { name: "Restart Claude" }).click();
+  await dialog.getByRole("button", { name: "Cancel" }).focus();
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await expect(hint.getByRole("button", { name: / — Cancel$/ })).toBeVisible();
+  await expect(
+    hint.getByRole("button", { name: / — Restart Claude$/ }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(hint).toBeHidden();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(restart).toBeFocused();
+
+  await restart.click();
+  await dialog.getByRole("button", { name: "Cancel" }).focus();
+  await page.keyboard.press("f");
+  const restartHint = actionHintDialog(page).getByRole("button", {
+    name: / — Restart Claude$/,
+  });
+  const restartCode = await restartHint.getAttribute("data-action-hint-code");
+  expect(restartCode).toBeTruthy();
+  await page.keyboard.type(restartCode.toLowerCase());
 
   await expect(settings).toContainText("Claude runner restarted");
   expect(restartRequests).toBe(1);

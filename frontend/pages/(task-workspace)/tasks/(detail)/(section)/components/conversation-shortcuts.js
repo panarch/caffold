@@ -110,6 +110,13 @@ class CaffoldSectionConversationShortcuts extends HTMLElement {
     return this.querySelector(":scope > caffold-conversation-fork-dialog");
   }
 
+  keyboardNavigationContexts() {
+    this.ensureRendered();
+    return this.active && !this.hidden
+      ? this.forkDialog()?.keyboardNavigationContexts?.() ?? []
+      : [];
+  }
+
   patch() {
     const state = codexState(this.codexStatusSnapshot);
     const known = state !== "pending";

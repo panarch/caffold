@@ -198,6 +198,92 @@ test("resolves workspace, exact modal, and registered popover ownership", () => 
   }
 });
 
+test("registered modal consumes only the first non-composing Editing Escape", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const controller = createController();
+    const root = element();
+    const input = element({
+      isConnected: true,
+      matches: (selector) => selector.includes("input:not"),
+      closest: () => null,
+    });
+    const cancel = element({
+      isConnected: true,
+      hidden: false,
+      disabled: false,
+      focus(options) {
+        assert.deepEqual(options, { preventScroll: true });
+        document.activeElement = cancel;
+      },
+    });
+    root.contains = (candidate) => [root, input, cancel].includes(candidate);
+    controller.collectKeyboardNavigationContexts = () => [{
+      id: "fork",
+      kind: "modal",
+      root,
+      editing: { escapeTarget: (editable) => editable === input ? cancel : null },
+    }];
+    document.modal = root;
+    document.activeElement = input;
+
+    const first = keyEvent("Escape");
+    first.target = input;
+    controller.handleKeydown(first);
+    assert.equal(first.prevented, true);
+    assert.equal(first.stopped, true);
+    assert.equal(document.activeElement, cancel);
+
+    const second = keyEvent("Escape");
+    second.target = cancel;
+    controller.handleKeydown(second);
+    assert.equal(second.prevented, false);
+    assert.equal(second.stopped, false);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("Editing Escape stays native for composition, unknown modal, or invalid target", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const controller = createController();
+    const root = element();
+    const input = element({
+      isConnected: true,
+      matches: (selector) => selector.includes("input:not"),
+      closest: () => null,
+    });
+    root.contains = (candidate) => candidate === root || candidate === input;
+    document.activeElement = input;
+    document.modal = root;
+
+    const unknown = keyEvent("Escape");
+    unknown.target = input;
+    controller.handleKeydown(unknown);
+    assert.equal(unknown.prevented, false);
+
+    controller.collectKeyboardNavigationContexts = () => [{
+      id: "modal",
+      kind: "modal",
+      root,
+      editing: { escapeTarget: () => element({ isConnected: true }) },
+    }];
+    const invalid = keyEvent("Escape");
+    invalid.target = input;
+    controller.handleKeydown(invalid);
+    assert.equal(invalid.prevented, false);
+
+    const composing = keyEvent("Escape");
+    composing.target = input;
+    composing.isComposing = true;
+    controller.handleKeydown(composing);
+    assert.equal(composing.prevented, false);
+  } finally {
+    restoreDom();
+  }
+});
+
 test("rejects malformed and duplicate provider identities centrally", () => {
   const restoreDom = installEventGlobals();
   try {
@@ -555,6 +641,7 @@ function context(id, kind) {
 
 function element(properties = {}) {
   return Object.assign(new HTMLElement(), {
+    closest: () => null,
     getBoundingClientRect: () => ({
       left: 0,
       top: 0,
@@ -564,6 +651,7 @@ function element(properties = {}) {
       height: 100,
     }),
     getClientRects: () => [{}],
+    matches: () => false,
     ...properties,
   });
 }

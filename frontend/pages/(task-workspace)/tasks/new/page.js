@@ -1,4 +1,5 @@
 import { cleanLogicalPath } from "../task-format.js";
+import { mergeKeyboardNavigationContexts } from "../../keyboard-navigation-context.js";
 import "./components/directory-picker.js";
 import "../components/task-create.js";
 
@@ -125,7 +126,10 @@ class CaffoldTaskNew extends HTMLElement {
     if (this.hidden) {
       return [];
     }
-    return this.taskCreate()?.keyboardNavigationContexts({ scopeId: "new" }) ?? [];
+    return mergeKeyboardNavigationContexts(
+      this.taskCreate()?.keyboardNavigationContexts({ scopeId: "new" }) ?? [],
+      this.directoryPicker()?.keyboardNavigationContexts?.() ?? [],
+    );
   }
 
   taskCreate() {

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { actionHintDialog } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
@@ -133,7 +134,7 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
   await workDetails.locator(":scope > summary").click();
   await expect(workDetails).toHaveAttribute("open", "");
 
-  const dialog = tasksPage.locator("caffold-task-command-dialog dialog");
+  const dialog = tasksPage.locator("caffold-task-command-dialog > dialog");
   const surfaces = [
     commandSurface(
       "timeline",
@@ -216,6 +217,52 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
   await surfaces[1].completed.row.scrollIntoViewIfNeeded();
   await captureReviewScreenshot(page, testInfo, "command-output-work-details-actions");
 
+  const keyboardOpener = surfaces[0].completed.action;
+  await keyboardOpener.click();
+  await expect(dialog).toHaveAttribute("open", "");
+  const closeControl = dialog.getByRole("button", {
+    name: "Close command output",
+    exact: true,
+  });
+  await expect(closeControl).toBeFocused();
+  await page.keyboard.press("f");
+  const commandHint = actionHintDialog(page);
+  const closeHint = commandHint.getByRole("button", {
+    name: / — Close command output$/,
+  });
+  await expect(closeHint).toBeVisible();
+  const closeCode = await closeHint.getAttribute("data-action-hint-code");
+  expect(closeCode).toBeTruthy();
+  await page.keyboard.type(closeCode.toLowerCase());
+  await expect(commandHint).toBeHidden();
+  await expect(dialog).not.toHaveAttribute("open", "");
+  await expect(keyboardOpener).toBeFocused();
+
+  await keyboardOpener.click();
+  const commandBody = dialog.locator(".task-command-dialog-body");
+  await commandBody.evaluate((element) => {
+    element.style.height = "48px";
+    element.style.maxHeight = "48px";
+  });
+  await expect.poll(() => commandBody.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await closeControl.focus();
+  await page.keyboard.press("s");
+  const commandHud = dialog.locator(
+    "caffold-keyboard-navigation-presentation caffold-scroll-mode-hud",
+  );
+  await expect(commandHud).toContainText("Scroll: Command output");
+  await page.keyboard.press("j");
+  await expect.poll(() => commandBody.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await expect(commandHud).toBeHidden();
+  await expect(dialog).toHaveAttribute("open", "");
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toHaveAttribute("open", "");
+  await expect(keyboardOpener).toBeFocused();
+
   for (const theme of ["light", "dark"]) {
     await page.locator("html").evaluate((root, nextTheme) => {
       root.dataset.theme = nextTheme;
@@ -245,7 +292,10 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
     await page.mouse.up();
     await expect(dialog).toHaveAttribute("open", "");
     await closeDialog(dialog, () =>
-      dialog.getByRole("button", { name: "Close command output" }).click(),
+      dialog.getByRole("button", {
+        name: "Close command output",
+        exact: true,
+      }).click(),
     );
     await expect(entry.action).toBeFocused();
   }
@@ -357,7 +407,10 @@ async function openWithPointerAndRestoreFocus(dialog, action) {
   await action.click();
   await expect(dialog).toHaveAttribute("open", "");
   await closeDialog(dialog, () =>
-    dialog.getByRole("button", { name: "Close command output" }).click(),
+    dialog.getByRole("button", {
+      name: "Close command output",
+      exact: true,
+    }).click(),
   );
   await expect(action).toBeFocused();
 }

@@ -5,40 +5,46 @@ import {
   installCustomElementUnitRegistry,
 } from "../../../../../../../tests/support/custom-element-unit.js";
 
-const previousCss = globalThis.CSS;
-globalThis.CSS = { escape: (value) => `${value}` };
 const registry = installCustomElementUnitRegistry();
 await import("./page.js");
 const page = registry.element("caffold-github-pull-detail-page").prototype;
-after(() => {
-  registry.restore();
-  if (previousCss === undefined) delete globalThis.CSS;
-  else globalThis.CSS = previousCss;
-});
+after(() => registry.restore());
 
-test("provides PR Files through its existing native control", () => {
+test("provides Start Task and PR Files through their existing native controls", () => {
   const clipRoot = {};
   const focusOptions = [];
-  let clicks = 0;
-  let control = {
+  const clicks = [];
+  const start = {
+    disabled: false,
+    getAttribute(name) {
+      return name === "aria-label" ? "Start Task for pull request #7" : null;
+    },
+    focus(options) {
+      focusOptions.push(["start", options]);
+    },
+    click() {
+      clicks.push("start");
+    },
+  };
+  let files = {
     dataset: { pullNumber: "7" },
     disabled: false,
     getAttribute(name) {
       return name === "aria-label" ? "Open files for PR #7" : null;
     },
     focus(options) {
-      focusOptions.push(options);
+      focusOptions.push(["files", options]);
     },
     click() {
-      clicks += 1;
+      clicks.push("files");
     },
   };
   const owner = {
     hidden: false,
     isConnected: true,
-    state: { status: "ready" },
-    querySelector() {
-      return control;
+    state: { status: "ready", payload: { pull: { number: 7 } } },
+    querySelector(selector) {
+      return selector.includes("github-pull-start-button") ? start : files;
     },
   };
 
@@ -46,27 +52,43 @@ test("provides PR Files through its existing native control", () => {
     scopeId: "github:pull:detail",
     clipRoots: [clipRoot],
   });
-  const target = scope.targets[0];
   assert.deepEqual(
-    {
-      id: target.id,
-      actionId: target.actionId,
-      label: target.label,
-      controlKind: target.controlKind,
-    },
-    {
-      id: "github:pull:detail:7:files",
-      actionId: "navigation.pull.files",
-      label: "Open files for PR #7",
-      controlKind: "button",
-    },
+    scope.targets.map(({ id, actionId, label, controlKind }) => ({
+      id,
+      actionId,
+      label,
+      controlKind,
+    })),
+    [
+      {
+        id: "github:pull:detail:7:start-task",
+        actionId: "task.github.start",
+        label: "Start Task for pull request #7",
+        controlKind: "button",
+      },
+      {
+        id: "github:pull:detail:7:files",
+        actionId: "navigation.pull.files",
+        label: "Open files for PR #7",
+        controlKind: "button",
+      },
+    ],
   );
-  assert.deepEqual(target.clipRoots, [owner, clipRoot]);
-  assert.equal(target.isActionable(), true);
-  target.activate();
-  assert.deepEqual(focusOptions, [{ preventScroll: true }]);
-  assert.equal(clicks, 1);
+  assert.ok(scope.targets.every((target) => target.isActionable()));
+  for (const target of scope.targets) {
+    assert.deepEqual(target.clipRoots, [owner, clipRoot]);
+  }
+  scope.targets[0].activate();
+  scope.targets[1].activate();
+  assert.deepEqual(focusOptions, [
+    ["start", { preventScroll: true }],
+    ["files", { preventScroll: true }],
+  ]);
+  assert.deepEqual(clicks, ["start", "files"]);
 
-  control = null;
-  assert.equal(target.isActionable(), false);
+  files = null;
+  assert.equal(scope.targets[0].isActionable(), true);
+  assert.equal(scope.targets[1].isActionable(), false);
+  owner.state = { status: "ready", payload: { pull: { number: 8 } } };
+  assert.ok(scope.targets.every((target) => !target.isActionable()));
 });

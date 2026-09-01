@@ -117,6 +117,7 @@ test("composes Scroll surfaces and keyboard contexts only from active owners", (
   const navigatorSurface = { id: "task-list" };
   const detailSurface = { id: "conversation" };
   const navigatorContext = { id: "reorder" };
+  const imageContext = { id: "image-preview" };
   const modalContext = { id: "current-plan" };
   const newContext = { id: "new-model" };
   const navigator = {
@@ -135,6 +136,9 @@ test("composes Scroll surfaces and keyboard contexts only from active owners", (
     getClientRects: () => [{}],
     taskNavigator: () => navigator,
     taskDetail: () => detail,
+    imagePreviewDialog: () => ({
+      keyboardNavigationContexts: () => [imageContext],
+    }),
     taskNew: () => ({
       keyboardNavigationContexts: () => [newContext],
     }),
@@ -146,7 +150,7 @@ test("composes Scroll surfaces and keyboard contexts only from active owners", (
   );
   assert.deepEqual(
     tasksPage.keyboardNavigationContexts.call(owner),
-    [navigatorContext, modalContext],
+    [navigatorContext, imageContext, modalContext],
   );
   owner.view = "new";
   assert.deepEqual(
@@ -155,7 +159,7 @@ test("composes Scroll surfaces and keyboard contexts only from active owners", (
   );
   assert.deepEqual(
     tasksPage.keyboardNavigationContexts.call(owner),
-    [navigatorContext, newContext],
+    [navigatorContext, imageContext, newContext],
   );
 
   owner.getClientRects = () => [];
@@ -165,6 +169,6 @@ test("composes Scroll surfaces and keyboard contexts only from active owners", (
   );
   assert.deepEqual(
     tasksPage.keyboardNavigationContexts.call(owner),
-    [navigatorContext],
+    [navigatorContext, imageContext],
   );
 });

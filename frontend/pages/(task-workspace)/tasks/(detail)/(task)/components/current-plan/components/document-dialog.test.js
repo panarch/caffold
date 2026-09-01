@@ -12,8 +12,42 @@ const documentDialog = registry.element(
 ).prototype;
 after(() => registry.restore());
 
+test("provides Close and only the currently visible Retry action", () => {
+  const close = actionControl("Close document");
+  const retry = actionControl("Retry", { visible: false });
+  const controls = new Map([
+    [".current-plan-document-close", close],
+    ['[data-current-plan-dialog-action="retry"]', retry],
+  ]);
+  const dialog = {
+    open: true,
+    querySelector: (selector) => controls.get(selector),
+  };
+  const owner = {
+    isConnected: true,
+    current: { path: "task/PLAN.md" },
+    dialog: () => dialog,
+  };
+  const scope = documentDialog.actionHintScope.call(owner);
+
+  assert.deepEqual(scope.targets.map(({ id }) => id), [
+    "current-plan-document:task%2FPLAN.md:close",
+    "current-plan-document:task%2FPLAN.md:retry",
+  ]);
+  assert.equal(scope.targets[0].isActionable(), true);
+  assert.equal(scope.targets[1].isActionable(), false);
+  retry.visible = true;
+  assert.equal(scope.targets[1].isActionable(), true);
+});
+
 test("provides its exact modal document context and preview scrollport", () => {
+  const hintDialog = {};
   const hud = { show() {}, close() {}, updateLabel() {} };
+  const presentation = {
+    actionHintDialog: () => hintDialog,
+    scrollModeHud: () => hud,
+  };
+  const actionScope = { targets: [{ id: "close" }] };
   const preview = {
     clientHeight: 300,
     scrollHeight: 900,
@@ -24,8 +58,11 @@ test("provides its exact modal document context and preview scrollport", () => {
     open: true,
     getClientRects: () => [{}],
     querySelector(selector) {
-      assert.equal(selector, ":scope > caffold-scroll-mode-hud");
-      return hud;
+      assert.equal(
+        selector,
+        ":scope > caffold-keyboard-navigation-presentation",
+      );
+      return presentation;
     },
   };
   const owner = {
@@ -33,6 +70,7 @@ test("provides its exact modal document context and preview scrollport", () => {
     isConnected: true,
     dialog: () => dialog,
     preview: () => preview,
+    actionHintScope: () => actionScope,
   };
 
   const [context] = documentDialog.keyboardNavigationContexts.call(owner);
@@ -40,6 +78,8 @@ test("provides its exact modal document context and preview scrollport", () => {
   assert.equal(context.id, "current-plan-document:task/PLAN.md");
   assert.equal(context.kind, "modal");
   assert.equal(context.root, dialog);
+  assert.equal(context.actionHints.dialog, hintDialog);
+  assert.deepEqual(context.actionHints.scope.targets, actionScope.targets);
   assert.equal(context.scroll.hud, hud);
   assert.equal(surface.id, "current-plan:task/PLAN.md:preview");
   assert.equal(surface.label, "Plan document");
@@ -51,3 +91,17 @@ test("provides its exact modal document context and preview scrollport", () => {
   owner.current = { path: "task/CHECKLIST.md", label: "Checklist" };
   assert.equal(surface.isEligible(), false);
 });
+
+function actionControl(textContent, { visible = true } = {}) {
+  return {
+    disabled: false,
+    textContent,
+    visible,
+    getAttribute: (name) => name === "aria-label" ? textContent : "",
+    getClientRects() {
+      return this.visible ? [{}] : [];
+    },
+    focus() {},
+    click() {},
+  };
+}

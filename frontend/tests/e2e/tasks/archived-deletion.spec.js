@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { actionHintDialog } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
@@ -99,13 +100,32 @@ test("confirms permanent deletion and removes the archived row only after succes
   await expect(cancel).toBeFocused();
   await captureReviewScreenshot(page, testInfo, "tasks-delete-confirmation");
 
-  await cancel.click();
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await expect(hint.getByRole("button", { name: / — Cancel$/ })).toBeVisible();
+  await expect(
+    hint.getByRole("button", { name: / — Delete permanently$/ }),
+  ).toBeVisible();
+  const cancelCode = await hint.getByRole("button", {
+    name: / — Cancel$/,
+  }).getAttribute("data-action-hint-code");
+  expect(cancelCode).toBeTruthy();
+  await page.keyboard.type(cancelCode.toLowerCase());
+  await expect(hint).toBeHidden();
   await expect(dialog).not.toBeVisible();
   await expect(row).toBeVisible();
   expect(deleteRequests).toBe(0);
 
   await row.getByRole("button", { name: "Delete Delete archived task" }).click();
-  await dialog.getByRole("button", { name: "Delete permanently" }).click();
+  await dialog.getByRole("button", { name: "Cancel" }).focus();
+  await page.keyboard.press("f");
+  const deleteHint = actionHintDialog(page).getByRole("button", {
+    name: / — Delete permanently$/,
+  });
+  const deleteCode = await deleteHint.getAttribute("data-action-hint-code");
+  expect(deleteCode).toBeTruthy();
+  await page.keyboard.type(deleteCode.toLowerCase());
   const deleting = row.getByRole("button", {
     name: "Deleting Delete archived task",
   });

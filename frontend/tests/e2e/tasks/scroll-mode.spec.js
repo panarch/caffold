@@ -423,13 +423,22 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
     "caffold-current-plan-document-dialog > dialog",
   );
   const preview = dialog.locator("caffold-markdown-preview");
-  const modalHud = dialog.locator(":scope > caffold-scroll-mode-hud");
+  const modalHud = dialog.locator(
+    ":scope > caffold-keyboard-navigation-presentation caffold-scroll-mode-hud",
+  );
   await expect(dialog).toHaveAttribute("open", "");
   await expect.poll(() => preview.evaluate(
     (element) => element.scrollHeight > element.clientHeight,
   )).toBe(true);
   await page.keyboard.press("f");
-  await expect(actionHintDialog(page)).toBeHidden();
+  const modalHint = actionHintDialog(page);
+  await expect(modalHint).toBeVisible();
+  await expect(
+    modalHint.getByRole("button", { name: / — Close document$/ }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(modalHint).toBeHidden();
+  await expect(dialog).toHaveAttribute("open", "");
   const backgroundBefore = await scrollPositions(page);
 
   await page.keyboard.press("s");

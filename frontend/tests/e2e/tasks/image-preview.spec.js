@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { actionHintDialog } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 
@@ -45,7 +46,16 @@ test("previews a composer image without coupling preview and removal", { tag: "@
   ).toBeFocused();
   await expectPreviewContained(dialog, { portrait: true });
 
-  await page.keyboard.press("Escape");
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  const closeHint = hint.getByRole("button", {
+    name: / — Close image preview$/,
+  });
+  await expect(closeHint).toBeVisible();
+  const closeCode = await closeHint.getAttribute("data-action-hint-code");
+  expect(closeCode).toBeTruthy();
+  await page.keyboard.type(closeCode.toLowerCase());
+  await expect(hint).toBeHidden();
   await expect(dialog).toBeHidden();
   await expect(previewTrigger).toBeFocused();
 
