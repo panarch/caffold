@@ -7,6 +7,11 @@ import {
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "../action-hint-scope.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  mergeScrollSurfaceScopes,
+} from "../scroll-scope.js";
 
 const LOADING_DELAY_MS = 180;
 const PANEL_DEFAULT_WIDTH = 320;
@@ -502,6 +507,7 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     fileActionId = "",
     parentActionId = "",
     detailsActionId = "",
+    refreshActionId = "",
     clipRoots = [],
   } = {}) {
     this.ensureRendered();
@@ -524,6 +530,34 @@ class CaffoldGitCompareBrowser extends HTMLElement {
             scopeId: `${scopeId}:viewer`,
             actionId: parentActionId,
             detailsActionId,
+            refreshActionId,
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
+    );
+  }
+
+  scrollSurfaceScope({ scopeId = "", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    if (!scopeId || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    const singlePane = window.matchMedia(
+      REVIEW_SINGLE_PANE_MEDIA_QUERY,
+    ).matches;
+    const listActive = this.detailView === "list" || !singlePane;
+    const viewerActive = this.detailView === "viewer";
+    return mergeScrollSurfaceScopes(
+      listActive && hasScrollLayoutBox(this.compareTree)
+        ? this.compareTree.scrollSurfaceScope({
+            scopeId: `${scopeId}:compare`,
+            label: "Compared files",
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
+      viewerActive && hasScrollLayoutBox(this.viewer)
+        ? this.viewer.scrollSurfaceScope({
+            scopeId: `${scopeId}:viewer`,
             clipRoots: [this, ...clipRoots],
           })
         : null,

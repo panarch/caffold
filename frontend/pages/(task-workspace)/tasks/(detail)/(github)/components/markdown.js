@@ -1,3 +1,9 @@
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../../../../../../scroll-scope.js";
+
 const FORBIDDEN_ELEMENTS = new Set([
   "base",
   "button",
@@ -198,6 +204,36 @@ class CaffoldGithubMarkdown extends HTMLElement {
     this.shadowRoot
       .querySelector(".markdown-body")
       .replaceChildren(template.content.cloneNode(true));
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "Issue description",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    if (!scopeId || !label || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    const scrollport = this;
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label,
+        scrollport,
+        clipRoots: [this, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          hasScrollLayoutBox(this) &&
+          hasVerticalScrollOverflow(this),
+      }],
+      mutationRoots: [this, this.shadowRoot],
+      resizeElements: [this],
+      scrollRoots: [this],
+    };
   }
 }
 

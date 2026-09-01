@@ -27,7 +27,8 @@ import { KeyboardNavigationController } from "./keyboard-navigation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "./scroll-scope.js";
+  mergeScrollSurfaceScopes,
+} from "../../scroll-scope.js";
 import {
   keyboardNavigationContext,
   mergeKeyboardNavigationContexts,
@@ -142,8 +143,10 @@ class CaffoldTaskWorkspace extends HTMLElement {
     `;
     this.backButton = this.querySelector(".task-workspace-back");
     this.closeButton = this.querySelector(".task-workspace-close");
+    this.workspaceSurface = this.querySelector(":scope > .task-workspace-surface");
     this.masterDetail = this.querySelector(".task-workspace-master-detail");
     this.masterPane = this.querySelector(".task-workspace-master-pane");
+    this.detailPane = this.querySelector(".task-workspace-detail-pane");
     this.taskNavigator = this.querySelector("caffold-task-navigator");
     this.settingsNavigator = this.querySelector("caffold-settings-navigator");
     this.masterResizer = this.querySelector(".task-workspace-master-resizer");
@@ -550,12 +553,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
 
   keyboardNavigationContexts() {
     this.ensureRendered();
-    const workspaceScope =
-      !this.hidden &&
-        this.mode === "tasks" &&
-        hasScrollLayoutBox(this.tasksPage)
-        ? this.tasksPage.scrollSurfaceScope()
-        : emptyScrollSurfaceScope();
+    const workspaceScope = this.workspaceScrollSurfaceScope();
     const workspaceContext = keyboardNavigationContext({
       id: "workspace",
       kind: "workspace",
@@ -583,6 +581,33 @@ class CaffoldTaskWorkspace extends HTMLElement {
       this.claudeRuntimeRestartDialog?.keyboardNavigationContexts?.() ?? [],
       this.archivedDeleteDialog?.keyboardNavigationContexts?.() ?? [],
       childContexts,
+    );
+  }
+
+  workspaceScrollSurfaceScope() {
+    if (this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    if (this.mode === "tasks") {
+      return this.tasksPage?.scrollSurfaceScope?.() ??
+        emptyScrollSurfaceScope();
+    }
+    if (this.mode !== "settings") {
+      return emptyScrollSurfaceScope();
+    }
+    return mergeScrollSurfaceScopes(
+      hasScrollLayoutBox(this.settingsNavigator)
+        ? this.settingsNavigator.scrollSurfaceScope({
+            scopeId: "settings",
+            clipRoots: [this.masterPane, this.workspaceSurface].filter(Boolean),
+          })
+        : null,
+      hasScrollLayoutBox(this.settingsWorkspace)
+        ? this.settingsWorkspace.scrollSurfaceScope({
+            scopeId: "settings",
+            clipRoots: [this.detailPane, this.workspaceSurface].filter(Boolean),
+          })
+        : null,
     );
   }
 

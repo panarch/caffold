@@ -10,13 +10,16 @@ import {
 import { escapeHtml } from "../../../../../components/dom.js";
 import { routeDomain } from "../../../../../navigation-routes.js";
 import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
   emptyActionHintScope,
+  hasActionHintLayoutBox,
   mergeActionHintScopes,
 } from "../../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-} from "../../../scroll-scope.js";
+} from "../../../../../scroll-scope.js";
 import {
   mergeKeyboardNavigationContexts,
 } from "../../../keyboard-navigation-context.js";
@@ -396,6 +399,35 @@ class CaffoldTaskDetail extends HTMLElement {
     }
     const scopeId = `task:${this.selectedThreadId}`;
     const clipRoots = [this, conversation];
+    const retrySelector =
+      'button[data-task-action="retry-task-detail"]:not([data-conversation-action])';
+    const retryControl = this.querySelector(retrySelector);
+    const retryScope = retryControl &&
+        !retryControl.disabled &&
+        hasActionHintLayoutBox(retryControl)
+      ? {
+          blocked: false,
+          targets: [buttonActionHintTarget({
+            id: `${scopeId}:retry-detail`,
+            actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            label: retryControl.getAttribute("aria-label") ||
+              retryControl.textContent?.trim() ||
+              "Retry Task detail",
+            control: retryControl,
+            clipRoots,
+            isActionable: () =>
+              this.isConnected &&
+              !this.hidden &&
+              this.view === "detail" &&
+              this.reviewView === "conversation" &&
+              this.querySelector(retrySelector) === retryControl &&
+              !retryControl.disabled &&
+              hasActionHintLayoutBox(retryControl),
+          })],
+          mutationRoots: [this],
+          scrollRoots: [],
+        }
+      : null;
     const composerScope = composer && slot && composer.parentElement === slot
       ? {
           targets: composer.actionHintTargets({
@@ -410,7 +442,16 @@ class CaffoldTaskDetail extends HTMLElement {
       scopeId: `${scopeId}:current-plan`,
       clipRoots,
     });
-    return mergeActionHintScopes(composerScope, currentPlanScope);
+    const conversationScope = this.conversationComponent()?.actionHintScope({
+      scopeId: `${scopeId}:conversation`,
+      clipRoots,
+    });
+    return mergeActionHintScopes(
+      retryScope,
+      composerScope,
+      conversationScope,
+      currentPlanScope,
+    );
   }
 
   scrollSurfaceScope() {

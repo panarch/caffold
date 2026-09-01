@@ -2,6 +2,7 @@ import { listDirectory } from "../api.js";
 import { createRefreshCoordinator, subscribeToWatch } from "../watch.js";
 import "./file-navigator/list.js";
 import { emptyActionHintScope } from "../action-hint-scope.js";
+import { emptyScrollSurfaceScope } from "../scroll-scope.js";
 
 const LOADING_DELAY_MS = 180;
 
@@ -166,14 +167,36 @@ class CaffoldFileNavigator extends HTMLElement {
       : null;
   }
 
-  actionHintScope({ scopeId = "", actionId = "", clipRoots = [] } = {}) {
+  actionHintScope({
+    scopeId = "",
+    actionId = "",
+    refreshActionId = "",
+    clipRoots = [],
+  } = {}) {
     this.ensureRendered();
-    if (!scopeId || !actionId || this.hidden || !this.fileList) {
+    if (!scopeId || this.hidden || !this.fileList) {
       return emptyActionHintScope();
     }
     return this.fileList.actionHintScope({
       scopeId,
       actionId,
+      refreshActionId,
+      clipRoots: [this, ...clipRoots],
+    });
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "Files",
+    clipRoots = [],
+  } = {}) {
+    this.ensureRendered();
+    if (!scopeId || this.hidden || !this.fileList) {
+      return emptyScrollSurfaceScope();
+    }
+    return this.fileList.scrollSurfaceScope({
+      scopeId,
+      label,
       clipRoots: [this, ...clipRoots],
     });
   }

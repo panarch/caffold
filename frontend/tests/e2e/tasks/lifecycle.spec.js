@@ -1692,7 +1692,7 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     tasksPage.locator("caffold-task-directory-picker"),
   ).toHaveCount(1);
   await expect(
-    tasksPage.locator("caffold-task-directory-picker dialog"),
+    tasksPage.locator("caffold-task-directory-picker > dialog"),
   ).not.toHaveAttribute("open", "");
 
   const lifecycle = await taskWorkspace.evaluate((workspace) => {

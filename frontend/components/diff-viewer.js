@@ -1,4 +1,9 @@
 import { escapeHtml } from "./dom.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../scroll-scope.js";
 
 const HUNK_HEADER_PATTERN = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/;
 
@@ -27,6 +32,41 @@ class CaffoldDiffViewer extends HTMLElement {
 
   getScrollState() {
     return this.captureScroll();
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "File diff",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const scrollport = this.querySelector(
+      ":scope > .diff-viewer > .diff-lines",
+    );
+    if (!scopeId || !label || !scrollport || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label,
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.querySelector(":scope > .diff-viewer > .diff-lines") ===
+            scrollport &&
+          isCurrent() &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport) &&
+          hasVerticalScrollOverflow(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   visibleLine() {

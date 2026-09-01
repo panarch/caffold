@@ -9,7 +9,12 @@ import {
   unloadedFileTreeChildren,
 } from "../file-tree.js";
 import { renderInlineIcon } from "../icons.js";
-import { emptyActionHintScope } from "../../action-hint-scope.js";
+import {
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../action-hint-scope.js";
+import { emptyScrollSurfaceScope } from "../../scroll-scope.js";
 
 const TREE_LOADING_DELAY_MS = 180;
 
@@ -183,24 +188,81 @@ class CaffoldFileList extends HTMLElement {
     return this.querySelector("caffold-file-tree");
   }
 
-  actionHintScope({ scopeId = "", actionId = "", clipRoots = [] } = {}) {
+  actionHintScope({
+    scopeId = "",
+    actionId = "",
+    refreshActionId = "",
+    clipRoots = [],
+  } = {}) {
     const tree = this.fileTree();
     if (
       !scopeId ||
-      !actionId ||
       this.hidden ||
       this.state?.status !== "ready" ||
       !tree
     ) {
       return emptyActionHintScope();
     }
-    return tree.actionHintScope({
+    const refresh = this.querySelector(
+      ':scope > .file-list-panel > header button[data-action="refresh-files"]',
+    );
+    const refreshScope = refreshActionId && refresh && !refresh.disabled
+      ? {
+          targets: [buttonActionHintTarget({
+            id: `${scopeId}:refresh`,
+            actionId: refreshActionId,
+            label: refresh.getAttribute("aria-label") || "Refresh files",
+            control: refresh,
+            clipRoots: [this, ...clipRoots],
+            isActionable: () =>
+              this.isConnected &&
+              !this.hidden &&
+              this.state?.status === "ready" &&
+              this.querySelector(
+                ':scope > .file-list-panel > header button[data-action="refresh-files"]',
+              ) === refresh &&
+              !refresh.disabled,
+          })],
+          mutationRoots: [this],
+          scrollRoots: [],
+        }
+      : null;
+    const treeScope = actionId
+      ? tree.actionHintScope({
+          scopeId,
+          actionId,
+          clipRoots: [this, ...clipRoots],
+          isCurrent: (node) => node.source?.path === this.selectedPath,
+          labelForNode: (node) =>
+            node.ariaLabel || `Open ${node.source?.name ?? node.name}`,
+        })
+      : null;
+    return mergeActionHintScopes(refreshScope, treeScope);
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "Files",
+    clipRoots = [],
+  } = {}) {
+    const tree = this.fileTree();
+    if (
+      !scopeId ||
+      this.hidden ||
+      this.state?.status !== "ready" ||
+      !tree
+    ) {
+      return emptyScrollSurfaceScope();
+    }
+    return tree.scrollSurfaceScope({
       scopeId,
-      actionId,
+      label,
       clipRoots: [this, ...clipRoots],
-      isCurrent: (node) => node.source?.path === this.selectedPath,
-      labelForNode: (node) =>
-        node.ariaLabel || `Open ${node.source?.name ?? node.name}`,
+      isCurrent: () =>
+        this.isConnected &&
+        !this.hidden &&
+        this.state?.status === "ready" &&
+        this.fileTree() === tree,
     });
   }
 

@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { actionHintDialog } from "../support/action-hints.js";
+import {
+  actionHintDialog,
+  activateActionHint,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import {
@@ -313,7 +316,7 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
   const directoryPicker = tasksPage.locator("caffold-task-directory-picker");
   const directoryDialog = directoryPicker.locator(":scope > dialog");
   await prompt.fill("Say hello globally");
-  await browseCwd.click();
+  await activateActionHint(page, /Browse Files$/);
   await expect(directoryDialog).toBeVisible();
   await expect(prompt).toBeVisible();
   await expect(directoryPicker.locator("caffold-file-browser")).toHaveCount(0);

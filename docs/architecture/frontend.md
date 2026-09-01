@@ -231,26 +231,35 @@ infer actions or scrollports from overlay descendants.
 
 The coordinator enters Action Hint mode from a non-editing `F` key and
 pulls one-shot semantic descriptors from explicitly participating owners.
-Workspace and Settings navigation, Task and Section selection, direct Detail
-view choices, the Current Plan document openers for Plan and Checklist,
-Integrated Review, and the direct Git and GitHub navigation surfaces provide
-their native control, stable semantic identity, action
-meaning, accessible name, anchor, and clip dependencies. Conversation content,
-arbitrary clickable DOM, disclosures, mutation controls, external links,
-selects, popovers, and dialogs are not scanned. The native Model, Permission,
-Reorder, Git, GitHub, Task details, and File details popover owners explicitly
-provide their own opener target and exact open-popover context. Model,
-Reasoning, Speed, Permission, Reorder, Git/GitHub destination, and enabled
-Fork/Archive buttons are declared by the component that owns their existing
-activation path; File details deliberately declares no internal Action Hint
-target. Reusable controls such as the
-segmented control, file tree, pagination, and file viewer expose public scope
+Each participating component provides its retained native control, stable
+semantic identity, action meaning, accessible name, anchor, and clip
+dependencies. This includes Workspace and Settings navigation and page
+buttons; Task and Section selection; archived-list, recovery, and Codex
+readiness buttons; Composer Model, Permission, Prompt, attachment, voice,
+cancel, submit, and interrupt actions; Conversation retry, image-preview, and
+approval actions; Section Fork; Current Plan document openers; and direct
+Integrated Review, Git, GitHub, file-navigation, and file-viewer actions. Git
+declares Refresh and commit-body Expand/Collapse, while GitHub detail declares
+Start Task and Pull Files. Activation reuses each owner's existing native
+button click, form, or product-intent path.
+
+Custom children retain their own action knowledge. Terminal Command declares
+View output, Markdown Code Block declares Wrap and Copy, and Conversation
+merges those public scopes through its retained Assistant Message, Markdown,
+and Work Details children. Reusable controls such as the segmented control,
+file tree, pagination, file navigator, and file viewer expose public scope
 providers; their screen owner supplies the semantic action and scope context.
-GitHub Issue and Pull Request detail owners also declare their exact visible
-and enabled `Start Task` button. Pull Request detail composes that opener beside
-its existing Files target. Activation reuses the native button click and Task
-Start event path; after the dialog opens, the user explicitly presses `F` again
-to enter its separate modal context.
+Ancestors never discover these actions by scanning descendant buttons.
+
+Checkboxes, radios, ranges, general native selects, external or Markdown
+links, native `summary` disclosures, and reorder handles remain outside the
+ordinary-button Action Hint set. Explicitly registered dialog selects and
+textboxes keep their existing owner-specific behavior. Popover and dialog
+openers are ordinary workspace actions, but after either opens the user presses
+`F` again to enter the new retained context; the coordinator never predicts or
+automatically hands off to it. File details deliberately declares no internal
+Action Hint target.
+
 Provider collection is hierarchical: each layout merges its own actions with
 only its active direct child scopes through `action-hint-scope.js`. Ancestors
 do not enumerate or reach through descendant DOM. A retained pane with no
@@ -325,17 +334,36 @@ cause the coordinator to infer a fallback or consume the key.
 
 Scroll mode enters from a non-editing `S` key and uses only vertical surfaces
 explicitly published through `scroll-scope.js`; it does not discover generic
-scrollable DOM. Task Navigator publishes its exact Task-list scrollport,
-Conversation publishes its exact active reading scrollport, and five
-registered product dialogs publish one exact vertical surface each: directory
-picker `.file-tree-scroll`, Conversation fork body, command-output body,
-Current Plan Markdown preview, and Task Start body. Each registered popover
-publishes only its own root as an optional surface; actual overflow is still
-required and no CSS overflow is manufactured for short dialogs or menus.
-Containers merge only active direct-child contexts. Workspace, an open
+scrollable DOM. The reusable contract lives at `frontend/scroll-scope.js` so
+page and shared-component owners use one empty, merge, layout, and vertical
+overflow policy.
+
+Settings publishes its navigator plus the exact active page surface. Tasks
+publishes its navigator plus the visible New, Recovery, Codex-readiness,
+Section, or Task Detail child. Detail delegates to the exact active
+Conversation, Integrated Review, Git, or GitHub domain. Integrated Review, Git
+Compare and Commit, and GitHub Pull Files merge their simultaneously visible
+tree and viewer leaves on desktop and omit the pane without a layout box on
+single-pane layouts. File tree, source, diff, Markdown preview, image stage,
+and scrollable notice owners publish their actual retained leaf rather than
+having a screen parent reach into their DOM.
+
+Git Log, GitHub Issue and Pull lists, GitHub Issue Markdown or raw body, and
+Pull Request detail publish their exact vertical scrollports. The GitHub
+Markdown Shadow-DOM component publishes its scrolling host; the coordinator
+does not inspect its shadow descendants. Five registered product dialogs
+publish one exact vertical surface each: directory picker `.file-tree-scroll`,
+Conversation fork body, command-output body, Current Plan Markdown preview,
+and Task Start body. Each registered popover publishes only its own root as an
+optional surface. Actual overflow is always required, and no CSS overflow is
+manufactured for short pages, dialogs, or menus. Composer textareas, native
+editable controls, horizontal code/table surfaces, and other undeclared
+scrollports remain with their native owner.
+
+Containers merge only active direct-child scopes. Workspace, an open
 registered modal, and an open registered popover are exclusive interaction
-contexts, so modal or popover scrolling never shares a selection set with the
-background Task list or Conversation.
+contexts, so overlay scrolling never shares a selection set with background
+workspace surfaces.
 
 Eligibility directly checks the bound element, vertical overflow, layout box,
 visual viewport, clip roots, and owner revalidation. One eligible surface
@@ -419,6 +447,13 @@ snapshot and live event application, Conversation, Command dialog, current-plan
 strip, follow-up Composer, and Task mutations. It publishes a subject snapshot
 upward; it does not mount Integrated Review, Git, GitHub, or their Summary
 controls.
+
+For keyboard navigation, each of these layout owners merges only the public
+scope of the child it currently presents. `caffold-tasks-page` composes Task
+Navigator with the visible New, Recovery, readiness, or Detail owner;
+setup-beside is an independent sibling when it is actually visible. The common
+Detail layout delegates Action and Scroll scopes to Conversation, Section New,
+Integrated Review, Git, or GitHub without rebuilding child descriptors.
 
 One pending prompt per Task belongs to Detail, whether it originated in the
 Task Composer or was transferred from a New Task or GitHub creation surface.
@@ -561,6 +596,12 @@ the Task subject and are preserved by Task identity through incremental shell
 updates. Moving from Tasks to Settings ends active editing and transport work
 without destroying a retained Composer draft.
 
+Conversation also owns its delegated retry, attachment-preview, and approval
+buttons. A custom child owns its own controls: Command owns View output and
+Markdown Code Block owns Wrap and Copy. Assistant Message, Markdown, and Work
+Details merge only the direct retained children they mount, so stream patches
+can invalidate a frozen topology without introducing a descendant-DOM scan.
+
 ### Current plan
 
 `caffold-task-current-plan` is another stable child of Task Detail inside the
@@ -616,6 +657,14 @@ image Preview. The file viewer owns representation chrome and image rendering,
 and delegates Markdown rendering, sanitization, fallback, and local scroll to
 the shared `caffold-markdown-preview` component also used by the current-plan
 dialog.
+
+The shared file stack owns keyboard surfaces at the same boundaries. File List
+merges its Refresh button with the public file-tree scope, File Navigator
+forwards caller semantics, and File Viewer publishes its current source, diff,
+Markdown, image, or notice leaf plus its existing Back, Details,
+Source/Preview, and conditional Refresh actions. Integrated Review chooses the
+current navigator and viewer roles and merges those public scopes; it never
+queries a child's `.file-tree-scroll`, `.code-lines`, or `.diff-lines`.
 
 Integrated Review uses a bounded cache keyed by explicit Task or Section
 identity. Disconnecting an inactive entry invalidates its requests and releases
@@ -748,6 +797,14 @@ diagnostics, and intents for Refresh or restart. The workspace Codex status
 lifecycle remains active across Tasks and Settings route changes and owns the
 HTTP request generations.
 
+Each Settings page explicitly provides its current visible native buttons and
+exact page scrollport. The Settings workspace merges responsive Back with only
+the presented page, and the Task Workspace merges that result with the visible
+Settings navigator. Desktop may therefore expose independent navigator and
+page Scroll surfaces, while foldable and phone layouts contribute only the pane
+with a layout box. Checkbox, radio, range, and select controls keep their native
+editing or choice behavior and are not promoted to ordinary button actions.
+
 `caffold-settings-detail-list` renders the label and value rows that Codex,
 Claude, and About report. It owns row identity, the placeholder a row shows
 before its value is known, and the width at which a label and its value
@@ -794,6 +851,7 @@ Relevant source ownership follows the routed hierarchy:
 ```text
 frontend/
 |-- action-hint-scope.js
+|-- scroll-scope.js
 |-- navigation-routes.js
 |-- pages/
 |   |-- layout.js

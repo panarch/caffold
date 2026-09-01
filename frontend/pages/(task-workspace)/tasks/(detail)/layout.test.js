@@ -218,3 +218,27 @@ test("deactivation closes the persistent Task summary interaction owner", () => 
   assert.equal(owner.sectionActivationKey, "");
   assert.equal(owner.domainActivationPromise, null);
 });
+
+test("delegates Scroll to each exact active Detail domain", () => {
+  const surfaces = Object.fromEntries(
+    ["review", "git", "github"].map((name) => [name, { id: name }]),
+  );
+  let activeSurface = "review";
+  const owner = {
+    subjectKind: "task",
+    hidden: false,
+    subjectIdentity: () => ({ kind: "task", id: "thread-a" }),
+    activeSurface: () => activeSurface,
+    ensureRendered() {},
+    taskDetail: () => null,
+    review: () => ({ scrollSurfaceScope: () => ({ surfaces: [surfaces.review] }) }),
+    gitLayout: () => ({ scrollSurfaceScope: () => ({ surfaces: [surfaces.git] }) }),
+    githubLayout: () => ({ scrollSurfaceScope: () => ({ surfaces: [surfaces.github] }) }),
+  };
+  for (const domain of ["review", "git", "github"]) {
+    activeSurface = domain;
+    assert.deepEqual(detailLayout.scrollSurfaceScope.call(owner).surfaces, [surfaces[domain]]);
+  }
+  owner.hidden = true;
+  assert.deepEqual(detailLayout.scrollSurfaceScope.call(owner).surfaces, []);
+});

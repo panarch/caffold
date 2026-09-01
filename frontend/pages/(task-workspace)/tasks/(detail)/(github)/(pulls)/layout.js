@@ -6,6 +6,7 @@ import "./list/page.js";
 import "./detail/page.js";
 import "./files/page.js";
 import { emptyActionHintScope } from "../../../../action-hints.js";
+import { emptyScrollSurfaceScope } from "../../../../../../scroll-scope.js";
 
 const GITHUB_PULLS_PER_PAGE = 50;
 const LOADING_DELAY_MS = 180;
@@ -440,6 +441,23 @@ class CaffoldGithubPullsLayout extends HTMLElement {
       scopeId: `${scopeId}:page:${this.page}`,
       clipRoots: [this, ...clipRoots],
     });
+  }
+
+  scrollSurfaceScope({ scopeId = "github:pulls", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    if (this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    const child = this.view === "detail"
+      ? this.detailPage
+      : this.view === "files"
+        ? this.filesPage
+        : this.listPage;
+    const suffix = this.view === "list" ? `page:${this.page}` : this.view;
+    return child.scrollSurfaceScope?.({
+      scopeId: `${scopeId}:${suffix}`,
+      clipRoots: [this, ...clipRoots],
+    }) ?? emptyScrollSurfaceScope();
   }
 
   keyboardNavigationContexts({ scopeId = "github:pulls" } = {}) {

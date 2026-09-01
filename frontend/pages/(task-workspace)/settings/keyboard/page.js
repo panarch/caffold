@@ -2,6 +2,11 @@ import {
   getSettings,
   setActionHintsEnabled,
 } from "../../../../settings.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../../../../scroll-scope.js";
 
 class CaffoldSettingsKeyboardPage extends HTMLElement {
   connectedCallback() {
@@ -34,6 +39,39 @@ class CaffoldSettingsKeyboardPage extends HTMLElement {
 
   prepareRoute() {
     this.syncControl(getSettings());
+  }
+
+  scrollSurfaceScope({
+    scopeId = "settings:keyboard",
+    label = "Keyboard settings",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const scrollport = this.querySelector(":scope > .settings-keyboard-scroll");
+    if (this.hidden || !scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label,
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.querySelector(":scope > .settings-keyboard-scroll") ===
+            scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport) &&
+          hasVerticalScrollOverflow(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   handleChange(event) {

@@ -49,3 +49,19 @@ test("provides only the active Issue list or detail scope", () => {
   assert.equal(calls[1][0], "list");
   assert.equal(calls[1][1].scopeId, "github:issues:page:3");
 });
+
+test("delegates Scroll only to the active Issue view", () => {
+  const listSurface = { id: "issues" };
+  const detailSurface = { id: "issue-body" };
+  const owner = {
+    hidden: false,
+    view: "list",
+    page: 2,
+    ensureRendered() {},
+    listPage: { scrollSurfaceScope: () => ({ surfaces: [listSurface] }) },
+    detailPage: { scrollSurfaceScope: () => ({ surfaces: [detailSurface] }) },
+  };
+  assert.deepEqual(layout.scrollSurfaceScope.call(owner).surfaces, [listSurface]);
+  owner.view = "detail";
+  assert.deepEqual(layout.scrollSurfaceScope.call(owner).surfaces, [detailSurface]);
+});

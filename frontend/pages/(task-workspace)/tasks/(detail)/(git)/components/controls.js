@@ -1,4 +1,9 @@
 import { renderInlineIcon, warmIcons } from "../../../../../../components/icons.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../../../action-hints.js";
 
 class CaffoldGitReviewControls extends HTMLElement {
   connectedCallback() {
@@ -126,6 +131,31 @@ class CaffoldGitReviewControls extends HTMLElement {
       label,
       "git-review-refresh-icon",
     );
+  }
+
+  actionHintScope({ scopeId = "git", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    const control = this.refreshButton;
+    if (this.hidden || !control || control.disabled) {
+      return emptyActionHintScope();
+    }
+    return {
+      blocked: false,
+      targets: [buttonActionHintTarget({
+        id: `${scopeId}:refresh`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label") || "Refresh Git",
+        control,
+        clipRoots: [this, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.refreshButton === control &&
+          !control.disabled,
+      })],
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
   }
 }
 

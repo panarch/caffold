@@ -14,9 +14,11 @@ test("combines Navigator with only the active direct-child surface", () => {
   const navigatorTarget = { id: "navigator" };
   const newTarget = { id: "new" };
   const detailTarget = { id: "detail" };
+  const recoveryTarget = { id: "recovery" };
   const navigatorRoot = {};
   const newRoot = {};
   const detailRoot = {};
+  const recoveryRoot = {};
   let newCalls = 0;
   let detailCalls = 0;
   const navigatorOwner = {
@@ -42,6 +44,8 @@ test("combines Navigator with only the active direct-child surface", () => {
     },
     taskNew() {
       return {
+        hidden: false,
+        getClientRects: () => [{}],
         actionHintScope() {
           newCalls += 1;
           return {
@@ -54,6 +58,8 @@ test("combines Navigator with only the active direct-child surface", () => {
     },
     taskDetail() {
       return {
+        hidden: false,
+        getClientRects: () => [{}],
         actionHintScope() {
           detailCalls += 1;
           return {
@@ -64,6 +70,20 @@ test("combines Navigator with only the active direct-child surface", () => {
           };
         },
       };
+    },
+    taskRecovery: () => ({
+      hidden: false,
+      getClientRects: () => [{}],
+      actionHintScope: () => ({
+        targets: [recoveryTarget],
+        mutationRoots: [recoveryRoot],
+        scrollRoots: [],
+      }),
+    }),
+    codexReadinessRecovery: () => null,
+    taskStoreRecoveryVisible: () => false,
+    activeDirectSurfaceOwners() {
+      return tasksPage.activeDirectSurfaceOwners.call(this);
     },
   };
 
@@ -89,8 +109,8 @@ test("combines Navigator with only the active direct-child surface", () => {
   owner.view = "recovery";
   assert.deepEqual(tasksPage.actionHintScope.call(owner), {
     blocked: false,
-    targets: [navigatorTarget],
-    mutationRoots: [navigatorRoot],
+    targets: [navigatorTarget, recoveryTarget],
+    mutationRoots: [navigatorRoot, recoveryRoot],
     scrollRoots: [],
   });
   assert.equal(newCalls, 1);
@@ -116,6 +136,7 @@ test("combines Navigator with only the active direct-child surface", () => {
 test("composes Scroll surfaces and keyboard contexts only from active owners", () => {
   const navigatorSurface = { id: "task-list" };
   const detailSurface = { id: "conversation" };
+  const newSurface = { id: "new-task" };
   const navigatorContext = { id: "reorder" };
   const imageContext = { id: "image-preview" };
   const modalContext = { id: "current-plan" };
@@ -126,9 +147,16 @@ test("composes Scroll surfaces and keyboard contexts only from active owners", (
     keyboardNavigationContexts: () => [navigatorContext],
   };
   const detail = {
+    hidden: false,
     getClientRects: () => [{}],
     scrollSurfaceScope: () => ({ surfaces: [detailSurface] }),
     keyboardNavigationContexts: () => [modalContext],
+  };
+  const taskNew = {
+    hidden: false,
+    getClientRects: () => [{}],
+    scrollSurfaceScope: () => ({ surfaces: [newSurface] }),
+    keyboardNavigationContexts: () => [newContext],
   };
   const owner = {
     view: "detail",
@@ -139,9 +167,13 @@ test("composes Scroll surfaces and keyboard contexts only from active owners", (
     imagePreviewDialog: () => ({
       keyboardNavigationContexts: () => [imageContext],
     }),
-    taskNew: () => ({
-      keyboardNavigationContexts: () => [newContext],
-    }),
+    taskNew: () => taskNew,
+    taskRecovery: () => null,
+    codexReadinessRecovery: () => null,
+    taskStoreRecoveryVisible: () => false,
+    activeDirectSurfaceOwners() {
+      return tasksPage.activeDirectSurfaceOwners.call(this);
+    },
   };
 
   assert.deepEqual(
@@ -155,7 +187,7 @@ test("composes Scroll surfaces and keyboard contexts only from active owners", (
   owner.view = "new";
   assert.deepEqual(
     tasksPage.scrollSurfaceScope.call(owner).surfaces,
-    [navigatorSurface],
+    [navigatorSurface, newSurface],
   );
   assert.deepEqual(
     tasksPage.keyboardNavigationContexts.call(owner),
@@ -171,4 +203,32 @@ test("composes Scroll surfaces and keyboard contexts only from active owners", (
     tasksPage.keyboardNavigationContexts.call(owner),
     [navigatorContext, imageContext],
   );
+});
+
+test("selects takeover or visible page owners and merges setup-beside explicitly", () => {
+  const taskNew = { hidden: false };
+  const detail = { hidden: false };
+  const recovery = { hidden: false };
+  const setup = { hidden: false };
+  const owner = {
+    view: "new",
+    takeover: false,
+    taskNew: () => taskNew,
+    taskDetail: () => detail,
+    taskRecovery: () => recovery,
+    codexReadinessRecovery: () => setup,
+    taskStoreRecoveryVisible() {
+      return this.takeover;
+    },
+  };
+
+  assert.deepEqual(tasksPage.activeDirectSurfaceOwners.call(owner), [taskNew, setup]);
+  owner.view = "detail";
+  assert.deepEqual(tasksPage.activeDirectSurfaceOwners.call(owner), [detail, setup]);
+  owner.view = "recovery";
+  assert.deepEqual(tasksPage.activeDirectSurfaceOwners.call(owner), [recovery, setup]);
+  owner.takeover = true;
+  assert.deepEqual(tasksPage.activeDirectSurfaceOwners.call(owner), [setup]);
+  setup.hidden = true;
+  assert.deepEqual(tasksPage.activeDirectSurfaceOwners.call(owner), []);
 });

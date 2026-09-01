@@ -92,3 +92,23 @@ test("provides Start Task and PR Files through their existing native controls", 
   owner.state = { status: "ready", payload: { pull: { number: 8 } } };
   assert.ok(scope.targets.every((target) => !target.isActionable()));
 });
+
+test("provides the retained Pull Request detail scrollport", () => {
+  const scrollport = {
+    clientHeight: 100,
+    scrollHeight: 440,
+    getClientRects: () => [{}],
+  };
+  const owner = {
+    hidden: false,
+    isConnected: true,
+    state: { status: "ready", payload: { pull: { number: 7 } } },
+    getClientRects: () => [{}],
+    querySelector: () => scrollport,
+  };
+  const scope = page.scrollSurfaceScope.call(owner);
+  assert.equal(scope.surfaces[0].scrollport, scrollport);
+  assert.equal(scope.surfaces[0].isEligible(), true);
+  owner.hidden = true;
+  assert.equal(scope.surfaces[0].isEligible(), false);
+});

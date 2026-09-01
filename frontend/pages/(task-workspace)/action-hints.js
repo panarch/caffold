@@ -10,6 +10,7 @@ import {
   ACTION_HINT_ACTIVATE_EVENT,
   ACTION_HINT_CANCEL_EVENT,
 } from "./action-hints/control.js";
+import { normalizeMutationRootList } from "./keyboard-navigation-context.js";
 import {
   ACTION_HINT_ACTION,
   TASK_HINT_ALPHABET,
@@ -445,7 +446,7 @@ export class ActionHintController {
 
   captureSnapshot(scope) {
     const descriptors = normalizeDescriptors(scope.targets);
-    const mutationRoots = normalizeElementList(scope.mutationRoots ?? []);
+    const mutationRoots = normalizeMutationRootList(scope.mutationRoots ?? []);
     const scrollRoots = normalizeElementList(scope.scrollRoots ?? []);
     if (!descriptors || !mutationRoots || !scrollRoots) {
       return null;

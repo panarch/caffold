@@ -1,5 +1,10 @@
 import { cleanLogicalPath } from "../task-format.js";
 import { mergeKeyboardNavigationContexts } from "../../keyboard-navigation-context.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../../../../scroll-scope.js";
 import "./components/directory-picker.js";
 import "../components/task-create.js";
 
@@ -118,6 +123,35 @@ class CaffoldTaskNew extends HTMLElement {
       }) ?? [],
       mutationRoots: [taskCreate].filter(Boolean),
       scrollRoots: [scrollRoot].filter(Boolean),
+    };
+  }
+
+  scrollSurfaceScope() {
+    this.ensureRendered();
+    const scrollport = this.querySelector(":scope > .task-new-workspace");
+    const cwd = this.selectedContextPath();
+    if (this.hidden || !scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `new:${cwd}:scroll`,
+        label: "New Task",
+        scrollport,
+        clipRoots: [this, scrollport],
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.selectedContextPath() === cwd &&
+          this.querySelector(":scope > .task-new-workspace") === scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport) &&
+          hasVerticalScrollOverflow(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
     };
   }
 

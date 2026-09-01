@@ -7,7 +7,7 @@ import {
   normalizeRect,
   rectsEqual,
 } from "./action-hints.js";
-import { hasVerticalScrollOverflow } from "./scroll-scope.js";
+import { hasVerticalScrollOverflow } from "../../scroll-scope.js";
 import {
   KEYBOARD_NAVIGATION_EVENT,
   KEYBOARD_NAVIGATION_NODE,

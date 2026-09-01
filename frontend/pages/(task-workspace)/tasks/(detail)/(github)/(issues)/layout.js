@@ -2,6 +2,7 @@ import { getGitHubIssue, getGitHubIssues } from "../../../../../../api.js";
 import "./list/page.js";
 import "./detail/page.js";
 import { emptyActionHintScope } from "../../../../action-hints.js";
+import { emptyScrollSurfaceScope } from "../../../../../../scroll-scope.js";
 
 const GITHUB_ISSUES_PER_PAGE = 50;
 const LOADING_DELAY_MS = 180;
@@ -360,6 +361,18 @@ class CaffoldGithubIssuesLayout extends HTMLElement {
       scopeId: `${scopeId}:page:${this.page}`,
       clipRoots: [this, ...clipRoots],
     });
+  }
+
+  scrollSurfaceScope({ scopeId = "github:issues", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    if (this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    const child = this.view === "detail" ? this.detailPage : this.listPage;
+    return child.scrollSurfaceScope?.({
+      scopeId: `${scopeId}:${this.view === "detail" ? "detail" : `page:${this.page}`}`,
+      clipRoots: [this, ...clipRoots],
+    }) ?? emptyScrollSurfaceScope();
   }
 
   routeMatchesCurrentContext(route) {

@@ -7,6 +7,11 @@ import {
   commandPresentation,
   sameCommandPresentation,
 } from "./command/model.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../../../../../action-hints.js";
 
 class CaffoldTaskCommand extends HTMLElement {
   connectedCallback() {
@@ -190,6 +195,41 @@ class CaffoldTaskCommand extends HTMLElement {
     return this.querySelector(
       ":scope > .task-command-summary .task-command-summary-action",
     );
+  }
+
+  actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
+    this.ensureState();
+    const control = this.action();
+    const commandKey = this.commandKey;
+    if (
+      !scopeId ||
+      !commandKey ||
+      this.presentation.mode !== "terminal" ||
+      !control ||
+      control.disabled
+    ) {
+      return emptyActionHintScope();
+    }
+    return {
+      blocked: false,
+      targets: [buttonActionHintTarget({
+        id: `${scopeId}:view-output`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label") ||
+          control.textContent?.trim() ||
+          "View output",
+        control,
+        clipRoots: [this, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          this.commandKey === commandKey &&
+          this.presentation.mode === "terminal" &&
+          this.action() === control &&
+          !control.disabled,
+      })],
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
   }
 
   rememberDisclosureState() {

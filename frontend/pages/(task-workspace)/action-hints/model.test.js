@@ -140,6 +140,18 @@ test("allocates Current Plan document openers through the automatic pool", () =>
   );
 });
 
+test("allocates explicitly owned ordinary buttons through the automatic pool", () => {
+  const allocated = allocateActionHintCodes([
+    target("refresh", ACTION_HINT_ACTION.BUTTON_ACTIVATE),
+    target("copy", ACTION_HINT_ACTION.BUTTON_ACTIVATE),
+  ]);
+
+  assert.deepEqual(
+    allocated.map(({ id, code }) => [id, code]),
+    [["refresh", "A"], ["copy", "S"]],
+  );
+});
+
 test("automatic codes reserve fixed and Task prefixes and grow uniformly", () => {
   const oneCharacterCodes = automaticHintCodes(22);
   assert.deepEqual(oneCharacterCodes, [

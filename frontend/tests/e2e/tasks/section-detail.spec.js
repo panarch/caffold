@@ -103,6 +103,28 @@ test("selects a Section and opens fixed-directory Task creation", { tag: "@all-v
   await expect(
     detail.locator("caffold-segmented-control[data-detail-view-switch]"),
   ).toBeHidden();
+
+  const sectionScroll = detail.locator("caffold-section-detail");
+  await sectionScroll.evaluate((element) => {
+    element.style.height = "120px";
+    element.style.maxHeight = "120px";
+  });
+  await expect.poll(() => sectionScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await page.locator(".task-workspace-surface").focus();
+  await page.keyboard.press("s");
+  const scrollHud = page.locator(
+    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+  );
+  await expect(scrollHud).toContainText(
+    "Scroll: Section frontend/tests/e2e/fixtures/home",
+  );
+  await page.keyboard.press("j");
+  await expect.poll(() => sectionScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await expect(scrollHud).toBeHidden();
 });
 
 test("offers GitHub work shortcuts from repository Task creation", { tag: "@all-viewports" }, async ({

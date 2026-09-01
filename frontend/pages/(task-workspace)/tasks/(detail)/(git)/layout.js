@@ -13,6 +13,9 @@ import {
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+} from "../../../../../scroll-scope.js";
 
 class CaffoldTaskGitLayout extends HTMLElement {
   connectedCallback() {
@@ -521,7 +524,36 @@ class CaffoldTaskGitLayout extends HTMLElement {
           scopeId: `${scopeId}:log`,
           clipRoots: [this, body].filter(Boolean),
         });
-    return mergeActionHintScopes(back, activeChild);
+    return mergeActionHintScopes(
+      back,
+      this.controls?.actionHintScope({
+        scopeId,
+        clipRoots: [this],
+      }),
+      activeChild,
+    );
+  }
+
+  scrollSurfaceScope() {
+    this.ensureRendered();
+    if (!this.active || this.hidden || !this.mode) {
+      return emptyScrollSurfaceScope();
+    }
+    const scopeId = `git:${encodeURIComponent(
+      this.repository?.rootPath || this.currentPath || "repository",
+    )}`;
+    const body = this.querySelector(
+      ":scope > .task-git-surface > .task-domain-body",
+    );
+    return this.mode === "compare"
+      ? this.comparePage.scrollSurfaceScope?.({
+          scopeId: `${scopeId}:compare`,
+          clipRoots: [this, body].filter(Boolean),
+        }) ?? emptyScrollSurfaceScope()
+      : this.logLayout.scrollSurfaceScope?.({
+          scopeId: `${scopeId}:log`,
+          clipRoots: [this, body].filter(Boolean),
+        }) ?? emptyScrollSurfaceScope();
   }
 
   keyboardNavigationContexts() {

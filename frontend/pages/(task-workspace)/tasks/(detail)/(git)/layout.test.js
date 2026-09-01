@@ -45,3 +45,28 @@ test("merges Git chrome with only the active Compare or Log child", () => {
   assert.deepEqual(gitLayout.actionHintScope.call(owner).targets, [{ id: "log" }]);
   assert.deepEqual(calls, { compare: 1, log: 1 });
 });
+
+test("delegates Scroll only to the active Git route", () => {
+  const compareSurface = { id: "compare-tree" };
+  const logSurface = { id: "git-log" };
+  const owner = {
+    active: true,
+    hidden: false,
+    mode: "compare",
+    repository: { rootPath: "/repo" },
+    currentPath: "/repo",
+    ensureRendered() {},
+    querySelector: () => ({}),
+    comparePage: {
+      scrollSurfaceScope: () => ({ surfaces: [compareSurface] }),
+    },
+    logLayout: {
+      scrollSurfaceScope: () => ({ surfaces: [logSurface] }),
+    },
+  };
+  assert.deepEqual(gitLayout.scrollSurfaceScope.call(owner).surfaces, [compareSurface]);
+  owner.mode = "log";
+  assert.deepEqual(gitLayout.scrollSurfaceScope.call(owner).surfaces, [logSurface]);
+  owner.active = false;
+  assert.deepEqual(gitLayout.scrollSurfaceScope.call(owner).surfaces, []);
+});

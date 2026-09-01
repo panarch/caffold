@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { activateActionHint } from "../support/action-hints.js";
 import {
   installBrowserDefaults,
   mockCodexStatus,
@@ -145,7 +146,8 @@ for (const [state, heading] of BLOCKING_STATES) {
       await expect(setup).toContainText("Required official update command");
       const copy = setup.getByRole("button", { name: "Copy command" });
       const copyNode = await copy.elementHandle();
-      await copy.click();
+      await revealActionTarget(page, copy);
+      await activateActionHint(page, /Copy command$/);
       await expect(setup.getByRole("button", { name: "Copied" })).toBeVisible();
       expect(await copyNode.evaluate((element) => (
         element.isConnected && document.activeElement === element
@@ -160,6 +162,9 @@ for (const [state, heading] of BLOCKING_STATES) {
     if (state === "restartRequired") {
       await expect(setup.getByRole("button", { name: "Restart Codex" })).toBeEnabled();
       await expect(setup.getByRole("button", { name: "Open Settings" })).toBeEnabled();
+    }
+    if (state === "updateRequired") {
+      await verifyReadinessScrollIsolation(page);
     }
   });
 }
@@ -386,7 +391,12 @@ test("a failed Task-store migration has its own explicit retry lifecycle", { tag
     setup.getByRole("heading", { name: "Task data upgrade failed" }),
   ).toBeVisible();
   await expect(setup).toContainText("Staged v5 validation failed.");
-  await setup.getByRole("button", { name: "Retry Task setup" }).click();
+  await verifyReadinessScrollIsolation(page);
+  await revealActionTarget(
+    page,
+    setup.getByRole("button", { name: "Retry Task setup" }),
+  );
+  await activateActionHint(page, /Retry Task setup$/);
 
   await expect.poll(() => retryRequests).toBe(1);
   await expect(page.locator(".codex-readiness-surface")).toBeHidden();
@@ -448,7 +458,11 @@ test("Retry transitions from setup into the ready Task surface", { tag: "@all-vi
   await expect.poll(() => taskRequests).toBeGreaterThan(0);
 
   ready = true;
-  await page.getByRole("button", { name: "Retry" }).click();
+  await revealActionTarget(
+    page,
+    page.getByRole("button", { name: "Retry" }),
+  );
+  await activateActionHint(page, /Retry$/);
 
   await expect(page.locator(".codex-readiness-surface")).toBeHidden();
   await expect(page.locator("caffold-task-new .task-new-form")).toBeVisible();
@@ -509,7 +523,8 @@ test("restarts a stale Codex runtime directly from Task setup", { tag: "@all-vie
   expect(primaryColors.background).toBe(primaryColors.expectedBackground);
   expect(primaryColors.color).toBe(primaryColors.expectedColor);
 
-  await restart.click();
+  await revealActionTarget(page, restart);
+  await activateActionHint(page, /Restart Codex$/);
   const dialog = page.getByRole("dialog", { name: "Restart Codex runtime?" });
   await expect(dialog).toBeVisible();
   await expect(page.locator(
@@ -518,7 +533,8 @@ test("restarts a stale Codex runtime directly from Task setup", { tag: "@all-vie
   await dialog.getByRole("button", { name: "Cancel" }).click();
   expect(restartRequests).toBe(0);
 
-  await restart.click();
+  await revealActionTarget(page, restart);
+  await activateActionHint(page, /Restart Codex$/);
   await dialog.getByRole("button", { name: "Restart Codex" }).click();
 
   await expect(page.locator(".codex-readiness-surface")).toBeHidden();
@@ -789,7 +805,9 @@ test("Settings stays reachable while Codex setup blocks Tasks", { tag: "@all-vie
   );
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Open Settings" }).click();
+  const openSettings = page.getByRole("button", { name: "Open Settings" });
+  await revealActionTarget(page, openSettings);
+  await activateActionHint(page, /Open Settings$/);
 
   await expect(page).toHaveURL("/settings/codex");
   await expect(page.locator("caffold-settings-codex-page")).toBeVisible();
@@ -925,3 +943,58 @@ test("consumes the real backend readiness contract and gates Task creation", { t
     error: { code: "codex_readiness_blocked" },
   });
 });
+
+async function verifyReadinessScrollIsolation(page) {
+  const readinessScroll = page.locator(
+    "caffold-codex-readiness-recovery:not([hidden]) > .codex-readiness-surface",
+  );
+  await readinessScroll.evaluate((element) => {
+    element.style.height = "120px";
+    element.style.maxHeight = "120px";
+  });
+  await expect.poll(() => readinessScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await readinessScroll.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  const newTaskScroll = page.locator(
+    "caffold-task-new:not([hidden]) > .task-new-workspace",
+  );
+  const newTaskBefore = await newTaskScroll.count()
+    ? await newTaskScroll.evaluate((element) => element.scrollTop)
+    : null;
+  const workspace = page.locator(".task-workspace-surface");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog");
+  const hud = page.locator(
+    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+  );
+  await workspace.focus();
+  await page.keyboard.press("s");
+  await expect.poll(async () =>
+    await selector.isVisible() || await hud.isVisible()
+  ).toBe(true);
+  if (await selector.isVisible()) {
+    const readiness = selector.getByLabel(/^[A-Z]+ — Codex readiness$/);
+    await expect(readiness).toBeVisible();
+    await readiness.click();
+  }
+  await expect(hud).toContainText("Scroll: Codex readiness");
+  await page.keyboard.press("j");
+  await expect.poll(() => readinessScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  if (newTaskBefore !== null) {
+    expect(await newTaskScroll.evaluate((element) => element.scrollTop)).toBe(
+      newTaskBefore,
+    );
+  }
+  await page.keyboard.press("Escape");
+  await expect(hud).toBeHidden();
+}
+
+async function revealActionTarget(page, control) {
+  await control.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+}

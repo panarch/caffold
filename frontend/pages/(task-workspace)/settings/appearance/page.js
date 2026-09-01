@@ -1,5 +1,16 @@
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+} from "../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../../../../scroll-scope.js";
+import {
   APPEARANCE_RANGE_SETTINGS,
   DEFAULT_APPEARANCE_SETTINGS,
   THEME_MODES,
@@ -47,6 +58,107 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
 
   prepareRoute() {
     this.syncControls(getSettings());
+  }
+
+  actionHintScope({
+    scopeId = "settings:appearance",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const scrollport = this.querySelector(":scope > .settings-scroll");
+    if (this.hidden || !scrollport) {
+      return emptyActionHintScope();
+    }
+    const definitions = [
+      {
+        id: "reset-all",
+        selector: 'button[data-action="reset-appearance"]',
+        label: "Reset all appearance settings",
+      },
+      {
+        id: "reset-theme",
+        selector: 'button[data-action="reset-theme"]',
+        label: "Reset theme",
+      },
+      {
+        id: "reset-typeface",
+        selector: 'button[data-action="reset-typeface"]',
+        label: "Reset font",
+      },
+      ...Object.keys(APPEARANCE_RANGE_SETTINGS).map((setting) => ({
+        id: `reset-setting:${setting}`,
+        selector:
+          `button[data-action="reset-setting"][data-setting="${setting}"]`,
+        label: `Reset ${APPEARANCE_RANGE_SETTINGS[setting].label.toLowerCase()}`,
+      })),
+    ];
+    const targets = definitions.flatMap(({ id, selector, label }) => {
+      const control = this.querySelector(selector);
+      if (
+        !control ||
+        control.disabled ||
+        control.hidden ||
+        !hasActionHintLayoutBox(control)
+      ) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        id: `${scopeId}:${id}`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label") ||
+          control.title ||
+          control.textContent?.trim() ||
+          label,
+        control,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.querySelector(selector) === control &&
+          !control.disabled &&
+          !control.hidden &&
+          hasActionHintLayoutBox(control),
+      })];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [scrollport],
+    };
+  }
+
+  scrollSurfaceScope({
+    scopeId = "settings:appearance",
+    label = "Appearance settings",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const scrollport = this.querySelector(":scope > .settings-scroll");
+    if (this.hidden || !scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label,
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.querySelector(":scope > .settings-scroll") === scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport) &&
+          hasVerticalScrollOverflow(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   handleInput(event) {

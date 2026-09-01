@@ -175,6 +175,99 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
     }],
     commitSummaries: [],
   };
+  const issueRows = [
+    {
+      number: 1984,
+      title: issue.title,
+      state: "open",
+      author: "panarch",
+      labels: [],
+      comments: 0,
+      updatedAt: "2026-08-07T03:00:00Z",
+      url: "https://github.com/gluesql/gluesql/issues/1984",
+    },
+    ...(options.largeLists
+      ? Array.from({ length: 80 }, (_, index) => ({
+          number: 2000 + index,
+          title: `Scrollable issue ${index + 1}`,
+          state: "open",
+          author: "panarch",
+          labels: [],
+          comments: index,
+          updatedAt: "2026-08-07T03:00:00Z",
+          url: `https://github.com/gluesql/gluesql/issues/${2000 + index}`,
+        }))
+      : []),
+  ];
+  const pullRows = [
+    {
+      number: 1983,
+      title: pull.title,
+      state: "open",
+      draft: false,
+      author: "kwondo1017",
+      labels: [],
+      comments: 4,
+      updatedAt: "2026-08-03T03:00:00Z",
+      url: "https://github.com/gluesql/gluesql/pull/1983",
+    },
+    ...(options.largeLists
+      ? Array.from({ length: 80 }, (_, index) => ({
+          number: 2100 + index,
+          title: `Scrollable pull request ${index + 1}`,
+          state: "open",
+          draft: false,
+          author: "kwondo1017",
+          labels: [],
+          comments: index,
+          updatedAt: "2026-08-03T03:00:00Z",
+          url: `https://github.com/gluesql/gluesql/pull/${2100 + index}`,
+        }))
+      : []),
+  ];
+  const pullFiles = [
+    {
+      path: PULL_FILE_PATH,
+      repoRelativePath: "src/review.rs",
+      previousPath: null,
+      previousRepoRelativePath: null,
+      status: "M",
+      additions: 2,
+      deletions: 1,
+      changes: 3,
+      patchAvailable: true,
+      blobUrl: null,
+      rawUrl: null,
+    },
+    {
+      path: PULL_ROOT_FILE_PATH,
+      repoRelativePath: "README.md",
+      previousPath: null,
+      previousRepoRelativePath: null,
+      status: "M",
+      additions: 0,
+      deletions: 0,
+      changes: 0,
+      patchAvailable: false,
+      blobUrl: null,
+      rawUrl: null,
+    },
+    ...(options.largePullFiles
+      ? Array.from({ length: 80 }, (_, index) => ({
+          path: `${WORKTREE_ROOT}/generated/pull-${`${index + 1}`.padStart(3, "0")}.rs`,
+          repoRelativePath: `generated/pull-${`${index + 1}`.padStart(3, "0")}.rs`,
+          previousPath: null,
+          previousRepoRelativePath: null,
+          status: "M",
+          additions: 1,
+          deletions: 1,
+          changes: 2,
+          patchAvailable: true,
+          blobUrl: null,
+          rawUrl: null,
+        }))
+      : []),
+  ];
   const createdTask = {
     ...task,
     id: CREATED_THREAD_ID,
@@ -311,22 +404,10 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
         repository,
         github,
         state: "open",
-        pulls: [
-          {
-            number: 1983,
-            title: pull.title,
-            state: "open",
-            draft: false,
-            author: "kwondo1017",
-            labels: [],
-            comments: 4,
-            updatedAt: "2026-08-03T03:00:00Z",
-            url: "https://github.com/gluesql/gluesql/pull/1983",
-          },
-        ],
+        pulls: pullRows,
         page: requestedPage,
         perPage: 50,
-        totalPulls: 53,
+        totalPulls: options.largeLists ? pullRows.length : 53,
         totalPages: 2,
         hasPrevious: requestedPage > 1,
         hasNext: requestedPage < 2,
@@ -345,21 +426,10 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
         repository,
         github,
         state: "open",
-        issues: [
-          {
-            number: 1984,
-            title: issue.title,
-            state: "open",
-            author: "panarch",
-            labels: [],
-            comments: 0,
-            updatedAt: "2026-08-07T03:00:00Z",
-            url: "https://github.com/gluesql/gluesql/issues/1984",
-          },
-        ],
+        issues: issueRows,
         page: 1,
         perPage: 50,
-        totalIssues: 1,
+        totalIssues: issueRows.length,
         totalPages: 1,
         hasPrevious: false,
         hasNext: false,
@@ -430,35 +500,8 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
         repository,
         github,
         number: 1983,
-        files: [
-          {
-            path: PULL_FILE_PATH,
-            repoRelativePath: "src/review.rs",
-            previousPath: null,
-            previousRepoRelativePath: null,
-            status: "M",
-            additions: 2,
-            deletions: 1,
-            changes: 3,
-            patchAvailable: true,
-            blobUrl: null,
-            rawUrl: null,
-          },
-          {
-            path: PULL_ROOT_FILE_PATH,
-            repoRelativePath: "README.md",
-            previousPath: null,
-            previousRepoRelativePath: null,
-            status: "M",
-            additions: 0,
-            deletions: 0,
-            changes: 0,
-            patchAvailable: false,
-            blobUrl: null,
-            rawUrl: null,
-          },
-        ],
-        totalFiles: 2,
+        files: pullFiles,
+        totalFiles: pullFiles.length,
       },
     });
   });
@@ -479,7 +522,15 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
         kind: "PR #1983",
         additions: 2,
         deletions: 1,
-        diff: "@@ -1 +1,2 @@\n-old review\n+new Task-owned review\n+fresh route",
+        diff: options.longPullDiff
+          ? [
+              "@@ -1,80 +1,80 @@",
+              ...Array.from({ length: 80 }, (_, index) => [
+                `-old pull review ${index + 1}`,
+                `+new pull review ${index + 1}`,
+              ]).flat(),
+            ].join("\n")
+          : "@@ -1 +1,2 @@\n-old review\n+new Task-owned review\n+fresh route",
         diffUnavailable: false,
         message: null,
       },
@@ -713,6 +764,186 @@ test("contains Issue list and detail content within the foldable Task pane", { t
     preOwnsOverflow: true,
     tableOwnsOverflow: true,
   });
+});
+
+test("scrolls a retained GitHub Issue body through its public Shadow DOM host", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ ...viewport, height: 360 });
+  await installLinkedWorktreeGithubFixture(page, {
+    issueBodyHtml: Array.from(
+      { length: 100 },
+      (_, index) => `<p>Issue keyboard scroll line ${index + 1}</p>`,
+    ).join(""),
+  });
+  await page.goto(`/tasks/${THREAD_ID}/github/issues/1984`);
+
+  const body = page.locator(
+    "caffold-github-issue-detail-page caffold-github-markdown.github-issue-body",
+  );
+  const workspace = page.locator(".task-workspace-surface");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog");
+  const hud = page.locator(
+    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+  );
+  await expect(body).toContainText("Issue keyboard scroll line 100");
+  await expect.poll(() => body.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+
+  await workspace.focus();
+  await page.keyboard.press("s");
+  await expect(selector).toBeHidden();
+  await expect(hud).toContainText("Scroll: Issue description");
+  await page.keyboard.press("j");
+  await expect.poll(() => body.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+
+  await page.getByRole("button", { name: "Back to issues" }).click();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/issues`);
+  await expect(hud).toBeHidden();
+  const consumed = await workspace.evaluate((element) => {
+    const event = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      code: "KeyS",
+      key: "s",
+    });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(consumed).toBe(false);
+  await expect(selector).toBeHidden();
+});
+
+test("scrolls GitHub lists, Pull detail, and exact Pull Files surfaces from the root", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ ...viewport, height: 360 });
+  await installLinkedWorktreeGithubFixture(page, {
+    largeLists: true,
+    largePullFiles: true,
+    longPullDiff: true,
+    pullBodyHtml: Array.from(
+      { length: 100 },
+      (_, index) => `<p>Pull keyboard scroll line ${index + 1}</p>`,
+    ).join(""),
+  });
+
+  const workspace = page.locator(".task-workspace-surface");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog");
+  const hud = page.locator(
+    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+  );
+  const scrollSingleSurface = async (scrollport, label) => {
+    await expect.poll(() => scrollport.evaluate(
+      (element) => element.scrollHeight > element.clientHeight + 1,
+    )).toBe(true);
+    await workspace.focus();
+    await page.keyboard.press("s");
+    await expect(selector).toBeHidden();
+    await expect(hud).toContainText(`Scroll: ${label}`);
+    await page.keyboard.press("j");
+    await expect.poll(() => scrollport.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    await page.keyboard.press("Escape");
+    await expect(hud).toBeHidden();
+  };
+
+  await page.goto(`/tasks/${THREAD_ID}/github/issues`);
+  await scrollSingleSurface(
+    page.locator("caffold-github-issues-list-page .github-issues-list"),
+    "GitHub issues",
+  );
+
+  await page.goto(`/tasks/${THREAD_ID}/github/pulls`);
+  await scrollSingleSurface(
+    page.locator("caffold-github-pulls-list-page .github-pulls-list"),
+    "GitHub pull requests",
+  );
+
+  await page.goto(`/tasks/${THREAD_ID}/github/pulls/1983`);
+  await scrollSingleSurface(
+    page.locator("caffold-github-pull-detail-page .github-pull-viewer-scroll"),
+    "Pull request details",
+  );
+  await activateActionHint(page, /Open files for PR #1983$/);
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls/1983/files`);
+
+  const treeScroll = page.locator(
+    "caffold-github-pull-files-page caffold-file-tree .file-tree-scroll",
+  );
+  await expect.poll(() => treeScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  if (testInfo.project.name === "phone") {
+    await workspace.focus();
+    await page.keyboard.press("s");
+    await expect(selector).toBeHidden();
+    await expect(hud).toContainText("Scroll: Pull request files");
+    await page.keyboard.press("j");
+    await expect.poll(() => treeScroll.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    await page.keyboard.press("Escape");
+  }
+
+  const reviewFile = page.locator(
+    `caffold-github-pull-files-page button[data-file-tree-path="${PULL_FILE_PATH}"]`,
+  );
+  await reviewFile.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  await activateActionHint(page, /Show pull request diff for src\/review\.rs$/);
+  const diffScroll = page.locator(
+    "caffold-github-pull-files-page caffold-review-file-viewer:not([hidden]) " +
+      "caffold-diff-viewer .diff-lines",
+  );
+  await expect(diffScroll).toContainText("new pull review 80");
+  await expect.poll(() => diffScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await treeScroll.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+
+  await workspace.focus();
+  await page.keyboard.press("s");
+  if (testInfo.project.name === "phone") {
+    await expect(selector).toBeHidden();
+    await expect(hud).toContainText("Scroll: src/review.rs diff");
+  } else {
+    await expect(selector).toBeVisible();
+    const badges = selector.locator("button[data-scroll-surface-code]");
+    await expect(badges).toHaveCount(2);
+    expect(new Set(await badges.evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute("aria-label")
+        .replace(/^[A-Z]+ — /, ""))
+    ))).toEqual(new Set(["Pull request files", "src/review.rs diff"]));
+    await selector.getByLabel(/^[A-Z]+ — Pull request files$/).click();
+    await page.keyboard.press("j");
+    await expect.poll(() => treeScroll.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    expect(await diffScroll.evaluate((element) => element.scrollTop)).toBe(0);
+    await page.keyboard.press("Escape");
+
+    await workspace.focus();
+    await page.keyboard.press("s");
+    await selector.getByLabel(/^[A-Z]+ — src\/review\.rs diff$/).click();
+  }
+  const treeBeforeDiffScroll = await treeScroll.evaluate(
+    (element) => element.scrollTop,
+  );
+  await page.keyboard.press("j");
+  await expect.poll(() => diffScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  expect(await treeScroll.evaluate((element) => element.scrollTop)).toBe(
+    treeBeforeDiffScroll,
+  );
+  await page.keyboard.press("Escape");
+  await expect(hud).toBeHidden();
 });
 
 test("keeps Pull Request headers, actions, and Markdown inside the foldable Task pane", { tag: "@foldable" }, async ({

@@ -21,6 +21,12 @@ import {
 } from "../task-list-model.js";
 import { formatRelativeAgePresentation } from "../task-format.js";
 import { renderTaskStatusChip } from "./task-status.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+} from "../../action-hints.js";
 
 export const ARCHIVED_TASK_LIST_INITIAL_SETTLED_EVENT =
   "caffold:archived-task-list-initial-settled";
@@ -396,6 +402,75 @@ class CaffoldArchivedTaskList extends HTMLElement {
         detail: this.listState(),
       }),
     );
+  }
+
+  actionHintScope({
+    scopeId = "task-list:archived",
+    clipRoots = [],
+  } = {}) {
+    this.ensureState();
+    if (!this.revealed || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const definitions = [];
+    for (const [id, selector] of [
+      ["retry", 'button[data-task-action="retry-archived-task-list"]'],
+      ["load-more", 'button[data-task-action="load-more-archived-tasks"]'],
+    ]) {
+      const control = this.querySelector(selector);
+      if (control) {
+        definitions.push({ id, selector, control });
+      }
+    }
+    for (const control of this.querySelectorAll(
+      'button[data-task-action="restore-archived-task"][data-thread-id], button[data-task-action="delete-archived-task"][data-thread-id]',
+    )) {
+      const action = `${control.dataset.taskAction ?? ""}`;
+      const threadId = `${control.dataset.threadId ?? ""}`;
+      if (!threadId) {
+        continue;
+      }
+      definitions.push({
+        id: `${action}:${threadId}`,
+        selector: `button[data-task-action="${action}"][data-thread-id]`,
+        control,
+        identity: (candidate) => candidate.dataset.threadId === threadId,
+      });
+    }
+    const targets = definitions.flatMap((definition) => {
+      const { control } = definition;
+      if (control.disabled || !hasActionHintLayoutBox(control)) {
+        return [];
+      }
+      const currentControl = () => Array.from(
+        this.querySelectorAll(definition.selector),
+      ).find((candidate) =>
+        definition.identity ? definition.identity(candidate) : true
+      );
+      return [buttonActionHintTarget({
+        id: `${scopeId}:${definition.id}`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label") ||
+          control.textContent?.trim() ||
+          definition.id,
+        control,
+        clipRoots: [this, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          this.revealed &&
+          !this.hidden &&
+          !this.taskOperationsBlocked &&
+          currentControl() === control &&
+          !control.disabled &&
+          hasActionHintLayoutBox(control),
+      })];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
   }
 
   render() {

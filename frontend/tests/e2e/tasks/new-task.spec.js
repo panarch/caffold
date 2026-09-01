@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { activateActionHint } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import {
@@ -115,6 +116,32 @@ test("focuses a new task prompt automatically only on desktop", { tag: "@all-vie
   await expect(
     page.locator('caffold-app-menu button[data-action="new-task"]'),
   ).toHaveCount(0);
+
+  const newTaskScroll = tasksPage.locator(
+    "caffold-task-new:not([hidden]) > .task-new-workspace",
+  );
+  await newTaskScroll.evaluate((element) => {
+    element.style.height = "120px";
+    element.style.maxHeight = "120px";
+  });
+  await expect.poll(() => newTaskScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await page.locator(".task-workspace-surface").focus();
+  await page.keyboard.press("s");
+  const scrollHud = page.locator(
+    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+  );
+  await expect(scrollHud).toContainText("Scroll: New Task");
+  await page.keyboard.press("j");
+  await expect.poll(() => newTaskScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await expect(scrollHud).toBeHidden();
+  await newTaskScroll.evaluate((element) => {
+    element.style.removeProperty("height");
+    element.style.removeProperty("max-height");
+  });
 
   await page.goto(`/tasks/new?cwd=${encodeURIComponent(scenario.contextPath)}`);
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "new");
@@ -780,7 +807,7 @@ test("does not carry an older-history cursor into a newly created task", { tag: 
   const prompt = newTaskForm.locator('textarea[name="prompt"]');
   await expect(prompt).toBeVisible();
   await prompt.fill("Start with clean history");
-  await newTaskForm.getByRole("button", { name: "Start task" }).click();
+  await activateActionHint(page, /Start task$/);
 
   await promptRequested;
   await expect(page).toHaveURL(`/tasks/${createdThreadId}`);

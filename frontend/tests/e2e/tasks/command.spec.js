@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { activateActionHint } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
@@ -216,8 +217,8 @@ test("a multi-line script reads as one line in the row and as its lines in the d
     await label.evaluate((element) => element.textContent.includes("\n")),
   ).toBe(false);
 
-  await command.getByRole("button", { name: "View output" }).click();
-  const dialog = page.locator("caffold-task-command-dialog dialog");
+  await activateActionHint(page, /View output$/);
+  const dialog = page.locator("caffold-task-command-dialog > dialog");
   await expect(dialog).toHaveAttribute("open", "");
   const commandField = dialog
     .locator(".task-command-dialog-details > div")

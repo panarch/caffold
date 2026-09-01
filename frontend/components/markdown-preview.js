@@ -1,3 +1,9 @@
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../scroll-scope.js";
+
 const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
 
 let parserPromise;
@@ -37,6 +43,37 @@ class CaffoldMarkdownPreview extends HTMLElement {
 
   getScrollState() {
     return { top: this.scrollTop, left: this.scrollLeft };
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "Markdown preview",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    this.ensureRendered();
+    if (!scopeId || !label || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    const scrollport = this;
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label,
+        scrollport,
+        clipRoots: [this, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          hasScrollLayoutBox(this) &&
+          hasVerticalScrollOverflow(this),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this],
+      scrollRoots: [this],
+    };
   }
 
   renderPending() {

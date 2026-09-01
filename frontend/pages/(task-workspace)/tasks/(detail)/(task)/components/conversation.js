@@ -9,8 +9,15 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   hasVerticalScrollOverflow,
-} from "../../../../scroll-scope.js";
+} from "../../../../../../scroll-scope.js";
 import { requestTaskImagePreview } from "../../../components/image-preview-dialog.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  mergeActionHintScopes,
+} from "../../../../action-hints.js";
 import "./conversation/components/active-turn.js";
 import "./conversation/components/assistant-message.js";
 import "./conversation/components/changed-files.js";
@@ -193,6 +200,146 @@ class CaffoldTaskConversation extends HTMLElement {
 
   scroller() {
     return this.querySelector(":scope > .task-conversation-scroll");
+  }
+
+  actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
+    this.ensureState();
+    const scrollport = this.scroller();
+    const list = this.conversationList();
+    const threadId = `${this.snapshot.threadId ?? ""}`;
+    if (
+      !scrollport ||
+      !list ||
+      !threadId ||
+      !this.snapshot.task ||
+      !this.active ||
+      this.hidden
+    ) {
+      return emptyActionHintScope();
+    }
+    const targetScopeId = scopeId || `task:${threadId}:conversation`;
+    const definitions = [];
+    for (const [id, selector] of [
+      ["retry-detail", 'button[data-conversation-action="retry-detail"]'],
+      ["retry-history", 'button[data-conversation-action="retry-history"]'],
+    ]) {
+      const control = this.querySelector(selector);
+      if (control) {
+        definitions.push({
+          id,
+          control,
+          isCurrent: () => this.querySelector(selector) === control,
+        });
+      }
+    }
+    const previews = Array.from(this.querySelectorAll(
+      'button[data-conversation-action="preview-image"]',
+    ));
+    const previewOrdinals = new Map();
+    previews.forEach((control) => {
+      const entry = control.closest?.(
+        ".task-event[data-conversation-entry-key], .task-event[data-event-id]",
+      );
+      const identity = entry?.dataset.conversationEntryKey ||
+        entry?.dataset.eventId;
+      if (!identity) {
+        return;
+      }
+      const ordinal = (previewOrdinals.get(identity) ?? 0) + 1;
+      previewOrdinals.set(identity, ordinal);
+      definitions.push({
+        id: `preview-image:${identity}:${ordinal}`,
+        control,
+        isCurrent: () => {
+          const current = conversationPreviewIdentity(this, control);
+          return current?.identity === identity && current.ordinal === ordinal;
+        },
+      });
+    });
+    for (const control of this.querySelectorAll(
+      '.task-approval-card button[data-task-action="approval"][data-approval-id][data-decision]',
+    )) {
+      const approvalId = `${control.dataset.approvalId ?? ""}`;
+      const decision = `${control.dataset.decision ?? ""}`;
+      if (approvalId && decision) {
+        definitions.push({
+          id: `approval:${approvalId}:${decision}`,
+          control,
+          isCurrent: () =>
+            control.dataset.approvalId === approvalId &&
+            control.dataset.decision === decision,
+        });
+      }
+    }
+    const ownTargets = definitions.flatMap(({ id, control, isCurrent }) => {
+      if (control.disabled || !hasActionHintLayoutBox(control)) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        id: `${targetScopeId}:${id}`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label") ||
+          control.title ||
+          control.textContent?.trim() ||
+          id,
+        control,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          this.active &&
+          !this.hidden &&
+          this.snapshot.threadId === threadId &&
+          Boolean(this.snapshot.task) &&
+          this.scroller() === scrollport &&
+          this.contains(control) &&
+          isCurrent() &&
+          !control.disabled &&
+          hasActionHintLayoutBox(control),
+      })];
+    });
+    const childScopes = [];
+    Array.from(list.children).forEach((entry, index) => {
+      const identity = entry.dataset.conversationEntryKey ||
+        entry.dataset.eventId ||
+        `${index + 1}`;
+      const childOptions = (kind) => ({
+        scopeId: `${targetScopeId}:${kind}:${identity}`,
+        clipRoots: [this, scrollport, list, ...clipRoots].filter(Boolean),
+      });
+      const command = entry.querySelector(":scope > caffold-task-command");
+      if (command) {
+        childScopes.push(command.actionHintScope?.(childOptions("command")));
+      }
+      const message = entry.querySelector(
+        ":scope > caffold-task-assistant-message",
+      );
+      if (message) {
+        childScopes.push(message.actionHintScope?.(childOptions("message")));
+      }
+      const workDetails = entry.querySelector(
+        ":scope > caffold-task-work-details",
+      );
+      if (workDetails) {
+        childScopes.push(
+          workDetails.actionHintScope?.(childOptions("work-details")),
+        );
+      }
+      const markdown = entry.querySelector(
+        ":scope > details > .task-thinking-content > caffold-task-markdown",
+      );
+      if (markdown) {
+        childScopes.push(markdown.actionHintScope?.(childOptions("thinking")));
+      }
+    });
+    return mergeActionHintScopes(
+      {
+        blocked: false,
+        targets: ownTargets,
+        mutationRoots: [this, scrollport],
+        scrollRoots: [scrollport],
+      },
+      ...childScopes,
+    );
   }
 
   scrollSurfaceScope() {
@@ -877,6 +1024,34 @@ class CaffoldTaskConversation extends HTMLElement {
     }
     this.rememberScroll();
   }
+}
+
+function conversationPreviewIdentity(owner, control) {
+  const previews = Array.from(owner.querySelectorAll(
+    'button[data-conversation-action="preview-image"]',
+  ));
+  const controlIndex = previews.indexOf(control);
+  if (controlIndex < 0) {
+    return null;
+  }
+  const entry = control.closest?.(
+    ".task-event[data-conversation-entry-key], .task-event[data-event-id]",
+  );
+  const identity = entry?.dataset.conversationEntryKey ||
+    entry?.dataset.eventId;
+  if (!identity) {
+    return null;
+  }
+  const ordinal = previews.slice(0, controlIndex + 1).filter((candidate) => {
+    const candidateEntry = candidate.closest?.(
+      ".task-event[data-conversation-entry-key], .task-event[data-event-id]",
+    );
+    return (
+      candidateEntry?.dataset.conversationEntryKey ||
+      candidateEntry?.dataset.eventId
+    ) === identity;
+  }).length;
+  return { identity, ordinal };
 }
 
 function reconcileConversationList(

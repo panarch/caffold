@@ -293,6 +293,21 @@ test("renders a route-owned text-only Markdown Preview without changing file sel
   await markdownPreview.evaluate((element) => {
     element.scrollTop = 0;
   });
+  await page.locator(".task-workspace-surface").focus();
+  await page.keyboard.press("s");
+  await expect(page.locator("caffold-scroll-surface-selector > dialog")).toBeHidden();
+  const workspaceHud = page.locator(
+    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+  );
+  await expect(workspaceHud).toContainText("Scroll: README.md preview");
+  await page.keyboard.press("j");
+  await expect.poll(() => markdownPreview.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await expect(workspaceHud).toBeHidden();
+  await markdownPreview.evaluate((element) => {
+    element.scrollTop = 0;
+  });
   await expect(preview.locator("h1")).toHaveText("Markdown file preview");
   await expect(preview.locator("strong")).toHaveText("textual Markdown");
   await expect(preview.locator("table")).toContainText("Renders safe text content");
@@ -409,6 +424,33 @@ test("selects supported source and preview representations for images", { tag: "
       "src",
       new RegExp(`/api/image\\?path=src%2F${rasterName}&revision=\\d+$`),
     );
+    const imageStage = viewer.locator(".image-stage");
+    await viewer.locator("img.image-preview").evaluate((image) => {
+      image.style.height = "1200px";
+      image.style.maxHeight = "none";
+    });
+    await expect.poll(() => imageStage.evaluate(
+      (element) => element.scrollHeight > element.clientHeight + 1,
+    )).toBe(true);
+    await page.locator(".task-workspace-surface").focus();
+    await page.keyboard.press("s");
+    const surfaceSelector = page.locator(
+      "caffold-scroll-surface-selector > dialog",
+    );
+    const workspaceHud = page.locator(
+      "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+    );
+    if (await surfaceSelector.isVisible()) {
+      await surfaceSelector.getByLabel(
+        new RegExp(`^[A-Z]+ — ${rasterName.replace(".", "\\.")} image$`),
+      ).click();
+    }
+    await expect(workspaceHud).toContainText(`Scroll: ${rasterName} image`);
+    await page.keyboard.press("j");
+    await expect.poll(() => imageStage.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    await page.keyboard.press("Escape");
+    await expect(workspaceHud).toBeHidden();
 
     if (testInfo.project.name === "phone") {
       await taskReview.getByRole("button", { name: "Back to navigator" }).click();

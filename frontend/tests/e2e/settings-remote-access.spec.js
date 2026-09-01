@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { activateActionHint } from "./support/action-hints.js";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 import {
   captureReviewScreenshot,
@@ -103,7 +104,11 @@ test("enables, retries, and disables only Caffold's Serve mapping", { tag: "@all
 
   await page.goto("/settings/remote-access");
   const remoteAccess = page.locator("caffold-settings-remote-access-page");
-  await remoteAccess.getByRole("button", { name: "Enable" }).click();
+  await revealActionTarget(
+    page,
+    remoteAccess.getByRole("button", { name: "Enable" }),
+  );
+  await activateActionHint(page, /Enable$/);
   await expect(
     remoteAccess.getByRole("heading", { name: "Configuring private access" }),
   ).toBeVisible();
@@ -112,11 +117,19 @@ test("enables, retries, and disables only Caffold's Serve mapping", { tag: "@all
     remoteAccess.getByRole("heading", { name: "Remote access setup failed" }),
   ).toBeVisible();
 
-  await remoteAccess.getByRole("button", { name: "Retry" }).click();
+  await revealActionTarget(
+    page,
+    remoteAccess.getByRole("button", { name: "Retry" }),
+  );
+  await activateActionHint(page, /Retry$/);
   await expect(
     remoteAccess.getByRole("heading", { name: "Private access is ready" }),
   ).toBeVisible();
-  await remoteAccess.getByRole("button", { name: "Disable" }).click();
+  await revealActionTarget(
+    page,
+    remoteAccess.getByRole("button", { name: "Disable" }),
+  );
+  await activateActionHint(page, /Disable$/);
   await expect(
     remoteAccess.getByRole("heading", { name: "Ready to enable" }),
   ).toBeVisible();
@@ -161,7 +174,11 @@ test("hands off one exact private URL while remote management stays read-only", 
   );
   await expect.poll(() => qr.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
 
-  await remoteAccess.getByRole("button", { name: "Copy link" }).click();
+  await revealActionTarget(
+    page,
+    remoteAccess.getByRole("button", { name: "Copy link" }),
+  );
+  await activateActionHint(page, /Copy link$/);
   await expect(remoteAccess.getByRole("button", { name: "Copied" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(
     TAILNET_URL,
@@ -255,3 +272,10 @@ test("presents an initial status request failure without inventing read-only sta
   await expect(remoteAccess.getByText("Serve settings are read-only")).toBeHidden();
   await expect(remoteAccess.getByRole("button", { name: "Retry" })).toBeEnabled();
 });
+
+async function revealActionTarget(page, target) {
+  await target.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+}

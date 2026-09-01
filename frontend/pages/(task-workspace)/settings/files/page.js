@@ -3,6 +3,11 @@ import {
   getSettings,
   setFileSortMode,
 } from "../../../../settings.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../../../../scroll-scope.js";
 
 const SORT_OPTIONS = Object.freeze([
   Object.freeze({
@@ -48,6 +53,38 @@ class CaffoldSettingsFilesPage extends HTMLElement {
 
   prepareRoute() {
     this.syncControls(getSettings());
+  }
+
+  scrollSurfaceScope({
+    scopeId = "settings:files",
+    label = "File settings",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const scrollport = this.querySelector(":scope > .settings-files-scroll");
+    if (this.hidden || !scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label,
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.querySelector(":scope > .settings-files-scroll") === scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport) &&
+          hasVerticalScrollOverflow(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   handleChange(event) {

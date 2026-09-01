@@ -10,8 +10,9 @@ await import("./layout.js");
 const sectionDetail = registry.element("caffold-section-detail").prototype;
 after(() => registry.restore());
 
-test("combines New Task actions with the direct Section GitHub shortcuts", () => {
+test("combines New Task actions with direct Section shortcuts", () => {
   const taskTarget = { id: "task-create" };
+  const conversationTarget = { id: "fork-conversation" };
   const githubTarget = { id: "github-issues" };
   const taskCreate = {
     actionHintTargets(options) {
@@ -25,17 +26,24 @@ test("combines New Task actions with the direct Section GitHub shortcuts", () =>
       return { targets: [githubTarget], mutationRoots: [github] };
     },
   };
+  const conversations = {
+    actionHintScope(options) {
+      assert.equal(options.scopeId, "section:section-a");
+      return { targets: [conversationTarget], mutationRoots: [conversations] };
+    },
+  };
   const owner = {
     section: { id: "section-a" },
     ensureRendered() {},
     taskCreate: () => taskCreate,
+    conversationShortcuts: () => conversations,
     githubShortcuts: () => github,
   };
 
   assert.deepEqual(sectionDetail.actionHintScope.call(owner), {
     blocked: false,
-    targets: [taskTarget, githubTarget],
-    mutationRoots: [taskCreate, github],
+    targets: [taskTarget, conversationTarget, githubTarget],
+    mutationRoots: [taskCreate, conversations, github],
     scrollRoots: [owner],
   });
 });

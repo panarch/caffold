@@ -10,8 +10,14 @@ import "./about/page.js";
 import {
   buttonActionHintTarget,
   emptyActionHintScope,
+  hasActionHintLayoutBox,
+  mergeActionHintScopes,
 } from "../../../action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../scroll-scope.js";
 
 const TITLES = {
   appearance: "Appearance",
@@ -157,9 +163,26 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     this.syncPresentation();
   }
 
+  presentedSection() {
+    return this.section ||
+      (this.masterDetailMedia?.matches ? "appearance" : "");
+  }
+
+  settingsPages() {
+    return {
+      appearance: this.querySelector("caffold-settings-appearance-page"),
+      keyboard: this.querySelector("caffold-settings-keyboard-page"),
+      files: this.querySelector("caffold-settings-files-page"),
+      notifications: this.querySelector("caffold-settings-notifications-page"),
+      "remote-access": this.querySelector("caffold-settings-remote-access-page"),
+      codex: this.querySelector("caffold-settings-codex-page"),
+      claude: this.querySelector("caffold-settings-claude-page"),
+      about: this.querySelector("caffold-settings-about-page"),
+    };
+  }
+
   syncPresentation() {
-    const presentedSection =
-      this.section || (this.masterDetailMedia.matches ? "appearance" : "");
+    const presentedSection = this.presentedSection();
     this.dataset.settingsView = presentedSection ? "detail" : "list";
     this.connectedSettingsNavigator?.setSelectedSection(
       presentedSection,
@@ -170,16 +193,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     header.querySelector("h1").textContent =
       TITLES[presentedSection] ?? "Settings";
 
-    const pages = {
-      appearance: this.querySelector("caffold-settings-appearance-page"),
-      keyboard: this.querySelector("caffold-settings-keyboard-page"),
-      files: this.querySelector("caffold-settings-files-page"),
-      notifications: this.querySelector("caffold-settings-notifications-page"),
-      "remote-access": this.querySelector("caffold-settings-remote-access-page"),
-      codex: this.querySelector("caffold-settings-codex-page"),
-      claude: this.querySelector("caffold-settings-claude-page"),
-      about: this.querySelector("caffold-settings-about-page"),
-    };
+    const pages = this.settingsPages();
     for (const [section, page] of Object.entries(pages)) {
       page.hidden = section !== presentedSection;
     }
@@ -224,22 +238,23 @@ class CaffoldSettingsWorkspace extends HTMLElement {
 
   actionHintScope({ scopeId = "settings", clipRoots = [] } = {}) {
     this.ensureRendered();
+    if (this.hidden) {
+      return emptyActionHintScope();
+    }
+    const presentedSection = this.presentedSection();
+    const page = this.settingsPages()[presentedSection] ?? null;
+    const detailPane = this.querySelector(
+      ":scope > .settings-workspace-surface > .settings-workspace-detail-pane",
+    );
     const control = this.querySelector(
       ':scope > .settings-workspace-surface > .settings-workspace-detail-pane > .settings-workspace-detail-header > button[data-action="back-to-settings"]',
     );
     const header = this.querySelector(
       ":scope > .settings-workspace-surface > .settings-workspace-detail-pane > .settings-workspace-detail-header",
     );
-    if (
-      this.hidden ||
-      !this.section ||
-      !control ||
-      control.disabled ||
-      header?.hidden
-    ) {
-      return emptyActionHintScope();
-    }
-    return {
+    const ownScope =
+      this.section && control && !control.disabled && !header?.hidden
+        ? {
       blocked: false,
       targets: [buttonActionHintTarget({
         id: `${scopeId}:parent:list`,
@@ -259,7 +274,52 @@ class CaffoldSettingsWorkspace extends HTMLElement {
       })],
       mutationRoots: [header, control].filter(Boolean),
       scrollRoots: [],
-    };
+    }
+        : emptyActionHintScope();
+    const pageScope =
+      presentedSection &&
+        page &&
+        !page.hidden &&
+        hasActionHintLayoutBox(page)
+        ? page.actionHintScope?.({
+            scopeId: `${scopeId}:${presentedSection}`,
+            clipRoots: [detailPane, ...clipRoots].filter(Boolean),
+            isCurrent: () =>
+              this.presentedSection() === presentedSection &&
+              this.settingsPages()[presentedSection] === page &&
+              !page.hidden,
+          })
+        : null;
+    return mergeActionHintScopes(ownScope, pageScope);
+  }
+
+  scrollSurfaceScope({ scopeId = "settings", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    if (this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    const presentedSection = this.presentedSection();
+    const page = this.settingsPages()[presentedSection] ?? null;
+    const detailPane = this.querySelector(
+      ":scope > .settings-workspace-surface > .settings-workspace-detail-pane",
+    );
+    if (
+      !presentedSection ||
+      !page ||
+      page.hidden ||
+      !hasScrollLayoutBox(page)
+    ) {
+      return emptyScrollSurfaceScope();
+    }
+    return page.scrollSurfaceScope?.({
+      scopeId: `${scopeId}:${presentedSection}`,
+      label: TITLES[presentedSection] ?? "Settings",
+      clipRoots: [detailPane, ...clipRoots].filter(Boolean),
+      isCurrent: () =>
+        this.presentedSection() === presentedSection &&
+        this.settingsPages()[presentedSection] === page &&
+        !page.hidden,
+    }) ?? emptyScrollSurfaceScope();
   }
 
   setCodexStatusSnapshot(snapshot) {

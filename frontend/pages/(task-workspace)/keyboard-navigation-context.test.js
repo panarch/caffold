@@ -7,7 +7,9 @@ import {
 
 const registry = installCustomElementUnitRegistry();
 const previousElement = globalThis.Element;
+const previousShadowRoot = globalThis.ShadowRoot;
 globalThis.Element = globalThis.HTMLElement;
+globalThis.ShadowRoot = class TestShadowRoot {};
 const {
   keyboardNavigationContext,
   mergeKeyboardNavigationContexts,
@@ -17,6 +19,7 @@ const {
 
 after(() => {
   restoreGlobal("Element", previousElement);
+  restoreGlobal("ShadowRoot", previousShadowRoot);
   registry.restore();
 });
 
@@ -155,6 +158,52 @@ test("normalizes exact owners and rejects duplicate or malformed providers", () 
     kind: "modal",
     root: element(),
     editing: { escapeTarget: null },
+  }]), null);
+});
+
+test("accepts declared Shadow DOM mutation roots without weakening geometry roots", () => {
+  const root = element();
+  const dialog = actionHintDialog();
+  const hud = scrollHud();
+  const shadowRoot = new ShadowRoot();
+  root.append(dialog, hud);
+  const context = keyboardNavigationContext({
+    id: "workspace",
+    kind: "workspace",
+    root,
+    actionHints: {
+      dialog,
+      scope: { targets: [], mutationRoots: [root, shadowRoot] },
+    },
+    scroll: {
+      hud,
+      scope: {
+        surfaces: [],
+        mutationRoots: [shadowRoot],
+      },
+    },
+  });
+
+  const [normalized] = normalizeKeyboardNavigationContexts([context]);
+  assert.deepEqual(normalized.actionHints.scope.mutationRoots, [
+    root,
+    shadowRoot,
+  ]);
+  assert.deepEqual(normalized.scroll.scope.mutationRoots, [root, shadowRoot]);
+
+  assert.equal(normalizeKeyboardNavigationContexts([{
+    ...context,
+    actionHints: {
+      ...context.actionHints,
+      scope: { ...context.actionHints.scope, mutationRoots: [{}] },
+    },
+  }]), null);
+  assert.equal(normalizeKeyboardNavigationContexts([{
+    ...context,
+    scroll: {
+      ...context.scroll,
+      scope: { ...context.scroll.scope, scrollRoots: [shadowRoot] },
+    },
   }]), null);
 });
 

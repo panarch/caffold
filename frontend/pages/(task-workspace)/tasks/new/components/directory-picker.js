@@ -14,7 +14,7 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   hasVerticalScrollOverflow,
-} from "../../../scroll-scope.js";
+} from "../../../../../scroll-scope.js";
 import "../../../components/keyboard-navigation-presentation.js";
 
 const DIRECTORY_LOADING_DELAY_MS = 180;

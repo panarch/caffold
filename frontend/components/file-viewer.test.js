@@ -187,3 +187,97 @@ test("provides file details opener but no invented action inside its popover", (
   assert.equal(context.scroll.hud, hud);
   assert.equal(context.scroll.scope.surfaces[0].scrollport, popover);
 });
+
+test("provides its owned refresh button beside existing viewer actions", () => {
+  let current;
+  let clicks = 0;
+  const refresh = {
+    disabled: false,
+    getAttribute: () => "Refresh file",
+    focus() {},
+    click() {
+      clicks += 1;
+    },
+  };
+  current = refresh;
+  const owner = {
+    hidden: false,
+    isConnected: true,
+    querySelector(selector) {
+      return selector.includes("viewer-refresh-button") ? current : null;
+    },
+  };
+
+  const scope = fileViewer.actionHintScope.call(owner, {
+    scopeId: "review:viewer",
+    refreshActionId: "button.activate",
+  });
+  assert.equal(scope.targets.length, 1);
+  assert.equal(scope.targets[0].id, "review:viewer:refresh");
+  assert.equal(scope.targets[0].label, "Refresh file");
+  scope.targets[0].activate();
+  assert.equal(clicks, 1);
+
+  current = null;
+  assert.equal(scope.targets[0].isActionable(), false);
+});
+
+test("delegates source scrolling and invalidates it when viewer state changes", () => {
+  const state = {
+    status: "file",
+    presentation: { title: "PLAN.md" },
+  };
+  let received;
+  const childScope = { surfaces: [{ id: "source" }] };
+  const codeViewer = {
+    scrollSurfaceScope(options) {
+      received = options;
+      return childScope;
+    },
+  };
+  const owner = {
+    state,
+    hidden: false,
+    isConnected: true,
+    querySelector: () => codeViewer,
+  };
+
+  assert.equal(fileViewer.scrollSurfaceScope.call(owner, {
+    scopeId: "review:viewer",
+  }), childScope);
+  assert.equal(received.scopeId, "review:viewer:source");
+  assert.equal(received.label, "PLAN.md source");
+  assert.equal(received.isCurrent(), true);
+
+  owner.state = { ...state };
+  assert.equal(received.isCurrent(), false);
+});
+
+test("keeps an owned image surface bound to its exact retained scrollport", () => {
+  const state = { status: "image", image: { name: "shot.png" } };
+  const scrollport = {
+    isConnected: true,
+    clientHeight: 100,
+    scrollHeight: 260,
+    getClientRects: () => [{}],
+  };
+  let current = scrollport;
+  const owner = {
+    state,
+    hidden: false,
+    isConnected: true,
+    getClientRects: () => [{}],
+    querySelector: () => current,
+    ownScrollSurfaceScope(options) {
+      return fileViewer.ownScrollSurfaceScope.call(this, options);
+    },
+  };
+
+  const scope = fileViewer.scrollSurfaceScope.call(owner, {
+    scopeId: "review:viewer",
+  });
+  assert.equal(scope.surfaces[0].scrollport, scrollport);
+  assert.equal(scope.surfaces[0].isEligible(), true);
+  current = { ...scrollport };
+  assert.equal(scope.surfaces[0].isEligible(), false);
+});

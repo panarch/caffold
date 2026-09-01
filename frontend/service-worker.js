@@ -82,7 +82,7 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/layout.css",
   "/assets/pages/(task-workspace)/layout.js",
   "/assets/pages/(task-workspace)/keyboard-navigation.js",
-  "/assets/pages/(task-workspace)/scroll-scope.js",
+  "/assets/scroll-scope.js",
   "/assets/pages/(task-workspace)/keyboard-navigation/control.js",
   "/assets/pages/(task-workspace)/keyboard-navigation-context.js",
   "/assets/pages/(task-workspace)/keyboard-navigation/model.js",

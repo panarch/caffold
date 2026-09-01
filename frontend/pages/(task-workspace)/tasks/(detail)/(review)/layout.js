@@ -35,6 +35,11 @@ import {
   hasActionHintLayoutBox,
   mergeActionHintScopes,
 } from "../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  mergeScrollSurfaceScopes,
+} from "../../../../../scroll-scope.js";
 
 const REVIEW_PANEL_DEFAULT_WIDTH = 320;
 
@@ -334,6 +339,7 @@ class CaffoldTaskReview extends HTMLElement {
         ? this.fileNavigator()?.actionHintScope({
             scopeId: `${scopeId}:files`,
             actionId: ACTION_HINT_ACTION.FILE_OPEN,
+            refreshActionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
             clipRoots: navigatorClipRoots,
           })
         : this.route.scope === "branch"
@@ -353,6 +359,7 @@ class CaffoldTaskReview extends HTMLElement {
           actionId: ACTION_HINT_ACTION.PARENT,
           noticeActionId: ACTION_HINT_ACTION.REVIEW_AXIS,
           detailsActionId: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
+          refreshActionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
           clipRoots: viewerClipRoots,
         })
       : null;
@@ -363,6 +370,51 @@ class CaffoldTaskReview extends HTMLElement {
       navigatorScope,
       viewerScope,
     );
+  }
+
+  scrollSurfaceScope() {
+    this.ensureRendered();
+    const subjectId = taskThreadId(this.task);
+    if (!this.active || this.hidden || !subjectId || !this.contextKey) {
+      return emptyScrollSurfaceScope();
+    }
+    const scopeId = `review:${encodeURIComponent(subjectId)}`;
+    const navigatorPane = this.querySelector(
+      ":scope > .task-review-workspace > .task-review-layout > .task-review-navigator-pane",
+    );
+    const viewerPane = this.querySelector(
+      ":scope > .task-review-workspace > .task-review-layout > .task-review-viewer-pane",
+    );
+    const navigatorClipRoots = [this, navigatorPane].filter(Boolean);
+    const viewerClipRoots = [this, viewerPane].filter(Boolean);
+    let navigatorScope = null;
+    if (hasScrollLayoutBox(navigatorPane)) {
+      navigatorScope = this.route.navigator === "files"
+        ? this.fileNavigator()?.scrollSurfaceScope({
+            scopeId: `${scopeId}:files`,
+            label: "Files",
+            clipRoots: navigatorClipRoots,
+          })
+        : this.route.scope === "branch"
+          ? this.branchTree()?.scrollSurfaceScope({
+              scopeId: `${scopeId}:branch`,
+              label: "Branch changes",
+              clipRoots: navigatorClipRoots,
+            })
+          : this.workingTree()?.scrollSurfaceScope({
+              scopeId: `${scopeId}:working`,
+              label: "Working tree changes",
+              clipRoots: navigatorClipRoots,
+            });
+    }
+    const viewerScope =
+      hasScrollLayoutBox(viewerPane) && this.route.path
+        ? this.viewer()?.scrollSurfaceScope({
+            scopeId: `${scopeId}:viewer`,
+            clipRoots: viewerClipRoots,
+          })
+        : null;
+    return mergeScrollSurfaceScopes(navigatorScope, viewerScope);
   }
 
   keyboardNavigationContexts() {

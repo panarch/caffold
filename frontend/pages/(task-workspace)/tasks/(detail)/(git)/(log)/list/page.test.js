@@ -16,7 +16,7 @@ after(() => {
   else globalThis.CSS = previousCss;
 });
 
-test("provides Open commit but excludes commit-body disclosure", () => {
+test("provides commit actions and the exact Git log scrollport", () => {
   const focusOptions = [];
   let clicks = 0;
   const open = {
@@ -30,20 +30,41 @@ test("provides Open commit but excludes commit-body disclosure", () => {
       clicks += 1;
     },
   };
+  const toggle = {
+    dataset: { commitSha: "abcdef123456" },
+    disabled: false,
+    getAttribute: () => "Expand commit body for abcdef1",
+    focus() {},
+    click() {},
+  };
+  const scrollport = {
+    clientHeight: 100,
+    scrollHeight: 420,
+    getClientRects: () => [{}],
+  };
   const owner = {
     hidden: false,
     isConnected: true,
     state: { status: "ready" },
-    querySelectorAll: () => [open],
+    getClientRects: () => [{}],
+    querySelectorAll(selector) {
+      return selector.includes("toggle-commit-body") ? [toggle] : [open];
+    },
     querySelector(selector) {
       if (selector.includes("caffold-pagination")) return null;
-      if (selector.endsWith(" > .log-list")) return {};
+      if (selector.endsWith(" > .log-list")) return scrollport;
+      if (selector.includes('button[data-action="toggle-commit-body"]')) return toggle;
       if (selector.includes('button[data-action="open-commit"]')) return open;
       throw new Error(`Unexpected selector: ${selector}`);
     },
   };
 
-  const target = page.actionHintScope.call(owner).targets[0];
+  const scope = page.actionHintScope.call(owner);
+  assert.deepEqual(scope.targets.map(({ id }) => id), [
+    "git:log:commit:abcdef123456",
+    "git:log:commit-body:abcdef123456",
+  ]);
+  const target = scope.targets[0];
   assert.equal(target.id, "git:log:commit:abcdef123456");
   assert.equal(target.actionId, "navigation.commit.open");
   assert.equal(target.label, "Open commit diff for abcdef1 Fix");
@@ -51,4 +72,11 @@ test("provides Open commit but excludes commit-body disclosure", () => {
   target.activate();
   assert.deepEqual(focusOptions, [{ preventScroll: true }]);
   assert.equal(clicks, 1);
+  assert.equal(scope.targets[1].actionId, "button.activate");
+
+  const scrollScope = page.scrollSurfaceScope.call(owner);
+  assert.equal(scrollScope.surfaces[0].scrollport, scrollport);
+  assert.equal(scrollScope.surfaces[0].isEligible(), true);
+  scrollport.scrollHeight = 100;
+  assert.equal(scrollScope.surfaces[0].isEligible(), false);
 });

@@ -146,6 +146,41 @@ test("provides only its exact active Task list scrollport", () => {
   assert.equal(navigator.scrollSurfaceScope.call(owner).blocked, true);
 });
 
+test("merges Archived actions only while that direct list has a layout box", () => {
+  const activeTarget = { id: "active" };
+  const archivedTarget = { id: "archived" };
+  const archivedTaskList = {
+    visible: true,
+    getClientRects() {
+      return this.visible ? [{}] : [];
+    },
+    actionHintScope(options) {
+      assert.equal(options.scopeId, "task-list:archived");
+      return { targets: [archivedTarget], mutationRoots: [this] };
+    },
+  };
+  const owner = {
+    reorderMode: "none",
+    activeTaskList: {
+      actionHintTargets: () => [activeTarget],
+    },
+    archivedTaskList,
+    ensureChildren() {},
+    actionHintReorderTarget: () => null,
+    querySelector(selector) {
+      if (selector === ":scope > .task-list-scroll") return {};
+      if (selector === ":scope > .task-list-primary-header") return null;
+      throw new Error(`Unexpected selector: ${selector}`);
+    },
+  };
+  assert.deepEqual(
+    navigator.actionHintScope.call(owner).targets,
+    [activeTarget, archivedTarget],
+  );
+  archivedTaskList.visible = false;
+  assert.deepEqual(navigator.actionHintScope.call(owner).targets, [activeTarget]);
+});
+
 test("provides Reorder opener and exact semantic popover options", () => {
   const control = {
     disabled: false,

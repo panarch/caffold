@@ -101,3 +101,43 @@ test("merges Review axes with only the active navigator and selected viewer", ()
   );
   assert.deepEqual(calls, { working: 1, branch: 1, files: 2, viewer: 3 });
 });
+
+test("merges only visible Review navigator and viewer Scroll leaves", () => {
+  const navigatorSurface = { id: "working-tree" };
+  const viewerSurface = { id: "diff" };
+  const pane = () => ({
+    visible: true,
+    getClientRects() {
+      return this.visible ? [{}] : [];
+    },
+  });
+  const panes = { navigator: pane(), viewer: pane() };
+  const owner = {
+    active: true,
+    hidden: false,
+    task: { threadId: "thread-a" },
+    contextKey: "thread-a\0/repo",
+    route: { navigator: "changes", scope: "working", path: "src/a.js" },
+    ensureRendered() {},
+    querySelector(selector) {
+      return selector.includes("navigator-pane") ? panes.navigator : panes.viewer;
+    },
+    workingTree: () => ({
+      scrollSurfaceScope: () => ({ surfaces: [navigatorSurface] }),
+    }),
+    branchTree: () => null,
+    fileNavigator: () => null,
+    viewer: () => ({
+      scrollSurfaceScope: () => ({ surfaces: [viewerSurface] }),
+    }),
+  };
+
+  assert.deepEqual(
+    review.scrollSurfaceScope.call(owner).surfaces,
+    [navigatorSurface, viewerSurface],
+  );
+  panes.navigator.visible = false;
+  assert.deepEqual(review.scrollSurfaceScope.call(owner).surfaces, [viewerSurface]);
+  panes.viewer.visible = false;
+  assert.deepEqual(review.scrollSurfaceScope.call(owner).surfaces, []);
+});

@@ -8,6 +8,8 @@ import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
+  hasActionHintLayoutBox,
+  mergeActionHintScopes,
 } from "../../action-hints.js";
 import {
   keyboardNavigationContext,
@@ -18,7 +20,7 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   hasVerticalScrollOverflow,
-} from "../../scroll-scope.js";
+} from "../../../../scroll-scope.js";
 import {
   TASK_TRANSPORT_STATE,
 } from "../runtime-state.js";
@@ -204,12 +206,22 @@ class CaffoldTaskNavigator extends HTMLElement {
         clipRoots: [this, scrollRoot],
       }));
     }
-    return {
+    const ownScope = {
       blocked: this.reorderMode !== "none",
       targets,
       mutationRoots: [primaryHeader, this.activeTaskList].filter(Boolean),
       scrollRoots: [scrollRoot].filter(Boolean),
     };
+    const archived = this.archivedTaskList;
+    return mergeActionHintScopes(
+      ownScope,
+      scrollRoot && archived && hasActionHintLayoutBox(archived)
+        ? archived.actionHintScope({
+            scopeId: "task-list:archived",
+            clipRoots: [this, scrollRoot],
+          })
+        : null,
+    );
   }
 
   actionHintReorderTarget() {

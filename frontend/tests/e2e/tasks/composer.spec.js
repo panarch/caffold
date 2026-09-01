@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { activateActionHint } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
@@ -349,7 +350,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
   await prompt.fill("Submitted by button");
   await expect(send).toHaveAttribute("data-primary-action", "send");
   await expect(send).toBeEnabled();
-  await send.click();
+  await activateActionHint(page, /Send prompt$/);
   await expect.poll(() => submittedPrompts).toEqual(["Submitted by button"]);
   await expect(tasksPage).toContainText("Submitted by button");
   await expect(tasksPage).toContainText("Submitted by button");

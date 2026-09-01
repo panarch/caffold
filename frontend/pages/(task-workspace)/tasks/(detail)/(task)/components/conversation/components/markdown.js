@@ -1,5 +1,9 @@
 import { routeUrl } from "../../../../../../../../navigation-routes.js";
 import "./markdown/components/code-block.js";
+import {
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../../../../action-hints.js";
 
 const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
 
@@ -141,6 +145,25 @@ class CaffoldTaskMarkdown extends HTMLElement {
 
   body() {
     return this.querySelector(":scope > .markdown-body");
+  }
+
+  actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
+    if (!scopeId || this.hidden || this.dataset.renderState !== "markdown") {
+      return emptyActionHintScope();
+    }
+    const body = this.body();
+    if (!body) {
+      return emptyActionHintScope();
+    }
+    const blocks = Array.from(
+      body.querySelectorAll("caffold-task-markdown-code-block"),
+    );
+    return mergeActionHintScopes(
+      ...blocks.map((block, index) => block.actionHintScope?.({
+        scopeId: `${scopeId}:code-block:${index + 1}`,
+        clipRoots: [this, body, ...clipRoots].filter(Boolean),
+      })),
+    );
   }
 
   mutateLayout(mutation) {

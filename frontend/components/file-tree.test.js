@@ -148,3 +148,38 @@ test("includes enabled directory rows only when an owner explicitly requests the
   directoryControl.disabled = true;
   assert.equal(scope.targets[0].isActionable(), false);
 });
+
+test("provides its exact retained tree scrollport", () => {
+  let currentScroller;
+  const scrollport = {
+    clientHeight: 100,
+    scrollHeight: 240,
+    getClientRects: () => [{}],
+  };
+  currentScroller = scrollport;
+  const owner = {
+    hidden: false,
+    isConnected: true,
+    ensureRendered() {},
+    getClientRects: () => [{}],
+    scroller: () => currentScroller,
+  };
+
+  const scope = fileTree.scrollSurfaceScope.call(owner, {
+    scopeId: "review:files",
+    label: "Changed files",
+    clipRoots: [{ id: "pane" }],
+  });
+
+  assert.equal(scope.surfaces.length, 1);
+  assert.equal(scope.surfaces[0].id, "review:files:scroll");
+  assert.equal(scope.surfaces[0].label, "Changed files");
+  assert.equal(scope.surfaces[0].scrollport, scrollport);
+  assert.equal(scope.surfaces[0].isEligible(), true);
+  assert.deepEqual(scope.mutationRoots, [owner]);
+  assert.deepEqual(scope.resizeElements, [owner, scrollport]);
+  assert.deepEqual(scope.scrollRoots, [scrollport]);
+
+  currentScroller = null;
+  assert.equal(scope.surfaces[0].isEligible(), false);
+});

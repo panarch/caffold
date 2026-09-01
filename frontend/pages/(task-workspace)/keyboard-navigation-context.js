@@ -1,5 +1,5 @@
-import { mergeActionHintScopes } from "./action-hints.js";
-import { mergeScrollSurfaceScopes } from "./scroll-scope.js";
+import { mergeActionHintScopes } from "../../action-hint-scope.js";
+import { mergeScrollSurfaceScopes } from "../../scroll-scope.js";
 
 const KEYBOARD_CONTEXT_KINDS = new Set(["workspace", "modal", "popover"]);
 
@@ -154,7 +154,7 @@ function normalizeActionHintCapability(capability, root) {
   ) {
     return null;
   }
-  const mutationRoots = normalizeElementList(scope.mutationRoots ?? []);
+  const mutationRoots = normalizeMutationRootList(scope.mutationRoots ?? []);
   const scrollRoots = normalizeElementList(scope.scrollRoots ?? []);
   if (!mutationRoots || !scrollRoots) {
     return null;
@@ -185,7 +185,7 @@ function normalizeScrollCapability(capability, root) {
   ) {
     return null;
   }
-  const mutationRoots = normalizeElementList([
+  const mutationRoots = normalizeMutationRootList([
     root,
     ...(scope.mutationRoots ?? []),
   ]);
@@ -245,6 +245,20 @@ function normalizeElementList(elements) {
     return null;
   }
   return uniqueElements(elements);
+}
+
+export function normalizeMutationRootList(roots) {
+  if (
+    !Array.isArray(roots) ||
+    roots.some(
+      (root) =>
+        !(root instanceof Element) &&
+        !(typeof ShadowRoot === "function" && root instanceof ShadowRoot),
+    )
+  ) {
+    return null;
+  }
+  return uniqueElements(roots);
 }
 
 function uniqueElements(elements) {

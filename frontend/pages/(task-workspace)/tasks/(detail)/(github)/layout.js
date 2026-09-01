@@ -13,6 +13,7 @@ import {
 import {
   mergeKeyboardNavigationContexts,
 } from "../../../keyboard-navigation-context.js";
+import { emptyScrollSurfaceScope } from "../../../../../scroll-scope.js";
 
 class CaffoldTaskGithubLayout extends HTMLElement {
   connectedCallback() {
@@ -724,6 +725,24 @@ class CaffoldTaskGithubLayout extends HTMLElement {
           clipRoots: [this, body].filter(Boolean),
         });
     return mergeActionHintScopes(back, activeChild);
+  }
+
+  scrollSurfaceScope() {
+    this.ensureRendered();
+    if (!this.active || this.hidden || !this.mode) {
+      return emptyScrollSurfaceScope();
+    }
+    const scopeId = `github:${encodeURIComponent(
+      this.repository?.rootPath || this.currentPath || "repository",
+    )}`;
+    const body = this.querySelector(
+      ":scope > .task-github-surface > .task-domain-body",
+    );
+    const child = this.mode === "issues" ? this.issuesLayout : this.pullsLayout;
+    return child.scrollSurfaceScope?.({
+      scopeId: `${scopeId}:${this.mode}`,
+      clipRoots: [this, body].filter(Boolean),
+    }) ?? emptyScrollSurfaceScope();
   }
 
   keyboardNavigationContexts() {

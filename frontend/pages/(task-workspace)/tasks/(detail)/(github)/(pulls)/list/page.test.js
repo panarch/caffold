@@ -55,3 +55,23 @@ test("provides Pull Request rows through their existing native controls", () => 
   owner.selectedPullNumber = 7;
   assert.equal(target.isActionable(), false);
 });
+
+test("provides only the retained overflowing Pull Request list", () => {
+  const scrollport = {
+    clientHeight: 100,
+    scrollHeight: 360,
+    getClientRects: () => [{}],
+  };
+  const owner = {
+    hidden: false,
+    isConnected: true,
+    state: { status: "ready" },
+    getClientRects: () => [{}],
+    querySelector: () => scrollport,
+  };
+  const scope = page.scrollSurfaceScope.call(owner);
+  assert.equal(scope.surfaces[0].scrollport, scrollport);
+  assert.equal(scope.surfaces[0].isEligible(), true);
+  scrollport.scrollHeight = 100;
+  assert.equal(scope.surfaces[0].isEligible(), false);
+});

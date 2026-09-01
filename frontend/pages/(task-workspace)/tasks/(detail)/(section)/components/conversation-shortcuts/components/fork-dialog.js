@@ -14,7 +14,7 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   hasVerticalScrollOverflow,
-} from "../../../../../../scroll-scope.js";
+} from "../../../../../../../../scroll-scope.js";
 import "../../../../../../components/keyboard-navigation-presentation.js";
 
 const CODEX_THREAD_URI_PREFIX = "codex://threads/";

@@ -67,13 +67,16 @@ test("provides Model, Permission, and Prompt through their existing component ac
       return options;
     },
     querySelector(selector) {
-      assert.equal(selector, "textarea[name='prompt']");
-      return textarea;
+      return selector === "textarea[name='prompt']" ? textarea : null;
     },
+    querySelectorAll: () => [],
     stateFor() {
       return { selectionStart: null, selectionEnd: null };
     },
     focus: composer.focus,
+    actionHintButtonTargets(options) {
+      return composer.actionHintButtonTargets.call(this, options);
+    },
   };
 
   const targets = composer.actionHintTargets.call(owner, {
@@ -122,4 +125,92 @@ test("provides Model, Permission, and Prompt through their existing component ac
   assert.equal(model.isActionable(), false);
   assert.equal(permission.isActionable(), false);
   assert.equal(prompt.isActionable(), false);
+});
+
+function composerButton({ action = "", primaryAction = "", imageId = "" }) {
+  return {
+    dataset: { composerAction: action, primaryAction, imageId },
+    disabled: false,
+    title: "",
+    textContent: action || primaryAction,
+    clicks: 0,
+    getAttribute: () => null,
+    getClientRects: () => [{}],
+    focus() {},
+    click() {
+      this.clicks += 1;
+    },
+  };
+}
+
+test("provides the current Composer button catalog without retargeting it", () => {
+  const browse = composerButton({ action: "browse-cwd" });
+  const voice = composerButton({ action: "voice" });
+  const cancelVoice = composerButton({ action: "cancel-voice" });
+  const cancel = composerButton({ action: "cancel" });
+  const primary = composerButton({ primaryAction: "start" });
+  const preview = composerButton({ action: "preview-image", imageId: "image-a" });
+  const remove = composerButton({ action: "remove-image", imageId: "image-a" });
+  let controls = [
+    browse,
+    voice,
+    cancelVoice,
+    cancel,
+    primary,
+    preview,
+    remove,
+  ];
+  const matches = (selector) => {
+    if (selector.includes("task-primary-action-button")) {
+      return controls.filter(({ dataset }) => dataset.primaryAction);
+    }
+    const actions = Array.from(
+      selector.matchAll(/data-composer-action="([^"]+)"/g),
+      (match) => match[1],
+    );
+    return controls.filter(({ dataset }) =>
+      actions.includes(dataset.composerAction) &&
+      (!selector.includes("[data-image-id]") || dataset.imageId)
+    );
+  };
+  const owner = {
+    isConnected: true,
+    context: { mode: "create", threadId: "", cwd: "/repo" },
+    state: {
+      activeSubmissionId: null,
+      images: [{ id: "image-a" }],
+    },
+    stateFor() {
+      return this.state;
+    },
+    querySelector: (selector) => matches(selector)[0] ?? null,
+    querySelectorAll: matches,
+  };
+
+  const targets = composer.actionHintButtonTargets.call(owner, {
+    mode: "create",
+    scopeId: "new",
+    clipRoots: [{}],
+  });
+  assert.deepEqual(targets.map(({ id }) => id), [
+    "task-composer:new:browse-cwd",
+    "task-composer:new:voice",
+    "task-composer:new:cancel-voice",
+    "task-composer:new:cancel",
+    "task-composer:new:primary:start",
+    "task-composer:new:preview-image:image-a",
+    "task-composer:new:remove-image:image-a",
+  ]);
+  targets.forEach((target) => target.activate());
+  assert.deepEqual(
+    controls.map(({ clicks }) => clicks),
+    [1, 1, 1, 1, 1, 1, 1],
+  );
+
+  owner.state.images = [];
+  assert.equal(targets[5].isActionable(), false);
+  owner.state.activeSubmissionId = "submission-a";
+  assert.equal(targets[0].isActionable(), false);
+  controls = controls.filter((control) => control !== voice);
+  assert.equal(targets[1].isActionable(), false);
 });

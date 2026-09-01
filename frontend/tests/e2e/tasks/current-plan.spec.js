@@ -543,7 +543,7 @@ test("uses the Task cwd instead of its managed worktree root", { tag: "@desktop"
   const planResponse = fileResponse(page, planPath);
   await currentPlan.getByRole("button", { name: /^Open plan:/ }).click();
   await planResponse;
-  const dialog = currentPlan.locator("caffold-current-plan-document-dialog dialog");
+  const dialog = currentPlan.locator("caffold-current-plan-document-dialog > dialog");
   await expect(dialog.locator("[data-current-plan-dialog-path]")).toHaveText(
     "packages/app/.caffold/plans/current/PLAN.md",
   );

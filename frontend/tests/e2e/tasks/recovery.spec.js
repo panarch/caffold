@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { activateActionHint } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
@@ -171,7 +172,7 @@ test("opens archived-in-Codex recovery without opening ordinary Task detail and 
   );
   expect(detailSourcesBeforeRestore).toBe(0);
 
-  await restoreButton.click();
+  await activateActionHint(page, /Restore to Active/);
   await expect.poll(() => restoreCalls).toBe(1);
   await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}$`));
   await emitTaskDetailBootstrap(page, taskDetail(restored));
@@ -207,7 +208,7 @@ test("moves an already-Codex-archived recovery Task into Caffold Archived", { ta
   });
 
   await openRecovery(page, recovery);
-  await page.getByRole("button", { name: /Move to Archived/ }).click();
+  await activateActionHint(page, /Move to Archived/);
 
   await expect.poll(() => archiveCalls).toBe(1);
   await expect(page).toHaveURL(/\/tasks$|\/$/);
@@ -240,11 +241,11 @@ test("confirms before removing a missing Codex Thread from Caffold", { tag: "@al
   });
 
   await openRecovery(page, recovery);
-  await page.getByRole("button", { name: /Remove from Caffold/ }).click();
+  await activateActionHint(page, /Remove from Caffold/);
   await expect(page.getByText("Remove this Task from Caffold?")).toBeVisible();
   expect(removeCalls).toBe(0);
 
-  await page.getByRole("button", { name: "Remove Task" }).click();
+  await activateActionHint(page, /Remove Task$/);
   await expect.poll(() => removeCalls).toBe(1);
   await expect(page).toHaveURL(/\/tasks$|\/$/);
   await expect(
@@ -277,7 +278,32 @@ test("recheck uses the explicit recovery endpoint without rewriting the cached l
   });
 
   await openRecovery(page, recovery);
-  await page.getByRole("button", { name: /Recheck/ }).click();
+  const recoveryScroll = page.locator(".task-recovery-body");
+  await page.locator(".task-recovery-content").evaluate((element) => {
+    element.style.minHeight = "360px";
+  });
+  await recoveryScroll.evaluate((element) => {
+    element.style.height = "120px";
+    element.style.maxHeight = "120px";
+  });
+  await expect.poll(() => recoveryScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await page.locator(".task-workspace-surface").focus();
+  await page.keyboard.press("s");
+  await expect(page.locator(
+    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+  )).toContainText("Scroll: Task recovery");
+  await page.keyboard.press("j");
+  await expect.poll(() => recoveryScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  const recheck = page.getByRole("button", { name: /Recheck/ });
+  await recheck.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  await activateActionHint(page, /Recheck/);
 
   await expect.poll(() => recheckCalls).toBe(1);
   await expect(page).toHaveURL(new RegExp(`/tasks/${threadId}/recovery$`));

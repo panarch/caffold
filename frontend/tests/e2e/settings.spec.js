@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { actionHintDialog } from "./support/action-hints.js";
+import {
+  actionHintDialog,
+  activateActionHint,
+} from "./support/action-hints.js";
 import {
   installBrowserDefaults,
   mockClaudeStatus,
@@ -17,6 +20,91 @@ const SETTINGS_KEY = "caffold:settings";
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
   await mockAgentModels(page);
+});
+
+test("uses active Settings page actions and only visible overflowing panes", { tag: "@all-viewports" }, async ({
+  context,
+  page,
+}, testInfo) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: viewport.width, height: 340 });
+  await page.route(/\/api\/codex\/mcp-diagnostics(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ available: false, threads: [] }),
+    })
+  );
+  await page.goto("/settings/about");
+
+  const workspaceSurface = page.locator(".task-workspace-surface");
+  const about = page.locator("caffold-settings-about-page");
+  const detailScroll = about.locator(":scope > .settings-content-scroll");
+  const copy = about.getByRole("button", { name: "Copy diagnostics" });
+  await expect(copy).toBeVisible();
+  await detailScroll.evaluate(async (element) => {
+    element.scrollTop = element.scrollHeight;
+    await new Promise((resolve) => requestAnimationFrame(() =>
+      requestAnimationFrame(resolve)
+    ));
+  });
+  await workspaceSurface.focus();
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  const copyHint = hint.getByRole("button", {
+    name: / — Copy diagnostics$/,
+  });
+  await expect(copyHint).toBeVisible();
+  if (testInfo.project.name === "phone") {
+    await expect(hint.getByRole("button", { name: / — Back to settings$/ }))
+      .toBeVisible();
+  } else {
+    await expect(hint.getByRole("button", { name: / — Back to settings$/ }))
+      .toHaveCount(0);
+  }
+  const copyCode = await copyHint.getAttribute("data-action-hint-code");
+  await page.keyboard.type(copyCode.toLowerCase());
+  await expect(about.locator("[data-about-copy-status]")).toHaveText("Copied");
+
+  await detailScroll.evaluate(async (element) => {
+    element.scrollTop = 0;
+    await new Promise((resolve) => requestAnimationFrame(() =>
+      requestAnimationFrame(resolve)
+    ));
+  });
+  await workspaceSurface.focus();
+  await page.keyboard.press("s");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog");
+  const hud = page.locator(
+    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+  );
+  await expect.poll(() => detailScroll.evaluate((element) =>
+    element.scrollHeight - element.clientHeight
+  )).toBeGreaterThan(1);
+  const before = await detailScroll.evaluate((element) => element.scrollTop);
+  if (testInfo.project.name === "phone") {
+    await expect(selector).toBeHidden();
+    await expect(hud).toContainText("Scroll: About");
+  } else {
+    const navigatorScroll = page.locator(
+      "caffold-settings-navigator > .settings-navigator-list",
+    );
+    await expect.poll(() => navigatorScroll.evaluate((element) =>
+      element.scrollHeight - element.clientHeight
+    )).toBeGreaterThan(1);
+    await expect(selector).toBeVisible();
+    await expect(selector.getByLabel(/^[A-Z]+ — Settings sections$/))
+      .toBeVisible();
+    const detail = selector.getByLabel(/^[A-Z]+ — About Caffold$/);
+    await expect(detail).toBeVisible();
+    await detail.click();
+    await expect(hud).toContainText("Scroll: About");
+  }
+  await page.keyboard.press("j");
+  await expect.poll(() => detailScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(before);
+  await page.keyboard.press("Escape");
+  await expect(hud).toBeHidden();
 });
 
 test("collects MCP status only when About diagnostics are copied", { tag: "@desktop" }, async ({
@@ -185,7 +273,7 @@ test("manually restarts a ready Codex runtime", { tag: "@all-viewports" }, async
   await captureReviewScreenshot(page, testInfo, "settings-codex-ready-runtime");
   expect(statusRequests).toBe(1);
 
-  await restart.click();
+  await activateActionHint(page, /Restart runtime…$/);
   const dialog = page.getByRole("dialog", { name: "Restart Codex runtime?" });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("Wait for running Tasks and tests to finish");
@@ -623,7 +711,8 @@ test("explicitly restarts the Claude runner from its Settings item", { tag: "@al
   await expect(settings).toContainText("Restarting stops the runner");
   await expect(settings).toContainText("Running · pid 4242");
 
-  await restart.click();
+  await revealActionTarget(page, restart);
+  await activateActionHint(page, /Restart runtime$/);
   const dialog = page.getByRole("dialog", { name: "Restart Claude runtime?" });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("ends every running Claude turn");
@@ -797,7 +886,7 @@ test("enables, lists, removes, and explicitly revokes notification installations
   const firefox = settings.locator(".settings-installation-list article", {
     hasText: "Firefox 141 on Linux",
   });
-  await firefox.getByRole("button", { name: "Remove" }).click();
+  await activateActionHint(page, /Remove Firefox 141 on Linux/);
   await expect(firefox).toHaveCount(0);
   await expect(settings.getByText("1 browser", { exact: true })).toBeVisible();
 
@@ -808,7 +897,11 @@ test("enables, lists, removes, and explicitly revokes notification installations
   await expect(safari).toHaveCount(0);
   await expect(settings.getByText("0 browsers", { exact: true })).toBeVisible();
 
-  await settings.getByRole("button", { name: "Enable" }).click();
+  await revealActionTarget(
+    page,
+    settings.getByRole("button", { name: "Enable" }),
+  );
+  await activateActionHint(page, /Enable$/);
   await expect(settings).toContainText("Subscribed");
   await expect(settings).toContainText(
     "This browser will receive notifications for terminal task turns.",
@@ -820,7 +913,11 @@ test("enables, lists, removes, and explicitly revokes notification installations
   expect(upserts).toBe(1);
   await captureReviewScreenshot(page, testInfo, "settings-notifications-subscribed");
 
-  await settings.getByRole("button", { name: "Disable" }).click();
+  await revealActionTarget(
+    page,
+    settings.getByRole("button", { name: "Disable" }),
+  );
+  await activateActionHint(page, /Disable$/);
   await expect(settings).toContainText("Disabled");
   await expect(settings).toContainText("No browsers are currently subscribed.");
   await expect.poll(() => page.evaluate(() => window.__pushMock.unsubscribeCalls)).toBe(1);
@@ -1169,7 +1266,11 @@ test("persists file ordering and keeps it across appearance reset", { tag: "@all
   await page.goto("/settings/appearance");
   const appearance = page.locator("caffold-settings-appearance-page");
   await setRange(range(appearance, "interfaceScalePercent"), 120);
-  await appearance.getByRole("button", { name: "Reset all" }).click();
+  await revealActionTarget(
+    page,
+    appearance.getByRole("button", { name: "Reset all" }),
+  );
+  await activateActionHint(page, /Reset all$/);
   await expect.poll(() => page.evaluate(
     (key) => JSON.parse(localStorage.getItem(key)).fileSortMode,
     SETTINGS_KEY,
@@ -2133,4 +2234,11 @@ async function representativeThemeStyles(page) {
     diff.remove();
     return result;
   });
+}
+
+async function revealActionTarget(page, target) {
+  await target.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
 }

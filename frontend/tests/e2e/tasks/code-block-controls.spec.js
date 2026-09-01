@@ -1,4 +1,8 @@
 import { expect, test } from "@playwright/test";
+import {
+  actionHintDialog,
+  activateActionHint,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import {
@@ -155,7 +159,11 @@ test("keeps the code-block toolbar dense and usable across Task viewports", { ta
   const savedScrollLeft = await firstPre.evaluate((pre) => pre.scrollLeft);
   expect(savedScrollLeft).toBeGreaterThan(0);
 
-  await firstBlock.getByRole("button", { name: "Wrap code lines" }).click();
+  await firstBlock.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  await activateFirstActionHint(page, /Wrap code lines$/);
   await expect(firstBlock).toHaveAttribute("data-code-wrap", "on");
   await expect(firstBlock.getByRole("button", { name: "Stop wrapping code lines" }))
     .toHaveAttribute("aria-pressed", "true");
@@ -163,7 +171,11 @@ test("keeps the code-block toolbar dense and usable across Task viewports", { ta
     firstPre.evaluate((pre) => pre.scrollWidth <= pre.clientWidth)
   ).toBe(true);
 
-  await firstBlock.getByRole("button", { name: "Stop wrapping code lines" }).click();
+  await firstBlock.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  await activateActionHint(page, /Stop wrapping code lines$/);
   await expect(firstBlock).toHaveAttribute("data-code-wrap", "off");
   await expect.poll(() => firstPre.evaluate((pre) => pre.scrollLeft)).toBe(savedScrollLeft);
 
@@ -236,7 +248,8 @@ test("copies each block exactly with bounded success and retryable failure", { t
   ).toBe(true);
   expect(requests).toEqual([]);
 
-  await secondCopy.click();
+  await secondBlock.scrollIntoViewIfNeeded();
+  await activateActionHint(page, /Copy code$/);
   await expect(secondCopy).toHaveAttribute("aria-label", "Copied");
   await expect(firstCopy).toHaveAttribute("aria-label", "Copied");
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(SECOND_CODE);
@@ -327,6 +340,21 @@ test("keeps excluded conversation surfaces plain", { tag: "@desktop" }, async ({
   await expect(page.locator(".task-command [data-code-action]")).toHaveCount(0);
   expect(scenario.pageErrors).toEqual([]);
 });
+
+async function activateFirstActionHint(page, accessibleName) {
+  await page.locator(".task-workspace-surface").focus();
+  await page.keyboard.press("f");
+  const dialog = actionHintDialog(page);
+  await expect(dialog).toBeVisible();
+  const badge = dialog.getByRole("button", {
+    name: accessibleName,
+  }).first();
+  await expect(badge).toBeVisible();
+  const code = await badge.getAttribute("data-action-hint-code");
+  expect(code).toMatch(/^[A-Z]+$/);
+  await page.keyboard.type(code.toLowerCase());
+  await expect(dialog).toBeHidden();
+}
 
 test("keeps Markdown fallback text plain", { tag: "@desktop" }, async ({ page }) => {
   const scenario = await seedCodeBlockTask(page, "thread_code_fallback");

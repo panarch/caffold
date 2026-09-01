@@ -14,7 +14,7 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   hasVerticalScrollOverflow,
-} from "../../../../../../scroll-scope.js";
+} from "../../../../../../../../scroll-scope.js";
 import {
   keyboardNavigationContext,
 } from "../../../../../../keyboard-navigation-context.js";

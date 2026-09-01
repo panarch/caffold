@@ -127,3 +127,28 @@ test("merges Task Start contexts independently from the active GitHub child", ()
     [startContext],
   );
 });
+
+test("delegates Scroll only to the active GitHub domain child", () => {
+  const issuesSurface = { id: "issues" };
+  const pullsSurface = { id: "pulls" };
+  const owner = {
+    active: true,
+    hidden: false,
+    mode: "issues",
+    repository: { rootPath: "/repo" },
+    currentPath: "/repo",
+    ensureRendered() {},
+    querySelector: () => ({}),
+    issuesLayout: {
+      scrollSurfaceScope: () => ({ surfaces: [issuesSurface] }),
+    },
+    pullsLayout: {
+      scrollSurfaceScope: () => ({ surfaces: [pullsSurface] }),
+    },
+  };
+  assert.deepEqual(githubLayout.scrollSurfaceScope.call(owner).surfaces, [issuesSurface]);
+  owner.mode = "pulls";
+  assert.deepEqual(githubLayout.scrollSurfaceScope.call(owner).surfaces, [pullsSurface]);
+  owner.hidden = true;
+  assert.deepEqual(githubLayout.scrollSurfaceScope.call(owner).surfaces, []);
+});

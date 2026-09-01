@@ -6,6 +6,11 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
 } from "../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../../../../../../../scroll-scope.js";
 
 class CaffoldGithubPullDetailPage extends HTMLElement {
   connectedCallback() {
@@ -133,6 +138,41 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
       }),
       mutationRoots: [this],
       scrollRoots: [],
+    };
+  }
+
+  scrollSurfaceScope({ scopeId = "github:pull", clipRoots = [] } = {}) {
+    const state = this.state;
+    if (this.hidden || state?.status !== "ready") {
+      return emptyScrollSurfaceScope();
+    }
+    const scrollport = this.querySelector(
+      ":scope > .github-pull-viewer-panel > .github-pull-viewer-scroll",
+    );
+    if (!scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:body:scroll`,
+        label: "Pull request details",
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state === state &&
+          this.querySelector(
+            ":scope > .github-pull-viewer-panel > .github-pull-viewer-scroll",
+          ) === scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport) &&
+          hasVerticalScrollOverflow(scrollport),
+      }],
+      mutationRoots: [this, scrollport],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
     };
   }
 

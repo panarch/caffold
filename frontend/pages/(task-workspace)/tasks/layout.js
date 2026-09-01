@@ -7,7 +7,7 @@ import {
 import {
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
-} from "../scroll-scope.js";
+} from "../../../scroll-scope.js";
 import {
   mergeKeyboardNavigationContexts,
 } from "../keyboard-navigation-context.js";
@@ -558,36 +558,48 @@ class CaffoldTasksPage extends HTMLElement {
   actionHintScope() {
     this.ensureRendered();
     const navigator = this.taskNavigator();
-    const activeSurfaceScope = !hasActionHintLayoutBox(this)
-      ? null
-      : this.view === "home" || this.view === "new"
-        ? this.taskNew()?.actionHintScope()
-        : this.view === "detail"
-          ? this.taskDetail()?.actionHintScope()
-          : null;
+    const activeOwners = !hasActionHintLayoutBox(this)
+      ? []
+      : this.activeDirectSurfaceOwners().filter(hasActionHintLayoutBox);
     return mergeActionHintScopes(
       hasActionHintLayoutBox(navigator)
         ? navigator.actionHintScope()
         : null,
-      activeSurfaceScope,
+      ...activeOwners.map((owner) => owner.actionHintScope?.()),
     );
   }
 
   scrollSurfaceScope() {
     this.ensureRendered();
     const navigator = this.taskNavigator();
-    const activeSurfaceVisible = hasScrollLayoutBox(this);
-    const detail = activeSurfaceVisible && this.view === "detail"
-      ? this.taskDetail()
-      : null;
+    const activeOwners = hasScrollLayoutBox(this)
+      ? this.activeDirectSurfaceOwners().filter(hasScrollLayoutBox)
+      : [];
     return mergeScrollSurfaceScopes(
       hasScrollLayoutBox(navigator)
         ? navigator.scrollSurfaceScope()
         : null,
-      detail && hasScrollLayoutBox(detail)
-        ? detail.scrollSurfaceScope()
-        : null,
+      ...activeOwners.map((owner) => owner.scrollSurfaceScope?.()),
     );
+  }
+
+  activeDirectSurfaceOwners() {
+    const setup = this.codexReadinessRecovery();
+    if (this.taskStoreRecoveryVisible()) {
+      return setup && !setup.hidden ? [setup] : [];
+    }
+    const owners = [];
+    if ((this.view === "home" || this.view === "new") && !this.taskNew()?.hidden) {
+      owners.push(this.taskNew());
+    } else if (this.view === "detail" && !this.taskDetail()?.hidden) {
+      owners.push(this.taskDetail());
+    } else if (this.view === "recovery" && !this.taskRecovery()?.hidden) {
+      owners.push(this.taskRecovery());
+    }
+    if (setup && !setup.hidden) {
+      owners.push(setup);
+    }
+    return owners.filter(Boolean);
   }
 
   keyboardNavigationContexts() {

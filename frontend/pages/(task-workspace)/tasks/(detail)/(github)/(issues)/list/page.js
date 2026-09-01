@@ -6,6 +6,11 @@ import {
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../../../../../../../scroll-scope.js";
 
 class CaffoldGithubIssuesListPage extends HTMLElement {
   connectedCallback() {
@@ -141,6 +146,40 @@ class CaffoldGithubIssuesListPage extends HTMLElement {
         clipRoots: [this, ...clipRoots],
       }),
     );
+  }
+
+  scrollSurfaceScope({ scopeId = "github:issues", clipRoots = [] } = {}) {
+    if (this.hidden || this.state?.status !== "ready") {
+      return emptyScrollSurfaceScope();
+    }
+    const scrollport = this.querySelector(
+      ":scope > .github-issues-panel > .github-issues-list",
+    );
+    if (!scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label: "GitHub issues",
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state?.status === "ready" &&
+          this.querySelector(
+            ":scope > .github-issues-panel > .github-issues-list",
+          ) === scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport) &&
+          hasVerticalScrollOverflow(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   render() {

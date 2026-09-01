@@ -2,6 +2,7 @@ import { fetchGitRemote, getGitLog } from "../../../../../../api.js";
 import "./commit/page.js";
 import "./list/page.js";
 import { emptyActionHintScope } from "../../../../action-hints.js";
+import { emptyScrollSurfaceScope } from "../../../../../../scroll-scope.js";
 
 const LOADING_DELAY_MS = 180;
 
@@ -292,6 +293,22 @@ class CaffoldGitLogLayout extends HTMLElement {
           scopeId: `${scopeId}:list:${this.page}`,
           clipRoots: [this, ...clipRoots],
         });
+  }
+
+  scrollSurfaceScope({ scopeId = "git:log", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    if (this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    return this.view === "detail"
+      ? this.commitPage.scrollSurfaceScope?.({
+          scopeId: `${scopeId}:commit`,
+          clipRoots: [this, ...clipRoots],
+        }) ?? emptyScrollSurfaceScope()
+      : this.list.scrollSurfaceScope?.({
+          scopeId: `${scopeId}:list:${this.page}`,
+          clipRoots: [this, ...clipRoots],
+        }) ?? emptyScrollSurfaceScope();
   }
 
   keyboardNavigationContexts({ scopeId = "git:log" } = {}) {

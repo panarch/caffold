@@ -7,6 +7,11 @@ import {
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../../../../../../../scroll-scope.js";
 
 class CaffoldGitLogListPage extends HTMLElement {
   connectedCallback() {
@@ -167,6 +172,29 @@ class CaffoldGitLogListPage extends HTMLElement {
           !control.disabled,
       })];
     });
+    for (const control of this.querySelectorAll(
+      ':scope > .log-list-panel > .log-list > .log-entry > button[data-action="toggle-commit-body"][data-commit-sha]',
+    )) {
+      const sha = `${control.dataset.commitSha ?? ""}`;
+      if (!sha || control.disabled) {
+        continue;
+      }
+      targets.push(buttonActionHintTarget({
+        id: `${scopeId}:commit-body:${encodeURIComponent(sha)}`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label") || "Expand commit body",
+        control,
+        clipRoots: listClipRoots,
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state?.status === "ready" &&
+          this.querySelector(
+            `:scope > .log-list-panel > .log-list > .log-entry > button[data-action="toggle-commit-body"][data-commit-sha="${CSS.escape(sha)}"]`,
+          ) === control &&
+          !control.disabled,
+      }));
+    }
     const pagination = this.querySelector(
       ":scope > .log-list-panel > caffold-pagination",
     );
@@ -182,6 +210,39 @@ class CaffoldGitLogListPage extends HTMLElement {
         clipRoots: [this, ...clipRoots],
       }),
     );
+  }
+
+  scrollSurfaceScope({ scopeId = "git:log", clipRoots = [] } = {}) {
+    if (this.hidden || this.state?.status !== "ready") {
+      return emptyScrollSurfaceScope();
+    }
+    const scrollport = this.querySelector(
+      ":scope > .log-list-panel > .log-list",
+    );
+    if (!scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label: "Git log",
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state?.status === "ready" &&
+          this.querySelector(":scope > .log-list-panel > .log-list") ===
+            scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport) &&
+          hasVerticalScrollOverflow(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   patchCommitBody(commit, expanded) {

@@ -66,7 +66,6 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
     "aria-label",
     "N — Create a new task",
   );
-  await expect(dialog.getByLabel(/Browse Files/)).toHaveCount(0);
   await expect(dialog.getByLabel(/Open section:/i)).toHaveCount(1);
 
   const createPrompt = page.locator(
@@ -75,9 +74,11 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
   if (await createPrompt.isVisible()) {
     await expect(dialog.locator('[data-action-hint-code="M"]')).toBeVisible();
     await expect(dialog.locator('[data-action-hint-code="P"]')).toBeVisible();
+    await expect(dialog.getByLabel(/Browse Files/)).toBeVisible();
   } else {
     await expect(dialog.locator('[data-action-hint-code="M"]')).toHaveCount(0);
     await expect(dialog.locator('[data-action-hint-code="P"]')).toHaveCount(0);
+    await expect(dialog.getByLabel(/Browse Files/)).toHaveCount(0);
   }
 
   const anchored = await page.evaluate(() => {
@@ -868,6 +869,127 @@ test("keeps harmless row patches but cancels on actionability, scroll, and topol
   await expect(page).toHaveURL(routeBeforeCancel);
 });
 
+test("cancels a Conversation Hint on target topology change without losing the reading anchor", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const [task] = actionHintTasks(1);
+  await installActionHintFixture(page, [task]);
+  await page.goto(`/tasks/${task.threadId}`);
+  const conversation = page.locator("caffold-task-conversation");
+  await expect(conversation).toBeVisible();
+  await conversation.evaluate((element, threadId) => {
+    const now = 1_780_000_100_000;
+    element.setSnapshot({
+      ...element.snapshot,
+      events: Array.from({ length: 28 }, (_, index) => ({
+        id: `conversation_hint_anchor_${index + 1}`,
+        threadId,
+        type: "user_message",
+        summary: "User prompt",
+        payload: {
+          text: `Conversation anchor line ${index + 1}. ${
+            "Retain this exact reading position. ".repeat(2)
+          }`,
+        },
+        position: { anchorMs: now + index, index: 0 },
+      })),
+    });
+  }, task.threadId);
+  const scroller = conversation.locator(".task-conversation-scroll");
+  await expect.poll(() => scroller.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await page.locator(".task-workspace-surface").focus();
+  const anchor = await scroller.evaluate((element) => {
+    element.scrollTop = Math.round(
+      (element.scrollHeight - element.clientHeight) * 0.45,
+    );
+    element.dispatchEvent(new Event("scroll"));
+    const bounds = element.getBoundingClientRect();
+    const events = [
+      ...element.querySelectorAll(".task-event[data-event-id]"),
+    ];
+    const event = events.find((candidate) => {
+      const rect = candidate.getBoundingClientRect();
+      return rect.top >= bounds.top + 1 && rect.top < bounds.bottom - 1;
+    }) ?? events.find(
+      (candidate) => candidate.getBoundingClientRect().bottom > bounds.top + 1,
+    );
+    const eventIndex = events.indexOf(event);
+    const target = events.slice(eventIndex + 1).find((candidate) => {
+      const rect = candidate.getBoundingClientRect();
+      return rect.top < bounds.bottom - 1 && rect.bottom > bounds.top + 1;
+    });
+    return {
+      eventId: event?.dataset.eventId ?? "",
+      targetEventId: target?.dataset.eventId ?? "",
+      offset: event ? event.getBoundingClientRect().top - bounds.top : null,
+    };
+  });
+  expect(anchor.eventId).toBeTruthy();
+  expect(anchor.targetEventId).toBeTruthy();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+
+  const dialog = actionHintDialog(page);
+  await page.keyboard.press("f");
+  await expect(dialog).toBeVisible();
+  await expect.poll(() => scroller.evaluate((element, expected) => {
+    const event = element.querySelector(
+      `.task-event[data-event-id="${expected.eventId}"]`,
+    );
+    return event
+      ? Math.abs(
+          event.getBoundingClientRect().top -
+            element.getBoundingClientRect().top -
+            expected.offset,
+        )
+      : Infinity;
+  }, anchor)).toBeLessThan(1);
+  await conversation.evaluate((element, targetEventId) => {
+    element.setSnapshot({
+      ...element.snapshot,
+      updateKind: "live",
+      events: element.snapshot.events.map((event) =>
+        event.id === targetEventId
+          ? {
+              ...event,
+              payload: {
+                ...event.payload,
+                content: [{
+                  type: "localImage",
+                  path: "/tmp/conversation-hint-topology.png",
+                  name: "conversation-hint-topology.png",
+                }],
+              },
+            }
+          : event
+      ),
+    });
+  }, anchor.targetEventId);
+  await expect(dialog).toBeHidden();
+  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+    "data-action-hint-last-exit",
+    "snapshot-invalidated",
+  );
+  await expect(conversation.locator(
+    'button[data-conversation-action="preview-image"]',
+  )).toHaveCount(1);
+  await expect.poll(() => scroller.evaluate((element, expected) => {
+    const event = element.querySelector(
+      `.task-event[data-event-id="${expected.eventId}"]`,
+    );
+    return event
+      ? Math.abs(
+          event.getBoundingClientRect().top -
+            element.getBoundingClientRect().top -
+            expected.offset,
+        )
+      : Infinity;
+  }, anchor)).toBeLessThan(1);
+});
+
 test("cancels on geometry, actionability, ownership, viewport, and route changes", { tag: "@desktop" }, async ({
   page,
 }) => {
@@ -1233,6 +1355,19 @@ async function captureActionHintVisualState(page) {
       automaticTargets.set(
         permission.getAttribute("aria-label"),
         target(permission, [taskNew, createScroll]),
+      );
+    }
+    for (const control of taskNew?.querySelectorAll(
+      'button[data-composer-action="browse-cwd"], button[data-composer-action="voice"]',
+    ) ?? []) {
+      if (control.disabled) {
+        continue;
+      }
+      const label = control.getAttribute("aria-label") ||
+        control.textContent?.trim() || "";
+      automaticTargets.set(
+        label,
+        target(control, [taskNew, createScroll]),
       );
     }
     for (const control of document.querySelectorAll(

@@ -9,6 +9,11 @@ import {
   emptyActionHintScope,
 } from "../../../action-hint-scope.js";
 import { ACTION_HINT_ACTION } from "../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../../../scroll-scope.js";
 
 // Each brand mark is published in a single color so it can be tinted, and the
 // theme tints it through --brand-monochrome-filter.
@@ -103,6 +108,42 @@ class CaffoldSettingsNavigator extends HTMLElement {
       targets,
       mutationRoots: [this],
       scrollRoots: [scroller],
+    };
+  }
+
+  scrollSurfaceScope({
+    scopeId = "settings",
+    label = "Settings sections",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    if (!this.initialized || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    const scrollport = this.querySelector(":scope > .settings-navigator-list");
+    if (!scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:sections:scroll`,
+        label,
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.querySelector(":scope > .settings-navigator-list") ===
+            scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport) &&
+          hasVerticalScrollOverflow(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
     };
   }
 

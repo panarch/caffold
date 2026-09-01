@@ -3,6 +3,11 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
 } from "../action-hint-scope.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../scroll-scope.js";
 import { fileStatusPresentation } from "../file-status.js";
 import {
   FILE_SORT_MODES,
@@ -268,6 +273,39 @@ class CaffoldFileTree extends HTMLElement {
       targets,
       mutationRoots: [this],
       scrollRoots: [scroller],
+    };
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "Files",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    this.ensureRendered();
+    const scrollport = this.scroller();
+    if (!scopeId || !label || !scrollport || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label,
+        scrollport,
+        clipRoots: uniqueElements([this, scrollport, ...clipRoots]),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.scroller() === scrollport &&
+          isCurrent() &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport) &&
+          hasVerticalScrollOverflow(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
     };
   }
 

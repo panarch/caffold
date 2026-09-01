@@ -8,6 +8,11 @@ import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import { cleanLogicalPath } from "../task-format.js";
 import { requestTaskImagePreview } from "./image-preview-dialog.js";
 import { collectComposerActionHintTargets } from "./composer/action-hints.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  hasActionHintLayoutBox,
+} from "../../action-hints.js";
 import "./task-turn-options.js";
 import "./voice-level-meter.js";
 import {
@@ -365,7 +370,7 @@ class CaffoldTaskComposer extends HTMLElement {
   actionHintTargets({ scopeId, clipRoots = [] } = {}) {
     this.ensureState();
     const mode = this.context.mode;
-    return collectComposerActionHintTargets({
+    const existingTargets = collectComposerActionHintTargets({
       mode,
       scopeId,
       modelTarget: () => {
@@ -419,6 +424,96 @@ class CaffoldTaskComposer extends HTMLElement {
             }
           : null;
       },
+    });
+    if (!COMPOSER_KEYBOARD_CONTEXT_MODES.has(mode) || !scopeId) {
+      return existingTargets;
+    }
+    return [
+      ...existingTargets,
+      ...this.actionHintButtonTargets({ mode, scopeId, clipRoots }),
+    ];
+  }
+
+  actionHintButtonTargets({ mode, scopeId, clipRoots }) {
+    const contextKey = JSON.stringify([
+      mode,
+      `${this.context.threadId ?? ""}`,
+      `${this.context.cwd ?? ""}`,
+      `${this.stateFor().activeSubmissionId ?? ""}`,
+    ]);
+    const definitions = [];
+    for (const [id, selector] of [
+      ["browse-cwd", 'button[data-composer-action="browse-cwd"]'],
+      ["voice", 'button[data-composer-action="voice"]'],
+      ["cancel-voice", 'button[data-composer-action="cancel-voice"]'],
+      ["cancel", 'button[data-composer-action="cancel"]'],
+      ["primary", "button.task-primary-action-button[data-primary-action]"],
+    ]) {
+      const control = this.querySelector(selector);
+      if (control) {
+        definitions.push({
+          id: id === "primary"
+            ? `primary:${control.dataset.primaryAction ?? "action"}`
+            : id,
+          selector,
+          control,
+          identity: id === "primary"
+            ? (candidate) =>
+                candidate.dataset.primaryAction === control.dataset.primaryAction
+            : null,
+        });
+      }
+    }
+    for (const control of this.querySelectorAll(
+      'button[data-composer-action="preview-image"][data-image-id], button[data-composer-action="remove-image"][data-image-id]',
+    )) {
+      const action = `${control.dataset.composerAction ?? ""}`;
+      const imageId = `${control.dataset.imageId ?? ""}`;
+      if (!imageId) {
+        continue;
+      }
+      definitions.push({
+        id: `${action}:${imageId}`,
+        selector: `button[data-composer-action="${action}"][data-image-id]`,
+        control,
+        identity: (candidate) => candidate.dataset.imageId === imageId,
+        imageId,
+      });
+    }
+    return definitions.flatMap((definition) => {
+      const { control } = definition;
+      if (control.disabled || !hasActionHintLayoutBox(control)) {
+        return [];
+      }
+      const currentControl = () => Array.from(
+        this.querySelectorAll(definition.selector),
+      ).find((candidate) =>
+        definition.identity ? definition.identity(candidate) : true
+      );
+      return [buttonActionHintTarget({
+        id: `task-composer:${scopeId}:${definition.id}`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label") ||
+          control.title ||
+          control.textContent?.trim() ||
+          definition.id,
+        control,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          JSON.stringify([
+              this.context.mode,
+              `${this.context.threadId ?? ""}`,
+              `${this.context.cwd ?? ""}`,
+              `${this.stateFor().activeSubmissionId ?? ""}`,
+            ]) === contextKey &&
+          currentControl() === control &&
+          (!definition.imageId || this.stateFor().images.some(
+            (image) => image.id === definition.imageId
+          )) &&
+          !control.disabled &&
+          hasActionHintLayoutBox(control),
+      })];
     });
   }
 

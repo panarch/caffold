@@ -3,6 +3,7 @@ import {
   FILE_TREE_SELECT_EVENT,
 } from "../file-tree.js";
 import { emptyActionHintScope } from "../../action-hint-scope.js";
+import { emptyScrollSurfaceScope } from "../../scroll-scope.js";
 
 class CaffoldGitCompareTree extends HTMLElement {
   connectedCallback() {
@@ -142,6 +143,29 @@ class CaffoldGitCompareTree extends HTMLElement {
       isCurrent: (node) => node.source?.path === this.selectedPath,
       labelForNode: (node) =>
         node.ariaLabel || `Open ${node.source?.repoRelativePath ?? node.name}`,
+    });
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "Compared files",
+    clipRoots = [],
+  } = {}) {
+    const tree = this.fileTree();
+    if (
+      !scopeId ||
+      this.hidden ||
+      this.state?.status !== "ready" ||
+      !tree
+    ) {
+      return emptyScrollSurfaceScope();
+    }
+    return tree.scrollSurfaceScope({
+      scopeId,
+      label,
+      clipRoots: [this, ...clipRoots],
+      isCurrent: () =>
+        this.state?.status === "ready" && this.fileTree() === tree,
     });
   }
 

@@ -1014,7 +1014,7 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
     (element) => element.getBoundingClientRect().height,
   );
   await completedCommandAction.click();
-  const commandDialog = tasksPage.locator("caffold-task-command-dialog dialog");
+  const commandDialog = tasksPage.locator("caffold-task-command-dialog > dialog");
   const commandDialogClose = commandDialog.getByRole("button", {
     name: "Close command output",
   });

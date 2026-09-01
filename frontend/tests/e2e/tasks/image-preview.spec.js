@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { actionHintDialog } from "../support/action-hints.js";
+import {
+  actionHintDialog,
+  activateActionHint,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 
@@ -31,7 +34,7 @@ test("previews a composer image without coupling preview and removal", { tag: "@
   );
 
   await expect(previewTrigger).toBeVisible();
-  await clickComposerPreview(previewTrigger);
+  await activateActionHint(page, /Preview composer-preview\.png$/);
   await expect(dialog).toHaveAttribute("open", "");
   await expect(dialog).toHaveAttribute("closedby", "any");
   await expect(dialog.locator("[data-task-image-preview-name]")).toHaveText(
@@ -65,7 +68,7 @@ test("previews a composer image without coupling preview and removal", { tag: "@
   await expect(dialog).toBeHidden();
   await expect(previewTrigger).toBeFocused();
 
-  await remove.click();
+  await activateActionHint(page, /Remove composer-preview\.png$/);
   await expect(attachment).toHaveCount(0);
   await expect(dialog).toBeHidden();
 });
@@ -86,11 +89,15 @@ test("keeps one sent-image dialog stable through live conversation updates", { t
     name: "Preview planner-layout.png",
   });
   await expect(sentPreview).toBeVisible();
+  await sentPreview.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
   await dialog.evaluate((element) => {
     window.__taskImagePreviewDialog = element;
   });
 
-  await sentPreview.click();
+  await activateActionHint(page, /Preview planner-layout\.png$/);
   await expect(dialog).toBeVisible();
   await expect(dialog.locator("[data-task-image-preview-name]")).toHaveText(
     "planner-layout.png",

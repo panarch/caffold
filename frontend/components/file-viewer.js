@@ -4,6 +4,11 @@ import {
   emptyActionHintScope,
 } from "../action-hint-scope.js";
 import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../scroll-scope.js";
+import {
   diffViewerPresentation,
   sourceViewerPresentation,
 } from "./file-viewer-presentation.js";
@@ -177,6 +182,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
     actionId = "",
     noticeActionId = "",
     detailsActionId = "",
+    refreshActionId = "",
     clipRoots = [],
   } = {}) {
     const control = this.querySelector(
@@ -234,6 +240,27 @@ class CaffoldReviewFileViewer extends HTMLElement {
           !control.disabled,
       }));
     }
+    const refreshControl = refreshActionId
+      ? this.querySelector(
+          ':scope > .viewer-panel > .viewer-header > .viewer-title-row .viewer-refresh-button[data-action="refresh-viewer"]',
+        )
+      : null;
+    if (refreshControl && !refreshControl.disabled) {
+      targets.push(buttonActionHintTarget({
+        id: `${scopeId}:refresh`,
+        actionId: refreshActionId,
+        label: refreshControl.getAttribute("aria-label") || "Refresh file",
+        control: refreshControl,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.querySelector(
+            ':scope > .viewer-panel > .viewer-header > .viewer-title-row .viewer-refresh-button[data-action="refresh-viewer"]',
+          ) === refreshControl &&
+          !refreshControl.disabled,
+      }));
+    }
     const noticeControl = noticeActionId
       ? this.querySelector(
           ':scope > .viewer-panel.notice-panel > .viewer-notice-content > button[data-action="view-source"], :scope > .viewer-panel.notice-panel > .viewer-notice-content > button[data-action="view-preview"]',
@@ -267,6 +294,113 @@ class CaffoldReviewFileViewer extends HTMLElement {
       targets,
       mutationRoots: [this],
       scrollRoots: [],
+    };
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "File",
+    clipRoots = [],
+  } = {}) {
+    const state = this.state;
+    if (!scopeId || !state || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    const childOptions = (kind, childLabel) => ({
+      scopeId: `${scopeId}:${kind}`,
+      label: childLabel,
+      clipRoots: [this, ...clipRoots],
+      isCurrent: () =>
+        this.isConnected &&
+        !this.hidden &&
+        this.state === state,
+    });
+    if (state.status === "file") {
+      return this.querySelector(":scope > .file-panel > caffold-code-viewer")
+        ?.scrollSurfaceScope(childOptions(
+          "source",
+          `${state.presentation?.title || label} source`,
+        )) ?? emptyScrollSurfaceScope();
+    }
+    if (state.status === "diff") {
+      return this.querySelector(":scope > .diff-panel > caffold-diff-viewer")
+        ?.scrollSurfaceScope(childOptions(
+          "diff",
+          `${state.presentation?.title || label} diff`,
+        )) ?? emptyScrollSurfaceScope();
+    }
+    if (state.status === "markdown") {
+      return this.querySelector(
+        ":scope > .markdown-panel > caffold-markdown-preview",
+      )?.scrollSurfaceScope(childOptions(
+        "preview",
+        `${state.presentation?.title || label} preview`,
+      )) ?? emptyScrollSurfaceScope();
+    }
+    if (state.status === "image") {
+      const scrollport = this.querySelector(
+        ":scope > .image-panel > .image-stage",
+      );
+      return this.ownScrollSurfaceScope({
+        scopeId: `${scopeId}:image`,
+        label: `${state.image?.name || label} image`,
+        state,
+        scrollport,
+        currentScrollport: () => this.querySelector(
+          ":scope > .image-panel > .image-stage",
+        ),
+        clipRoots,
+      });
+    }
+    if (state.status === "notice") {
+      const scrollport = this.querySelector(
+        ":scope > .notice-panel > .viewer-notice-content",
+      );
+      return this.ownScrollSurfaceScope({
+        scopeId: `${scopeId}:notice`,
+        label: `${state.title || label} notice`,
+        state,
+        scrollport,
+        currentScrollport: () => this.querySelector(
+          ":scope > .notice-panel > .viewer-notice-content",
+        ),
+        clipRoots,
+      });
+    }
+    return emptyScrollSurfaceScope();
+  }
+
+  ownScrollSurfaceScope({
+    scopeId,
+    label,
+    state,
+    scrollport,
+    currentScrollport,
+    clipRoots = [],
+  }) {
+    if (!scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label,
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state === state &&
+          currentScrollport() === scrollport &&
+          scrollport.isConnected &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport) &&
+          hasVerticalScrollOverflow(scrollport),
+      }],
+      mutationRoots: [this, scrollport],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
     };
   }
 

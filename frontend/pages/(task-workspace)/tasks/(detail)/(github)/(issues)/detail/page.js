@@ -6,6 +6,11 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
 } from "../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  hasVerticalScrollOverflow,
+} from "../../../../../../../scroll-scope.js";
 
 class CaffoldGithubIssueDetailPage extends HTMLElement {
   connectedCallback() {
@@ -101,6 +106,51 @@ class CaffoldGithubIssueDetailPage extends HTMLElement {
       })],
       mutationRoots: [this],
       scrollRoots: [],
+    };
+  }
+
+  scrollSurfaceScope({ scopeId = "github:issue", clipRoots = [] } = {}) {
+    const state = this.state;
+    if (this.hidden || state?.status !== "ready") {
+      return emptyScrollSurfaceScope();
+    }
+    const body = this.querySelector(
+      ":scope > .github-issue-viewer-panel > .github-issue-body",
+    );
+    if (!body) {
+      return emptyScrollSurfaceScope();
+    }
+    const isCurrent = () =>
+      this.isConnected &&
+      !this.hidden &&
+      this.state === state &&
+      this.querySelector(
+        ":scope > .github-issue-viewer-panel > .github-issue-body",
+      ) === body;
+    if (typeof body.scrollSurfaceScope === "function") {
+      return body.scrollSurfaceScope({
+        scopeId: `${scopeId}:body`,
+        label: "Issue description",
+        clipRoots: [this, ...clipRoots],
+        isCurrent,
+      });
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:body:scroll`,
+        label: "Issue description",
+        scrollport: body,
+        clipRoots: [this, body, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          isCurrent() &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(body) &&
+          hasVerticalScrollOverflow(body),
+      }],
+      mutationRoots: [this, body],
+      resizeElements: [this, body],
+      scrollRoots: [body],
     };
   }
 

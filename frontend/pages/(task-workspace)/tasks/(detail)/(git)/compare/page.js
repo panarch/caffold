@@ -147,6 +147,15 @@ class CaffoldGitComparePage extends HTMLElement {
       fileActionId: ACTION_HINT_ACTION.FILE_OPEN,
       parentActionId: ACTION_HINT_ACTION.PARENT,
       detailsActionId: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
+      refreshActionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+      clipRoots: [this, ...clipRoots],
+    });
+  }
+
+  scrollSurfaceScope({ scopeId = "git", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    return this.browser.scrollSurfaceScope({
+      scopeId,
       clipRoots: [this, ...clipRoots],
     });
   }

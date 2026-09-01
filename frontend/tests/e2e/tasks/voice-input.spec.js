@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { activateActionHint } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   installTaskApiFixture,
@@ -246,7 +247,7 @@ test("records without focusing the prompt and inserts a host transcript at the s
   expect(toolLayout.meterToElapsedTextGap).toBeGreaterThanOrEqual(5);
   expect(toolLayout.meterToElapsedTextGap).toBeLessThanOrEqual(7);
 
-  await composer.getByRole("button", { name: "Stop recording" }).click();
+  await activateActionHint(page, /Stop recording$/);
   await expect(composer).toHaveAttribute("data-voice-state", "transcribing");
   await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);
   await expect(composer.locator(".task-composer-voice-status")).toHaveCount(0);
@@ -676,9 +677,9 @@ test("keeps a follow-up draft and releases microphone tracks when recording is c
   );
   const prompt = composer.locator('textarea[name="prompt"]');
   await prompt.fill("취소해도 남아야 하는 초안");
-  await composer.getByRole("button", { name: "Start voice input" }).click();
+  await activateActionHint(page, /Start voice input$/);
   await expect(composer).toHaveAttribute("data-voice-state", "recording");
-  await composer.getByRole("button", { name: "Cancel voice input" }).click();
+  await activateActionHint(page, /Cancel voice input$/);
 
   await expect(composer).toHaveAttribute("data-voice-state", "idle");
   await expect(composer.locator("caffold-voice-level-meter")).toHaveCount(0);

@@ -19,6 +19,10 @@ import {
 import "./assistant-message.js";
 import "./changed-files.js";
 import "./command.js";
+import {
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../../../../action-hints.js";
 
 const disclosureStateByIdentity = new Map();
 
@@ -212,6 +216,40 @@ class CaffoldTaskWorkDetails extends HTMLElement {
       disclosureStateByIdentity.set(identity, state);
     }
     return state;
+  }
+
+  actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
+    this.ensureState();
+    const body = this.querySelector(
+      ":scope > details > .task-work-details-body",
+    );
+    if (!scopeId || !body || !this.identity || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const scopes = [];
+    for (const item of body.children) {
+      const commandIdentity = `${item.dataset.commandWorkIdentity ?? ""}`;
+      const command = commandIdentity
+        ? item.querySelector(":scope > caffold-task-command")
+        : null;
+      if (command) {
+        scopes.push(command.actionHintScope?.({
+          scopeId: `${scopeId}:command:${commandIdentity}`,
+          clipRoots: [this, body, ...clipRoots].filter(Boolean),
+        }));
+      }
+      const messageIdentity = `${item.dataset.messageWorkIdentity ?? ""}`;
+      const message = messageIdentity
+        ? item.querySelector(":scope > caffold-task-assistant-message")
+        : null;
+      if (message) {
+        scopes.push(message.actionHintScope?.({
+          scopeId: `${scopeId}:message:${messageIdentity}`,
+          clipRoots: [this, body, ...clipRoots].filter(Boolean),
+        }));
+      }
+    }
+    return mergeActionHintScopes(...scopes);
   }
 
   rememberDisclosureState() {

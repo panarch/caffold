@@ -50,3 +50,23 @@ test("provides Issue rows and pagination without synthesizing navigation", () =>
   scope.targets[0].activate();
   assert.equal(clicks, 1);
 });
+
+test("provides only the retained overflowing Issue list", () => {
+  const scrollport = {
+    clientHeight: 100,
+    scrollHeight: 300,
+    getClientRects: () => [{}],
+  };
+  const owner = {
+    hidden: false,
+    isConnected: true,
+    state: { status: "ready" },
+    getClientRects: () => [{}],
+    querySelector: () => scrollport,
+  };
+  const scope = page.scrollSurfaceScope.call(owner);
+  assert.equal(scope.surfaces[0].scrollport, scrollport);
+  assert.equal(scope.surfaces[0].isEligible(), true);
+  owner.state = { status: "loading" };
+  assert.equal(scope.surfaces[0].isEligible(), false);
+});

@@ -4,7 +4,7 @@ import {
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "../../action-hints.js";
-import { emptyScrollSurfaceScope } from "../../scroll-scope.js";
+import { emptyScrollSurfaceScope } from "../../../../scroll-scope.js";
 import {
   mergeKeyboardNavigationContexts,
 } from "../../keyboard-navigation-context.js";
@@ -676,19 +676,33 @@ class CaffoldDetailLayout extends HTMLElement {
 
   scrollSurfaceScope() {
     this.ensureRendered();
-    const taskDetail = this.taskDetail();
-    if (
-      !detailIdentityKey(this.subjectIdentity()) ||
-      this.hidden ||
-      this.subjectKind !== "task" ||
-      this.activeSurface() !== "conversation" ||
-      !taskDetail ||
-      taskDetail.hidden ||
-      taskDetail.loading
-    ) {
+    if (!detailIdentityKey(this.subjectIdentity()) || this.hidden) {
       return emptyScrollSurfaceScope();
     }
-    return taskDetail.scrollSurfaceScope();
+    const surface = this.activeSurface();
+    if (this.subjectKind === "task" && surface === "conversation") {
+      const taskDetail = this.taskDetail();
+      return taskDetail && !taskDetail.hidden && !taskDetail.loading
+        ? taskDetail.scrollSurfaceScope()
+        : emptyScrollSurfaceScope();
+    }
+    if (this.subjectKind === "section" && surface === "new") {
+      const sectionDetail = this.sectionDetail();
+      return sectionDetail && !sectionDetail.hidden
+        ? sectionDetail.scrollSurfaceScope?.() ?? emptyScrollSurfaceScope()
+        : emptyScrollSurfaceScope();
+    }
+    if (surface === "review") {
+      return this.review()?.scrollSurfaceScope?.() ?? emptyScrollSurfaceScope();
+    }
+    if (surface === "git") {
+      return this.gitLayout()?.scrollSurfaceScope?.() ?? emptyScrollSurfaceScope();
+    }
+    if (surface === "github") {
+      return this.githubLayout()?.scrollSurfaceScope?.() ??
+        emptyScrollSurfaceScope();
+    }
+    return emptyScrollSurfaceScope();
   }
 
   subjectIdentity() {

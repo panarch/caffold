@@ -9,6 +9,11 @@ import {
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  mergeScrollSurfaceScopes,
+} from "../../../../../../../scroll-scope.js";
 
 const LOADING_DELAY_MS = 180;
 
@@ -402,6 +407,34 @@ class CaffoldGitLogCommitPage extends HTMLElement {
             scopeId: `${prefix}:viewer`,
             actionId: ACTION_HINT_ACTION.PARENT,
             detailsActionId: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
+            refreshActionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
+    );
+  }
+
+  scrollSurfaceScope({ scopeId = "git:commit", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    const sha = this.currentCommitSha();
+    if (!sha || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    const listActive = this.detailView === "list" ||
+      !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches;
+    const viewerActive = this.detailView === "viewer";
+    const prefix = `${scopeId}:${encodeURIComponent(sha)}`;
+    return mergeScrollSurfaceScopes(
+      listActive && hasScrollLayoutBox(this.commitTree)
+        ? this.commitTree.scrollSurfaceScope({
+            scopeId: `${prefix}:files`,
+            label: "Commit files",
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
+      viewerActive && hasScrollLayoutBox(this.fileViewer)
+        ? this.fileViewer.scrollSurfaceScope({
+            scopeId: `${prefix}:viewer`,
             clipRoots: [this, ...clipRoots],
           })
         : null,

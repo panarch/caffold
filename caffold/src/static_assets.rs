@@ -233,9 +233,7 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/keyboard-navigation.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/keyboard-navigation.js"
         ))),
-        "pages/(task-workspace)/scroll-scope.js" => Some(js(include_str!(
-            "../../frontend/pages/(task-workspace)/scroll-scope.js"
-        ))),
+        "scroll-scope.js" => Some(js(include_str!("../../frontend/scroll-scope.js"))),
         "pages/(task-workspace)/keyboard-navigation/control.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/keyboard-navigation/control.js"
         ))),
@@ -1224,8 +1222,7 @@ mod tests {
             assert!(asset.body.starts_with(b"import ") || asset.body.starts_with(b"export "));
         }
 
-        let scroll_scope =
-            get("pages/(task-workspace)/scroll-scope.js").expect("Scroll scope module asset");
+        let scroll_scope = get("scroll-scope.js").expect("Scroll scope module asset");
         assert_eq!(scroll_scope.content_type, "text/javascript; charset=utf-8");
         assert!(
             scroll_scope
@@ -1261,7 +1258,7 @@ mod tests {
             runtime_restart_dialog.content_type,
             "text/javascript; charset=utf-8"
         );
-        assert!(runtime_restart_dialog.body.starts_with(b"export const"));
+        assert!(runtime_restart_dialog.body.starts_with(b"import "));
 
         let app_shell_layout = get("pages/layout.js").expect("app shell layout js asset");
         assert_eq!(
@@ -1937,11 +1934,7 @@ mod tests {
             github_markdown.content_type,
             "text/javascript; charset=utf-8"
         );
-        assert!(
-            github_markdown
-                .body
-                .starts_with(b"const FORBIDDEN_ELEMENTS")
-        );
+        assert!(github_markdown.body.starts_with(b"import "));
         assert!(
             github_markdown
                 .body
