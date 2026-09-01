@@ -772,7 +772,12 @@ export class KeyboardNavigationController {
   attachSelectionSignals(session) {
     const cancel = (reason) => () => this.cancelSelection(reason);
     for (const root of session.context.scrollRoots) {
-      const listener = cancel("scroll");
+      const position = scrollPosition(root);
+      const listener = () => {
+        if (!sameScrollPosition(position, scrollPosition(root))) {
+          this.cancelSelection("scroll");
+        }
+      };
       root.addEventListener("scroll", listener, { passive: true });
       session.cleanup.push(() => root.removeEventListener("scroll", listener));
     }
@@ -991,6 +996,17 @@ function scrollSurfaceIsEligible(surface, context) {
 
 function hasLayoutBox(element) {
   return Boolean(element?.getClientRects?.().length);
+}
+
+function scrollPosition(element) {
+  return {
+    left: Number(element?.scrollLeft ?? 0),
+    top: Number(element?.scrollTop ?? 0),
+  };
+}
+
+function sameScrollPosition(left, right) {
+  return left.left === right.left && left.top === right.top;
 }
 
 function captureViewport() {

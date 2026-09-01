@@ -494,6 +494,43 @@ test("observer revalidation ignores initial stable delivery and cancels real dri
   }
 });
 
+test("Scroll selection ignores stale scroll delivery and cancels real movement", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const controller = createController();
+    const scrollRoot = Object.assign(new FakeEventTarget(), {
+      scrollLeft: 0,
+      scrollTop: 40,
+    });
+    const selection = {
+      cleanup: [],
+      context: {
+        mutationRoots: [],
+        resizeElements: [],
+        scrollRoots: [scrollRoot],
+      },
+      mutationObserver: null,
+      opener: null,
+      ownershipObserver: null,
+      resizeObserver: null,
+    };
+    controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING;
+    controller.selectionSession = selection;
+    controller.attachSelectionSignals(selection);
+    const listener = [...scrollRoot.listeners.get("scroll")][0];
+
+    listener();
+    assert.equal(controller.selectionSession, selection);
+
+    scrollRoot.scrollTop = 50;
+    listener();
+    assert.equal(controller.selectionSession, null);
+    assert.equal(controller.workspace.dataset.scrollModeLastExit, "scroll");
+  } finally {
+    restoreDom();
+  }
+});
+
 test("opening beforetoggle invalidates selection and active mode before selector state changes", () => {
   const restoreDom = installEventGlobals();
   try {

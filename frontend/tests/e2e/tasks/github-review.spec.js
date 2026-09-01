@@ -906,7 +906,13 @@ test("scrolls GitHub lists, Pull detail, and exact Pull Files surfaces from the 
     (element) => element.scrollHeight > element.clientHeight + 1,
   )).toBe(true);
   await treeScroll.evaluate((element) => {
-    element.scrollTop = 0;
+    if (element.scrollTop === 0) {
+      return;
+    }
+    return new Promise((resolve) => {
+      element.addEventListener("scroll", () => resolve(), { once: true });
+      element.scrollTop = 0;
+    });
   });
 
   await workspace.focus();
@@ -1351,8 +1357,10 @@ test("owns Issue Task Start Hint, native select, Editing Escape, and Scroll cont
   await expect(actionHintDialog(page)).toBeHidden();
   await expect(dialog).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(cancel).toBeFocused();
+  await expect.poll(() => select.evaluate((element) => element.matches(":open")))
+    .toBe(false);
   await expect(dialog).toBeVisible();
+  await cancel.focus();
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(opener).toBeFocused();

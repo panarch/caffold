@@ -329,12 +329,14 @@ Composition and unregistered modal or popover owners keep their own key and
 Escape ownership.
 
 An editable inside a registered modal may publish one exact same-modal Editing
-escape destination. Its first non-composing `Escape` ends Editing by focusing
-that retained control without changing the input value or closing the product
-dialog; a following `Escape` is left to the native dialog close path. Fork and
-Task Start use their own Cancel button for this handoff. Missing, stale,
-hidden, disabled, outside-root, composing, or unregistered destinations do not
-cause the coordinator to infer a fallback or consume the key.
+escape destination. A non-composing `Escape` received by the coordinator ends
+Editing by focusing that retained control without changing the input value or
+closing the product dialog; a following `Escape` is left to the native dialog
+close path. An open browser-native picker may consume its own `Escape` before
+the document receives it. Fork and Task Start use their own Cancel button for
+this handoff. Missing, stale, hidden, disabled, outside-root, composing, or
+unregistered destinations do not cause the coordinator to infer a fallback or
+consume the key.
 
 Scroll mode enters from a non-editing `S` key and uses only vertical surfaces
 explicitly published through `scroll-scope.js`; it does not discover generic
