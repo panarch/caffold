@@ -212,19 +212,9 @@ export class KeyboardNavigationController {
       compositionActive: this.compositionActive,
     });
     if (key === "F") {
-      const snapshot = this.actionHints.prepareSnapshot();
-      if (!snapshot) {
-        this.applyTransition(KEYBOARD_NAVIGATION_EVENT.ENTRY_REJECTED);
-        return;
-      }
-      if (!this.applyTransition(KEYBOARD_NAVIGATION_EVENT.HINT_STARTED)) {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      if (!this.actionHints.startSession(snapshot) &&
-        this.storedNode === KEYBOARD_NAVIGATION_NODE.HINT) {
-        this.applyTransition(KEYBOARD_NAVIGATION_EVENT.HINT_CANCELLED);
+      if (this.startActionHints()) {
+        event.preventDefault();
+        event.stopPropagation();
       }
       return;
     }
@@ -289,6 +279,15 @@ export class KeyboardNavigationController {
       compositionActive: this.compositionActive,
       allowRepeat: true,
     });
+    if (key === "F" && !event.repeat) {
+      if (!this.cancelActive("action-hints")) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      this.startActionHints();
+      return;
+    }
     if (!Object.hasOwn({ J: true, K: true, D: true, U: true }, key)) {
       return;
     }
@@ -313,6 +312,22 @@ export class KeyboardNavigationController {
     event.preventDefault();
     event.stopPropagation();
     session.scrollport.scrollTop = next;
+  }
+
+  startActionHints() {
+    const snapshot = this.actionHints.prepareSnapshot();
+    if (!snapshot) {
+      this.applyTransition(KEYBOARD_NAVIGATION_EVENT.ENTRY_REJECTED);
+      return false;
+    }
+    if (!this.applyTransition(KEYBOARD_NAVIGATION_EVENT.HINT_STARTED)) {
+      return false;
+    }
+    if (!this.actionHints.startSession(snapshot) &&
+      this.storedNode === KEYBOARD_NAVIGATION_NODE.HINT) {
+      this.applyTransition(KEYBOARD_NAVIGATION_EVENT.HINT_CANCELLED);
+    }
+    return true;
   }
 
   leaveEditing(editable, target) {

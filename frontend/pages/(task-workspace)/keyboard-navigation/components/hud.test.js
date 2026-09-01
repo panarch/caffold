@@ -10,6 +10,13 @@ await import("./hud.js");
 const hud = registry.element("caffold-scroll-mode-hud").prototype;
 after(() => registry.restore());
 
+test("advertises the Action Hint switch in the active Scroll HUD", () => {
+  const owner = {};
+  hud.ensureRendered.call(owner);
+  assert.match(owner.innerHTML, /F Action Hints/);
+  assert.equal(owner.hidden, true);
+});
+
 test("shows, relabels, and closes one context-local Scroll presentation", () => {
   const label = { textContent: "" };
   const outline = { style: {} };

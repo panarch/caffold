@@ -378,14 +378,19 @@ or retargeting it.
 Active Scroll mode sends `J/K` by 10 percent and `D/U` by 50 percent of the
 selected scrollport height, clamps immediately at its boundaries, and accepts
 key repeat without chaining into a parent or the window. `Escape` closes only
-Scroll mode. Active revalidation preserves the exact context, surface ID, and
-element binding; label or layout changes on that binding reposition its HUD,
-while loss of visibility, overflow, or ownership closes the mode. The reusable
-non-interactive HUD and outline are mounted by the active context itself: the
-workspace owns one for Task list or Conversation, while each registered product
-dialog or popover owns one inside its retained root. Native scroll events,
-focus, Conversation anchoring, popover light dismiss, and product-dialog
-refresh/close lifecycle remain owned by those components.
+Scroll mode. A non-repeated, non-composing `F` without Ctrl, Alt, or Meta first
+closes active Scroll mode and releases its scoped observers, then captures a
+fresh Action Hint snapshot in the current context. A context with no eligible
+action leaves no stored keyboard mode. Scroll selection continues to treat `F`
+as a possible surface code rather than switching modes. Active revalidation
+preserves the exact context, surface ID, and element binding; label or layout
+changes on that binding reposition its HUD, while loss of visibility, overflow,
+or ownership closes the mode. The reusable non-interactive HUD and outline are
+mounted by the active context itself: the workspace owns one for Task list or
+Conversation, while each registered product dialog or popover owns one inside
+its retained root. Native scroll events, focus, Conversation anchoring, popover
+light dismiss, and product-dialog refresh/close lifecycle remain owned by those
+components.
 
 The workspace also owns the one browser lifecycle for backend-owned Codex
 readiness requests and forwards a request snapshot to Tasks, Settings, and the

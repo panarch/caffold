@@ -15,7 +15,7 @@ class CaffoldScrollModeHud extends HTMLElement {
       <div class="scroll-mode-outline" aria-hidden="true"></div>
       <div class="scroll-mode-status" role="status" aria-live="polite">
         <strong data-scroll-mode-label></strong>
-        <span>J/K small · D/U half page · Escape exits</span>
+        <span>J/K small · D/U half page · F Action Hints · Escape exits</span>
       </div>
     `;
   }

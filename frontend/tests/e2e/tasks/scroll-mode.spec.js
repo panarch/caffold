@@ -151,6 +151,36 @@ test("cancels the frozen selector when Task list topology loses eligibility", { 
   await expect(scrollHud(page)).toBeHidden();
 });
 
+test("switches active Scroll to fresh Action Hints with F", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const { detail } = await installScrollFixture(page);
+  await openScrollTask(page, detail);
+  const workspace = page.locator("caffold-task-workspace");
+  const selector = scrollSelector(page);
+  const hud = scrollHud(page);
+  await page.locator(".task-workspace-surface").focus();
+  await page.keyboard.press("s");
+  await selector.getByLabel(/^[A-Z]+ — Conversation$/).click();
+  await expect(hud).toContainText("F Action Hints");
+
+  await page.keyboard.press("f");
+
+  await expect(hud).toBeHidden();
+  await expect(selector).toBeHidden();
+  await expect(workspace).not.toHaveAttribute("data-scroll-mode", "active");
+  await expect(workspace).toHaveAttribute(
+    "data-scroll-mode-last-exit",
+    "action-hints",
+  );
+  const hints = actionHintDialog(page);
+  await expect(hints).toBeVisible();
+  await expect(hints.locator("button[data-action-hint-code]").first())
+    .toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(hints).toBeHidden();
+});
+
 test("keeps the exact active Task list through content patches and exits when it stops overflowing", { tag: "@desktop" }, async ({
   page,
 }) => {

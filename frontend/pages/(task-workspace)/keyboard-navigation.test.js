@@ -157,6 +157,100 @@ test("active repeated commands move only the bound scrollport and consume bounda
   }
 });
 
+test("active F closes Scroll before collecting a fresh Action Hint session", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const controller = createController();
+    const order = [];
+    const snapshot = { targets: [{ id: "settings" }] };
+    controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE;
+    controller.activeSession = {
+      cleanup: [],
+      context: { hud: { close: () => order.push("hud-close") } },
+    };
+    controller.detachActiveSignals = () => order.push("detach-scroll");
+    controller.actionHints.prepareSnapshot = () => {
+      assert.equal(controller.storedNode, null);
+      assert.equal(controller.activeSession, null);
+      order.push("capture-hints");
+      return snapshot;
+    };
+    controller.actionHints.startSession = (candidate) => {
+      assert.equal(candidate, snapshot);
+      order.push("start-hints");
+      return true;
+    };
+
+    const repeated = keyEvent("f", { code: "KeyF", repeat: true });
+    controller.handleKeydown(repeated);
+    assert.equal(controller.storedNode, KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE);
+    assert.equal(repeated.prevented, false);
+
+    const event = keyEvent("f", { code: "KeyF" });
+    controller.handleKeydown(event);
+
+    assert.deepEqual(order, [
+      "detach-scroll",
+      "hud-close",
+      "capture-hints",
+      "start-hints",
+    ]);
+    assert.equal(controller.storedNode, KEYBOARD_NAVIGATION_NODE.HINT);
+    assert.equal(
+      controller.workspace.dataset.scrollModeLastExit,
+      "action-hints",
+    );
+    assert.equal(event.prevented, true);
+    assert.equal(event.stopped, true);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("active F leaves no stored mode when the fresh context has no Hint target", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const controller = createController();
+    controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE;
+    controller.activeSession = {
+      cleanup: [],
+      context: { hud: { close() {} } },
+    };
+    controller.actionHints.prepareSnapshot = () => null;
+    const active = keyEvent("f", { code: "KeyF" });
+    controller.handleKeydown(active);
+    assert.equal(controller.storedNode, null);
+    assert.equal(controller.activeSession, null);
+    assert.equal(active.prevented, true);
+    assert.equal(active.stopped, true);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("Scroll selection keeps F as surface-code input", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const controller = createController();
+    let selectionInput = null;
+    controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING;
+    controller.applySelectionInput = (key) => {
+      selectionInput = key;
+    };
+    const selecting = keyEvent("f", { code: "KeyF" });
+    controller.handleKeydown(selecting);
+    assert.equal(selectionInput, "F");
+    assert.equal(
+      controller.storedNode,
+      KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING,
+    );
+    assert.equal(selecting.prevented, true);
+    assert.equal(selecting.stopped, true);
+  } finally {
+    restoreDom();
+  }
+});
+
 test("resolves workspace, exact modal, and registered popover ownership", () => {
   const restoreDom = installEventGlobals();
   try {
@@ -519,6 +613,7 @@ function createController() {
   });
   const scrollSelector = Object.assign(new FakeEventTarget(), {
     ownsModal: () => false,
+    allowsNativeActivation: () => false,
     close() {},
   });
   return new KeyboardNavigationController({
