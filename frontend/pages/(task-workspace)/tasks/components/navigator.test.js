@@ -92,7 +92,9 @@ test("provides owned New Task and delegated row actions with navigator geometry"
   assert.equal(target.isActionable(), false);
 
   owner.reorderMode = "tasks";
-  assert.equal(navigator.actionHintScope.call(owner).blocked, true);
+  const reorderScope = navigator.actionHintScope.call(owner);
+  assert.equal(reorderScope.blocked, false);
+  assert.deepEqual(reorderScope.targets, [taskTarget]);
 });
 
 test("provides only its exact active Task list scrollport", () => {
@@ -182,6 +184,7 @@ test("merges Archived actions only while that direct list has a layout box", () 
 });
 
 test("provides Reorder opener and exact semantic popover options", () => {
+  let label = "Choose what to reorder";
   const control = {
     disabled: false,
     clicks: 0,
@@ -191,7 +194,7 @@ test("provides Reorder opener and exact semantic popover options", () => {
     },
     getAttribute(name) {
       return name === "aria-label"
-        ? "Choose what to reorder"
+        ? label
         : name === "popovertarget"
           ? "reorder-options"
           : null;
@@ -222,6 +225,19 @@ test("provides Reorder opener and exact semantic popover options", () => {
   opener.activate();
   assert.equal(control.clicks, 1);
 
+  owner.reorderMode = "tasks";
+  label = "Finish reordering Tasks";
+  assert.equal(opener.isActionable(), false);
+  const finish = navigator.actionHintReorderTarget.call(owner);
+  assert.equal(finish.id, "task-list:reorder:finish:tasks");
+  assert.equal(finish.actionId, "task.reorder.finish");
+  assert.equal(finish.label, "Finish reordering Tasks");
+  assert.equal(finish.isActionable(), true);
+  finish.activate();
+  assert.equal(control.clicks, 2);
+
+  owner.reorderMode = "none";
+  label = "Choose what to reorder";
   popover.open = true;
   const scope = navigator.reorderActionHintScope.call(owner, {
     contextId: "task-list:reorder",
@@ -234,6 +250,38 @@ test("provides Reorder opener and exact semantic popover options", () => {
       { id: "task-list:reorder:sections", actionId: "task.reorder.select" },
     ],
   );
+});
+
+test("replaces normal navigator actions with current reorder handles and Finish", () => {
+  const finish = { id: "task-list:reorder:finish:tasks" };
+  const handle = { id: "task:thread-a:reorder" };
+  let archivedCalls = 0;
+  const owner = {
+    reorderMode: "tasks",
+    taskOperations: { blocked: false },
+    activeTaskList: { actionHintTargets: () => [handle] },
+    archivedTaskList: {
+      getClientRects: () => [{}],
+      actionHintScope() {
+        archivedCalls += 1;
+        return { targets: [{ id: "archived" }] };
+      },
+    },
+    ensureChildren() {},
+    actionHintReorderTarget: () => finish,
+    querySelector(selector) {
+      if (selector === ":scope > .task-list-scroll") return {};
+      if (selector === ":scope > .task-list-primary-header") {
+        return { querySelector: () => ({ id: "new-task" }) };
+      }
+      throw new Error(`Unexpected selector: ${selector}`);
+    },
+  };
+
+  const scope = navigator.actionHintScope.call(owner);
+  assert.equal(scope.blocked, false);
+  assert.deepEqual(scope.targets, [finish, handle]);
+  assert.equal(archivedCalls, 0);
 });
 
 function reorderOption(mode) {

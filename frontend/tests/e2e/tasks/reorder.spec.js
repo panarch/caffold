@@ -1,4 +1,8 @@
 import { expect, test } from "@playwright/test";
+import {
+  activateActionHint,
+  enterActionHints,
+} from "../support/action-hints.js";
 import { installBrowserDefaults, mockCodexStatus } from "../support/browser-defaults.js";
 import {
   captureReviewScreenshot,
@@ -86,6 +90,16 @@ async function enterReorderMode(page, mode = "Tasks") {
   await page.getByRole("button", { name: `Reorder ${mode}`, exact: true }).click();
 }
 
+async function activateContextActionHint(page, accessibleName) {
+  const hint = await enterActionHints(page);
+  const badge = hint.getByLabel(accessibleName);
+  await expect(badge).toBeVisible();
+  const code = await badge.getAttribute("data-action-hint-code");
+  expect(code).toMatch(/^[A-Z]+$/);
+  await page.keyboard.type(code.toLowerCase());
+  await expect(hint).toBeHidden();
+}
+
 async function sectionOrder(page) {
   return page
     .locator(
@@ -150,6 +164,159 @@ async function installSectionReorderFixture(page) {
   });
   return state;
 }
+
+test("moves a Task and finishes reorder through Action Hints", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  await mockAgentModels(page);
+  let order = [
+    task("thread-alpha", "Alpha"),
+    task("thread-bravo", "Bravo"),
+    task("thread-charlie", "Charlie"),
+  ];
+  const recovery = [{
+    ...task("thread-recovery", "Recovery"),
+    conversationAvailable: false,
+    recovery: { reason: "threadMissing" },
+  }];
+  const moves = [];
+  let releaseMove;
+  const moveGate = new Promise((resolve) => {
+    releaseMove = resolve;
+  });
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: projection(order, { recovery }),
+    })
+  );
+  await page.route(/\/api\/tasks\/([^/?]+)\/reorder$/, async (route) => {
+    const threadId = new URL(route.request().url()).pathname.split("/").at(-2);
+    const body = route.request().postDataJSON();
+    moves.push({ threadId, ...body });
+    await moveGate;
+    order = moveBefore(order, threadId, body.beforeThreadId);
+    await route.fulfill({
+      json: { threadId, ...body, changed: true },
+    });
+  });
+
+  await page.goto("/");
+  const navigator = page.locator("caffold-task-navigator");
+  await activateActionHint(page, "Choose what to reorder");
+  await expect(navigator.locator(".task-list-reorder-popover")).toBeVisible();
+  await activateContextActionHint(page, "Reorder Tasks");
+  await expect(navigator).toHaveAttribute("data-reorder-mode", "tasks");
+
+  let hint = await enterActionHints(page);
+  await expect(
+    hint.getByLabel(/ — Reorder Alpha\. Use Up and Down arrow keys to move\.$/),
+  ).toBeVisible();
+  await expect(
+    hint.getByLabel(/ — Reorder Bravo\. Use Up and Down arrow keys to move\.$/),
+  ).toBeVisible();
+  await expect(
+    hint.getByLabel(/ — Reorder Charlie\. Use Up and Down arrow keys to move\.$/),
+  ).toBeVisible();
+  await expect(hint.getByLabel(/ — Reorder Recovery\./)).toHaveCount(0);
+  await expect(hint.getByLabel(/ — Finish reordering Tasks$/)).toBeVisible();
+  await expect(hint.getByLabel(/ — Open task:/)).toHaveCount(0);
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "tasks-reorder-action-hints",
+  );
+  await page.keyboard.press("Escape");
+
+  await activateActionHint(
+    page,
+    "Reorder Bravo. Use Up and Down arrow keys to move.",
+  );
+  const bravoHandle = navigator.getByRole("button", {
+    name: "Reorder Bravo. Use Up and Down arrow keys to move.",
+  });
+  await expect(bravoHandle).toBeFocused();
+  await bravoHandle.press("ArrowUp");
+  await expect.poll(() => moves).toEqual([
+    { threadId: "thread-bravo", beforeThreadId: "thread-alpha" },
+  ]);
+  await expect(bravoHandle).toBeDisabled();
+  await expect(navigator.evaluate((element) =>
+    element.actionHintScope().targets.map((target) => target.label)
+  )).resolves.toEqual(["Finish reordering Tasks"]);
+
+  releaseMove();
+  await expect.poll(() => threadOrder(page)).toEqual([
+    "thread-bravo",
+    "thread-alpha",
+    "thread-charlie",
+  ]);
+  await expect(bravoHandle).toBeEnabled();
+  await expect(bravoHandle).toBeFocused();
+  await expect(navigator.locator(".task-reorder-announcement")).toContainText(
+    "Bravo moved to position 1 of 3 in one.",
+  );
+
+  await activateActionHint(page, "Finish reordering Tasks");
+  await expect(navigator).toHaveAttribute("data-reorder-mode", "none");
+  await expect(navigator.locator(".task-reorder-handle")).toHaveCount(0);
+  hint = await enterActionHints(page);
+  await expect(hint.getByLabel(/ — Open task: Bravo$/)).toBeVisible();
+  await expect(hint.getByLabel(/ — Finish reordering Tasks$/)).toHaveCount(0);
+  await page.keyboard.press("Escape");
+});
+
+test("moves a Section and finishes reorder through Action Hints", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const state = await installSectionReorderFixture(page);
+  await page.goto("/");
+
+  const navigator = page.locator("caffold-task-navigator");
+  await activateActionHint(page, "Choose what to reorder");
+  await activateContextActionHint(page, "Reorder Sections");
+  await expect(navigator).toHaveAttribute("data-reorder-mode", "sections");
+
+  let hint = await enterActionHints(page);
+  for (const label of ["one", "two", "three"]) {
+    await expect(hint.getByLabel(new RegExp(` — Reorder ${label}$`))).toBeVisible();
+  }
+  await expect(hint.getByLabel(/ — Reorder Recovery$/)).toHaveCount(0);
+  await expect(hint.getByLabel(/ — Finish reordering Sections$/)).toBeVisible();
+  await expect(hint.getByLabel(/Use Up and Down arrow keys/)).toHaveCount(0);
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "sections-reorder-action-hints",
+  );
+  await page.keyboard.press("Escape");
+
+  await activateActionHint(page, "Reorder two");
+  const twoHandle = navigator.getByRole("button", { name: "Reorder two" });
+  await expect(twoHandle).toBeFocused();
+  await twoHandle.press("ArrowUp");
+  await expect.poll(() => state.moves).toEqual([
+    { sectionId: "section-two", beforeSectionId: "section-one" },
+  ]);
+  await expect.poll(() => sectionOrder(page)).toEqual([
+    "section-two",
+    "section-one",
+    "section-three",
+  ]);
+  await expect(twoHandle).toBeFocused();
+  await expect(navigator.locator(".task-reorder-announcement")).toContainText(
+    "Section two moved to position 1 of 3.",
+  );
+
+  await activateActionHint(page, "Finish reordering Sections");
+  await expect(navigator).toHaveAttribute("data-reorder-mode", "none");
+  await expect(navigator.locator(".section-reorder-handle")).toHaveCount(3);
+  await expect(navigator.locator(".section-reorder-handle").first()).toBeHidden();
+  const normalTargetLabels = await navigator.evaluate((element) =>
+    element.actionHintScope().targets.map((target) => target.label)
+  );
+  expect(normalTargetLabels).toContain("Open section: two");
+  expect(normalTargetLabels).not.toContain("Finish reordering Sections");
+});
 
 test("reorders by keyboard, preserves row geometry, and persists across reloads", { tag: "@all-viewports" }, async ({
   page,

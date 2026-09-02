@@ -1,4 +1,7 @@
-import { clampBadgePosition } from "../model.js";
+import {
+  clampBadgePosition,
+  preferredBadgePosition,
+} from "../model.js";
 import {
   ACTION_HINT_ACTIVATE_EVENT,
   ACTION_HINT_CANCEL_EVENT,
@@ -217,7 +220,7 @@ class CaffoldActionHintDialog extends HTMLElement {
       }
       const bounds = button.getBoundingClientRect();
       const position = clampBadgePosition(
-        { left: target.visibleRect.left, top: target.visibleRect.top },
+        preferredBadgePosition(target, bounds, this.viewportRect),
         bounds,
         this.viewportRect,
       );

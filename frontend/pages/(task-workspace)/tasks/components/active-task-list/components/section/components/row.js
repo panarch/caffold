@@ -1,7 +1,11 @@
 import { escapeHtml } from "../../../../../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../../../../../components/icons.js";
 import { taskStoreOperationsPresentation } from "../../../../../../codex-status.js";
-import { buttonActionHintTarget } from "../../../../../../action-hints.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  reorderHandleActionHintTarget,
+} from "../../../../../../action-hints.js";
 import {
   taskStatusView,
   taskThreadStatusType,
@@ -124,18 +128,58 @@ class CaffoldActiveTaskRow extends HTMLElement {
     const recovery = action === "open-task-recovery";
     return buttonActionHintTarget({
       id: `task:${threadId}`,
-      actionId: recovery ? "task.open-recovery" : "task.open",
+      actionId: recovery
+        ? ACTION_HINT_ACTION.TASK_OPEN_RECOVERY
+        : ACTION_HINT_ACTION.TASK_OPEN,
       label: recovery
         ? `Open task recovery: ${task.title}`
         : `Open task: ${task.title}`,
       control,
       clipRoots: [...clipRoots],
       isActionable: () =>
+        !this.snapshot.reorderMode &&
         taskThreadId(this.snapshot.task) === threadId &&
         this.querySelector(
           ":scope > button.task-row[data-active-task-row-action]",
         ) === control &&
         control.dataset.activeTaskRowAction === action &&
+        !control.disabled,
+    });
+  }
+
+  reorderActionHintTarget({ clipRoots = [] } = {}) {
+    this.ensureState();
+    const task = this.snapshot.task;
+    const threadId = taskThreadId(task);
+    const control = this.querySelector(
+      ":scope > .task-row .task-reorder-handle",
+    );
+    if (
+      !task ||
+      !threadId ||
+      !this.snapshot.reorderMode ||
+      !this.snapshot.reorderable ||
+      this.snapshot.pending ||
+      !control ||
+      control.disabled
+    ) {
+      return null;
+    }
+    return reorderHandleActionHintTarget({
+      id: `task:${threadId}:reorder`,
+      actionId: ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS,
+      label: control.getAttribute("aria-label") || `Reorder ${task.title}`,
+      control,
+      clipRoots: [...clipRoots],
+      isActionable: () =>
+        this.isConnected &&
+        taskThreadId(this.snapshot.task) === threadId &&
+        this.snapshot.reorderMode === true &&
+        this.snapshot.reorderable &&
+        !this.snapshot.pending &&
+        this.querySelector(
+          ":scope > .task-row .task-reorder-handle",
+        ) === control &&
         !control.disabled,
     });
   }

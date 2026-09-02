@@ -432,6 +432,79 @@ test("opens Git and selects its destination through declared keyboard contexts",
   );
 });
 
+test("hands Compare ref and separator Hints to their native controls", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  await installTaskGitFixture(page);
+  await page.goto(
+    `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview`,
+  );
+
+  const gitLayout = page.locator("caffold-task-git-layout");
+  const comparePage = page.locator("caffold-git-compare-page");
+  const base = gitLayout.getByRole("combobox", { name: "Base ref" });
+  const head = gitLayout.getByRole("combobox", { name: "Head ref" });
+  const separator = comparePage.getByRole("separator", {
+    name: "Resize review side panel",
+  });
+  await expect(base).toHaveValue("origin/main");
+  await expect(head).toHaveValue("feature/review");
+
+  const hint = await enterActionHints(page);
+  await expect(
+    hint.getByLabel(/ — Choose Base ref \(current origin\/main\)$/),
+  ).toBeVisible();
+  await expect(
+    hint.getByLabel(/ — Choose Head ref \(current feature\/review\)$/),
+  ).toBeVisible();
+  if (testInfo.project.name === "phone") {
+    await expect(
+      hint.getByLabel(/ — Resize review side panel$/),
+    ).toHaveCount(0);
+  } else {
+    await expect(
+      hint.getByLabel(/ — Resize review side panel$/),
+    ).toBeVisible();
+  }
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "git-compare-native-control-hints",
+  );
+  await page.keyboard.press("Escape");
+
+  await activateActionHint(
+    page,
+    "Choose Base ref (current origin/main)",
+  );
+  await expect(base).toBeFocused();
+  await base.selectOption("main");
+  await expect(page).toHaveURL(
+    new RegExp(`^.*\/tasks\/${THREAD_ID}\/git\/compare\\?base=main&head=feature%2Freview$`),
+  );
+  await expect(base).toHaveValue("main");
+
+  await activateActionHint(
+    page,
+    "Choose Head ref (current feature/review)",
+  );
+  await expect(head).toBeFocused();
+  await page.keyboard.press("Escape");
+
+  if (testInfo.project.name === "phone") {
+    await expect(separator).toBeHidden();
+    return;
+  }
+
+  const before = Number(await separator.getAttribute("aria-valuenow"));
+  await activateActionHint(page, "Resize review side panel");
+  await expect(separator).toBeFocused();
+  await separator.press("ArrowRight");
+  await expect.poll(async () =>
+    Number(await separator.getAttribute("aria-valuenow"))
+  ).toBeGreaterThan(before);
+});
+
 test("refreshes Git and scrolls the exact visible Compare tree and diff from the root", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
@@ -601,6 +674,27 @@ test("uses Log actions and scrolls the exact visible Commit tree and diff from t
   await expect.poll(() => treeScroll.evaluate(
     (element) => element.scrollHeight > element.clientHeight + 1,
   )).toBe(true);
+  const commitSeparator = page.locator(
+    "caffold-git-log-commit-page",
+  ).getByRole("separator", { name: "Resize review side panel" });
+  if (testInfo.project.name === "phone") {
+    await expect(commitSeparator).toBeHidden();
+    const commitHints = await enterActionHints(page);
+    await expect(
+      commitHints.getByLabel(/ — Resize review side panel$/),
+    ).toHaveCount(0);
+    await page.keyboard.press("Escape");
+  } else {
+    const before = Number(
+      await commitSeparator.getAttribute("aria-valuenow"),
+    );
+    await activateActionHint(page, "Resize review side panel");
+    await expect(commitSeparator).toBeFocused();
+    await commitSeparator.press("ArrowRight");
+    await expect.poll(async () =>
+      Number(await commitSeparator.getAttribute("aria-valuenow"))
+    ).toBeGreaterThan(before);
+  }
 
   const generatedDirectory = page.locator(
     'caffold-git-log-commit-page button[data-file-tree-path="generated"]',

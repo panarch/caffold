@@ -22,7 +22,7 @@ export function buttonActionHintTarget({
   clipRoots,
   isActionable,
 }) {
-  return {
+  return focusAndClickActionHintTarget({
     id,
     actionId,
     label,
@@ -31,11 +31,7 @@ export function buttonActionHintTarget({
     anchor,
     clipRoots,
     isActionable,
-    activate: () => {
-      control.focus({ preventScroll: true });
-      control.click();
-    },
-  };
+  });
 }
 
 export function disclosureActionHintTarget({
@@ -47,7 +43,7 @@ export function disclosureActionHintTarget({
   clipRoots,
   isActionable,
 }) {
-  return {
+  return focusAndClickActionHintTarget({
     id,
     actionId,
     label,
@@ -56,11 +52,49 @@ export function disclosureActionHintTarget({
     anchor,
     clipRoots,
     isActionable,
-    activate: () => {
-      control.focus({ preventScroll: true });
-      control.click();
-    },
-  };
+  });
+}
+
+export function radioActionHintTarget({
+  id,
+  actionId,
+  label,
+  control,
+  anchor = control,
+  clipRoots,
+  isActionable,
+}) {
+  return focusAndClickActionHintTarget({
+    id,
+    actionId,
+    label,
+    controlKind: "radio",
+    control,
+    anchor,
+    clipRoots,
+    isActionable,
+  });
+}
+
+export function switchActionHintTarget({
+  id,
+  actionId,
+  label,
+  control,
+  anchor = control,
+  clipRoots,
+  isActionable,
+}) {
+  return focusAndClickActionHintTarget({
+    id,
+    actionId,
+    label,
+    controlKind: "switch",
+    control,
+    anchor,
+    clipRoots,
+    isActionable,
+  });
 }
 
 export function textboxActionHintTarget({
@@ -112,6 +146,63 @@ export function selectActionHintTarget({
   };
 }
 
+export function rangeActionHintTarget({
+  id,
+  actionId,
+  label,
+  control,
+  clipRoots,
+  isActionable,
+}) {
+  return focusActionHintTarget({
+    id,
+    actionId,
+    label,
+    controlKind: "range",
+    control,
+    clipRoots,
+    isActionable,
+  });
+}
+
+export function separatorActionHintTarget({
+  id,
+  actionId,
+  label,
+  control,
+  clipRoots,
+  isActionable,
+}) {
+  return focusActionHintTarget({
+    id,
+    actionId,
+    label,
+    controlKind: "separator",
+    control,
+    clipRoots,
+    isActionable,
+  });
+}
+
+export function reorderHandleActionHintTarget({
+  id,
+  actionId,
+  label,
+  control,
+  clipRoots,
+  isActionable,
+}) {
+  return focusActionHintTarget({
+    id,
+    actionId,
+    label,
+    controlKind: "reorder-handle",
+    control,
+    clipRoots,
+    isActionable,
+  });
+}
+
 export function hasActionHintLayoutBox(element) {
   return Boolean(element?.getClientRects?.().length);
 }
@@ -146,6 +237,7 @@ function focusActionHintTarget({
   label,
   controlKind,
   control,
+  anchor = control,
   clipRoots,
   isActionable,
 }) {
@@ -155,9 +247,20 @@ function focusActionHintTarget({
     label,
     controlKind,
     control,
-    anchor: control,
+    anchor,
     clipRoots,
     isActionable,
     activate: () => control.focus({ preventScroll: true }),
+  };
+}
+
+function focusAndClickActionHintTarget(options) {
+  const target = focusActionHintTarget(options);
+  return {
+    ...target,
+    activate: () => {
+      options.control.focus({ preventScroll: true });
+      options.control.click();
+    },
   };
 }

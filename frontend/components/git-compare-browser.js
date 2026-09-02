@@ -5,7 +5,9 @@ import "./git-compare-browser/compare-tree.js";
 import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "./review-responsive.js";
 import {
   emptyActionHintScope,
+  hasActionHintLayoutBox,
   mergeActionHintScopes,
+  separatorActionHintTarget,
 } from "../action-hint-scope.js";
 import {
   emptyScrollSurfaceScope,
@@ -509,6 +511,7 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     parentActionId = "",
     detailsActionId = "",
     refreshActionId = "",
+    separatorActionId = "",
     clipRoots = [],
   } = {}) {
     this.ensureRendered();
@@ -518,6 +521,11 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     const listActive = this.detailView === "list" ||
       !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches;
     const viewerActive = this.detailView === "viewer";
+    const separatorScope = gitCompareSeparatorActionHintScope(this, {
+      scopeId,
+      actionId: separatorActionId,
+      clipRoots: [this, ...clipRoots],
+    });
     return mergeActionHintScopes(
       listActive
         ? this.compareTree.actionHintScope({
@@ -527,6 +535,7 @@ class CaffoldGitCompareBrowser extends HTMLElement {
             clipRoots: [this, ...clipRoots],
           })
         : null,
+      separatorScope,
       viewerActive
         ? this.viewer.actionHintScope({
             scopeId: `${scopeId}:viewer`,
@@ -758,6 +767,39 @@ class CaffoldGitCompareBrowser extends HTMLElement {
       }),
     );
   }
+}
+
+function gitCompareSeparatorActionHintScope(
+  owner,
+  { scopeId, actionId, clipRoots },
+) {
+  const control = owner.panelResizer;
+  if (
+    !actionId ||
+    !control ||
+    !owner.canResizePanel?.() ||
+    !hasActionHintLayoutBox(control)
+  ) {
+    return null;
+  }
+  return {
+    blocked: false,
+    targets: [separatorActionHintTarget({
+      id: `${scopeId}:separator`,
+      actionId,
+      label: control.getAttribute("aria-label") || "Resize review side panel",
+      control,
+      clipRoots,
+      isActionable: () =>
+        owner.isConnected &&
+        !owner.hidden &&
+        owner.panelResizer === control &&
+        owner.canResizePanel() &&
+        hasActionHintLayoutBox(control),
+    })],
+    mutationRoots: [owner, control],
+    scrollRoots: [],
+  };
 }
 
 customElements.define("caffold-git-compare-browser", CaffoldGitCompareBrowser);

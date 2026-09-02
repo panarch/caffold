@@ -54,3 +54,50 @@ test("keeps the visible Task navigator scope when the detail-side Tasks host is 
   );
   assert.equal(calls, 1);
 });
+
+test("composes the exact visible workspace separator as a focus target", () => {
+  const previousWindow = globalThis.window;
+  let wide = true;
+  globalThis.window = { matchMedia: () => ({ matches: wide }) };
+  try {
+    let focused = 0;
+    const control = {
+      getAttribute: () => "Resize navigation pane",
+      getClientRects: () => [{}],
+      focus() {
+        focused += 1;
+      },
+    };
+    const owner = {
+      hidden: false,
+      isConnected: true,
+      mode: "tasks",
+      masterResizer: control,
+      masterDetail: {},
+      masterPane: null,
+      backButton: null,
+      closeButton: null,
+      navigation: null,
+      tasksPage: null,
+      querySelector: () => null,
+    };
+
+    const scope = workspace.actionHintScope.call(owner);
+    assert.equal(scope.targets.length, 1);
+    assert.equal(scope.targets[0].id, "workspace:navigation-pane:separator");
+    assert.equal(scope.targets[0].controlKind, "separator");
+    assert.deepEqual(scope.mutationRoots, [control]);
+    scope.targets[0].activate();
+    assert.equal(focused, 1);
+
+    wide = false;
+    assert.equal(scope.targets[0].isActionable(), false);
+    assert.deepEqual(workspace.actionHintScope.call(owner).targets, []);
+    wide = true;
+    owner.masterResizer = { getClientRects: () => [{}] };
+    assert.equal(scope.targets[0].isActionable(), false);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});

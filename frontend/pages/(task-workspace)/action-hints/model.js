@@ -12,6 +12,8 @@ export const ACTION_HINT_ACTION = Object.freeze({
   PERMISSION_SELECT: "task.permission.select",
   REORDER_OPEN: "task.reorder.open",
   REORDER_SELECT: "task.reorder.select",
+  REORDER_HANDLE_FOCUS: "task.reorder.handle.focus",
+  REORDER_FINISH: "task.reorder.finish",
   GIT_OPEN: "navigation.git.open",
   GIT_DESTINATION: "navigation.git.destination",
   GITHUB_OPEN: "navigation.github.open",
@@ -39,8 +41,12 @@ export const ACTION_HINT_ACTION = Object.freeze({
   DIALOG_BUTTON: "dialog.button",
   BUTTON_ACTIVATE: "button.activate",
   DISCLOSURE_TOGGLE: "disclosure.toggle",
+  CONTROL_RADIO_SELECT: "control.radio.select",
+  CONTROL_SWITCH_TOGGLE: "control.switch.toggle",
+  CONTROL_SELECT_OPEN: "control.select.open",
+  CONTROL_RANGE_FOCUS: "control.range.focus",
+  CONTROL_SEPARATOR_FOCUS: "control.separator.focus",
   DIALOG_TEXTBOX_FOCUS: "dialog.textbox.focus",
-  DIALOG_SELECT_OPEN: "dialog.select.open",
 });
 
 const ACTION_HINT_ALLOCATION = Object.freeze({
@@ -79,8 +85,28 @@ const ACTION_HINT_ACTION_POLICY = Object.freeze({
     controlKind: "textbox",
     allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
   }),
-  [ACTION_HINT_ACTION.DIALOG_SELECT_OPEN]: Object.freeze({
+  [ACTION_HINT_ACTION.CONTROL_RADIO_SELECT]: Object.freeze({
+    controlKind: "radio",
+    allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
+  }),
+  [ACTION_HINT_ACTION.CONTROL_SWITCH_TOGGLE]: Object.freeze({
+    controlKind: "switch",
+    allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
+  }),
+  [ACTION_HINT_ACTION.CONTROL_SELECT_OPEN]: Object.freeze({
     controlKind: "select",
+    allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
+  }),
+  [ACTION_HINT_ACTION.CONTROL_RANGE_FOCUS]: Object.freeze({
+    controlKind: "range",
+    allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
+  }),
+  [ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS]: Object.freeze({
+    controlKind: "separator",
+    allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
+  }),
+  [ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS]: Object.freeze({
+    controlKind: "reorder-handle",
     allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
   }),
   [ACTION_HINT_ACTION.DISCLOSURE_TOGGLE]: Object.freeze({
@@ -112,6 +138,7 @@ const ACTION_HINT_ACTION_POLICY = Object.freeze({
     ACTION_HINT_ACTION.PERMISSION_SELECT,
     ACTION_HINT_ACTION.REORDER_OPEN,
     ACTION_HINT_ACTION.REORDER_SELECT,
+    ACTION_HINT_ACTION.REORDER_FINISH,
     ACTION_HINT_ACTION.GIT_OPEN,
     ACTION_HINT_ACTION.GIT_DESTINATION,
     ACTION_HINT_ACTION.GITHUB_OPEN,
@@ -381,6 +408,32 @@ export function clampBadgePosition(
   return {
     left: clamp(Number(position?.left) || 0, minimumLeft, maximumLeft),
     top: clamp(Number(position?.top) || 0, minimumTop, maximumTop),
+  };
+}
+
+export function preferredBadgePosition(
+  target,
+  badgeSize,
+  viewportRect,
+  margin = 4,
+) {
+  const visibleRect = normalizeRect(target?.visibleRect);
+  if (!visibleRect) {
+    return { left: 0, top: 0 };
+  }
+  if (target?.controlKind !== "select") {
+    return { left: visibleRect.left, top: visibleRect.top };
+  }
+
+  const height = Math.max(0, Number(badgeSize?.height) || 0);
+  const viewport = normalizeRect(viewportRect);
+  const below = visibleRect.bottom + margin;
+  const top = !viewport || below + height <= viewport.bottom - margin
+    ? below
+    : visibleRect.top - height - margin;
+  return {
+    left: visibleRect.left,
+    top,
   };
 }
 

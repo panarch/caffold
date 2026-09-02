@@ -21,8 +21,18 @@ test("provides the managed Section header before delegated Task rows", () => {
     },
   };
   const taskTarget = { id: "task:thread-a" };
-  const row = { actionHintTarget: () => taskTarget };
+  const taskReorderTarget = { id: "task:thread-a:reorder" };
+  const row = {
+    actionHintTarget: () => taskTarget,
+    reorderActionHintTarget: () => taskReorderTarget,
+  };
+  const sectionHandle = {
+    disabled: false,
+    getAttribute: () => "Reorder alpha",
+    focus() {},
+  };
   let currentControl = control;
+  let currentHandle = sectionHandle;
   const owner = {
     isConnected: true,
     snapshot: {
@@ -34,8 +44,10 @@ test("provides the managed Section header before delegated Task rows", () => {
       },
       reorderMode: "none",
     },
-    querySelector() {
-      return currentControl;
+    querySelector(selector) {
+      return selector.includes("section-reorder-handle")
+        ? currentHandle
+        : currentControl;
     },
     querySelectorAll() {
       return [row];
@@ -66,8 +78,33 @@ test("provides the managed Section header before delegated Task rows", () => {
   assert.equal(clicks, 1);
   assert.equal(targets[1], taskTarget);
 
+  owner.snapshot.reorderMode = "tasks";
+  assert.deepEqual(section.actionHintTargets.call(owner), [taskReorderTarget]);
+
   owner.snapshot.reorderMode = "sections";
   assert.equal(targets[0].isActionable(), false);
-  currentControl = null;
-  assert.deepEqual(section.actionHintTargets.call(owner), [taskTarget]);
+  const reorderTargets = section.actionHintTargets.call(owner);
+  assert.equal(reorderTargets.length, 1);
+  assert.deepEqual(
+    {
+      id: reorderTargets[0].id,
+      actionId: reorderTargets[0].actionId,
+      controlKind: reorderTargets[0].controlKind,
+      label: reorderTargets[0].label,
+    },
+    {
+      id: "section:section-a:reorder",
+      actionId: "task.reorder.handle.focus",
+      controlKind: "reorder-handle",
+      label: "Reorder alpha",
+    },
+  );
+  assert.equal(reorderTargets[0].isActionable(), true);
+  currentHandle = { ...sectionHandle };
+  assert.equal(reorderTargets[0].isActionable(), false);
+  owner.snapshot.pending = true;
+  assert.deepEqual(section.actionHintTargets.call(owner), []);
+  owner.snapshot.pending = false;
+  owner.snapshot.section.recovery = true;
+  assert.deepEqual(section.actionHintTargets.call(owner), []);
 });

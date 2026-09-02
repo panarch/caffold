@@ -3,6 +3,8 @@ import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
+  hasActionHintLayoutBox,
+  selectActionHintTarget,
 } from "../../../../action-hints.js";
 
 class CaffoldGitReviewControls extends HTMLElement {
@@ -135,28 +137,83 @@ class CaffoldGitReviewControls extends HTMLElement {
 
   actionHintScope({ scopeId = "git", clipRoots = [] } = {}) {
     this.ensureRendered();
-    const control = this.refreshButton;
-    if (this.hidden || !control || control.disabled) {
+    if (this.hidden) {
       return emptyActionHintScope();
     }
-    return {
-      blocked: false,
-      targets: [buttonActionHintTarget({
+    const targetClipRoots = [this, ...clipRoots].filter(Boolean);
+    const targets = compareRefActionHintTargets(this, {
+      scopeId,
+      clipRoots: targetClipRoots,
+    });
+    const control = this.refreshButton;
+    if (control && !control.disabled) {
+      targets.push(buttonActionHintTarget({
         id: `${scopeId}:refresh`,
         actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
         label: control.getAttribute("aria-label") || "Refresh Git",
         control,
-        clipRoots: [this, ...clipRoots].filter(Boolean),
+        clipRoots: targetClipRoots,
         isActionable: () =>
           this.isConnected &&
           !this.hidden &&
           this.refreshButton === control &&
           !control.disabled,
-      })],
+      }));
+    }
+    return {
+      blocked: false,
+      targets,
       mutationRoots: [this],
       scrollRoots: [],
     };
   }
+
+}
+
+function compareRefActionHintTargets(owner, { scopeId, clipRoots }) {
+  if (
+    owner.compareRefs?.hidden ||
+    owner.snapshot?.mode !== "compare" ||
+    !owner.snapshot.refs.length
+  ) {
+    return [];
+  }
+  return [
+    ["base", owner.baseRefSelect, "Base"],
+    ["head", owner.headRefSelect, "Head"],
+  ].flatMap(([kind, control, label]) => {
+    if (!gitRefSelectAvailable(control)) {
+      return [];
+    }
+    const value = control.value;
+    return [selectActionHintTarget({
+      id: `${scopeId}:compare-ref:${kind}`,
+      actionId: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
+      label: value
+        ? `Choose ${label} ref (current ${value})`
+        : `Choose ${label} ref`,
+      control,
+      clipRoots,
+      isActionable: () =>
+        owner.isConnected &&
+        !owner.hidden &&
+        !owner.compareRefs?.hidden &&
+        owner.snapshot?.mode === "compare" &&
+        Boolean(owner.snapshot.refs.length) &&
+        (kind === "base" ? owner.baseRefSelect : owner.headRefSelect) ===
+          control &&
+        gitRefSelectAvailable(control),
+    })];
+  });
+}
+
+function gitRefSelectAvailable(control) {
+  return Boolean(
+    control &&
+      !control.disabled &&
+      !control.hidden &&
+      hasActionHintLayoutBox(control),
+  );
 }
 
 customElements.define("caffold-git-review-controls", CaffoldGitReviewControls);

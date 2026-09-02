@@ -109,6 +109,41 @@ test("merges Review axes with only the active navigator and selected viewer", ()
   assert.deepEqual(calls, { working: 1, branch: 1, files: 2, viewer: 3 });
 });
 
+test("composes the shared Review panel resizer through its public scope", () => {
+  let options = null;
+  const panelResizer = {
+    actionHintScope(input) {
+      options = input;
+      return scope("separator");
+    },
+  };
+  const owner = {
+    active: true,
+    hidden: false,
+    isConnected: true,
+    task: { threadId: "thread-a" },
+    contextKey: "thread-a\0/repo",
+    route: { navigator: "changes", scope: "working", path: "" },
+    ensureRendered() {},
+    querySelector(selector) {
+      if (selector.includes("empty-action")) return null;
+      return { getClientRects: () => [{}] };
+    },
+    axisControl: () => null,
+    workingTree: () => ({ actionHintScope: () => scope("working") }),
+    resizer: () => panelResizer,
+  };
+
+  assert.deepEqual(
+    review.actionHintScope.call(owner).targets.map(({ id }) => id),
+    ["working", "separator"],
+  );
+  assert.equal(options.actionId, "control.separator.focus");
+  assert.equal(options.isCurrent(), true);
+  owner.contextKey = "thread-a\0/other";
+  assert.equal(options.isCurrent(), false);
+});
+
 test("merges only visible Review navigator and viewer Scroll leaves", () => {
   const navigatorSurface = { id: "working-tree" };
   const viewerSurface = { id: "diff" };

@@ -243,6 +243,24 @@ declares Refresh, while GitHub detail declares Start Task and Pull Files.
 Activation reuses each owner's existing native button click, form, or
 product-intent path.
 
+Product-owned native controls use distinct closed action kinds rather than
+pretending to be buttons. Appearance declares non-current Theme radios, its
+Typeface select, and the three size ranges; Files declares its non-current
+ordering radio; Keyboard declares its enabled On/Off switch; and Git Compare
+declares its visible Base and Head selects. Radio and switch activation focuses
+and clicks the exact retained input after Hint cleanup. A select focuses and
+calls native `showPicker()` in the trusted key stack, with a focus-only fallback
+when the browser cannot open it. A range target only receives focus. The native
+control and its product owner continue to own option selection, value changes,
+persistence, and subsequent keyboard input.
+
+Keyboard-operable split separators follow the same focus-only handoff. Task
+Workspace owns its navigation separator, Git Compare owns its tree/viewer
+separator, and the reusable Review Panel Resizer publishes a child scope that
+Integrated Review, Git Log Commit, and GitHub Pull Files merge. Actual layout
+and resizing capability are required, so single-pane or hidden separators do
+not become targets. Arrow, Shift+Arrow, Home, and End remain component-owned.
+
 Product-owned disclosure uses the same one-shot flow through a distinct
 `disclosure.toggle` action and `disclosure` control kind. The shared File Tree
 declares only expandable directory buttons; non-expandable Directory Picker
@@ -265,15 +283,15 @@ and file viewer expose public scope providers; their screen owner supplies the
 semantic action and scope context. Ancestors never discover these actions by
 scanning descendant buttons, `summary` elements, or `aria-expanded`.
 
-Checkboxes, radios, ranges, general native selects, external or Markdown
-links, arbitrary Markdown or third-party `summary` disclosures, and reorder
-handles remain outside Action Hint. A native summary participates only when its
-product component explicitly owns and declares that disclosure. Explicitly
-registered dialog selects and textboxes keep their existing owner-specific
-behavior. Popover and dialog openers are ordinary workspace actions, but after
-either opens the user presses `F` again to enter the new retained context; the
-coordinator never predicts or automatically hands off to it. File details
-deliberately declares no internal Action Hint target.
+External or Markdown links, arbitrary Markdown or third-party `summary`
+disclosures, generated content, and App Shell controls remain outside Action
+Hint. A native summary participates only when its product component explicitly
+owns and declares that disclosure. Registered dialog textboxes keep their
+owner-specific focus behavior, while dialog selects use the same general native
+select contract as workspace controls. Popover and dialog openers are ordinary
+workspace actions, but after either opens the user presses `F` again to enter
+the new retained context; the coordinator never predicts or automatically hands
+off to it. File details deliberately declares no internal Action Hint target.
 
 Provider collection is hierarchical: each layout merges its own actions with
 only its active direct child scopes through `action-hint-scope.js`. Ancestors
@@ -289,12 +307,11 @@ declaration, without semantic deduplication, and controls owned by a direct
 child compose through the same public scope interface. Fork additionally
 declares its Thread-ID textbox, while the Task Start issue child declares its
 native Base branch select. Textbox activation only focuses the retained input.
-Select activation focuses and calls native `showPicker()` synchronously in the
-original trusted key stack, falling back to focus only when that API is absent
-or throws; native options and change handling remain with the browser and
-product state owners. These registrations do not create a generic dialog
-registry or DOM discovery path. The App Shell update dialog is outside this
-Task Workspace context set and retains native keyboard ownership.
+The general select activation contract applies to that Base branch control;
+native options and change handling remain with the browser and product state
+owners. These registrations do not create a generic dialog registry or DOM
+discovery path. The App Shell update dialog is outside this Task Workspace
+context set and retains native keyboard ownership.
 
 The controller validates every action and control kind against a closed central
 policy. Task selection retains generated `T*` codes and New Task, Model, and
@@ -836,8 +853,11 @@ exact page scrollport. The Settings workspace merges responsive Back with only
 the presented page, and the Task Workspace merges that result with the visible
 Settings navigator. Desktop may therefore expose independent navigator and
 page Scroll surfaces, while foldable and phone layouts contribute only the pane
-with a layout box. Checkbox, radio, range, and select controls keep their native
-editing or choice behavior and are not promoted to ordinary button actions.
+with a layout box. Appearance registers non-current Theme choices, Typeface, and
+its three ranges; Files registers the non-current ordering choice; and Keyboard
+registers its switch only while keyboard navigation is enabled. These controls
+keep their native editing, choice, and persistence behavior after the Action
+Hint coordinator hands off focus or click ownership.
 
 `caffold-settings-detail-list` renders the label and value rows that Codex,
 Claude, and About report. It owns row identity, the placeholder a row shows
@@ -991,7 +1011,14 @@ active projection and serialized local reorder mutations. Each
 `caffold-active-task-section` owns its Section header and Task list, while each
 private `caffold-active-task-row` owns one Task row's selection and reorder
 interaction. Section and row components raise semantic intents to their parent
-instead of acquiring list API or persistence ownership.
+instead of acquiring list API or persistence ownership. Normal Action Hint
+scope exposes Task and Section navigation. Active Task reorder scope replaces
+those navigation targets with visible row handles; active Section reorder scope
+uses visible Section handles. The navigator also exposes its exact Finish
+button. Handle activation only focuses the retained button, so its existing
+Arrow-key move, pending gate, focus restoration, and live announcement remain
+with the row or Section owner. Reorder blocks Scroll scope, and moving or
+finishing never starts another Hint session automatically.
 
 ## Styling and assets
 

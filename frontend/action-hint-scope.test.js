@@ -7,7 +7,12 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
+  radioActionHintTarget,
+  rangeActionHintTarget,
+  reorderHandleActionHintTarget,
+  separatorActionHintTarget,
   selectActionHintTarget,
+  switchActionHintTarget,
   textboxActionHintTarget,
 } from "./action-hint-scope.js";
 
@@ -85,6 +90,39 @@ test("disclosure Action Hint targets preserve owner semantics and native activat
   assert.equal(disclosureActionHintTarget({ ...input, anchor }).anchor, anchor);
 });
 
+test("radio and switch Action Hint targets preserve native focus and click", () => {
+  for (
+    const [helper, controlKind, actionId] of [
+      [radioActionHintTarget, "radio", "control.radio.select"],
+      [switchActionHintTarget, "switch", "control.switch.toggle"],
+    ]
+  ) {
+    const calls = [];
+    const control = {
+      focus: (options) => calls.push(["focus", options]),
+      click: () => calls.push(["click"]),
+    };
+    const anchor = { id: `${controlKind}-label` };
+    const target = helper({
+      id: `settings:${controlKind}`,
+      actionId,
+      label: `Choose ${controlKind}`,
+      control,
+      anchor,
+      clipRoots: [],
+      isActionable: () => true,
+    });
+
+    assert.equal(target.controlKind, controlKind);
+    assert.equal(target.anchor, anchor);
+    target.activate();
+    assert.deepEqual(calls, [
+      ["focus", { preventScroll: true }],
+      ["click"],
+    ]);
+  }
+});
+
 test("Action Hint scopes compose direct owners in declaration order", () => {
   const firstTarget = { id: "first" };
   const secondTarget = { id: "second" };
@@ -134,7 +172,7 @@ test("editable Action Hint targets focus synchronously and select uses native pi
   const selectTarget = selectActionHintTarget({
     ...common,
     id: "dialog:select",
-    actionId: "dialog.select.open",
+    actionId: "control.select.open",
     label: "Choose value",
     control: select,
   });
@@ -161,13 +199,45 @@ test("native select activation keeps focus when showPicker is absent or throws",
     };
     selectActionHintTarget({
       id: "dialog:select",
-      actionId: "dialog.select.open",
+      actionId: "control.select.open",
       label: "Choose value",
       control,
       clipRoots: [],
       isActionable: () => true,
     }).activate();
     assert.equal(focused, 1);
+  }
+});
+
+test("range, separator, and reorder targets transfer focus without activation", () => {
+  for (
+    const [helper, controlKind, actionId] of [
+      [rangeActionHintTarget, "range", "control.range.focus"],
+      [separatorActionHintTarget, "separator", "control.separator.focus"],
+      [
+        reorderHandleActionHintTarget,
+        "reorder-handle",
+        "task.reorder.handle.focus",
+      ],
+    ]
+  ) {
+    const calls = [];
+    const control = {
+      focus: (options) => calls.push(["focus", options]),
+      click: () => calls.push(["click"]),
+    };
+    const target = helper({
+      id: `control:${controlKind}`,
+      actionId,
+      label: `Focus ${controlKind}`,
+      control,
+      clipRoots: [],
+      isActionable: () => true,
+    });
+
+    assert.equal(target.controlKind, controlKind);
+    target.activate();
+    assert.deepEqual(calls, [["focus", { preventScroll: true }]]);
   }
 });
 

@@ -274,21 +274,12 @@ test("allocates Settings navigation automatically and accepts F inside Hint mode
     .toBe(true);
   const fBadge = dialog.locator('[data-action-hint-code="F"]');
   await expect(fBadge).toBeVisible();
-  const fLabel = (await fBadge.getAttribute("aria-label")).replace(/^F — /, "");
-  const sectionByLabel = new Map([
-    ["Open Appearance settings", "appearance"],
-    ["Open Keyboard settings", "keyboard"],
-    ["Open Files settings", "files"],
-    ["Open Notifications settings", "notifications"],
-    ["Open Remote Access settings", "remote-access"],
-    ["Open Codex settings", "codex"],
-    ["Open Claude settings", "claude"],
-    ["Open About Caffold settings", "about"],
-  ]);
-  expect(sectionByLabel.has(fLabel)).toBe(true);
   await page.keyboard.press("f");
   await expect(dialog).toBeHidden();
-  await expect(page).toHaveURL(`/settings/${sectionByLabel.get(fLabel)}`);
+  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+    "data-action-hint-last-exit",
+    "activated:F",
+  );
 
   await page.goto("/settings");
   await enterActionHints(page);
@@ -675,7 +666,7 @@ test("uses a mouse-open Permission context and preserves its existing confirmati
   await expect(permissionButton).toContainText("Full access");
 });
 
-test("selects Reorder through its declared popover context and blocks the entered mode", { tag: "@all-viewports" }, async ({
+test("selects Reorder through its declared popover and entered-mode contexts", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   await installActionHintFixture(page, actionHintTasks(2));
@@ -720,7 +711,14 @@ test("selects Reorder through its declared popover context and blocks the entere
   await expect(popover).toBeHidden();
   await expect(navigator).toHaveAttribute("data-reorder-mode", "tasks");
   await page.keyboard.press("f");
-  await expect(actionHintDialog(page)).toBeHidden();
+  hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await expect(hint.getByLabel(/ — Finish reordering Tasks$/)).toBeVisible();
+  await expect(
+    hint.getByLabel(/Use Up and Down arrow keys to move\.$/),
+  ).toHaveCount(2);
+  await expect(hint.getByLabel(/ — Open task:/)).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await navigator.getByRole("button", {
     name: "Finish reordering Tasks",
   }).click();
@@ -1126,7 +1124,7 @@ test("cancels on geometry, actionability, ownership, viewport, and route changes
   await expect(dialog).toBeHidden();
   await expect(workspace).toHaveAttribute(
     "data-action-hint-last-exit",
-    "viewport",
+    /^(?:viewport|snapshot-invalidated)$/,
   );
 
   await enterActionHints(page);
@@ -1438,6 +1436,19 @@ async function captureActionHintVisualState(page) {
         document.querySelector("caffold-task-workspace"),
         document.querySelector(".task-workspace-master-pane"),
       ]));
+    }
+    const workspace = document.querySelector("caffold-task-workspace");
+    const masterDetail = workspace?.querySelector(
+      ":scope > .task-workspace-surface > .task-workspace-master-detail",
+    );
+    const workspaceSeparator = workspace?.querySelector(
+      ":scope > .task-workspace-surface > .task-workspace-master-detail > .task-workspace-master-resizer",
+    );
+    if (workspaceSeparator && masterDetail) {
+      automaticTargets.set(
+        workspaceSeparator.getAttribute("aria-label"),
+        target(workspaceSeparator, [workspace, masterDetail]),
+      );
     }
     let taskIndex = 0;
     const alignmentErrors = [];

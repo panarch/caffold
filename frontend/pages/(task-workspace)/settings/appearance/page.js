@@ -4,6 +4,9 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
+  radioActionHintTarget,
+  rangeActionHintTarget,
+  selectActionHintTarget,
 } from "../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
@@ -69,58 +72,12 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
     if (this.hidden || !scrollport) {
       return emptyActionHintScope();
     }
-    const definitions = [
-      {
-        id: "reset-all",
-        selector: 'button[data-action="reset-appearance"]',
-        label: "Reset all appearance settings",
-      },
-      {
-        id: "reset-theme",
-        selector: 'button[data-action="reset-theme"]',
-        label: "Reset theme",
-      },
-      {
-        id: "reset-typeface",
-        selector: 'button[data-action="reset-typeface"]',
-        label: "Reset font",
-      },
-      ...Object.keys(APPEARANCE_RANGE_SETTINGS).map((setting) => ({
-        id: `reset-setting:${setting}`,
-        selector:
-          `button[data-action="reset-setting"][data-setting="${setting}"]`,
-        label: `Reset ${APPEARANCE_RANGE_SETTINGS[setting].label.toLowerCase()}`,
-      })),
-    ];
-    const targets = definitions.flatMap(({ id, selector, label }) => {
-      const control = this.querySelector(selector);
-      if (
-        !control ||
-        control.disabled ||
-        control.hidden ||
-        !hasActionHintLayoutBox(control)
-      ) {
-        return [];
-      }
-      return [buttonActionHintTarget({
-        id: `${scopeId}:${id}`,
-        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
-        label: control.getAttribute("aria-label") ||
-          control.title ||
-          control.textContent?.trim() ||
-          label,
-        control,
-        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
-        isActionable: () =>
-          this.isConnected &&
-          !this.hidden &&
-          isCurrent() &&
-          this.querySelector(selector) === control &&
-          !control.disabled &&
-          !control.hidden &&
-          hasActionHintLayoutBox(control),
-      })];
-    });
+    const context = {
+      scopeId,
+      clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+      isCurrent,
+    };
+    const targets = appearanceActionHintTargets(this, context);
     return {
       blocked: false,
       targets,
@@ -309,6 +266,144 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
       );
     });
   }
+}
+
+function appearanceActionHintTargets(owner, context) {
+  return [
+    ...resetActionHintTargets(owner, context, [{
+      id: "reset-all",
+      selector: 'button[data-action="reset-appearance"]',
+      label: "Reset all appearance settings",
+    }]),
+    ...themeActionHintTargets(owner, context),
+    ...resetActionHintTargets(owner, context, [{
+      id: "reset-theme",
+      selector: 'button[data-action="reset-theme"]',
+      label: "Reset theme",
+    }]),
+    ...typefaceActionHintTargets(owner, context),
+    ...resetActionHintTargets(owner, context, [{
+      id: "reset-typeface",
+      selector: 'button[data-action="reset-typeface"]',
+      label: "Reset font",
+    }]),
+    ...Object.entries(APPEARANCE_RANGE_SETTINGS).flatMap(
+      ([setting, definition]) => [
+        ...rangeActionHintTargets(owner, context, setting, definition),
+        ...resetActionHintTargets(owner, context, [{
+          id: `reset-setting:${setting}`,
+          selector:
+            `button[data-action="reset-setting"][data-setting="${setting}"]`,
+          label: `Reset ${definition.label.toLowerCase()}`,
+        }]),
+      ],
+    ),
+  ];
+}
+
+function themeActionHintTargets(owner, context) {
+  return Object.values(THEME_MODES).flatMap((theme) => {
+    const selector =
+      `input[type="radio"][data-theme-setting][value="${theme.id}"]`;
+    const control = owner.querySelector(selector);
+    if (!actionHintControlAvailable(control) || control.checked) {
+      return [];
+    }
+    return [radioActionHintTarget({
+      id: `${context.scopeId}:theme:${theme.id}`,
+      actionId: ACTION_HINT_ACTION.CONTROL_RADIO_SELECT,
+      label: `Use ${theme.label} theme`,
+      control,
+      anchor: control.closest?.("label") ?? control,
+      clipRoots: context.clipRoots,
+      isActionable: () =>
+        actionHintOwnerIsCurrent(owner, context) &&
+        owner.querySelector(selector) === control &&
+        actionHintControlAvailable(control) &&
+        !control.checked,
+    })];
+  });
+}
+
+function typefaceActionHintTargets(owner, context) {
+  const selector = "select[data-typeface-setting]";
+  const control = owner.querySelector(selector);
+  if (!actionHintControlAvailable(control)) {
+    return [];
+  }
+  const selectedLabel = control.selectedOptions?.[0]?.textContent?.trim() ||
+    TYPEFACE_PRESETS[control.value]?.label ||
+    control.value;
+  return [selectActionHintTarget({
+    id: `${context.scopeId}:typeface`,
+    actionId: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
+    label: selectedLabel
+      ? `Choose font (current ${selectedLabel})`
+      : "Choose font",
+    control,
+    clipRoots: context.clipRoots,
+    isActionable: () =>
+      actionHintOwnerIsCurrent(owner, context) &&
+      owner.querySelector(selector) === control &&
+      actionHintControlAvailable(control),
+  })];
+}
+
+function rangeActionHintTargets(owner, context, setting, definition) {
+  const selector = `input[type="range"][data-setting="${setting}"]`;
+  const control = owner.querySelector(selector);
+  if (!actionHintControlAvailable(control)) {
+    return [];
+  }
+  const currentValue = control.getAttribute("aria-valuetext") ||
+    `${control.value}${definition.suffix}`;
+  return [rangeActionHintTarget({
+    id: `${context.scopeId}:range:${setting}`,
+    actionId: ACTION_HINT_ACTION.CONTROL_RANGE_FOCUS,
+    label: `Adjust ${definition.label} (${currentValue})`,
+    control,
+    clipRoots: context.clipRoots,
+    isActionable: () =>
+      actionHintOwnerIsCurrent(owner, context) &&
+      owner.querySelector(selector) === control &&
+      actionHintControlAvailable(control),
+  })];
+}
+
+function resetActionHintTargets(owner, context, definitions) {
+  return definitions.flatMap(({ id, selector, label }) => {
+    const control = owner.querySelector(selector);
+    if (!actionHintControlAvailable(control)) {
+      return [];
+    }
+    return [buttonActionHintTarget({
+      id: `${context.scopeId}:${id}`,
+      actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+      label: control.getAttribute("aria-label") ||
+        control.title ||
+        control.textContent?.trim() ||
+        label,
+      control,
+      clipRoots: context.clipRoots,
+      isActionable: () =>
+        actionHintOwnerIsCurrent(owner, context) &&
+        owner.querySelector(selector) === control &&
+        actionHintControlAvailable(control),
+    })];
+  });
+}
+
+function actionHintOwnerIsCurrent(owner, { isCurrent }) {
+  return owner.isConnected && !owner.hidden && isCurrent();
+}
+
+function actionHintControlAvailable(control) {
+  return Boolean(
+    control &&
+      !control.disabled &&
+      !control.hidden &&
+      hasActionHintLayoutBox(control),
+  );
 }
 
 function renderThemeSetting() {

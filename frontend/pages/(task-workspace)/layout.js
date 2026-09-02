@@ -22,6 +22,7 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
+  separatorActionHintTarget,
 } from "./action-hints.js";
 import { KeyboardNavigationController } from "./keyboard-navigation.js";
 import {
@@ -539,6 +540,9 @@ class CaffoldTaskWorkspace extends HTMLElement {
               : null,
           )
         : null;
+    const resizerScope = workspaceResizerActionHintScope(this, {
+      clipRoots: [this, this.masterDetail].filter(Boolean),
+    });
     return mergeActionHintScopes(
       ownScope,
       hasActionHintLayoutBox(this.navigation)
@@ -547,6 +551,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
             clipRoots: navigationClipRoots,
           })
         : null,
+      resizerScope,
       modeScope,
     );
   }
@@ -810,6 +815,39 @@ class CaffoldTaskWorkspace extends HTMLElement {
       `${Math.round(this.navigationPaneWidth)}`,
     );
   }
+}
+
+function workspaceResizerActionHintScope(owner, { clipRoots }) {
+  const control = owner.masterResizer;
+  if (!workspaceResizerAvailable(owner, control)) {
+    return null;
+  }
+  return {
+    blocked: false,
+    targets: [separatorActionHintTarget({
+      id: "workspace:navigation-pane:separator",
+      actionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
+      label: control.getAttribute("aria-label") || "Resize navigation pane",
+      control,
+      clipRoots,
+      isActionable: () =>
+        owner.isConnected &&
+        !owner.hidden &&
+        owner.masterResizer === control &&
+        workspaceResizerAvailable(owner, control),
+    })],
+    mutationRoots: [control],
+    scrollRoots: [],
+  };
+}
+
+function workspaceResizerAvailable(owner, control) {
+  return Boolean(
+    control &&
+      ["tasks", "settings"].includes(owner.mode) &&
+      window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches &&
+      hasActionHintLayoutBox(control),
+  );
 }
 
 customElements.define("caffold-task-workspace", CaffoldTaskWorkspace);

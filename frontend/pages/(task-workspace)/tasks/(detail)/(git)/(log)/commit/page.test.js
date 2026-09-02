@@ -22,6 +22,7 @@ test("composes only active Commit tree/viewer leaves", () => {
   const viewerTarget = { id: "back" };
   const treeSurface = { id: "tree" };
   const viewerSurface = { id: "viewer" };
+  let resizerOptions = null;
   let treeOptions = null;
   let viewerOptions = null;
   const commitTree = {
@@ -40,17 +41,30 @@ test("composes only active Commit tree/viewer leaves", () => {
     },
     scrollSurfaceScope: () => ({ surfaces: [viewerSurface] }),
   };
+  const panelResizer = {
+    getClientRects: () => singlePane ? [] : [{}],
+    actionHintScope(options) {
+      resizerOptions = options;
+      return { targets: [{ id: "separator" }] };
+    },
+  };
   const owner = {
     hidden: false,
     detailView: "viewer",
     commitTree,
     fileViewer,
+    panelResizer,
     ensureRendered() {},
     currentCommitSha: () => "abcdef123456",
   };
-  assert.deepEqual(page.actionHintScope.call(owner).targets, [treeTarget, viewerTarget]);
+  assert.deepEqual(page.actionHintScope.call(owner).targets, [
+    treeTarget,
+    { id: "separator" },
+    viewerTarget,
+  ]);
   assert.equal(treeOptions.disclosureActionId, "disclosure.toggle");
   assert.equal(viewerOptions.refreshActionId, "button.activate");
+  assert.equal(resizerOptions.actionId, "control.separator.focus");
   assert.deepEqual(page.scrollSurfaceScope.call(owner).surfaces, [
     treeSurface,
     viewerSurface,

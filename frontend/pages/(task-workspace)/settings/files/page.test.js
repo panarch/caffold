@@ -24,7 +24,7 @@ test("provides only the exact overflowing file settings scrollport", () => {
       selector === ":scope > .settings-files-scroll" ? scrollport : null,
   };
 
-  assert.equal(typeof files.actionHintScope, "undefined");
+  assert.deepEqual(files.actionHintScope.call(owner).targets, []);
   const scope = files.scrollSurfaceScope.call(owner);
   assert.equal(scope.surfaces[0].scrollport, scrollport);
   assert.equal(scope.surfaces[0].isEligible(), true);
@@ -33,3 +33,57 @@ test("provides only the exact overflowing file settings scrollport", () => {
   owner.hidden = true;
   assert.deepEqual(files.scrollSurfaceScope.call(owner).surfaces, []);
 });
+
+test("provides only the alternative file ordering through its native radio", () => {
+  const scrollport = {};
+  const foldersFirst = radio({ checked: true });
+  const name = radio();
+  const controls = new Map([
+    [":scope > .settings-files-scroll", scrollport],
+    [
+      'input[type="radio"][data-file-sort-mode][value="folders-first"]',
+      foldersFirst,
+    ],
+    ['input[type="radio"][data-file-sort-mode][value="name"]', name],
+  ]);
+  const owner = {
+    hidden: false,
+    isConnected: true,
+    querySelector: (selector) => controls.get(selector) ?? null,
+  };
+
+  const scope = files.actionHintScope.call(owner);
+  assert.equal(scope.targets.length, 1);
+  assert.equal(scope.targets[0].id, "settings:files:sort:name");
+  assert.equal(scope.targets[0].controlKind, "radio");
+  assert.equal(scope.targets[0].label, "Use All entries by name ordering");
+  scope.targets[0].activate();
+  assert.equal(name.focused, 1);
+  assert.equal(name.clicks, 1);
+
+  name.checked = true;
+  assert.equal(scope.targets[0].isActionable(), false);
+  controls.set(
+    'input[type="radio"][data-file-sort-mode][value="name"]',
+    radio(),
+  );
+  assert.equal(scope.targets[0].isActionable(), false);
+});
+
+function radio({ checked = false } = {}) {
+  return {
+    checked,
+    disabled: false,
+    hidden: false,
+    focused: 0,
+    clicks: 0,
+    closest: () => null,
+    getClientRects: () => [{}],
+    focus() {
+      this.focused += 1;
+    },
+    click() {
+      this.clicks += 1;
+    },
+  };
+}

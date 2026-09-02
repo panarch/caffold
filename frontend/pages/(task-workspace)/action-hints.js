@@ -4,7 +4,12 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
+  radioActionHintTarget,
+  rangeActionHintTarget,
+  reorderHandleActionHintTarget,
+  separatorActionHintTarget,
   selectActionHintTarget,
+  switchActionHintTarget,
   textboxActionHintTarget,
 } from "../../action-hint-scope.js";
 import {
@@ -44,9 +49,14 @@ export {
   mergeActionHintScopes,
   normalizeActionHintKey,
   normalizeRect,
+  radioActionHintTarget,
+  rangeActionHintTarget,
   rectsEqual,
+  reorderHandleActionHintTarget,
+  separatorActionHintTarget,
   sortByVisualOrder,
   selectActionHintTarget,
+  switchActionHintTarget,
   taskHintSuffix,
   textboxActionHintTarget,
 };

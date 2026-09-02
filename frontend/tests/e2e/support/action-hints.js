@@ -29,7 +29,9 @@ export function actionHintBadgePresentation(badge) {
 }
 
 export async function enterActionHints(page) {
-  await page.locator(".task-workspace-surface").focus();
+  await page.locator(".task-workspace-surface").evaluate((element) => {
+    element.focus({ preventScroll: true });
+  });
   await page.keyboard.press("f");
   const dialog = actionHintDialog(page);
   await expect(dialog).toBeVisible();

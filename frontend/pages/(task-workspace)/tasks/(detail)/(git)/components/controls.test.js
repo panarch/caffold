@@ -34,3 +34,73 @@ test("provides only the retained Refresh Git button", () => {
   button = { disabled: false };
   assert.equal(target.isActionable(), false);
 });
+
+test("provides visible Compare ref selects with Refresh in visual order", () => {
+  const base = select("main");
+  const head = select("feature/keyboard-hints");
+  const refresh = {
+    disabled: false,
+    getAttribute: () => "Refresh Compare",
+    focus() {},
+    click() {},
+  };
+  const owner = {
+    hidden: false,
+    isConnected: true,
+    compareRefs: { hidden: false },
+    snapshot: { mode: "compare", refs: [{ name: "main" }] },
+    baseRefSelect: base,
+    headRefSelect: head,
+    refreshButton: refresh,
+    ensureRendered() {},
+  };
+
+  const scope = controls.actionHintScope.call(owner, { scopeId: "git:/repo" });
+  assert.deepEqual(scope.targets.map(({ id }) => id), [
+    "git:/repo:compare-ref:base",
+    "git:/repo:compare-ref:head",
+    "git:/repo:refresh",
+  ]);
+  assert.deepEqual(scope.targets.map(({ controlKind }) => controlKind), [
+    "select",
+    "select",
+    "button",
+  ]);
+  assert.equal(scope.targets[0].label, "Choose Base ref (current main)");
+  assert.equal(
+    scope.targets[1].label,
+    "Choose Head ref (current feature/keyboard-hints)",
+  );
+  scope.targets[0].activate();
+  assert.equal(base.focused, 1);
+  assert.equal(base.pickerCalls, 1);
+
+  owner.snapshot = { mode: "log", refs: [{ name: "main" }] };
+  assert.equal(scope.targets[0].isActionable(), false);
+  assert.deepEqual(
+    controls.actionHintScope.call(owner, { scopeId: "git:/repo" }).targets.map(
+      ({ id }) => id,
+    ),
+    ["git:/repo:refresh"],
+  );
+  owner.snapshot = { mode: "compare", refs: [{ name: "main" }] };
+  owner.baseRefSelect = select("develop");
+  assert.equal(scope.targets[0].isActionable(), false);
+});
+
+function select(value) {
+  return {
+    value,
+    disabled: false,
+    hidden: false,
+    focused: 0,
+    pickerCalls: 0,
+    getClientRects: () => [{}],
+    focus() {
+      this.focused += 1;
+    },
+    showPicker() {
+      this.pickerCalls += 1;
+    },
+  };
+}

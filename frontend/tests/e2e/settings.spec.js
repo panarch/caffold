@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   actionHintDialog,
   activateActionHint,
+  enterActionHints,
 } from "./support/action-hints.js";
 import {
   installBrowserDefaults,
@@ -1254,8 +1255,21 @@ test("persists file ordering and keeps it across appearance reset", { tag: "@all
       actionHintsEnabled: true,
     });
 
-  await byName.check();
+  await activateActionHint(page, "Use All entries by name ordering");
   await expect(byName).toBeChecked();
+  await expect(byName).toBeFocused();
+  const hint = await enterActionHints(page);
+  await expect(
+    hint.getByRole("button", {
+      name: / — Use Folders first ordering$/,
+    }),
+  ).toBeVisible();
+  await expect(
+    hint.getByRole("button", {
+      name: / — Use All entries by name ordering$/,
+    }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await expect.poll(() => page.evaluate(
     (key) => JSON.parse(localStorage.getItem(key)).fileSortMode,
     SETTINGS_KEY,
@@ -1328,6 +1342,109 @@ test("selects, persists, and resolves System, Light, and Dark themes", { tag: "@
   await expect(resetTheme).toBeHidden();
   await page.emulateMedia({ colorScheme: "dark" });
   await expectThemeState(page, { mode: "system", resolvedTheme: "dark" });
+});
+
+test("hands Action Hints off to native Appearance controls", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  await page.goto("/settings/appearance");
+
+  const appearance = page.locator("caffold-settings-appearance-page");
+  const light = appearance.getByRole("radio", { name: "Light" });
+  const typeface = appearance.locator("select[data-typeface-setting]");
+  const conversationRange = range(appearance, "conversationTextPx");
+  await expect(appearance.getByRole("radio", { name: "System" })).toBeChecked();
+
+  await activateActionHint(page, "Use Light theme");
+  await expect(light).toBeChecked();
+  await expect(light).toBeFocused();
+
+  const hint = await enterActionHints(page);
+  await expect(hint.getByLabel(/ — Use System theme$/)).toBeVisible();
+  await expect(hint.getByLabel(/ — Use Light theme$/)).toHaveCount(0);
+  await expect(
+    hint.getByLabel(/ — Choose font \(current D2 Coding\)$/),
+  ).toBeVisible();
+  await expect(
+    hint.getByLabel(/ — Adjust Interface size \(100%\)$/),
+  ).toBeVisible();
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "settings-appearance-native-control-hints",
+  );
+  await page.keyboard.press("Escape");
+
+  await activateActionHint(page, "Choose font (current D2 Coding)");
+  await expect(typeface).toBeFocused();
+  await typeface.selectOption("system-mono");
+  await expect(typeface).toHaveValue("system-mono");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-typeface-preset",
+    "system-mono",
+  );
+  if (await typeface.evaluate((control) => control.matches(":open"))) {
+    await page.keyboard.press("Escape");
+  }
+  await expect.poll(() =>
+    typeface.evaluate((control) => control.matches(":open"))
+  ).toBe(false);
+
+  await conversationRange.evaluate((control) => {
+    control.dataset.actionHintIdentity = "retained";
+    control.scrollIntoView({ block: "center", inline: "nearest" });
+  });
+  await activateActionHint(page, "Adjust Conversation text (14px)");
+  await expect(conversationRange).toBeFocused();
+  await conversationRange.press("ArrowRight");
+  await expect(conversationRange).toHaveValue("15");
+  await expect(conversationRange).toHaveAttribute(
+    "data-action-hint-identity",
+    "retained",
+  );
+  await expect(conversationRange).toBeFocused();
+  await expect(
+    appearance.locator('output[data-setting-value="conversationTextPx"]'),
+  ).toHaveText("15px");
+});
+
+test("turns keyboard navigation off through its declared switch", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/keyboard");
+
+  const setting = page.getByRole("switch", { name: "Keyboard navigation" });
+  const surface = page.locator(".task-workspace-surface");
+  await expect(setting).toBeChecked();
+  await activateActionHint(page, "Turn keyboard navigation off");
+  await expect(actionHintDialog(page)).toBeHidden();
+  await expect(setting).not.toBeChecked();
+  await expect(setting).toBeFocused();
+
+  const consumed = await surface.evaluate((element) => {
+    const dispatch = (key, code) => {
+      const event = new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        code,
+        key,
+      });
+      element.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    return {
+      hints: dispatch("f", "KeyF"),
+      scroll: dispatch("s", "KeyS"),
+    };
+  });
+  expect(consumed).toEqual({ hints: false, scroll: false });
+  await expect(actionHintDialog(page)).toBeHidden();
+
+  await setting.check();
+  await expect(setting).toBeChecked();
+  const hint = await enterActionHints(page);
+  await expect(hint.getByLabel(/ — Turn keyboard navigation off$/)).toBeVisible();
+  await page.keyboard.press("Escape");
 });
 
 test("updates independent ranges live without replacing their DOM", { tag: "@all-viewports" }, async ({

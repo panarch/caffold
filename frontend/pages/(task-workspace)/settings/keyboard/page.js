@@ -3,6 +3,12 @@ import {
   setActionHintsEnabled,
 } from "../../../../settings.js";
 import {
+  ACTION_HINT_ACTION,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  switchActionHintTarget,
+} from "../../action-hints.js";
+import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   hasVerticalScrollOverflow,
@@ -39,6 +45,44 @@ class CaffoldSettingsKeyboardPage extends HTMLElement {
 
   prepareRoute() {
     this.syncControl(getSettings());
+  }
+
+  actionHintScope({
+    scopeId = "settings:keyboard",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const scrollport = this.querySelector(":scope > .settings-keyboard-scroll");
+    const selector = "input[data-action-hints-enabled]";
+    const control = this.querySelector(selector);
+    if (
+      this.hidden ||
+      !scrollport ||
+      !keyboardSwitchAvailable(control) ||
+      !control.checked
+    ) {
+      return emptyActionHintScope();
+    }
+    return {
+      blocked: false,
+      targets: [switchActionHintTarget({
+        id: `${scopeId}:action-hints:disable`,
+        actionId: ACTION_HINT_ACTION.CONTROL_SWITCH_TOGGLE,
+        label: "Turn keyboard navigation off",
+        control,
+        anchor: control.closest?.("label") ?? control,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.querySelector(selector) === control &&
+          keyboardSwitchAvailable(control) &&
+          control.checked,
+      })],
+      mutationRoots: [this],
+      scrollRoots: [scrollport],
+    };
   }
 
   scrollSurfaceScope({
@@ -117,6 +161,15 @@ class CaffoldSettingsKeyboardPage extends HTMLElement {
       input.checked = settings.actionHintsEnabled !== false;
     }
   }
+}
+
+function keyboardSwitchAvailable(control) {
+  return Boolean(
+    control &&
+      !control.disabled &&
+      !control.hidden &&
+      hasActionHintLayoutBox(control),
+  );
 }
 
 if (!customElements.get("caffold-settings-keyboard-page")) {

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { activateActionHint } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { openCompletedTaskForReview } from "../support/task-review-test.js";
 import { captureReviewScreenshot } from "../support/task-fixtures.js";
@@ -95,6 +96,17 @@ test("uses two panes off phone and a semantic navigator/viewer split on phone", 
   expect(before.actionEdgeDelta).toBeLessThanOrEqual(1);
   expect(before.taskTitleFontSize).toBeLessThan(before.rootFontSize);
   expect(before.taskTitleFontSize).toBeGreaterThanOrEqual(before.rootFontSize * 0.8);
+  const reviewSeparator = taskReview.getByRole("separator", {
+    name: "Resize review navigator",
+  });
+  if (testInfo.project.name === "phone") {
+    await expect(reviewSeparator).toBeHidden();
+    await expect(taskReview.evaluate((review) =>
+      review.actionHintScope().targets.map((target) => target.label)
+    )).resolves.not.toContain("Resize review navigator");
+  } else {
+    await expect(reviewSeparator).toBeVisible();
+  }
 
   const summaryClearance = await page.evaluate(() => {
     const closeButton = document.querySelector(".task-workspace-back");
@@ -306,6 +318,16 @@ test("clamps the navigator so the shared viewer keeps its minimum width", { tag:
 }, testInfo) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
   await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const separator = taskReview.getByRole("separator", {
+    name: "Resize review navigator",
+  });
+  const before = Number(await separator.getAttribute("aria-valuenow"));
+  await activateActionHint(page, "Resize review navigator");
+  await expect(separator).toBeFocused();
+  await separator.press("ArrowRight");
+  await expect.poll(async () =>
+    Number(await separator.getAttribute("aria-valuenow"))
+  ).toBeGreaterThan(before);
   await taskReview.evaluate((review) => {
     review.resizer().setValue(10_000);
     review.panelWidth = review.resizer().currentValue;

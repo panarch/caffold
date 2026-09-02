@@ -183,7 +183,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     if (reorderTarget) {
       targets.push(reorderTarget);
     }
-    if (newTask) {
+    if (this.reorderMode === "none" && newTask) {
       targets.push({
         id: "task-create:global",
         actionId: "task.create",
@@ -207,7 +207,7 @@ class CaffoldTaskNavigator extends HTMLElement {
       }));
     }
     const ownScope = {
-      blocked: this.reorderMode !== "none",
+      blocked: false,
       targets,
       mutationRoots: [primaryHeader, this.activeTaskList].filter(Boolean),
       scrollRoots: [scrollRoot].filter(Boolean),
@@ -215,7 +215,10 @@ class CaffoldTaskNavigator extends HTMLElement {
     const archived = this.archivedTaskList;
     return mergeActionHintScopes(
       ownScope,
-      scrollRoot && archived && hasActionHintLayoutBox(archived)
+      this.reorderMode === "none" &&
+          scrollRoot &&
+          archived &&
+          hasActionHintLayoutBox(archived)
         ? archived.actionHintScope({
             scopeId: "task-list:archived",
             clipRoots: [this, scrollRoot],
@@ -230,22 +233,29 @@ class CaffoldTaskNavigator extends HTMLElement {
     if (!control || !popover) {
       return null;
     }
+    const mode = this.reorderMode;
+    const active = mode !== "none";
     return buttonActionHintTarget({
-      id: "task-list:reorder:open",
-      actionId: ACTION_HINT_ACTION.REORDER_OPEN,
-      label: control.getAttribute("aria-label") || "Choose what to reorder",
+      id: active
+        ? `task-list:reorder:finish:${mode}`
+        : "task-list:reorder:open",
+      actionId: active
+        ? ACTION_HINT_ACTION.REORDER_FINISH
+        : ACTION_HINT_ACTION.REORDER_OPEN,
+      label: control.getAttribute("aria-label") ||
+        (active ? `Finish reordering ${mode}` : "Choose what to reorder"),
       control,
       clipRoots: [this],
       isActionable: () =>
         this.isConnected &&
         this.active &&
         !this.hidden &&
-        this.reorderMode === "none" &&
+        this.reorderMode === mode &&
         this.reorderButton === control &&
         this.reorderPopover() === popover &&
         control.getAttribute("popovertarget") === popover.id &&
         !control.disabled &&
-        !popover.matches(":popover-open"),
+        (active || !popover.matches(":popover-open")),
     });
   }
 

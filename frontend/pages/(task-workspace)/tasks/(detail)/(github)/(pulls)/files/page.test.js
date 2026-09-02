@@ -24,6 +24,7 @@ test("composes active PR tree/viewer actions and Scroll leaves", () => {
   const viewerTarget = { id: "back" };
   const treeSurface = { id: "tree-scroll" };
   const viewerSurface = { id: "diff-scroll" };
+  let resizerOptions = null;
   let treeActionOptions = null;
   let viewerActionOptions = null;
   const tree = {
@@ -42,18 +43,31 @@ test("composes active PR tree/viewer actions and Scroll leaves", () => {
     },
     scrollSurfaceScope: () => ({ surfaces: [viewerSurface] }),
   };
+  const panelResizer = {
+    getClientRects: () => singlePane ? [] : [{}],
+    actionHintScope(options) {
+      resizerOptions = options;
+      return { targets: [{ id: "separator" }] };
+    },
+  };
   const owner = {
     hidden: false,
     detailView: "viewer",
     tree,
     fileViewer,
+    panelResizer,
     ensureRendered() {},
     currentPullNumber: () => 7,
   };
 
-  assert.deepEqual(page.actionHintScope.call(owner).targets, [treeTarget, viewerTarget]);
+  assert.deepEqual(page.actionHintScope.call(owner).targets, [
+    treeTarget,
+    { id: "separator" },
+    viewerTarget,
+  ]);
   assert.equal(treeActionOptions.disclosureActionId, "disclosure.toggle");
   assert.equal(viewerActionOptions.refreshActionId, "button.activate");
+  assert.equal(resizerOptions.actionId, "control.separator.focus");
   assert.deepEqual(
     page.scrollSurfaceScope.call(owner).surfaces,
     [treeSurface, viewerSurface],

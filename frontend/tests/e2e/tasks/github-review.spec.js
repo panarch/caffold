@@ -878,7 +878,16 @@ test("scrolls GitHub lists, Pull detail, and exact Pull Files surfaces from the 
   await expect.poll(() => treeScroll.evaluate(
     (element) => element.scrollHeight > element.clientHeight + 1,
   )).toBe(true);
+  const pullFilesSeparator = page.locator(
+    "caffold-github-pull-files-page",
+  ).getByRole("separator", { name: "Resize review side panel" });
   if (testInfo.project.name === "phone") {
+    await expect(pullFilesSeparator).toBeHidden();
+    const pullFileHints = await enterActionHints(page);
+    await expect(
+      pullFileHints.getByLabel(/ — Resize review side panel$/),
+    ).toHaveCount(0);
+    await page.keyboard.press("Escape");
     await workspace.focus();
     await page.keyboard.press("s");
     await expect(selector).toBeHidden();
@@ -887,6 +896,16 @@ test("scrolls GitHub lists, Pull detail, and exact Pull Files surfaces from the 
     await expect.poll(() => treeScroll.evaluate((element) => element.scrollTop))
       .toBeGreaterThan(0);
     await page.keyboard.press("Escape");
+  } else {
+    const before = Number(
+      await pullFilesSeparator.getAttribute("aria-valuenow"),
+    );
+    await activateActionHint(page, "Resize review side panel");
+    await expect(pullFilesSeparator).toBeFocused();
+    await pullFilesSeparator.press("ArrowRight");
+    await expect.poll(async () =>
+      Number(await pullFilesSeparator.getAttribute("aria-valuenow"))
+    ).toBeGreaterThan(before);
   }
 
   const reviewFile = page.locator(

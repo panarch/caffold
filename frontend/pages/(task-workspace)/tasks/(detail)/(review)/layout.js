@@ -366,11 +366,26 @@ class CaffoldTaskReview extends HTMLElement {
           clipRoots: viewerClipRoots,
         })
       : null;
+    const resizer = this.resizer?.() ?? null;
+    const contextKey = this.contextKey;
+    const resizerScope = resizer?.actionHintScope?.({
+      scopeId: `${scopeId}:navigator`,
+      actionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
+      clipRoots: [this],
+      isCurrent: () =>
+        this.isConnected &&
+        this.active &&
+        !this.hidden &&
+        taskThreadId(this.task) === subjectId &&
+        this.contextKey === contextKey &&
+        this.resizer?.() === resizer,
+    });
     return mergeActionHintScopes(
       navigatorAxis,
       viewerAxis,
       emptyScope,
       navigatorScope,
+      resizerScope,
       viewerScope,
     );
   }

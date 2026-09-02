@@ -70,3 +70,38 @@ test("composes only active Compare tree/viewer leaves", () => {
   assert.deepEqual(browser.actionHintScope.call(owner, actionOptions).targets, [viewerTarget]);
   assert.deepEqual(browser.scrollSurfaceScope.call(owner, actionOptions).surfaces, [viewerSurface]);
 });
+
+test("composes its visible panel separator without owning resize keys", () => {
+  let canResize = true;
+  let focused = 0;
+  const panelResizer = {
+    getAttribute: () => "Resize review side panel",
+    getClientRects: () => canResize ? [{}] : [],
+    focus() {
+      focused += 1;
+    },
+  };
+  const owner = {
+    hidden: false,
+    isConnected: true,
+    detailView: "list",
+    panelResizer,
+    compareTree: { actionHintScope: () => ({ targets: [] }) },
+    viewer: { actionHintScope: () => ({ targets: [] }) },
+    canResizePanel: () => canResize,
+    ensureRendered() {},
+  };
+  const options = {
+    scopeId: "git:compare",
+    separatorActionId: "control.separator.focus",
+  };
+
+  const scope = browser.actionHintScope.call(owner, options);
+  assert.equal(scope.targets.length, 1);
+  assert.equal(scope.targets[0].id, "git:compare:separator");
+  scope.targets[0].activate();
+  assert.equal(focused, 1);
+  canResize = false;
+  assert.equal(scope.targets[0].isActionable(), false);
+  assert.deepEqual(browser.actionHintScope.call(owner, options).targets, []);
+});

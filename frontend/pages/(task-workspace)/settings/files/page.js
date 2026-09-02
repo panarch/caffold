@@ -4,6 +4,12 @@ import {
   setFileSortMode,
 } from "../../../../settings.js";
 import {
+  ACTION_HINT_ACTION,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  radioActionHintTarget,
+} from "../../action-hints.js";
+import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   hasVerticalScrollOverflow,
@@ -53,6 +59,47 @@ class CaffoldSettingsFilesPage extends HTMLElement {
 
   prepareRoute() {
     this.syncControls(getSettings());
+  }
+
+  actionHintScope({
+    scopeId = "settings:files",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const scrollport = this.querySelector(":scope > .settings-files-scroll");
+    if (this.hidden || !scrollport) {
+      return emptyActionHintScope();
+    }
+    const targetClipRoots = [this, scrollport, ...clipRoots].filter(Boolean);
+    const targets = SORT_OPTIONS.flatMap((option) => {
+      const selector =
+        `input[type="radio"][data-file-sort-mode][value="${option.value}"]`;
+      const control = this.querySelector(selector);
+      if (!fileSortControlAvailable(control) || control.checked) {
+        return [];
+      }
+      return [radioActionHintTarget({
+        id: `${scopeId}:sort:${option.value}`,
+        actionId: ACTION_HINT_ACTION.CONTROL_RADIO_SELECT,
+        label: `Use ${option.label} ordering`,
+        control,
+        anchor: control.closest?.("label") ?? control,
+        clipRoots: targetClipRoots,
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.querySelector(selector) === control &&
+          fileSortControlAvailable(control) &&
+          !control.checked,
+      })];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [scrollport],
+    };
   }
 
   scrollSurfaceScope({
@@ -143,6 +190,15 @@ class CaffoldSettingsFilesPage extends HTMLElement {
       input.checked = input.value === settings.fileSortMode;
     });
   }
+}
+
+function fileSortControlAvailable(control) {
+  return Boolean(
+    control &&
+      !control.disabled &&
+      !control.hidden &&
+      hasActionHintLayoutBox(control),
+  );
 }
 
 customElements.define("caffold-settings-files-page", CaffoldSettingsFilesPage);

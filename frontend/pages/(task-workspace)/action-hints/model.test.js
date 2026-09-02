@@ -10,6 +10,7 @@ import {
   clampBadgePosition,
   matchesActionHintPolicy,
   normalizeActionHintKey,
+  preferredBadgePosition,
   rectsEqual,
   sameActionHintSnapshot,
   sameActionHintTopology,
@@ -105,8 +106,18 @@ test("accepts only the central semantic action and control-kind policy", () => {
     const controlKind = actionId === ACTION_HINT_ACTION.PROMPT_FOCUS ||
         actionId === ACTION_HINT_ACTION.DIALOG_TEXTBOX_FOCUS
       ? "textbox"
-      : actionId === ACTION_HINT_ACTION.DIALOG_SELECT_OPEN
+      : actionId === ACTION_HINT_ACTION.CONTROL_SELECT_OPEN
         ? "select"
+        : actionId === ACTION_HINT_ACTION.CONTROL_RADIO_SELECT
+          ? "radio"
+          : actionId === ACTION_HINT_ACTION.CONTROL_SWITCH_TOGGLE
+            ? "switch"
+            : actionId === ACTION_HINT_ACTION.CONTROL_RANGE_FOCUS
+              ? "range"
+              : actionId === ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS
+                ? "separator"
+                : actionId === ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS
+                  ? "reorder-handle"
         : actionId === ACTION_HINT_ACTION.DISCLOSURE_TOGGLE
           ? "disclosure"
         : "button";
@@ -157,17 +168,57 @@ test("allocates owner-declared disclosures through the automatic pool", () => {
   );
 });
 
-test("allocates dialog buttons, textboxes, and selects through one automatic pool", () => {
+test("allocates native controls through one automatic pool", () => {
   const allocated = allocateActionHintCodes([
     target("cancel", ACTION_HINT_ACTION.DIALOG_BUTTON),
     target("thread", ACTION_HINT_ACTION.DIALOG_TEXTBOX_FOCUS, "textbox"),
-    target("base", ACTION_HINT_ACTION.DIALOG_SELECT_OPEN, "select"),
+    target("base", ACTION_HINT_ACTION.CONTROL_SELECT_OPEN, "select"),
+    target("theme", ACTION_HINT_ACTION.CONTROL_RADIO_SELECT, "radio"),
+    target("keyboard", ACTION_HINT_ACTION.CONTROL_SWITCH_TOGGLE, "switch"),
+    target("scale", ACTION_HINT_ACTION.CONTROL_RANGE_FOCUS, "range"),
+    target(
+      "split",
+      ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
+      "separator",
+    ),
+    target(
+      "task-handle",
+      ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS,
+      "reorder-handle",
+    ),
+    target("finish", ACTION_HINT_ACTION.REORDER_FINISH),
   ]);
 
   assert.deepEqual(
     allocated.map(({ id, code }) => [id, code]),
-    [["cancel", "A"], ["thread", "S"], ["base", "D"]],
+    [
+      ["cancel", "A"],
+      ["thread", "S"],
+      ["base", "D"],
+      ["theme", "F"],
+      ["keyboard", "G"],
+      ["scale", "H"],
+      ["split", "J"],
+      ["task-handle", "K"],
+      ["finish", "L"],
+    ],
   );
+
+  for (
+    const [actionId, wrongKind] of [
+      [ACTION_HINT_ACTION.CONTROL_RADIO_SELECT, "button"],
+      [ACTION_HINT_ACTION.CONTROL_SWITCH_TOGGLE, "button"],
+      [ACTION_HINT_ACTION.CONTROL_SELECT_OPEN, "button"],
+      [ACTION_HINT_ACTION.CONTROL_RANGE_FOCUS, "button"],
+      [ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS, "button"],
+      [ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS, "button"],
+    ]
+  ) {
+    assert.throws(
+      () => allocateActionHintCodes([target("wrong", actionId, wrongKind)]),
+      /Unsupported Action Hint action/,
+    );
+  }
 });
 
 test("allocates Current Plan document openers through the automatic pool", () => {
@@ -325,6 +376,33 @@ test("clamps badges to the visual viewport and compares captured geometry", () =
       { left: 2, top: 2, right: 10, bottom: 20 },
     ),
     false,
+  );
+});
+
+test("keeps native select values visible by placing their badge outside", () => {
+  const badgeSize = { width: 24, height: 24 };
+  const viewportRect = { left: 0, top: 0, right: 300, bottom: 200 };
+
+  assert.deepEqual(
+    preferredBadgePosition({
+      controlKind: "select",
+      visibleRect: { left: 50, top: 20, right: 150, bottom: 50 },
+    }, badgeSize, viewportRect),
+    { left: 50, top: 54 },
+  );
+  assert.deepEqual(
+    preferredBadgePosition({
+      controlKind: "select",
+      visibleRect: { left: 10, top: 170, right: 110, bottom: 195 },
+    }, badgeSize, viewportRect),
+    { left: 10, top: 142 },
+  );
+  assert.deepEqual(
+    preferredBadgePosition({
+      controlKind: "range",
+      visibleRect: { left: 10, top: 20, right: 110, bottom: 50 },
+    }, badgeSize, viewportRect),
+    { left: 10, top: 20 },
   );
 });
 

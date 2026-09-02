@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { activateActionHint } from "./support/action-hints.js";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 import {
   activeTaskProjection,
@@ -281,6 +282,9 @@ test("shares navigation pane resizing across Tasks and Settings", { tag: "@all-v
 
   if (testInfo.project.name === "phone") {
     await expect(separator).toBeHidden();
+    await expect(taskWorkspace.evaluate((element) =>
+      element.actionHintScope().targets.map((target) => target.label)
+    )).resolves.not.toContain("Resize navigation pane");
     await navigation.locator('[data-workspace-mode="settings"]').click();
     await expect(page).toHaveURL("/settings");
     await expect(separator).toBeHidden();
@@ -303,7 +307,8 @@ test("shares navigation pane resizing across Tasks and Settings", { tag: "@all-v
     Math.min(520, page.viewportSize().width - 520),
   );
 
-  await separator.focus();
+  await activateActionHint(page, "Resize navigation pane");
+  await expect(separator).toBeFocused();
   await separator.press("ArrowRight");
   await expect(separator).toHaveAttribute("aria-valuenow", "396");
   await separator.press("ArrowLeft");

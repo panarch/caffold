@@ -1,3 +1,9 @@
+import {
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  separatorActionHintTarget,
+} from "../action-hint-scope.js";
+
 export const REVIEW_PANEL_DEFAULT_WIDTH = 320;
 const PANEL_MIN_WIDTH = 180;
 const VIEWER_MIN_WIDTH = 320;
@@ -50,6 +56,43 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
     this.removeEventListener("lostpointercapture", this.boundLostPointerCapture);
     this.removeEventListener("keydown", this.boundKeyDown);
     this.removeEventListener("focus", this.boundFocus);
+  }
+
+  actionHintScope({
+    scopeId = "",
+    actionId = "",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const parent = this.parentElement;
+    if (
+      !scopeId ||
+      !actionId ||
+      this.hidden ||
+      !this.canResize() ||
+      !hasActionHintLayoutBox(this)
+    ) {
+      return emptyActionHintScope();
+    }
+    return {
+      blocked: false,
+      targets: [separatorActionHintTarget({
+        id: `${scopeId}:separator`,
+        actionId,
+        label: this.getAttribute("aria-label") || "Resize side panel",
+        control: this,
+        clipRoots: [this, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.parentElement === parent &&
+          isCurrent() &&
+          this.canResize() &&
+          hasActionHintLayoutBox(this),
+      })],
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
   }
 
   setValue(value) {

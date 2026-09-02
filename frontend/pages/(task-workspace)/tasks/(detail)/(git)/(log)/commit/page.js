@@ -7,6 +7,7 @@ import "./components/changes-tree.js";
 import {
   ACTION_HINT_ACTION,
   emptyActionHintScope,
+  hasActionHintLayoutBox,
   mergeActionHintScopes,
 } from "../../../../../action-hints.js";
 import {
@@ -394,6 +395,19 @@ class CaffoldGitLogCommitPage extends HTMLElement {
       !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches;
     const viewerActive = this.detailView === "viewer";
     const prefix = `${scopeId}:${encodeURIComponent(sha)}`;
+    const resizer = this.panelResizer;
+    const resizerScope = hasActionHintLayoutBox(resizer)
+      ? resizer.actionHintScope?.({
+          scopeId: `${prefix}:files`,
+          actionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
+          clipRoots: [this, ...clipRoots],
+          isCurrent: () =>
+            this.isConnected &&
+            !this.hidden &&
+            this.currentCommitSha() === sha &&
+            this.panelResizer === resizer,
+        })
+      : null;
     return mergeActionHintScopes(
       listActive
         ? this.commitTree.actionHintScope({
@@ -403,6 +417,7 @@ class CaffoldGitLogCommitPage extends HTMLElement {
             clipRoots: [this, ...clipRoots],
           })
         : null,
+      resizerScope,
       viewerActive
         ? this.fileViewer.actionHintScope({
             scopeId: `${prefix}:viewer`,

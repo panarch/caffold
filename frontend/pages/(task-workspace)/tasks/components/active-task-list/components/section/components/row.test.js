@@ -70,3 +70,59 @@ test("provides a frozen Task action through the owned row button", () => {
   currentControl = { ...currentControl };
   assert.equal(recovery.isActionable(), false);
 });
+
+test("provides the exact Task reorder handle as a focus-only target", () => {
+  let focused = 0;
+  let clicks = 0;
+  let control = {
+    disabled: false,
+    getAttribute: () => "Reorder Alpha. Use Up and Down arrow keys to move.",
+    focus() {
+      focused += 1;
+    },
+    click() {
+      clicks += 1;
+    },
+  };
+  const owner = {
+    isConnected: true,
+    snapshot: {
+      task: { threadId: "thread-a", title: "Alpha" },
+      reorderMode: true,
+      reorderable: true,
+      pending: false,
+    },
+    ensureState() {},
+    querySelector: () => control,
+  };
+
+  const target = row.reorderActionHintTarget.call(owner, {
+    clipRoots: [{ id: "task-list" }],
+  });
+  assert.deepEqual(
+    {
+      id: target.id,
+      actionId: target.actionId,
+      controlKind: target.controlKind,
+      label: target.label,
+    },
+    {
+      id: "task:thread-a:reorder",
+      actionId: "task.reorder.handle.focus",
+      controlKind: "reorder-handle",
+      label: "Reorder Alpha. Use Up and Down arrow keys to move.",
+    },
+  );
+  target.activate();
+  assert.equal(focused, 1);
+  assert.equal(clicks, 0);
+
+  owner.snapshot.pending = true;
+  assert.equal(target.isActionable(), false);
+  assert.equal(row.reorderActionHintTarget.call(owner), null);
+  owner.snapshot.pending = false;
+  control = { ...control };
+  assert.equal(target.isActionable(), false);
+  owner.snapshot.reorderMode = false;
+  assert.equal(row.reorderActionHintTarget.call(owner), null);
+});

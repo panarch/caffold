@@ -105,7 +105,7 @@ class CaffoldGithubIssueTaskSource extends HTMLElement {
       blocked: false,
       targets: [selectActionHintTarget({
         id: `${scopeId}:base-ref`,
-        actionId: ACTION_HINT_ACTION.DIALOG_SELECT_OPEN,
+        actionId: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
         label: "Choose Base branch",
         control: select,
         clipRoots: [...clipRoots],
