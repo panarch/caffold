@@ -402,7 +402,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
     "Submitted by Enter",
   ]);
   await expect(tasksPage).toContainText("Submitted by Enter");
-  await expect(prompt).toBeFocused();
+  await expect(prompt).not.toBeFocused();
 
   canonicalEvents = [
     ...canonicalEvents,
@@ -463,7 +463,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
   ).toBeVisible();
 
   await prompt.fill("Timed out prompt");
-  await send.click();
+  await prompt.press("Enter");
   await expect.poll(() => timedOutAttempts).toBe(1);
   await expect(form).toHaveAttribute("aria-busy", "false");
   await expect(prompt).toHaveValue("");

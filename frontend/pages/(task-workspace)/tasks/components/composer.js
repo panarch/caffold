@@ -240,7 +240,8 @@ class CaffoldTaskComposer extends HTMLElement {
     if (state.activeSubmissionId === submissionId) {
       state.activeSubmissionId = "";
     }
-    if (result.status === "rejected") {
+    const rejected = result.status === "rejected";
+    if (rejected) {
       state.prompt ||= submission.prompt;
       if (!state.images.length) {
         state.images = [...submission.images];
@@ -255,7 +256,7 @@ class CaffoldTaskComposer extends HTMLElement {
     }
     this.context.requestError = `${result.error?.message ?? result.error ?? ""}`;
     this.render();
-    if (submission.restorePromptFocus) {
+    if (rejected && submission.restorePromptFocusOnRejection) {
       this.focus();
     }
     return true;
@@ -1077,15 +1078,15 @@ class CaffoldTaskComposer extends HTMLElement {
     const options = this.turnOptions()?.submissionOptions() ?? {
       fastMode: false,
     };
+    const textarea = form.querySelector("textarea[name='prompt']");
+    const restorePromptFocusOnRejection =
+      !event.submitter && document.activeElement === textarea;
     const submission = {
       id: submissionId,
       prompt,
       images: [...state.images],
       options: { ...options },
-      restorePromptFocus:
-        !event.submitter &&
-        document.activeElement ===
-          form.querySelector("textarea[name='prompt']"),
+      restorePromptFocusOnRejection,
     };
     this.activeSubmissions.set(submissionId, submission);
     state.activeSubmissionId = submissionId;
@@ -1094,6 +1095,9 @@ class CaffoldTaskComposer extends HTMLElement {
     state.imageError = "";
     this.context.requestError = "";
     this.turnOptions()?.hidePopovers();
+    if (restorePromptFocusOnRejection) {
+      textarea.blur();
+    }
     this.render();
     this.dispatchEvent(
       new CustomEvent("caffold:task-composer-submit", {
@@ -1552,7 +1556,9 @@ function submissionDetail(submission, threadId = "") {
     images: submission.images.map((image) => image.dataUrl),
     attachments: [...submission.images],
     options: { ...(submission.options ?? {}) },
-    restorePromptFocus: Boolean(submission.restorePromptFocus),
+    restorePromptFocusOnRejection: Boolean(
+      submission.restorePromptFocusOnRejection,
+    ),
   };
 }
 
@@ -1581,7 +1587,9 @@ function normalizeAdoptedSubmission(value) {
     prompt,
     images: attachments,
     options: { ...(value?.options ?? {}) },
-    restorePromptFocus: Boolean(value?.restorePromptFocus),
+    restorePromptFocusOnRejection: Boolean(
+      value?.restorePromptFocusOnRejection,
+    ),
   };
 }
 

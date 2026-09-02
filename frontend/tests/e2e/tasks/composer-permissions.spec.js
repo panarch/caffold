@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { actionHintDialog } from "../support/action-hints.js";
 import {
   installTaskApiFixture,
   TASK_PERMISSION_FIXTURE,
@@ -1184,6 +1185,60 @@ test("send button does not return focus to the prompt after submission", { tag: 
   await form.getByRole("button", { name: "Send prompt" }).click();
   await promptAccepted;
   await expect(prompt).not.toBeFocused();
+
+  releasePrompt();
+  await expect(form).toHaveAttribute("aria-busy", "false");
+  await expect(prompt).not.toBeFocused();
+});
+
+test("Enter submission releases editing ownership while the request is pending", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  const detail = taskDetailFixture();
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+  await page.route("**/api/tasks/thread-1/stream*", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: ": ready\n\n",
+    }),
+  );
+  let acceptPrompt;
+  const promptAccepted = new Promise((resolve) => {
+    acceptPrompt = resolve;
+  });
+  let releasePrompt;
+  await page.route("**/api/tasks/thread-1/prompts", async (route) => {
+    acceptPrompt();
+    await new Promise((resolve) => {
+      releasePrompt = resolve;
+    });
+    return route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-2",
+        userMessageId: "message-permission-4",
+        steered: false,
+      },
+    });
+  });
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+  const form = page.locator(
+    'caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden]) .task-follow-up-form[data-task-form="follow-up"]',
+  );
+  const prompt = form.getByRole("textbox", { name: "Follow-up prompt" });
+  await prompt.fill("Submit and use another keyboard action");
+  await prompt.press("Enter");
+  await promptAccepted;
+
+  await expect(prompt).not.toBeFocused();
+  await page.keyboard.press("f");
+  await expect(actionHintDialog(page)).toBeVisible();
+  await page.keyboard.press("Escape");
 
   releasePrompt();
   await expect(form).toHaveAttribute("aria-busy", "false");
