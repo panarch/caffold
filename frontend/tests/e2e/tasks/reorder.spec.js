@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  actionHintDialog,
   activateActionHint,
   enterActionHints,
 } from "../support/action-hints.js";
@@ -316,6 +317,36 @@ test("moves a Section and finishes reorder through Action Hints", { tag: "@all-v
   );
   expect(normalTargetLabels).toContain("Open section: two");
   expect(normalTargetLabels).not.toContain("Finish reordering Sections");
+});
+
+test("exits Task reorder with Escape after dismissing Action Hints", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installSectionReorderFixture(page);
+  await page.goto("/");
+
+  const navigator = page.locator("caffold-task-navigator");
+  const toggle = navigator.locator(".task-list-reorder");
+  await enterReorderMode(page);
+  const handleLabel = "Reorder One. Use Up and Down arrow keys to move.";
+  const handle = navigator.getByRole("button", {
+    name: handleLabel,
+  });
+  await activateActionHint(page, handleLabel);
+  await expect(handle).toBeFocused();
+
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(hint).toBeHidden();
+  await expect(navigator).toHaveAttribute("data-reorder-mode", "tasks");
+  await expect(handle).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(navigator).toHaveAttribute("data-reorder-mode", "none");
+  await expect(navigator.locator(".task-reorder-handle")).toHaveCount(0);
+  await expect(toggle).toBeFocused();
 });
 
 test("reorders by keyboard, preserves row geometry, and persists across reloads", { tag: "@all-viewports" }, async ({

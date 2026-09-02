@@ -42,6 +42,7 @@ class CaffoldTaskNavigator extends HTMLElement {
   connectedCallback() {
     this.ensureState();
     this.addEventListener("click", this.boundClick);
+    this.addEventListener("keydown", this.boundKeydown);
     this.addEventListener(
       ACTIVE_TASK_LIST_STATE_EVENT,
       this.boundSectionStateChange,
@@ -84,6 +85,7 @@ class CaffoldTaskNavigator extends HTMLElement {
   disconnectedCallback() {
     this.closeReorderPopover();
     this.removeEventListener("click", this.boundClick);
+    this.removeEventListener("keydown", this.boundKeydown);
     this.removeEventListener(
       ACTIVE_TASK_LIST_STATE_EVENT,
       this.boundSectionStateChange,
@@ -133,6 +135,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.lastPublishedListState = "";
     this.liveUpdates = null;
     this.boundClick = (event) => this.handleClick(event);
+    this.boundKeydown = (event) => this.handleKeydown(event);
     this.boundIconsReady = () => this.syncPrimaryHeader();
     this.boundSectionStateChange = (event) =>
       this.handleSectionStateChange(event);
@@ -580,6 +583,23 @@ class CaffoldTaskNavigator extends HTMLElement {
       this.exitReorderMode({ restoreFocus: false });
       this.dispatchIntent("new-task");
     }
+  }
+
+  handleKeydown(event) {
+    if (
+      this.reorderMode === "none" ||
+      event.defaultPrevented ||
+      event.key !== "Escape" ||
+      event.isComposing ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.metaKey
+    ) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    this.exitReorderMode();
   }
 
   dispatchIntent(type, detail = {}) {

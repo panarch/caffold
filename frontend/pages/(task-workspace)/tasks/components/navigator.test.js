@@ -284,6 +284,41 @@ test("replaces normal navigator actions with current reorder handles and Finish"
   assert.equal(archivedCalls, 0);
 });
 
+test("exits active reorder only for an unclaimed Escape key", () => {
+  let exits = 0;
+  const owner = {
+    reorderMode: "tasks",
+    exitReorderMode() {
+      exits += 1;
+      this.reorderMode = "none";
+    },
+  };
+  const escape = keyboardEvent();
+
+  navigator.handleKeydown.call(owner, escape);
+
+  assert.equal(exits, 1);
+  assert.equal(escape.prevented, true);
+  assert.equal(escape.stopped, true);
+
+  for (const ignored of [
+    keyboardEvent({ key: "Enter" }),
+    keyboardEvent({ defaultPrevented: true }),
+    keyboardEvent({ isComposing: true }),
+    keyboardEvent({ ctrlKey: true }),
+    keyboardEvent({ altKey: true }),
+    keyboardEvent({ metaKey: true }),
+  ]) {
+    owner.reorderMode = "sections";
+    navigator.handleKeydown.call(owner, ignored);
+    assert.equal(ignored.prevented, false);
+    assert.equal(ignored.stopped, false);
+  }
+  owner.reorderMode = "none";
+  navigator.handleKeydown.call(owner, keyboardEvent());
+  assert.equal(exits, 1);
+});
+
 function reorderOption(mode) {
   return {
     dataset: {
@@ -294,5 +329,25 @@ function reorderOption(mode) {
     textContent: `Reorder ${mode}`,
     focus() {},
     click() {},
+  };
+}
+
+function keyboardEvent(overrides = {}) {
+  return {
+    key: "Escape",
+    defaultPrevented: false,
+    isComposing: false,
+    ctrlKey: false,
+    altKey: false,
+    metaKey: false,
+    prevented: false,
+    stopped: false,
+    preventDefault() {
+      this.prevented = true;
+    },
+    stopPropagation() {
+      this.stopped = true;
+    },
+    ...overrides,
   };
 }
