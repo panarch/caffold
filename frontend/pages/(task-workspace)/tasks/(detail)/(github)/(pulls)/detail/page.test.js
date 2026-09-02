@@ -10,7 +10,7 @@ await import("./page.js");
 const page = registry.element("caffold-github-pull-detail-page").prototype;
 after(() => registry.restore());
 
-test("provides Start Task and PR Files through their existing native controls", () => {
+test("provides current Pull actions and direct links through their native controls", () => {
   const clipRoot = {};
   const focusOptions = [];
   const clicks = [];
@@ -25,6 +25,7 @@ test("provides Start Task and PR Files through their existing native controls", 
     click() {
       clicks.push("start");
     },
+    getClientRects: () => [{}],
   };
   let files = {
     dataset: { pullNumber: "7" },
@@ -38,14 +39,58 @@ test("provides Start Task and PR Files through their existing native controls", 
     click() {
       clicks.push("files");
     },
+    getClientRects: () => [{}],
   };
+  const link = (href) => ({
+    getAttribute: (name) => ({
+      href,
+      target: "_blank",
+      rel: "noreferrer",
+    })[name] ?? null,
+    focus() {},
+    click() {},
+    getClientRects: () => [{}],
+  });
+  const github = link("https://github.com/example/repo/pull/7");
+  const comment = {
+    url: "https://github.com/example/repo/pull/7#issuecomment-1",
+  };
+  const commentLink = link(comment.url);
+  const commit = {
+    sha: "abcdef1234567890",
+    shortSha: "abcdef1",
+    url: "https://github.com/example/repo/commit/abcdef1234567890",
+  };
+  const commitLink = link(commit.url);
+  const scrollport = { getClientRects: () => [{}] };
   const owner = {
     hidden: false,
     isConnected: true,
-    state: { status: "ready", payload: { pull: { number: 7 } } },
-    querySelector(selector) {
-      return selector.includes("github-pull-start-button") ? start : files;
+    state: {
+      status: "ready",
+      payload: {
+        pull: {
+          number: 7,
+          url: "https://github.com/example/repo/pull/7",
+          conversationComments: [comment],
+          commitSummaries: [commit],
+        },
+      },
     },
+    querySelector(selector) {
+      if (selector.includes("github-pull-start-button")) return start;
+      if (selector.includes("github-pull-files-button")) return files;
+      if (selector.includes("a.github-pull-link")) return github;
+      if (selector.includes("data-github-pull-comment-index")) {
+        return commentLink;
+      }
+      if (selector.includes("data-github-pull-commit-index")) {
+        return commitLink;
+      }
+      if (selector.includes("github-pull-viewer-scroll")) return scrollport;
+      return null;
+    },
+    querySelectorAll: () => [],
   };
 
   const scope = page.actionHintScope.call(owner, {
@@ -72,12 +117,34 @@ test("provides Start Task and PR Files through their existing native controls", 
         label: "Open files for PR #7",
         controlKind: "button",
       },
+      {
+        id: "github:pull:detail:7:github",
+        actionId: "link.open",
+        label: "Open pull request #7 on GitHub in a new tab",
+        controlKind: "link",
+      },
+      {
+        id: "github:pull:detail:7:comment:0",
+        actionId: "link.open",
+        label: "Open conversation comment 1 on GitHub in a new tab",
+        controlKind: "link",
+      },
+      {
+        id: "github:pull:detail:7:commit:abcdef1234567890",
+        actionId: "link.open",
+        label: "Open commit abcdef1 on GitHub in a new tab",
+        controlKind: "link",
+      },
     ],
   );
   assert.ok(scope.targets.every((target) => target.isActionable()));
-  for (const target of scope.targets) {
+  for (const target of scope.targets.slice(0, 3)) {
     assert.deepEqual(target.clipRoots, [owner, clipRoot]);
   }
+  for (const target of scope.targets.slice(3)) {
+    assert.deepEqual(target.clipRoots, [owner, scrollport, clipRoot]);
+  }
+  assert.deepEqual(scope.scrollRoots, [scrollport]);
   scope.targets[0].activate();
   scope.targets[1].activate();
   assert.deepEqual(focusOptions, [
@@ -89,8 +156,71 @@ test("provides Start Task and PR Files through their existing native controls", 
   files = null;
   assert.equal(scope.targets[0].isActionable(), true);
   assert.equal(scope.targets[1].isActionable(), false);
-  owner.state = { status: "ready", payload: { pull: { number: 8 } } };
+  owner.state = {
+    status: "ready",
+    payload: {
+      pull: {
+        number: 8,
+        url: "https://github.com/example/repo/pull/8",
+      },
+    },
+  };
   assert.ok(scope.targets.every((target) => !target.isActionable()));
+});
+
+test("merges current Pull Markdown child scopes through the retained scrollport", () => {
+  const state = {
+    status: "ready",
+    payload: {
+      pull: {
+        number: 7,
+        url: "https://github.com/example/repo/pull/7",
+      },
+    },
+  };
+  const scrollport = { getClientRects: () => [{}] };
+  const generated = { id: "generated-link" };
+  let received;
+  const markdown = {
+    dataset: { markdownIndex: "2" },
+    actionHintScope(options) {
+      received = options;
+      return {
+        blocked: false,
+        targets: [generated],
+        mutationRoots: [this],
+        scrollRoots: [this],
+      };
+    },
+  };
+  const owner = {
+    hidden: false,
+    isConnected: true,
+    state,
+    querySelector(selector) {
+      if (selector.includes("github-pull-viewer-scroll")) return scrollport;
+      return null;
+    },
+    querySelectorAll: () => [markdown],
+  };
+  const scope = page.actionHintScope.call(owner, {
+    scopeId: "github:pull:detail",
+  });
+
+  assert.deepEqual(scope.targets, [generated]);
+  assert.equal(
+    received.scopeId,
+    "github:pull:detail:7:markdown:2",
+  );
+  assert.deepEqual(received.clipRoots, [owner, scrollport]);
+  assert.equal(received.isCurrent(), false);
+  owner.querySelector = (selector) =>
+    selector.includes('data-markdown-index="2"')
+      ? markdown
+      : selector.includes("github-pull-viewer-scroll") ? scrollport : null;
+  assert.equal(received.isCurrent(), true);
+  owner.state = { ...state };
+  assert.equal(received.isCurrent(), false);
 });
 
 test("provides the retained Pull Request detail scrollport", () => {

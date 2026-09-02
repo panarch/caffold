@@ -3,9 +3,21 @@ import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import { installTaskReviewFixture } from "../support/task-review-fixture.js";
 import {
+  actionHintDialog,
+  activateActionHint,
+  enterActionHints,
+} from "../support/action-hints.js";
+import {
   captureReviewScreenshot,
   stabilizeDynamicText,
 } from "../support/task-fixtures.js";
+
+async function revealActionHintControl(control) {
+  await control.scrollIntoViewIfNeeded();
+  await control.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+}
 
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
@@ -458,8 +470,8 @@ test("opens resolved Markdown file links through Task Review with native link se
     await popup.close();
   }
 
-  await planner.focus();
-  await planner.press("Enter");
+  await revealActionHintControl(planner);
+  await activateActionHint(page, /Open Planner line$/);
   await expect(page).toHaveURL(
     `/tasks/${scenario.threadId}/review?nav=files&view=source&file=planner.rs&line=60`,
   );
@@ -503,6 +515,201 @@ test("opens resolved Markdown file links through Task Review with native link se
   await expect(viewer.locator(".error-panel")).toContainText(
     "The selected file is no longer available.",
   );
+});
+
+test("owns final Markdown links without guessing fragments or stale bindings", { tag: "@all-viewports" }, async ({
+  context,
+  page,
+}, testInfo) => {
+  const wideCell = "wide".repeat(90);
+  const markdownSource = [
+    "[External docs](https://example.com/action-hint-external)",
+    "",
+    "[Duplicate](https://example.com/duplicate) [Duplicate](https://example.com/duplicate)",
+    "",
+    "[A deliberately long reference label that wraps inside narrow conversation panes](https://example.com/long-label)",
+    "",
+    "[Mail](mailto:reviewer@example.com)",
+    "",
+    "[Settings](/settings?from=hint#keyboard)",
+    "",
+    "[Section](#review-ready)",
+    "",
+    '<a href="https://example.com/unnamed"></a>',
+    "",
+    '<a href="https://example.com/title-only" title="Title-only destination"></a>',
+    "",
+    "| Destination | Wide value |",
+    "| --- | --- |",
+    `| [Table docs](https://example.com/table) | ${wideCell} |`,
+  ].join("\n");
+  const scenario = await installTaskLoopFixture(page, {
+    completedAssistantResponse: markdownSource,
+    threadId: "thread_action_hint_markdown_links",
+  });
+  await context.route("https://example.com/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>Action Hint destination</title>",
+    }),
+  );
+  await scenario.seedCompletedTask();
+  await page.goto(`/tasks/${scenario.threadId}`);
+
+  const markdown = page.locator(
+    ".task-assistant-message caffold-task-markdown",
+  ).filter({ hasText: "External docs" });
+  await expect(markdown).toHaveAttribute("data-render-state", "markdown");
+  const linkTargets = await page.locator("caffold-task-workspace").evaluate(
+    (workspace) => workspace.actionHintScope().targets
+      .filter((target) => target.controlKind === "link")
+      .map(({ id, label }) => ({ id, label })),
+  );
+  const duplicateTargets = linkTargets.filter(
+    ({ label }) => label === "Open Duplicate in a new tab",
+  );
+  expect(duplicateTargets).toHaveLength(2);
+  expect(new Set(duplicateTargets.map(({ id }) => id)).size).toBe(2);
+  expect(linkTargets.some(({ label }) => label.includes("Section"))).toBe(false);
+  expect(linkTargets.some(({ label }) => label.includes("unnamed"))).toBe(false);
+  expect(linkTargets.some(
+    ({ label }) => label === "Open Settings in a new tab",
+  )).toBe(true);
+  expect(linkTargets.some(
+    ({ label }) => label === "Open Title-only destination in a new tab",
+  )).toBe(true);
+  expect(linkTargets.every(
+    ({ id }) => !id.includes("http") && !id.includes("mailto"),
+  )).toBe(true);
+
+  const external = markdown.locator(
+    'a[href="https://example.com/action-hint-external"]',
+  );
+  await revealActionHintControl(external);
+  let hint = await enterActionHints(page);
+  let badge = hint.getByLabel(/Open External docs in a new tab$/);
+  await expect(badge).toBeVisible();
+  await expect(hint.getByLabel(/ — Open Working Tree$/)).toBeVisible();
+  await expect(
+    hint.getByLabel(/ — Expand (?:Worked for|Work details)/),
+  ).toBeVisible();
+  await captureReviewScreenshot(page, testInfo, "tasks-action-hint-links");
+  const externalCode = await badge.getAttribute("data-action-hint-code");
+  await external.evaluate((link) => {
+    link.setAttribute("aria-label", "External docs renamed");
+  });
+  badge = hint.locator(`[data-action-hint-code="${externalCode}"]`);
+  await expect(badge).toHaveAttribute(
+    "aria-label",
+    `${externalCode} — Open External docs renamed in a new tab`,
+  );
+  const externalPopupPromise = page.waitForEvent("popup");
+  await page.keyboard.type(externalCode.toLowerCase());
+  const externalPopup = await externalPopupPromise;
+  await expect(externalPopup).toHaveURL(
+    "https://example.com/action-hint-external",
+  );
+  await externalPopup.close();
+  await external.evaluate((link) => {
+    link.removeAttribute("aria-label");
+  });
+
+  const mail = markdown.getByRole("link", { name: "Mail" });
+  await mail.evaluate((link) => {
+    window.__caffoldMailHintClicks = 0;
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      window.__caffoldMailHintClicks += 1;
+    });
+  });
+  await revealActionHintControl(mail);
+  await activateActionHint(page, /Open Mail in an email app$/);
+  await expect.poll(() => page.evaluate(
+    () => window.__caffoldMailHintClicks,
+  )).toBe(1);
+
+  const settings = markdown.getByRole("link", { name: "Settings" });
+  await revealActionHintControl(settings);
+  const settingsPopupPromise = page.waitForEvent("popup");
+  await activateActionHint(page, /Open Settings in a new tab$/);
+  const settingsPopup = await settingsPopupPromise;
+  await expect(settingsPopup).toHaveURL(/\/settings\?from=hint#keyboard$/);
+  await settingsPopup.close();
+
+  const duplicates = markdown.getByRole("link", {
+    name: "Duplicate",
+    exact: true,
+  });
+  await revealActionHintControl(duplicates.first());
+  hint = await enterActionHints(page);
+  const duplicateBadges = hint.getByLabel(/Open Duplicate in a new tab$/);
+  await expect(duplicateBadges).toHaveCount(2);
+  const duplicateCodes = await duplicateBadges.evaluateAll((badges) =>
+    badges.map((entry) => entry.dataset.actionHintCode)
+  );
+  expect(new Set(duplicateCodes).size).toBe(2);
+  await page.keyboard.press("Escape");
+
+  await revealActionHintControl(external);
+  await enterActionHints(page);
+  await external.evaluate((link) => {
+    link.setAttribute("href", "https://example.com/changed-after-snapshot");
+  });
+  await expect(actionHintDialog(page)).toBeHidden();
+  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+    "data-action-hint-last-exit",
+    "snapshot-invalidated",
+  );
+  await markdown.getByRole("link", { name: "External docs" }).evaluate((link) => {
+    link.setAttribute("href", "https://example.com/action-hint-external");
+  });
+
+  await revealActionHintControl(external);
+  await enterActionHints(page);
+  await markdown.evaluate((element, source) => element.setMarkdown(source), markdownSource);
+  await expect(actionHintDialog(page)).toBeHidden();
+  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+    "data-action-hint-last-exit",
+    "snapshot-invalidated",
+  );
+  await expect(markdown).toHaveAttribute("data-render-state", "markdown");
+
+  const tableScroll = markdown.locator(".markdown-table-scroll");
+  const tableLink = tableScroll.getByRole("link", { name: "Table docs" });
+  await revealActionHintControl(tableScroll);
+  await expect(tableLink).toHaveAttribute("target", "_blank");
+  await expect.poll(() => tableScroll.evaluate(
+    (element) => element.scrollWidth > element.clientWidth,
+  )).toBe(true);
+  hint = await enterActionHints(page);
+  await expect(hint.getByLabel(/Open Table docs in a new tab$/)).toBeVisible();
+  await tableScroll.evaluate((element) => {
+    element.scrollLeft = Math.min(80, element.scrollWidth - element.clientWidth);
+  });
+  await expect(actionHintDialog(page)).toBeHidden();
+  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+    "data-action-hint-last-exit",
+    "scroll",
+  );
+
+  await tableScroll.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+    return new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    );
+  });
+  hint = await enterActionHints(page);
+  await expect(hint.getByLabel(/Open Table docs in a new tab$/)).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await tableScroll.evaluate((element) => {
+    element.scrollLeft = 0;
+    return new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    );
+  });
+  hint = await enterActionHints(page);
+  await expect(hint.getByLabel(/Open Table docs in a new tab$/)).toBeVisible();
+  await page.keyboard.press("Escape");
 });
 
 function resolvedLink(label, target, taskRelativePath, line = null) {

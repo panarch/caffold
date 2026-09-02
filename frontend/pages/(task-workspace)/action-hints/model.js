@@ -41,6 +41,7 @@ export const ACTION_HINT_ACTION = Object.freeze({
   DIALOG_BUTTON: "dialog.button",
   BUTTON_ACTIVATE: "button.activate",
   DISCLOSURE_TOGGLE: "disclosure.toggle",
+  LINK_OPEN: "link.open",
   CONTROL_RADIO_SELECT: "control.radio.select",
   CONTROL_SWITCH_TOGGLE: "control.switch.toggle",
   CONTROL_SELECT_OPEN: "control.select.open",
@@ -111,6 +112,10 @@ const ACTION_HINT_ACTION_POLICY = Object.freeze({
   }),
   [ACTION_HINT_ACTION.DISCLOSURE_TOGGLE]: Object.freeze({
     controlKind: "disclosure",
+    allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
+  }),
+  [ACTION_HINT_ACTION.LINK_OPEN]: Object.freeze({
+    controlKind: "link",
     allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
   }),
   ...Object.fromEntries([
@@ -459,6 +464,7 @@ export function sameActionHintTopology(left, right) {
         entry.id === other.id &&
         entry.actionId === other.actionId &&
         entry.controlKind === other.controlKind &&
+        entry.activationKey === other.activationKey &&
         entry.actionable === other.actionable &&
         entry.control === other.control &&
         entry.anchor === other.anchor &&

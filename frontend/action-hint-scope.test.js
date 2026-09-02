@@ -3,9 +3,13 @@ import test from "node:test";
 
 import {
   buttonActionHintTarget,
+  captureLinkActionHintBinding,
   disclosureActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
+  linkActionHintTarget,
+  linkActionHintLabel,
+  matchesLinkActionHintBinding,
   mergeActionHintScopes,
   radioActionHintTarget,
   rangeActionHintTarget,
@@ -49,6 +53,114 @@ test("button Action Hint targets preserve owner state and native activation", ()
 
   const anchor = { id: "visible-marker" };
   assert.equal(buttonActionHintTarget({ ...input, anchor }).anchor, anchor);
+});
+
+test("link Action Hint targets freeze native navigation and click the exact anchor", () => {
+  const calls = [];
+  const attributes = new Map([
+    ["href", "https://example.com/first"],
+    ["target", "_blank"],
+    ["rel", "noopener noreferrer"],
+  ]);
+  const control = {
+    getAttribute: (name) => attributes.get(name) ?? null,
+    focus: (options) => calls.push(["focus", options]),
+    click: () => calls.push(["click"]),
+  };
+  const ownerIsActionable = () => true;
+  const target = linkActionHintTarget({
+    id: "settings:remote-access:open",
+    actionId: "link.open",
+    label: "Open Tailnet URL in a new tab",
+    control,
+    clipRoots: [],
+    isActionable: ownerIsActionable,
+  });
+
+  assert.equal(target.controlKind, "link");
+  assert.equal(
+    target.activationKey,
+    JSON.stringify({
+      href: "https://example.com/first",
+      target: "_blank",
+      rel: "noopener noreferrer",
+    }),
+  );
+  assert.equal(target.isActionable(), true);
+  target.activate();
+  assert.deepEqual(calls, [
+    ["focus", { preventScroll: true }],
+    ["click"],
+  ]);
+
+  for (
+    const [name, value] of [
+      ["href", "https://example.com/second"],
+      ["target", "_self"],
+      ["rel", "noreferrer"],
+    ]
+  ) {
+    const original = attributes.get(name);
+    attributes.set(name, value);
+    assert.equal(target.isActionable(), false, name);
+    attributes.set(name, original);
+    assert.equal(target.isActionable(), true, name);
+  }
+});
+
+test("link presentation derives an accessible name and native outcome", () => {
+  const attributes = new Map([
+    ["href", "/tasks/thread/review"],
+    ["aria-label", "  Review   source  "],
+  ]);
+  const control = {
+    innerText: "Visible text",
+    textContent: "Fallback text",
+    getAttribute: (name) => attributes.get(name) ?? null,
+    querySelectorAll: () => [],
+  };
+  const binding = captureLinkActionHintBinding(control);
+
+  assert.deepEqual(binding, {
+    href: "/tasks/thread/review",
+    target: null,
+    rel: null,
+  });
+  assert.equal(matchesLinkActionHintBinding(control, binding), true);
+  assert.equal(linkActionHintLabel(control), "Open Review source");
+
+  attributes.delete("aria-label");
+  attributes.set("target", "_blank");
+  assert.equal(linkActionHintLabel(control), "Open Visible text in a new tab");
+  control.innerText = "";
+  attributes.set("title", "Title destination");
+  assert.equal(
+    linkActionHintLabel(control),
+    "Open Title destination in a new tab",
+  );
+  delete control.innerText;
+  attributes.delete("title");
+  assert.equal(
+    linkActionHintLabel(control),
+    "Open Fallback text in a new tab",
+  );
+  control.textContent = "";
+  control.querySelectorAll = () => [{
+    getAttribute: () => "Diagram destination",
+  }];
+  assert.equal(
+    linkActionHintLabel(control),
+    "Open Diagram destination in a new tab",
+  );
+  attributes.set("href", "mailto:reviewer@example.com");
+  assert.equal(
+    linkActionHintLabel(control),
+    "Open Diagram destination in an email app",
+  );
+  attributes.set("href", "#review-ready");
+  assert.equal(linkActionHintLabel(control), "");
+  attributes.delete("href");
+  assert.equal(linkActionHintLabel(control), "");
 });
 
 test("disclosure Action Hint targets preserve owner semantics and native activation", () => {

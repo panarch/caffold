@@ -9,6 +9,7 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
+  mergeActionHintScopes,
 } from "../../../../../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
@@ -77,7 +78,7 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
       ["close", ".current-plan-document-close"],
       ["retry", '[data-current-plan-dialog-action="retry"]'],
     ];
-    return {
+    const ownScope = {
       blocked: false,
       targets: controls.flatMap(([identity, selector]) => {
         const control = dialog.querySelector(selector);
@@ -105,6 +106,23 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
       mutationRoots: [this],
       scrollRoots: [],
     };
+    const preview = this.preview();
+    return mergeActionHintScopes(
+      ownScope,
+      preview?.actionHintScope?.({
+        scopeId:
+          `current-plan-document:${encodeURIComponent(path)}:preview`,
+        linkActionId: ACTION_HINT_ACTION.LINK_OPEN,
+        clipRoots: [dialog],
+        isCurrent: () =>
+          this.isConnected &&
+          this.dialog() === dialog &&
+          dialog.open &&
+          this.current?.path === path &&
+          Boolean(path) &&
+          this.preview() === preview,
+      }),
+    );
   }
 
   keyboardNavigationContexts() {

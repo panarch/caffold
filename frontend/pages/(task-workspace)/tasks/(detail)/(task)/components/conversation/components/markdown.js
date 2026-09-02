@@ -1,7 +1,13 @@
 import { routeUrl } from "../../../../../../../../navigation-routes.js";
 import "./markdown/components/code-block.js";
 import {
+  ACTION_HINT_ACTION,
+  captureLinkActionHintBinding,
   emptyActionHintScope,
+  hasActionHintLayoutBox,
+  linkActionHintLabel,
+  linkActionHintTarget,
+  matchesLinkActionHintBinding,
   mergeActionHintScopes,
 } from "../../../../../../action-hints.js";
 
@@ -65,6 +71,7 @@ class CaffoldTaskMarkdown extends HTMLElement {
     const body = document.createElement("article");
     body.className = "markdown-body";
     this.replaceChildren(body);
+    this.actionHintLinks = [];
     this.initialized = true;
     this.setMarkdown(markdown);
   }
@@ -81,6 +88,7 @@ class CaffoldTaskMarkdown extends HTMLElement {
   }
 
   renderPending() {
+    this.actionHintLinks = [];
     const pending = document.createElement("span");
     pending.className = "markdown-loading";
     pending.setAttribute("role", "status");
@@ -90,6 +98,7 @@ class CaffoldTaskMarkdown extends HTMLElement {
   }
 
   renderPlainText() {
+    this.actionHintLinks = [];
     const scrollContext = captureScrollContext(this);
     const fallback = document.createElement("pre");
     fallback.className = "markdown-fallback";
@@ -132,7 +141,9 @@ class CaffoldTaskMarkdown extends HTMLElement {
         (mutation) => this.mutateLayout(mutation),
       );
       const scrollContext = captureScrollContext(this);
-      this.body().replaceChildren(template.content);
+      const body = this.body();
+      body.replaceChildren(template.content);
+      this.actionHintLinks = collectActionHintLinks(body);
       this.dataset.renderState = "markdown";
       dispatchRendered(this, scrollContext);
     } catch {
@@ -148,7 +159,12 @@ class CaffoldTaskMarkdown extends HTMLElement {
   }
 
   actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
-    if (!scopeId || this.hidden || this.dataset.renderState !== "markdown") {
+    if (
+      !scopeId ||
+      !this.isConnected ||
+      this.hidden ||
+      this.dataset.renderState !== "markdown"
+    ) {
       return emptyActionHintScope();
     }
     const body = this.body();
@@ -158,7 +174,52 @@ class CaffoldTaskMarkdown extends HTMLElement {
     const blocks = Array.from(
       body.querySelectorAll("caffold-task-markdown-code-block"),
     );
+    const tableScrollRoots = [];
+    const linkTargets = (this.actionHintLinks ?? []).flatMap((record) => {
+      const { binding, control, ordinal } = record;
+      const label = linkActionHintLabel(control);
+      if (
+        !label ||
+        !matchesLinkActionHintBinding(control, binding) ||
+        !body.contains(control) ||
+        !hasActionHintLayoutBox(control)
+      ) {
+        return [];
+      }
+      const tableScrollRoot = control.closest(".markdown-table-scroll");
+      if (tableScrollRoot && body.contains(tableScrollRoot)) {
+        tableScrollRoots.push(tableScrollRoot);
+      }
+      return [linkActionHintTarget({
+        id: `${scopeId}:link:${ordinal}`,
+        actionId: ACTION_HINT_ACTION.LINK_OPEN,
+        label,
+        control,
+        clipRoots: [
+          this,
+          body,
+          tableScrollRoot,
+          ...clipRoots,
+        ].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.dataset.renderState === "markdown" &&
+          this.body() === body &&
+          this.actionHintLinks?.includes(record) &&
+          body.contains(control) &&
+          matchesLinkActionHintBinding(control, binding) &&
+          Boolean(linkActionHintLabel(control)) &&
+          hasActionHintLayoutBox(control),
+      })];
+    });
     return mergeActionHintScopes(
+      {
+        blocked: false,
+        targets: linkTargets,
+        mutationRoots: [this],
+        scrollRoots: [...new Set(tableScrollRoots)],
+      },
       ...blocks.map((block, index) => block.actionHintScope?.({
         scopeId: `${scopeId}:code-block:${index + 1}`,
         clipRoots: [this, body, ...clipRoots].filter(Boolean),
@@ -171,6 +232,19 @@ class CaffoldTaskMarkdown extends HTMLElement {
     mutation();
     dispatchRendered(this, scrollContext);
   }
+}
+
+function collectActionHintLinks(root) {
+  return Array.from(root.querySelectorAll("a[href]")).flatMap(
+    (control, index) => {
+      const binding = captureLinkActionHintBinding(control);
+      return binding.href &&
+          !binding.href.startsWith("#") &&
+          linkActionHintLabel(control)
+        ? [{ control, ordinal: index + 1, binding }]
+        : [];
+    },
+  );
 }
 
 function loadParser() {

@@ -1,4 +1,12 @@
 import {
+  captureLinkActionHintBinding,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  linkActionHintLabel,
+  linkActionHintTarget,
+  matchesLinkActionHintBinding,
+} from "../action-hint-scope.js";
+import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   hasVerticalScrollOverflow,
@@ -27,6 +35,7 @@ class CaffoldMarkdownPreview extends HTMLElement {
       return;
     }
     this.initialized = true;
+    this.actionHintLinks = [];
     this.innerHTML = '<article class="markdown-preview-body"></article>';
   }
 
@@ -76,7 +85,76 @@ class CaffoldMarkdownPreview extends HTMLElement {
     };
   }
 
+  actionHintScope({
+    scopeId = "",
+    linkActionId = "",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    this.ensureRendered();
+    const body = this.body();
+    if (
+      !scopeId ||
+      !linkActionId ||
+      !body ||
+      !this.isConnected ||
+      this.hidden ||
+      this.dataset.renderState !== "markdown"
+    ) {
+      return emptyActionHintScope();
+    }
+    const tableScrollRoots = [];
+    const targets = (this.actionHintLinks ?? []).flatMap((record) => {
+      const { binding, control, ordinal } = record;
+      const label = linkActionHintLabel(control);
+      if (
+        !label ||
+        !matchesLinkActionHintBinding(control, binding) ||
+        !body.contains(control) ||
+        !hasActionHintLayoutBox(control)
+      ) {
+        return [];
+      }
+      const tableScrollRoot = control.closest(
+        ".markdown-preview-table-scroll",
+      );
+      if (tableScrollRoot && body.contains(tableScrollRoot)) {
+        tableScrollRoots.push(tableScrollRoot);
+      }
+      return [linkActionHintTarget({
+        id: `${scopeId}:link:${ordinal}`,
+        actionId: linkActionId,
+        label,
+        control,
+        clipRoots: [
+          this,
+          body,
+          tableScrollRoot,
+          ...clipRoots,
+        ].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.dataset.renderState === "markdown" &&
+          this.body() === body &&
+          this.actionHintLinks?.includes(record) &&
+          body.contains(control) &&
+          matchesLinkActionHintBinding(control, binding) &&
+          Boolean(linkActionHintLabel(control)) &&
+          hasActionHintLayoutBox(control),
+      })];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [this, ...new Set(tableScrollRoots)],
+    };
+  }
+
   renderPending() {
+    this.actionHintLinks = [];
     const pending = document.createElement("span");
     pending.className = "markdown-preview-loading";
     pending.setAttribute("role", "status");
@@ -92,6 +170,7 @@ class CaffoldMarkdownPreview extends HTMLElement {
     const fallback = document.createElement("pre");
     fallback.className = "markdown-preview-fallback";
     fallback.textContent = this.markdown;
+    this.actionHintLinks = [];
     this.body().replaceChildren(fallback);
     this.dataset.renderState = "plain";
     this.pendingScroll = null;
@@ -110,7 +189,9 @@ class CaffoldMarkdownPreview extends HTMLElement {
       if (!this.acceptRender(renderToken)) {
         return;
       }
-      this.body().replaceChildren(content);
+      const body = this.body();
+      body.replaceChildren(content);
+      this.actionHintLinks = collectActionHintLinks(body);
       this.dataset.renderState = "markdown";
       this.pendingScroll = null;
       restoreScroll(this, scroll);
@@ -127,6 +208,19 @@ class CaffoldMarkdownPreview extends HTMLElement {
   body() {
     return this.querySelector(":scope > .markdown-preview-body");
   }
+}
+
+function collectActionHintLinks(root) {
+  return Array.from(root.querySelectorAll("a[href]")).flatMap(
+    (control, index) => {
+      const binding = captureLinkActionHintBinding(control);
+      return binding.href &&
+          !binding.href.startsWith("#") &&
+          linkActionHintLabel(control)
+        ? [{ control, ordinal: index + 1, binding }]
+        : [];
+    },
+  );
 }
 
 if (!customElements.get("caffold-markdown-preview")) {

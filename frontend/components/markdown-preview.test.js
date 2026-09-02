@@ -32,3 +32,55 @@ test("provides its host as the retained Markdown scrollport", () => {
   owner.scrollHeight = 101;
   assert.equal(scope.surfaces[0].isEligible(), false);
 });
+
+test("provides retained final links through its own scroll boundary", () => {
+  const attributes = new Map([
+    ["href", "https://example.com/preview"],
+    ["target", "_blank"],
+    ["rel", "noreferrer"],
+  ]);
+  const tableScrollRoot = {};
+  const control = {
+    innerText: "Preview docs",
+    getAttribute: (name) => attributes.get(name) ?? null,
+    getClientRects: () => [{}],
+    querySelectorAll: () => [],
+    closest: () => tableScrollRoot,
+    focus() {},
+    click() {},
+  };
+  const record = {
+    control,
+    ordinal: 1,
+    binding: {
+      href: "https://example.com/preview",
+      target: "_blank",
+      rel: "noreferrer",
+    },
+  };
+  const body = {
+    contains: (element) => [control, tableScrollRoot].includes(element),
+  };
+  let current = true;
+  const owner = {
+    actionHintLinks: [record],
+    dataset: { renderState: "markdown" },
+    hidden: false,
+    isConnected: true,
+    ensureRendered() {},
+    body: () => body,
+  };
+  const scope = markdownPreview.actionHintScope.call(owner, {
+    scopeId: "review:file:preview",
+    linkActionId: "link.open",
+    isCurrent: () => current,
+  });
+
+  assert.equal(scope.targets[0].id, "review:file:preview:link:1");
+  assert.equal(scope.targets[0].actionId, "link.open");
+  assert.equal(scope.targets[0].label, "Open Preview docs in a new tab");
+  assert.deepEqual(scope.scrollRoots, [owner, tableScrollRoot]);
+  assert.equal(scope.targets[0].isActionable(), true);
+  current = false;
+  assert.equal(scope.targets[0].isActionable(), false);
+});

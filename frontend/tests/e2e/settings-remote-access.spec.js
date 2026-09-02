@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { activateActionHint } from "./support/action-hints.js";
+import {
+  actionHintDialog,
+  activateActionHint,
+  enterActionHints,
+} from "./support/action-hints.js";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 import {
   captureReviewScreenshot,
@@ -7,6 +11,8 @@ import {
 } from "./support/task-fixtures.js";
 
 const TAILNET_URL = "https://caffold-review-host.long-tailnet-name.ts.net/";
+const REPLACEMENT_TAILNET_URL =
+  "https://caffold-replacement-host.long-tailnet-name.ts.net/";
 
 function tailscaleStatus(state, overrides = {}) {
   return {
@@ -142,10 +148,14 @@ test("hands off one exact private URL while remote management stays read-only", 
 }, testInfo) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   let serveUpdates = 0;
+  let tailnetUrl = TAILNET_URL;
   await page.route(/\/api\/tailscale\/status(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify(tailscaleStatus("ready", { canManage: false })),
+      body: JSON.stringify(tailscaleStatus("ready", {
+        canManage: false,
+        tailnetUrl,
+      })),
     }),
   );
   await page.route(/\/api\/tailscale\/serve(?:\?|$)/, (route) => {
@@ -185,7 +195,11 @@ test("hands off one exact private URL while remote management stays read-only", 
   );
 
   const popupPromise = page.waitForEvent("popup");
-  await open.click();
+  await revealActionTarget(page, open);
+  await activateActionHint(
+    page,
+    /Open private access address in a new tab$/,
+  );
   const popup = await popupPromise;
   await expect.poll(() => popup.url()).toBe(TAILNET_URL);
   await popup.close();
@@ -214,6 +228,21 @@ test("hands off one exact private URL while remote management stays read-only", 
   });
   await expect(qr).toBeVisible();
   await captureReviewScreenshot(page, testInfo, "settings-remote-access-qr");
+
+  await revealActionTarget(page, open);
+  const hint = await enterActionHints(page);
+  await expect(
+    hint.getByLabel(/Open private access address in a new tab$/),
+  ).toBeVisible();
+  tailnetUrl = REPLACEMENT_TAILNET_URL;
+  await remoteAccess.evaluate((element) => element.lifecycle.refresh());
+  await expect(open).toHaveAttribute("href", REPLACEMENT_TAILNET_URL);
+  await expect(actionHintDialog(page)).toBeHidden();
+  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+    "data-action-hint-last-exit",
+    "snapshot-invalidated",
+  );
+  expect(serveUpdates).toBe(0);
 });
 
 test("keeps canonical local status when a refresh request fails", { tag: "@desktop" }, async ({

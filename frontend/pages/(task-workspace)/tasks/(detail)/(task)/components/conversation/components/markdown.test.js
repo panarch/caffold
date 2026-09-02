@@ -18,6 +18,7 @@ test("merges only code-block providers mounted in the retained Markdown body", (
   const body = { querySelectorAll: () => blocks };
   const owner = {
     hidden: false,
+    isConnected: true,
     dataset: { renderState: "markdown" },
     body: () => body,
   };
@@ -27,4 +28,63 @@ test("merges only code-block providers mounted in the retained Markdown body", (
   );
   owner.dataset.renderState = "plain";
   assert.deepEqual(markdown.actionHintScope.call(owner, { scopeId: "message:a" }).targets, []);
+});
+
+test("provides only retained final links with table scroll dependencies", () => {
+  const attributes = new Map([
+    ["href", "https://example.com/docs"],
+    ["target", "_blank"],
+    ["rel", "noreferrer"],
+  ]);
+  const tableScrollRoot = {};
+  const control = {
+    innerText: "External docs",
+    getAttribute: (name) => attributes.get(name) ?? null,
+    getClientRects: () => [{}],
+    querySelectorAll: () => [],
+    closest: () => tableScrollRoot,
+    focus() {},
+    click() {},
+  };
+  const record = {
+    control,
+    ordinal: 2,
+    binding: {
+      href: "https://example.com/docs",
+      target: "_blank",
+      rel: "noreferrer",
+    },
+  };
+  const body = {
+    contains: (element) => [control, tableScrollRoot].includes(element),
+    querySelectorAll: () => [],
+  };
+  const owner = {
+    actionHintLinks: [record],
+    hidden: false,
+    isConnected: true,
+    dataset: { renderState: "markdown" },
+    body: () => body,
+  };
+  const scope = markdown.actionHintScope.call(owner, {
+    scopeId: "message:a",
+    clipRoots: [{ id: "conversation" }],
+  });
+
+  assert.equal(scope.targets[0].id, "message:a:link:2");
+  assert.equal(scope.targets[0].label, "Open External docs in a new tab");
+  assert.deepEqual(scope.scrollRoots, [tableScrollRoot]);
+  assert.deepEqual(scope.targets[0].clipRoots, [
+    owner,
+    body,
+    tableScrollRoot,
+    { id: "conversation" },
+  ]);
+  assert.equal(scope.targets[0].isActionable(), true);
+  attributes.set("href", "https://example.com/changed");
+  assert.equal(scope.targets[0].isActionable(), false);
+  assert.deepEqual(
+    markdown.actionHintScope.call(owner, { scopeId: "message:a" }).targets,
+    [],
+  );
 });

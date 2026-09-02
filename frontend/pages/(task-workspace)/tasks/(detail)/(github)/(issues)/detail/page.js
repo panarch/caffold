@@ -5,6 +5,9 @@ import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
+  hasActionHintLayoutBox,
+  linkActionHintTarget,
+  mergeActionHintScopes,
 } from "../../../../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
@@ -73,40 +76,90 @@ class CaffoldGithubIssueDetailPage extends HTMLElement {
   }
 
   actionHintScope({ scopeId = "github:issue", clipRoots = [] } = {}) {
-    const issue = this.state?.payload?.issue;
+    const state = this.state;
+    const issue = state?.payload?.issue;
     const number = `${issue?.number ?? ""}`;
-    const selector =
-      ':scope > .github-issue-viewer-panel > header > .github-issue-viewer-title-row > .github-issue-actions > button.github-issue-start-button[data-action="start-github-task"]';
-    const control = this.querySelector(selector);
     if (
       this.hidden ||
       this.state?.status !== "ready" ||
-      !number ||
-      !control ||
-      control.disabled
+      !number
     ) {
       return emptyActionHintScope();
     }
-    return {
-      blocked: false,
-      targets: [buttonActionHintTarget({
+    const targets = [];
+    const startSelector =
+      ':scope > .github-issue-viewer-panel > header > .github-issue-viewer-title-row > .github-issue-actions > button.github-issue-start-button[data-action="start-github-task"]';
+    const start = this.querySelector(startSelector);
+    if (
+      start &&
+      !start.disabled &&
+      hasActionHintLayoutBox(start)
+    ) {
+      targets.push(buttonActionHintTarget({
         id: `${scopeId}:${encodeURIComponent(number)}:start-task`,
         actionId: ACTION_HINT_ACTION.GITHUB_TASK_START,
-        label: control.getAttribute("aria-label") ||
+        label: start.getAttribute("aria-label") ||
           `Start Task for issue #${number}`,
-        control,
+        control: start,
         clipRoots: [this, ...clipRoots],
         isActionable: () =>
           this.isConnected &&
           !this.hidden &&
           this.state?.status === "ready" &&
           `${this.state?.payload?.issue?.number ?? ""}` === number &&
-          this.querySelector(selector) === control &&
-          !control.disabled,
-      })],
+          this.querySelector(startSelector) === start &&
+          !start.disabled &&
+          hasActionHintLayoutBox(start),
+      }));
+    }
+    const linkSelector =
+      ":scope > .github-issue-viewer-panel > header > .github-issue-viewer-title-row > .github-issue-actions > a.github-issue-link[href]";
+    const link = this.querySelector(linkSelector);
+    if (
+      link &&
+      link.getAttribute("href") === issue.url &&
+      hasActionHintLayoutBox(link)
+    ) {
+      targets.push(linkActionHintTarget({
+        id: `${scopeId}:${encodeURIComponent(number)}:github`,
+        actionId: ACTION_HINT_ACTION.LINK_OPEN,
+        label: `Open issue #${number} on GitHub in a new tab`,
+        control: link,
+        clipRoots: [this, ...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state?.status === "ready" &&
+          `${this.state?.payload?.issue?.number ?? ""}` === number &&
+          this.state?.payload?.issue?.url === issue.url &&
+          this.querySelector(linkSelector) === link &&
+          link.getAttribute("href") === issue.url &&
+          hasActionHintLayoutBox(link),
+      }));
+    }
+    const ownScope = {
+      blocked: false,
+      targets,
       mutationRoots: [this],
       scrollRoots: [],
     };
+    const body = this.querySelector(
+      ":scope > .github-issue-viewer-panel > .github-issue-body",
+    );
+    return mergeActionHintScopes(
+      ownScope,
+      body?.actionHintScope?.({
+        scopeId: `${scopeId}:${encodeURIComponent(number)}:body`,
+        clipRoots: [this, ...clipRoots].filter(Boolean),
+        isCurrent: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state === state &&
+          this.querySelector(
+            ":scope > .github-issue-viewer-panel > .github-issue-body",
+          ) === body,
+      }),
+    );
   }
 
   scrollSurfaceScope({ scopeId = "github:issue", clipRoots = [] } = {}) {

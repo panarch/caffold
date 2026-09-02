@@ -323,6 +323,71 @@ test("revalidation refreshes a label without replacing its frozen action", () =>
   }
 });
 
+test("activation cleanup precedes cancellation for a changed link binding", () => {
+  const restoreGlobals = installDomGlobals();
+  try {
+    const workspace = Object.assign(new FakeEventTarget(), { dataset: {} });
+    const dialog = new FakeDialog();
+    const control = {};
+    let activationKey = JSON.stringify([
+      "https://example.com/first",
+      "_blank",
+      "noopener noreferrer",
+    ]);
+    let activated = 0;
+    const target = {
+      id: "settings:remote-access:open",
+      actionId: "link.open",
+      controlKind: "link",
+      code: "A",
+      control,
+      anchor: control,
+      label: "Open Tailnet URL in a new tab",
+      visibleRect: { left: 0, top: 0, right: 20, bottom: 20 },
+      activate: () => {
+        activated += 1;
+      },
+    };
+    const currentSnapshot = () => ({
+      ...snapshotFor(target),
+      topology: [{
+        id: target.id,
+        actionId: target.actionId,
+        controlKind: target.controlKind,
+        activationKey,
+        actionable: true,
+        control,
+        anchor: control,
+        clipRoots: [],
+      }],
+    });
+    const controller = new ActionHintController({
+      workspace,
+      dialog,
+      collectScope: () => ({}),
+    });
+    controller.captureSnapshot = currentSnapshot;
+
+    controller.startSession(currentSnapshot());
+    activationKey = JSON.stringify([
+      "https://example.com/second",
+      "_blank",
+      "noopener noreferrer",
+    ]);
+
+    assert.equal(controller.activate("A"), false);
+    assert.equal(controller.session, null);
+    assert.equal(dialog.closeCount, 1);
+    assert.equal(activated, 0);
+    assert.equal(
+      workspace.dataset.actionHintLastExit,
+      "activation-invalidated",
+    );
+  } finally {
+    restoreGlobals();
+  }
+});
+
 test("binds one session to the selected context-local dialog", () => {
   const restoreGlobals = installDomGlobals();
   try {

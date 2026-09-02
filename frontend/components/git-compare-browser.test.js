@@ -54,6 +54,7 @@ test("composes only active Compare tree/viewer leaves", () => {
     parentActionId: "navigation.parent",
     detailsActionId: "file.details.open",
     refreshActionId: "button.activate",
+    linkActionId: "link.open",
   };
   assert.deepEqual(browser.actionHintScope.call(owner, actionOptions).targets, [
     treeTarget,
@@ -61,6 +62,7 @@ test("composes only active Compare tree/viewer leaves", () => {
   ]);
   assert.equal(treeOptions.disclosureActionId, "disclosure.toggle");
   assert.equal(viewerOptions.refreshActionId, "button.activate");
+  assert.equal(viewerOptions.linkActionId, "link.open");
   assert.deepEqual(browser.scrollSurfaceScope.call(owner, actionOptions).surfaces, [
     treeSurface,
     viewerSurface,

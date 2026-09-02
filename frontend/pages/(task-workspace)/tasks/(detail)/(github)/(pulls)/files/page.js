@@ -394,6 +394,7 @@ class CaffoldGithubPullFilesPage extends HTMLElement {
             actionId: ACTION_HINT_ACTION.PARENT,
             detailsActionId: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
             refreshActionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            linkActionId: ACTION_HINT_ACTION.LINK_OPEN,
             clipRoots: [this, ...clipRoots],
           })
         : null,

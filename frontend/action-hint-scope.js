@@ -34,6 +34,80 @@ export function buttonActionHintTarget({
   });
 }
 
+export function linkActionHintTarget({
+  id,
+  actionId,
+  label,
+  control,
+  anchor = control,
+  clipRoots,
+  isActionable,
+}) {
+  const binding = captureLinkActionHintBinding(control);
+  const activationKey = JSON.stringify(binding);
+  return focusAndClickActionHintTarget({
+    id,
+    actionId,
+    label,
+    controlKind: "link",
+    control,
+    anchor,
+    clipRoots,
+    activationKey,
+    isActionable: () =>
+      matchesLinkActionHintBinding(control, binding) && isActionable(),
+  });
+}
+
+export function captureLinkActionHintBinding(control) {
+  return Object.freeze({
+    href: control.getAttribute("href"),
+    target: control.getAttribute("target"),
+    rel: control.getAttribute("rel"),
+  });
+}
+
+export function matchesLinkActionHintBinding(control, binding) {
+  return Boolean(
+    binding &&
+      control.getAttribute("href") === binding.href &&
+      control.getAttribute("target") === binding.target &&
+      control.getAttribute("rel") === binding.rel,
+  );
+}
+
+export function linkActionHintLabel(control) {
+  const binding = captureLinkActionHintBinding(control);
+  if (
+    !binding.href ||
+    binding.href.startsWith("#")
+  ) {
+    return "";
+  }
+  const imageText = Array.from(control.querySelectorAll?.("img[alt]") ?? [])
+    .map((image) => image.getAttribute("alt"))
+    .join(" ");
+  const visibleText = typeof control.innerText === "string"
+    ? control.innerText
+    : control.textContent;
+  const name = [
+    control.getAttribute("aria-label"),
+    visibleText,
+    control.getAttribute("title"),
+    imageText,
+  ].map(normalizeActionHintText).find(Boolean) ?? "";
+  if (!name) {
+    return "";
+  }
+  if (binding.href.trim().toLowerCase().startsWith("mailto:")) {
+    return `Open ${name} in an email app`;
+  }
+  if (binding.target?.toLowerCase() === "_blank") {
+    return `Open ${name} in a new tab`;
+  }
+  return `Open ${name}`;
+}
+
 export function disclosureActionHintTarget({
   id,
   actionId,
@@ -239,6 +313,7 @@ function focusActionHintTarget({
   control,
   anchor = control,
   clipRoots,
+  activationKey,
   isActionable,
 }) {
   return {
@@ -249,9 +324,14 @@ function focusActionHintTarget({
     control,
     anchor,
     clipRoots,
+    ...(activationKey == null ? {} : { activationKey }),
     isActionable,
     activate: () => control.focus({ preventScroll: true }),
   };
+}
+
+function normalizeActionHintText(value) {
+  return `${value ?? ""}`.replace(/\s+/g, " ").trim();
 }
 
 function focusAndClickActionHintTarget(options) {

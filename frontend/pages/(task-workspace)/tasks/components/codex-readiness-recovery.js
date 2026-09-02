@@ -8,6 +8,7 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
+  linkActionHintTarget,
 } from "../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
@@ -183,6 +184,28 @@ class CaffoldCodexReadinessRecovery extends HTMLElement {
           hasActionHintLayoutBox(control),
       })];
     });
+    const guide = this.querySelector(
+      '.codex-readiness-actions a[href]',
+    );
+    if (
+      guide &&
+      !guide.hidden &&
+      hasActionHintLayoutBox(guide)
+    ) {
+      targets.push(linkActionHintTarget({
+        id: `${scopeId}:official-guide`,
+        actionId: ACTION_HINT_ACTION.LINK_OPEN,
+        label: "Open Official Codex CLI guide in a new tab",
+        control: guide,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.querySelector('.codex-readiness-actions a[href]') === guide &&
+          !guide.hidden &&
+          hasActionHintLayoutBox(guide),
+      }));
+    }
     return {
       blocked: false,
       targets,

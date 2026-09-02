@@ -963,7 +963,16 @@ test("honors a remote revocation tombstone without silently re-registering", { t
   expect(await page.evaluate(() => window.__pushMock.subscribeCalls)).toBe(0);
 });
 
-test("explains missing app-server capabilities in Codex Settings", { tag: "@all-viewports" }, async ({ page }) => {
+test("explains missing app-server capabilities in Codex Settings", { tag: "@all-viewports" }, async ({
+  context,
+  page,
+}) => {
+  await context.route("https://learn.chatgpt.com/docs/codex/cli", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>Official Codex CLI guide</title>",
+    }),
+  );
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -989,6 +998,20 @@ test("explains missing app-server capabilities in Codex Settings", { tag: "@all-
   );
   await expect(settings).toContainText("appServerCommandsUnavailable");
   await expect(settings.getByRole("button", { name: "Refresh" })).toBeEnabled();
+  const guide = settings.getByRole("link", {
+    name: "Official Codex CLI guide",
+  });
+  await revealActionTarget(page, guide);
+  const popupPromise = page.waitForEvent("popup");
+  await activateActionHint(
+    page,
+    /Open Official Codex CLI guide in a new tab$/,
+  );
+  const popup = await popupPromise;
+  await expect(popup).toHaveURL(
+    "https://learn.chatgpt.com/docs/codex/cli",
+  );
+  await popup.close();
 });
 
 test("returns from Settings to the canonical Tasks home", { tag: "@all-viewports" }, async ({

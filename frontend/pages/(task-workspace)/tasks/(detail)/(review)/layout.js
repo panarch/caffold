@@ -363,6 +363,7 @@ class CaffoldTaskReview extends HTMLElement {
           noticeActionId: ACTION_HINT_ACTION.REVIEW_AXIS,
           detailsActionId: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
           refreshActionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+          linkActionId: ACTION_HINT_ACTION.LINK_OPEN,
           clipRoots: viewerClipRoots,
         })
       : null;

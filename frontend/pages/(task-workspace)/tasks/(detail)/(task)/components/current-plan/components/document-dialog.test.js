@@ -27,6 +27,7 @@ test("provides Close and only the currently visible Retry action", () => {
     isConnected: true,
     current: { path: "task/PLAN.md" },
     dialog: () => dialog,
+    preview: () => null,
   };
   const scope = documentDialog.actionHintScope.call(owner);
 
@@ -38,6 +39,49 @@ test("provides Close and only the currently visible Retry action", () => {
   assert.equal(scope.targets[1].isActionable(), false);
   retry.visible = true;
   assert.equal(scope.targets[1].isActionable(), true);
+});
+
+test("merges the current document preview scope with modal controls", () => {
+  const close = actionControl("Close document");
+  const previewTarget = { id: "document-link" };
+  let received;
+  const preview = {
+    actionHintScope(options) {
+      received = options;
+      return {
+        blocked: false,
+        targets: [previewTarget],
+        mutationRoots: [this],
+        scrollRoots: [this],
+      };
+    },
+  };
+  const dialog = {
+    open: true,
+    querySelector: (selector) =>
+      selector === ".current-plan-document-close" ? close : null,
+  };
+  const owner = {
+    isConnected: true,
+    current: { path: "task/PLAN.md" },
+    dialog: () => dialog,
+    preview: () => preview,
+  };
+  const scope = documentDialog.actionHintScope.call(owner);
+
+  assert.deepEqual(scope.targets.map(({ id }) => id), [
+    "current-plan-document:task%2FPLAN.md:close",
+    "document-link",
+  ]);
+  assert.equal(
+    received.scopeId,
+    "current-plan-document:task%2FPLAN.md:preview",
+  );
+  assert.deepEqual(received.clipRoots, [dialog]);
+  assert.equal(received.linkActionId, "link.open");
+  assert.equal(received.isCurrent(), true);
+  owner.current = { path: "task/CHECKLIST.md" };
+  assert.equal(received.isCurrent(), false);
 });
 
 test("provides its exact modal document context and preview scrollport", () => {

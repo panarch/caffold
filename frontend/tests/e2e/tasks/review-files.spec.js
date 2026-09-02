@@ -234,8 +234,15 @@ test("browses source through the shared Files navigator and one root watch", { t
 });
 
 test("renders a route-owned text-only Markdown Preview without changing file selection", { tag: "@all-viewports" }, async ({
+  context,
   page,
 }, testInfo) => {
+  await context.route("https://example.com/docs", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>External documentation</title>",
+    }),
+  );
   const embeddedResourceRequests = [];
   page.on("request", (request) => {
     if (request.url() === "https://example.com/preview.png") {
@@ -362,7 +369,10 @@ test("renders a route-owned text-only Markdown Preview without changing file sel
   await expect(preview.locator(".markdown-preview-image-placeholder")).toHaveText(
     "[Image: Architecture diagram]",
   );
-  await expect(preview.getByRole("link", { name: "External documentation" })).toHaveAttribute(
+  const externalDocumentation = preview.getByRole("link", {
+    name: "External documentation",
+  });
+  await expect(externalDocumentation).toHaveAttribute(
     "target",
     "_blank",
   );
@@ -373,6 +383,22 @@ test("renders a route-owned text-only Markdown Preview without changing file sel
   ).toBeUndefined();
   expect(embeddedResourceRequests).toEqual([]);
   await expect(previewControl).toHaveAttribute("aria-pressed", "true");
+  await externalDocumentation.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  const popupPromise = page.waitForEvent("popup");
+  await activateActionHint(
+    page,
+    /Open External documentation in a new tab$/,
+  );
+  const popup = await popupPromise;
+  await expect(popup).toHaveURL("https://example.com/docs");
+  await popup.close();
+  await expect(previewControl).toHaveAttribute("aria-pressed", "true");
+  await markdownPreview.evaluate((element) => {
+    element.scrollTop = 0;
+  });
 
   const layout = await taskReview.evaluate((review) => {
     const axis = review.querySelector(
@@ -412,6 +438,12 @@ test("renders a route-owned text-only Markdown Preview without changing file sel
   await expect(markdownPreview.locator(".markdown-preview-fallback")).toHaveText(
     "[[caffold-test:markdown-error]]",
   );
+  expect(await page.locator("caffold-task-workspace").evaluate((workspace) =>
+    workspace.actionHintScope().targets.some(
+      (target) => target.label ===
+        "Open External documentation in a new tab",
+    )
+  )).toBe(false);
 
   await page.reload();
   await expect(markdownPreview).toHaveAttribute("data-render-state", "markdown");

@@ -102,25 +102,20 @@ test("rejects unknown actions, duplicate identities, and fixed-code conflicts", 
 });
 
 test("accepts only the central semantic action and control-kind policy", () => {
+  const nonButtonKinds = new Map([
+    [ACTION_HINT_ACTION.PROMPT_FOCUS, "textbox"],
+    [ACTION_HINT_ACTION.DIALOG_TEXTBOX_FOCUS, "textbox"],
+    [ACTION_HINT_ACTION.CONTROL_SELECT_OPEN, "select"],
+    [ACTION_HINT_ACTION.CONTROL_RADIO_SELECT, "radio"],
+    [ACTION_HINT_ACTION.CONTROL_SWITCH_TOGGLE, "switch"],
+    [ACTION_HINT_ACTION.CONTROL_RANGE_FOCUS, "range"],
+    [ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS, "separator"],
+    [ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS, "reorder-handle"],
+    [ACTION_HINT_ACTION.DISCLOSURE_TOGGLE, "disclosure"],
+    [ACTION_HINT_ACTION.LINK_OPEN, "link"],
+  ]);
   for (const actionId of Object.values(ACTION_HINT_ACTION)) {
-    const controlKind = actionId === ACTION_HINT_ACTION.PROMPT_FOCUS ||
-        actionId === ACTION_HINT_ACTION.DIALOG_TEXTBOX_FOCUS
-      ? "textbox"
-      : actionId === ACTION_HINT_ACTION.CONTROL_SELECT_OPEN
-        ? "select"
-        : actionId === ACTION_HINT_ACTION.CONTROL_RADIO_SELECT
-          ? "radio"
-          : actionId === ACTION_HINT_ACTION.CONTROL_SWITCH_TOGGLE
-            ? "switch"
-            : actionId === ACTION_HINT_ACTION.CONTROL_RANGE_FOCUS
-              ? "range"
-              : actionId === ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS
-                ? "separator"
-                : actionId === ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS
-                  ? "reorder-handle"
-        : actionId === ACTION_HINT_ACTION.DISCLOSURE_TOGGLE
-          ? "disclosure"
-        : "button";
+    const controlKind = nonButtonKinds.get(actionId) ?? "button";
     assert.equal(matchesActionHintPolicy({
       actionId,
       controlKind,
@@ -242,6 +237,24 @@ test("allocates explicitly owned ordinary buttons through the automatic pool", (
   assert.deepEqual(
     allocated.map(({ id, code }) => [id, code]),
     [["refresh", "A"], ["copy", "S"]],
+  );
+});
+
+test("allocates owner-declared links through the automatic pool", () => {
+  const allocated = allocateActionHintCodes([
+    target("guide", ACTION_HINT_ACTION.LINK_OPEN, "link"),
+    target("external", ACTION_HINT_ACTION.LINK_OPEN, "link"),
+  ]);
+
+  assert.deepEqual(
+    allocated.map(({ id, code }) => [id, code]),
+    [["guide", "A"], ["external", "S"]],
+  );
+  assert.throws(
+    () => allocateActionHintCodes([
+      target("wrong-kind", ACTION_HINT_ACTION.LINK_OPEN),
+    ]),
+    /Unsupported Action Hint action/,
   );
 });
 
@@ -416,6 +429,7 @@ test("freezes target topology by semantic order and DOM identity", () => {
       id: "task-a",
       actionId: "task.open",
       controlKind: "button",
+      activationKey: "",
       actionable: true,
       control: firstControl,
       anchor: firstControl,
@@ -425,6 +439,7 @@ test("freezes target topology by semantic order and DOM identity", () => {
       id: "new",
       actionId: "task.create",
       controlKind: "button",
+      activationKey: "",
       actionable: true,
       control: secondControl,
       anchor: secondControl,
@@ -454,6 +469,13 @@ test("freezes target topology by semantic order and DOM identity", () => {
     ]),
     false,
   );
+  assert.equal(
+    sameActionHintTopology(topology, [
+      { ...topology[0], activationKey: "changed" },
+      topology[1],
+    ]),
+    false,
+  );
 });
 
 test("keeps presentation label changes but rejects frozen binding changes", () => {
@@ -466,6 +488,7 @@ test("keeps presentation label changes but rejects frozen binding changes", () =
       id: "task-a",
       actionId: "task.open",
       controlKind: "button",
+      activationKey: "",
       actionable: true,
       control,
       anchor: control,

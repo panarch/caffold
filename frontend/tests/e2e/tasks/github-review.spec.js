@@ -4,6 +4,7 @@ import {
   actionHintDialog,
   activateActionHint,
   enterActionHints,
+  waitForActionHintTarget,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { TASK_PERMISSION_FIXTURE } from "../support/task-api-fixture.js";
@@ -586,6 +587,19 @@ async function openLinkedWorktreeIssue(page) {
   return page.locator("caffold-github-issue-detail-page");
 }
 
+async function activatePopupActionHint(page, control, accessibleName, url) {
+  await control.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  await waitForActionHintTarget(page, accessibleName);
+  const popupPromise = page.waitForEvent("popup");
+  await activateActionHint(page, accessibleName);
+  const popup = await popupPromise;
+  await expect(popup).toHaveURL(url);
+  await popup.close();
+}
+
 async function taskGithubPaneGeometry(page, options = {}) {
   return page.locator("caffold-task-github-layout").evaluate((layout, geometryOptions) => {
     const detailPane = document.querySelector(".task-workspace-detail-pane");
@@ -662,6 +676,179 @@ async function taskGithubPaneGeometry(page, options = {}) {
     };
   }, options);
 }
+
+test("opens direct and rendered Issue links through the Issue owner", { tag: "@all-viewports" }, async ({
+  context,
+  page,
+}, testInfo) => {
+  await context.route("https://github.com/gluesql/gluesql/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>GitHub link target</title>",
+    }),
+  );
+  const issueBodyUrl =
+    "https://github.com/gluesql/gluesql/issues/1984#issue-body-reference";
+  await installLinkedWorktreeGithubFixture(page, {
+    issueBodyHtml:
+      `<p><a href="${issueBodyUrl}" target="_blank" rel="noreferrer">Issue body reference</a></p>`,
+  });
+
+  await page.goto(`/tasks/${THREAD_ID}/github/issues/1984`);
+  const issueDetail = page.locator("caffold-github-issue-detail-page");
+  const issueBodyReference = issueDetail.getByRole("link", {
+    name: "Issue body reference",
+    exact: true,
+  });
+  await issueBodyReference.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  const issueHint = await enterActionHints(page);
+  await expect(
+    issueHint.getByLabel(/Open issue #1984 on GitHub in a new tab$/),
+  ).toBeVisible();
+  await expect(
+    issueHint.getByLabel(/Open Issue body reference in a new tab$/),
+  ).toBeVisible();
+  await captureReviewScreenshot(page, testInfo, "github-issue-link-hints");
+  await page.keyboard.press("Escape");
+  await activatePopupActionHint(
+    page,
+    issueDetail.getByRole("link", { name: "GitHub", exact: true }),
+    /Open issue #1984 on GitHub in a new tab$/,
+    "https://github.com/gluesql/gluesql/issues/1984",
+  );
+  await activatePopupActionHint(
+    page,
+    issueBodyReference,
+    /Open Issue body reference in a new tab$/,
+    issueBodyUrl,
+  );
+});
+
+test("opens direct and rendered Pull links through the Pull owner", { tag: "@all-viewports" }, async ({
+  context,
+  page,
+}, testInfo) => {
+  await context.route("https://github.com/gluesql/gluesql/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>GitHub link target</title>",
+    }),
+  );
+  const pullBodyUrl =
+    "https://github.com/gluesql/gluesql/pull/1983#pull-body-reference";
+  const commentUrl =
+    "https://github.com/gluesql/gluesql/pull/1983#issuecomment-1";
+  const commentBodyUrl =
+    "https://github.com/gluesql/gluesql/pull/1983#comment-body-reference";
+  const reviewBodyUrl =
+    "https://github.com/gluesql/gluesql/pull/1983#review-body-reference";
+  const commitUrl =
+    "https://github.com/gluesql/gluesql/commit/3333333333333333333333333333333333333333";
+  const { pull } = await installLinkedWorktreeGithubFixture(page, {
+    pullBodyHtml:
+      `<p><a href="${pullBodyUrl}" target="_blank" rel="noreferrer">Pull body reference</a></p>`,
+  });
+  pull.conversationComments = [{
+    author: "maintainer",
+    body: "Please preserve the review workflow.",
+    bodyHtml:
+      `<p><a href="${commentBodyUrl}" target="_blank" rel="noreferrer">Comment body reference</a></p>`,
+    createdAt: "2026-08-03T02:30:00Z",
+    updatedAt: "2026-08-03T02:30:00Z",
+    url: commentUrl,
+  }];
+  pull.reviewComments = [{
+    author: "reviewer",
+    state: "CHANGES_REQUESTED",
+    body: "Use the exact head.",
+    bodyHtml:
+      `<p><a href="${reviewBodyUrl}" target="_blank" rel="noreferrer">Review body reference</a></p>`,
+    submittedAt: "2026-08-03T02:45:00Z",
+  }];
+  pull.commitSummaries = [{
+    sha: "3333333333333333333333333333333333333333",
+    shortSha: "3333333",
+    subject: "Keep native GitHub links",
+    authorName: "maintainer",
+    committedAt: "2026-08-03T02:50:00Z",
+    url: commitUrl,
+  }];
+
+  await page.goto(`/tasks/${THREAD_ID}/github/pulls/1983`);
+  const pullDetail = page.locator("caffold-github-pull-detail-page");
+  const pullHeaderLink = pullDetail.locator("a.github-pull-link");
+  const pullBodyReference = pullDetail.getByRole("link", {
+    name: "Pull body reference",
+    exact: true,
+  });
+  await pullBodyReference.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  const pullHint = await enterActionHints(page);
+  if (testInfo.project.name === "phone") {
+    await expect(pullHeaderLink).toBeHidden();
+    await expect(
+      pullHint.getByLabel(/Open pull request #1983 on GitHub in a new tab$/),
+    ).toHaveCount(0);
+  } else {
+    await expect(
+      pullHint.getByLabel(/Open pull request #1983 on GitHub in a new tab$/),
+    ).toBeVisible();
+  }
+  await expect(
+    pullHint.getByLabel(/Open Pull body reference in a new tab$/),
+  ).toBeVisible();
+  await captureReviewScreenshot(page, testInfo, "github-pull-link-hints");
+  await page.keyboard.press("Escape");
+  if (testInfo.project.name !== "phone") {
+    await activatePopupActionHint(
+      page,
+      pullHeaderLink,
+      /Open pull request #1983 on GitHub in a new tab$/,
+      "https://github.com/gluesql/gluesql/pull/1983",
+    );
+  }
+  await activatePopupActionHint(
+    page,
+    pullBodyReference,
+    /Open Pull body reference in a new tab$/,
+    pullBodyUrl,
+  );
+  await activatePopupActionHint(
+    page,
+    pullDetail.locator('a[data-github-pull-comment-index="0"]'),
+    /Open conversation comment 1 on GitHub in a new tab$/,
+    commentUrl,
+  );
+  await activatePopupActionHint(
+    page,
+    pullDetail.getByRole("link", {
+      name: "Comment body reference",
+      exact: true,
+    }),
+    /Open Comment body reference in a new tab$/,
+    commentBodyUrl,
+  );
+  await activatePopupActionHint(
+    page,
+    pullDetail.getByRole("link", {
+      name: "Review body reference",
+      exact: true,
+    }),
+    /Open Review body reference in a new tab$/,
+    reviewBodyUrl,
+  );
+  await activatePopupActionHint(
+    page,
+    pullDetail.locator('a[data-github-pull-commit-index="0"]'),
+    /Open commit 3333333 on GitHub in a new tab$/,
+    commitUrl,
+  );
+});
 
 test("contains Issue list and detail content within the foldable Task pane", { tag: "@foldable" }, async ({
   page,
@@ -772,10 +959,13 @@ test("scrolls a retained GitHub Issue body through its public Shadow DOM host", 
   const viewport = page.viewportSize();
   await page.setViewportSize({ ...viewport, height: 360 });
   await installLinkedWorktreeGithubFixture(page, {
-    issueBodyHtml: Array.from(
-      { length: 100 },
-      (_, index) => `<p>Issue keyboard scroll line ${index + 1}</p>`,
-    ).join(""),
+    issueBodyHtml: [
+      ...Array.from(
+        { length: 100 },
+        (_, index) => `<p>Issue keyboard scroll line ${index + 1}</p>`,
+      ),
+      '<p><a href="https://example.com/deep-issue-link" target="_blank">Deep issue reference</a></p>',
+    ].join(""),
   });
   await page.goto(`/tasks/${THREAD_ID}/github/issues/1984`);
 
@@ -791,6 +981,11 @@ test("scrolls a retained GitHub Issue body through its public Shadow DOM host", 
   await expect.poll(() => body.evaluate(
     (element) => element.scrollHeight > element.clientHeight + 1,
   )).toBe(true);
+  const initialHints = await enterActionHints(page);
+  await expect(
+    initialHints.getByLabel(/ — Open Deep issue reference in a new tab$/),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
 
   await workspace.focus();
   await page.keyboard.press("s");
@@ -799,6 +994,18 @@ test("scrolls a retained GitHub Issue body through its public Shadow DOM host", 
   await page.keyboard.press("j");
   await expect.poll(() => body.evaluate((element) => element.scrollTop))
     .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await body.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect.poll(() => body.evaluate((element) =>
+    element.scrollTop + element.clientHeight >= element.scrollHeight - 1
+  )).toBe(true);
+  const scrolledHints = await enterActionHints(page);
+  await expect(
+    scrolledHints.getByLabel(/ — Open Deep issue reference in a new tab$/),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Back to issues" }).click();
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/issues`);

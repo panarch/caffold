@@ -64,6 +64,7 @@ test("composes only active Commit tree/viewer leaves", () => {
   ]);
   assert.equal(treeOptions.disclosureActionId, "disclosure.toggle");
   assert.equal(viewerOptions.refreshActionId, "button.activate");
+  assert.equal(viewerOptions.linkActionId, "link.open");
   assert.equal(resizerOptions.actionId, "control.separator.focus");
   assert.deepEqual(page.scrollSurfaceScope.call(owner).surfaces, [
     treeSurface,

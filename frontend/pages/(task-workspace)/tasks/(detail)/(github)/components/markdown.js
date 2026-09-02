@@ -1,4 +1,13 @@
 import {
+  ACTION_HINT_ACTION,
+  captureLinkActionHintBinding,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  linkActionHintLabel,
+  linkActionHintTarget,
+  matchesLinkActionHintBinding,
+} from "../../../../action-hints.js";
+import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   hasVerticalScrollOverflow,
@@ -25,6 +34,7 @@ class CaffoldGithubMarkdown extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
+    this.actionHintLinks = [];
     this.shadowRoot.innerHTML = `
       <style>
         :host {
@@ -201,9 +211,65 @@ class CaffoldGithubMarkdown extends HTMLElement {
     template.innerHTML = html || "";
     sanitizeChildren(template.content);
     wrapTables(template.content);
-    this.shadowRoot
-      .querySelector(".markdown-body")
-      .replaceChildren(template.content.cloneNode(true));
+    const body = this.shadowRoot.querySelector(".markdown-body");
+    body.replaceChildren(template.content.cloneNode(true));
+    this.actionHintLinks = collectActionHintLinks(body);
+  }
+
+  actionHintScope({
+    scopeId = "",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const body = this.shadowRoot.querySelector(".markdown-body");
+    if (!scopeId || !body || !this.isConnected || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const tableScrollRoots = [];
+    const targets = (this.actionHintLinks ?? []).flatMap((record) => {
+      const { binding, control, ordinal } = record;
+      const label = linkActionHintLabel(control);
+      if (
+        !label ||
+        !matchesLinkActionHintBinding(control, binding) ||
+        !body.contains(control) ||
+        !hasActionHintLayoutBox(control)
+      ) {
+        return [];
+      }
+      const tableScrollRoot = control.closest(".markdown-table-scroll");
+      if (tableScrollRoot && body.contains(tableScrollRoot)) {
+        tableScrollRoots.push(tableScrollRoot);
+      }
+      return [linkActionHintTarget({
+        id: `${scopeId}:link:${ordinal}`,
+        actionId: ACTION_HINT_ACTION.LINK_OPEN,
+        label,
+        control,
+        clipRoots: [
+          this,
+          body,
+          tableScrollRoot,
+          ...clipRoots,
+        ].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.shadowRoot.querySelector(".markdown-body") === body &&
+          this.actionHintLinks?.includes(record) &&
+          body.contains(control) &&
+          matchesLinkActionHintBinding(control, binding) &&
+          Boolean(linkActionHintLabel(control)) &&
+          hasActionHintLayoutBox(control),
+      })];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this, this.shadowRoot],
+      scrollRoots: [this, ...new Set(tableScrollRoots)],
+    };
   }
 
   scrollSurfaceScope({
@@ -235,6 +301,19 @@ class CaffoldGithubMarkdown extends HTMLElement {
       scrollRoots: [this],
     };
   }
+}
+
+function collectActionHintLinks(root) {
+  return Array.from(root.querySelectorAll("a[href]")).flatMap(
+    (control, index) => {
+      const binding = captureLinkActionHintBinding(control);
+      return binding.href &&
+          !binding.href.startsWith("#") &&
+          linkActionHintLabel(control)
+        ? [{ control, ordinal: index + 1, binding }]
+        : [];
+    },
+  );
 }
 
 function sanitizeChildren(parent) {

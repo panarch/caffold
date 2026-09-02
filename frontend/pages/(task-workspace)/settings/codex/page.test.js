@@ -22,6 +22,22 @@ function button(label) {
   };
 }
 
+function link(label) {
+  const attributes = new Map([
+    ["href", "https://learn.chatgpt.com/docs/codex/cli"],
+    ["target", "_blank"],
+    ["rel", "noreferrer"],
+  ]);
+  return {
+    hidden: false,
+    textContent: label,
+    getAttribute: (name) => attributes.get(name) ?? null,
+    getClientRects: () => [{}],
+    focus() {},
+    click() {},
+  };
+}
+
 test("provides current Codex actions and its exact scrollport", () => {
   const scrollport = {
     clientHeight: 100,
@@ -31,10 +47,12 @@ test("provides current Codex actions and its exact scrollport", () => {
   const refresh = button("Refresh");
   const copy = button("Copy command");
   const restart = button("Restart runtime");
+  const guide = link("Official Codex CLI guide");
   const controls = new Map([
     ['button[data-action="refresh-codex-status"]', refresh],
     ['button[data-action="copy-codex-install"]', copy],
     ['button[data-action="open-codex-restart"]', restart],
+    ['.settings-codex-repair a[href]', guide],
   ]);
   const owner = {
     hidden: false,
@@ -51,8 +69,11 @@ test("provides current Codex actions and its exact scrollport", () => {
     "settings:codex:refresh",
     "settings:codex:copy-install-command",
     "settings:codex:restart-runtime",
+    "settings:codex:official-guide",
   ]);
   assert.equal(codex.scrollSurfaceScope.call(owner).surfaces[0].scrollport, scrollport);
   refresh.disabled = true;
   assert.equal(scope.targets[0].isActionable(), false);
+  guide.hidden = true;
+  assert.equal(scope.targets.at(-1).isActionable(), false);
 });

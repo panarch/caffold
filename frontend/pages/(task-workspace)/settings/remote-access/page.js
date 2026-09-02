@@ -7,6 +7,7 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
+  linkActionHintTarget,
 } from "../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
@@ -171,6 +172,33 @@ class CaffoldSettingsRemoteAccessPage extends HTMLElement {
           hasActionHintLayoutBox(control),
       })];
     });
+    const open = this.querySelector('a[data-action="open"]');
+    const tailnetUrl = this.snapshot.status?.state === "ready"
+      ? this.snapshot.status.tailnetUrl
+      : "";
+    if (
+      open &&
+      tailnetUrl &&
+      open.getAttribute("href") === tailnetUrl &&
+      hasActionHintLayoutBox(open)
+    ) {
+      targets.push(linkActionHintTarget({
+        id: `${scopeId}:open-link`,
+        actionId: ACTION_HINT_ACTION.LINK_OPEN,
+        label: "Open private access address in a new tab",
+        control: open,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.querySelector('a[data-action="open"]') === open &&
+          this.snapshot.status?.state === "ready" &&
+          this.snapshot.status.tailnetUrl === tailnetUrl &&
+          open.getAttribute("href") === tailnetUrl &&
+          hasActionHintLayoutBox(open),
+      }));
+    }
     return {
       blocked: false,
       targets,

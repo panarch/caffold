@@ -28,6 +28,23 @@ function button(action, { hidden = false } = {}) {
   };
 }
 
+function link({ hidden = false } = {}) {
+  const attributes = new Map([
+    ["href", "https://learn.chatgpt.com/docs/codex/cli"],
+    ["target", "_blank"],
+    ["rel", "noreferrer"],
+  ]);
+  return {
+    hidden,
+    getAttribute: (name) => attributes.get(name) ?? null,
+    getClientRects() {
+      return this.hidden ? [] : [{}];
+    },
+    focus() {},
+    click() {},
+  };
+}
+
 test("provides only visible readiness actions and its retained surface", () => {
   const controls = new Map([
     ["copy-command", button("copy-command")],
@@ -40,6 +57,7 @@ test("provides only visible readiness actions and its retained surface", () => {
     scrollHeight: 260,
     getClientRects: () => [{}],
   };
+  const guide = link();
   const owner = {
     hidden: false,
     isConnected: true,
@@ -47,6 +65,7 @@ test("provides only visible readiness actions and its retained surface", () => {
     getClientRects: () => [{}],
     querySelector(selector) {
       if (selector.includes("codex-readiness-surface")) return scrollport;
+      if (selector === '.codex-readiness-actions a[href]') return guide;
       for (const [action, control] of controls) {
         if (selector.includes(`\"${action}\"`)) return control;
       }
@@ -59,8 +78,9 @@ test("provides only visible readiness actions and its retained surface", () => {
     "codex-readiness:copy-command",
     "codex-readiness:retry",
     "codex-readiness:settings",
+    "codex-readiness:official-guide",
   ]);
-  scope.targets.forEach((target) => target.activate());
+  scope.targets.slice(0, 3).forEach((target) => target.activate());
   assert.deepEqual(
     ["copy-command", "retry", "settings"].map(
       (action) => controls.get(action).clicks,
@@ -79,6 +99,7 @@ test("provides only visible readiness actions and its retained surface", () => {
       "codex-readiness:copy-command",
       "codex-readiness:restart",
       "codex-readiness:settings",
+      "codex-readiness:official-guide",
     ],
   );
   scrollport.scrollHeight = 100;

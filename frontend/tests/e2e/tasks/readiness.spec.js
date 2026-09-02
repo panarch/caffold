@@ -99,7 +99,18 @@ test.beforeEach(async ({ context, page }) => {
 });
 
 for (const [state, heading] of BLOCKING_STATES) {
-  test(`shows the canonical ${state} Task setup surface`, { tag: "@all-viewports" }, async ({ page }) => {
+  test(`shows the canonical ${state} Task setup surface`, { tag: "@all-viewports" }, async ({
+    context,
+    page,
+  }) => {
+    if (state === "unsupportedInstall") {
+      await context.route("https://learn.chatgpt.com/docs/codex/cli", (route) =>
+        route.fulfill({
+          contentType: "text/html",
+          body: "<!doctype html><title>Official Codex CLI guide</title>",
+        }),
+      );
+    }
     await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
       route.fulfill({
         contentType: "application/json",
@@ -140,7 +151,23 @@ for (const [state, heading] of BLOCKING_STATES) {
       await expect(setup).toContainText("without this app-server support");
       await expect(setup).toContainText("Caffold manages the connection automatically");
       await expect(setup).toContainText("Required official");
-      await expect(setup.getByRole("link", { name: "Official Codex CLI guide" })).toBeVisible();
+      const guide = setup.getByRole("link", {
+        name: "Official Codex CLI guide",
+      });
+      await expect(guide).toBeVisible();
+      if (state === "unsupportedInstall") {
+        await revealActionTarget(page, guide);
+        const popupPromise = page.waitForEvent("popup");
+        await activateActionHint(
+          page,
+          /Open Official Codex CLI guide in a new tab$/,
+        );
+        const popup = await popupPromise;
+        await expect(popup).toHaveURL(
+          "https://learn.chatgpt.com/docs/codex/cli",
+        );
+        await popup.close();
+      }
     }
     if (state === "updateRequired") {
       await expect(setup).toContainText("Required official update command");

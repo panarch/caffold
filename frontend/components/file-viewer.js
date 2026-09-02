@@ -2,6 +2,7 @@ import { escapeHtml, formatBytes, formatModified } from "./dom.js";
 import {
   buttonActionHintTarget,
   emptyActionHintScope,
+  mergeActionHintScopes,
 } from "../action-hint-scope.js";
 import {
   emptyScrollSurfaceScope,
@@ -183,6 +184,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
     noticeActionId = "",
     detailsActionId = "",
     refreshActionId = "",
+    linkActionId = "",
     clipRoots = [],
   } = {}) {
     const control = this.querySelector(
@@ -289,12 +291,34 @@ class CaffoldReviewFileViewer extends HTMLElement {
           !noticeControl.disabled,
       }));
     }
-    return {
+    const ownScope = {
       blocked: false,
       targets,
       mutationRoots: [this],
       scrollRoots: [],
     };
+    const state = this.state;
+    if (state?.status !== "markdown") {
+      return ownScope;
+    }
+    const preview = this.querySelector(
+      ":scope > .markdown-panel > caffold-markdown-preview",
+    );
+    return mergeActionHintScopes(
+      ownScope,
+      preview?.actionHintScope?.({
+        scopeId: `${scopeId}:preview`,
+        linkActionId,
+        clipRoots: [this, ...clipRoots].filter(Boolean),
+        isCurrent: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state === state &&
+          this.querySelector(
+            ":scope > .markdown-panel > caffold-markdown-preview",
+          ) === preview,
+      }),
+    );
   }
 
   scrollSurfaceScope({

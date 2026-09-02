@@ -26,8 +26,15 @@ test.afterEach(async ({}, testInfo) => {
 });
 
 test("floats ignored current documents above the stable composer and updates the open checklist", { tag: "@all-viewports" }, async ({
+  context,
   page,
 }, testInfo) => {
+  await context.route("https://example.com/current-plan", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>Current plan reference</title>",
+    }),
+  );
   const workspace = prepareWorkspace(testInfo);
   await installTaskApiFixture(page);
   const detail = detailFor("thread-1", workspace.logicalPath);
@@ -73,8 +80,9 @@ test("floats ignored current documents above the stable composer and updates the
 
   const planTitle =
     "Coordinate current plan documents without exposing native agent Plan mode";
+  const planMarkdown = `# ${planTitle}\n\nThe agent keeps this document in Markdown.\n\n[Plan reference](https://example.com/current-plan)\n`;
   writeCurrentDocuments(workspace.absolutePath, {
-    plan: `# ${planTitle}\n\nThe agent keeps this document in Markdown.\n`,
+    plan: planMarkdown,
     checklist: checklistMarkdown(64, 2),
   });
   const readyResponse = currentPlanResponse(page, workspace.logicalPath);
@@ -247,6 +255,36 @@ test("floats ignored current documents above the stable composer and updates the
     )
     .toBeLessThan(1);
   await expect(dialog.locator(".markdown-preview-body h1")).toHaveText(planTitle);
+  const planReference = dialog.getByRole("link", {
+    name: "Plan reference",
+    exact: true,
+  });
+  await expect(planReference).toHaveAttribute("target", "_blank");
+  await page.keyboard.press("f");
+  const documentHint = actionHintDialog(page);
+  await expect(
+    documentHint.getByRole("button", { name: / — Close document$/ }),
+  ).toBeVisible();
+  const planReferenceHint = documentHint.getByRole("button", {
+    name: / — Open Plan reference in a new tab$/,
+  });
+  await expect(planReferenceHint).toBeVisible();
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "tasks-current-plan-link-hints",
+  );
+  const planReferenceCode = await planReferenceHint.getAttribute(
+    "data-action-hint-code",
+  );
+  expect(planReferenceCode).toBeTruthy();
+  const popupPromise = page.waitForEvent("popup");
+  await page.keyboard.type(planReferenceCode.toLowerCase());
+  const popup = await popupPromise;
+  await expect(popup).toHaveURL("https://example.com/current-plan");
+  await popup.close();
+  await expect(documentHint).toBeHidden();
+  await expect(dialog).toHaveAttribute("open", "");
   await page.keyboard.press("Escape");
   await expect(dialog).not.toHaveAttribute("open", "");
   await expect(planButton).toBeFocused();
@@ -284,7 +322,7 @@ test("floats ignored current documents above the stable composer and updates the
   expect(previewScroll).toBeGreaterThan(0);
 
   writeCurrentDocuments(workspace.absolutePath, {
-    plan: `# ${planTitle}\n\nThe agent keeps this document in Markdown.\n`,
+    plan: planMarkdown,
     checklist: checklistMarkdown(64, 3, "Live checkpoint"),
   });
   const refreshedProjection = currentPlanResponse(page, workspace.logicalPath);

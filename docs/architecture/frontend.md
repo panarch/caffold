@@ -273,6 +273,33 @@ Collapse. The Hint overlay closes before the retained summary or button
 receives focus and its existing click path. Opening or closing never starts a
 second Hint session; the user presses `F` again against the new visible state.
 
+Links use the distinct `link.open` action and `link` control kind. A component
+that renders a direct product link declares that exact retained anchor: Remote
+Access owns its current Tailnet link, Settings and Task readiness own their
+conditional Codex guide, and GitHub Issue or Pull detail owns its header,
+comment, and commit links. Each target freezes the anchor's raw `href`,
+`target`, and `rel`. After Hint cleanup and final revalidation, activation
+focuses and clicks that native anchor; the helper does not call a router or
+`window.open()`. Consequently same-tab Caffold paths, external tabs, and
+`mailto:` links preserve their existing browser semantics. Changing any frozen
+link attribute closes the session, while an accessible-name-only patch updates
+the existing badge and code.
+
+Rendered-content owners register links only after their existing sanitizer and
+final DOM mount. Task Markdown and the shared Markdown Preview enumerate the
+final anchors in their own light-DOM body; GitHub Markdown enumerates its own
+open Shadow DOM. The registry stores the exact anchor, a render-local ordinal,
+and the frozen native binding. Generated IDs combine the stable parent scope
+with that ordinal and never contain the URL, so duplicate hrefs or labels remain
+distinct. A raw href beginning with `#`, an absent href, or an anchor without an
+accessible name is omitted; a normal internal or external URL that contains a
+fragment later is retained. Loading, fallback, rerender, representation change,
+and content replacement replace or clear the registry. A disconnected owner
+publishes no scope and may reuse only its still-current mounted registry after
+reconnection. Markdown table-scroll wrappers are explicit per-link clip and
+scroll dependencies, and GitHub Markdown publishes both its host and Shadow
+root as mutation dependencies.
+
 Custom children retain their own action knowledge. Work Details merges its own
 summary with its direct retained children. Command declares active disclosure
 or terminal View output from the same provider, Markdown Code Block declares
@@ -283,15 +310,17 @@ and file viewer expose public scope providers; their screen owner supplies the
 semantic action and scope context. Ancestors never discover these actions by
 scanning descendant buttons, `summary` elements, or `aria-expanded`.
 
-External or Markdown links, arbitrary Markdown or third-party `summary`
-disclosures, generated content, and App Shell controls remain outside Action
-Hint. A native summary participates only when its product component explicitly
-owns and declares that disclosure. Registered dialog textboxes keep their
-owner-specific focus behavior, while dialog selects use the same general native
-select contract as workspace controls. Popover and dialog openers are ordinary
-workspace actions, but after either opens the user presses `F` again to enter
-the new retained context; the coordinator never predicts or automatically hands
-off to it. File details deliberately declares no internal Action Hint target.
+Parent layouts merge these renderer-owned link scopes through the same public
+child interface as other retained controls; they do not rediscover anchors.
+Arbitrary third-party `summary` disclosures and App Shell controls remain
+outside Action Hint. A native summary participates only when its product
+component explicitly owns and declares that disclosure. Registered dialog
+textboxes keep their owner-specific focus behavior, while dialog selects use
+the same general native select contract as workspace controls. Popover and
+dialog openers are ordinary workspace actions, but after either opens the user
+presses `F` again to enter the new retained context; the coordinator never
+predicts or automatically hands off to it. File details deliberately declares
+no internal Action Hint target.
 
 Provider collection is hierarchical: each layout merges its own actions with
 only its active direct child scopes through `action-hint-scope.js`. Ancestors

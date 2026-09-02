@@ -222,6 +222,48 @@ test("provides its owned refresh button beside existing viewer actions", () => {
   assert.equal(scope.targets[0].isActionable(), false);
 });
 
+test("merges only the current Markdown preview Action Hint scope", () => {
+  const state = { status: "markdown" };
+  const previewTarget = { id: "preview-link" };
+  let received;
+  let preview = {
+    actionHintScope(options) {
+      received = options;
+      return {
+        blocked: false,
+        targets: [previewTarget],
+        mutationRoots: [this],
+        scrollRoots: [this],
+      };
+    },
+  };
+  const owner = {
+    state,
+    hidden: false,
+    isConnected: true,
+    querySelector(selector) {
+      return selector.includes("caffold-markdown-preview") ? preview : null;
+    },
+  };
+  const scope = fileViewer.actionHintScope.call(owner, {
+    scopeId: "review:viewer",
+    linkActionId: "link.open",
+    clipRoots: [{ id: "layout" }],
+  });
+
+  assert.deepEqual(scope.targets, [previewTarget]);
+  assert.equal(received.scopeId, "review:viewer:preview");
+  assert.equal(received.linkActionId, "link.open");
+  assert.deepEqual(received.clipRoots, [owner, { id: "layout" }]);
+  assert.equal(received.isCurrent(), true);
+  preview = null;
+  assert.equal(received.isCurrent(), false);
+  owner.state = { status: "file" };
+  assert.deepEqual(fileViewer.actionHintScope.call(owner, {
+    scopeId: "review:viewer",
+  }).targets, []);
+});
+
 test("delegates source scrolling and invalidates it when viewer state changes", () => {
   const state = {
     status: "file",

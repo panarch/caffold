@@ -16,7 +16,12 @@ function scope(id) {
 
 test("merges Review axes with only the active navigator and selected viewer", () => {
   const calls = { working: 0, branch: 0, files: 0, viewer: 0 };
-  const actionOptions = { working: null, branch: null, files: null };
+  const actionOptions = {
+    working: null,
+    branch: null,
+    files: null,
+    viewer: null,
+  };
   const pane = () => ({
     visible: true,
     getClientRects() {
@@ -62,8 +67,9 @@ test("merges Review axes with only the active navigator and selected viewer", ()
       } };
     },
     viewer() {
-      return { actionHintScope: () => {
+      return { actionHintScope: (options) => {
         calls.viewer += 1;
+        actionOptions.viewer = options;
         return scope("viewer");
       } };
     },
@@ -83,6 +89,7 @@ test("merges Review axes with only the active navigator and selected viewer", ()
   );
   assert.deepEqual(calls, { working: 1, branch: 1, files: 0, viewer: 1 });
   assert.equal(actionOptions.branch.disclosureActionId, "disclosure.toggle");
+  assert.equal(actionOptions.viewer.linkActionId, "link.open");
 
   owner.route = { ...owner.route, navigator: "files" };
   assert.deepEqual(

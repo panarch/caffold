@@ -1,8 +1,12 @@
 import {
   buttonActionHintTarget,
+  captureLinkActionHintBinding,
   disclosureActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
+  linkActionHintTarget,
+  linkActionHintLabel,
+  matchesLinkActionHintBinding,
   mergeActionHintScopes,
   radioActionHintTarget,
   rangeActionHintTarget,
@@ -40,12 +44,16 @@ export {
   TASK_HINT_ALPHABET,
   advanceHintBuffer,
   buttonActionHintTarget,
+  captureLinkActionHintBinding,
   clampBadgePosition,
   disclosureActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   intersectRects,
   isEditableElement,
+  linkActionHintTarget,
+  linkActionHintLabel,
+  matchesLinkActionHintBinding,
   mergeActionHintScopes,
   normalizeActionHintKey,
   normalizeRect,
@@ -581,6 +589,9 @@ function normalizeDescriptors(targets) {
     const id = `${target?.id ?? ""}`;
     const actionId = `${target?.actionId ?? ""}`;
     const label = `${target?.label ?? ""}`;
+    const activationKey = target?.activationKey == null
+      ? ""
+      : `${target.activationKey}`;
     if (
       !id ||
       ids.has(id) ||
@@ -590,6 +601,7 @@ function normalizeDescriptors(targets) {
         actionId,
         controlKind: target?.controlKind,
       }) ||
+      (target?.controlKind === "link" && !activationKey) ||
       !(target?.control instanceof HTMLElement) ||
       !(target?.anchor instanceof HTMLElement) ||
       typeof target?.isActionable !== "function" ||
@@ -607,6 +619,7 @@ function normalizeDescriptors(targets) {
       id,
       actionId,
       label,
+      activationKey,
       clipRoots,
     });
   }
@@ -631,6 +644,7 @@ function topologyEntry(descriptor, actionable) {
     id: descriptor.id,
     actionId: descriptor.actionId,
     controlKind: descriptor.controlKind,
+    activationKey: descriptor.activationKey,
     actionable,
     control: descriptor.control,
     anchor: descriptor.anchor,
