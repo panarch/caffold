@@ -8,14 +8,14 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
   textboxActionHintTarget,
-} from "../../../../../../action-hints.js";
-import { keyboardNavigationContext } from "../../../../../../keyboard-navigation-context.js";
+} from "../../../../../../../../action-hints.js";
+import { keyboardNavigationContext } from "../../../../../../../../keyboard-navigation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   hasVerticalScrollOverflow,
 } from "../../../../../../../../scroll-scope.js";
-import "../../../../../../components/keyboard-navigation-presentation.js";
+import "../../../../../../../../keyboard-navigation/components/presentation.js";
 
 const CODEX_THREAD_URI_PREFIX = "codex://threads/";
 
@@ -84,7 +84,8 @@ class CaffoldConversationForkDialog extends HTMLElement {
     );
     const hintDialog = presentation?.actionHintDialog?.();
     const hud = presentation?.scrollModeHud?.();
-    if (!dialog || !hintDialog || !hud) {
+    const selector = presentation?.scrollSurfaceSelector?.();
+    if (!dialog || !hintDialog || !hud || !selector) {
       return [];
     }
     const sectionId = `${this.context?.sectionId ?? ""}`;
@@ -100,6 +101,7 @@ class CaffoldConversationForkDialog extends HTMLElement {
       },
       scroll: {
         hud,
+        selector,
         scope: this.scrollSurfaceScope(),
       },
       editing: {

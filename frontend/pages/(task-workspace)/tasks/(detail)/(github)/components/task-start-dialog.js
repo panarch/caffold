@@ -8,17 +8,17 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../../action-hints.js";
+} from "../../../../../../action-hints.js";
 import {
   keyboardNavigationContext,
   mergeKeyboardNavigationContexts,
-} from "../../../../keyboard-navigation-context.js";
+} from "../../../../../../keyboard-navigation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   hasVerticalScrollOverflow,
 } from "../../../../../../scroll-scope.js";
-import "../../../../components/keyboard-navigation-presentation.js";
+import "../../../../../../keyboard-navigation/components/presentation.js";
 
 class CaffoldGithubTaskStartDialog extends HTMLElement {
   connectedCallback() {
@@ -257,10 +257,18 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
     );
     const hintDialog = presentation?.actionHintDialog?.();
     const hud = presentation?.scrollModeHud?.();
+    const selector = presentation?.scrollSurfaceSelector?.();
     const source = this.sourceComponent();
     const sourceNumber = `${source?.source?.()?.number ?? ""}`;
     const sourceKind = `${this.sourceKind ?? ""}`;
-    if (!dialog?.open || !hintDialog || !hud || !sourceKind || !sourceNumber) {
+    if (
+      !dialog?.open ||
+      !hintDialog ||
+      !hud ||
+      !selector ||
+      !sourceKind ||
+      !sourceNumber
+    ) {
       return [];
     }
     const scopeId = `github-task-start:${sourceKind}:${encodeURIComponent(
@@ -276,6 +284,7 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
       },
       scroll: {
         hud,
+        selector,
         scope: this.scrollSurfaceScope(),
       },
       editing: {

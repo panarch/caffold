@@ -1,5 +1,5 @@
 import "../../../../../../components/git-compare-browser.js";
-import { ACTION_HINT_ACTION } from "../../../../action-hints.js";
+import { ACTION_HINT_ACTION } from "../../../../../../action-hints.js";
 
 class CaffoldGitComparePage extends HTMLElement {
   connectedCallback() {

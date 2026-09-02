@@ -66,9 +66,10 @@ test("moves by small or half-page deltas and clamps every command", () => {
 test("freezes selector geometry and active element identity while allowing labels", () => {
   const root = {};
   const hud = {};
+  const selector = {};
   const scrollport = {};
   const clip = {};
-  const context = { id: "workspace", kind: "workspace", root, hud };
+  const context = { id: "workspace", kind: "workspace", root, hud, selector };
   const surface = {
     id: "task-list",
     code: "A",
@@ -94,6 +95,12 @@ test("freezes selector geometry and active element identity while allowing label
     contextRect: rect(0, 0, 100, 100),
     viewport: viewport(),
     surfaces: [{ ...surface, scrollport: {} }],
+  }), false);
+  assert.equal(sameScrollSelectionSnapshot(snapshot, {
+    context: { ...context, selector: {} },
+    contextRect: rect(0, 0, 100, 100),
+    viewport: viewport(),
+    surfaces: [{ ...surface }],
   }), false);
   assert.equal(sameScrollSelectionSnapshot(snapshot, {
     context,

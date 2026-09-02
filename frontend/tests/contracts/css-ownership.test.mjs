@@ -39,19 +39,19 @@ const ownership = new Map([
   ["components/segmented-control.css", ["caffold-segmented-control"]],
   ["pages/(task-workspace)/layout.css", ["caffold-task-workspace"]],
   [
-    "pages/(task-workspace)/keyboard-navigation/components/hud.css",
+    "keyboard-navigation/components/hud.css",
     ["caffold-scroll-mode-hud"],
   ],
   [
-    "pages/(task-workspace)/keyboard-navigation/components/selector.css",
+    "keyboard-navigation/components/selector.css",
     ["caffold-scroll-surface-selector"],
   ],
   [
-    "pages/(task-workspace)/components/keyboard-navigation-presentation.css",
+    "keyboard-navigation/components/presentation.css",
     ["caffold-keyboard-navigation-presentation"],
   ],
   [
-    "pages/(task-workspace)/action-hints/components/dialog.css",
+    "action-hints/components/dialog.css",
     ["caffold-action-hint-dialog"],
   ],
   [

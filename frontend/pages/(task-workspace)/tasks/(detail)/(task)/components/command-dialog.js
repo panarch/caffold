@@ -12,14 +12,14 @@ import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../../../action-hints.js";
-import { keyboardNavigationContext } from "../../../../keyboard-navigation-context.js";
+} from "../../../../../../action-hints.js";
+import { keyboardNavigationContext } from "../../../../../../keyboard-navigation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   hasVerticalScrollOverflow,
 } from "../../../../../../scroll-scope.js";
-import "../../../../components/keyboard-navigation-presentation.js";
+import "../../../../../../keyboard-navigation/components/presentation.js";
 
 class CaffoldTaskCommandDialog extends HTMLElement {
   connectedCallback() {
@@ -64,7 +64,8 @@ class CaffoldTaskCommandDialog extends HTMLElement {
     );
     const hintDialog = presentation?.actionHintDialog?.();
     const hud = presentation?.scrollModeHud?.();
-    if (!dialog || !hintDialog || !hud) {
+    const selector = presentation?.scrollSurfaceSelector?.();
+    if (!dialog || !hintDialog || !hud || !selector) {
       return [];
     }
     const threadId = `${this.threadId ?? ""}`;
@@ -80,6 +81,7 @@ class CaffoldTaskCommandDialog extends HTMLElement {
       },
       scroll: {
         hud,
+        selector,
         scope: this.scrollSurfaceScope(),
       },
     })];

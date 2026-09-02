@@ -3,7 +3,20 @@ import test from "node:test";
 
 import {
   ActionHintController,
+  normalizeMutationRootList,
 } from "./action-hints.js";
+
+test("normalizes Action Hint mutation roots at the public boundary", () => {
+  const restoreGlobals = installDomGlobals();
+  try {
+    const root = new FakeElement();
+    assert.deepEqual(normalizeMutationRootList([root, root]), [root]);
+    assert.equal(normalizeMutationRootList([{}]), null);
+    assert.equal(normalizeMutationRootList(null), null);
+  } finally {
+    restoreGlobals();
+  }
+});
 
 test("cancel and activation close one session and clean every owned effect", () => {
   const restoreGlobals = installDomGlobals();

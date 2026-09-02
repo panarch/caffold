@@ -28,6 +28,7 @@ function frontendJavascriptFiles(directory = frontendRoot, prefix = "") {
 }
 
 test("task workspace declares one shared master pane and one detail pane", () => {
+  const appShell = readFrontend("pages/layout.js");
   const workspace = readFrontend("pages/(task-workspace)/layout.js");
   const workspaceNavigation = readFrontend(
     "pages/(task-workspace)/components/navigation.js",
@@ -43,13 +44,13 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     "pages/(task-workspace)/settings/layout.js",
   );
   const actionHints = readFrontend(
-    "pages/(task-workspace)/action-hints.js",
+    "action-hints.js",
   );
   const keyboardNavigation = readFrontend(
-    "pages/(task-workspace)/keyboard-navigation.js",
+    "keyboard-navigation.js",
   );
   const actionHintDialog = readFrontend(
-    "pages/(task-workspace)/action-hints/components/dialog.js",
+    "action-hints/components/dialog.js",
   );
   const keyboardSettings = readFrontend(
     "pages/(task-workspace)/settings/keyboard/page.js",
@@ -92,17 +93,36 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   );
   assert.equal(
     [...workspace.matchAll(/<caffold-action-hint-dialog>/g)].length,
+    0,
+  );
+  assert.equal(
+    [...appShell.matchAll(/<caffold-keyboard-navigation-presentation>/g)].length,
     1,
   );
-  assert.match(workspace, /new KeyboardNavigationController\(/);
+  assert.match(appShell, /new KeyboardNavigationController\(/);
+  assert.doesNotMatch(workspace, /new KeyboardNavigationController\(/);
   assert.match(
     keyboardNavigation,
     /document\.addEventListener\("keydown", this\.boundKeydown, true\)/,
   );
   assert.doesNotMatch(actionHints, /document\.addEventListener\("keydown"/);
   for (const [path, source] of frontendJavascriptFiles()) {
-    if (path.startsWith("pages/(task-workspace)/keyboard-navigation")) {
-      assert.doesNotMatch(source, /(?:\.\.\/)+action-hints\//, path);
+    if (path !== "action-hints.js" && !path.startsWith("action-hints/")) {
+      assert.doesNotMatch(
+        source,
+        /(?:\.{1,2}\/)+action-hints\/(?:control|model)\.js/,
+        path,
+      );
+    }
+    if (
+      path !== "keyboard-navigation.js" &&
+      !path.startsWith("keyboard-navigation/")
+    ) {
+      assert.doesNotMatch(
+        source,
+        /(?:\.{1,2}\/)+keyboard-navigation\/(?:context|control|model)\.js/,
+        path,
+      );
     }
   }
   assert.doesNotMatch(actionHints, /customElements\.define/);
@@ -121,18 +141,18 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   );
 });
 
-test("Task Workspace owns one global keyboard listener over explicit Scroll providers", () => {
+test("App Shell owns one global keyboard listener over explicit Scroll providers", () => {
   const keyboardOwners = frontendJavascriptFiles()
     .filter(([, source]) =>
       /document\.addEventListener\(\s*["']keydown["']/.test(source)
     )
     .map(([path]) => path);
   assert.deepEqual(keyboardOwners, [
-    "pages/(task-workspace)/keyboard-navigation.js",
+    "keyboard-navigation.js",
   ]);
 
   const keyboardNavigation = readFrontend(
-    "pages/(task-workspace)/keyboard-navigation.js",
+    "keyboard-navigation.js",
   );
   const taskNavigator = readFrontend(
     "pages/(task-workspace)/tasks/components/navigator.js",
@@ -154,7 +174,43 @@ test("Task Workspace owns one global keyboard listener over explicit Scroll prov
   assert.match(currentPlanDialog, /scrollport: preview/);
 });
 
+test("App Shell owns the normal context and route cleanup while Task Workspace provides product state", () => {
+  const appShell = readFrontend("pages/layout.js");
+  const workspace = readFrontend("pages/(task-workspace)/layout.js");
+  const presentation = readFrontend(
+    "keyboard-navigation/components/presentation.js",
+  );
+  const context = readFrontend("keyboard-navigation/context.js");
+
+  assert.equal([...appShell.matchAll(/kind: "workspace"/g)].length, 1);
+  assert.match(appShell, /this\.keyboardNavigation\?\.connect\(\)/);
+  assert.match(appShell, /this\.keyboardNavigation\?\.disconnect\(\)/);
+  assert.match(appShell, /this\.taskWorkspace\?\.actionHintScope\?\.\(\)/);
+  assert.match(appShell, /this\.taskWorkspace\?\.scrollSurfaceScope\?\.\(\)/);
+  assert.match(appShell, /this\.taskWorkspace\.actionHintEditingEscapeTarget/);
+  assert.match(appShell, /this\.taskWorkspace\.afterActionHintActivation/);
+  assert.doesNotMatch(workspace, /keyboardNavigation\.(?:connect|disconnect|routeWillChange)/);
+  assert.match(workspace, /actionHintScope\(\)/);
+  assert.match(workspace, /scrollSurfaceScope\(\)/);
+  assert.match(workspace, /keyboardNavigationContexts\(\)/);
+  assert.match(presentation, /<caffold-action-hint-dialog>/);
+  assert.match(presentation, /<caffold-scroll-mode-hud>/);
+  assert.match(presentation, /<caffold-scroll-surface-selector>/);
+  assert.match(context, /selector: scroll\.selector/);
+  assert.match(context, /!root\.contains\(selector\)/);
+
+  const applyRoute = appShell.match(
+    /async applyRoute\([\s\S]*?\n  \}\n\n  actionHintScope/,
+  )?.[0] ?? "";
+  assert.ok(applyRoute);
+  assert.ok(
+    applyRoute.indexOf("routeWillChange()") <
+      applyRoute.indexOf("this.currentRoute = route"),
+  );
+});
+
 test("registered dialog contexts stay owned and compose through public providers", () => {
+  const appShell = readFrontend("pages/layout.js");
   const workspace = readFrontend("pages/(task-workspace)/layout.js");
   const tasks = readFrontend("pages/(task-workspace)/tasks/layout.js");
   const taskNew = readFrontend("pages/(task-workspace)/tasks/new/page.js");
@@ -168,9 +224,11 @@ test("registered dialog contexts stay owned and compose through public providers
     "pages/(task-workspace)/tasks/(detail)/(github)/layout.js",
   );
 
-  for (const source of [workspace, tasks, taskNew, section, task, github]) {
+  for (const source of [appShell, workspace, tasks, taskNew, section, task, github]) {
     assert.match(source, /mergeKeyboardNavigationContexts\(/);
   }
+  assert.match(appShell, /this\.updateDialog\?\.keyboardNavigationContexts/);
+  assert.match(appShell, /this\.taskWorkspace\?\.keyboardNavigationContexts/);
   assert.match(workspace, /this\.codexRuntimeRestartDialog\?\.keyboardNavigationContexts/);
   assert.match(workspace, /this\.claudeRuntimeRestartDialog\?\.keyboardNavigationContexts/);
   assert.match(workspace, /this\.archivedDeleteDialog\?\.keyboardNavigationContexts/);
@@ -188,6 +246,7 @@ test("registered dialog contexts stay owned and compose through public providers
 
 test("registered product dialogs retain one context-local keyboard presentation", () => {
   const dialogs = [
+    "pages/components/update-dialog.js",
     "pages/(task-workspace)/codex-status/components/runtime-restart-dialog.js",
     "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
     "pages/(task-workspace)/tasks/components/archived-delete-dialog.js",
@@ -217,6 +276,7 @@ test("registered product dialogs retain one context-local keyboard presentation"
 
 test("product dialog CSS does not style nested keyboard presentation dialogs", () => {
   const styles = [
+    "pages/components/update-dialog.css",
     "pages/(task-workspace)/tasks/components/image-preview-dialog.css",
     "pages/(task-workspace)/tasks/new/components/directory-picker.css",
     "pages/(task-workspace)/tasks/(detail)/(section)/components/conversation-shortcuts/components/fork-dialog.css",

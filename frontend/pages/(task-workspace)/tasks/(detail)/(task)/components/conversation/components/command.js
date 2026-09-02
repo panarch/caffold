@@ -12,7 +12,7 @@ import {
   buttonActionHintTarget,
   disclosureActionHintTarget,
   emptyActionHintScope,
-} from "../../../../../../action-hints.js";
+} from "../../../../../../../../action-hints.js";
 
 class CaffoldTaskCommand extends HTMLElement {
   connectedCallback() {

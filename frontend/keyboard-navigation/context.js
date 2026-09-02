@@ -1,5 +1,8 @@
-import { mergeActionHintScopes } from "../../action-hint-scope.js";
-import { mergeScrollSurfaceScopes } from "../../scroll-scope.js";
+import {
+  mergeActionHintScopes,
+  normalizeMutationRootList,
+} from "../action-hints.js";
+import { mergeScrollSurfaceScopes } from "../scroll-scope.js";
 
 const KEYBOARD_CONTEXT_KINDS = new Set(["workspace", "modal", "popover"]);
 
@@ -27,6 +30,7 @@ export function keyboardNavigationContext({
     }
     context.scroll = {
       hud: scroll.hud,
+      selector: scroll.selector,
       scope: mergeScrollSurfaceScopes(scroll.scope),
     };
   }
@@ -172,6 +176,7 @@ function normalizeActionHintCapability(capability, root) {
 
 function normalizeScrollCapability(capability, root) {
   const hud = capability?.hud;
+  const selector = capability?.selector;
   const scope = capability?.scope;
   if (
     !(hud instanceof HTMLElement) ||
@@ -179,6 +184,14 @@ function normalizeScrollCapability(capability, root) {
     typeof hud.show !== "function" ||
     typeof hud.close !== "function" ||
     typeof hud.updateLabel !== "function" ||
+    !(selector instanceof HTMLElement) ||
+    !root.contains(selector) ||
+    typeof selector.open !== "function" ||
+    typeof selector.close !== "function" ||
+    typeof selector.ownsModal !== "function" ||
+    typeof selector.allowsNativeActivation !== "function" ||
+    typeof selector.updateInput !== "function" ||
+    typeof selector.updateSurfaceLabels !== "function" ||
     !scope ||
     typeof scope !== "object" ||
     !Array.isArray(scope.surfaces)
@@ -200,6 +213,7 @@ function normalizeScrollCapability(capability, root) {
   }
   return {
     hud,
+    selector,
     scope: {
       blocked: Boolean(scope.blocked),
       surfaces,
@@ -245,20 +259,6 @@ function normalizeElementList(elements) {
     return null;
   }
   return uniqueElements(elements);
-}
-
-export function normalizeMutationRootList(roots) {
-  if (
-    !Array.isArray(roots) ||
-    roots.some(
-      (root) =>
-        !(root instanceof Element) &&
-        !(typeof ShadowRoot === "function" && root instanceof ShadowRoot),
-    )
-  ) {
-    return null;
-  }
-  return uniqueElements(roots);
 }
 
 function uniqueElements(elements) {

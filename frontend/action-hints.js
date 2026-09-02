@@ -15,12 +15,11 @@ import {
   selectActionHintTarget,
   switchActionHintTarget,
   textboxActionHintTarget,
-} from "../../action-hint-scope.js";
+} from "./action-hint-scope.js";
 import {
   ACTION_HINT_ACTIVATE_EVENT,
   ACTION_HINT_CANCEL_EVENT,
 } from "./action-hints/control.js";
-import { normalizeMutationRootList } from "./keyboard-navigation-context.js";
 import {
   ACTION_HINT_ACTION,
   TASK_HINT_ALPHABET,
@@ -56,6 +55,7 @@ export {
   matchesLinkActionHintBinding,
   mergeActionHintScopes,
   normalizeActionHintKey,
+  normalizeMutationRootList,
   normalizeRect,
   radioActionHintTarget,
   rangeActionHintTarget,
@@ -565,6 +565,20 @@ export class ActionHintController {
 
 }
 
+function normalizeMutationRootList(roots) {
+  if (
+    !Array.isArray(roots) ||
+    roots.some(
+      (root) =>
+        !(root instanceof Element) &&
+        !(typeof ShadowRoot === "function" && root instanceof ShadowRoot),
+    )
+  ) {
+    return null;
+  }
+  return uniqueValues(roots);
+}
+
 function sameActionHintBinding(left, right) {
   if (!left || !right || left.dialog !== right.dialog) {
     return false;
@@ -684,6 +698,18 @@ function uniqueElements(elements) {
     if (!seen.has(element)) {
       seen.add(element);
       unique.push(element);
+    }
+  }
+  return unique;
+}
+
+function uniqueValues(values) {
+  const unique = [];
+  const seen = new Set();
+  for (const value of values) {
+    if (!seen.has(value)) {
+      seen.add(value);
+      unique.push(value);
     }
   }
   return unique;

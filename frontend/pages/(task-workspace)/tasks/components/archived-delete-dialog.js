@@ -3,9 +3,9 @@ import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../action-hints.js";
-import { keyboardNavigationContext } from "../../keyboard-navigation-context.js";
-import "../../components/keyboard-navigation-presentation.js";
+} from "../../../../action-hints.js";
+import { keyboardNavigationContext } from "../../../../keyboard-navigation.js";
+import "../../../../keyboard-navigation/components/presentation.js";
 
 export const TASK_ARCHIVED_DELETE_CONFIRMED_EVENT =
   "caffold:task-archived-delete-confirmed";
@@ -101,6 +101,9 @@ class CaffoldTaskArchivedDeleteDialog extends HTMLElement {
   }
 
   handleClose() {
+    if (this.dialog().open) {
+      return;
+    }
     const threadId = this.pendingThreadId;
     const confirmed = this.dialog().returnValue === "delete";
     this.pendingThreadId = null;

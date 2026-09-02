@@ -6,7 +6,7 @@ import {
   emptyActionHintScope,
   mergeActionHintScopes,
   selectActionHintTarget,
-} from "../../../../../../action-hints.js";
+} from "../../../../../../../../action-hints.js";
 
 class CaffoldGithubIssueTaskSource extends HTMLElement {
   connectedCallback() {

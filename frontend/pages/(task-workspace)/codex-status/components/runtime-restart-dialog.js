@@ -2,9 +2,9 @@ import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../action-hints.js";
-import { keyboardNavigationContext } from "../../keyboard-navigation-context.js";
-import "../../components/keyboard-navigation-presentation.js";
+} from "../../../../action-hints.js";
+import { keyboardNavigationContext } from "../../../../keyboard-navigation.js";
+import "../../../../keyboard-navigation/components/presentation.js";
 
 export const CODEX_RUNTIME_RESTART_CONFIRMED_EVENT =
   "caffold:codex-runtime-restart-confirmed";

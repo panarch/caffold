@@ -1,7 +1,7 @@
 import { fetchGitRemote, getGitLog } from "../../../../../../api.js";
 import "./commit/page.js";
 import "./list/page.js";
-import { emptyActionHintScope } from "../../../../action-hints.js";
+import { emptyActionHintScope } from "../../../../../../action-hints.js";
 import { emptyScrollSurfaceScope } from "../../../../../../scroll-scope.js";
 
 const LOADING_DELAY_MS = 180;

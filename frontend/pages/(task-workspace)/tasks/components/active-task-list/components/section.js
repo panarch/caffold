@@ -5,7 +5,7 @@ import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   reorderHandleActionHintTarget,
-} from "../../../../action-hints.js";
+} from "../../../../../../action-hints.js";
 import {
   ACTIVE_TASK_ROW_INTENT_EVENT,
 } from "./section/components/row.js";

@@ -9,7 +9,7 @@ import {
   linkActionHintTarget,
   matchesLinkActionHintBinding,
   mergeActionHintScopes,
-} from "../../../../../../action-hints.js";
+} from "../../../../../../../../action-hints.js";
 
 const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
 

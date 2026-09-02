@@ -1,4 +1,3 @@
-import { getSettings } from "../../settings.js";
 import {
   ActionHintController,
   advanceHintBuffer,
@@ -7,7 +6,7 @@ import {
   normalizeRect,
   rectsEqual,
 } from "./action-hints.js";
-import { hasVerticalScrollOverflow } from "../../scroll-scope.js";
+import { hasVerticalScrollOverflow } from "./scroll-scope.js";
 import {
   KEYBOARD_NAVIGATION_EVENT,
   KEYBOARD_NAVIGATION_NODE,
@@ -15,7 +14,7 @@ import {
 } from "./keyboard-navigation/control.js";
 import {
   normalizeKeyboardNavigationContexts,
-} from "./keyboard-navigation-context.js";
+} from "./keyboard-navigation/context.js";
 import {
   allocateScrollSurfaceCodes,
   normalizedContextRect,
@@ -31,17 +30,22 @@ import {
 } from "./keyboard-navigation/components/selector.js";
 import "./keyboard-navigation/components/hud.js";
 
+export {
+  keyboardNavigationContext,
+  mergeKeyboardNavigationContexts,
+  popoverScrollSurfaceScope,
+} from "./keyboard-navigation/context.js";
+
 export class KeyboardNavigationController {
   constructor({
     workspace,
-    actionHintDialog,
-    scrollSelector,
     collectKeyboardNavigationContexts,
     afterActionHintActivation = () => {},
+    readSettings = () => ({ actionHintsEnabled: true }),
   }) {
     this.workspace = workspace;
-    this.scrollSelector = scrollSelector;
     this.collectKeyboardNavigationContexts = collectKeyboardNavigationContexts;
+    this.readSettings = readSettings;
     this.connected = false;
     this.compositionActive = false;
     this.compositionOwner = null;
@@ -50,7 +54,7 @@ export class KeyboardNavigationController {
     this.activeSession = null;
     this.actionHints = new ActionHintController({
       workspace,
-      dialog: actionHintDialog,
+      dialog: null,
       collectScope: () => null,
       collectBinding: () => this.resolveActionHintBinding(),
       afterActivation: afterActionHintActivation,
@@ -82,10 +86,16 @@ export class KeyboardNavigationController {
       }
     };
     this.boundSurfaceSelect = (event) => {
+      if (event.target !== this.selectionSession?.selector) {
+        return;
+      }
       event.stopPropagation();
       this.selectSurface(event.detail?.code);
     };
     this.boundSurfaceCancel = (event) => {
+      if (event.target !== this.selectionSession?.selector) {
+        return;
+      }
       event.stopPropagation();
       if (
         event.detail?.reason === "escape" &&
@@ -115,11 +125,11 @@ export class KeyboardNavigationController {
       true,
     );
     this.workspace.addEventListener("focusout", this.boundFocusOut, true);
-    this.scrollSelector.addEventListener(
+    this.workspace.addEventListener(
       SCROLL_SURFACE_SELECT_EVENT,
       this.boundSurfaceSelect,
     );
-    this.scrollSelector.addEventListener(
+    this.workspace.addEventListener(
       SCROLL_SURFACE_CANCEL_EVENT,
       this.boundSurfaceCancel,
     );
@@ -145,11 +155,11 @@ export class KeyboardNavigationController {
       true,
     );
     this.workspace.removeEventListener("focusout", this.boundFocusOut, true);
-    this.scrollSelector.removeEventListener(
+    this.workspace.removeEventListener(
       SCROLL_SURFACE_SELECT_EVENT,
       this.boundSurfaceSelect,
     );
-    this.scrollSelector.removeEventListener(
+    this.workspace.removeEventListener(
       SCROLL_SURFACE_CANCEL_EVENT,
       this.boundSurfaceCancel,
     );
@@ -180,7 +190,7 @@ export class KeyboardNavigationController {
       this.handleActiveKeydown(event);
       return;
     }
-    if (getSettings().actionHintsEnabled === false) {
+    if (this.readSettings().actionHintsEnabled === false) {
       return;
     }
     const editable = editableOwner(event.target) ?? editableOwner(
@@ -235,7 +245,7 @@ export class KeyboardNavigationController {
     ) {
       return;
     }
-    if (this.scrollSelector.allowsNativeActivation(event)) {
+    if (this.selectionSession?.selector?.allowsNativeActivation(event)) {
       return;
     }
     if (event.key === "Escape") {
@@ -404,6 +414,7 @@ export class KeyboardNavigationController {
     const session = {
       ...snapshot,
       opener,
+      selector: snapshot.context.selector,
       buffer: "",
       cleanup: [],
       mutationObserver: null,
@@ -413,7 +424,7 @@ export class KeyboardNavigationController {
     };
     this.selectionSession = session;
     try {
-      this.scrollSelector.open(session.surfaces, session.viewport.rect);
+      session.selector.open(session.surfaces, session.viewport.rect);
       this.attachSelectionSignals(session);
       if (!this.selectionSnapshotIsCurrent(session)) {
         this.cancelSelection("snapshot-invalidated");
@@ -438,7 +449,7 @@ export class KeyboardNavigationController {
       session.surfaces.map(({ code }) => code),
     );
     session.buffer = progression.buffer;
-    this.scrollSelector.updateInput(progression);
+    session.selector.updateInput(progression);
     if (progression.exact) {
       this.selectSurface(progression.exact);
     }
@@ -456,7 +467,7 @@ export class KeyboardNavigationController {
     }
     this.detachSelectionSignals(session);
     this.selectionSession = null;
-    this.scrollSelector.close();
+    session.selector.close();
     this.restoreFocus(session.opener);
     if (!this.applyTransition(
       KEYBOARD_NAVIGATION_EVENT.SCROLL_SURFACE_SELECTED,
@@ -477,7 +488,7 @@ export class KeyboardNavigationController {
     }
     this.detachSelectionSignals(session);
     this.selectionSession = null;
-    this.scrollSelector.close();
+    session.selector.close();
     this.applyTransition(KEYBOARD_NAVIGATION_EVENT.SCROLL_SELECTION_CANCELLED);
     if (restoreFocus) {
       this.restoreFocus(session.opener);
@@ -594,7 +605,10 @@ export class KeyboardNavigationController {
     }
     const modals = openModalDialogs().filter(
       (modal) =>
-        !(ignoreOwnedSelector && this.scrollSelector.ownsModal(modal)) &&
+        !(
+          ignoreOwnedSelector &&
+          this.selectionSession?.selector?.ownsModal(modal)
+        ) &&
         !(ownedHintDialog?.ownsModal?.(modal)),
     );
     const popovers = openPopovers();
@@ -662,6 +676,7 @@ export class KeyboardNavigationController {
       kind: context.kind,
       root: context.root,
       hud: capability.hud,
+      selector: capability.selector,
       ...capability.scope,
     };
     const viewport = captureViewport();
@@ -721,7 +736,7 @@ export class KeyboardNavigationController {
       }
     }
     if (changed.length) {
-      this.scrollSelector.updateSurfaceLabels(changed);
+      session.selector.updateSurfaceLabels(changed);
     }
     return true;
   }
@@ -969,7 +984,10 @@ export class KeyboardNavigationController {
     const popovers = openPopovers();
     const modals = openModalDialogs().filter(
       (modal) =>
-        !(ignoreOwnedSelector && this.scrollSelector.ownsModal(modal)),
+        !(
+          ignoreOwnedSelector &&
+          this.selectionSession?.selector?.ownsModal(modal)
+        ),
     );
     if (!popovers.length && !modals.length) {
       return false;

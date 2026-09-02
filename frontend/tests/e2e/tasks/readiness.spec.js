@@ -992,9 +992,9 @@ async function verifyReadinessScrollIsolation(page) {
     ? await newTaskScroll.evaluate((element) => element.scrollTop)
     : null;
   const workspace = page.locator(".task-workspace-surface");
-  const selector = page.locator("caffold-scroll-surface-selector > dialog");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog:modal");
   const hud = page.locator(
-    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
   await workspace.focus();
   await page.keyboard.press("s");

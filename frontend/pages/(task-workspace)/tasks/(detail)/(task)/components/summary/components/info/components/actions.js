@@ -6,7 +6,7 @@ import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../../../../../../../action-hints.js";
+} from "../../../../../../../../../../action-hints.js";
 import { taskThreadId } from "../../../../../../../task-list-model.js";
 
 class CaffoldTaskDetailInfoActions extends HTMLElement {

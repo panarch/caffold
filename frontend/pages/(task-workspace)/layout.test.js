@@ -42,14 +42,14 @@ test("keeps the visible Task navigator scope when the detail-side Tasks host is 
   };
 
   assert.deepEqual(
-    workspace.workspaceScrollSurfaceScope.call(owner).surfaces,
+    workspace.scrollSurfaceScope.call(owner).surfaces,
     [navigatorSurface],
   );
   assert.equal(calls, 1);
 
   owner.hidden = true;
   assert.deepEqual(
-    workspace.workspaceScrollSurfaceScope.call(owner).surfaces,
+    workspace.scrollSurfaceScope.call(owner).surfaces,
     [],
   );
   assert.equal(calls, 1);

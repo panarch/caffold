@@ -718,7 +718,7 @@ test("cancels a Branch base Hint when its select binding is replaced", { tag: "@
   });
 
   await expect(hint).toBeHidden();
-  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
     "data-action-hint-last-exit",
     "snapshot-invalidated",
   );
@@ -1344,9 +1344,9 @@ test("scrolls the exact visible Review tree and diff through the workspace root"
     "caffold-git-diff-changes-tree .file-tree-scroll",
   );
   const workspace = page.locator(".task-workspace-surface");
-  const selector = page.locator("caffold-scroll-surface-selector > dialog");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog:modal");
   const hud = page.locator(
-    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
   await expect.poll(() => treeScroll.evaluate(
     (element) => element.scrollHeight > element.clientHeight + 1,
@@ -1469,9 +1469,9 @@ test("maps the visible source line when Diff and Source representations switch",
   )).toBe(true);
   await page.locator(".task-workspace-surface").focus();
   await page.keyboard.press("s");
-  await expect(page.locator("caffold-scroll-surface-selector > dialog")).toBeHidden();
+  await expect(page.locator("caffold-scroll-surface-selector > dialog:modal")).toBeHidden();
   const workspaceHud = page.locator(
-    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
   await expect(workspaceHud).toContainText("Scroll: planner.rs source");
   await page.keyboard.press("j");

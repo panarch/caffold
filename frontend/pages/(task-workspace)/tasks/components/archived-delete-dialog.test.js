@@ -35,6 +35,23 @@ test("binds Cancel and Delete to the pending archived Task identity", () => {
   assert.ok(scope.targets.every((target) => !target.isActionable()));
 });
 
+test("keeps a reopened retained dialog bound across a stale close event", () => {
+  const title = { textContent: "Delete archived task" };
+  const owner = {
+    pendingThreadId: "thread/1",
+    dialog: () => ({ open: true, returnValue: "cancel" }),
+    querySelector: () => title,
+    dispatchEvent() {
+      throw new Error("A stale close event must not dispatch deletion.");
+    },
+  };
+
+  deleteDialog.handleClose.call(owner);
+
+  assert.equal(owner.pendingThreadId, "thread/1");
+  assert.equal(title.textContent, "Delete archived task");
+});
+
 function button(textContent) {
   return { disabled: false, textContent, focus() {}, click() {} };
 }

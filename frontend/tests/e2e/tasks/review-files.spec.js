@@ -348,9 +348,9 @@ test("renders a route-owned text-only Markdown Preview without changing file sel
   });
   await page.locator(".task-workspace-surface").focus();
   await page.keyboard.press("s");
-  await expect(page.locator("caffold-scroll-surface-selector > dialog")).toBeHidden();
+  await expect(page.locator("caffold-scroll-surface-selector > dialog:modal")).toBeHidden();
   const workspaceHud = page.locator(
-    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
   await expect(workspaceHud).toContainText("Scroll: README.md preview");
   await page.keyboard.press("j");
@@ -513,10 +513,10 @@ test("selects supported source and preview representations for images", { tag: "
     await page.locator(".task-workspace-surface").focus();
     await page.keyboard.press("s");
     const surfaceSelector = page.locator(
-      "caffold-scroll-surface-selector > dialog",
+      "caffold-scroll-surface-selector > dialog:modal",
     );
     const workspaceHud = page.locator(
-      "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+      "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
     );
     if (await surfaceSelector.isVisible()) {
       await surfaceSelector.getByLabel(

@@ -40,32 +40,31 @@ directories, an expanded module directory contains no `page.js` or `layout.js`.
 ```text
 caffold-app-shell
 |-- caffold-task-workspace
-    |-- Task navigator
-    |-- Tasks
-    |   |-- Global New Task
-    |   |   `-- Directory Picker
-    |   `-- Detail Layout
-    |       |-- Task subject
-    |       |   |-- Conversation
-    |       |   |-- Current plan
-    |       |   `-- Follow-up Composer
-    |       |-- Section subject
-    |       |   |-- Fixed-context New Task
-    |       |   `-- Existing-conversation shortcuts
-    |       |-- Integrated Review
-    |       |-- Git
-    |       |   |-- Compare
-    |       |   `-- Log
-    |       `-- GitHub
-    |           |-- Issues
-    |           `-- Pull Requests
-    |-- Workspace Action Hint dialog
-    |-- Workspace Scroll selector
-    |-- Workspace Scroll HUD
-    `-- Settings
-        `-- Keyboard
+|   |-- Task navigator
+|   |-- Tasks
+|   |   |-- Global New Task
+|   |   |   `-- Directory Picker
+|   |   `-- Detail Layout
+|   |       |-- Task subject
+|   |       |   |-- Conversation
+|   |       |   |-- Current plan
+|   |       |   `-- Follow-up Composer
+|   |       |-- Section subject
+|   |       |   |-- Fixed-context New Task
+|   |       |   `-- Existing-conversation shortcuts
+|   |       |-- Integrated Review
+|   |       |-- Git
+|   |       |   |-- Compare
+|   |       |   `-- Log
+|   |       `-- GitHub
+|   |           |-- Issues
+|   |           `-- Pull Requests
+|   `-- Settings
+|       `-- Keyboard
 |-- caffold-build-mismatch-alert
-`-- caffold-update-dialog
+|-- caffold-update-dialog
+|   `-- Update-local keyboard presentation
+`-- Workspace keyboard presentation
 ```
 
 Task Workspace stays mounted while Tasks switches among home, Global New, Task
@@ -82,7 +81,27 @@ application-lifetime coordination:
 - Navigation API and History fallback integration;
 - foreground/resume recovery coordination;
 - settings application;
-- build-update presentation.
+- build-update presentation;
+- the one document-level keyboard-navigation coordinator and normal-context
+  presentation; and
+- composition of its own actions with Task Workspace and registered overlay
+  context providers.
+
+The app shell owns the only `KeyboardNavigationController` attached to the
+document. Its one normal `kind: "workspace"` context is rooted at the shell and
+uses a retained direct-child presentation containing the Action Hint dialog,
+Scroll selector, and Scroll HUD. The shell merges only public owner scopes:
+its bootstrap and foreground Retry buttons, the Build Mismatch Alert's Reload
+button, and Task Workspace action and Scroll providers. It does not inspect
+Task descendants or infer controls from DOM semantics. Every App Shell route
+entry cleans the current keyboard session before route or history mutation.
+
+The Update dialog publishes a separate modal context rooted at its exact native
+`<dialog>`. Its retained local presentation stays inside that top-layer root,
+and its Later and Reload buttons use their existing native form paths. Opening
+the dialog first closes a background Hint or Scroll session; the user presses
+`F` again inside the dialog, and the coordinator never predicts an automatic
+handoff.
 
 The app shell owns one `ForegroundRecoveryLifecycle` behind the public
 `foreground-recovery.js` entry point. It normalizes browser activation and
@@ -198,8 +217,8 @@ owns:
 - the user-resizable desktop navigation pane;
 - compact top-level Task/New Task Back or Close controls;
 - the one physical live-update connection for this browser tab;
-- the one keyboard-navigation coordinator, Action Hint dialog, Scroll selector,
-  and workspace-local Scroll HUD;
+- public Action Hint, Scroll, editing-Escape, post-activation, and registered
+  product-overlay context providers for the App Shell coordinator;
 - forwarding routes to Tasks or Settings.
 
 The workspace consumes the semantic presentation snapshot published by Tasks:
@@ -210,13 +229,14 @@ Reading surfaces keep the Task navigator on desktop. Code surfaces use the full
 workspace width. Foldable and phone presentation is owned by the same
 master/detail layout system.
 
-The workspace keyboard-navigation coordinator is the only document-level key
+The App Shell keyboard-navigation coordinator is the only document-level key
 owner. It derives normal versus editing state from focus and composition, and
 stores at most one mutually exclusive Action Hint, Scroll selection, or active
 Scroll mode. Keyboard navigation being disabled closes the stored mode and
-leaves both `F` and `S` unhandled. Route changes, disconnect, competing native
-overlay ownership, and composition changes run through the same cleanup
-authority.
+leaves both `F` and `S` unhandled. App Shell route changes, disconnect,
+competing native overlay ownership, and composition changes run through the
+same cleanup authority. Task Workspace does not install a second document
+listener or global presentation.
 
 Workspace, registered modal, and registered popover owners publish one thin
 keyboard-navigation context identified by stable ID, ownership kind, and exact
@@ -319,8 +339,10 @@ scanning descendant buttons, `summary` elements, or `aria-expanded`.
 
 Parent layouts merge these renderer-owned link scopes through the same public
 child interface as other retained controls; they do not rediscover anchors.
-Arbitrary third-party `summary` disclosures and App Shell controls remain
-outside Action Hint. A native summary participates only when its product
+App Shell bootstrap and unavailable-foreground Retry controls participate as
+direct shell-owned targets, and Build Mismatch Reload participates through its
+component-owned public scope. Arbitrary third-party `summary` disclosures
+remain outside Action Hint. A native summary participates only when its product
 component explicitly owns and declares that disclosure. Registered dialog
 textboxes keep their owner-specific focus behavior, while dialog selects use
 the same general native select contract as workspace controls. Popover and
@@ -347,7 +369,9 @@ The general select activation contract applies to that Base branch control;
 native options and change handling remain with the browser and product state
 owners. These registrations do not create a generic dialog registry or DOM
 discovery path. The App Shell update dialog is outside this Task Workspace
-context set and retains native keyboard ownership.
+context set and publishes its own exact modal context. Later and Reload are
+declared by the dialog owner, while native form return values and PWA intent
+handling remain unchanged.
 
 The controller validates every action and control kind against a closed central
 policy. Task selection retains generated `T*` codes and New Task, Model, and
@@ -371,21 +395,21 @@ restoring its invoking focus; Scroll selection retains its separate input
 policy.
 
 Each registered popover retains a small shared presentation host containing its
-own Action Hint dialog and Scroll HUD. Dynamic Model and Permission rendering
-replaces only an option-content child, preserving the popover root and
-presentation identity. If a frozen option control is replaced, the current
-Hint session closes even when its semantic value is unchanged; a later `F`
-collects a fresh binding. Product owners continue to own native open, light
-dismiss, deactivation, and focus-return lifecycle, while the coordinator only
-cleans its current keyboard session.
+own Action Hint dialog, Scroll selector, and Scroll HUD. Dynamic Model and
+Permission rendering replaces only an option-content child, preserving the
+popover root and presentation identity. If a frozen option control is replaced,
+the current Hint session closes even when its semantic value is unchanged; a
+later `F` collects a fresh binding. Product owners continue to own native open,
+light dismiss, deactivation, and focus-return lifecycle, while the coordinator
+only cleans its current keyboard session.
 
 Each registered product dialog likewise retains one shared presentation host
 as a direct child of its exact native `<dialog>`. The host owns only that
-context's Action Hint dialog and Scroll HUD; it neither discovers product
-controls nor owns product open, close, return-value, submission, mutation, or
-external focus-return behavior. Product content patches preserve the dialog,
-presentation, and declared control or scrollport identities unless a real
-topology change requires a fresh session.
+context's Action Hint dialog, Scroll selector, and Scroll HUD; it neither
+discovers product controls nor owns product open, close, return-value,
+submission, mutation, or external focus-return behavior. Product content
+patches preserve the dialog, presentation, and declared control or scrollport
+identities unless a real topology change requires a fresh session.
 
 `normal` and `editing` are derived from current focus and composition; `hint`,
 `scroll-selecting`, and `scroll-active` are the stored keyboard-navigation
@@ -941,28 +965,33 @@ Relevant source ownership follows the routed hierarchy:
 ```text
 frontend/
 |-- action-hint-scope.js
+|-- action-hints.js
+|-- action-hints/
+|   |-- control.js
+|   |-- model.js
+|   `-- components/dialog.js
 |-- scroll-scope.js
+|-- keyboard-navigation.js
+|-- keyboard-navigation/
+|   |-- context.js
+|   |-- control.js
+|   |-- model.js
+|   `-- components/
+|       |-- presentation.js
+|       |-- hud.js
+|       `-- selector.js
 |-- navigation-routes.js
 |-- pages/
 |   |-- layout.js
+|   |-- components/
+|   |   |-- build-mismatch-alert.js
+|   |   `-- update-dialog.js
 |   |-- foreground-recovery.js
 |   |-- foreground-recovery/...
 |   |-- pwa-update-lifecycle.js
 |   |-- pwa-update-lifecycle/...
 |   `-- (task-workspace)/
 |       |-- layout.js
-|       |-- action-hints.js
-|       |-- action-hints/
-|       |   |-- control.js
-|       |   |-- model.js
-|       |   `-- components/dialog.js
-|       |-- keyboard-navigation.js
-|       |-- keyboard-navigation-context.js
-|       |-- keyboard-navigation/
-|       |   |-- control.js
-|       |   |-- model.js
-|       |   `-- components/...
-|       |-- components/keyboard-navigation-presentation.js
 |       |-- live-updates.js
 |       |-- live-updates/lifecycle.js
 |       |-- codex-status.js

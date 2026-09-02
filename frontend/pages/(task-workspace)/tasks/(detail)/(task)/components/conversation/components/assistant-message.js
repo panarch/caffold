@@ -1,7 +1,7 @@
 import { assistantMessagePhase } from "../../../../../task-events.js";
 import { formatDate, taskEventObservedMs } from "../../../../../task-format.js";
 import "./markdown.js";
-import { emptyActionHintScope } from "../../../../../../action-hints.js";
+import { emptyActionHintScope } from "../../../../../../../../action-hints.js";
 
 /**
  * What the agent said, drawn the same way wherever the conversation shows it.

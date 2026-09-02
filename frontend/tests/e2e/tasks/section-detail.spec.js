@@ -115,7 +115,7 @@ test("selects a Section and opens fixed-directory Task creation", { tag: "@all-v
   await page.locator(".task-workspace-surface").focus();
   await page.keyboard.press("s");
   const scrollHud = page.locator(
-    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
   await expect(scrollHud).toContainText(
     "Scroll: Section frontend/tests/e2e/fixtures/home",

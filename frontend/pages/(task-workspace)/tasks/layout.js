@@ -3,14 +3,14 @@ import { routeDomain, routeTarget } from "../../../navigation-routes.js";
 import {
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "../action-hints.js";
+} from "../../../action-hints.js";
 import {
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
 } from "../../../scroll-scope.js";
 import {
   mergeKeyboardNavigationContexts,
-} from "../keyboard-navigation-context.js";
+} from "../../../keyboard-navigation.js";
 import {
   INITIAL_CODEX_STATUS_SNAPSHOT,
   codexBlocksTaskOperations,

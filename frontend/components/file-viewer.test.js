@@ -144,9 +144,11 @@ test("provides file details opener but no invented action inside its popover", (
   };
   const dialog = {};
   const hud = {};
+  const selector = {};
   const presentation = {
     actionHintDialog: () => dialog,
     scrollModeHud: () => hud,
+    scrollSurfaceSelector: () => selector,
   };
   const popover = {
     id: "file-details",
@@ -185,6 +187,7 @@ test("provides file details opener but no invented action inside its popover", (
   assert.equal(context.actionHints.dialog, dialog);
   assert.deepEqual(context.actionHints.scope.targets, []);
   assert.equal(context.scroll.hud, hud);
+  assert.equal(context.scroll.selector, selector);
   assert.equal(context.scroll.scope.surfaces[0].scrollport, popover);
 });
 

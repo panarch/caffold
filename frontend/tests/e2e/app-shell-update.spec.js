@@ -572,15 +572,40 @@ test("routes dialog and About reload intents through the app shell", { tag: "@al
     };
   });
 
+  await page.locator(".task-workspace-surface").focus();
+  await page.keyboard.press("f");
+  const backgroundHint = page.locator(
+    "caffold-action-hint-dialog > dialog:modal",
+  );
+  await expect(backgroundHint).toBeVisible();
   await triggerServiceWorkerActivation(page, "replacement-build");
   const updateDialog = page.getByRole("dialog", { name: "Caffold update ready" });
-  await updateDialog.getByRole("button", { name: "Reload" }).click();
+  await expect(backgroundHint).toBeHidden();
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
+    "data-action-hint-last-exit",
+    "interaction-owner",
+  );
+  await page.keyboard.press("f");
+  const updateHint = page.locator("caffold-action-hint-dialog > dialog:modal");
+  await expect(updateHint).toBeVisible();
+  await expect(updateHint.locator("button[data-action-hint-code]")).toHaveCount(2);
+  await expect(updateHint.getByRole("button", { name: / — Later$/ })).toBeVisible();
+  const reloadCode = await updateHint.getByRole("button", {
+    name: / — Reload$/,
+  }).getAttribute("data-action-hint-code");
+  expect(reloadCode).toBeTruthy();
+  await page.keyboard.type(reloadCode.toLowerCase());
   await expect.poll(() => reloadRequests(page)).toBe(1);
 
   await triggerServiceWorkerActivation(page, "next-replacement-build");
-  await page.getByRole("dialog", { name: "Caffold update ready" })
-    .getByRole("button", { name: "Later" })
-    .click();
+  await expect(updateDialog).toBeVisible();
+  await page.keyboard.press("f");
+  const laterCode = await updateHint.getByRole("button", {
+    name: / — Later$/,
+  }).getAttribute("data-action-hint-code");
+  expect(laterCode).toBeTruthy();
+  await page.keyboard.type(laterCode.toLowerCase());
+  await expect(updateDialog).toBeHidden();
   await openAboutWithoutReload(page);
   await page
     .locator("caffold-settings-about-page")

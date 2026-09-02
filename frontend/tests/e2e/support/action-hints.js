@@ -29,9 +29,9 @@ export function actionHintBadgePresentation(badge) {
 }
 
 export async function enterActionHints(page) {
-  await page.locator(".task-workspace-surface").evaluate((element) => {
-    element.focus({ preventScroll: true });
-  });
+  const surface = page.locator(".task-workspace-surface");
+  await surface.evaluate((element) => element.focus({ preventScroll: true }));
+  await expect(surface).toBeFocused();
   await page.keyboard.press("f");
   const dialog = actionHintDialog(page);
   await expect(dialog).toBeVisible();
@@ -40,8 +40,8 @@ export async function enterActionHints(page) {
 
 export async function waitForActionHintTarget(page, accessibleName) {
   await expect.poll(async () => {
-    const labels = await page.locator("caffold-task-workspace").evaluate(
-      (workspace) => workspace.actionHintScope().targets.map((target) => target.label),
+    const labels = await page.locator("caffold-app-shell").evaluate(
+      (shell) => shell.actionHintScope().targets.map((target) => target.label),
     );
     return labels.some((label) => accessibleName instanceof RegExp
       ? accessibleName.test(label)
@@ -58,7 +58,7 @@ export async function activateActionHint(page, accessibleName) {
   expect(code).toMatch(/^[A-Z]+$/);
   await page.keyboard.type(code.toLowerCase());
   await expect(dialog).toBeHidden();
-  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
     "data-action-hint-last-exit",
     `activated:${code}`,
   );

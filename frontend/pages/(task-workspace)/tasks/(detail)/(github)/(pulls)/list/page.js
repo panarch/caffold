@@ -6,7 +6,7 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../../../action-hints.js";
+} from "../../../../../../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,

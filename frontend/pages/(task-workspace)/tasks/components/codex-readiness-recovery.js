@@ -9,7 +9,7 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   linkActionHintTarget,
-} from "../../action-hints.js";
+} from "../../../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,

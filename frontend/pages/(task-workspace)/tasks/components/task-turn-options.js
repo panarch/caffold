@@ -5,13 +5,13 @@ import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../action-hints.js";
+} from "../../../../action-hints.js";
 import {
   keyboardNavigationContext,
   popoverScrollSurfaceScope,
-} from "../../keyboard-navigation-context.js";
+} from "../../../../keyboard-navigation.js";
 import { cleanLogicalPath } from "../task-format.js";
-import "../../components/keyboard-navigation-presentation.js";
+import "../../../../keyboard-navigation/components/presentation.js";
 
 let turnOptionsInstanceSequence = 0;
 
@@ -677,18 +677,20 @@ class CaffoldTaskTurnOptions extends HTMLElement {
   restorePermissionOptionFocus(control, permissionMode) {
     const popover = this.permissionPopover();
     window.requestAnimationFrame(() => {
-      if (
-        !this.isConnected ||
-        this.permissionPopover() !== popover ||
-        !popover?.matches(":popover-open") ||
-        !popover.contains(control) ||
-        control?.dataset?.turnOptionsAction !== "select-permission" ||
-        control.dataset.permissionMode !== permissionMode ||
-        control.disabled
-      ) {
-        return;
-      }
-      control.focus({ preventScroll: true });
+      window.requestAnimationFrame(() => {
+        if (
+          !this.isConnected ||
+          this.permissionPopover() !== popover ||
+          !popover?.matches(":popover-open") ||
+          !popover.contains(control) ||
+          control?.dataset?.turnOptionsAction !== "select-permission" ||
+          control.dataset.permissionMode !== permissionMode ||
+          control.disabled
+        ) {
+          return;
+        }
+        control.focus({ preventScroll: true });
+      });
     });
   }
 
@@ -954,7 +956,8 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     );
     const dialog = presentation?.actionHintDialog?.();
     const hud = presentation?.scrollModeHud?.();
-    if (!popover || !presentation || !dialog || !hud) {
+    const selector = presentation?.scrollSurfaceSelector?.();
+    if (!popover || !presentation || !dialog || !hud || !selector) {
       return null;
     }
     const contextId = `task-composer:${scopeId}:${kind}-options`;
@@ -968,6 +971,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       },
       scroll: {
         hud,
+        selector,
         scope: popoverScrollSurfaceScope({
           id: contextId,
           label,

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -122,7 +122,7 @@ test("selects and scrolls only the registered surface", { tag: "@all-viewports" 
   await captureReviewScreenshot(page, testInfo, "scroll-mode-active");
   await page.keyboard.press("Escape");
   await expect(workspaceHud).toBeHidden();
-  await expect(page.locator("caffold-task-workspace")).not.toHaveAttribute(
+  await expect(page.locator("caffold-app-shell")).not.toHaveAttribute(
     "data-scroll-mode",
     "active",
   );
@@ -135,7 +135,7 @@ test("cancels the frozen selector when Task list topology loses eligibility", { 
   await openScrollTask(page, detail);
   const owner = page.locator(".task-workspace-surface");
   const selector = scrollSelector(page);
-  const workspace = page.locator("caffold-task-workspace");
+  const workspace = page.locator("caffold-app-shell");
   await owner.focus();
   await page.keyboard.press("s");
   await expect(selector).toBeVisible();
@@ -156,7 +156,7 @@ test("switches active Scroll to fresh Action Hints with F", { tag: "@desktop" },
 }) => {
   const { detail } = await installScrollFixture(page);
   await openScrollTask(page, detail);
-  const workspace = page.locator("caffold-task-workspace");
+  const workspace = page.locator("caffold-app-shell");
   const selector = scrollSelector(page);
   const hud = scrollHud(page);
   await page.locator(".task-workspace-surface").focus();
@@ -189,7 +189,7 @@ test("keeps the exact active Task list through content patches and exits when it
   const owner = page.locator(".task-workspace-surface");
   const selector = scrollSelector(page);
   const taskList = page.locator(".task-list-scroll");
-  const workspace = page.locator("caffold-task-workspace");
+  const workspace = page.locator("caffold-app-shell");
   await owner.focus();
   await page.keyboard.press("s");
   await selector.getByLabel(/^[A-Z]+ — Task list$/).click();
@@ -266,7 +266,7 @@ test("shares code, click, and native keyboard selection without background leaka
   const selectorPopover = await openTestPopover(page, "selector");
   await expect(selector).toBeHidden();
   await expect(selectorPopover).toBeVisible();
-  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
     "data-scroll-mode-last-exit",
     "interaction-owner",
   );
@@ -285,13 +285,14 @@ test("shares code, click, and native keyboard selection without background leaka
   const activePopover = await openTestPopover(page, "active");
   await expect(scrollHud(page)).toBeHidden();
   await expect(activePopover).toBeVisible();
-  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
     "data-scroll-mode-last-exit",
     "interaction-owner",
   );
   await activePopover.evaluate((element) => element.remove());
 
   await page.keyboard.press("s");
+  const taskListCode = await surfaceCode(selector, "Task list");
   await page.keyboard.press("Tab");
   const focusedCode = await selector.locator("button:focus").getAttribute(
     "data-scroll-surface-code",
@@ -299,7 +300,7 @@ test("shares code, click, and native keyboard selection without background leaka
   await page.keyboard.press("Enter");
   await expect(selector).toBeHidden();
   await expect(scrollHud(page)).toContainText(
-    focusedCode === await surfaceCode(selector, "Task list")
+    focusedCode === taskListCode
       ? "Scroll: Task list"
       : "Scroll: Conversation",
   );
@@ -428,6 +429,7 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
     plan: longMarkdown("Plan", 80),
     checklist: checklistMarkdown(120, "Initial checklist"),
   });
+  await installCurrentPlanFileFixture(page, workspace);
   const { detail } = await installScrollFixture(page, {
     cwd: workspace.logicalPath,
     useCurrentPlanServer: true,
@@ -525,6 +527,9 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
   const planFile = fileResponse(page, planPath);
   await openCurrentPlanDocumentWithHint(page, /Open plan:/);
   await planFile;
+  await expect.poll(() => preview.evaluate(
+    (element) => element.scrollHeight > element.clientHeight,
+  )).toBe(true);
   await page.keyboard.press("s");
   await expect(modalHud).toContainText("Scroll: Plan document");
   const documentDialog = currentPlan.locator(
@@ -537,6 +542,9 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
   const replacementPlanFile = fileResponse(page, planPath);
   await planButton.click();
   await replacementPlanFile;
+  await expect.poll(() => preview.evaluate(
+    (element) => element.scrollHeight > element.clientHeight,
+  )).toBe(true);
   await page.keyboard.press("s");
   await expect(modalHud).toContainText("Scroll: Plan document");
   const replacementChecklistFile = fileResponse(page, checklistPath);
@@ -851,7 +859,7 @@ test("keeps selector and HUD visible at appearance and zoom extremes", { tag: "@
 });
 
 function scrollSelector(page) {
-  return page.locator("caffold-scroll-surface-selector > dialog");
+  return page.locator("caffold-scroll-surface-selector > dialog:modal");
 }
 
 function actionHintDialog(page) {
@@ -860,7 +868,7 @@ function actionHintDialog(page) {
 
 function scrollHud(page) {
   return page.locator(
-    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
 }
 
@@ -1218,6 +1226,37 @@ function fileResponse(page, path) {
   return page.waitForResponse((response) => {
     const url = new URL(response.url());
     return url.pathname === "/api/file" && url.searchParams.get("path") === path;
+  });
+}
+
+async function installCurrentPlanFileFixture(page, workspace) {
+  const documents = new Map([
+    [
+      `${workspace.logicalPath}/.caffold/plans/current/PLAN.md`,
+      join(workspace.absolutePath, ".caffold/plans/current/PLAN.md"),
+    ],
+    [
+      `${workspace.logicalPath}/.caffold/plans/current/CHECKLIST.md`,
+      join(workspace.absolutePath, ".caffold/plans/current/CHECKLIST.md"),
+    ],
+  ]);
+  await page.route(/\/api\/file(?:\?|$)/, (route) => {
+    const path = new URL(route.request().url()).searchParams.get("path");
+    const absolutePath = documents.get(path);
+    if (!absolutePath) {
+      return route.continue();
+    }
+    const content = readFileSync(absolutePath, "utf8");
+    return route.fulfill({
+      json: {
+        path,
+        name: path.split("/").at(-1),
+        size: Buffer.byteLength(content),
+        modifiedMs: null,
+        languageHint: "markdown",
+        content,
+      },
+    });
   });
 }
 

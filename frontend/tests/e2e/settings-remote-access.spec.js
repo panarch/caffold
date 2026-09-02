@@ -238,7 +238,7 @@ test("hands off one exact private URL while remote management stays read-only", 
   await remoteAccess.evaluate((element) => element.lifecycle.refresh());
   await expect(open).toHaveAttribute("href", REPLACEMENT_TAILNET_URL);
   await expect(actionHintDialog(page)).toBeHidden();
-  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
     "data-action-hint-last-exit",
     "snapshot-invalidated",
   );

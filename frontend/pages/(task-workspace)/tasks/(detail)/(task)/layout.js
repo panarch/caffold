@@ -15,14 +15,14 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "../../../action-hints.js";
+} from "../../../../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
 } from "../../../../../scroll-scope.js";
 import {
   mergeKeyboardNavigationContexts,
-} from "../../../keyboard-navigation-context.js";
+} from "../../../../../keyboard-navigation.js";
 import "../../components/composer.js";
 import "./components/conversation.js";
 import "./components/command-dialog.js";

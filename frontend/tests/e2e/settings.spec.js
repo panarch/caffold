@@ -75,9 +75,9 @@ test("uses active Settings page actions and only visible overflowing panes", { t
   });
   await workspaceSurface.focus();
   await page.keyboard.press("s");
-  const selector = page.locator("caffold-scroll-surface-selector > dialog");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog:modal");
   const hud = page.locator(
-    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
   await expect.poll(() => detailScroll.evaluate((element) =>
     element.scrollHeight - element.clientHeight
@@ -1417,6 +1417,9 @@ test("hands Action Hints off to native Appearance controls", { tag: "@all-viewpo
     control.dataset.actionHintIdentity = "retained";
     control.scrollIntoView({ block: "center", inline: "nearest" });
   });
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
   await activateActionHint(page, "Adjust Conversation text (14px)");
   await expect(conversationRange).toBeFocused();
   await conversationRange.press("ArrowRight");

@@ -3,7 +3,7 @@ import test, { after } from "node:test";
 
 import {
   installCustomElementUnitRegistry,
-} from "../../../../tests/support/custom-element-unit.js";
+} from "../../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
 await import("./hud.js");

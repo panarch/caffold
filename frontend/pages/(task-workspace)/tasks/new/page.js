@@ -1,5 +1,5 @@
 import { cleanLogicalPath } from "../task-format.js";
-import { mergeKeyboardNavigationContexts } from "../../keyboard-navigation-context.js";
+import { mergeKeyboardNavigationContexts } from "../../../../keyboard-navigation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,

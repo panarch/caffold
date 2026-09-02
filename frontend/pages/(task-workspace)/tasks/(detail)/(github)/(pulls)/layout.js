@@ -5,7 +5,7 @@ import {
 import "./list/page.js";
 import "./detail/page.js";
 import "./files/page.js";
-import { emptyActionHintScope } from "../../../../action-hints.js";
+import { emptyActionHintScope } from "../../../../../../action-hints.js";
 import { emptyScrollSurfaceScope } from "../../../../../../scroll-scope.js";
 
 const GITHUB_PULLS_PER_PAGE = 50;

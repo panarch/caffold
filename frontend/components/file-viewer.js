@@ -18,8 +18,8 @@ import { imageUrl } from "../api.js";
 import {
   keyboardNavigationContext,
   popoverScrollSurfaceScope,
-} from "../pages/(task-workspace)/keyboard-navigation-context.js";
-import "../pages/(task-workspace)/components/keyboard-navigation-presentation.js";
+} from "../keyboard-navigation.js";
+import "../keyboard-navigation/components/presentation.js";
 import "./code-viewer.js";
 import "./diff-viewer.js";
 import "./markdown-preview.js";
@@ -435,13 +435,15 @@ class CaffoldReviewFileViewer extends HTMLElement {
     );
     const dialog = presentation?.actionHintDialog?.();
     const hud = presentation?.scrollModeHud?.();
+    const selector = presentation?.scrollSurfaceSelector?.();
     if (
       !scopeId ||
       this.hidden ||
       !popover ||
       !this.hasDetailsMetadata(popover) ||
       !dialog ||
-      !hud
+      !hud ||
+      !selector
     ) {
       return [];
     }
@@ -456,6 +458,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
       },
       scroll: {
         hud,
+        selector,
         scope: popoverScrollSurfaceScope({
           id: contextId,
           label: "File details",

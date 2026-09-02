@@ -1,5 +1,6 @@
-import "../action-hints/components/dialog.js";
-import "../keyboard-navigation/components/hud.js";
+import "../../action-hints/components/dialog.js";
+import "./hud.js";
+import "./selector.js";
 
 class CaffoldKeyboardNavigationPresentation extends HTMLElement {
   connectedCallback() {
@@ -14,6 +15,7 @@ class CaffoldKeyboardNavigationPresentation extends HTMLElement {
     this.innerHTML = `
       <caffold-action-hint-dialog></caffold-action-hint-dialog>
       <caffold-scroll-mode-hud></caffold-scroll-mode-hud>
+      <caffold-scroll-surface-selector></caffold-scroll-surface-selector>
     `;
   }
 
@@ -23,6 +25,10 @@ class CaffoldKeyboardNavigationPresentation extends HTMLElement {
 
   scrollModeHud() {
     return this.querySelector(":scope > caffold-scroll-mode-hud");
+  }
+
+  scrollSurfaceSelector() {
+    return this.querySelector(":scope > caffold-scroll-surface-selector");
   }
 }
 

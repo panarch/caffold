@@ -10,7 +10,7 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "../../../../../../action-hints.js";
+} from "../../../../../../../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
@@ -18,8 +18,8 @@ import {
 } from "../../../../../../../../scroll-scope.js";
 import {
   keyboardNavigationContext,
-} from "../../../../../../keyboard-navigation-context.js";
-import "../../../../../../components/keyboard-navigation-presentation.js";
+} from "../../../../../../../../keyboard-navigation.js";
+import "../../../../../../../../keyboard-navigation/components/presentation.js";
 
 class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
   connectedCallback() {
@@ -133,7 +133,8 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
     );
     const hintDialog = presentation?.actionHintDialog?.();
     const hud = presentation?.scrollModeHud?.();
-    if (!dialog || !preview || !hintDialog || !hud) {
+    const selector = presentation?.scrollSurfaceSelector?.();
+    if (!dialog || !preview || !hintDialog || !hud || !selector) {
       return [];
     }
     const path = `${this.current?.path ?? ""}`;
@@ -170,7 +171,7 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
         dialog: hintDialog,
         scope: this.actionHintScope(),
       },
-      scroll: { hud, scope },
+      scroll: { hud, selector, scope },
     })];
   }
 
@@ -277,6 +278,9 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
   }
 
   handleClose() {
+    if (this.dialog()?.open) {
+      return;
+    }
     this.requestId += 1;
     this.requestController?.abort();
     this.requestController = null;

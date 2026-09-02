@@ -2,8 +2,8 @@ import "../../components/task-create.js";
 import "./components/conversation-shortcuts.js";
 import "./components/github-shortcuts.js";
 import { cleanLogicalPath } from "../../task-format.js";
-import { mergeActionHintScopes } from "../../../action-hints.js";
-import { mergeKeyboardNavigationContexts } from "../../../keyboard-navigation-context.js";
+import { mergeActionHintScopes } from "../../../../../action-hints.js";
+import { mergeKeyboardNavigationContexts } from "../../../../../keyboard-navigation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,

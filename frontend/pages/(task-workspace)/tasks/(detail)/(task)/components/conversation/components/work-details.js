@@ -24,7 +24,7 @@ import {
   disclosureActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../../../../action-hints.js";
+} from "../../../../../../../../action-hints.js";
 
 const disclosureStateByIdentity = new Map();
 

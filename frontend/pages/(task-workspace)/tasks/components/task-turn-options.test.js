@@ -303,7 +303,10 @@ test("restores a retained dangerous permission option after confirmation is canc
     turnOptions.selectPermission.call(owner, "fullAccess", control);
     assert.equal(owner.selection.permissionMode, "approveForMe");
     assert.equal(frames.length, 1);
-    frames[0]();
+    frames.shift()();
+    assert.equal(focusOptions, null);
+    assert.equal(frames.length, 1);
+    frames.shift()();
     assert.deepEqual(focusOptions, { preventScroll: true });
   } finally {
     restoreGlobal("window", previousWindow);

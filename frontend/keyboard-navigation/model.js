@@ -75,6 +75,7 @@ export function sameScrollSelectionSnapshot(left, right) {
     left.context.kind !== right.context.kind ||
     left.context.root !== right.context.root ||
     left.context.hud !== right.context.hud ||
+    left.context.selector !== right.context.selector ||
     !rectsEqual(left.contextRect, right.contextRect) ||
     left.viewport.scale !== right.viewport.scale ||
     left.viewport.devicePixelRatio !== right.viewport.devicePixelRatio ||

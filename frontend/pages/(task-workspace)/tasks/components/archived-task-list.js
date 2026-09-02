@@ -26,7 +26,7 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
-} from "../../action-hints.js";
+} from "../../../../action-hints.js";
 
 export const ARCHIVED_TASK_LIST_INITIAL_SETTLED_EVENT =
   "caffold:archived-task-list-initial-settled";

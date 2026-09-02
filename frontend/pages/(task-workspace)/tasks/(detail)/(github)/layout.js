@@ -9,10 +9,10 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../action-hints.js";
+} from "../../../../../action-hints.js";
 import {
   mergeKeyboardNavigationContexts,
-} from "../../../keyboard-navigation-context.js";
+} from "../../../../../keyboard-navigation.js";
 import { emptyScrollSurfaceScope } from "../../../../../scroll-scope.js";
 
 class CaffoldTaskGithubLayout extends HTMLElement {

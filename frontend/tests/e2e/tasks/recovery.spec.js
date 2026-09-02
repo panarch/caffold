@@ -87,6 +87,31 @@ async function openRecovery(page, recovery) {
   await expect(page.locator("caffold-task-recovery")).toBeVisible();
 }
 
+async function scrollRecoveryActionIntoView(action) {
+  await action.evaluate((element) => {
+    const scrollport = element.closest(".task-recovery-body");
+    if (!scrollport) {
+      throw new Error("Recovery action has no Recovery scroll owner");
+    }
+    const before = {
+      left: scrollport.scrollLeft,
+      top: scrollport.scrollTop,
+    };
+    return new Promise((resolve) => {
+      const handleScroll = () => resolve();
+      scrollport.addEventListener("scroll", handleScroll, { once: true });
+      element.scrollIntoView({ block: "nearest", inline: "nearest" });
+      if (
+        scrollport.scrollLeft === before.left &&
+        scrollport.scrollTop === before.top
+      ) {
+        scrollport.removeEventListener("scroll", handleScroll);
+        resolve();
+      }
+    });
+  });
+}
+
 async function emitTaskListEvent(page, type, payload) {
   await expect
     .poll(() =>
@@ -278,31 +303,32 @@ test("recheck uses the explicit recovery endpoint without rewriting the cached l
   });
 
   await openRecovery(page, recovery);
+  await page.addStyleTag({
+    content: `
+      caffold-task-recovery .task-recovery-content {
+        min-height: 360px !important;
+      }
+      caffold-task-recovery .task-recovery-body {
+        height: 120px !important;
+        max-height: 120px !important;
+      }
+    `,
+  });
   const recoveryScroll = page.locator(".task-recovery-body");
-  await page.locator(".task-recovery-content").evaluate((element) => {
-    element.style.minHeight = "360px";
-  });
-  await recoveryScroll.evaluate((element) => {
-    element.style.height = "120px";
-    element.style.maxHeight = "120px";
-  });
   await expect.poll(() => recoveryScroll.evaluate(
     (element) => element.scrollHeight > element.clientHeight + 1,
   )).toBe(true);
   await page.locator(".task-workspace-surface").focus();
   await page.keyboard.press("s");
   await expect(page.locator(
-    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   )).toContainText("Scroll: Task recovery");
   await page.keyboard.press("j");
   await expect.poll(() => recoveryScroll.evaluate((element) => element.scrollTop))
     .toBeGreaterThan(0);
   await page.keyboard.press("Escape");
   const recheck = page.getByRole("button", { name: /Recheck/ });
-  await recheck.scrollIntoViewIfNeeded();
-  await page.evaluate(() => new Promise((resolve) =>
-    requestAnimationFrame(() => requestAnimationFrame(resolve))
-  ));
+  await scrollRecoveryActionIntoView(recheck);
   await activateActionHint(page, /Recheck/);
 
   await expect.poll(() => recheckCalls).toBe(1);

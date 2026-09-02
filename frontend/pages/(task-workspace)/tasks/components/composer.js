@@ -12,7 +12,7 @@ import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   hasActionHintLayoutBox,
-} from "../../action-hints.js";
+} from "../../../../action-hints.js";
 import "./task-turn-options.js";
 import "./voice-level-meter.js";
 import {

@@ -18,7 +18,7 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
-} from "../../../../action-hints.js";
+} from "../../../../../../action-hints.js";
 import "./conversation/components/active-turn.js";
 import "./conversation/components/assistant-message.js";
 import "./conversation/components/changed-files.js";

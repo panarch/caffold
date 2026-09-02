@@ -208,9 +208,9 @@ test("activates Archived retry, paging, restore, and Task-list scrolling through
   )).toBe(true);
   await page.locator(".task-workspace-surface").focus();
   await page.keyboard.press("s");
-  const selector = page.locator("caffold-scroll-surface-selector > dialog");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog:modal");
   const scrollHud = page.locator(
-    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
   await expect.poll(async () =>
     await selector.isVisible() || await scrollHud.isVisible()

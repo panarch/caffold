@@ -146,7 +146,7 @@ test("closes Hint when printable input cannot match an action", { tag: "@all-vie
 
   await expect(dialog).toBeHidden();
   await expect(opener).toBeFocused();
-  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
     "data-action-hint-last-exit",
     "no-match",
   );
@@ -156,7 +156,7 @@ test("closes Hint when printable input cannot match an action", { tag: "@all-vie
   await page.keyboard.press("1");
   await expect(dialog).toBeHidden();
   await expect(opener).toBeFocused();
-  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
     "data-action-hint-last-exit",
     "no-match",
   );
@@ -219,6 +219,18 @@ test("activates a Task through its existing route and responsive focus owner", {
       ".task-follow-up-form textarea[name='prompt']",
     ),
   ).toBeVisible();
+  const streamedPatch = page.locator(
+    ".task-conversation [data-action-hint-conversation-patch]",
+  );
+  await page.locator(".task-conversation").evaluate((list) => {
+    const patch = document.createElement("li");
+    patch.dataset.actionHintConversationPatch = "";
+    patch.setAttribute("aria-hidden", "true");
+    patch.style.blockSize = "1px";
+    patch.style.overflow = "hidden";
+    patch.textContent = "Streamed Conversation patch A";
+    list.append(patch);
+  });
   if (testInfo.project.name === "phone") {
     await page.locator(".tasks-detail-pane").focus();
   } else {
@@ -229,11 +241,8 @@ test("activates a Task through its existing route and responsive focus owner", {
   await page.keyboard.press("f");
   const dialog = actionHintDialog(page);
   await expect(dialog).toBeVisible();
-  await page.locator(".task-conversation-pane").evaluate((pane) => {
-    const streamed = document.createElement("span");
-    streamed.dataset.actionHintConversationPatch = "";
-    streamed.textContent = "Streamed Conversation patch";
-    pane.append(streamed);
+  await streamedPatch.evaluate((patch) => {
+    patch.textContent = "Streamed Conversation patch B";
   });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('[data-action-hint-code="M"]')).toBeVisible();
@@ -276,7 +285,7 @@ test("allocates Settings navigation automatically and accepts F inside Hint mode
   await expect(fBadge).toBeVisible();
   await page.keyboard.press("f");
   await expect(dialog).toBeHidden();
-  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
     "data-action-hint-last-exit",
     "activated:F",
   );
@@ -1001,7 +1010,7 @@ test("cancels a Conversation Hint on target topology change without losing the r
     });
   }, anchor.targetEventId);
   await expect(dialog).toBeHidden();
-  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
     "data-action-hint-last-exit",
     "snapshot-invalidated",
   );
@@ -1029,7 +1038,7 @@ test("cancels on geometry, actionability, ownership, viewport, and route changes
   await page.goto("/tasks");
   await expect(page.locator("caffold-active-task-row")).toHaveCount(8);
   const dialog = actionHintDialog(page);
-  const workspace = page.locator("caffold-task-workspace");
+  const workspace = page.locator("caffold-app-shell");
   const newTask = page.locator(".task-list-new-task");
 
   await enterActionHints(page);
@@ -1146,6 +1155,7 @@ test("cancels on geometry, actionability, ownership, viewport, and route changes
   await enterActionHints(page);
   const disconnected = await workspace.evaluate((element) => {
     const controller = element.actionHints;
+    window.__actionHintDetachedShell = element;
     element.remove();
     return {
       connected: controller.connected,
@@ -1154,6 +1164,19 @@ test("cancels on geometry, actionability, ownership, viewport, and route changes
   });
   expect(disconnected).toEqual({ connected: false, hasSession: false });
   await expect(dialog).toBeHidden();
+
+  await page.evaluate(() => {
+    document.body.append(window.__actionHintDetachedShell);
+  });
+  await expect.poll(() => workspace.evaluate(
+    (element) => element.actionHints.connected,
+  )).toBe(true);
+  await page.locator(".task-workspace-surface").focus();
+  await page.keyboard.press("f");
+  await expect(dialog).toBeVisible();
+  await expect(page.locator("caffold-action-hint-dialog > dialog:modal"))
+    .toHaveCount(1);
+  await page.keyboard.press("Escape");
 });
 
 test("keeps badges aligned and legible at appearance and zoom extremes", { tag: "@all-viewports" }, async ({

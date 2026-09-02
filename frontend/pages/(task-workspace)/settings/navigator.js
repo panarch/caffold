@@ -8,7 +8,7 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
 } from "../../../action-hint-scope.js";
-import { ACTION_HINT_ACTION } from "../action-hints.js";
+import { ACTION_HINT_ACTION } from "../../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,

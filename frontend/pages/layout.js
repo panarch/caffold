@@ -1,7 +1,20 @@
 import { getHealth } from "../api.js";
 import { BUILD_INFO } from "../build-info.js";
 import { renderInlineIcon, warmIcons } from "../components/icons.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  mergeActionHintScopes,
+} from "../action-hints.js";
+import {
+  KeyboardNavigationController,
+  keyboardNavigationContext,
+  mergeKeyboardNavigationContexts,
+} from "../keyboard-navigation.js";
 import { CAFFOLD_ORIGIN_REACHABLE_EVENT } from "../origin-reachability.js";
+import { getSettings } from "../settings.js";
 import {
   parentRoute,
   parseRoute,
@@ -18,6 +31,7 @@ import {
   CAFFOLD_UPDATE_LATER_EVENT,
   CAFFOLD_UPDATE_RELOAD_EVENT,
 } from "./components/update-dialog.js";
+import "../keyboard-navigation/components/presentation.js";
 import "./(task-workspace)/layout.js";
 
 class CaffoldAppShell extends HTMLElement {
@@ -30,6 +44,7 @@ class CaffoldAppShell extends HTMLElement {
       );
       this.pwaUpdateLifecycle?.connect();
       this.foregroundRecoveryLifecycle?.connect();
+      this.keyboardNavigation?.connect();
       queueMicrotask(() => {
         void this.foregroundRecoveryLifecycle?.requestForegroundRecovery();
       });
@@ -56,6 +71,23 @@ class CaffoldAppShell extends HTMLElement {
     this.render();
     this.taskWorkspace = this.querySelector("caffold-task-workspace");
     this.taskWorkspace.ensureRendered();
+    this.updateDialog = this.querySelector(":scope > caffold-update-dialog");
+    this.buildMismatchAlert = this.querySelector(
+      ":scope > caffold-build-mismatch-alert",
+    );
+    this.keyboardNavigationPresentation = this.querySelector(
+      ":scope > caffold-keyboard-navigation-presentation",
+    );
+    this.keyboardNavigation = new KeyboardNavigationController({
+      workspace: this,
+      collectKeyboardNavigationContexts: () =>
+        this.keyboardNavigationContexts(),
+      afterActionHintActivation: (target) =>
+        this.taskWorkspace.afterActionHintActivation(target),
+      readSettings: () => getSettings(),
+    });
+    this.actionHints = this.keyboardNavigation.actionHints;
+    this.keyboardNavigation.connect();
     this.pwaUpdateLifecycle = new PwaUpdateLifecycle({
       currentBuildId: BUILD_INFO.id,
       onReloadReady: () => window.location.reload(),
@@ -77,6 +109,7 @@ class CaffoldAppShell extends HTMLElement {
 
     const initialRoute = parseRoute(window.location.href);
     if (initialRoute) {
+      this.keyboardNavigation.routeWillChange();
       this.currentRoute = initialRoute;
       this.taskWorkspace.prepareRoute(initialRoute, {
         defaultCwdPath: this.initialPath,
@@ -141,6 +174,7 @@ class CaffoldAppShell extends HTMLElement {
     );
     this.pwaUpdateLifecycle?.disconnect();
     this.foregroundRecoveryLifecycle?.disconnect();
+    this.keyboardNavigation?.disconnect();
   }
 
   render() {
@@ -167,6 +201,7 @@ class CaffoldAppShell extends HTMLElement {
       </section>
       <caffold-update-dialog></caffold-update-dialog>
       <caffold-build-mismatch-alert hidden></caffold-build-mismatch-alert>
+      <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
     `;
     this.querySelector('[data-action="retry-bootstrap"]')?.addEventListener(
       "click",
@@ -393,19 +428,22 @@ class CaffoldAppShell extends HTMLElement {
     const preparedUpdate = this.pwaUpdateStatus.preparedUpdate;
     this.taskWorkspace?.setUpdateStatus(this.pwaUpdateStatus);
     this.renderBuildAlert();
-    const updateDialog = this.querySelector("caffold-update-dialog");
+    const updateDialog = this.updateDialog;
     if (!preparedUpdate.ready) {
       updateDialog?.close();
       return;
     }
     if (!this.presentedUpdateBuildIds.has(preparedUpdate.buildId)) {
       this.presentedUpdateBuildIds.add(preparedUpdate.buildId);
+      this.keyboardNavigation?.cancelStoredMode("interaction-owner", {
+        restoreFocus: false,
+      });
       updateDialog?.open();
     }
   }
 
   renderBuildAlert() {
-    const alert = this.querySelector("caffold-build-mismatch-alert");
+    const alert = this.buildMismatchAlert;
     if (!alert) {
       return;
     }
@@ -423,8 +461,10 @@ class CaffoldAppShell extends HTMLElement {
     if (!route) {
       return false;
     }
+    this.keyboardNavigation?.routeWillChange();
+    const applyOptions = { ...options, keyboardPrepared: true };
     if (this.currentRoute && routeEquals(this.currentRoute, route)) {
-      void this.applyRoute(route, options);
+      void this.applyRoute(route, applyOptions);
       return true;
     }
     const url = routeUrl(route);
@@ -433,7 +473,7 @@ class CaffoldAppShell extends HTMLElement {
       window.navigation.navigate(url, {
         history: options.replace ? "replace" : "push",
       });
-      void this.applyRoute(route, options);
+      void this.applyRoute(route, applyOptions);
       return true;
     }
     const state = { caffoldRoute: route };
@@ -442,11 +482,14 @@ class CaffoldAppShell extends HTMLElement {
     } else {
       window.history.pushState(state, "", url);
     }
-    void this.applyRoute(route, options);
+    void this.applyRoute(route, applyOptions);
     return true;
   }
 
-  async applyRoute(route) {
+  async applyRoute(route, { keyboardPrepared = false } = {}) {
+    if (!keyboardPrepared) {
+      this.keyboardNavigation?.routeWillChange();
+    }
     this.currentRoute = route;
     const canonicalUrl = routeUrl(route);
     if (window.location.pathname + window.location.search !== canonicalUrl) {
@@ -460,6 +503,118 @@ class CaffoldAppShell extends HTMLElement {
       void this.refreshAboutStatus();
     }
     return true;
+  }
+
+  actionHintScope() {
+    return mergeActionHintScopes(
+      this.bootstrapRetryActionHintScope(),
+      this.foregroundRetryActionHintScope(),
+      this.buildMismatchAlert?.actionHintScope?.(),
+      this.taskWorkspace?.actionHintScope?.(),
+    );
+  }
+
+  bootstrapRetryActionHintScope() {
+    const panel = this.querySelector(":scope > .app-main > .app-bootstrap-error");
+    const control = panel?.querySelector('[data-action="retry-bootstrap"]');
+    if (!panel || !control) {
+      return emptyActionHintScope();
+    }
+    const visible =
+      !panel.hidden &&
+      !control.hidden &&
+      hasActionHintLayoutBox(control);
+    return {
+      blocked: false,
+      targets: visible ? [buttonActionHintTarget({
+        id: "app:bootstrap:retry",
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.textContent?.trim() || "Retry Caffold bootstrap",
+        control,
+        clipRoots: [panel],
+        isActionable: () =>
+          this.isConnected &&
+          this.querySelector(":scope > .app-main > .app-bootstrap-error") ===
+            panel &&
+          !panel.hidden &&
+          panel.querySelector('[data-action="retry-bootstrap"]') === control &&
+          !control.hidden &&
+          !control.disabled,
+      })] : [],
+      mutationRoots: [panel],
+      scrollRoots: [],
+    };
+  }
+
+  foregroundRetryActionHintScope() {
+    const notice = this.querySelector(":scope > .app-foreground-recovery");
+    const control = notice?.querySelector(
+      '[data-action="retry-foreground-recovery"]',
+    );
+    if (!notice || !control) {
+      return emptyActionHintScope();
+    }
+    const visible =
+      !notice.hidden &&
+      !control.hidden &&
+      notice.dataset.recoveryState === "unavailable" &&
+      hasActionHintLayoutBox(control);
+    return {
+      blocked: false,
+      targets: visible ? [buttonActionHintTarget({
+        id: "app:foreground-recovery:retry",
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.textContent?.trim() || "Retry foreground recovery",
+        control,
+        clipRoots: [notice],
+        isActionable: () =>
+          this.isConnected &&
+          this.querySelector(":scope > .app-foreground-recovery") === notice &&
+          !notice.hidden &&
+          notice.dataset.recoveryState === "unavailable" &&
+          notice.querySelector(
+            '[data-action="retry-foreground-recovery"]',
+          ) === control &&
+          !control.hidden &&
+          !control.disabled,
+      })] : [],
+      mutationRoots: [notice],
+      scrollRoots: [],
+    };
+  }
+
+  keyboardNavigationContexts() {
+    const presentation = this.keyboardNavigationPresentation;
+    const dialog = presentation?.actionHintDialog?.();
+    const hud = presentation?.scrollModeHud?.();
+    const selector = presentation?.scrollSurfaceSelector?.();
+    const workspaceContexts = dialog && hud && selector
+      ? [keyboardNavigationContext({
+          id: "workspace",
+          kind: "workspace",
+          root: this,
+          actionHints: {
+            dialog,
+            scope: this.actionHintScope(),
+          },
+          scroll: {
+            hud,
+            selector,
+            scope: this.taskWorkspace?.scrollSurfaceScope?.(),
+          },
+          editing: {
+            escapeTarget: (editable) =>
+              this.taskWorkspace?.contains(editable)
+                ? this.taskWorkspace.actionHintEditingEscapeTarget(editable)
+                : null,
+          },
+        })]
+      : [];
+    return mergeKeyboardNavigationContexts(
+      workspaceContexts,
+      this.updateDialog?.keyboardNavigationContexts?.() ?? [],
+      this.taskWorkspace?.keyboardNavigationContexts?.() ?? [],
+    );
   }
 }
 

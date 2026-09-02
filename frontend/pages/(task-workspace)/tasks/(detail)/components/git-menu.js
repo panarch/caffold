@@ -2,12 +2,12 @@ import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../../action-hints.js";
+} from "../../../../../action-hints.js";
 import {
   keyboardNavigationContext,
   popoverScrollSurfaceScope,
-} from "../../../keyboard-navigation-context.js";
-import "../../../components/keyboard-navigation-presentation.js";
+} from "../../../../../keyboard-navigation.js";
+import "../../../../../keyboard-navigation/components/presentation.js";
 
 const GIT_INTENT_EVENT = "caffold:task-detail-git-intent";
 const UNAVAILABLE_TITLE =
@@ -108,7 +108,8 @@ class CaffoldTaskDetailGit extends HTMLElement {
     );
     const dialog = presentation?.actionHintDialog?.();
     const hud = presentation?.scrollModeHud?.();
-    if (!scopeId || !popover || !dialog || !hud) {
+    const selector = presentation?.scrollSurfaceSelector?.();
+    if (!scopeId || !popover || !dialog || !hud || !selector) {
       return [];
     }
     const contextId = `${scopeId}:git`;
@@ -122,6 +123,7 @@ class CaffoldTaskDetailGit extends HTMLElement {
       },
       scroll: {
         hud,
+        selector,
         scope: popoverScrollSurfaceScope({
           id: contextId,
           label: "Git workspace actions",

@@ -87,9 +87,11 @@ test("merges the current document preview scope with modal controls", () => {
 test("provides its exact modal document context and preview scrollport", () => {
   const hintDialog = {};
   const hud = { show() {}, close() {}, updateLabel() {} };
+  const selector = {};
   const presentation = {
     actionHintDialog: () => hintDialog,
     scrollModeHud: () => hud,
+    scrollSurfaceSelector: () => selector,
   };
   const actionScope = { targets: [{ id: "close" }] };
   const preview = {
@@ -125,6 +127,7 @@ test("provides its exact modal document context and preview scrollport", () => {
   assert.equal(context.actionHints.dialog, hintDialog);
   assert.deepEqual(context.actionHints.scope.targets, actionScope.targets);
   assert.equal(context.scroll.hud, hud);
+  assert.equal(context.scroll.selector, selector);
   assert.equal(surface.id, "current-plan:task/PLAN.md:preview");
   assert.equal(surface.label, "Plan document");
   assert.equal(surface.scrollport, preview);
@@ -134,6 +137,32 @@ test("provides its exact modal document context and preview scrollport", () => {
   preview.hidden = false;
   owner.current = { path: "task/CHECKLIST.md", label: "Checklist" };
   assert.equal(surface.isEligible(), false);
+});
+
+test("ignores a stale native close event after the retained dialog reopens", () => {
+  let aborted = false;
+  const current = { path: "task/PLAN.md" };
+  const opener = {};
+  const controller = {
+    abort() {
+      aborted = true;
+    },
+  };
+  const owner = {
+    requestId: 4,
+    requestController: controller,
+    current,
+    opener,
+    dialog: () => ({ open: true }),
+  };
+
+  documentDialog.handleClose.call(owner);
+
+  assert.equal(owner.requestId, 4);
+  assert.equal(owner.requestController, controller);
+  assert.equal(owner.current, current);
+  assert.equal(owner.opener, opener);
+  assert.equal(aborted, false);
 });
 
 function actionControl(textContent, { visible = true } = {}) {

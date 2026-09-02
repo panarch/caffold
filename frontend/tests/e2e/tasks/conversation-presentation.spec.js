@@ -560,7 +560,7 @@ test("owns final Markdown links without guessing fragments or stale bindings", {
     ".task-assistant-message caffold-task-markdown",
   ).filter({ hasText: "External docs" });
   await expect(markdown).toHaveAttribute("data-render-state", "markdown");
-  const linkTargets = await page.locator("caffold-task-workspace").evaluate(
+  const linkTargets = await page.locator("caffold-app-shell").evaluate(
     (workspace) => workspace.actionHintScope().targets
       .filter((target) => target.controlKind === "link")
       .map(({ id, label }) => ({ id, label })),
@@ -656,7 +656,7 @@ test("owns final Markdown links without guessing fragments or stale bindings", {
     link.setAttribute("href", "https://example.com/changed-after-snapshot");
   });
   await expect(actionHintDialog(page)).toBeHidden();
-  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
     "data-action-hint-last-exit",
     "snapshot-invalidated",
   );
@@ -668,7 +668,7 @@ test("owns final Markdown links without guessing fragments or stale bindings", {
   await enterActionHints(page);
   await markdown.evaluate((element, source) => element.setMarkdown(source), markdownSource);
   await expect(actionHintDialog(page)).toBeHidden();
-  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
     "data-action-hint-last-exit",
     "snapshot-invalidated",
   );
@@ -687,7 +687,7 @@ test("owns final Markdown links without guessing fragments or stale bindings", {
     element.scrollLeft = Math.min(80, element.scrollWidth - element.clientWidth);
   });
   await expect(actionHintDialog(page)).toBeHidden();
-  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
     "data-action-hint-last-exit",
     "scroll",
   );

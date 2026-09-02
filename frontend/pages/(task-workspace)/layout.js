@@ -23,18 +23,15 @@ import {
   hasActionHintLayoutBox,
   mergeActionHintScopes,
   separatorActionHintTarget,
-} from "./action-hints.js";
-import { KeyboardNavigationController } from "./keyboard-navigation.js";
+} from "../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
   mergeScrollSurfaceScopes,
 } from "../../scroll-scope.js";
 import {
-  keyboardNavigationContext,
   mergeKeyboardNavigationContexts,
-} from "./keyboard-navigation-context.js";
-import "./action-hints/components/dialog.js";
+} from "../../keyboard-navigation.js";
 import "./components/navigation.js";
 import {
   TASK_ARCHIVED_DELETE_CONFIRMED_EVENT,
@@ -55,7 +52,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.boundIconsReady ??= () => this.renderIcons();
     window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     this.ensureRendered();
-    this.keyboardNavigation.connect();
     this.attachGlobalListeners();
     this.liveUpdates.connect();
     this.codexStatusLifecycle.connect();
@@ -64,7 +60,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
 
   disconnectedCallback() {
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
-    this.keyboardNavigation?.disconnect();
     this.liveUpdates.disconnect();
     this.codexStatusLifecycle.disconnect();
     this.stopNavigationPaneResize();
@@ -138,9 +133,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
       <caffold-task-archived-delete-dialog></caffold-task-archived-delete-dialog>
       <caffold-codex-runtime-restart-dialog></caffold-codex-runtime-restart-dialog>
       <caffold-claude-runtime-restart-dialog></caffold-claude-runtime-restart-dialog>
-      <caffold-action-hint-dialog></caffold-action-hint-dialog>
-      <caffold-scroll-mode-hud></caffold-scroll-mode-hud>
-      <caffold-scroll-surface-selector></caffold-scroll-surface-selector>
     `;
     this.backButton = this.querySelector(".task-workspace-back");
     this.closeButton = this.querySelector(".task-workspace-close");
@@ -163,25 +155,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.claudeRuntimeRestartDialog = this.querySelector(
       ":scope > caffold-claude-runtime-restart-dialog",
     );
-    this.actionHintDialog = this.querySelector(
-      ":scope > caffold-action-hint-dialog",
-    );
-    this.scrollModeHud = this.querySelector(
-      ":scope > caffold-scroll-mode-hud",
-    );
-    this.scrollSurfaceSelector = this.querySelector(
-      ":scope > caffold-scroll-surface-selector",
-    );
-    this.keyboardNavigation = new KeyboardNavigationController({
-      workspace: this,
-      actionHintDialog: this.actionHintDialog,
-      scrollSelector: this.scrollSurfaceSelector,
-      collectKeyboardNavigationContexts: () =>
-        this.keyboardNavigationContexts(),
-      afterActionHintActivation: (target) =>
-        this.afterActionHintActivation(target),
-    });
-    this.actionHints = this.keyboardNavigation.actionHints;
     this.tasksPage.ensureRendered();
     this.settingsWorkspace.ensureRendered();
     this.taskNavigator.setLiveUpdates(this.liveUpdates);
@@ -337,7 +310,6 @@ class CaffoldTaskWorkspace extends HTMLElement {
 
   prepareRoute(route, options = {}) {
     this.ensureRendered();
-    this.keyboardNavigation.routeWillChange();
     const previousMode = this.mode;
     this.route = route;
     this.mode = route?.kind === "settings" ? "settings" : "tasks";
@@ -558,30 +530,11 @@ class CaffoldTaskWorkspace extends HTMLElement {
 
   keyboardNavigationContexts() {
     this.ensureRendered();
-    const workspaceScope = this.workspaceScrollSurfaceScope();
-    const workspaceContext = keyboardNavigationContext({
-      id: "workspace",
-      kind: "workspace",
-      root: this,
-      actionHints: {
-        dialog: this.actionHintDialog,
-        scope: this.actionHintScope(),
-      },
-      scroll: {
-        hud: this.scrollModeHud,
-        scope: workspaceScope,
-      },
-      editing: {
-        escapeTarget: (editable) =>
-          this.actionHintEditingEscapeTarget(editable),
-      },
-    });
     const childContexts =
       !this.hidden && this.mode === "tasks"
         ? this.tasksPage.keyboardNavigationContexts()
         : [];
     return mergeKeyboardNavigationContexts(
-      [workspaceContext],
       this.codexRuntimeRestartDialog?.keyboardNavigationContexts?.() ?? [],
       this.claudeRuntimeRestartDialog?.keyboardNavigationContexts?.() ?? [],
       this.archivedDeleteDialog?.keyboardNavigationContexts?.() ?? [],
@@ -589,7 +542,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
     );
   }
 
-  workspaceScrollSurfaceScope() {
+  scrollSurfaceScope() {
     if (this.hidden) {
       return emptyScrollSurfaceScope();
     }

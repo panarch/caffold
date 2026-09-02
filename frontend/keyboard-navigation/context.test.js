@@ -3,7 +3,7 @@ import test, { after } from "node:test";
 
 import {
   installCustomElementUnitRegistry,
-} from "../../tests/support/custom-element-unit.js";
+} from "../tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
 const previousElement = globalThis.Element;
@@ -15,7 +15,7 @@ const {
   mergeKeyboardNavigationContexts,
   normalizeKeyboardNavigationContexts,
   popoverScrollSurfaceScope,
-} = await import("./keyboard-navigation-context.js");
+} = await import("./context.js");
 
 after(() => {
   restoreGlobal("Element", previousElement);
@@ -40,6 +40,7 @@ test("keeps Action Hint, Scroll, and Editing as separate optional capabilities",
   const root = element();
   const dialog = actionHintDialog();
   const hud = scrollHud();
+  const selector = scrollSelector();
   const target = { id: "target" };
   const surface = { id: "surface" };
   const escapeTarget = () => root;
@@ -53,6 +54,7 @@ test("keeps Action Hint, Scroll, and Editing as separate optional capabilities",
     },
     scroll: {
       hud,
+      selector,
       scope: { surfaces: [surface] },
     },
     editing: { escapeTarget },
@@ -62,6 +64,7 @@ test("keeps Action Hint, Scroll, and Editing as separate optional capabilities",
   assert.deepEqual(context.actionHints.scope.targets, [target]);
   assert.deepEqual(context.actionHints.scope.mutationRoots, []);
   assert.equal(context.scroll.hud, hud);
+  assert.equal(context.scroll.selector, selector);
   assert.deepEqual(context.scroll.scope.surfaces, [surface]);
   assert.deepEqual(context.scroll.scope.resizeElements, []);
   assert.equal(context.editing.escapeTarget, escapeTarget);
@@ -73,8 +76,9 @@ test("normalizes exact owners and rejects duplicate or malformed providers", () 
   const targetControl = element();
   const workspaceDialog = actionHintDialog();
   const popoverHud = scrollHud();
+  const popoverSelector = scrollSelector();
   workspaceRoot.append(workspaceDialog);
-  popoverRoot.append(popoverHud);
+  popoverRoot.append(popoverHud, popoverSelector);
   const contexts = [
     keyboardNavigationContext({
       id: "workspace",
@@ -103,6 +107,7 @@ test("normalizes exact owners and rejects duplicate or malformed providers", () 
       root: popoverRoot,
       scroll: {
         hud: popoverHud,
+        selector: popoverSelector,
         scope: popoverScrollSurfaceScope({
           id: "popover:model",
           label: "Model options",
@@ -117,6 +122,7 @@ test("normalizes exact owners and rejects duplicate or malformed providers", () 
   assert.deepEqual(normalized[0].actionHints.scope.mutationRoots, []);
   assert.equal(normalized[0].editing, null);
   assert.equal(normalized[1].scroll.scope.surfaces[0].scrollport, popoverRoot);
+  assert.equal(normalized[1].scroll.selector, popoverSelector);
   assert.deepEqual(normalized[1].scroll.scope.resizeElements, [popoverRoot]);
 
   assert.equal(normalizeKeyboardNavigationContexts([
@@ -154,6 +160,13 @@ test("normalizes exact owners and rejects duplicate or malformed providers", () 
     },
   }]), null);
   assert.equal(normalizeKeyboardNavigationContexts([{
+    ...contexts[1],
+    scroll: {
+      ...contexts[1].scroll,
+      selector: scrollSelector(),
+    },
+  }]), null);
+  assert.equal(normalizeKeyboardNavigationContexts([{
     id: "bad-editing",
     kind: "modal",
     root: element(),
@@ -165,8 +178,9 @@ test("accepts declared Shadow DOM mutation roots without weakening geometry root
   const root = element();
   const dialog = actionHintDialog();
   const hud = scrollHud();
+  const selector = scrollSelector();
   const shadowRoot = new ShadowRoot();
-  root.append(dialog, hud);
+  root.append(dialog, hud, selector);
   const context = keyboardNavigationContext({
     id: "workspace",
     kind: "workspace",
@@ -177,6 +191,7 @@ test("accepts declared Shadow DOM mutation roots without weakening geometry root
     },
     scroll: {
       hud,
+      selector,
       scope: {
         surfaces: [],
         mutationRoots: [shadowRoot],
@@ -289,6 +304,17 @@ function actionHintDialog() {
 
 function scrollHud() {
   return element({ show() {}, close() {}, updateLabel() {} });
+}
+
+function scrollSelector() {
+  return element({
+    open() {},
+    close() {},
+    ownsModal() {},
+    allowsNativeActivation() {},
+    updateInput() {},
+    updateSurfaceLabels() {},
+  });
 }
 
 function restoreGlobal(name, value) {

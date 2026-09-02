@@ -8,7 +8,7 @@ import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
-} from "../../../../action-hints.js";
+} from "../../../../../../action-hints.js";
 
 class CaffoldSectionConversationShortcuts extends HTMLElement {
   connectedCallback() {

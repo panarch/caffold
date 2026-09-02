@@ -5,7 +5,7 @@ import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   reorderHandleActionHintTarget,
-} from "../../../../../../action-hints.js";
+} from "../../../../../../../../action-hints.js";
 import {
   taskStatusView,
   taskThreadStatusType,

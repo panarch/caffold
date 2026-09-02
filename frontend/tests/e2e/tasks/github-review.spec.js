@@ -973,9 +973,9 @@ test("scrolls a retained GitHub Issue body through its public Shadow DOM host", 
     "caffold-github-issue-detail-page caffold-github-markdown.github-issue-body",
   );
   const workspace = page.locator(".task-workspace-surface");
-  const selector = page.locator("caffold-scroll-surface-selector > dialog");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog:modal");
   const hud = page.locator(
-    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
   await expect(body).toContainText("Issue keyboard scroll line 100");
   await expect.poll(() => body.evaluate(
@@ -1040,9 +1040,9 @@ test("scrolls GitHub lists, Pull detail, and exact Pull Files surfaces from the 
   });
 
   const workspace = page.locator(".task-workspace-surface");
-  const selector = page.locator("caffold-scroll-surface-selector > dialog");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog:modal");
   const hud = page.locator(
-    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
   const scrollSingleSurface = async (scrollport, label) => {
     await expect.poll(() => scrollport.evaluate(

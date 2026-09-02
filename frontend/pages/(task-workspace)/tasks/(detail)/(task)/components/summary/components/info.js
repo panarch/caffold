@@ -14,12 +14,12 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../../../../../action-hints.js";
+} from "../../../../../../../../action-hints.js";
 import {
   keyboardNavigationContext,
   popoverScrollSurfaceScope,
-} from "../../../../../../keyboard-navigation-context.js";
-import "../../../../../../components/keyboard-navigation-presentation.js";
+} from "../../../../../../../../keyboard-navigation.js";
+import "../../../../../../../../keyboard-navigation/components/presentation.js";
 import "./info/components/actions.js";
 
 let taskInfoInstanceId = 0;
@@ -276,7 +276,8 @@ class CaffoldTaskDetailInfo extends HTMLElement {
     );
     const dialog = presentation?.actionHintDialog?.();
     const hud = presentation?.scrollModeHud?.();
-    if (!threadId || !scopeId || !popover || !dialog || !hud) {
+    const selector = presentation?.scrollSurfaceSelector?.();
+    if (!threadId || !scopeId || !popover || !dialog || !hud || !selector) {
       return [];
     }
     const contextId = `${scopeId}:${threadId}:details`;
@@ -299,6 +300,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
       },
       scroll: {
         hud,
+        selector,
         scope: popoverScrollSurfaceScope({
           id: contextId,
           label: "Task details",

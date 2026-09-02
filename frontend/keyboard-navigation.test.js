@@ -3,7 +3,7 @@ import test, { after } from "node:test";
 
 import {
   installCustomElementUnitRegistry,
-} from "../../tests/support/custom-element-unit.js";
+} from "./tests/support/custom-element-unit.js";
 
 const registry = installCustomElementUnitRegistry();
 const previousElement = globalThis.Element;
@@ -69,7 +69,6 @@ test("coordinator alone owns the document key listener and releases all inputs",
     controller.disconnect();
     assert.equal(document.listenerCount(), 0);
     assert.equal(controller.workspace.listenerCount(), 0);
-    assert.equal(controller.scrollSelector.listenerCount(), 0);
     assert.equal(window.listenerCount(), 0);
     assert.equal(controller.actionHints.connected, false);
   } finally {
@@ -251,6 +250,40 @@ test("Scroll selection keeps F as surface-code input", () => {
   }
 });
 
+test("Scroll selection accepts events only from its pinned context selector", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const controller = createController();
+    const selector = scrollSelector();
+    const selected = [];
+    controller.selectionSession = { selector };
+    controller.selectSurface = (code) => selected.push(code);
+
+    const foreign = {
+      target: scrollSelector(),
+      detail: { code: "A" },
+      stopPropagation() {
+        throw new Error("foreign selector event must not be consumed");
+      },
+    };
+    controller.boundSurfaceSelect(foreign);
+    assert.deepEqual(selected, []);
+
+    let stopped = false;
+    controller.boundSurfaceSelect({
+      target: selector,
+      detail: { code: "S" },
+      stopPropagation: () => {
+        stopped = true;
+      },
+    });
+    assert.deepEqual(selected, ["S"]);
+    assert.equal(stopped, true);
+  } finally {
+    restoreDom();
+  }
+});
+
 test("resolves workspace, exact modal, and registered popover ownership", () => {
   const restoreDom = installEventGlobals();
   try {
@@ -384,6 +417,7 @@ test("rejects malformed and duplicate provider identities centrally", () => {
     const controller = createController();
     const root = element();
     const hud = element({ show() {}, close() {}, updateLabel() {} });
+    const selector = scrollSelector();
     const scrollport = element();
     const surface = {
       id: "same",
@@ -392,12 +426,15 @@ test("rejects malformed and duplicate provider identities centrally", () => {
       clipRoots: [],
       isEligible: () => true,
     };
+    root.contains = (candidate) =>
+      candidate === root || candidate === hud || candidate === selector;
     controller.collectKeyboardNavigationContexts = () => [{
       id: "workspace",
       kind: "workspace",
       root,
       scroll: {
         hud,
+        selector,
         scope: {
           blocked: false,
           surfaces: [surface, { ...surface }],
@@ -504,6 +541,7 @@ test("Scroll selection ignores stale scroll delivery and cancels real movement",
     });
     const selection = {
       cleanup: [],
+      selector: scrollSelector(),
       context: {
         mutationRoots: [],
         resizeElements: [],
@@ -537,6 +575,7 @@ test("viewport signals ignore stale delivery and cancel real snapshot drift", ()
     const controller = createController();
     const selection = {
       cleanup: [],
+      selector: scrollSelector(),
       context: {
         mutationRoots: [],
         resizeElements: [],
@@ -593,6 +632,7 @@ test("opening beforetoggle invalidates selection and active mode before selector
     const controller = createController();
     const selection = {
       cleanup: [],
+      selector: scrollSelector(),
       context: { mutationRoots: [], resizeElements: [], scrollRoots: [] },
       mutationObserver: null,
       opener: null,
@@ -701,18 +741,8 @@ test("active revalidation keeps one binding and refreshes its retained presentat
 
 function createController() {
   const workspace = Object.assign(new FakeEventTarget(), { dataset: {} });
-  const actionHintDialog = Object.assign(new FakeEventTarget(), {
-    ownsModal: () => false,
-  });
-  const scrollSelector = Object.assign(new FakeEventTarget(), {
-    ownsModal: () => false,
-    allowsNativeActivation: () => false,
-    close() {},
-  });
   return new KeyboardNavigationController({
     workspace,
-    actionHintDialog,
-    scrollSelector,
     collectKeyboardNavigationContexts: () => [],
   });
 }
@@ -809,13 +839,16 @@ function installEventGlobals() {
 function context(id, kind) {
   const root = element();
   const hud = element({ show() {}, close() {}, updateLabel() {} });
-  root.contains = (candidate) => candidate === root || candidate === hud;
+  const selector = scrollSelector();
+  root.contains = (candidate) =>
+    candidate === root || candidate === hud || candidate === selector;
   return {
     id,
     kind,
     root,
     scroll: {
       hud,
+      selector,
       scope: {
         blocked: false,
         surfaces: [],
@@ -825,6 +858,17 @@ function context(id, kind) {
       },
     },
   };
+}
+
+function scrollSelector() {
+  return element({
+    open() {},
+    close() {},
+    ownsModal: () => false,
+    allowsNativeActivation: () => false,
+    updateInput() {},
+    updateSurfaceLabels() {},
+  });
 }
 
 function element(properties = {}) {

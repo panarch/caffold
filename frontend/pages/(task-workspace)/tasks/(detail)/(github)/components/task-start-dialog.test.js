@@ -59,9 +59,11 @@ test("binds modal Editing escape and exact Task setup scrollport", () => {
   const body = layoutElement({ clientHeight: 100, scrollHeight: 240 });
   const hintDialog = {};
   const hud = {};
+  const selector = {};
   const presentation = {
     actionHintDialog: () => hintDialog,
     scrollModeHud: () => hud,
+    scrollSurfaceSelector: () => selector,
   };
   const dialog = layoutElement({
     open: true,
@@ -92,6 +94,7 @@ test("binds modal Editing escape and exact Task setup scrollport", () => {
 
   assert.equal(context.actionHints.dialog, hintDialog);
   assert.equal(context.scroll.hud, hud);
+  assert.equal(context.scroll.selector, selector);
   assert.equal(context.editing.escapeTarget(select), cancel);
   assert.equal(surface.scrollport, body);
   assert.equal(surface.isEligible(), true);

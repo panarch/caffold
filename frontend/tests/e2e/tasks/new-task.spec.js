@@ -130,7 +130,7 @@ test("focuses a new task prompt automatically only on desktop", { tag: "@all-vie
   await page.locator(".task-workspace-surface").focus();
   await page.keyboard.press("s");
   const scrollHud = page.locator(
-    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
   await expect(scrollHud).toContainText("Scroll: New Task");
   await page.keyboard.press("j");

@@ -522,9 +522,9 @@ test("refreshes Git and scrolls the exact visible Compare tree and diff from the
     "caffold-git-compare-page caffold-file-tree .file-tree-scroll",
   );
   const workspace = page.locator(".task-workspace-surface");
-  const selector = page.locator("caffold-scroll-surface-selector > dialog");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog:modal");
   const hud = page.locator(
-    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
   await expect.poll(() => treeScroll.evaluate(
     (element) => element.scrollHeight > element.clientHeight + 1,
@@ -627,9 +627,9 @@ test("uses Log actions and scrolls the exact visible Commit tree and diff from t
   await page.goto(`/tasks/${THREAD_ID}/git/log`);
 
   const workspace = page.locator(".task-workspace-surface");
-  const selector = page.locator("caffold-scroll-surface-selector > dialog");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog:modal");
   const hud = page.locator(
-    "caffold-task-workspace > caffold-scroll-mode-hud .scroll-mode-status",
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
   const logScroll = page.locator("caffold-git-log-list-page .log-list");
   await expect.poll(() => logScroll.evaluate(

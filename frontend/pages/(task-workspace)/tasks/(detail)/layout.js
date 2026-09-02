@@ -3,11 +3,11 @@ import {
   ACTION_HINT_ACTION,
   emptyActionHintScope,
   mergeActionHintScopes,
-} from "../../action-hints.js";
+} from "../../../../action-hints.js";
 import { emptyScrollSurfaceScope } from "../../../../scroll-scope.js";
 import {
   mergeKeyboardNavigationContexts,
-} from "../../keyboard-navigation-context.js";
+} from "../../../../keyboard-navigation.js";
 import { cleanLogicalPath } from "../task-format.js";
 import "./(task)/layout.js";
 import "./(git)/layout.js";

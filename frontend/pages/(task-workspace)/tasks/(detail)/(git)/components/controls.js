@@ -5,7 +5,7 @@ import {
   emptyActionHintScope,
   hasActionHintLayoutBox,
   selectActionHintTarget,
-} from "../../../../action-hints.js";
+} from "../../../../../../action-hints.js";
 
 class CaffoldGitReviewControls extends HTMLElement {
   connectedCallback() {
