@@ -14,7 +14,6 @@ import {
   sameActionHintSnapshot,
   sameActionHintTopology,
   sortByVisualOrder,
-  taskHintSuffixWidth,
   visibleTargetRect,
 } from "./model.js";
 
@@ -48,21 +47,36 @@ test("allocates fixed, ASDF-ordered Task, and automatic codes centrally", () => 
   );
 });
 
-test("grows every Task suffix to the same prefix-free width after 26", () => {
-  const tasks = Array.from({ length: 27 }, (_, index) =>
+test("keeps Task codes compact and balanced after the one-key suffix capacity", () => {
+  const capacityCodes = taskCodes(26);
+  const firstOverflowCodes = taskCodes(27);
+  const tasks = Array.from({ length: 28 }, (_, index) =>
     target(`task-${index}`, ACTION_HINT_ACTION.TASK_OPEN)
   );
   const codes = allocateActionHintCodes(tasks).map(({ code }) => code);
 
-  assert.equal(taskHintSuffixWidth(26), 1);
-  assert.equal(taskHintSuffixWidth(27), 2);
-  assert.equal(codes[0], "TAA");
-  assert.equal(codes[25], "TAM");
-  assert.equal(codes[26], "TSA");
-  assert.ok(codes.every((code) => code.length === 3));
-  assert.ok(codes.every((code) =>
-    codes.every((other) => code === other || !other.startsWith(code))
-  ));
+  assert.deepEqual(codeLengthCounts(capacityCodes), { 2: 26 });
+  assert.deepEqual(codeLengthCounts(firstOverflowCodes), { 2: 25, 3: 2 });
+  assert.deepEqual(firstOverflowCodes.slice(-2), ["TMA", "TMS"]);
+  assert.deepEqual(codes.slice(0, 3), ["TA", "TS", "TD"]);
+  assert.equal(codes[24], "TN");
+  assert.deepEqual(codes.slice(25), ["TMA", "TMS", "TMD"]);
+  assert.deepEqual(codeLengthCounts(codes), { 2: 25, 3: 3 });
+  assertBalancedPrefixFree(codes);
+});
+
+test("widens neighboring Task branches before adding another suffix depth", () => {
+  const tasks = Array.from({ length: 52 }, (_, index) =>
+    target(`task-${index}`, ACTION_HINT_ACTION.TASK_OPEN)
+  );
+  const codes = allocateActionHintCodes(tasks).map(({ code }) => code);
+
+  assert.equal(codes[23], "TB");
+  assert.equal(codes[24], "TNA");
+  assert.equal(codes[49], "TNM");
+  assert.deepEqual(codes.slice(50), ["TMA", "TMS"]);
+  assert.deepEqual(codeLengthCounts(codes), { 2: 24, 3: 28 });
+  assertBalancedPrefixFree(codes);
 });
 
 test("rejects unknown actions, duplicate identities, and fixed-code conflicts", () => {
@@ -180,7 +194,7 @@ test("allocates explicitly owned ordinary buttons through the automatic pool", (
   );
 });
 
-test("automatic codes reserve fixed and Task prefixes and grow uniformly", () => {
+test("automatic codes reserve fixed and Task prefixes and overflow compactly", () => {
   const oneCharacterCodes = automaticHintCodes(22);
   assert.deepEqual(oneCharacterCodes, [
     "A", "S", "D", "F", "G", "H", "J", "K", "L", "Q", "W",
@@ -190,12 +204,18 @@ test("automatic codes reserve fixed and Task prefixes and grow uniformly", () =>
   assert.ok(oneCharacterCodes.every((code) => !/[NMPT]/.test(code[0])));
 
   const twoCharacterCodes = automaticHintCodes(23);
-  assert.equal(twoCharacterCodes[0], "AA");
-  assert.ok(twoCharacterCodes.every((code) => code.length === 2));
+  assert.deepEqual(twoCharacterCodes.slice(0, 3), ["A", "S", "D"]);
+  assert.equal(twoCharacterCodes[20], "V");
+  assert.deepEqual(twoCharacterCodes.slice(21), ["BA", "BS"]);
+  assert.deepEqual(codeLengthCounts(twoCharacterCodes), { 1: 21, 2: 2 });
   assert.ok(twoCharacterCodes.every((code) => !/[NMPT]/.test(code[0])));
+  assertBalancedPrefixFree(twoCharacterCodes);
 
   const threeCharacterCodes = automaticHintCodes(573);
-  assert.ok(threeCharacterCodes.every((code) => code.length === 3));
+  assert.deepEqual(codeLengthCounts(threeCharacterCodes), { 2: 571, 3: 2 });
+  assert.deepEqual(threeCharacterCodes.slice(-2), ["BMA", "BMS"]);
+  assert.ok(threeCharacterCodes.every((code) => !/[NMPT]/.test(code[0])));
+  assertBalancedPrefixFree(threeCharacterCodes);
 });
 
 test("normalizes Latin keys and uses physical Latin fallback only outside composition", () => {
@@ -219,10 +239,10 @@ test("normalizes Latin keys and uses physical Latin fallback only outside compos
 });
 
 test("reports partial, unmatched, recoverable, and exact buffer progression", () => {
-  const codes = ["TA", "TS", "N"];
+  const codes = ["TA", "TS", "TMA", "TMS", "N"];
   assert.deepEqual(advanceHintBuffer("", "T", codes), {
     buffer: "T",
-    matches: ["TA", "TS"],
+    matches: ["TA", "TS", "TMA", "TMS"],
     exact: "",
     status: "partial",
   });
@@ -234,7 +254,7 @@ test("reports partial, unmatched, recoverable, and exact buffer progression", ()
   });
   assert.deepEqual(advanceHintBuffer("TX", "Backspace", codes), {
     buffer: "T",
-    matches: ["TA", "TS"],
+    matches: ["TA", "TS", "TMA", "TMS"],
     exact: "",
     status: "partial",
   });
@@ -242,6 +262,18 @@ test("reports partial, unmatched, recoverable, and exact buffer progression", ()
     buffer: "TA",
     matches: ["TA"],
     exact: "TA",
+    status: "exact",
+  });
+  assert.deepEqual(advanceHintBuffer("T", "M", codes), {
+    buffer: "TM",
+    matches: ["TMA", "TMS"],
+    exact: "",
+    status: "partial",
+  });
+  assert.deepEqual(advanceHintBuffer("TM", "A", codes), {
+    buffer: "TMA",
+    matches: ["TMA"],
+    exact: "TMA",
     status: "exact",
   });
 });
@@ -449,3 +481,30 @@ test("sorts badge and allocation order by visual reading order", () => {
     ["first", "second", "third"],
   );
 });
+
+function taskCodes(count) {
+  return allocateActionHintCodes(
+    Array.from({ length: count }, (_, index) =>
+      target(`task-${index}`, ACTION_HINT_ACTION.TASK_OPEN)
+    ),
+  ).map(({ code }) => code);
+}
+
+function codeLengthCounts(codes) {
+  return Object.fromEntries(
+    [...new Set(codes.map((code) => code.length))].map((length) => [
+      length,
+      codes.filter((code) => code.length === length).length,
+    ]),
+  );
+}
+
+function assertBalancedPrefixFree(codes) {
+  const lengths = codes.map((code) => code.length);
+  assert.ok(Math.max(...lengths) - Math.min(...lengths) <= 1);
+  for (const code of codes) {
+    assert.ok(codes.every((other) =>
+      code === other || !other.startsWith(code)
+    ));
+  }
+}

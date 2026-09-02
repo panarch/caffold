@@ -298,10 +298,14 @@ Task Workspace context set and retains native keyboard ownership.
 
 The controller validates every action and control kind against a closed central
 policy. Task selection retains generated `T*` codes and New Task, Model, and
-Prompt retain `N`, `M`, and `P`. All other supported actions receive
-same-width automatic codes in `ASDFGHJKLQWERTYUIOPZXCVBNM` order after visual
-sorting; the `N`, `M`, `P`, and `T` prefix namespaces remain reserved. The full
-result must be unique and prefix-free. A session freezes target identity,
+Prompt retain `N`, `M`, and `P`. Task suffixes and actions in the automatic
+pool receive compact, balanced prefix-free codes in
+`ASDFGHJKLQWERTYUIOPZXCVBNM` order after visual sorting. The allocator
+minimizes the longest code first and total code length second, assigns shorter
+codes to earlier targets, and expands the lowest-priority tail branches first,
+so code lengths within each generated allocation pool differ by at most one.
+Automatic first characters reserve the `N`, `M`, `P`, and `T` namespaces. The
+full result must be unique and prefix-free. A session freezes target identity,
 binding, and code, intersects anchors directly with the visual viewport and
 every owning scrollport, and renders buttons in one viewport-sized native
 modal dialog. Scroll, viewport, route, target topology, geometry,

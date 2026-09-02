@@ -127,6 +127,9 @@ const ACTION_HINT_ACTION_POLICY = Object.freeze({
 });
 
 const RESERVED_AUTOMATIC_PREFIXES = Object.freeze(["N", "M", "P", "T"]);
+const AUTOMATIC_HINT_ROOT_ALPHABET = [...TASK_HINT_ALPHABET]
+  .filter((key) => !RESERVED_AUTOMATIC_PREFIXES.includes(key))
+  .join("");
 
 export function matchesActionHintPolicy({
   actionId,
@@ -151,7 +154,7 @@ export function allocateActionHintCodes(targets) {
   const automaticCount = resolved.filter(
     ({ policy }) => policy.allocation === ACTION_HINT_ALLOCATION.AUTOMATIC,
   ).length;
-  const suffixWidth = taskHintSuffixWidth(taskCount);
+  const taskCodes = compactHintCodes(taskCount, TASK_HINT_ALPHABET);
   const automaticCodes = automaticHintCodes(automaticCount);
   let taskIndex = 0;
   let automaticIndex = 0;
@@ -159,7 +162,7 @@ export function allocateActionHintCodes(targets) {
     const code = policy.allocation === ACTION_HINT_ALLOCATION.FIXED
       ? policy.code
       : policy.allocation === ACTION_HINT_ALLOCATION.PREFIXED
-        ? `${policy.prefix}${taskHintSuffix(taskIndex++, suffixWidth)}`
+        ? `${policy.prefix}${taskCodes[taskIndex++]}`
         : automaticCodes[automaticIndex++];
     return { ...target, code };
   });
@@ -171,34 +174,7 @@ export function automaticHintCodes(count) {
   if (!Number.isInteger(count) || count < 0) {
     throw new Error("Automatic Hint count must be a non-negative integer.");
   }
-  if (count === 0) {
-    return [];
-  }
-  for (let width = 1; ; width += 1) {
-    const codes = [];
-    const capacity = TASK_HINT_ALPHABET.length ** width;
-    for (let index = 0; index < capacity; index += 1) {
-      const code = taskHintSuffix(index, width);
-      if (RESERVED_AUTOMATIC_PREFIXES.some((prefix) => code.startsWith(prefix))) {
-        continue;
-      }
-      codes.push(code);
-      if (codes.length === count) {
-        return codes;
-      }
-    }
-  }
-}
-
-export function taskHintSuffixWidth(count) {
-  if (!Number.isInteger(count) || count < 0) {
-    throw new Error("Task Hint count must be a non-negative integer.");
-  }
-  let width = 1;
-  while (count > TASK_HINT_ALPHABET.length ** width) {
-    width += 1;
-  }
-  return width;
+  return compactHintCodes(count, AUTOMATIC_HINT_ROOT_ALPHABET);
 }
 
 export function taskHintSuffix(index, width) {
@@ -219,6 +195,58 @@ export function taskHintSuffix(index, width) {
     value = Math.floor(value / TASK_HINT_ALPHABET.length);
   }
   return suffix;
+}
+
+function compactHintCodes(count, rootAlphabet) {
+  if (count === 0) {
+    return [];
+  }
+  const continuationCapacity = TASK_HINT_ALPHABET.length;
+  let maximumDepth = 1;
+  let maximumCapacity = rootAlphabet.length;
+  while (count > maximumCapacity) {
+    maximumDepth += 1;
+    maximumCapacity *= continuationCapacity;
+  }
+  if (maximumDepth === 1) {
+    return [...rootAlphabet].slice(0, count);
+  }
+
+  const shallowCodes = fixedWidthHintCodes(rootAlphabet, maximumDepth - 1);
+  const additionalLeaves = count - shallowCodes.length;
+  // Replacing one shallow leaf with every continuation adds up to one less
+  // than the continuation capacity. Expand as few tail leaves as possible.
+  const expandedCount = Math.ceil(
+    additionalLeaves / (continuationCapacity - 1),
+  );
+  const retainedCount = shallowCodes.length - expandedCount;
+  const codes = shallowCodes.slice(0, retainedCount);
+  const expandedCodes = shallowCodes.slice(retainedCount);
+  let childrenNeeded = count - retainedCount;
+
+  for (let index = 0; index < expandedCodes.length; index += 1) {
+    const remainingParents = expandedCodes.length - index - 1;
+    const childCount = Math.min(
+      continuationCapacity,
+      childrenNeeded - remainingParents * 2,
+    );
+    const parent = expandedCodes[index];
+    for (const key of TASK_HINT_ALPHABET.slice(0, childCount)) {
+      codes.push(`${parent}${key}`);
+    }
+    childrenNeeded -= childCount;
+  }
+  return codes;
+}
+
+function fixedWidthHintCodes(rootAlphabet, width) {
+  let codes = [...rootAlphabet];
+  for (let depth = 1; depth < width; depth += 1) {
+    codes = codes.flatMap((prefix) =>
+      [...TASK_HINT_ALPHABET].map((key) => `${prefix}${key}`)
+    );
+  }
+  return codes;
 }
 
 export function normalizeActionHintKey(
