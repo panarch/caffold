@@ -10,6 +10,11 @@ import {
   matchesLinkActionHintBinding,
   mergeActionHintScopes,
 } from "../../../../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  mergeScrollSurfaceScopes,
+} from "../../../../../../../../scroll-scope.js";
 
 const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
 
@@ -72,6 +77,8 @@ class CaffoldTaskMarkdown extends HTMLElement {
     body.className = "markdown-body";
     this.replaceChildren(body);
     this.actionHintLinks = [];
+    this.scrollSurfaceRecords = [];
+    this.scrollCodeBlocks = [];
     this.initialized = true;
     this.setMarkdown(markdown);
   }
@@ -89,6 +96,8 @@ class CaffoldTaskMarkdown extends HTMLElement {
 
   renderPending() {
     this.actionHintLinks = [];
+    this.scrollSurfaceRecords = [];
+    this.scrollCodeBlocks = [];
     const pending = document.createElement("span");
     pending.className = "markdown-loading";
     pending.setAttribute("role", "status");
@@ -99,6 +108,8 @@ class CaffoldTaskMarkdown extends HTMLElement {
 
   renderPlainText() {
     this.actionHintLinks = [];
+    this.scrollSurfaceRecords = [];
+    this.scrollCodeBlocks = [];
     const scrollContext = captureScrollContext(this);
     const fallback = document.createElement("pre");
     fallback.className = "markdown-fallback";
@@ -124,9 +135,7 @@ class CaffoldTaskMarkdown extends HTMLElement {
 
       const template = document.createElement("template");
       template.innerHTML = `${html ?? ""}`;
-      const codeBlocks = this.hasAttribute("code-block-controls")
-        ? collectCodeBlocks(template.content)
-        : [];
+      const codeBlocks = collectCodeBlocks(template.content);
       const internalLinks = applyLocalFileLinks(
         template.content,
         this.getAttribute("thread-id") ?? "",
@@ -137,13 +146,20 @@ class CaffoldTaskMarkdown extends HTMLElement {
       wrapTables(template.content);
       mountCodeBlocks(
         template.content,
-        codeBlocks,
+        this.hasAttribute("code-block-controls") ? codeBlocks : [],
         (mutation) => this.mutateLayout(mutation),
       );
       const scrollContext = captureScrollContext(this);
       const body = this.body();
       body.replaceChildren(template.content);
       this.actionHintLinks = collectActionHintLinks(body);
+      this.scrollSurfaceRecords = collectNativeScrollSurfaceRecords(
+        body,
+        codeBlocks,
+      );
+      this.scrollCodeBlocks = Array.from(
+        body.querySelectorAll("caffold-task-markdown-code-block"),
+      );
       this.dataset.renderState = "markdown";
       dispatchRendered(this, scrollContext);
     } catch {
@@ -227,6 +243,61 @@ class CaffoldTaskMarkdown extends HTMLElement {
     );
   }
 
+  scrollSurfaceScope({
+    scopeId = "",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const body = this.body();
+    if (
+      !scopeId ||
+      !body ||
+      !this.isConnected ||
+      this.hidden ||
+      this.dataset.renderState !== "markdown"
+    ) {
+      return emptyScrollSurfaceScope();
+    }
+    const current = () =>
+      this.isConnected &&
+      !this.hidden &&
+      isCurrent() &&
+      this.dataset.renderState === "markdown" &&
+      this.body() === body;
+    const nativeScopes = (this.scrollSurfaceRecords ?? []).map((record) => ({
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:${record.kind}:${record.ordinal}`,
+        label: record.label,
+        scrollport: record.scrollport,
+        axes: ["horizontal"],
+        clipRoots: [this, body, record.scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          current() &&
+          this.scrollSurfaceRecords?.includes(record) &&
+          body.contains(record.scrollport) &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(record.scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, record.scrollport],
+      scrollRoots: [record.scrollport],
+    }));
+    const blocks = this.scrollCodeBlocks ?? [];
+    const blockScopes = blocks.map((block, index) =>
+      block.scrollSurfaceScope?.({
+        scopeId: `${scopeId}:code-block:${index + 1}`,
+        label: `${block.label || "Plain text"} code block ${index + 1}`,
+        clipRoots: [this, body, ...clipRoots].filter(Boolean),
+        isCurrent: () =>
+          current() &&
+          this.scrollCodeBlocks?.includes(block) &&
+          body.contains(block),
+      })
+    );
+    return mergeScrollSurfaceScopes(...nativeScopes, ...blockScopes);
+  }
+
   mutateLayout(mutation) {
     const scrollContext = captureScrollContext(this);
     mutation();
@@ -245,6 +316,32 @@ function collectActionHintLinks(root) {
         : [];
     },
   );
+}
+
+function collectNativeScrollSurfaceRecords(root, codeBlocks) {
+  const labels = new Map(codeBlocks.map(({ code, label }) => [
+    code.parentElement,
+    label,
+  ]));
+  const ordinals = new Map();
+  return Array.from(
+    root.querySelectorAll("pre, .markdown-table-scroll"),
+  ).flatMap((scrollport) => {
+    if (scrollport.closest("caffold-task-markdown-code-block")) {
+      return [];
+    }
+    const kind = scrollport.localName === "pre" ? "code" : "table";
+    const ordinal = (ordinals.get(kind) ?? 0) + 1;
+    ordinals.set(kind, ordinal);
+    return [{
+      kind,
+      ordinal,
+      label: kind === "code"
+        ? `${labels.get(scrollport) || "Plain text"} code block ${ordinal}`
+        : `Markdown table ${ordinal}`,
+      scrollport,
+    }];
+  });
 }
 
 function loadParser() {

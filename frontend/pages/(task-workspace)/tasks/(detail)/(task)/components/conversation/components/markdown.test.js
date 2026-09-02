@@ -88,3 +88,96 @@ test("provides only retained final links with table scroll dependencies", () => 
     [],
   );
 });
+
+test("merges exact retained table and code-block Scroll providers", () => {
+  const table = layoutElement();
+  const tableRecord = {
+    kind: "table",
+    label: "Markdown table 1",
+    ordinal: 1,
+    scrollport: table,
+  };
+  const codeSurface = { id: "message:a:code-block:1:scroll" };
+  const code = {
+    label: "JavaScript",
+    scrollSurfaceScope(options) {
+      this.options = options;
+      return {
+        surfaces: [codeSurface],
+        mutationRoots: [this],
+        resizeElements: [this],
+        scrollRoots: [this],
+      };
+    },
+  };
+  const body = {
+    contains: (element) => [table, code].includes(element),
+  };
+  let current = true;
+  const owner = layoutElement({
+    hidden: false,
+    isConnected: true,
+    dataset: { renderState: "markdown" },
+    body: () => body,
+    scrollSurfaceRecords: [tableRecord],
+    scrollCodeBlocks: [code],
+  });
+
+  const scope = markdown.scrollSurfaceScope.call(owner, {
+    scopeId: "message:a",
+    clipRoots: [{ id: "conversation" }],
+    isCurrent: () => current,
+  });
+
+  assert.deepEqual(scope.surfaces.map(({ id }) => id), [
+    "message:a:table:1",
+    codeSurface.id,
+  ]);
+  assert.deepEqual(scope.surfaces[0].axes, ["horizontal"]);
+  assert.equal(scope.surfaces[0].scrollport, table);
+  assert.equal(scope.surfaces[0].isEligible(), true);
+  assert.equal(code.options.scopeId, "message:a:code-block:1");
+  assert.equal(code.options.label, "JavaScript code block 1");
+  assert.equal(code.options.isCurrent(), true);
+  owner.scrollSurfaceRecords = [];
+  assert.equal(scope.surfaces[0].isEligible(), false);
+  owner.scrollSurfaceRecords = [tableRecord];
+  current = false;
+  assert.equal(code.options.isCurrent(), false);
+});
+
+test("provides a renderer-registered native progress code scrollport", () => {
+  const code = layoutElement();
+  const codeRecord = {
+    kind: "code",
+    label: "text code block 1",
+    ordinal: 1,
+    scrollport: code,
+  };
+  const body = { contains: (element) => element === code };
+  const owner = layoutElement({
+    hidden: false,
+    isConnected: true,
+    dataset: { renderState: "markdown" },
+    body: () => body,
+    scrollSurfaceRecords: [codeRecord],
+    scrollCodeBlocks: [],
+  });
+
+  const scope = markdown.scrollSurfaceScope.call(owner, {
+    scopeId: "message:progress",
+  });
+
+  assert.equal(scope.surfaces.length, 1);
+  assert.equal(scope.surfaces[0].id, "message:progress:code:1");
+  assert.equal(scope.surfaces[0].label, "text code block 1");
+  assert.equal(scope.surfaces[0].scrollport, code);
+  assert.deepEqual(scope.surfaces[0].axes, ["horizontal"]);
+  assert.equal(scope.surfaces[0].isEligible(), true);
+  owner.scrollSurfaceRecords = [];
+  assert.equal(scope.surfaces[0].isEligible(), false);
+});
+
+function layoutElement(properties = {}) {
+  return { getClientRects: () => [{}], ...properties };
+}

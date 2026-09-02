@@ -9,7 +9,7 @@ import {
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
+  mergeScrollSurfaceScopes,
 } from "../scroll-scope.js";
 
 const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
@@ -36,6 +36,7 @@ class CaffoldMarkdownPreview extends HTMLElement {
     }
     this.initialized = true;
     this.actionHintLinks = [];
+    this.scrollSurfaceRecords = [];
     this.innerHTML = '<article class="markdown-preview-body"></article>';
   }
 
@@ -65,24 +66,52 @@ class CaffoldMarkdownPreview extends HTMLElement {
       return emptyScrollSurfaceScope();
     }
     const scrollport = this;
-    return {
+    const ownScope = {
       blocked: false,
       surfaces: [{
         id: `${scopeId}:scroll`,
         label,
         scrollport,
+        axes: ["vertical", "horizontal"],
         clipRoots: [this, ...clipRoots].filter(Boolean),
         isEligible: () =>
           this.isConnected &&
           !this.hidden &&
           isCurrent() &&
-          hasScrollLayoutBox(this) &&
-          hasVerticalScrollOverflow(this),
+          hasScrollLayoutBox(this),
       }],
       mutationRoots: [this],
       resizeElements: [this],
       scrollRoots: [this],
     };
+    const body = this.body();
+    const nestedScopes = (this.scrollSurfaceRecords ?? []).map((record) => {
+      const nested = record.scrollport;
+      return {
+        blocked: false,
+        surfaces: [{
+          id: `${scopeId}:${record.kind}:${record.ordinal}`,
+          label: `${label} ${record.label}`,
+          scrollport: nested,
+          axes: ["horizontal"],
+          clipRoots: [this, body, nested, ...clipRoots].filter(Boolean),
+          isEligible: () =>
+            this.isConnected &&
+            !this.hidden &&
+            isCurrent() &&
+            this.dataset.renderState === "markdown" &&
+            this.body() === body &&
+            this.scrollSurfaceRecords?.includes(record) &&
+            body?.contains(nested) &&
+            hasScrollLayoutBox(this) &&
+            hasScrollLayoutBox(nested),
+        }],
+        mutationRoots: [this],
+        resizeElements: [this, nested],
+        scrollRoots: [this, nested],
+      };
+    });
+    return mergeScrollSurfaceScopes(ownScope, ...nestedScopes);
   }
 
   actionHintScope({
@@ -155,6 +184,7 @@ class CaffoldMarkdownPreview extends HTMLElement {
 
   renderPending() {
     this.actionHintLinks = [];
+    this.scrollSurfaceRecords = [];
     const pending = document.createElement("span");
     pending.className = "markdown-preview-loading";
     pending.setAttribute("role", "status");
@@ -171,6 +201,7 @@ class CaffoldMarkdownPreview extends HTMLElement {
     fallback.className = "markdown-preview-fallback";
     fallback.textContent = this.markdown;
     this.actionHintLinks = [];
+    this.scrollSurfaceRecords = [];
     this.body().replaceChildren(fallback);
     this.dataset.renderState = "plain";
     this.pendingScroll = null;
@@ -192,6 +223,7 @@ class CaffoldMarkdownPreview extends HTMLElement {
       const body = this.body();
       body.replaceChildren(content);
       this.actionHintLinks = collectActionHintLinks(body);
+      this.scrollSurfaceRecords = collectScrollSurfaceRecords(body);
       this.dataset.renderState = "markdown";
       this.pendingScroll = null;
       restoreScroll(this, scroll);
@@ -221,6 +253,25 @@ function collectActionHintLinks(root) {
         : [];
     },
   );
+}
+
+function collectScrollSurfaceRecords(root) {
+  const ordinals = new Map();
+  return Array.from(
+    root.querySelectorAll("pre, .markdown-preview-table-scroll"),
+  ).map((scrollport) => {
+    const kind = scrollport.localName === "pre" ? "code" : "table";
+    const ordinal = (ordinals.get(kind) ?? 0) + 1;
+    ordinals.set(kind, ordinal);
+    return {
+      kind,
+      ordinal,
+      label: kind === "code"
+        ? `code block ${ordinal}`
+        : `Markdown table ${ordinal}`,
+      scrollport,
+    };
+  });
 }
 
 if (!customElements.get("caffold-markdown-preview")) {

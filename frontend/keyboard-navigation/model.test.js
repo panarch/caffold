@@ -44,23 +44,70 @@ test("uses direct viewport and clip intersection in visual reading order", () =>
 
 test("moves by small or half-page deltas and clamps every command", () => {
   const input = { scrollTop: 50, scrollHeight: 500, clientHeight: 100 };
-  assert.equal(scrollCommandPosition({ ...input, command: "J" }), 60);
-  assert.equal(scrollCommandPosition({ ...input, command: "K" }), 40);
-  assert.equal(scrollCommandPosition({ ...input, command: "D" }), 100);
-  assert.equal(scrollCommandPosition({ ...input, command: "U" }), 0);
+  assert.deepEqual(scrollCommandPosition({ ...input, command: "J" }), {
+    axis: "vertical",
+    position: 60,
+  });
+  assert.deepEqual(scrollCommandPosition({ ...input, command: "K" }), {
+    axis: "vertical",
+    position: 40,
+  });
+  assert.deepEqual(scrollCommandPosition({ ...input, command: "D" }), {
+    axis: "vertical",
+    position: 100,
+  });
+  assert.deepEqual(scrollCommandPosition({ ...input, command: "U" }), {
+    axis: "vertical",
+    position: 0,
+  });
   assert.equal(scrollCommandPosition({ ...input, command: "X" }), null);
-  assert.equal(scrollCommandPosition({
+  assert.deepEqual(scrollCommandPosition({
     command: "J",
     scrollTop: 400,
     scrollHeight: 500,
     clientHeight: 100,
-  }), 400);
-  assert.equal(scrollCommandPosition({
+  }), { axis: "vertical", position: 400 });
+  assert.deepEqual(scrollCommandPosition({
     command: "J",
     scrollTop: 0,
     scrollHeight: 3,
     clientHeight: 2,
-  }), 1);
+  }), { axis: "vertical", position: 1 });
+});
+
+test("moves horizontally by ten percent with minimum and exact clamping", () => {
+  const input = {
+    availableAxes: ["horizontal"],
+    scrollLeft: 50,
+    scrollWidth: 500,
+    clientWidth: 100,
+  };
+  assert.deepEqual(scrollCommandPosition({ ...input, command: "H" }), {
+    axis: "horizontal",
+    position: 40,
+  });
+  assert.deepEqual(scrollCommandPosition({ ...input, command: "L" }), {
+    axis: "horizontal",
+    position: 60,
+  });
+  assert.deepEqual(scrollCommandPosition({
+    ...input,
+    command: "L",
+    scrollLeft: 400,
+  }), { axis: "horizontal", position: 400 });
+  assert.deepEqual(scrollCommandPosition({
+    availableAxes: ["horizontal"],
+    command: "L",
+    scrollLeft: 0,
+    scrollWidth: 3,
+    clientWidth: 2,
+  }), { axis: "horizontal", position: 1 });
+  assert.equal(scrollCommandPosition({ ...input, command: "J" }), null);
+  assert.equal(scrollCommandPosition({
+    ...input,
+    availableAxes: null,
+    command: "L",
+  }), null);
 });
 
 test("freezes selector geometry and active element identity while allowing labels", () => {
@@ -75,6 +122,8 @@ test("freezes selector geometry and active element identity while allowing label
     code: "A",
     label: "Before",
     scrollport,
+    axes: ["vertical", "horizontal"],
+    availableAxes: ["vertical"],
     clipRoots: [clip],
     visibleRect: rect(0, 0, 100, 100),
   };
@@ -95,6 +144,12 @@ test("freezes selector geometry and active element identity while allowing label
     contextRect: rect(0, 0, 100, 100),
     viewport: viewport(),
     surfaces: [{ ...surface, scrollport: {} }],
+  }), false);
+  assert.equal(sameScrollSelectionSnapshot(snapshot, {
+    context,
+    contextRect: rect(0, 0, 100, 100),
+    viewport: viewport(),
+    surfaces: [{ ...surface, availableAxes: ["horizontal"] }],
   }), false);
   assert.equal(sameScrollSelectionSnapshot(snapshot, {
     context: { ...context, selector: {} },
@@ -127,6 +182,15 @@ test("freezes selector geometry and active element identity while allowing label
       ...surface,
       context,
       viewport: { ...viewport(), scale: 1.25 },
+    },
+  ), false);
+  assert.equal(sameActiveScrollBinding(
+    { ...surface, context, viewport: viewport() },
+    {
+      ...surface,
+      availableAxes: ["vertical", "horizontal"],
+      context,
+      viewport: viewport(),
     },
   ), false);
 });

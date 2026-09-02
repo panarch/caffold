@@ -122,6 +122,7 @@ test("normalizes exact owners and rejects duplicate or malformed providers", () 
   assert.deepEqual(normalized[0].actionHints.scope.mutationRoots, []);
   assert.equal(normalized[0].editing, null);
   assert.equal(normalized[1].scroll.scope.surfaces[0].scrollport, popoverRoot);
+  assert.deepEqual(normalized[1].scroll.scope.surfaces[0].axes, ["vertical"]);
   assert.equal(normalized[1].scroll.selector, popoverSelector);
   assert.deepEqual(normalized[1].scroll.scope.resizeElements, [popoverRoot]);
 
@@ -138,6 +139,19 @@ test("normalizes exact owners and rejects duplicate or malformed providers", () 
     kind: "overlay",
     root: element(),
     scroll: contexts[1].scroll,
+  }]), null);
+  assert.equal(normalizeKeyboardNavigationContexts([{
+    ...contexts[1],
+    scroll: {
+      ...contexts[1].scroll,
+      scope: {
+        ...contexts[1].scroll.scope,
+        surfaces: [{
+          ...contexts[1].scroll.scope.surfaces[0],
+          axes: ["horizontal", "horizontal"],
+        }],
+      },
+    },
   }]), null);
   assert.equal(normalizeKeyboardNavigationContexts([{
     id: "bad-capability",

@@ -505,10 +505,15 @@ test("selects supported source and preview representations for images", { tag: "
     const imageStage = viewer.locator(".image-stage");
     await viewer.locator("img.image-preview").evaluate((image) => {
       image.style.height = "1200px";
+      image.style.width = "1200px";
       image.style.maxHeight = "none";
+      image.style.maxWidth = "none";
     });
     await expect.poll(() => imageStage.evaluate(
       (element) => element.scrollHeight > element.clientHeight + 1,
+    )).toBe(true);
+    await expect.poll(() => imageStage.evaluate(
+      (element) => element.scrollWidth > element.clientWidth + 1,
     )).toBe(true);
     await page.locator(".task-workspace-surface").focus();
     await page.keyboard.press("s");
@@ -524,6 +529,10 @@ test("selects supported source and preview representations for images", { tag: "
       ).click();
     }
     await expect(workspaceHud).toContainText(`Scroll: ${rasterName} image`);
+    await expect(workspaceHud).toContainText("H/L small");
+    await page.keyboard.press("l");
+    await expect.poll(() => imageStage.evaluate((element) => element.scrollLeft))
+      .toBeGreaterThan(0);
     await page.keyboard.press("j");
     await expect.poll(() => imageStage.evaluate((element) => element.scrollTop))
       .toBeGreaterThan(0);

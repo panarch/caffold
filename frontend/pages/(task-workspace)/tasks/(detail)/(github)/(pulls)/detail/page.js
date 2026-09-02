@@ -12,7 +12,7 @@ import {
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
+  mergeScrollSurfaceScopes,
 } from "../../../../../../../scroll-scope.js";
 
 class CaffoldGithubPullDetailPage extends HTMLElement {
@@ -263,7 +263,8 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
 
   scrollSurfaceScope({ scopeId = "github:pull", clipRoots = [] } = {}) {
     const state = this.state;
-    if (this.hidden || state?.status !== "ready") {
+    const number = `${state?.payload?.pull?.number ?? ""}`;
+    if (this.hidden || state?.status !== "ready" || !number) {
       return emptyScrollSurfaceScope();
     }
     const scrollport = this.querySelector(
@@ -272,7 +273,7 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
     if (!scrollport) {
       return emptyScrollSurfaceScope();
     }
-    return {
+    const ownScope = {
       blocked: false,
       surfaces: [{
         id: `${scopeId}:body:scroll`,
@@ -287,13 +288,33 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
             ":scope > .github-pull-viewer-panel > .github-pull-viewer-scroll",
           ) === scrollport &&
           hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this, scrollport],
       resizeElements: [this, scrollport],
       scrollRoots: [scrollport],
     };
+    const markdownScopes = Array.from(this.querySelectorAll(
+      ":scope > .github-pull-viewer-panel > .github-pull-viewer-scroll caffold-github-markdown[data-markdown-index]",
+    )).map((markdown) => {
+      const index = `${markdown.dataset.markdownIndex ?? ""}`;
+      return index
+        ? markdown.scrollSurfaceScope?.({
+            scopeId:
+              `${scopeId}:${encodeURIComponent(number)}:markdown:${index}`,
+            label: `Pull request Markdown ${Number(index) + 1}`,
+            clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+            isCurrent: () =>
+              this.isConnected &&
+              !this.hidden &&
+              this.state === state &&
+              this.querySelector(
+                `:scope > .github-pull-viewer-panel > .github-pull-viewer-scroll caffold-github-markdown[data-markdown-index="${index}"]`,
+              ) === markdown,
+          })
+        : null;
+    });
+    return mergeScrollSurfaceScopes(ownScope, ...markdownScopes);
   }
 
   render() {

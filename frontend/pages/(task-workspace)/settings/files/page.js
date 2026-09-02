@@ -12,7 +12,6 @@ import {
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../../../../scroll-scope.js";
 
 const SORT_OPTIONS = Object.freeze([
@@ -125,8 +124,7 @@ class CaffoldSettingsFilesPage extends HTMLElement {
           isCurrent() &&
           this.querySelector(":scope > .settings-files-scroll") === scrollport &&
           hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this],
       resizeElements: [this, scrollport],

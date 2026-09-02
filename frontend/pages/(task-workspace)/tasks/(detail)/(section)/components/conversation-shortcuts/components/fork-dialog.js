@@ -13,7 +13,6 @@ import { keyboardNavigationContext } from "../../../../../../../../keyboard-navi
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../../../../../../../../scroll-scope.js";
 import "../../../../../../../../keyboard-navigation/components/presentation.js";
 
@@ -193,8 +192,7 @@ class CaffoldConversationForkDialog extends HTMLElement {
           Boolean(sectionId) &&
           dialog.querySelector(".conversation-fork-body") === scrollport &&
           hasScrollLayoutBox(dialog) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this, scrollport],
       resizeElements: [dialog, scrollport],

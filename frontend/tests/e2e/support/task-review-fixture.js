@@ -8,6 +8,7 @@ export async function installTaskReviewFixture(page) {
   let gitCompareDiffRequests = 0;
   let includeLiveFile = false;
   let largeChangeSet = false;
+  let wideTreeEntry = false;
   let edgeCaseFiles = false;
   let cleanWorkingTree = false;
   let cleanBranch = false;
@@ -169,6 +170,19 @@ export async function installTaskReviewFixture(page) {
                 },
               ]
             : []),
+          ...(wideTreeEntry
+            ? [{
+                path: `src/${"intrinsically-wide-file-tree-segment-".repeat(12)}.rs`,
+                repoRelativePath: `${
+                  "intrinsically-wide-file-tree-segment-".repeat(12)
+                }.rs`,
+                status: " M",
+                category: "unstaged",
+                staged: false,
+                unstaged: true,
+                untracked: false,
+              }]
+            : []),
           ...(largeChangeSet
             ? Array.from({ length: 180 }, (_, index) => ({
                 path: `src/generated/deep/review/file-${`${index + 1}`.padStart(3, "0")}-with-a-long-review-name.rs`,
@@ -311,6 +325,9 @@ export async function installTaskReviewFixture(page) {
     },
     set largeChangeSet(value) {
       largeChangeSet = value;
+    },
+    set wideTreeEntry(value) {
+      wideTreeEntry = value;
     },
     set edgeCaseFiles(value) {
       edgeCaseFiles = value;

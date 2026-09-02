@@ -12,7 +12,6 @@ import { ACTION_HINT_ACTION } from "../../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../../../scroll-scope.js";
 
 // Each brand mark is published in a single color so it can be tinted, and the
@@ -138,8 +137,7 @@ class CaffoldSettingsNavigator extends HTMLElement {
           this.querySelector(":scope > .settings-navigator-list") ===
             scrollport &&
           hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this],
       resizeElements: [this, scrollport],

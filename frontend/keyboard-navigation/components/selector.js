@@ -205,6 +205,7 @@ class CaffoldScrollSurfaceSelector extends HTMLElement {
   }
 
   positionBadges() {
+    const occupied = [];
     for (const region of this.regions.querySelectorAll(
       ":scope > .scroll-surface-selector-region",
     )) {
@@ -216,13 +217,20 @@ class CaffoldScrollSurfaceSelector extends HTMLElement {
         continue;
       }
       const bounds = badge.getBoundingClientRect();
-      const position = clampBadgePosition(
-        { left: surface.visibleRect.left, top: surface.visibleRect.top },
+      const position = unoccupiedBadgePosition(
+        surface.visibleRect,
         bounds,
         this.viewportRect,
+        occupied,
       );
       badge.style.left = `${position.left - surface.visibleRect.left}px`;
       badge.style.top = `${position.top - surface.visibleRect.top}px`;
+      occupied.push({
+        left: position.left,
+        top: position.top,
+        right: position.left + bounds.width,
+        bottom: position.top + bounds.height,
+      });
     }
     this.positionInstructions();
   }
@@ -252,6 +260,55 @@ class CaffoldScrollSurfaceSelector extends HTMLElement {
     instructions.style.top = `${position.top}px`;
     instructions.style.transform = "none";
   }
+}
+
+function unoccupiedBadgePosition(
+  surfaceRect,
+  badgeRect,
+  viewportRect,
+  occupied = [],
+  gap = 4,
+) {
+  const step = badgeRect.height + gap;
+  const candidates = [];
+  for (let index = 0; index <= occupied.length; index += 1) {
+    candidates.push({
+      left: surfaceRect.left,
+      top: surfaceRect.top + step * index,
+    });
+  }
+  candidates.push(
+    { left: surfaceRect.right - badgeRect.width, top: surfaceRect.top },
+    { left: surfaceRect.left, top: surfaceRect.bottom - badgeRect.height },
+    {
+      left: surfaceRect.right - badgeRect.width,
+      top: surfaceRect.bottom - badgeRect.height,
+    },
+  );
+  for (const candidate of candidates) {
+    const position = clampBadgePosition(
+      candidate,
+      badgeRect,
+      viewportRect,
+    );
+    const placed = {
+      left: position.left,
+      top: position.top,
+      right: position.left + badgeRect.width,
+      bottom: position.top + badgeRect.height,
+    };
+    if (!occupied.some((rect) => rectsOverlap(placed, rect))) {
+      return position;
+    }
+  }
+  return clampBadgePosition(candidates[0], badgeRect, viewportRect);
+}
+
+function rectsOverlap(left, right) {
+  return left.left < right.right &&
+    left.right > right.left &&
+    left.top < right.bottom &&
+    left.bottom > right.top;
 }
 
 if (!customElements.get("caffold-scroll-surface-selector")) {

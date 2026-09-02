@@ -103,5 +103,5 @@ test("provides commit actions and the exact Git log scrollport", () => {
   assert.equal(scrollScope.surfaces[0].scrollport, scrollport);
   assert.equal(scrollScope.surfaces[0].isEligible(), true);
   scrollport.scrollHeight = 100;
-  assert.equal(scrollScope.surfaces[0].isEligible(), false);
+  assert.equal(scrollScope.surfaces[0].isEligible(), true);
 });

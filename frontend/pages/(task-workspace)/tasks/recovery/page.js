@@ -16,7 +16,6 @@ import {
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../../../../scroll-scope.js";
 
 class CaffoldTaskRecovery extends HTMLElement {
@@ -251,8 +250,7 @@ class CaffoldTaskRecovery extends HTMLElement {
             ":scope > .task-recovery-view > .task-recovery-body",
           ) === scrollport &&
           hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this],
       resizeElements: [this, scrollport],

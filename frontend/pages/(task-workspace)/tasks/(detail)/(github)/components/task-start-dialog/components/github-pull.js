@@ -8,6 +8,10 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
 } from "../../../../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../../../../../scroll-scope.js";
 
 class CaffoldGithubPullTaskSource extends HTMLElement {
   connectedCallback() {
@@ -104,6 +108,42 @@ class CaffoldGithubPullTaskSource extends HTMLElement {
       })],
       mutationRoots: [this],
       scrollRoots: [],
+    };
+  }
+
+  scrollSurfaceScope({ scopeId = "", clipRoots = [] } = {}) {
+    const scrollport = this.querySelector(":scope > dl");
+    const rootPath = `${this.repository?.rootPath ?? ""}`;
+    const sourceNumber = `${this.source()?.number ?? ""}`;
+    if (
+      !scopeId ||
+      !scrollport ||
+      !rootPath ||
+      !sourceNumber ||
+      this.hidden
+    ) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:relationship`,
+        label: "Pull request base and head relationship",
+        scrollport,
+        axes: ["horizontal"],
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          `${this.repository?.rootPath ?? ""}` === rootPath &&
+          `${this.source()?.number ?? ""}` === sourceNumber &&
+          this.querySelector(":scope > dl") === scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
     };
   }
 

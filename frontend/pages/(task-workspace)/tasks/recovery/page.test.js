@@ -71,7 +71,7 @@ test("provides the current recovery actions and exact recovery body", () => {
   assert.equal(scrollScope.surfaces[0].isEligible(), false);
   owner.recovery = { threadId: "thread-a" };
   scrollport.scrollHeight = 100;
-  assert.equal(scrollScope.surfaces[0].isEligible(), false);
+  assert.equal(scrollScope.surfaces[0].isEligible(), true);
   controls = [];
   assert.equal(scope.targets[0].isActionable(), false);
 });

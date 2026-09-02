@@ -11,7 +11,6 @@ import {
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../../../../../../../scroll-scope.js";
 
 class CaffoldGitLogListPage extends HTMLElement {
@@ -237,8 +236,7 @@ class CaffoldGitLogListPage extends HTMLElement {
           this.querySelector(":scope > .log-list-panel > .log-list") ===
             scrollport &&
           hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this],
       resizeElements: [this, scrollport],

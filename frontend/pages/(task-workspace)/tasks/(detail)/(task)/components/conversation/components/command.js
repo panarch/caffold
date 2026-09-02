@@ -13,6 +13,10 @@ import {
   disclosureActionHintTarget,
   emptyActionHintScope,
 } from "../../../../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../../../../../scroll-scope.js";
 
 class CaffoldTaskCommand extends HTMLElement {
   connectedCallback() {
@@ -269,6 +273,56 @@ class CaffoldTaskCommand extends HTMLElement {
       })],
       mutationRoots: [this],
       scrollRoots: [],
+    };
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "Command output",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    this.ensureState();
+    const commandKey = this.commandKey;
+    const disclosure = this.disclosure();
+    const scrollport = disclosure?.querySelector(
+      ":scope > .task-command-active-output",
+    );
+    if (
+      !scopeId ||
+      !commandKey ||
+      this.presentation.mode !== "active" ||
+      !disclosure ||
+      !scrollport ||
+      this.hidden
+    ) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:output`,
+        label,
+        scrollport,
+        axes: ["horizontal"],
+        clipRoots: [this, disclosure, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.commandKey === commandKey &&
+          this.presentation.mode === "active" &&
+          this.disclosure() === disclosure &&
+          disclosure.open &&
+          disclosure.querySelector(
+            ":scope > .task-command-active-output",
+          ) === scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
     };
   }
 

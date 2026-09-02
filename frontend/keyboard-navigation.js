@@ -6,7 +6,7 @@ import {
   normalizeRect,
   rectsEqual,
 } from "./action-hints.js";
-import { hasVerticalScrollOverflow } from "./scroll-scope.js";
+import { availableScrollAxes } from "./scroll-scope.js";
 import {
   KEYBOARD_NAVIGATION_EVENT,
   KEYBOARD_NAVIGATION_NODE,
@@ -298,7 +298,7 @@ export class KeyboardNavigationController {
       this.startActionHints();
       return;
     }
-    if (!Object.hasOwn({ J: true, K: true, D: true, U: true }, key)) {
+    if (!Object.hasOwn({ J: true, K: true, D: true, U: true, H: true, L: true }, key)) {
       return;
     }
     const session = this.activeSession;
@@ -310,9 +310,13 @@ export class KeyboardNavigationController {
     }
     const next = scrollCommandPosition({
       command: key,
+      availableAxes: session.availableAxes,
       scrollTop: session.scrollport.scrollTop,
       scrollHeight: session.scrollport.scrollHeight,
       clientHeight: session.scrollport.clientHeight,
+      scrollLeft: session.scrollport.scrollLeft,
+      scrollWidth: session.scrollport.scrollWidth,
+      clientWidth: session.scrollport.clientWidth,
     });
     if (next == null || !this.applyTransition(
       KEYBOARD_NAVIGATION_EVENT.SCROLL_COMMAND,
@@ -321,7 +325,11 @@ export class KeyboardNavigationController {
     }
     event.preventDefault();
     event.stopPropagation();
-    session.scrollport.scrollTop = next;
+    if (next.axis === "vertical") {
+      session.scrollport.scrollTop = next.position;
+    } else {
+      session.scrollport.scrollLeft = next.position;
+    }
   }
 
   startActionHints() {
@@ -395,7 +403,7 @@ export class KeyboardNavigationController {
       }
       return true;
     }
-    if (snapshot.context.kind !== "workspace") {
+    if (snapshot.context.kind === "popover") {
       this.applyTransition(KEYBOARD_NAVIGATION_EVENT.ENTRY_REJECTED);
       return false;
     }
@@ -505,6 +513,7 @@ export class KeyboardNavigationController {
       viewport: snapshot.viewport,
       mutationRoots: snapshot.context.mutationRoots,
       resizeElements: snapshot.context.resizeElements,
+      scrollRoots: snapshot.context.scrollRoots,
       cleanup: [],
       mutationObserver: null,
       ownershipObserver: null,
@@ -686,7 +695,8 @@ export class KeyboardNavigationController {
     }
     const visible = [];
     for (const surface of scrollContext.surfaces) {
-      if (!scrollSurfaceIsEligible(surface, scrollContext)) {
+      const availableAxes = scrollSurfaceAvailableAxes(surface, scrollContext);
+      if (!availableAxes?.length) {
         continue;
       }
       const visibleRect = visibleScrollSurfaceRect(
@@ -700,7 +710,7 @@ export class KeyboardNavigationController {
       if (!visibleRect) {
         continue;
       }
-      visible.push({ ...surface, visibleRect });
+      visible.push({ ...surface, availableAxes, visibleRect });
     }
     let surfaces;
     try {
@@ -781,6 +791,7 @@ export class KeyboardNavigationController {
       label: session.label,
       visibleRect: session.visibleRect,
       contextRect: session.contextRect,
+      availableAxes: session.availableAxes,
     }));
   }
 
@@ -840,6 +851,22 @@ export class KeyboardNavigationController {
   }
 
   attachActiveSignals(session) {
+    for (const root of session.scrollRoots ?? []) {
+      if (root === session.scrollport) {
+        continue;
+      }
+      let position = scrollPosition(root);
+      const listener = () => {
+        const current = scrollPosition(root);
+        if (sameScrollPosition(position, current)) {
+          return;
+        }
+        position = current;
+        this.queueActiveRevalidation(session);
+      };
+      root.addEventListener("scroll", listener, { passive: true });
+      session.cleanup.push(() => root.removeEventListener("scroll", listener));
+    }
     this.attachViewportSignals(session, () => {
       if (
         this.activeSession === session &&
@@ -1012,18 +1039,35 @@ export class KeyboardNavigationController {
   }
 }
 
-function scrollSurfaceIsEligible(surface, context) {
+function scrollSurfaceAvailableAxes(surface, context) {
   try {
-    return Boolean(
+    if (!(
       surface.scrollport.isConnected &&
-        context.root.contains(surface.scrollport) &&
+        contextContains(context.root, surface.scrollport) &&
         hasLayoutBox(surface.scrollport) &&
-        hasVerticalScrollOverflow(surface.scrollport) &&
         surface.isEligible()
-    );
+    )) {
+      return null;
+    }
+    return availableScrollAxes(surface.scrollport, surface.axes);
   } catch {
-    return false;
+    return null;
   }
+}
+
+function contextContains(root, element) {
+  if (root.contains(element)) {
+    return true;
+  }
+  let currentRoot = element.getRootNode?.();
+  while (typeof ShadowRoot === "function" && currentRoot instanceof ShadowRoot) {
+    const host = currentRoot.host;
+    if (host === root || root.contains(host)) {
+      return true;
+    }
+    currentRoot = host?.getRootNode?.();
+  }
+  return false;
 }
 
 function hasLayoutBox(element) {

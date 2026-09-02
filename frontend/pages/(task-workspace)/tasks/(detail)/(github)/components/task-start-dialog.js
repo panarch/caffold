@@ -16,7 +16,7 @@ import {
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
+  mergeScrollSurfaceScopes,
 } from "../../../../../../scroll-scope.js";
 import "../../../../../../keyboard-navigation/components/presentation.js";
 
@@ -164,12 +164,13 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
     if (!dialog || !scrollport || !sourceKind || !sourceNumber) {
       return emptyScrollSurfaceScope();
     }
-    return {
+    const scopeId = `github-task-start:${sourceKind}:${encodeURIComponent(
+      sourceNumber,
+    )}`;
+    const ownScope = {
       blocked: false,
       surfaces: [{
-        id: `github-task-start:${sourceKind}:${encodeURIComponent(
-          sourceNumber,
-        )}:setup`,
+        id: `${scopeId}:setup`,
         label: "GitHub Task setup",
         scrollport,
         clipRoots: [dialog, scrollport],
@@ -182,13 +183,19 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
             sourceNumber &&
           dialog.querySelector(".github-task-start-body") === scrollport &&
           hasScrollLayoutBox(dialog) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this, scrollport],
       resizeElements: [dialog, scrollport],
       scrollRoots: [scrollport],
     };
+    return mergeScrollSurfaceScopes(
+      ownScope,
+      this.sourceComponent()?.scrollSurfaceScope?.({
+        scopeId: `${scopeId}:source`,
+        clipRoots: [dialog, scrollport],
+      }),
+    );
   }
 
   open({ kind, payload, repository, composerSettings, opener } = {}) {

@@ -77,7 +77,17 @@ test("binds modal Editing escape and exact Task setup scrollport", () => {
       return cancel;
     },
   });
-  const source = { source: () => ({ number: 12 }) };
+  const relationship = layoutElement();
+  const source = {
+    source: () => ({ number: 12 }),
+    scrollSurfaceScope: () => ({
+      surfaces: [{
+        id: "github-task-start:issue:12:source:relationship",
+        scrollport: relationship,
+        axes: ["horizontal"],
+      }],
+    }),
+  };
   const turnOptions = { keyboardNavigationContexts: () => [] };
   const owner = {
     isConnected: true,
@@ -90,14 +100,16 @@ test("binds modal Editing escape and exact Task setup scrollport", () => {
   };
   owner.scrollSurfaceScope = () => taskStart.scrollSurfaceScope.call(owner);
   const [context] = taskStart.keyboardNavigationContexts.call(owner);
-  const surface = context.scroll.scope.surfaces[0];
+  const surfaces = context.scroll.scope.surfaces;
 
   assert.equal(context.actionHints.dialog, hintDialog);
   assert.equal(context.scroll.hud, hud);
   assert.equal(context.scroll.selector, selector);
   assert.equal(context.editing.escapeTarget(select), cancel);
-  assert.equal(surface.scrollport, body);
-  assert.equal(surface.isEligible(), true);
+  assert.equal(surfaces[0].scrollport, body);
+  assert.equal(surfaces[0].isEligible(), true);
+  assert.equal(surfaces[1].scrollport, relationship);
+  assert.deepEqual(surfaces[1].axes, ["horizontal"]);
 });
 
 function button(textContent) {

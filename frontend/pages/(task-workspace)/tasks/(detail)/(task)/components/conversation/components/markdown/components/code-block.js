@@ -7,6 +7,10 @@ import {
   buttonActionHintTarget,
   emptyActionHintScope,
 } from "../../../../../../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../../../../../../../scroll-scope.js";
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
 
@@ -233,6 +237,39 @@ class CaffoldTaskMarkdownCodeBlock extends HTMLElement {
       targets,
       mutationRoots: [this],
       scrollRoots: [],
+    };
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "Code block",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const scrollport = this.pre();
+    if (!scopeId || !label || !scrollport || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label,
+        scrollport,
+        axes: ["horizontal"],
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.connected &&
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.pre() === scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
     };
   }
 }

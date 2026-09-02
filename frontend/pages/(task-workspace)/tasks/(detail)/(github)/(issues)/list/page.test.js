@@ -51,7 +51,7 @@ test("provides Issue rows and pagination without synthesizing navigation", () =>
   assert.equal(clicks, 1);
 });
 
-test("provides only the retained overflowing Issue list", () => {
+test("provides only the retained Issue list", () => {
   const scrollport = {
     clientHeight: 100,
     scrollHeight: 300,

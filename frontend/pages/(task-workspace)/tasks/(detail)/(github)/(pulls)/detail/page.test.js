@@ -235,10 +235,63 @@ test("provides the retained Pull Request detail scrollport", () => {
     state: { status: "ready", payload: { pull: { number: 7 } } },
     getClientRects: () => [{}],
     querySelector: () => scrollport,
+    querySelectorAll: () => [],
   };
   const scope = page.scrollSurfaceScope.call(owner);
   assert.equal(scope.surfaces[0].scrollport, scrollport);
   assert.equal(scope.surfaces[0].isEligible(), true);
   owner.hidden = true;
   assert.equal(scope.surfaces[0].isEligible(), false);
+});
+
+test("merges current Pull Markdown scroll scopes through the retained detail scrollport", () => {
+  const state = {
+    status: "ready",
+    payload: { pull: { number: 7 } },
+  };
+  const scrollport = { getClientRects: () => [{}] };
+  const generated = { id: "generated-scroll" };
+  let received;
+  const markdown = {
+    dataset: { markdownIndex: "2" },
+    scrollSurfaceScope(options) {
+      received = options;
+      return {
+        blocked: false,
+        surfaces: [generated],
+        mutationRoots: [this],
+        resizeElements: [this],
+        scrollRoots: [this],
+      };
+    },
+  };
+  const owner = {
+    hidden: false,
+    isConnected: true,
+    state,
+    getClientRects: () => [{}],
+    querySelector(selector) {
+      return selector.includes("github-pull-viewer-scroll")
+        ? scrollport
+        : null;
+    },
+    querySelectorAll: () => [markdown],
+  };
+
+  const scope = page.scrollSurfaceScope.call(owner, {
+    scopeId: "github:pull:detail",
+  });
+
+  assert.deepEqual(scope.surfaces.slice(1), [generated]);
+  assert.equal(received.scopeId, "github:pull:detail:7:markdown:2");
+  assert.equal(received.label, "Pull request Markdown 3");
+  assert.deepEqual(received.clipRoots, [owner, scrollport]);
+  assert.equal(received.isCurrent(), false);
+  owner.querySelector = (selector) =>
+    selector.includes('data-markdown-index="2"')
+      ? markdown
+      : selector.includes("github-pull-viewer-scroll") ? scrollport : null;
+  assert.equal(received.isCurrent(), true);
+  owner.state = { ...state };
+  assert.equal(received.isCurrent(), false);
 });

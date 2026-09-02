@@ -11,11 +11,12 @@ const markdown = registry.element("caffold-github-markdown").prototype;
 after(() => registry.restore());
 
 test("provides the Issue Markdown host without inspecting Shadow DOM", () => {
-  const shadowRoot = {};
+  const shadowRoot = { querySelector: () => null };
   const owner = {
     hidden: false,
     isConnected: true,
     shadowRoot,
+    scrollSurfaceRecords: [],
     clientHeight: 100,
     scrollHeight: 320,
     getClientRects: () => [{}],
@@ -26,10 +27,73 @@ test("provides the Issue Markdown host without inspecting Shadow DOM", () => {
     isCurrent: () => current,
   });
   assert.equal(scope.surfaces[0].scrollport, owner);
+  assert.deepEqual(scope.surfaces[0].axes, ["vertical", "horizontal"]);
   assert.deepEqual(scope.mutationRoots, [owner, shadowRoot]);
   assert.equal(scope.surfaces[0].isEligible(), true);
   current = false;
   assert.equal(scope.surfaces[0].isEligible(), false);
+});
+
+test("composes retained Shadow DOM code and table scrollports", () => {
+  const code = layoutElement();
+  const table = layoutElement();
+  const body = {
+    contains: (element) => [code, table].includes(element),
+  };
+  const shadowRoot = {
+    querySelector: () => body,
+  };
+  const codeRecord = {
+    kind: "code",
+    ordinal: 1,
+    label: "code block 1",
+    scrollport: code,
+  };
+  const tableRecord = {
+    kind: "table",
+    ordinal: 1,
+    label: "Markdown table 1",
+    scrollport: table,
+  };
+  const owner = layoutElement({
+    hidden: false,
+    isConnected: true,
+    shadowRoot,
+    scrollSurfaceRecords: [codeRecord, tableRecord],
+  });
+
+  const scope = markdown.scrollSurfaceScope.call(owner, {
+    scopeId: "github:issue:42:body",
+    label: "Issue description",
+  });
+  assert.deepEqual(scope.surfaces.map(({ id, axes, scrollport }) => ({
+    id,
+    axes,
+    scrollport,
+  })), [
+    {
+      id: "github:issue:42:body:scroll",
+      axes: ["vertical", "horizontal"],
+      scrollport: owner,
+    },
+    {
+      id: "github:issue:42:body:code:1",
+      axes: ["horizontal"],
+      scrollport: code,
+    },
+    {
+      id: "github:issue:42:body:table:1",
+      axes: ["horizontal"],
+      scrollport: table,
+    },
+  ]);
+  assert.equal(scope.surfaces[1].isEligible(), true);
+  owner.scrollSurfaceRecords = [tableRecord];
+  assert.equal(scope.surfaces[1].isEligible(), false);
+  assert.deepEqual(
+    new Set(scope.mutationRoots),
+    new Set([owner, shadowRoot]),
+  );
 });
 
 test("provides retained sanitized Shadow DOM links and table scroll roots", () => {
@@ -81,3 +145,7 @@ test("provides retained sanitized Shadow DOM links and table scroll roots", () =
   attributes.set("target", "_self");
   assert.equal(scope.targets[0].isActionable(), false);
 });
+
+function layoutElement(properties = {}) {
+  return { getClientRects: () => [{}], ...properties };
+}

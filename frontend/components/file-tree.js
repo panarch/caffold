@@ -7,7 +7,6 @@ import {
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../scroll-scope.js";
 import { fileStatusPresentation } from "../file-status.js";
 import {
@@ -354,6 +353,7 @@ class CaffoldFileTree extends HTMLElement {
         id: `${scopeId}:scroll`,
         label,
         scrollport,
+        axes: ["vertical", "horizontal"],
         clipRoots: uniqueElements([this, scrollport, ...clipRoots]),
         isEligible: () =>
           this.isConnected &&
@@ -361,8 +361,7 @@ class CaffoldFileTree extends HTMLElement {
           this.scroller() === scrollport &&
           isCurrent() &&
           hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this],
       resizeElements: [this, scrollport],

@@ -128,6 +128,107 @@ test("selects and scrolls only the registered surface", { tag: "@all-viewports" 
   );
 });
 
+test("selects nested Conversation code and table scrollports and cancels a lost axis", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const { detail } = await installScrollFixture(page);
+  detail.events.at(-1).payload.text = nestedConversationMarkdown();
+  detail.events.at(-1).payload.phase = "final";
+  await openScrollTask(page, detail);
+
+  const workspace = page.locator("caffold-app-shell");
+  const entryOwner = page.locator(".task-workspace-surface");
+  const conversation = page.locator(".task-conversation-scroll");
+  const codeBlock = page.locator(
+    "caffold-task-assistant-message caffold-task-markdown-code-block",
+  ).last();
+  const code = codeBlock.locator("pre");
+  const table = page.locator(
+    "caffold-task-assistant-message .markdown-table-scroll",
+  ).last();
+  const selector = scrollSelector(page);
+  const hud = scrollHud(page);
+  await expect(codeBlock).toHaveAttribute("data-code-wrap", "off");
+  await expect.poll(() => code.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
+  await expect.poll(() => table.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
+
+  await entryOwner.focus();
+  await page.keyboard.press("s");
+  await expect(selector).toBeVisible();
+  await expect(selector.getByLabel(/^[A-Z]+ — Conversation$/)).toBeVisible();
+  await expect(
+    selector.getByLabel(/^[A-Z]+ — text code block 1$/i),
+  ).toBeVisible();
+  await expect(
+    selector.getByLabel(/^[A-Z]+ — Markdown table 1$/),
+  ).toBeVisible();
+  const selectorGeometry = await scrollSelectorBadgeGeometry(selector);
+  expect(selectorGeometry.viewportEscapes).toEqual([]);
+  expect(selectorGeometry.fullOverlaps).toEqual([]);
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "scroll-mode-conversation-nested-selector",
+  );
+
+  const conversationBefore = await conversation.evaluate(
+    (element) => element.scrollTop,
+  );
+  await selector.getByLabel(/^[A-Z]+ — text code block 1$/i).click();
+  await expect(hud).toContainText(/Scroll: text code block 1/i);
+  await expect(hud).toContainText("H/L small");
+  await expect(hud).not.toContainText("J/K small");
+  await page.keyboard.press("l");
+  await expect.poll(() => code.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  expect(await table.evaluate((element) => element.scrollLeft)).toBe(0);
+  expect(await conversation.evaluate((element) => element.scrollTop)).toBe(
+    conversationBefore,
+  );
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "scroll-mode-conversation-horizontal-hud",
+  );
+  await page.keyboard.press("Escape");
+
+  await entryOwner.focus();
+  await page.keyboard.press("s");
+  await selector.getByLabel(/^[A-Z]+ — Markdown table 1$/).click();
+  await expect(hud).toContainText("Scroll: Markdown table 1");
+  await page.keyboard.press("l");
+  await expect.poll(() => table.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+
+  await entryOwner.focus();
+  await page.keyboard.press("s");
+  await expect(selector).toBeVisible();
+  await codeBlock.evaluate((element) => element.toggleWrap());
+  await expect(codeBlock).toHaveAttribute("data-code-wrap", "on");
+  await expect(selector).toBeHidden();
+  await expect(workspace).toHaveAttribute(
+    "data-scroll-mode-last-exit",
+    "snapshot-invalidated",
+  );
+  await expect(hud).toBeHidden();
+
+  await entryOwner.focus();
+  await page.keyboard.press("s");
+  await expect(selector).toBeVisible();
+  await expect(
+    selector.getByLabel(/^[A-Z]+ — text code block 1$/i),
+  ).toHaveCount(0);
+  await expect(
+    selector.getByLabel(/^[A-Z]+ — Markdown table 1$/),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+});
+
 test("cancels the frozen selector when Task list topology loses eligibility", { tag: "@desktop" }, async ({
   page,
 }) => {
@@ -426,7 +527,7 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
 }, testInfo) => {
   const workspace = prepareWorkspace(testInfo);
   writeCurrentDocuments(workspace.absolutePath, {
-    plan: longMarkdown("Plan", 80),
+    plan: longNestedMarkdown("Plan", 80),
     checklist: checklistMarkdown(120, "Initial checklist"),
   });
   await installCurrentPlanFileFixture(page, workspace);
@@ -457,6 +558,10 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
   const preview = dialog.locator("caffold-markdown-preview");
   const modalHud = dialog.locator(
     ":scope > caffold-keyboard-navigation-presentation caffold-scroll-mode-hud",
+  );
+  const modalSelector = dialog.locator(
+    ":scope > caffold-keyboard-navigation-presentation " +
+      "caffold-scroll-surface-selector > dialog:modal",
   );
   await expect(dialog).toHaveAttribute("open", "");
   await expect.poll(() => preview.evaluate(
@@ -530,8 +635,59 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
   await expect.poll(() => preview.evaluate(
     (element) => element.scrollHeight > element.clientHeight,
   )).toBe(true);
+  await expect(preview).toHaveAttribute("data-render-state", "markdown");
+  const planCode = preview.locator("pre");
+  const planTable = preview.locator(".markdown-preview-table-scroll");
+  await expect.poll(() => planCode.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
+  await expect.poll(() => planTable.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
   await page.keyboard.press("s");
-  await expect(modalHud).toContainText("Scroll: Plan document");
+  await expect(modalSelector).toBeVisible();
+  const planBadges = modalSelector.locator(
+    "button[data-scroll-surface-code]",
+  );
+  await expect(planBadges).toHaveCount(3);
+  expect(new Set(await planBadges.evaluateAll((elements) =>
+    elements.map((element) => element.getAttribute("aria-label")
+      .replace(/^[A-Z]+ — /, ""))
+  ))).toEqual(new Set([
+    "Plan document",
+    "Plan document code block 1",
+    "Plan document Markdown table 1",
+  ]));
+  await expect(modalSelector.getByLabel(/ — Task list$/)).toHaveCount(0);
+  await expect(modalSelector.getByLabel(/ — Conversation$/)).toHaveCount(0);
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "scroll-mode-current-plan-nested-selector",
+  );
+  const backgroundBeforeNested = await scrollPositions(page);
+  const previewLeftBefore = await preview.evaluate((element) => element.scrollLeft);
+  await modalSelector.getByLabel(
+    /^[A-Z]+ — Plan document code block 1$/,
+  ).click();
+  await expect(modalHud).toContainText(
+    "Scroll: Plan document code block 1",
+  );
+  await expect(modalHud).toContainText("H/L small");
+  await expect(modalHud).not.toContainText("J/K small");
+  await page.keyboard.press("l");
+  await expect.poll(() => planCode.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  expect(await planTable.evaluate((element) => element.scrollLeft)).toBe(0);
+  expect(await preview.evaluate((element) => element.scrollLeft)).toBe(
+    previewLeftBefore,
+  );
+  expect(await scrollPositions(page)).toEqual(backgroundBeforeNested);
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "scroll-mode-current-plan-horizontal-hud",
+  );
   const documentDialog = currentPlan.locator(
     "caffold-current-plan-document-dialog",
   );
@@ -546,7 +702,7 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
     (element) => element.scrollHeight > element.clientHeight,
   )).toBe(true);
   await page.keyboard.press("s");
-  await expect(modalHud).toContainText("Scroll: Plan document");
+  await expect(modalSelector).toBeVisible();
   const replacementChecklistFile = fileResponse(page, checklistPath);
   await documentDialog.evaluate((element, path) => {
     const opener = element.closest("caffold-task-current-plan")?.querySelector(
@@ -560,6 +716,7 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
     });
   }, checklistPath);
   await replacementChecklistFile;
+  await expect(modalSelector).toBeHidden();
   await expect(modalHud).toBeHidden();
   await expect(dialog.getByRole("heading", {
     exact: true,
@@ -872,8 +1029,63 @@ function scrollHud(page) {
   );
 }
 
+async function scrollSelectorBadgeGeometry(selector) {
+  return selector.locator("button[data-scroll-surface-code]").evaluateAll(
+    (badges) => {
+      const viewport = {
+        left: 0,
+        top: 0,
+        right: window.innerWidth,
+        bottom: window.innerHeight,
+      };
+      const records = badges.map((badge) => ({
+        code: badge.dataset.scrollSurfaceCode,
+        rect: badge.getBoundingClientRect().toJSON(),
+      }));
+      const viewportEscapes = records.flatMap(({ code, rect }) =>
+        rect.left < viewport.left - 1 ||
+          rect.top < viewport.top - 1 ||
+          rect.right > viewport.right + 1 ||
+          rect.bottom > viewport.bottom + 1
+          ? [code]
+          : []
+      );
+      const fullOverlaps = [];
+      for (let left = 0; left < records.length; left += 1) {
+        for (let right = left + 1; right < records.length; right += 1) {
+          const first = records[left];
+          const second = records[right];
+          const overlapWidth = Math.max(
+            0,
+            Math.min(first.rect.right, second.rect.right) -
+              Math.max(first.rect.left, second.rect.left),
+          );
+          const overlapHeight = Math.max(
+            0,
+            Math.min(first.rect.bottom, second.rect.bottom) -
+              Math.max(first.rect.top, second.rect.top),
+          );
+          const overlapArea = overlapWidth * overlapHeight;
+          const smallerArea = Math.min(
+            first.rect.width * first.rect.height,
+            second.rect.width * second.rect.height,
+          );
+          if (smallerArea > 0 && overlapArea >= smallerArea - 1) {
+            fullOverlaps.push(`${first.code}:${second.code}`);
+          }
+        }
+      }
+      return { fullOverlaps, viewportEscapes };
+    },
+  );
+}
+
 async function openCurrentPlanDocumentWithHint(page, label) {
-  await page.locator(".task-workspace-surface").focus();
+  const currentPlanButton = page.locator(
+    "caffold-task-current-plan button:not([disabled])",
+  ).first();
+  await currentPlanButton.focus();
+  await expect(currentPlanButton).toBeFocused();
   await page.keyboard.press("f");
   const dialog = actionHintDialog(page);
   await expect(dialog).toBeVisible();
@@ -1199,6 +1411,42 @@ function longMarkdown(title, count) {
     ),
     "",
   ].join("\n\n");
+}
+
+function longNestedMarkdown(title, count) {
+  return [
+    `# ${title}`,
+    "",
+    "```text",
+    "intrinsically-wide-plan-code-segment-".repeat(16),
+    "```",
+    "",
+    "| Owner | Intrinsically wide value |",
+    "| --- | --- |",
+    `| ${title} | ${"intrinsically-wide-plan-table-segment-".repeat(16)} |`,
+    "",
+    ...Array.from({ length: count }, (_, index) =>
+      `Paragraph ${index + 1}. ${"Scrollable plan content. ".repeat(8)}`
+    ),
+    "",
+  ].join("\n");
+}
+
+function nestedConversationMarkdown() {
+  return [
+    "Scrollable conversation block 20.",
+    "",
+    "```text",
+    "intrinsically-wide-conversation-code-segment-".repeat(16),
+    "```",
+    "",
+    "| Owner | Intrinsically wide value |",
+    "| --- | --- |",
+    `| Conversation | ${
+      "intrinsically-wide-conversation-table-segment-".repeat(16)
+    } |`,
+    "",
+  ].join("\n");
 }
 
 function checklistMarkdown(count, finalLabel) {

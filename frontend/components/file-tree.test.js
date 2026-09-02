@@ -311,6 +311,7 @@ test("provides its exact retained tree scrollport", () => {
   assert.equal(scope.surfaces[0].id, "review:files:scroll");
   assert.equal(scope.surfaces[0].label, "Changed files");
   assert.equal(scope.surfaces[0].scrollport, scrollport);
+  assert.deepEqual(scope.surfaces[0].axes, ["vertical", "horizontal"]);
   assert.equal(scope.surfaces[0].isEligible(), true);
   assert.deepEqual(scope.mutationRoots, [owner]);
   assert.deepEqual(scope.resizeElements, [owner, scrollport]);

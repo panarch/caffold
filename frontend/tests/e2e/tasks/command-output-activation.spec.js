@@ -67,7 +67,12 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
       output:
         status === "failed"
           ? "error: package `intentionally-missing` was not found"
-          : "test result: ok",
+          : Array.from(
+              { length: 24 },
+              (_, index) => `test result ${index + 1}: ${
+                "intrinsically-wide-command-output-segment-".repeat(12)
+              }`,
+            ).join("\n"),
     });
   const events = [
     event("completed_user", "user_message", now, completedTurnId, {
@@ -240,19 +245,72 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
 
   await keyboardOpener.click();
   const commandBody = dialog.locator(".task-command-dialog-body");
+  const commandOutput = commandBody.locator(
+    ":scope > .task-command-dialog-output > pre",
+  );
   await commandBody.evaluate((element) => {
-    element.style.height = "48px";
-    element.style.maxHeight = "48px";
+    element.style.height = "220px";
+    element.style.maxHeight = "220px";
   });
   await expect.poll(() => commandBody.evaluate(
     (element) => element.scrollHeight > element.clientHeight + 1,
   )).toBe(true);
+  await expect.poll(() => commandOutput.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
+  await commandBody.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
   await closeControl.focus();
   await page.keyboard.press("s");
+  const commandSelector = dialog.locator(
+    ":scope > caffold-keyboard-navigation-presentation " +
+      "caffold-scroll-surface-selector > dialog:modal",
+  );
   const commandHud = dialog.locator(
     "caffold-keyboard-navigation-presentation caffold-scroll-mode-hud",
   );
+  await expect(commandSelector).toBeVisible();
+  const commandBadges = commandSelector.locator(
+    "button[data-scroll-surface-code]",
+  );
+  await expect(commandBadges).toHaveCount(2);
+  expect(new Set(await commandBadges.evaluateAll((elements) =>
+    elements.map((element) => element.getAttribute("aria-label")
+      .replace(/^[A-Z]+ — /, ""))
+  ))).toEqual(new Set(["Command dialog", "Command output"]));
+  await expect(commandSelector.getByLabel(/ — Conversation$/)).toHaveCount(0);
+  await expect(commandSelector.getByLabel(/ — Task list$/)).toHaveCount(0);
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "command-output-scroll-selector",
+  );
+  const bodyBeforeOutputScroll = await commandBody.evaluate(
+    (element) => element.scrollTop,
+  );
+  await commandSelector.getByLabel(/^[A-Z]+ — Command output$/).click();
   await expect(commandHud).toContainText("Scroll: Command output");
+  await expect(commandHud).toContainText("H/L small");
+  await expect(commandHud).not.toContainText("J/K small");
+  await page.keyboard.press("l");
+  await expect.poll(() => commandOutput.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  expect(await commandBody.evaluate((element) => element.scrollTop)).toBe(
+    bodyBeforeOutputScroll,
+  );
+  await page.keyboard.press("Escape");
+
+  await commandBody.evaluate((element) => {
+    element.style.height = "48px";
+    element.style.maxHeight = "48px";
+    element.scrollTop = 0;
+  });
+  await closeControl.focus();
+  await page.keyboard.press("s");
+  await expect(commandSelector).toBeHidden();
+  await expect(commandHud).toContainText("Scroll: Command dialog");
+  await expect(commandHud).toContainText("J/K small");
   await page.keyboard.press("j");
   await expect.poll(() => commandBody.evaluate((element) => element.scrollTop))
     .toBeGreaterThan(0);

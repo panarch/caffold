@@ -10,7 +10,6 @@ import {
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../../../../../../../scroll-scope.js";
 
 class CaffoldGithubPullsListPage extends HTMLElement {
@@ -186,8 +185,7 @@ class CaffoldGithubPullsListPage extends HTMLElement {
             ":scope > .github-pulls-panel > .github-pulls-list",
           ) === scrollport &&
           hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this],
       resizeElements: [this, scrollport],

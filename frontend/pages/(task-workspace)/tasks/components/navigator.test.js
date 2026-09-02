@@ -141,7 +141,7 @@ test("provides only its exact active Task list scrollport", () => {
   );
   assert.equal(scope.surfaces[0].isEligible(), true);
   scrollport.scrollHeight = 101;
-  assert.equal(scope.surfaces[0].isEligible(), false);
+  assert.equal(scope.surfaces[0].isEligible(), true);
   scrollport.scrollHeight = 300;
   owner.reorderMode = "tasks";
   assert.equal(scope.surfaces[0].isEligible(), false);

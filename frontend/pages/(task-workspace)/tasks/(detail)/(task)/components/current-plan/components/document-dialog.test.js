@@ -99,6 +99,23 @@ test("provides its exact modal document context and preview scrollport", () => {
     scrollHeight: 900,
     hidden: false,
     getClientRects: () => [{}],
+    scrollSurfaceScope(options) {
+      this.scrollOptions = options;
+      return {
+        blocked: false,
+        surfaces: [{
+          id: `${options.scopeId}:scroll`,
+          label: options.label,
+          scrollport: this,
+          axes: ["vertical", "horizontal"],
+          clipRoots: [this, ...options.clipRoots],
+          isEligible: options.isCurrent,
+        }],
+        mutationRoots: [this],
+        resizeElements: [this],
+        scrollRoots: [this],
+      };
+    },
   };
   const dialog = {
     open: true,
@@ -128,9 +145,10 @@ test("provides its exact modal document context and preview scrollport", () => {
   assert.deepEqual(context.actionHints.scope.targets, actionScope.targets);
   assert.equal(context.scroll.hud, hud);
   assert.equal(context.scroll.selector, selector);
-  assert.equal(surface.id, "current-plan:task/PLAN.md:preview");
+  assert.equal(surface.id, "current-plan:task/PLAN.md:preview:scroll");
   assert.equal(surface.label, "Plan document");
   assert.equal(surface.scrollport, preview);
+  assert.deepEqual(surface.axes, ["vertical", "horizontal"]);
   assert.equal(surface.isEligible(), true);
   preview.hidden = true;
   assert.equal(surface.isEligible(), false);
@@ -163,6 +181,30 @@ test("ignores a stale native close event after the retained dialog reopens", () 
   assert.equal(owner.current, current);
   assert.equal(owner.opener, opener);
   assert.equal(aborted, false);
+});
+
+test("restores the opener before native close handling returns", () => {
+  let focused = false;
+  const opener = {
+    isConnected: true,
+    focus() {
+      focused = true;
+    },
+  };
+  const owner = {
+    requestId: 4,
+    requestController: null,
+    current: { path: "task/PLAN.md" },
+    opener,
+    dialog: () => ({ open: false }),
+  };
+
+  documentDialog.handleClose.call(owner);
+
+  assert.equal(focused, true);
+  assert.equal(owner.requestId, 5);
+  assert.equal(owner.current, null);
+  assert.equal(owner.opener, null);
 });
 
 function actionControl(textContent, { visible = true } = {}) {

@@ -17,7 +17,7 @@ import { keyboardNavigationContext } from "../../../../../../keyboard-navigation
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
+  mergeScrollSurfaceScopes,
 } from "../../../../../../scroll-scope.js";
 import "../../../../../../keyboard-navigation/components/presentation.js";
 
@@ -31,6 +31,7 @@ class CaffoldTaskCommandDialog extends HTMLElement {
 
     this.initialized = true;
     this.threadId = "";
+    this.outputScrollport = null;
     this.addEventListener("click", (event) => this.handleClick(event));
     this.render();
     warmIcons();
@@ -127,11 +128,11 @@ class CaffoldTaskCommandDialog extends HTMLElement {
     if (!dialog || !scrollport) {
       return emptyScrollSurfaceScope();
     }
-    return {
+    const bodyScope = {
       blocked: false,
       surfaces: [{
-        id: `task-command:${encodeURIComponent(threadId)}:output`,
-        label: "Command output",
+        id: `task-command:${encodeURIComponent(threadId)}:body`,
+        label: "Command dialog",
         scrollport,
         clipRoots: [dialog, scrollport],
         isEligible: () =>
@@ -142,13 +143,40 @@ class CaffoldTaskCommandDialog extends HTMLElement {
           Boolean(threadId) &&
           dialog.querySelector(".task-command-dialog-body") === scrollport &&
           hasScrollLayoutBox(dialog) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this, scrollport],
       resizeElements: [dialog, scrollport],
       scrollRoots: [scrollport],
     };
+    const output = this.outputScrollport;
+    const outputScope = !output
+      ? null
+      : {
+          blocked: false,
+          surfaces: [{
+            id: `task-command:${encodeURIComponent(threadId)}:output`,
+            label: "Command output",
+            scrollport: output,
+            axes: ["horizontal"],
+            clipRoots: [dialog, scrollport, output],
+            isEligible: () =>
+              this.isConnected &&
+              this.dialog() === dialog &&
+              dialog.open &&
+              `${this.threadId ?? ""}` === threadId &&
+              Boolean(threadId) &&
+              dialog.querySelector(".task-command-dialog-body") === scrollport &&
+              this.outputScrollport === output &&
+              scrollport.contains(output) &&
+              hasScrollLayoutBox(dialog) &&
+              hasScrollLayoutBox(output),
+          }],
+          mutationRoots: [this, scrollport],
+          resizeElements: [dialog, scrollport, output],
+          scrollRoots: [scrollport, output],
+        };
+    return mergeScrollSurfaceScopes(bodyScope, outputScope);
   }
 
   setThreadId(threadId) {
@@ -207,6 +235,7 @@ class CaffoldTaskCommandDialog extends HTMLElement {
   }
 
   render() {
+    this.outputScrollport = null;
     this.innerHTML = `
       <dialog aria-labelledby="task-command-dialog-title">
         <article class="task-command-dialog-card">
@@ -271,6 +300,9 @@ class CaffoldTaskCommandDialog extends HTMLElement {
         <pre>${escapeHtml(command.output || "(No output)")}</pre>
       </section>
     `;
+    this.outputScrollport = body.querySelector(
+      ":scope > .task-command-dialog-output > pre",
+    );
   }
 }
 

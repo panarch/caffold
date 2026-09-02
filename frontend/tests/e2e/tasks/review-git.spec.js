@@ -1332,9 +1332,12 @@ test("scrolls the exact visible Review tree and diff through the workspace root"
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page, {
     configureReview(review) {
       review.largeChangeSet = true;
+      review.wideTreeEntry = true;
       review.workingDiffText = Array.from(
         { length: 80 },
-        (_, index) => `new planner behavior ${index + 1}`,
+        (_, index) => `new planner behavior ${index + 1} ${
+          "intrinsically-wide-diff-segment-".repeat(10)
+        }`,
       ).join("\n+");
     },
   });
@@ -1351,18 +1354,26 @@ test("scrolls the exact visible Review tree and diff through the workspace root"
   await expect.poll(() => treeScroll.evaluate(
     (element) => element.scrollHeight > element.clientHeight + 1,
   )).toBe(true);
+  await expect.poll(() => treeScroll.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
 
   if (testInfo.project.name === "phone") {
     await workspace.focus();
     await page.keyboard.press("s");
     await expect(selector).toBeHidden();
     await expect(hud).toContainText("Scroll: Working tree changes");
+    await expect(hud).toContainText("H/L small");
+    await page.keyboard.press("l");
+    await expect.poll(() => treeScroll.evaluate((element) => element.scrollLeft))
+      .toBeGreaterThan(0);
     await page.keyboard.press("j");
     await expect.poll(() => treeScroll.evaluate((element) => element.scrollTop))
       .toBeGreaterThan(0);
     await page.keyboard.press("Escape");
     await treeScroll.evaluate((element) => {
       element.scrollTop = 0;
+      element.scrollLeft = 0;
     });
   }
 
@@ -1375,6 +1386,9 @@ test("scrolls the exact visible Review tree and diff through the workspace root"
   await expect(diffScroll).toContainText("new planner behavior 80");
   await expect.poll(() => diffScroll.evaluate(
     (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await expect.poll(() => diffScroll.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
   )).toBe(true);
 
   await workspace.focus();
@@ -1414,6 +1428,16 @@ test("scrolls the exact visible Review tree and diff through the workspace root"
 
   const treeBeforeDiffScroll = await treeScroll.evaluate(
     (element) => element.scrollTop,
+  );
+  const treeHorizontalBeforeDiffScroll = await treeScroll.evaluate(
+    (element) => element.scrollLeft,
+  );
+  await expect(hud).toContainText("H/L small");
+  await page.keyboard.press("l");
+  await expect.poll(() => diffScroll.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  expect(await treeScroll.evaluate((element) => element.scrollLeft)).toBe(
+    treeHorizontalBeforeDiffScroll,
   );
   await page.keyboard.press("j");
   await expect.poll(() => diffScroll.evaluate((element) => element.scrollTop))
@@ -1467,6 +1491,12 @@ test("maps the visible source line when Diff and Source representations switch",
   await expect.poll(() => codeScroll.evaluate(
     (element) => element.scrollHeight > element.clientHeight + 1,
   )).toBe(true);
+  await codeScroll.locator(".line-code").first().evaluate((element) => {
+    element.textContent = "intrinsically-wide-source-segment-".repeat(20);
+  });
+  await expect.poll(() => codeScroll.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
   await page.locator(".task-workspace-surface").focus();
   await page.keyboard.press("s");
   await expect(page.locator("caffold-scroll-surface-selector > dialog:modal")).toBeHidden();
@@ -1474,6 +1504,10 @@ test("maps the visible source line when Diff and Source representations switch",
     "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
   await expect(workspaceHud).toContainText("Scroll: planner.rs source");
+  await expect(workspaceHud).toContainText("H/L small");
+  await page.keyboard.press("l");
+  await expect.poll(() => codeScroll.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
   await page.keyboard.press("j");
   await expect.poll(() => codeScroll.evaluate((element) => element.scrollTop))
     .toBeGreaterThan(0);
@@ -1509,6 +1543,64 @@ test("maps the visible source line when Diff and Source representations switch",
   await expect
     .poll(() => viewer.evaluate((element) => element.visibleLine()))
     .toBe(sourceLine);
+
+  await viewer.locator("caffold-code-viewer").evaluate((element) => {
+    element.setFile({
+      content: "horizontal-only-source-segment-".repeat(30),
+      languageHint: "text",
+    });
+  });
+  await expect(codeScroll).toContainText("horizontal-only-source-segment");
+  await expect.poll(() => codeScroll.evaluate(
+    (element) => element.scrollHeight <= element.clientHeight + 1,
+  )).toBe(true);
+  await expect.poll(() => codeScroll.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
+  await page.locator(".task-workspace-surface").focus();
+  await page.keyboard.press("s");
+  await expect(page.locator(
+    "caffold-scroll-surface-selector > dialog:modal",
+  )).toBeHidden();
+  await expect(workspaceHud).toContainText("Scroll: planner.rs source");
+  await expect(workspaceHud).toContainText("H/L small");
+  await expect(workspaceHud).not.toContainText("J/K small");
+  await page.keyboard.press("l");
+  await expect.poll(() => codeScroll.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+
+  await taskReview.getByRole("button", { name: "Diff", exact: true }).click();
+  const horizontalDiff = viewer.locator("caffold-diff-viewer .diff-lines");
+  await viewer.locator("caffold-diff-viewer").evaluate((element) => {
+    element.setDiff({
+      diff: [
+        "@@ -1 +1 @@",
+        "-short",
+        `+${"horizontal-only-diff-segment-".repeat(30)}`,
+      ].join("\n"),
+    });
+  });
+  await expect(horizontalDiff).toContainText("horizontal-only-diff-segment");
+  await expect.poll(() => horizontalDiff.evaluate(
+    (element) => element.scrollHeight <= element.clientHeight + 1,
+  )).toBe(true);
+  await expect.poll(() => horizontalDiff.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
+  await page.locator(".task-workspace-surface").focus();
+  await page.keyboard.press("s");
+  await expect(page.locator(
+    "caffold-scroll-surface-selector > dialog:modal",
+  )).toBeHidden();
+  await expect(workspaceHud).toContainText("Scroll: planner.rs diff");
+  await expect(workspaceHud).toContainText("H/L small");
+  await expect(workspaceHud).not.toContainText("J/K small");
+  await page.keyboard.press("l");
+  await expect.poll(() => horizontalDiff.evaluate(
+    (element) => element.scrollLeft,
+  )).toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
 });
 
 test("rejects a late branch response after returning to the working tree", { tag: "@all-viewports" }, async ({ page }) => {

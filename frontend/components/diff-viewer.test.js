@@ -10,7 +10,7 @@ await import("./diff-viewer.js");
 const diffViewer = registry.element("caffold-diff-viewer").prototype;
 after(() => registry.restore());
 
-test("provides only its retained overflowing diff-lines element", () => {
+test("provides only its retained diff-lines element", () => {
   let current;
   const scrollport = {
     clientHeight: 100,
@@ -31,6 +31,8 @@ test("provides only its retained overflowing diff-lines element", () => {
   });
   assert.equal(scope.surfaces[0].id, "review:file:diff:scroll");
   assert.equal(scope.surfaces[0].label, "PLAN.md diff");
+  assert.equal(scope.surfaces[0].scrollport, scrollport);
+  assert.deepEqual(scope.surfaces[0].axes, ["vertical", "horizontal"]);
   assert.equal(scope.surfaces[0].isEligible(), true);
 
   current = null;

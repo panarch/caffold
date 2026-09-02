@@ -62,7 +62,7 @@ test("merges owned picker buttons with the child-owned directory rows", () => {
   assert.deepEqual(childOptions.clipRoots, [dialog, body]);
 });
 
-test("declares only the exact overflowing file-tree scroller", () => {
+test("declares only the exact retained file-tree scroller", () => {
   const scrollport = layoutElement({ clientHeight: 100, scrollHeight: 220 });
   const tree = { scroller: () => scrollport };
   const dialog = layoutElement({ open: true });
@@ -78,7 +78,7 @@ test("declares only the exact overflowing file-tree scroller", () => {
   assert.equal(scope.surfaces[0].scrollport, scrollport);
   assert.equal(scope.surfaces[0].isEligible(), true);
   scrollport.scrollHeight = 101;
-  assert.equal(scope.surfaces[0].isEligible(), false);
+  assert.equal(scope.surfaces[0].isEligible(), true);
 });
 
 function button(label) {

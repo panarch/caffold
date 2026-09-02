@@ -76,7 +76,7 @@ test("coordinator alone owns the document key listener and releases all inputs",
   }
 });
 
-test("entry uses 0, 1, many policy without nesting a modal selector", () => {
+test("entry uses 0, 1, many policy with selectors in workspace and modal", () => {
   const restoreDom = installEventGlobals();
   try {
     const controller = createController();
@@ -116,6 +116,21 @@ test("entry uses 0, 1, many policy without nesting a modal selector", () => {
       context: modal,
       surfaces: [{ id: "one" }, { id: "two" }],
     });
+    assert.equal(controller.startScroll(), true);
+    assert.equal(
+      controller.storedNode,
+      KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING,
+    );
+    controller.applyTransition(
+      KEYBOARD_NAVIGATION_EVENT.SCROLL_SELECTION_CANCELLED,
+    );
+
+    const popover = { kind: "popover", blocked: false };
+    controller.resolveInteractionContext = () => popover;
+    controller.captureScrollSnapshot = () => ({
+      context: popover,
+      surfaces: [{ id: "one" }, { id: "two" }],
+    });
     assert.equal(controller.startScroll(), false);
     assert.equal(controller.storedNode, null);
   } finally {
@@ -131,9 +146,15 @@ test("active repeated commands move only the bound scrollport and consume bounda
       scrollTop: 50,
       scrollHeight: 500,
       clientHeight: 100,
+      scrollLeft: 50,
+      scrollWidth: 500,
+      clientWidth: 100,
     };
     controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE;
-    controller.activeSession = { scrollport };
+    controller.activeSession = {
+      scrollport,
+      availableAxes: ["vertical", "horizontal"],
+    };
     controller.activeBindingIsCurrent = () => true;
     const repeated = keyEvent("j", { code: "KeyJ", repeat: true });
     controller.handleActiveKeydown(repeated);
@@ -147,10 +168,89 @@ test("active repeated commands move only the bound scrollport and consume bounda
     assert.equal(scrollport.scrollTop, 400);
     assert.equal(boundary.prevented, true);
 
+    const horizontal = keyEvent("l", { code: "KeyL", repeat: true });
+    controller.handleActiveKeydown(horizontal);
+    assert.equal(scrollport.scrollLeft, 60);
+    assert.equal(horizontal.prevented, true);
+    scrollport.scrollLeft = 400;
+    const horizontalBoundary = keyEvent("L", {
+      code: "KeyL",
+      repeat: true,
+    });
+    controller.handleActiveKeydown(horizontalBoundary);
+    assert.equal(scrollport.scrollLeft, 400);
+    assert.equal(horizontalBoundary.prevented, true);
+
     const modified = keyEvent("j", { code: "KeyJ", ctrlKey: true });
     controller.handleActiveKeydown(modified);
     assert.equal(scrollport.scrollTop, 400);
     assert.equal(modified.prevented, false);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("capture intersects declared axes with exact current overflow", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    document.documentElement = { clientWidth: 800, clientHeight: 600 };
+    const controller = createController();
+    const scrollport = element({
+      isConnected: true,
+      clientHeight: 100,
+      scrollHeight: 101,
+      clientWidth: 100,
+      scrollWidth: 260,
+      getBoundingClientRect: () => rect(20, 20, 220, 120),
+    });
+    const root = element({
+      isConnected: true,
+      contains: (candidate) => candidate === scrollport,
+      getBoundingClientRect: () => rect(0, 0, 500, 500),
+    });
+    const context = {
+      id: "workspace",
+      kind: "workspace",
+      root,
+      scroll: {
+        hud: element(),
+        selector: scrollSelector(),
+        scope: {
+          blocked: false,
+          surfaces: [{
+            id: "code",
+            label: "Code",
+            scrollport,
+            axes: ["vertical", "horizontal"],
+            clipRoots: [],
+            isEligible: () => true,
+          }],
+          mutationRoots: [],
+          resizeElements: [],
+          scrollRoots: [scrollport],
+        },
+      },
+    };
+
+    let snapshot = controller.captureScrollSnapshot(context);
+    assert.equal(snapshot.surfaces.length, 1);
+    assert.deepEqual(snapshot.surfaces[0].axes, [
+      "vertical",
+      "horizontal",
+    ]);
+    assert.deepEqual(snapshot.surfaces[0].availableAxes, ["horizontal"]);
+
+    scrollport.scrollHeight = 260;
+    snapshot = controller.captureScrollSnapshot(context);
+    assert.equal(snapshot.surfaces.length, 1);
+    assert.deepEqual(snapshot.surfaces[0].availableAxes, [
+      "vertical",
+      "horizontal",
+    ]);
+
+    scrollport.scrollWidth = 101;
+    scrollport.scrollHeight = 101;
+    assert.equal(controller.captureScrollSnapshot(context).surfaces.length, 0);
   } finally {
     restoreDom();
   }
@@ -423,6 +523,8 @@ test("rejects malformed and duplicate provider identities centrally", () => {
       id: "same",
       label: "Surface",
       scrollport,
+      axes: ["vertical"],
+      availableAxes: ["vertical"],
       clipRoots: [],
       isEligible: () => true,
     };
@@ -569,6 +671,57 @@ test("Scroll selection ignores stale scroll delivery and cancels real movement",
   }
 });
 
+test("active Scroll ignores its own movement and revalidates ancestor or sibling movement", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const controller = createController();
+    const selected = Object.assign(new FakeEventTarget(), {
+      scrollLeft: 0,
+      scrollTop: 0,
+    });
+    const ancestor = Object.assign(new FakeEventTarget(), {
+      scrollLeft: 0,
+      scrollTop: 40,
+    });
+    const sibling = Object.assign(new FakeEventTarget(), {
+      scrollLeft: 12,
+      scrollTop: 0,
+    });
+    const session = {
+      cleanup: [],
+      context: { kind: "workspace", root: element(), hud: { close() {} } },
+      mutationRoots: [],
+      resizeElements: [],
+      scrollRoots: [selected, ancestor, sibling],
+      scrollport: selected,
+    };
+    const queued = [];
+    controller.activeSession = session;
+    controller.activeBindingIsCurrent = () => true;
+    controller.queueActiveRevalidation = (candidate) => queued.push(candidate);
+    controller.attachActiveSignals(session);
+
+    assert.equal(selected.listenerCount("scroll"), 0);
+    assert.equal(ancestor.listenerCount("scroll"), 1);
+    assert.equal(sibling.listenerCount("scroll"), 1);
+
+    selected.scrollLeft = 20;
+    assert.deepEqual(queued, []);
+    const ancestorListener = [...ancestor.listeners.get("scroll")][0];
+    ancestorListener();
+    assert.deepEqual(queued, []);
+    ancestor.scrollTop = 60;
+    ancestorListener();
+    assert.deepEqual(queued, [session]);
+    const siblingListener = [...sibling.listeners.get("scroll")][0];
+    sibling.scrollLeft = 20;
+    siblingListener();
+    assert.deepEqual(queued, [session, session]);
+  } finally {
+    restoreDom();
+  }
+});
+
 test("viewport signals ignore stale delivery and cancel real snapshot drift", () => {
   const restoreDom = installEventGlobals();
   try {
@@ -696,6 +849,8 @@ test("active revalidation keeps one binding and refreshes its retained presentat
       id: "conversation",
       label: "Before",
       scrollport,
+      axes: ["vertical"],
+      availableAxes: ["vertical"],
       clipRoots: [clipRoot],
       visibleRect: rect(0, 0, 80, 80),
       context,
@@ -713,6 +868,8 @@ test("active revalidation keeps one binding and refreshes its retained presentat
         id: "conversation",
         label: "After",
         scrollport,
+        axes: ["vertical"],
+        availableAxes: ["vertical"],
         clipRoots: [clipRoot],
         visibleRect: rect(0, 0, 70, 80),
       }],

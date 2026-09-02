@@ -2,7 +2,6 @@ import { escapeHtml } from "./dom.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../scroll-scope.js";
 
 const HUNK_HEADER_PATTERN = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/;
@@ -52,6 +51,7 @@ class CaffoldDiffViewer extends HTMLElement {
         id: `${scopeId}:scroll`,
         label,
         scrollport,
+        axes: ["vertical", "horizontal"],
         clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
         isEligible: () =>
           this.isConnected &&
@@ -60,8 +60,7 @@ class CaffoldDiffViewer extends HTMLElement {
             scrollport &&
           isCurrent() &&
           hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this],
       resizeElements: [this, scrollport],

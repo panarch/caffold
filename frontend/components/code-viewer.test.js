@@ -10,7 +10,7 @@ await import("./code-viewer.js");
 const codeViewer = registry.element("caffold-code-viewer").prototype;
 after(() => registry.restore());
 
-test("provides only its retained overflowing code-lines element", () => {
+test("provides only its retained code-lines element", () => {
   let current;
   const scrollport = {
     clientHeight: 100,
@@ -31,6 +31,8 @@ test("provides only its retained overflowing code-lines element", () => {
   });
   assert.equal(scope.surfaces[0].id, "review:file:source:scroll");
   assert.equal(scope.surfaces[0].label, "PLAN.md source");
+  assert.equal(scope.surfaces[0].scrollport, scrollport);
+  assert.deepEqual(scope.surfaces[0].axes, ["vertical", "horizontal"]);
   assert.equal(scope.surfaces[0].isEligible(), true);
 
   current = null;

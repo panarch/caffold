@@ -19,7 +19,6 @@ import "../../../../keyboard-navigation/components/presentation.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../../../../scroll-scope.js";
 import {
   TASK_TRANSPORT_STATE,
@@ -359,8 +358,7 @@ class CaffoldTaskNavigator extends HTMLElement {
           this.reorderMode === "none" &&
           this.querySelector(":scope > .task-list-scroll") === scrollport &&
           hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this, this.activeTaskList, this.archivedTaskList].filter(
         Boolean,

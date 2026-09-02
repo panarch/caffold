@@ -56,7 +56,7 @@ test("provides Pull Request rows through their existing native controls", () => 
   assert.equal(target.isActionable(), false);
 });
 
-test("provides only the retained overflowing Pull Request list", () => {
+test("provides only the retained Pull Request list", () => {
   const scrollport = {
     clientHeight: 100,
     scrollHeight: 360,
@@ -73,5 +73,5 @@ test("provides only the retained overflowing Pull Request list", () => {
   assert.equal(scope.surfaces[0].scrollport, scrollport);
   assert.equal(scope.surfaces[0].isEligible(), true);
   scrollport.scrollHeight = 100;
-  assert.equal(scope.surfaces[0].isEligible(), false);
+  assert.equal(scope.surfaces[0].isEligible(), true);
 });

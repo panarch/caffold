@@ -134,6 +134,32 @@ test("positions instructions inside the captured visual viewport", () => {
   });
 });
 
+test("stacks nested badge anchors without leaving the viewport", () => {
+  const viewport = rect(0, 0, 200, 120);
+  const surface = rect(4, 4, 196, 116);
+  const badges = ["A", "B"].map((code) => ({
+    dataset: { scrollSurfaceCode: code },
+    style: {},
+    getBoundingClientRect: () => rect(0, 0, 32, 24),
+  }));
+  const regions = badges.map((badge) => ({
+    querySelector: () => badge,
+  }));
+  const owner = {
+    regions: { querySelectorAll: () => regions },
+    surfaces: ["A", "B"].map((code) => ({ code, visibleRect: surface })),
+    viewportRect: viewport,
+    positionInstructions() {},
+  };
+
+  selector.positionBadges.call(owner);
+
+  assert.deepEqual(badges.map(({ style }) => style), [
+    { left: "0px", top: "0px" },
+    { left: "0px", top: "28px" },
+  ]);
+});
+
 function rect(left, top, right, bottom) {
   return { left, top, right, bottom, width: right - left, height: bottom - top };
 }

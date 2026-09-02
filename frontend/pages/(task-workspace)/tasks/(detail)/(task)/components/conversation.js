@@ -8,7 +8,7 @@ import { isTaskTransportStale } from "../../../runtime-state.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
+  mergeScrollSurfaceScopes,
 } from "../../../../../../scroll-scope.js";
 import { requestTaskImagePreview } from "../../../components/image-preview-dialog.js";
 import {
@@ -394,20 +394,22 @@ class CaffoldTaskConversation extends HTMLElement {
     );
   }
 
-  scrollSurfaceScope() {
+  scrollSurfaceScope({ scopeId = "", clipRoots = [] } = {}) {
     this.ensureState();
     const scrollport = this.scroller();
+    const list = this.conversationList();
     const threadId = `${this.snapshot.threadId ?? ""}`;
-    if (!scrollport || !threadId) {
+    if (!scrollport || !list || !threadId) {
       return emptyScrollSurfaceScope();
     }
-    return {
+    const targetScopeId = scopeId || `task:${threadId}:conversation`;
+    const ownScope = {
       blocked: false,
       surfaces: [{
-        id: `task:${threadId}:conversation`,
+        id: targetScopeId,
         label: "Conversation",
         scrollport,
-        clipRoots: [this, scrollport],
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
         isEligible: () =>
           this.isConnected &&
           this.active &&
@@ -415,14 +417,111 @@ class CaffoldTaskConversation extends HTMLElement {
           this.snapshot.threadId === threadId &&
           Boolean(this.snapshot.task) &&
           this.scroller() === scrollport &&
+          this.conversationList() === list &&
           hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this, scrollport],
       resizeElements: [this, scrollport],
       scrollRoots: [scrollport],
     };
+    const childScopes = [];
+    Array.from(list.children).forEach((entry, index) => {
+      const identity = entry.dataset.conversationEntryKey ||
+        entry.dataset.eventId ||
+        `${index + 1}`;
+      const childOptions = (kind) => ({
+        scopeId: `${targetScopeId}:${kind}:${identity}`,
+        clipRoots: [this, scrollport, list, ...clipRoots].filter(Boolean),
+        isCurrent: () =>
+          this.isConnected &&
+          this.active &&
+          !this.hidden &&
+          this.snapshot.threadId === threadId &&
+          Boolean(this.snapshot.task) &&
+          this.scroller() === scrollport &&
+          this.conversationList() === list &&
+          Array.from(list.children).includes(entry) &&
+          (entry.dataset.conversationEntryKey ||
+            entry.dataset.eventId ||
+            `${Array.from(list.children).indexOf(entry) + 1}`) === identity,
+      });
+      const rawOutput = entry.matches?.(".task-tool-card")
+        ? entry.querySelector(":scope > pre")
+        : null;
+      if (rawOutput) {
+        const options = childOptions("tool-output");
+        childScopes.push(rawConversationScrollSurfaceScope({
+          ...options,
+          label: `${
+            entry.querySelector(":scope > header > strong")?.textContent
+              ?.trim() || "Tool"
+          } output`,
+          scrollport: rawOutput,
+          isCurrent: () =>
+            options.isCurrent() &&
+            entry.matches(".task-tool-card") &&
+            entry.querySelector(":scope > pre") === rawOutput,
+        }));
+      }
+      const approvalCards = entry.matches?.(".task-approval-flow")
+        ? Array.from(entry.querySelectorAll(
+            ":scope > .task-approvals > .task-approval-card[data-approval-id]",
+          ))
+        : [];
+      for (const card of approvalCards) {
+        const approvalId = `${card.dataset.approvalId ?? ""}`.trim();
+        const approvalCommand = card.querySelector(
+          ":scope > .task-approval-command",
+        );
+        if (!approvalId || !approvalCommand) {
+          continue;
+        }
+        const options = childOptions(
+          `approval:${encodeURIComponent(approvalId)}`,
+        );
+        childScopes.push(rawConversationScrollSurfaceScope({
+          ...options,
+          label: "Approval command",
+          scrollport: approvalCommand,
+          isCurrent: () =>
+            options.isCurrent() &&
+            card.dataset.approvalId === approvalId &&
+            card.querySelector(":scope > .task-approval-command") ===
+              approvalCommand &&
+            Array.from(entry.querySelectorAll(
+              ":scope > .task-approvals > .task-approval-card[data-approval-id]",
+            )).includes(card),
+        }));
+      }
+      const command = entry.querySelector(":scope > caffold-task-command");
+      if (command) {
+        childScopes.push(command.scrollSurfaceScope?.(childOptions("command")));
+      }
+      const message = entry.querySelector(
+        ":scope > caffold-task-assistant-message",
+      );
+      if (message) {
+        childScopes.push(message.scrollSurfaceScope?.(childOptions("message")));
+      }
+      const workDetails = entry.querySelector(
+        ":scope > caffold-task-work-details",
+      );
+      if (workDetails) {
+        childScopes.push(
+          workDetails.scrollSurfaceScope?.(childOptions("work-details")),
+        );
+      }
+      const thinking = entry.querySelector(
+        ":scope > details > .task-thinking-content > caffold-task-markdown",
+      );
+      if (thinking) {
+        childScopes.push(
+          thinking.scrollSurfaceScope?.(childOptions("thinking")),
+        );
+      }
+    });
+    return mergeScrollSurfaceScopes(ownScope, ...childScopes);
   }
 
   conversationList() {
@@ -1076,6 +1175,34 @@ class CaffoldTaskConversation extends HTMLElement {
     }
     this.rememberScroll();
   }
+}
+
+function rawConversationScrollSurfaceScope({
+  scopeId,
+  label,
+  scrollport,
+  clipRoots = [],
+  isCurrent = () => true,
+}) {
+  if (!scopeId || !label || !scrollport) {
+    return emptyScrollSurfaceScope();
+  }
+  return {
+    blocked: false,
+    surfaces: [{
+      id: `${scopeId}:scroll`,
+      label,
+      scrollport,
+      axes: ["horizontal"],
+      clipRoots: [scrollport, ...clipRoots].filter(Boolean),
+      isEligible: () =>
+        isCurrent() &&
+        hasScrollLayoutBox(scrollport),
+    }],
+    mutationRoots: [scrollport],
+    resizeElements: [scrollport],
+    scrollRoots: [scrollport],
+  };
 }
 
 function conversationPreviewIdentity(owner, control) {

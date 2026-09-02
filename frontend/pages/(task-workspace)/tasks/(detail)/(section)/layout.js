@@ -7,7 +7,6 @@ import { mergeKeyboardNavigationContexts } from "../../../../../keyboard-navigat
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../../../../../scroll-scope.js";
 
 class CaffoldSectionDetail extends HTMLElement {
@@ -135,8 +134,7 @@ class CaffoldSectionDetail extends HTMLElement {
           this.isConnected &&
           !this.hidden &&
           `${this.section?.id ?? ""}` === sectionId &&
-          hasScrollLayoutBox(this) &&
-          hasVerticalScrollOverflow(this),
+          hasScrollLayoutBox(this),
       }],
       mutationRoots: [this],
       resizeElements: [this],

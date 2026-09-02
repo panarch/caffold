@@ -1,4 +1,5 @@
 import { clampBadgePosition, normalizeRect } from "../../action-hints.js";
+import { normalizeScrollAxes } from "../../scroll-scope.js";
 
 class CaffoldScrollModeHud extends HTMLElement {
   connectedCallback() {
@@ -15,21 +16,24 @@ class CaffoldScrollModeHud extends HTMLElement {
       <div class="scroll-mode-outline" aria-hidden="true"></div>
       <div class="scroll-mode-status" role="status" aria-live="polite">
         <strong data-scroll-mode-label></strong>
-        <span>J/K small · D/U half page · F Action Hints · Escape exits</span>
+        <span data-scroll-mode-instructions></span>
       </div>
     `;
   }
 
-  show({ label, visibleRect, contextRect } = {}) {
+  show({ label, visibleRect, contextRect, availableAxes } = {}) {
     this.ensureRendered();
     const surface = normalizeRect(visibleRect);
     const context = normalizeRect(contextRect);
-    if (!label || !surface || !context) {
+    const axes = normalizeScrollAxes(availableAxes);
+    if (!label || !surface || !context || !axes) {
       this.close();
       return false;
     }
     this.querySelector("[data-scroll-mode-label]").textContent =
       `Scroll: ${label}`;
+    this.querySelector("[data-scroll-mode-instructions]").textContent =
+      scrollModeInstructions(axes);
     this.contextRect = context;
     const outline = this.querySelector(":scope > .scroll-mode-outline");
     outline.style.left = `${surface.left}px`;
@@ -79,7 +83,20 @@ class CaffoldScrollModeHud extends HTMLElement {
     this.hidden = true;
     this.contextRect = null;
     this.querySelector("[data-scroll-mode-label]").textContent = "";
+    this.querySelector("[data-scroll-mode-instructions]").textContent = "";
   }
+}
+
+function scrollModeInstructions(axes) {
+  const instructions = [];
+  if (axes.includes("vertical")) {
+    instructions.push("J/K small · D/U half page");
+  }
+  if (axes.includes("horizontal")) {
+    instructions.push("H/L small");
+  }
+  instructions.push("F Action Hints · Escape exits");
+  return instructions.join(" · ");
 }
 
 function correctClampedPosition(element, bounds, margin) {

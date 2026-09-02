@@ -105,3 +105,71 @@ test("merges its root disclosure with only direct retained work items", () => {
   assert.deepEqual(workDetails.actionHintScope.call(owner, { scopeId: "work:a" }).targets, []);
   assert.equal(targets[0].isActionable(), false);
 });
+
+test("merges retained raw and direct child Scroll surfaces only while expanded", () => {
+  const raw = layoutElement();
+  const rawRecord = {
+    ordinal: 1,
+    label: "Plan output 1",
+    scrollport: raw,
+  };
+  const commandSurface = { id: "work:a:command:command-a:output" };
+  const messageSurface = { id: "work:a:message:message-a:table:1" };
+  const command = {
+    scrollSurfaceScope: () => ({ surfaces: [commandSurface] }),
+  };
+  const message = {
+    scrollSurfaceScope: () => ({ surfaces: [messageSurface] }),
+  };
+  const commandItem = {
+    dataset: { commandWorkIdentity: "command-a" },
+    querySelector: () => command,
+  };
+  const messageItem = {
+    dataset: { messageWorkIdentity: "message-a" },
+    querySelector: (selector) =>
+      selector.includes("assistant-message") ? message : null,
+  };
+  const body = {
+    children: [commandItem, messageItem],
+    contains: (element) => element === raw,
+  };
+  const disclosure = {
+    open: true,
+    querySelector: () => body,
+  };
+  let current = true;
+  const owner = layoutElement({
+    isConnected: true,
+    identity: "work-a",
+    hidden: false,
+    ensureState() {},
+    scrollSurfaceRecords: [rawRecord],
+    querySelector: () => disclosure,
+  });
+
+  const scope = workDetails.scrollSurfaceScope.call(owner, {
+    scopeId: "work:a",
+    isCurrent: () => current,
+  });
+  assert.deepEqual(scope.surfaces.map(({ id }) => id), [
+    "work:a:raw:1",
+    commandSurface.id,
+    messageSurface.id,
+  ]);
+  assert.equal(scope.surfaces[0].label, "Plan output 1");
+  assert.deepEqual(scope.surfaces[0].axes, ["horizontal"]);
+  assert.equal(scope.surfaces[0].isEligible(), true);
+  disclosure.open = false;
+  assert.equal(scope.surfaces[0].isEligible(), false);
+  disclosure.open = true;
+  owner.scrollSurfaceRecords = [];
+  assert.equal(scope.surfaces[0].isEligible(), false);
+  owner.scrollSurfaceRecords = [rawRecord];
+  current = false;
+  assert.equal(scope.surfaces[0].isEligible(), false);
+});
+
+function layoutElement(properties = {}) {
+  return { getClientRects: () => [{}], ...properties };
+}

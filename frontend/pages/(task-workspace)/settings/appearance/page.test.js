@@ -93,7 +93,7 @@ test("provides visible reset buttons and the exact settings scrollport", () => {
   assert.equal(scrollScope.surfaces[0].scrollport, scrollport);
   assert.equal(scrollScope.surfaces[0].isEligible(), true);
   scrollport.scrollHeight = 100;
-  assert.equal(scrollScope.surfaces[0].isEligible(), false);
+  assert.equal(scrollScope.surfaces[0].isEligible(), true);
 });
 
 test("provides alternate themes, typeface, and retained range controls", () => {

@@ -40,7 +40,7 @@ test("merges Task Create popovers and Directory Picker modal independently", () 
   assert.deepEqual(taskNew.keyboardNavigationContexts.call(owner), []);
 });
 
-test("provides only the retained overflowing New Task workspace", () => {
+test("provides only the retained New Task workspace", () => {
   const scrollport = {
     clientHeight: 100,
     scrollHeight: 280,

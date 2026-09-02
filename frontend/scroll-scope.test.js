@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  availableScrollAxes,
   emptyScrollSurfaceScope,
+  hasHorizontalScrollOverflow,
   hasScrollLayoutBox,
   hasVerticalScrollOverflow,
   mergeScrollSurfaceScopes,
+  normalizeScrollAxes,
 } from "./scroll-scope.js";
 
 test("Scroll surface scopes compose direct owners in declaration order", () => {
@@ -54,4 +57,36 @@ test("Scroll geometry requires a layout box and more than one overflow pixel", (
     hasVerticalScrollOverflow({ clientHeight: 0, scrollHeight: 200 }),
     false,
   );
+  assert.equal(
+    hasHorizontalScrollOverflow({ clientWidth: 100, scrollWidth: 102 }),
+    true,
+  );
+  assert.equal(
+    hasHorizontalScrollOverflow({ clientWidth: 100, scrollWidth: 101 }),
+    false,
+  );
+});
+
+test("normalizes owner-declared axes and intersects exact current overflow", () => {
+  assert.deepEqual(normalizeScrollAxes(), ["vertical"]);
+  assert.deepEqual(normalizeScrollAxes(["horizontal", "vertical"]), [
+    "vertical",
+    "horizontal",
+  ]);
+  assert.equal(normalizeScrollAxes([]), null);
+  assert.equal(normalizeScrollAxes(["depth"]), null);
+  assert.equal(normalizeScrollAxes(["vertical", "vertical"]), null);
+  assert.deepEqual(availableScrollAxes({
+    clientHeight: 100,
+    scrollHeight: 160,
+    clientWidth: 100,
+    scrollWidth: 101,
+  }, ["vertical", "horizontal"]), ["vertical"]);
+  assert.deepEqual(availableScrollAxes({
+    clientHeight: 100,
+    scrollHeight: 100,
+    clientWidth: 100,
+    scrollWidth: 160,
+  }, ["vertical", "horizontal"]), ["horizontal"]);
+  assert.equal(availableScrollAxes({}, []), null);
 });

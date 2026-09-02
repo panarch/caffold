@@ -248,7 +248,7 @@ test("copies each block exactly with bounded success and retryable failure", { t
   ).toBe(true);
   expect(requests).toEqual([]);
 
-  await secondBlock.scrollIntoViewIfNeeded();
+  await scrollIntoConversationView(secondBlock);
   await activateActionHint(page, /Copy code$/);
   await expect(secondCopy).toHaveAttribute("aria-label", "Copied");
   await expect(firstCopy).toHaveAttribute("aria-label", "Copied");
@@ -451,6 +451,31 @@ test("keeps opt-in code blocks current across rerenders", { tag: "@desktop" }, a
   await expect.poll(() => page.evaluate(() => window.__standaloneCopyCalls)).toBe(1);
   expect(scenario.pageErrors).toEqual([]);
 });
+
+async function scrollIntoConversationView(target) {
+  await target.evaluate((element) => {
+    const scrollport = element.closest(".task-conversation-scroll");
+    if (!scrollport) {
+      throw new Error("Code block has no Conversation scroll owner");
+    }
+    const before = {
+      left: scrollport.scrollLeft,
+      top: scrollport.scrollTop,
+    };
+    return new Promise((resolve) => {
+      const handleScroll = () => resolve();
+      scrollport.addEventListener("scroll", handleScroll, { once: true });
+      element.scrollIntoView({ block: "nearest", inline: "nearest" });
+      if (
+        scrollport.scrollLeft === before.left &&
+        scrollport.scrollTop === before.top
+      ) {
+        scrollport.removeEventListener("scroll", handleScroll);
+        resolve();
+      }
+    });
+  });
+}
 
 async function seedCodeBlockTask(page, threadId, { activeThinking = false } = {}) {
   const scenario = await installTaskLoopFixture(page, {

@@ -10,7 +10,7 @@ await import("./page.js");
 const files = registry.element("caffold-settings-files-page").prototype;
 after(() => registry.restore());
 
-test("provides only the exact overflowing file settings scrollport", () => {
+test("provides only the exact retained file settings scrollport", () => {
   const scrollport = {
     clientHeight: 100,
     scrollHeight: 240,
@@ -29,7 +29,7 @@ test("provides only the exact overflowing file settings scrollport", () => {
   assert.equal(scope.surfaces[0].scrollport, scrollport);
   assert.equal(scope.surfaces[0].isEligible(), true);
   scrollport.scrollHeight = 100;
-  assert.equal(scope.surfaces[0].isEligible(), false);
+  assert.equal(scope.surfaces[0].isEligible(), true);
   owner.hidden = true;
   assert.deepEqual(files.scrollSurfaceScope.call(owner).surfaces, []);
 });

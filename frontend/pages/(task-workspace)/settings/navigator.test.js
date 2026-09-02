@@ -63,7 +63,7 @@ test("provides all non-current direct Settings sections", () => {
   assert.equal(scope.targets[0].isActionable(), false);
 });
 
-test("provides only its exact overflowing section list as a Scroll surface", () => {
+test("provides only its exact retained section list as a Scroll surface", () => {
   const scroller = {
     clientHeight: 100,
     scrollHeight: 240,
@@ -80,7 +80,7 @@ test("provides only its exact overflowing section list as a Scroll surface", () 
   assert.equal(scope.surfaces[0].scrollport, scroller);
   assert.equal(scope.surfaces[0].isEligible(), true);
   scroller.scrollHeight = 100;
-  assert.equal(scope.surfaces[0].isEligible(), false);
+  assert.equal(scope.surfaces[0].isEligible(), true);
   owner.hidden = true;
   assert.deepEqual(navigator.scrollSurfaceScope.call(owner).surfaces, []);
 });

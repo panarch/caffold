@@ -2,7 +2,6 @@ import { escapeHtml } from "./dom.js";
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../scroll-scope.js";
 
 const HIGHLIGHT_IMPORT = "https://esm.sh/highlight.js@11.11.1/lib/common";
@@ -78,6 +77,7 @@ class CaffoldCodeViewer extends HTMLElement {
         id: `${scopeId}:scroll`,
         label,
         scrollport,
+        axes: ["vertical", "horizontal"],
         clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
         isEligible: () =>
           this.isConnected &&
@@ -86,8 +86,7 @@ class CaffoldCodeViewer extends HTMLElement {
             scrollport &&
           isCurrent() &&
           hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this],
       resizeElements: [this, scrollport],

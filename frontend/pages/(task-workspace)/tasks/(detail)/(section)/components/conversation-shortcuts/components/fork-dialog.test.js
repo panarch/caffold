@@ -49,7 +49,7 @@ test("provides the Thread ID and every owned fork dialog button", () => {
   assert.deepEqual(scope.targets[3].clipRoots, [dialog]);
 });
 
-test("declares the exact overflowing fork body", () => {
+test("declares the exact retained fork body", () => {
   const body = layoutElement({ clientHeight: 100, scrollHeight: 250 });
   const dialog = layoutElement({
     open: true,

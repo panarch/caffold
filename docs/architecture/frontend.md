@@ -434,11 +434,15 @@ this handoff. Missing, stale, hidden, disabled, outside-root, composing, or
 unregistered destinations do not cause the coordinator to infer a fallback or
 consume the key.
 
-Scroll mode enters from a non-editing `S` key and uses only vertical surfaces
+Scroll mode enters from a non-editing `S` key and uses only surfaces
 explicitly published through `scroll-scope.js`; it does not discover generic
-scrollable DOM. The reusable contract lives at `frontend/scroll-scope.js` so
-page and shared-component owners use one empty, merge, layout, and vertical
-overflow policy.
+scrollable DOM. Each owner declares a closed list of `vertical` and
+`horizontal` axes for its exact retained scrollport. An omitted declaration
+keeps the migration default of `vertical`, while empty, duplicate, or unknown
+axes fail context normalization. The central capture intersects those declared
+axes with the element's current measured overflow. Owners therefore validate
+identity, lifecycle, and layout without duplicating overflow policy or
+manufacturing CSS overflow for short content.
 
 Settings publishes its navigator plus the exact active page surface. Tasks
 publishes its navigator plus the visible New, Recovery, Codex-readiness,
@@ -448,51 +452,73 @@ Compare and Commit, and GitHub Pull Files merge their simultaneously visible
 tree and viewer leaves on desktop and omit the pane without a layout box on
 single-pane layouts. File tree, source, diff, Markdown preview, image stage,
 and scrollable notice owners publish their actual retained leaf rather than
-having a screen parent reach into their DOM.
+having a screen parent reach into their DOM. File tree, source, diff, Markdown
+preview hosts, GitHub Issue Markdown hosts, and image stages declare both axes;
+one element that overflows in both directions remains one surface with one
+selection code.
 
 Git Log, GitHub Issue and Pull lists, GitHub Issue Markdown or raw body, and
-Pull Request detail publish their exact vertical scrollports. The GitHub
-Markdown Shadow-DOM component publishes its scrolling host; the coordinator
-does not inspect its shadow descendants. Five registered product dialogs
-publish one exact vertical surface each: directory picker `.file-tree-scroll`,
-Conversation fork body, command-output body, Current Plan Markdown preview,
-and Task Start body. Each registered popover publishes only its own root as an
-optional surface. Actual overflow is always required, and no CSS overflow is
-manufactured for short pages, dialogs, or menus. Composer textareas, native
-editable controls, horizontal code/table surfaces, and other undeclared
-scrollports remain with their native owner.
+Pull Request detail publish their exact vertical scrollports. Markdown owners
+retain final-mount registries for native code blocks and table wrappers, so Task
+Markdown, the shared Markdown Preview, and GitHub Markdown's Shadow DOM publish
+their exact horizontal children without coordinator inspection. Pull detail
+merges each direct description, comment, and review Markdown child through that
+same public scope. Conversation merges its vertical transcript with direct
+retained Assistant Message,
+Thinking, active Command, expanded Work Details, tool-output, and approval
+command scopes. Collapsed disclosures publish no inner surface.
+
+Five registered product dialogs publish their exact parent surface: directory
+picker `.file-tree-scroll`, Conversation fork body, command-output body,
+Current Plan Markdown preview, and Task Start body. Command Output additionally
+publishes its output `pre`; Current Plan delegates the shared preview's code
+and table scopes; and Pull Task Start merges its base/head relationship
+`dl`. A modal may therefore select among parent and nested surfaces. Each
+registered popover continues to publish only its own root as an optional
+surface. Composer textareas, control strips, native editable internals,
+document/window scrolling, and other undeclared overflow remain with their
+native owner.
 
 Containers merge only active direct-child scopes. Workspace, an open
 registered modal, and an open registered popover are exclusive interaction
 contexts, so overlay scrolling never shares a selection set with background
 workspace surfaces.
 
-Eligibility directly checks the bound element, vertical overflow, layout box,
-visual viewport, clip roots, and owner revalidation. One eligible surface
-enters active mode directly. Multiple workspace surfaces receive temporary
-same-width `ASDFGHJKLQWERTYUIOPZXCVBNM` codes in visual order and appear in a
-native modal selector; multiple surfaces in a modal context are rejected.
-The selector session freezes the context, surface IDs, element bindings,
-geometry, and codes. Scroll, viewport, zoom, geometry, visibility, overflow,
-topology, route, or context changes close that session instead of reallocating
-or retargeting it.
+Eligibility directly checks the bound element, current declared-axis overflow,
+layout box, visual viewport, clip roots, and owner revalidation. One eligible
+surface enters active mode directly. Multiple workspace or modal surfaces
+receive temporary same-width `ASDFGHJKLQWERTYUIOPZXCVBNM` codes in visual
+order and appear in their context-local native modal selector; a popover with
+multiple eligible surfaces rejects entry. Parent and nested badges use
+deterministic non-overlapping placements within the visual viewport. The
+selector session freezes the context, surface IDs, element bindings, declared
+and available axes, geometry, and codes. Ancestor scrolling, viewport, zoom,
+geometry, visibility, axis availability, topology, route, or context changes
+close that session instead of reallocating or retargeting it.
 
 Active Scroll mode sends `J/K` by 10 percent and `D/U` by 50 percent of the
-selected scrollport height, clamps immediately at its boundaries, and accepts
-key repeat without chaining into a parent or the window. `Escape` closes only
-Scroll mode. A non-repeated, non-composing `F` without Ctrl, Alt, or Meta first
-closes active Scroll mode and releases its scoped observers, then captures a
-fresh Action Hint snapshot in the current context. A context with no eligible
-action leaves no stored keyboard mode. Scroll selection continues to treat `F`
-as a possible surface code rather than switching modes. Active revalidation
-preserves the exact context, surface ID, and element binding; label or layout
-changes on that binding reposition its HUD, while loss of visibility, overflow,
-or ownership closes the mode. The reusable non-interactive HUD and outline are
-mounted by the active context itself: the workspace owns one for Task list or
-Conversation, while each registered product dialog or popover owns one inside
-its retained root. Native scroll events, focus, Conversation anchoring, popover
-light dismiss, and product-dialog refresh/close lifecycle remain owned by those
-components.
+selected scrollport height. `H/L` moves left or right by 10 percent of its
+width. Every delta is at least one CSS pixel and clamps immediately to the exact
+axis boundary. Supported commands are consumed even at a boundary and accept
+key repeat without chaining into a parent or the window. The HUD advertises
+only the commands for the captured available axes, plus the common `F` and
+`Escape` exits. `Escape` closes only Scroll mode. A non-repeated,
+non-composing `F` without Ctrl, Alt, or Meta first closes active Scroll mode
+and releases its scoped observers, then captures a fresh Action Hint snapshot
+in the current context. A context with no eligible action leaves no stored
+keyboard mode. Scroll selection continues to treat `F` as a possible surface
+code rather than switching modes.
+
+Active revalidation preserves the exact context, surface ID, element binding,
+and axes. Scrolling the selected element itself keeps the session active;
+ancestor, sibling, viewport, or ownership movement revalidates it. A label or
+layout change on the same binding patches or repositions its HUD, while loss of
+visibility, overflow, axis availability, or ownership closes the mode. The
+reusable non-interactive HUD and outline are mounted by the active context
+itself: the workspace owns one for Task list or Conversation, while each
+registered product dialog or popover owns one inside its retained root. Native
+scroll events, focus, Conversation anchoring, popover light dismiss, and
+product-dialog refresh/close lifecycle remain owned by those components.
 
 The workspace also owns the one browser lifecycle for backend-owned Codex
 readiness requests and forwards a request snapshot to Tasks, Settings, and the

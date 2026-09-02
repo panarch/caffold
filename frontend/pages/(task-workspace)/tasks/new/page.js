@@ -3,7 +3,6 @@ import { mergeKeyboardNavigationContexts } from "../../../../keyboard-navigation
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../../../../scroll-scope.js";
 import "./components/directory-picker.js";
 import "../components/task-create.js";
@@ -146,8 +145,7 @@ class CaffoldTaskNew extends HTMLElement {
           this.selectedContextPath() === cwd &&
           this.querySelector(":scope > .task-new-workspace") === scrollport &&
           hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this],
       resizeElements: [this, scrollport],

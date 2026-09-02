@@ -2,7 +2,10 @@ import {
   mergeActionHintScopes,
   normalizeMutationRootList,
 } from "../action-hints.js";
-import { mergeScrollSurfaceScopes } from "../scroll-scope.js";
+import {
+  mergeScrollSurfaceScopes,
+  normalizeScrollAxes,
+} from "../scroll-scope.js";
 
 const KEYBOARD_CONTEXT_KINDS = new Set(["workspace", "modal", "popover"]);
 
@@ -231,18 +234,20 @@ function normalizeSurfaces(surfaces) {
     const id = `${surface?.id ?? ""}`.trim();
     const label = `${surface?.label ?? ""}`.trim();
     const clipRoots = normalizeElementList(surface?.clipRoots ?? []);
+    const axes = normalizeScrollAxes(surface?.axes);
     if (
       !id ||
       ids.has(id) ||
       !label ||
       !(surface?.scrollport instanceof HTMLElement) ||
       !clipRoots ||
+      !axes ||
       typeof surface?.isEligible !== "function"
     ) {
       return null;
     }
     ids.add(id);
-    normalized.push({ ...surface, id, label, clipRoots });
+    normalized.push({ ...surface, id, label, axes, clipRoots });
   }
   return normalized;
 }

@@ -13,8 +13,6 @@ import {
 } from "../../../../../../../../action-hints.js";
 import {
   emptyScrollSurfaceScope,
-  hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../../../../../../../../scroll-scope.js";
 import {
   keyboardNavigationContext,
@@ -141,28 +139,18 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
     const label = `${this.current?.label ?? "Document"}`.trim() || "Document";
     const scope = !path
       ? emptyScrollSurfaceScope()
-      : {
-          blocked: false,
-          surfaces: [{
-            id: `current-plan:${path}:preview`,
-            label: `${label} document`,
-            scrollport: preview,
-            clipRoots: [dialog, preview],
-            isEligible: () =>
-              this.isConnected &&
-              this.dialog() === dialog &&
-              dialog.open &&
-              this.current?.path === path &&
-              this.preview() === preview &&
-              !preview.hidden &&
-              hasScrollLayoutBox(dialog) &&
-              hasScrollLayoutBox(preview) &&
-              hasVerticalScrollOverflow(preview),
-          }],
-          mutationRoots: [this, dialog, preview],
-          resizeElements: [dialog, preview],
-          scrollRoots: [preview],
-        };
+      : preview.scrollSurfaceScope?.({
+          scopeId: `current-plan:${path}:preview`,
+          label: `${label} document`,
+          clipRoots: [dialog],
+          isCurrent: () =>
+            this.isConnected &&
+            this.dialog() === dialog &&
+            dialog.open &&
+            this.current?.path === path &&
+            this.preview() === preview &&
+            !preview.hidden,
+        }) ?? emptyScrollSurfaceScope();
     return [keyboardNavigationContext({
       id: path ? `current-plan-document:${path}` : "current-plan-document",
       kind: "modal",
@@ -288,7 +276,7 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
     this.opener = null;
     this.current = null;
     if (opener?.isConnected) {
-      window.requestAnimationFrame(() => opener.focus());
+      opener.focus();
     }
   }
 

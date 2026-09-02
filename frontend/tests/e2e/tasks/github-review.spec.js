@@ -955,11 +955,10 @@ test("contains Issue list and detail content within the foldable Task pane", { t
 
 test("scrolls a retained GitHub Issue body through its public Shadow DOM host", { tag: "@all-viewports" }, async ({
   page,
-}) => {
-  const viewport = page.viewportSize();
-  await page.setViewportSize({ ...viewport, height: 360 });
+}, testInfo) => {
   await installLinkedWorktreeGithubFixture(page, {
     issueBodyHtml: [
+      CONSTRAINED_MARKDOWN_HTML,
       ...Array.from(
         { length: 100 },
         (_, index) => `<p>Issue keyboard scroll line ${index + 1}</p>`,
@@ -981,6 +980,14 @@ test("scrolls a retained GitHub Issue body through its public Shadow DOM host", 
   await expect.poll(() => body.evaluate(
     (element) => element.scrollHeight > element.clientHeight + 1,
   )).toBe(true);
+  const code = body.locator("pre").first();
+  const table = body.locator(".markdown-table-scroll").first();
+  await expect.poll(() => code.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
+  await expect.poll(() => table.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
   const initialHints = await enterActionHints(page);
   await expect(
     initialHints.getByLabel(/ — Open Deep issue reference in a new tab$/),
@@ -989,7 +996,53 @@ test("scrolls a retained GitHub Issue body through its public Shadow DOM host", 
 
   await workspace.focus();
   await page.keyboard.press("s");
-  await expect(selector).toBeHidden();
+  await expect(selector).toBeVisible();
+  const badges = selector.locator("button[data-scroll-surface-code]");
+  await expect(badges).toHaveCount(3);
+  expect(new Set(await badges.evaluateAll((elements) =>
+    elements.map((element) => element.getAttribute("aria-label")
+      .replace(/^[A-Z]+ — /, ""))
+  ))).toEqual(new Set([
+    "Issue description",
+    "Issue description code block 1",
+    "Issue description Markdown table 1",
+  ]));
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "github-issue-nested-scroll-selector",
+  );
+  const bodyBeforeNested = await body.evaluate((element) => element.scrollTop);
+  await selector.getByLabel(
+    /^[A-Z]+ — Issue description code block 1$/,
+  ).click();
+  await expect(hud).toContainText(
+    "Scroll: Issue description code block 1",
+  );
+  await expect(hud).toContainText("H/L small");
+  await expect(hud).not.toContainText("J/K small");
+  await page.keyboard.press("l");
+  await expect.poll(() => code.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  expect(await body.evaluate((element) => element.scrollTop)).toBe(
+    bodyBeforeNested,
+  );
+  expect(await table.evaluate((element) => element.scrollLeft)).toBe(0);
+  await page.keyboard.press("Escape");
+
+  await workspace.focus();
+  await page.keyboard.press("s");
+  await selector.getByLabel(
+    /^[A-Z]+ — Issue description Markdown table 1$/,
+  ).click();
+  await page.keyboard.press("l");
+  await expect.poll(() => table.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+
+  await workspace.focus();
+  await page.keyboard.press("s");
+  await selector.getByLabel(/^[A-Z]+ — Issue description$/).click();
   await expect(hud).toContainText("Scroll: Issue description");
   await page.keyboard.press("j");
   await expect.poll(() => body.evaluate((element) => element.scrollTop))
@@ -1033,10 +1086,13 @@ test("scrolls GitHub lists, Pull detail, and exact Pull Files surfaces from the 
     largeLists: true,
     largePullFiles: true,
     longPullDiff: true,
-    pullBodyHtml: Array.from(
-      { length: 100 },
-      (_, index) => `<p>Pull keyboard scroll line ${index + 1}</p>`,
-    ).join(""),
+    pullBodyHtml: [
+      '<pre><code>const pullRequestWideLine = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";</code></pre>',
+      ...Array.from(
+        { length: 100 },
+        (_, index) => `<p>Pull keyboard scroll line ${index + 1}</p>`,
+      ),
+    ].join(""),
   });
 
   const workspace = page.locator(".task-workspace-surface");
@@ -1072,10 +1128,43 @@ test("scrolls GitHub lists, Pull detail, and exact Pull Files surfaces from the 
   );
 
   await page.goto(`/tasks/${THREAD_ID}/github/pulls/1983`);
-  await scrollSingleSurface(
-    page.locator("caffold-github-pull-detail-page .github-pull-viewer-scroll"),
-    "Pull request details",
+  const pullDetailScroll = page.locator(
+    "caffold-github-pull-detail-page .github-pull-viewer-scroll",
   );
+  const pullCode = page.locator(
+    "caffold-github-pull-detail-page caffold-github-markdown",
+  ).first().locator("pre").first();
+  await expect.poll(() => pullDetailScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await expect.poll(() => pullCode.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
+  await workspace.focus();
+  await page.keyboard.press("s");
+  await expect(selector).toBeVisible();
+  await expect(selector.locator("button[data-scroll-surface-code]")).toHaveCount(2);
+  await selector.getByLabel(
+    /^[A-Z]+ — Pull request Markdown 1 code block 1$/,
+  ).click();
+  const pullDetailBeforeCode = await pullDetailScroll.evaluate(
+    (element) => element.scrollTop,
+  );
+  await page.keyboard.press("l");
+  await expect.poll(() => pullCode.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  expect(await pullDetailScroll.evaluate((element) => element.scrollTop)).toBe(
+    pullDetailBeforeCode,
+  );
+  await page.keyboard.press("Escape");
+  await workspace.focus();
+  await page.keyboard.press("s");
+  await selector.getByLabel(/^[A-Z]+ — Pull request details$/).click();
+  await page.keyboard.press("j");
+  await expect.poll(() =>
+    pullDetailScroll.evaluate((element) => element.scrollTop)
+  ).toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
   await activateActionHint(page, /Open files for PR #1983$/);
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls/1983/files`);
 

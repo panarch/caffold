@@ -57,3 +57,36 @@ test("provides retained Wrap and Copy code buttons", () => {
   owner.connected = false;
   assert.equal(scope.targets[0].isActionable(), false);
 });
+
+test("provides only its exact retained horizontal code scrollport", () => {
+  const pre = layoutElement();
+  let currentPre = pre;
+  let current = true;
+  const owner = layoutElement({
+    connected: true,
+    hidden: false,
+    isConnected: true,
+    pre: () => currentPre,
+  });
+
+  const scope = codeBlock.scrollSurfaceScope.call(owner, {
+    scopeId: "message:a:code-block:1",
+    label: "JavaScript code block 1",
+    isCurrent: () => current,
+  });
+  const surface = scope.surfaces[0];
+  assert.equal(surface.id, "message:a:code-block:1:scroll");
+  assert.equal(surface.label, "JavaScript code block 1");
+  assert.equal(surface.scrollport, pre);
+  assert.deepEqual(surface.axes, ["horizontal"]);
+  assert.equal(surface.isEligible(), true);
+  currentPre = layoutElement();
+  assert.equal(surface.isEligible(), false);
+  currentPre = pre;
+  current = false;
+  assert.equal(surface.isEligible(), false);
+});
+
+function layoutElement(properties = {}) {
+  return { getClientRects: () => [{}], ...properties };
+}

@@ -171,7 +171,7 @@ test("App Shell owns one global keyboard listener over explicit Scroll providers
   assert.match(taskNavigator, /:scope > \.task-list-scroll/);
   assert.match(conversation, /:scope > \.task-conversation-scroll/);
   assert.match(currentPlanDialog, /this\.preview\(\)/);
-  assert.match(currentPlanDialog, /scrollport: preview/);
+  assert.match(currentPlanDialog, /preview\.scrollSurfaceScope\?\.\(/);
 });
 
 test("App Shell owns the normal context and route cleanup while Task Workspace provides product state", () => {

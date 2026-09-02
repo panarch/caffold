@@ -16,6 +16,7 @@ test("provides only the exact active Conversation scrollport", () => {
     scrollHeight: 800,
     getClientRects: () => [{}],
   };
+  const list = { children: [] };
   const owner = {
     active: true,
     hidden: false,
@@ -24,6 +25,7 @@ test("provides only the exact active Conversation scrollport", () => {
     ensureState() {},
     getClientRects: () => [{}],
     scroller: () => scrollport,
+    conversationList: () => list,
   };
 
   const scope = conversation.scrollSurfaceScope.call(owner);
@@ -51,11 +53,85 @@ test("provides only the exact active Conversation scrollport", () => {
   assert.equal(surface.isEligible(), false);
 });
 
+test("composes direct tool and approval command scrollports with Conversation", () => {
+  const toolOutput = layoutElement();
+  let currentToolOutput = toolOutput;
+  const toolEntry = {
+    dataset: { conversationEntryKey: "tool-a" },
+    matches: (selector) => selector === ".task-tool-card",
+    querySelector(selector) {
+      if (selector === ":scope > pre") return currentToolOutput;
+      if (selector === ":scope > header > strong") {
+        return { textContent: "Plan" };
+      }
+      return null;
+    },
+  };
+  const approvalCommand = layoutElement();
+  const approvalCard = {
+    dataset: { approvalId: "approval-a" },
+    querySelector: () => approvalCommand,
+  };
+  const approvalEntry = {
+    dataset: { conversationEntryKey: "approval-flow-a" },
+    matches: (selector) => selector === ".task-approval-flow",
+    querySelector: () => null,
+    querySelectorAll: () => [approvalCard],
+  };
+  const list = { children: [toolEntry, approvalEntry] };
+  const scrollport = layoutElement();
+  const owner = layoutElement({
+    active: true,
+    hidden: false,
+    isConnected: true,
+    snapshot: { threadId: "thread-a", task: { threadId: "thread-a" } },
+    ensureState() {},
+    scroller: () => scrollport,
+    conversationList: () => list,
+  });
+
+  const scope = conversation.scrollSurfaceScope.call(owner);
+  assert.deepEqual(scope.surfaces.map(({ id, label, axes }) => ({
+    id,
+    label,
+    axes,
+  })), [
+    {
+      id: "task:thread-a:conversation",
+      label: "Conversation",
+      axes: undefined,
+    },
+    {
+      id: "task:thread-a:conversation:tool-output:tool-a:scroll",
+      label: "Plan output",
+      axes: ["horizontal"],
+    },
+    {
+      id:
+        "task:thread-a:conversation:approval:approval-a:approval-flow-a:scroll",
+      label: "Approval command",
+      axes: ["horizontal"],
+    },
+  ]);
+  assert.equal(scope.surfaces[1].isEligible(), true);
+  assert.equal(scope.surfaces[2].isEligible(), true);
+  currentToolOutput = layoutElement();
+  assert.equal(scope.surfaces[1].isEligible(), false);
+  currentToolOutput = toolOutput;
+  approvalCard.dataset.approvalId = "approval-b";
+  assert.equal(scope.surfaces[2].isEligible(), false);
+  approvalCard.dataset.approvalId = "approval-a";
+  owner.snapshot = { threadId: "thread-a", task: null };
+  assert.equal(scope.surfaces[1].isEligible(), false);
+  assert.equal(scope.surfaces[2].isEligible(), false);
+});
+
 test("returns an empty scope before a Conversation owns a Task scrollport", () => {
   const scope = conversation.scrollSurfaceScope.call({
     snapshot: { threadId: "", task: null },
     ensureState() {},
     scroller: () => null,
+    conversationList: () => null,
   });
   assert.deepEqual(scope.surfaces, []);
 });
@@ -74,6 +150,10 @@ function conversationButton(dataset, label) {
       this.clicks += 1;
     },
   };
+}
+
+function layoutElement(properties = {}) {
+  return { getClientRects: () => [{}], ...properties };
 }
 
 test("merges owned Conversation actions with direct retained child providers", () => {

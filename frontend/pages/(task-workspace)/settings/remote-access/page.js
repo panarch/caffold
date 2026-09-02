@@ -12,7 +12,6 @@ import {
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../../../../scroll-scope.js";
 
 const STATE_COPY = Object.freeze({
@@ -231,8 +230,7 @@ class CaffoldSettingsRemoteAccessPage extends HTMLElement {
           this.querySelector(":scope > .settings-content-scroll") ===
             scrollport &&
           hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this],
       resizeElements: [this, scrollport],

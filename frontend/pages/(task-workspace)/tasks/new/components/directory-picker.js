@@ -13,7 +13,6 @@ import { keyboardNavigationContext } from "../../../../../keyboard-navigation.js
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../../../../../scroll-scope.js";
 import "../../../../../keyboard-navigation/components/presentation.js";
 
@@ -215,8 +214,7 @@ class CaffoldTaskDirectoryPicker extends HTMLElement {
           this.tree() === tree &&
           tree.scroller?.() === scrollport &&
           hasScrollLayoutBox(dialog) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this, tree],
       resizeElements: [dialog, tree, scrollport],

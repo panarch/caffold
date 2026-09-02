@@ -134,3 +134,38 @@ test("provides View output only for the retained terminal command", () => {
   assert.equal(target.isActionable(), false);
   control = null;
 });
+
+test("provides active output only while its exact disclosure is expanded", () => {
+  const output = layoutElement();
+  const disclosure = {
+    open: true,
+    querySelector: () => output,
+  };
+  let currentDisclosure = disclosure;
+  const owner = layoutElement({
+    hidden: false,
+    isConnected: true,
+    commandKey: "command-a",
+    presentation: { mode: "active" },
+    ensureState() {},
+    disclosure: () => currentDisclosure,
+  });
+
+  const scope = command.scrollSurfaceScope.call(owner, {
+    scopeId: "task:a:command:a",
+  });
+  const surface = scope.surfaces[0];
+  assert.equal(surface.id, "task:a:command:a:output");
+  assert.equal(surface.scrollport, output);
+  assert.deepEqual(surface.axes, ["horizontal"]);
+  assert.equal(surface.isEligible(), true);
+  disclosure.open = false;
+  assert.equal(surface.isEligible(), false);
+  disclosure.open = true;
+  currentDisclosure = { ...disclosure };
+  assert.equal(surface.isEligible(), false);
+});
+
+function layoutElement(properties = {}) {
+  return { getClientRects: () => [{}], ...properties };
+}

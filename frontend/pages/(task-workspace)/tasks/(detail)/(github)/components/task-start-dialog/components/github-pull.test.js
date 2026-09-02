@@ -35,3 +35,33 @@ test("provides Refresh PR only from the exact current error control", () => {
   owner.pending = true;
   assert.equal(target.isActionable(), false);
 });
+
+test("provides the exact Pull base and head relationship scrollport", () => {
+  const relationship = layoutElement();
+  let current = relationship;
+  const owner = layoutElement({
+    isConnected: true,
+    hidden: false,
+    repository: { rootPath: "repo" },
+    source: () => ({ number: 7 }),
+    querySelector: () => current,
+  });
+
+  const scope = pullSource.scrollSurfaceScope.call(owner, {
+    scopeId: "github-task-start:pull:7:source",
+  });
+  const surface = scope.surfaces[0];
+  assert.equal(
+    surface.id,
+    "github-task-start:pull:7:source:relationship",
+  );
+  assert.equal(surface.scrollport, relationship);
+  assert.deepEqual(surface.axes, ["horizontal"]);
+  assert.equal(surface.isEligible(), true);
+  current = layoutElement();
+  assert.equal(surface.isEligible(), false);
+});
+
+function layoutElement(properties = {}) {
+  return { getClientRects: () => [{}], ...properties };
+}

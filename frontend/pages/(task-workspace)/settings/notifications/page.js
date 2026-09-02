@@ -14,7 +14,6 @@ import {
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../../../../scroll-scope.js";
 import {
   applicationServerKey,
@@ -381,8 +380,7 @@ class CaffoldSettingsNotificationsPage extends HTMLElement {
           this.querySelector(":scope > .settings-content-scroll") ===
             scrollport &&
           hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this],
       resizeElements: [this, scrollport],

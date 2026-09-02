@@ -11,7 +11,6 @@ import {
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../../../../scroll-scope.js";
 import {
   APPEARANCE_RANGE_SETTINGS,
@@ -109,8 +108,7 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
           isCurrent() &&
           this.querySelector(":scope > .settings-scroll") === scrollport &&
           hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this],
       resizeElements: [this, scrollport],

@@ -10,7 +10,7 @@ import {
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
+  mergeScrollSurfaceScopes,
 } from "../../../../../../scroll-scope.js";
 
 const FORBIDDEN_ELEMENTS = new Set([
@@ -35,6 +35,7 @@ class CaffoldGithubMarkdown extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this.actionHintLinks = [];
+    this.scrollSurfaceRecords = [];
     this.shadowRoot.innerHTML = `
       <style>
         :host {
@@ -214,6 +215,7 @@ class CaffoldGithubMarkdown extends HTMLElement {
     const body = this.shadowRoot.querySelector(".markdown-body");
     body.replaceChildren(template.content.cloneNode(true));
     this.actionHintLinks = collectActionHintLinks(body);
+    this.scrollSurfaceRecords = collectScrollSurfaceRecords(body);
   }
 
   actionHintScope({
@@ -282,24 +284,48 @@ class CaffoldGithubMarkdown extends HTMLElement {
       return emptyScrollSurfaceScope();
     }
     const scrollport = this;
-    return {
+    const ownScope = {
       blocked: false,
       surfaces: [{
         id: `${scopeId}:scroll`,
         label,
         scrollport,
+        axes: ["vertical", "horizontal"],
         clipRoots: [this, ...clipRoots].filter(Boolean),
         isEligible: () =>
           this.isConnected &&
           !this.hidden &&
           isCurrent() &&
-          hasScrollLayoutBox(this) &&
-          hasVerticalScrollOverflow(this),
+          hasScrollLayoutBox(this),
       }],
       mutationRoots: [this, this.shadowRoot],
       resizeElements: [this],
       scrollRoots: [this],
     };
+    const body = this.shadowRoot.querySelector(".markdown-body");
+    const nestedScopes = (this.scrollSurfaceRecords ?? []).map((record) => ({
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:${record.kind}:${record.ordinal}`,
+        label: `${label} ${record.label}`,
+        scrollport: record.scrollport,
+        axes: ["horizontal"],
+        clipRoots: [this, body, record.scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.shadowRoot.querySelector(".markdown-body") === body &&
+          this.scrollSurfaceRecords?.includes(record) &&
+          body?.contains(record.scrollport) &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(record.scrollport),
+      }],
+      mutationRoots: [this, this.shadowRoot],
+      resizeElements: [this, record.scrollport],
+      scrollRoots: [this, record.scrollport],
+    }));
+    return mergeScrollSurfaceScopes(ownScope, ...nestedScopes);
   }
 }
 
@@ -312,6 +338,25 @@ function collectActionHintLinks(root) {
           linkActionHintLabel(control)
         ? [{ control, ordinal: index + 1, binding }]
         : [];
+    },
+  );
+}
+
+function collectScrollSurfaceRecords(root) {
+  const ordinals = new Map();
+  return Array.from(root.querySelectorAll("pre, .markdown-table-scroll")).map(
+    (scrollport) => {
+      const kind = scrollport.localName === "pre" ? "code" : "table";
+      const ordinal = (ordinals.get(kind) ?? 0) + 1;
+      ordinals.set(kind, ordinal);
+      return {
+        kind,
+        ordinal,
+        label: kind === "code"
+          ? `code block ${ordinal}`
+          : `Markdown table ${ordinal}`,
+        scrollport,
+      };
     },
   );
 }

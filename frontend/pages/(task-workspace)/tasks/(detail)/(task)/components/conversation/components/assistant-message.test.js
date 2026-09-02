@@ -29,3 +29,28 @@ test("delegates only to its direct Markdown child", () => {
   owner.hidden = true;
   assert.deepEqual(message.actionHintScope.call(owner, { scopeId: "message:a" }).targets, []);
 });
+
+test("delegates Scroll only to its exact current Markdown child", () => {
+  const childScope = { surfaces: [{ id: "markdown-table" }] };
+  const child = {
+    scrollSurfaceScope(options) {
+      this.options = options;
+      return childScope;
+    },
+  };
+  let markdown = child;
+  const owner = {
+    hidden: false,
+    isConnected: true,
+    querySelector: () => markdown,
+  };
+
+  assert.equal(message.scrollSurfaceScope.call(owner, {
+    scopeId: "message:a",
+    clipRoots: [{ id: "conversation" }],
+  }), childScope);
+  assert.equal(child.options.scopeId, "message:a:markdown");
+  assert.equal(child.options.isCurrent(), true);
+  markdown = null;
+  assert.equal(child.options.isCurrent(), false);
+});

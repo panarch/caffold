@@ -322,6 +322,7 @@ test("keeps an owned image surface bound to its exact retained scrollport", () =
     scopeId: "review:viewer",
   });
   assert.equal(scope.surfaces[0].scrollport, scrollport);
+  assert.deepEqual(scope.surfaces[0].axes, ["vertical", "horizontal"]);
   assert.equal(scope.surfaces[0].isEligible(), true);
   current = { ...scrollport };
   assert.equal(scope.surfaces[0].isEligible(), false);

@@ -8,10 +8,12 @@ import {
 } from "../action-hints.js";
 
 export const SCROLL_COMMAND = Object.freeze({
-  J: Object.freeze({ direction: 1, ratio: 0.1 }),
-  K: Object.freeze({ direction: -1, ratio: 0.1 }),
-  D: Object.freeze({ direction: 1, ratio: 0.5 }),
-  U: Object.freeze({ direction: -1, ratio: 0.5 }),
+  J: Object.freeze({ axis: "vertical", direction: 1, ratio: 0.1 }),
+  K: Object.freeze({ axis: "vertical", direction: -1, ratio: 0.1 }),
+  D: Object.freeze({ axis: "vertical", direction: 1, ratio: 0.5 }),
+  U: Object.freeze({ axis: "vertical", direction: -1, ratio: 0.5 }),
+  H: Object.freeze({ axis: "horizontal", direction: -1, ratio: 0.1 }),
+  L: Object.freeze({ axis: "horizontal", direction: 1, ratio: 0.1 }),
 });
 
 export function allocateScrollSurfaceCodes(surfaces) {
@@ -52,19 +54,42 @@ export function orderScrollSurfaces(surfaces) {
 
 export function scrollCommandPosition({
   command,
+  availableAxes = ["vertical"],
   scrollTop,
   scrollHeight,
   clientHeight,
+  scrollLeft,
+  scrollWidth,
+  clientWidth,
 } = {}) {
   const policy = SCROLL_COMMAND[command];
-  const height = Math.max(0, Number(clientHeight) || 0);
-  const maximum = Math.max(0, (Number(scrollHeight) || 0) - height);
-  const current = clamp(Number(scrollTop) || 0, 0, maximum);
-  if (!policy) {
+  if (
+    !policy ||
+    !Array.isArray(availableAxes) ||
+    !availableAxes.includes(policy.axis)
+  ) {
     return null;
   }
-  const delta = Math.max(1, Math.round(height * policy.ratio));
-  return clamp(current + policy.direction * delta, 0, maximum);
+  const isVertical = policy.axis === "vertical";
+  const clientSize = Math.max(
+    0,
+    Number(isVertical ? clientHeight : clientWidth) || 0,
+  );
+  const scrollSize = Math.max(
+    0,
+    Number(isVertical ? scrollHeight : scrollWidth) || 0,
+  );
+  const maximum = Math.max(0, scrollSize - clientSize);
+  const current = clamp(
+    Number(isVertical ? scrollTop : scrollLeft) || 0,
+    0,
+    maximum,
+  );
+  const delta = Math.max(1, Math.round(clientSize * policy.ratio));
+  return {
+    axis: policy.axis,
+    position: clamp(current + policy.direction * delta, 0, maximum),
+  };
 }
 
 export function sameScrollSelectionSnapshot(left, right) {
@@ -91,6 +116,8 @@ export function sameScrollSelectionSnapshot(left, right) {
         surface.id === other.id &&
         surface.code === other.code &&
         surface.scrollport === other.scrollport &&
+        sameStringList(surface.axes, other.axes) &&
+        sameStringList(surface.availableAxes, other.availableAxes) &&
         sameElementSet(surface.clipRoots, other.clipRoots) &&
         rectsEqual(surface.visibleRect, other.visibleRect)
     );
@@ -110,6 +137,8 @@ export function sameActiveScrollBinding(left, right) {
       rectsEqual(left.viewport.rect, right.viewport.rect) &&
       left.id === right.id &&
       left.scrollport === right.scrollport &&
+      sameStringList(left.axes, right.axes) &&
+      sameStringList(left.availableAxes, right.availableAxes) &&
       sameElementSet(left.clipRoots, right.clipRoots)
   );
 }
@@ -124,6 +153,13 @@ function sameElementSet(left, right) {
     Array.isArray(right) &&
     left.length === right.length &&
     left.every((element) => right.includes(element));
+}
+
+function sameStringList(left, right) {
+  return Array.isArray(left) &&
+    Array.isArray(right) &&
+    left.length === right.length &&
+    left.every((value, index) => value === right[index]);
 }
 
 function clamp(value, minimum, maximum) {

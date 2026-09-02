@@ -7,7 +7,6 @@ import {
 import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
-  hasVerticalScrollOverflow,
 } from "../scroll-scope.js";
 import {
   diffViewerPresentation,
@@ -373,6 +372,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
         currentScrollport: () => this.querySelector(
           ":scope > .image-panel > .image-stage",
         ),
+        axes: ["vertical", "horizontal"],
         clipRoots,
       });
     }
@@ -400,6 +400,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
     state,
     scrollport,
     currentScrollport,
+    axes,
     clipRoots = [],
   }) {
     if (!scrollport) {
@@ -411,6 +412,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
         id: `${scopeId}:scroll`,
         label,
         scrollport,
+        ...(axes ? { axes } : {}),
         clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
         isEligible: () =>
           this.isConnected &&
@@ -419,8 +421,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
           currentScrollport() === scrollport &&
           scrollport.isConnected &&
           hasScrollLayoutBox(this) &&
-          hasScrollLayoutBox(scrollport) &&
-          hasVerticalScrollOverflow(scrollport),
+          hasScrollLayoutBox(scrollport),
       }],
       mutationRoots: [this, scrollport],
       resizeElements: [this, scrollport],
