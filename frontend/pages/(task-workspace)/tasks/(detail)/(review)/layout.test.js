@@ -89,6 +89,7 @@ test("merges Review axes with only the active navigator and selected viewer", ()
   );
   assert.deepEqual(calls, { working: 1, branch: 1, files: 0, viewer: 1 });
   assert.equal(actionOptions.branch.disclosureActionId, "disclosure.toggle");
+  assert.equal(actionOptions.branch.selectActionId, "control.select.open");
   assert.equal(actionOptions.viewer.linkActionId, "link.open");
 
   owner.route = { ...owner.route, navigator: "files" };

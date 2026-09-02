@@ -272,6 +272,7 @@ test("editable Action Hint targets focus synchronously and select uses native pi
     focus: (options) => calls.push(["select-focus", options]),
     showPicker: () => calls.push(["show-picker"]),
   };
+  const selectAnchor = {};
   const common = {
     id: "dialog:editable",
     actionId: "dialog.textbox.focus",
@@ -287,10 +288,13 @@ test("editable Action Hint targets focus synchronously and select uses native pi
     actionId: "control.select.open",
     label: "Choose value",
     control: select,
+    anchor: selectAnchor,
   });
 
   assert.equal(textboxTarget.controlKind, "textbox");
   assert.equal(selectTarget.controlKind, "select");
+  assert.equal(selectTarget.control, select);
+  assert.equal(selectTarget.anchor, selectAnchor);
   textboxTarget.activate();
   selectTarget.activate();
   assert.deepEqual(calls, [
@@ -309,14 +313,16 @@ test("native select activation keeps focus when showPicker is absent or throws",
       },
       showPicker,
     };
-    selectActionHintTarget({
+    const target = selectActionHintTarget({
       id: "dialog:select",
       actionId: "control.select.open",
       label: "Choose value",
       control,
       clipRoots: [],
       isActionable: () => true,
-    }).activate();
+    });
+    assert.equal(target.anchor, control);
+    target.activate();
     assert.equal(focused, 1);
   }
 });

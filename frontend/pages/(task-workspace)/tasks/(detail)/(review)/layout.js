@@ -348,6 +348,7 @@ class CaffoldTaskReview extends HTMLElement {
               scopeId: `${scopeId}:branch`,
               actionId: ACTION_HINT_ACTION.FILE_OPEN,
               disclosureActionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+              selectActionId: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
               clipRoots: navigatorClipRoots,
             })
           : this.workingTree()?.actionHintScope({

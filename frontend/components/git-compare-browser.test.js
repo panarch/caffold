@@ -51,6 +51,7 @@ test("composes only active Compare tree/viewer leaves", () => {
     scopeId: "git:compare",
     fileActionId: "navigation.file.open",
     disclosureActionId: "disclosure.toggle",
+    selectActionId: "control.select.open",
     parentActionId: "navigation.parent",
     detailsActionId: "file.details.open",
     refreshActionId: "button.activate",
@@ -61,6 +62,7 @@ test("composes only active Compare tree/viewer leaves", () => {
     viewerTarget,
   ]);
   assert.equal(treeOptions.disclosureActionId, "disclosure.toggle");
+  assert.equal(treeOptions.selectActionId, "control.select.open");
   assert.equal(viewerOptions.refreshActionId, "button.activate");
   assert.equal(viewerOptions.linkActionId, "link.open");
   assert.deepEqual(browser.scrollSurfaceScope.call(owner, actionOptions).surfaces, [

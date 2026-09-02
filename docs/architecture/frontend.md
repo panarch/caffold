@@ -246,13 +246,20 @@ product-intent path.
 Product-owned native controls use distinct closed action kinds rather than
 pretending to be buttons. Appearance declares non-current Theme radios, its
 Typeface select, and the three size ranges; Files declares its non-current
-ordering radio; Keyboard declares its enabled On/Off switch; and Git Compare
-declares its visible Base and Head selects. Radio and switch activation focuses
-and clicks the exact retained input after Hint cleanup. A select focuses and
-calls native `showPicker()` in the trusted key stack, with a focus-only fallback
-when the browser cannot open it. A range target only receives focus. The native
-control and its product owner continue to own option selection, value changes,
-persistence, and subsequent keyboard input.
+ordering radio; Keyboard declares its enabled On/Off switch; Git Compare
+declares its visible Base and Head selects; and the Branch Review Compare Tree
+declares its comparison-base select while the Review owner injects the action
+meaning. The Branch target remains available while its compared File Tree is
+loading, empty, or showing an error, provided the retained select and refs are
+still available. Its badge is anchored to the stable visible primary header
+that contains `Files` and `vs <ref>` and that the transparent native select
+already covers. This keeps selected-value label updates on one frozen binding,
+while activation still uses the exact select. Radio and switch activation
+focuses and clicks the exact retained input after Hint cleanup. A select
+focuses and calls native `showPicker()` in the trusted key stack, with a
+focus-only fallback when the browser cannot open it. A range target only
+receives focus. The native control and its product owner continue to own option
+selection, value changes, persistence, and subsequent keyboard input.
 
 Keyboard-operable split separators follow the same focus-only handoff. Task
 Workspace owns its navigation separator, Git Compare owns its tree/viewer

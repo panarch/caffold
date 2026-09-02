@@ -508,6 +508,7 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     scopeId = "",
     fileActionId = "",
     disclosureActionId = "",
+    selectActionId = "",
     parentActionId = "",
     detailsActionId = "",
     refreshActionId = "",
@@ -533,6 +534,7 @@ class CaffoldGitCompareBrowser extends HTMLElement {
             scopeId: `${scopeId}:compare`,
             actionId: fileActionId,
             disclosureActionId,
+            selectActionId,
             clipRoots: [this, ...clipRoots],
           })
         : null,

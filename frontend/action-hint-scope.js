@@ -195,6 +195,7 @@ export function selectActionHintTarget({
   actionId,
   label,
   control,
+  anchor = control,
   clipRoots,
   isActionable,
 }) {
@@ -204,6 +205,7 @@ export function selectActionHintTarget({
     label,
     controlKind: "select",
     control,
+    anchor,
     clipRoots,
     isActionable,
   });

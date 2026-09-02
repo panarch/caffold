@@ -15,6 +15,7 @@ export async function installTaskReviewFixture(page) {
   let gitDiffDelayMs = 0;
   let workingDiffText = "new planner behavior";
   const compareDelays = new Map();
+  const compareGates = new Map();
   let refs = [
     { name: "main", kind: "local" },
     { name: "origin/main", kind: "remote" },
@@ -238,6 +239,7 @@ export async function installTaskReviewFixture(page) {
     if (delay > 0) {
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
+    await compareGates.get(baseRef)?.promise;
     const path = baseRef === "origin/release" ? "src/release.rs" : "src/planner.rs";
     return route.fulfill({
       contentType: "application/json",
@@ -330,6 +332,24 @@ export async function installTaskReviewFixture(page) {
     },
     setCompareDelay(baseRef, delayMs) {
       compareDelays.set(baseRef, delayMs);
+    },
+    holdCompare(baseRef) {
+      if (compareGates.has(baseRef)) {
+        throw new Error(`Compare request already held for ${baseRef}`);
+      }
+      let releaseGate;
+      const gate = {
+        promise: new Promise((resolve) => {
+          releaseGate = resolve;
+        }),
+      };
+      compareGates.set(baseRef, gate);
+      return () => {
+        if (compareGates.get(baseRef) === gate) {
+          compareGates.delete(baseRef);
+        }
+        releaseGate();
+      };
     },
     removeRef(name) {
       refs = refs.filter((ref) => ref.name !== name);
