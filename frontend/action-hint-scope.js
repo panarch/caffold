@@ -18,6 +18,7 @@ export function buttonActionHintTarget({
   actionId,
   label,
   control,
+  anchor = control,
   clipRoots,
   isActionable,
 }) {
@@ -27,7 +28,32 @@ export function buttonActionHintTarget({
     label,
     controlKind: "button",
     control,
-    anchor: control,
+    anchor,
+    clipRoots,
+    isActionable,
+    activate: () => {
+      control.focus({ preventScroll: true });
+      control.click();
+    },
+  };
+}
+
+export function disclosureActionHintTarget({
+  id,
+  actionId,
+  label,
+  control,
+  anchor = control,
+  clipRoots,
+  isActionable,
+}) {
+  return {
+    id,
+    actionId,
+    label,
+    controlKind: "disclosure",
+    control,
+    anchor,
     clipRoots,
     isActionable,
     activate: () => {

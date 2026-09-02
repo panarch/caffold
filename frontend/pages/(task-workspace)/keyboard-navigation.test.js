@@ -531,6 +531,62 @@ test("Scroll selection ignores stale scroll delivery and cancels real movement",
   }
 });
 
+test("viewport signals ignore stale delivery and cancel real snapshot drift", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const controller = createController();
+    const selection = {
+      cleanup: [],
+      context: {
+        mutationRoots: [],
+        resizeElements: [],
+        scrollRoots: [],
+      },
+      mutationObserver: null,
+      opener: null,
+      ownershipObserver: null,
+      resizeObserver: null,
+    };
+    controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING;
+    controller.selectionSession = selection;
+    controller.selectionSnapshotIsCurrent = () => true;
+    controller.attachSelectionSignals(selection);
+    const selectionResize = [...window.listeners.get("resize")][0];
+
+    selectionResize();
+    assert.equal(controller.selectionSession, selection);
+
+    controller.selectionSnapshotIsCurrent = () => false;
+    selectionResize();
+    assert.equal(controller.selectionSession, null);
+    assert.equal(controller.workspace.dataset.scrollModeLastExit, "viewport");
+
+    const active = {
+      cleanup: [],
+      context: { kind: "workspace", hud: { close() {} }, root: element() },
+      mutationRoots: [],
+      ownershipObserver: null,
+      resizeElements: [],
+      resizeObserver: null,
+    };
+    controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE;
+    controller.activeSession = active;
+    controller.activeBindingIsCurrent = () => true;
+    controller.attachActiveSignals(active);
+    const activeResize = [...window.listeners.get("resize")][0];
+
+    activeResize();
+    assert.equal(controller.activeSession, active);
+
+    controller.activeBindingIsCurrent = () => false;
+    activeResize();
+    assert.equal(controller.activeSession, null);
+    assert.equal(controller.workspace.dataset.scrollModeLastExit, "viewport");
+  } finally {
+    restoreDom();
+  }
+});
+
 test("opening beforetoggle invalidates selection and active mode before selector state changes", () => {
   const restoreDom = installEventGlobals();
   try {

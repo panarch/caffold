@@ -22,10 +22,14 @@ test("composes only active Commit tree/viewer leaves", () => {
   const viewerTarget = { id: "back" };
   const treeSurface = { id: "tree" };
   const viewerSurface = { id: "viewer" };
+  let treeOptions = null;
   let viewerOptions = null;
   const commitTree = {
     getClientRects: () => [{}],
-    actionHintScope: () => ({ targets: [treeTarget] }),
+    actionHintScope(options) {
+      treeOptions = options;
+      return { targets: [treeTarget] };
+    },
     scrollSurfaceScope: () => ({ surfaces: [treeSurface] }),
   };
   const fileViewer = {
@@ -45,6 +49,7 @@ test("composes only active Commit tree/viewer leaves", () => {
     currentCommitSha: () => "abcdef123456",
   };
   assert.deepEqual(page.actionHintScope.call(owner).targets, [treeTarget, viewerTarget]);
+  assert.equal(treeOptions.disclosureActionId, "disclosure.toggle");
   assert.equal(viewerOptions.refreshActionId, "button.activate");
   assert.deepEqual(page.scrollSurfaceScope.call(owner).surfaces, [
     treeSurface,

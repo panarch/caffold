@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buttonActionHintTarget,
+  disclosureActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
@@ -40,6 +41,48 @@ test("button Action Hint targets preserve owner state and native activation", ()
     ["focus", { preventScroll: true }],
     ["click"],
   ]);
+
+  const anchor = { id: "visible-marker" };
+  assert.equal(buttonActionHintTarget({ ...input, anchor }).anchor, anchor);
+});
+
+test("disclosure Action Hint targets preserve owner semantics and native activation", () => {
+  const calls = [];
+  const control = {
+    open: false,
+    focus: (options) => calls.push(["focus", options]),
+    click: () => calls.push(["click"]),
+  };
+  const clipRoots = [{ id: "clip" }];
+  const isActionable = () => !control.open;
+  const input = {
+    id: "work:a:disclosure:root",
+    actionId: "disclosure.toggle",
+    label: "Expand Work details",
+    control,
+    clipRoots,
+    isActionable,
+  };
+  const { activate, ...target } = disclosureActionHintTarget(input);
+
+  assert.deepEqual(target, {
+    ...input,
+    controlKind: "disclosure",
+    anchor: control,
+  });
+
+  activate();
+
+  assert.deepEqual(calls, [
+    ["focus", { preventScroll: true }],
+    ["click"],
+  ]);
+  assert.equal(target.isActionable(), true);
+  control.open = true;
+  assert.equal(target.isActionable(), false);
+
+  const anchor = { id: "visible-marker" };
+  assert.equal(disclosureActionHintTarget({ ...input, anchor }).anchor, anchor);
 });
 
 test("Action Hint scopes compose direct owners in declaration order", () => {

@@ -159,3 +159,95 @@ test("merges owned Conversation actions with direct retained child providers", (
   assert.equal(scope.targets[0].isActionable(), false);
   controls = [];
 });
+
+test("provides only direct owner-known Thinking disclosures with inner Markdown", () => {
+  let clicks = 0;
+  const anchor = { id: "thinking-chevron" };
+  const summary = {
+    getClientRects: () => [{}],
+    querySelector: () => anchor,
+    focus() {},
+    click() {
+      clicks += 1;
+    },
+  };
+  const disclosure = {
+    dataset: { disclosureKey: "thinking:event-a" },
+    open: false,
+    querySelector: () => summary,
+  };
+  const markdownTarget = { id: "thinking-markdown-copy" };
+  const markdown = {
+    actionHintScope: () => ({ targets: [markdownTarget] }),
+  };
+  const entry = {
+    dataset: { conversationEntryKey: "event-a" },
+    querySelector(selector) {
+      if (selector.includes('data-disclosure-key^="thinking:"')) {
+        return disclosure;
+      }
+      if (selector.includes("caffold-task-markdown")) {
+        return markdown;
+      }
+      return null;
+    },
+  };
+  const arbitraryEntry = {
+    dataset: { conversationEntryKey: "event-b" },
+    querySelector: () => null,
+  };
+  const list = { children: [entry, arbitraryEntry] };
+  const scrollport = {};
+  const owner = {
+    active: true,
+    hidden: false,
+    isConnected: true,
+    snapshot: { threadId: "thread-a", task: { threadId: "thread-a" } },
+    ensureState() {},
+    scroller: () => scrollport,
+    conversationList: () => list,
+    contains: (control) => control === summary,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+
+  const collapsed = conversation.actionHintScope.call(owner, {
+    scopeId: "task:thread-a:conversation",
+  });
+  assert.deepEqual(collapsed.targets.slice(1), [markdownTarget]);
+  assert.deepEqual(
+    {
+      id: collapsed.targets[0].id,
+      actionId: collapsed.targets[0].actionId,
+      label: collapsed.targets[0].label,
+      controlKind: collapsed.targets[0].controlKind,
+      anchor: collapsed.targets[0].anchor,
+    },
+    {
+      id: "task:thread-a:conversation:thinking:event-a:thinking%3Aevent-a",
+      actionId: "disclosure.toggle",
+      label: "Expand Thinking",
+      controlKind: "disclosure",
+      anchor,
+    },
+  );
+  assert.equal(collapsed.targets[0].isActionable(), true);
+  collapsed.targets[0].activate();
+  assert.equal(clicks, 1);
+
+  disclosure.open = true;
+  const expanded = conversation.actionHintScope.call(owner, {
+    scopeId: "task:thread-a:conversation",
+  }).targets[0];
+  assert.equal(expanded.id, collapsed.targets[0].id);
+  assert.equal(expanded.label, "Collapse Thinking");
+  entry.dataset.conversationEntryKey = "event-b";
+  assert.equal(collapsed.targets[0].isActionable(), false);
+  entry.dataset.conversationEntryKey = "event-a";
+  const originalSummaryQuery = summary.querySelector;
+  summary.querySelector = () => ({ id: "replacement-chevron" });
+  assert.equal(collapsed.targets[0].isActionable(), false);
+  summary.querySelector = originalSummaryQuery;
+  disclosure.dataset.disclosureKey = "thinking:event-c";
+  assert.equal(collapsed.targets[0].isActionable(), false);
+});

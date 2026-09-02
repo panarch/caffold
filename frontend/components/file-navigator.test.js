@@ -34,12 +34,14 @@ test("forwards semantic Action and Scroll options to its retained list owner", (
   assert.deepEqual(navigator.actionHintScope.call(owner, {
     scopeId: "review:files",
     actionId: "navigation.file.open",
+    disclosureActionId: "disclosure.toggle",
     refreshActionId: "button.activate",
     clipRoots: [clipRoot],
   }).targets, [target]);
   assert.deepEqual(actionOptions, {
     scopeId: "review:files",
     actionId: "navigation.file.open",
+    disclosureActionId: "disclosure.toggle",
     refreshActionId: "button.activate",
     clipRoots: [owner, clipRoot],
   });

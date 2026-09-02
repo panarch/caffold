@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { activateActionHint } from "../support/action-hints.js";
+import {
+  activateActionHint,
+  enterActionHints,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
@@ -71,8 +74,19 @@ test("owns active disclosure state and terminal presentation across canonical up
   await rememberCommandIdentity(command);
 
   const summaryOffset = await disclosureOffset(summary);
-  await summary.click();
+  const commandHints = await enterActionHints(page);
+  await expect(commandHints.getByLabel(/Collapse Command$/)).toBeVisible();
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "task-command-disclosure-hints",
+  );
+  await page.keyboard.press("Escape");
+  await activateActionHint(page, /Collapse Command$/);
   await expect(disclosure).not.toHaveAttribute("open", "");
+  await expect
+    .poll(() => summary.evaluate((element) => document.activeElement === element))
+    .toBe(true);
   await expect(collapsedChevron).toBeVisible();
   await expect(expandedChevron).not.toBeVisible();
   await expect
@@ -88,7 +102,7 @@ test("owns active disclosure state and terminal presentation across canonical up
   await expect(disclosure).not.toHaveAttribute("open", "");
   await expectCommandIdentity(page, { activeStructure: true });
 
-  await summary.click();
+  await activateActionHint(page, /Expand Command$/);
   await expect(disclosure).toHaveAttribute("open", "");
   await expect
     .poll(() =>
@@ -153,7 +167,8 @@ test("owns active disclosure state and terminal presentation across canonical up
   );
   await expect(page.locator(".task-command")).toHaveCount(0);
   const workDetails = page.locator("caffold-task-work-details > details");
-  await workDetails.locator(":scope > summary").click();
+  await activateActionHint(page, /Expand (?:Worked for|Work details)/);
+  await expect(workDetails).toHaveAttribute("open", "");
   const completedCommand = workDetails.locator(
     ".task-work-details-command > caffold-task-command",
   );

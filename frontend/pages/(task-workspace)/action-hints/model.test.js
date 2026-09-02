@@ -93,6 +93,8 @@ test("accepts only the central semantic action and control-kind policy", () => {
       ? "textbox"
       : actionId === ACTION_HINT_ACTION.DIALOG_SELECT_OPEN
         ? "select"
+        : actionId === ACTION_HINT_ACTION.DISCLOSURE_TOGGLE
+          ? "disclosure"
         : "button";
     assert.equal(matchesActionHintPolicy({
       actionId,
@@ -112,6 +114,32 @@ test("accepts only the central semantic action and control-kind policy", () => {
       controlKind: "button",
     }),
     false,
+  );
+});
+
+test("allocates owner-declared disclosures through the automatic pool", () => {
+  const allocated = allocateActionHintCodes([
+    target(
+      "directory-src",
+      ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+      "disclosure",
+    ),
+    target(
+      "thinking",
+      ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+      "disclosure",
+    ),
+  ]);
+
+  assert.deepEqual(
+    allocated.map(({ id, code }) => [id, code]),
+    [["directory-src", "A"], ["thinking", "S"]],
+  );
+  assert.throws(
+    () => allocateActionHintCodes([
+      target("wrong-kind", ACTION_HINT_ACTION.DISCLOSURE_TOGGLE),
+    ]),
+    /Unsupported Action Hint action/,
   );
 });
 

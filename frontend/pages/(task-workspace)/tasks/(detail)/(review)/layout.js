@@ -339,6 +339,7 @@ class CaffoldTaskReview extends HTMLElement {
         ? this.fileNavigator()?.actionHintScope({
             scopeId: `${scopeId}:files`,
             actionId: ACTION_HINT_ACTION.FILE_OPEN,
+            disclosureActionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
             refreshActionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
             clipRoots: navigatorClipRoots,
           })
@@ -346,11 +347,13 @@ class CaffoldTaskReview extends HTMLElement {
           ? this.branchTree()?.actionHintScope({
               scopeId: `${scopeId}:branch`,
               actionId: ACTION_HINT_ACTION.FILE_OPEN,
+              disclosureActionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
               clipRoots: navigatorClipRoots,
             })
           : this.workingTree()?.actionHintScope({
               scopeId: `${scopeId}:working`,
               actionId: ACTION_HINT_ACTION.FILE_OPEN,
+              disclosureActionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
               clipRoots: navigatorClipRoots,
             });
     const viewerScope = viewerActive && this.route.path

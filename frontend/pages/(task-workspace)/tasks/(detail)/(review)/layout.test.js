@@ -16,6 +16,7 @@ function scope(id) {
 
 test("merges Review axes with only the active navigator and selected viewer", () => {
   const calls = { working: 0, branch: 0, files: 0, viewer: 0 };
+  const actionOptions = { working: null, branch: null, files: null };
   const pane = () => ({
     visible: true,
     getClientRects() {
@@ -40,20 +41,23 @@ test("merges Review axes with only the active navigator and selected viewer", ()
       return { actionHintScope: () => scope(`${axis}-axis`) };
     },
     workingTree() {
-      return { actionHintScope: () => {
+      return { actionHintScope: (options) => {
         calls.working += 1;
+        actionOptions.working = options;
         return scope("working");
       } };
     },
     branchTree() {
-      return { actionHintScope: () => {
+      return { actionHintScope: (options) => {
         calls.branch += 1;
+        actionOptions.branch = options;
         return scope("branch");
       } };
     },
     fileNavigator() {
-      return { actionHintScope: () => {
+      return { actionHintScope: (options) => {
         calls.files += 1;
+        actionOptions.files = options;
         return scope("files");
       } };
     },
@@ -70,6 +74,7 @@ test("merges Review axes with only the active navigator and selected viewer", ()
     ["navigator-axis", "viewer-axis", "working"],
   );
   assert.deepEqual(calls, { working: 1, branch: 0, files: 0, viewer: 0 });
+  assert.equal(actionOptions.working.disclosureActionId, "disclosure.toggle");
 
   owner.route = { ...owner.route, scope: "branch", path: "src/a.js" };
   assert.deepEqual(
@@ -77,6 +82,7 @@ test("merges Review axes with only the active navigator and selected viewer", ()
     ["navigator-axis", "viewer-axis", "branch", "viewer"],
   );
   assert.deepEqual(calls, { working: 1, branch: 1, files: 0, viewer: 1 });
+  assert.equal(actionOptions.branch.disclosureActionId, "disclosure.toggle");
 
   owner.route = { ...owner.route, navigator: "files" };
   assert.deepEqual(
@@ -84,6 +90,7 @@ test("merges Review axes with only the active navigator and selected viewer", ()
     ["navigator-axis", "viewer-axis", "files", "viewer"],
   );
   assert.deepEqual(calls, { working: 1, branch: 1, files: 1, viewer: 2 });
+  assert.equal(actionOptions.files.disclosureActionId, "disclosure.toggle");
 
   panes.navigator.visible = false;
   assert.deepEqual(

@@ -244,6 +244,39 @@ test("entry closes and restores focus when showModal-time effects stale the snap
   }
 });
 
+test("viewport signals ignore stale delivery and cancel real snapshot drift", () => {
+  const restoreGlobals = installDomGlobals();
+  try {
+    const workspace = Object.assign(new FakeEventTarget(), { dataset: {} });
+    const dialog = new FakeDialog();
+    const controller = new ActionHintController({
+      workspace,
+      dialog,
+      collectScope: () => null,
+    });
+    controller.snapshotIsCurrent = () => true;
+    controller.startSession(snapshotFor({
+      id: "task-a",
+      actionId: "task.open",
+      code: "TA",
+      activate: () => {},
+    }));
+    const resize = [...window.listeners.get("resize")][0];
+
+    resize();
+    assert.ok(controller.session);
+    assert.equal(dialog.closeCount, 0);
+
+    controller.snapshotIsCurrent = () => false;
+    resize();
+    assert.equal(controller.session, null);
+    assert.equal(dialog.closeCount, 1);
+    assert.equal(workspace.dataset.actionHintLastExit, "viewport");
+  } finally {
+    restoreGlobals();
+  }
+});
+
 test("revalidation refreshes a label without replacing its frozen action", () => {
   const restoreGlobals = installDomGlobals();
   try {

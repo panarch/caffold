@@ -10,6 +10,7 @@ import {
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
+  disclosureActionHintTarget,
   emptyActionHintScope,
 } from "../../../../../../action-hints.js";
 
@@ -199,11 +200,49 @@ class CaffoldTaskCommand extends HTMLElement {
 
   actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
     this.ensureState();
-    const control = this.action();
     const commandKey = this.commandKey;
+    if (!scopeId || !commandKey || this.hidden) {
+      return emptyActionHintScope();
+    }
+    if (this.presentation.mode === "active") {
+      const disclosure = this.disclosure();
+      const control = disclosure?.querySelector(
+        ":scope > summary.task-command-active-summary",
+      );
+      const anchor = control?.querySelector(
+        ":scope > .task-command-active-label > .task-command-disclosure-chevron",
+      );
+      if (!disclosure || !control || !anchor) {
+        return emptyActionHintScope();
+      }
+      return {
+        blocked: false,
+        targets: [disclosureActionHintTarget({
+          id: `${scopeId}:disclosure:${encodeURIComponent(commandKey)}`,
+          actionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+          label: `${disclosure.open ? "Collapse" : "Expand"} Command`,
+          control,
+          anchor,
+          clipRoots: [this, ...clipRoots].filter(Boolean),
+          isActionable: () =>
+            this.isConnected &&
+            !this.hidden &&
+            this.commandKey === commandKey &&
+            this.presentation.mode === "active" &&
+            this.disclosure() === disclosure &&
+            disclosure.querySelector(
+              ":scope > summary.task-command-active-summary",
+            ) === control &&
+            control.querySelector(
+              ":scope > .task-command-active-label > .task-command-disclosure-chevron",
+            ) === anchor,
+        })],
+        mutationRoots: [this],
+        scrollRoots: [],
+      };
+    }
+    const control = this.action();
     if (
-      !scopeId ||
-      !commandKey ||
       this.presentation.mode !== "terminal" ||
       !control ||
       control.disabled
@@ -222,6 +261,7 @@ class CaffoldTaskCommand extends HTMLElement {
         clipRoots: [this, ...clipRoots].filter(Boolean),
         isActionable: () =>
           this.isConnected &&
+          !this.hidden &&
           this.commandKey === commandKey &&
           this.presentation.mode === "terminal" &&
           this.action() === control &&

@@ -14,6 +14,7 @@ import { requestTaskImagePreview } from "../../../components/image-preview-dialo
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
+  disclosureActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
@@ -298,6 +299,7 @@ class CaffoldTaskConversation extends HTMLElement {
       })];
     });
     const childScopes = [];
+    const thinkingTargets = [];
     Array.from(list.children).forEach((entry, index) => {
       const identity = entry.dataset.conversationEntryKey ||
         entry.dataset.eventId ||
@@ -324,6 +326,56 @@ class CaffoldTaskConversation extends HTMLElement {
           workDetails.actionHintScope?.(childOptions("work-details")),
         );
       }
+      const thinkingSelector =
+        ':scope > details[data-disclosure-key^="thinking:"]';
+      const thinkingDisclosure = entry.querySelector(thinkingSelector);
+      const thinkingSummary = thinkingDisclosure?.querySelector(
+        ":scope > summary",
+      );
+      const thinkingAnchor = thinkingSummary?.querySelector(
+        ":scope > .task-thinking-label > .task-thinking-disclosure-chevron",
+      );
+      const thinkingKey = `${
+        thinkingDisclosure?.dataset.disclosureKey ?? ""
+      }`;
+      if (
+        thinkingSummary &&
+        thinkingAnchor &&
+        thinkingKey.startsWith("thinking:") &&
+        hasActionHintLayoutBox(thinkingSummary)
+      ) {
+        thinkingTargets.push(disclosureActionHintTarget({
+          id: `${targetScopeId}:thinking:${encodeURIComponent(identity)}:${
+            encodeURIComponent(thinkingKey)
+          }`,
+          actionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+          label: `${thinkingDisclosure.open ? "Collapse" : "Expand"} Thinking`,
+          control: thinkingSummary,
+          anchor: thinkingAnchor,
+          clipRoots: [this, scrollport, list, ...clipRoots].filter(Boolean),
+          isActionable: () =>
+            this.isConnected &&
+            this.active &&
+            !this.hidden &&
+            this.snapshot.threadId === threadId &&
+            Boolean(this.snapshot.task) &&
+            this.scroller() === scrollport &&
+            this.conversationList() === list &&
+            Array.from(list.children).includes(entry) &&
+            (entry.dataset.conversationEntryKey ||
+              entry.dataset.eventId ||
+              `${Array.from(list.children).indexOf(entry) + 1}`) === identity &&
+            entry.querySelector(thinkingSelector) === thinkingDisclosure &&
+            thinkingDisclosure.dataset.disclosureKey === thinkingKey &&
+            thinkingDisclosure.querySelector(":scope > summary") ===
+              thinkingSummary &&
+            thinkingSummary.querySelector(
+              ":scope > .task-thinking-label > .task-thinking-disclosure-chevron",
+            ) === thinkingAnchor &&
+            this.contains(thinkingSummary) &&
+            hasActionHintLayoutBox(thinkingSummary),
+        }));
+      }
       const markdown = entry.querySelector(
         ":scope > details > .task-thinking-content > caffold-task-markdown",
       );
@@ -334,7 +386,7 @@ class CaffoldTaskConversation extends HTMLElement {
     return mergeActionHintScopes(
       {
         blocked: false,
-        targets: ownTargets,
+        targets: [...ownTargets, ...thinkingTargets],
         mutationRoots: [this, scrollport],
         scrollRoots: [scrollport],
       },

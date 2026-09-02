@@ -784,7 +784,10 @@ function renderThinkingEvent(event, text, task, eventState) {
     <li class="task-event task-thinking"${conversationEntryAttributes(event, state)} data-event-type="${escapeHtml(event.type)}" data-thinking-state="${escapeHtml(state)}">
       <details${open}${disclosureIdentityAttribute("thinking", eventIdentityKey(event))}>
         <summary>
-          <span>Thinking</span>
+          <span class="task-thinking-label">
+            <span>Thinking</span>
+            <span class="task-thinking-disclosure-chevron" aria-hidden="true"></span>
+          </span>
           ${renderObservedTime(event)}
         </summary>
         <div class="task-thinking-content">

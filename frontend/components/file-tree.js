@@ -1,6 +1,7 @@
 import { renderEntryIcon, warmIcons } from "./icons.js";
 import {
   buttonActionHintTarget,
+  disclosureActionHintTarget,
   emptyActionHintScope,
 } from "../action-hint-scope.js";
 import {
@@ -220,6 +221,7 @@ class CaffoldFileTree extends HTMLElement {
   actionHintScope({
     scopeId = "",
     actionId = "",
+    disclosureActionId = "",
     clipRoots = [],
     isCurrent = () => false,
     includeDirectories = false,
@@ -227,22 +229,73 @@ class CaffoldFileTree extends HTMLElement {
   } = {}) {
     this.ensureRendered();
     const scroller = this.scroller();
-    if (!scopeId || !actionId || !scroller || this.hidden) {
+    if (
+      !scopeId ||
+      (!actionId && !disclosureActionId) ||
+      !scroller ||
+      this.hidden
+    ) {
       return emptyActionHintScope();
     }
+    const entityKey = this.entityKey;
     const targets = [...this.querySelectorAll(
       ":scope > .file-tree-scroll > .file-tree-rows > .file-tree-row > button[data-file-tree-key]",
     )].flatMap((control) => {
       const key = `${control.dataset.fileTreeKey ?? ""}`;
       const node = this.nodeByKey.get(key);
+      if (!key || !node || control.disabled) {
+        return [];
+      }
+      if (isExpandable(node)) {
+        if (!disclosureActionId) {
+          return [];
+        }
+        const anchor = control.querySelector(
+          ":scope > .file-tree-node-label > .file-tree-icon",
+        );
+        if (!anchor) {
+          return [];
+        }
+        const expanded = this.expandedKeys?.has(key) ??
+          control.getAttribute?.("aria-expanded") === "true";
+        return [disclosureActionHintTarget({
+          id: `${scopeId}:disclosure:${encodeURIComponent(key)}`,
+          actionId: disclosureActionId,
+          label: defaultAriaLabel(node, expanded),
+          control,
+          anchor,
+          clipRoots: uniqueElements([...clipRoots, scroller]),
+          isActionable: () => {
+            const current = this.nodeByKey.get(key);
+            return Boolean(
+              this.isConnected &&
+                !this.hidden &&
+                this.entityKey === entityKey &&
+                current &&
+                isExpandable(current) &&
+                this.rowForKey(key)?.querySelector(
+                  ":scope > button[data-file-tree-key]",
+                ) === control &&
+                control.querySelector(
+                  ":scope > .file-tree-node-label > .file-tree-icon",
+                ) === anchor &&
+                !control.disabled,
+            );
+          },
+        })];
+      }
       if (
-        !key ||
-        !node ||
+        !actionId ||
         (node.kind === "directory" && !includeDirectories) ||
         node.selectable === false ||
-        control.disabled ||
         isCurrent(node)
       ) {
+        return [];
+      }
+      const anchor = control.querySelector(
+        ":scope > .file-tree-node-label > .file-tree-icon",
+      );
+      if (!anchor) {
         return [];
       }
       return [buttonActionHintTarget({
@@ -250,19 +303,27 @@ class CaffoldFileTree extends HTMLElement {
         actionId,
         label: `${labelForNode(node) ?? ""}` || `${node.name ?? key}`,
         control,
+        anchor,
         clipRoots: uniqueElements([...clipRoots, scroller]),
         isActionable: () => {
           const current = this.nodeByKey.get(key);
           return Boolean(
             this.isConnected &&
               !this.hidden &&
+              this.entityKey === entityKey &&
               current &&
-              (current.kind !== "directory" || includeDirectories) &&
+              (
+                current.kind !== "directory" ||
+                (includeDirectories && !isExpandable(current))
+              ) &&
               current.selectable !== false &&
               !isCurrent(current) &&
               this.rowForKey(key)?.querySelector(
                 ":scope > button[data-file-tree-key]",
               ) === control &&
+              control.querySelector(
+                ":scope > .file-tree-node-label > .file-tree-icon",
+              ) === anchor &&
               !control.disabled,
           );
         },

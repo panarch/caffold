@@ -170,6 +170,7 @@ class CaffoldFileNavigator extends HTMLElement {
   actionHintScope({
     scopeId = "",
     actionId = "",
+    disclosureActionId = "",
     refreshActionId = "",
     clipRoots = [],
   } = {}) {
@@ -180,6 +181,7 @@ class CaffoldFileNavigator extends HTMLElement {
     return this.fileList.actionHintScope({
       scopeId,
       actionId,
+      disclosureActionId,
       refreshActionId,
       clipRoots: [this, ...clipRoots],
     });

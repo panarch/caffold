@@ -1134,6 +1134,39 @@ test("keeps loaded GitHub routes stable across unrelated Task stream updates", {
   expect(fixture.counts.pullFile).toBe(1);
 });
 
+test("toggles retained Pull Files directories through the GitHub owner", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installLinkedWorktreeGithubFixture(page);
+  const pullDetail = await openLinkedWorktreePull(page);
+  await pullDetail.getByRole("button", { name: "Open files for PR #1983" }).click();
+
+  const tree = page.locator(
+    "caffold-github-pull-files-tree caffold-file-tree",
+  );
+  await expect(tree).toBeVisible();
+  const srcDirectory = tree.locator(
+    'button[data-file-tree-path="src"]',
+  );
+  const srcFile = tree.locator(
+    `button[data-file-tree-path="${PULL_FILE_PATH}"]`,
+  );
+  await expect(srcDirectory).toHaveAccessibleName("Collapse src");
+  await expect(srcFile).toBeVisible();
+  await activateActionHint(page, /Collapse src$/);
+  await expect(actionHintDialog(page)).toBeHidden();
+  await expect(srcDirectory).toHaveAccessibleName("Expand src");
+  await expect(srcFile).toHaveCount(0);
+  await expect
+    .poll(() =>
+      srcDirectory.evaluate((element) => document.activeElement === element)
+    )
+    .toBe(true);
+  await activateActionHint(page, /Expand src$/);
+  await expect(srcDirectory).toHaveAccessibleName("Collapse src");
+  await expect(srcFile).toBeVisible();
+});
+
 test("applies the global ordering to GitHub PR Files without refetching", { tag: "@all-viewports" }, async ({
   page,
 }) => {

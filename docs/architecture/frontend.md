@@ -239,26 +239,41 @@ readiness buttons; Composer Model, Permission, Prompt, attachment, voice,
 cancel, submit, and interrupt actions; Conversation retry, image-preview, and
 approval actions; Section Fork; Current Plan document openers; and direct
 Integrated Review, Git, GitHub, file-navigation, and file-viewer actions. Git
-declares Refresh and commit-body Expand/Collapse, while GitHub detail declares
-Start Task and Pull Files. Activation reuses each owner's existing native
-button click, form, or product-intent path.
+declares Refresh, while GitHub detail declares Start Task and Pull Files.
+Activation reuses each owner's existing native button click, form, or
+product-intent path.
 
-Custom children retain their own action knowledge. Terminal Command declares
-View output, Markdown Code Block declares Wrap and Copy, and Conversation
-merges those public scopes through its retained Assistant Message, Markdown,
-and Work Details children. Reusable controls such as the segmented control,
-file tree, pagination, file navigator, and file viewer expose public scope
-providers; their screen owner supplies the semantic action and scope context.
-Ancestors never discover these actions by scanning descendant buttons.
+Product-owned disclosure uses the same one-shot flow through a distinct
+`disclosure.toggle` action and `disclosure` control kind. The shared File Tree
+declares only expandable directory buttons; non-expandable Directory Picker
+rows keep their existing navigation meaning. Work Details declares its root
+summary, active Command declares its summary while terminal Command keeps View
+output, Conversation declares only the exact Thinking summaries it rendered,
+and Git Log declares its commit-body toggle. Target identity stays stable
+across open state while the accessible Hint label changes between Expand and
+Collapse. The Hint overlay closes before the retained summary or button
+receives focus and its existing click path. Opening or closing never starts a
+second Hint session; the user presses `F` again against the new visible state.
+
+Custom children retain their own action knowledge. Work Details merges its own
+summary with its direct retained children. Command declares active disclosure
+or terminal View output from the same provider, Markdown Code Block declares
+Wrap and Copy, and Conversation merges those public scopes through its
+retained Assistant Message, Markdown, and Work Details children. Reusable
+controls such as the segmented control, file tree, pagination, file navigator,
+and file viewer expose public scope providers; their screen owner supplies the
+semantic action and scope context. Ancestors never discover these actions by
+scanning descendant buttons, `summary` elements, or `aria-expanded`.
 
 Checkboxes, radios, ranges, general native selects, external or Markdown
-links, native `summary` disclosures, and reorder handles remain outside the
-ordinary-button Action Hint set. Explicitly registered dialog selects and
-textboxes keep their existing owner-specific behavior. Popover and dialog
-openers are ordinary workspace actions, but after either opens the user presses
-`F` again to enter the new retained context; the coordinator never predicts or
-automatically hands off to it. File details deliberately declares no internal
-Action Hint target.
+links, arbitrary Markdown or third-party `summary` disclosures, and reorder
+handles remain outside Action Hint. A native summary participates only when its
+product component explicitly owns and declares that disclosure. Explicitly
+registered dialog selects and textboxes keep their existing owner-specific
+behavior. Popover and dialog openers are ordinary workspace actions, but after
+either opens the user presses `F` again to enter the new retained context; the
+coordinator never predicts or automatically hands off to it. File details
+deliberately declares no internal Action Hint target.
 
 Provider collection is hierarchical: each layout merges its own actions with
 only its active direct child scopes through `action-hint-scope.js`. Ancestors
@@ -607,11 +622,14 @@ the Task subject and are preserved by Task identity through incremental shell
 updates. Moving from Tasks to Settings ends active editing and transport work
 without destroying a retained Composer draft.
 
-Conversation also owns its delegated retry, attachment-preview, and approval
-buttons. A custom child owns its own controls: Command owns View output and
-Markdown Code Block owns Wrap and Copy. Assistant Message, Markdown, and Work
-Details merge only the direct retained children they mount, so stream patches
-can invalidate a frozen topology without introducing a descendant-DOM scan.
+Conversation also owns its delegated retry, attachment-preview, approval, and
+exact rendered Thinking disclosure controls. A custom child owns its own
+controls: Command owns its active disclosure or terminal View output, Work
+Details owns its root disclosure, and Markdown Code Block owns Wrap and Copy.
+Thinking Markdown intentionally remains outside code-block controls. Assistant
+Message, Markdown, and Work Details merge only the direct retained children
+they mount, so stream patches can invalidate a frozen topology without
+introducing a descendant-DOM scan.
 
 ### Current plan
 
@@ -670,12 +688,13 @@ the shared `caffold-markdown-preview` component also used by the current-plan
 dialog.
 
 The shared file stack owns keyboard surfaces at the same boundaries. File List
-merges its Refresh button with the public file-tree scope, File Navigator
-forwards caller semantics, and File Viewer publishes its current source, diff,
-Markdown, image, or notice leaf plus its existing Back, Details,
-Source/Preview, and conditional Refresh actions. Integrated Review chooses the
-current navigator and viewer roles and merges those public scopes; it never
-queries a child's `.file-tree-scroll`, `.code-lines`, or `.diff-lines`.
+merges its Refresh button with the public file-tree selection and directory
+disclosure scope, File Navigator forwards caller semantics, and File Viewer
+publishes its current source, diff, Markdown, image, or notice leaf plus its
+existing Back, Details, Source/Preview, and conditional Refresh actions.
+Integrated Review chooses the current navigator and viewer roles and merges
+those public scopes; it never queries a child's `.file-tree-scroll`,
+`.code-lines`, `.diff-lines`, or directory buttons.
 
 Integrated Review uses a bounded cache keyed by explicit Task or Section
 identity. Disconnecting an inactive entry invalidates its requests and releases

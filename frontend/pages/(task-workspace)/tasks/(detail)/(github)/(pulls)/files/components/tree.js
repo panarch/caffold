@@ -72,11 +72,16 @@ class CaffoldGithubPullFilesTree extends HTMLElement {
     return this.fileKeyByPath?.get(this.selectedPath) ?? "";
   }
 
-  actionHintScope({ scopeId = "", actionId = "", clipRoots = [] } = {}) {
+  actionHintScope({
+    scopeId = "",
+    actionId = "",
+    disclosureActionId = "",
+    clipRoots = [],
+  } = {}) {
     const tree = this.fileTree();
     if (
       !scopeId ||
-      !actionId ||
+      (!actionId && !disclosureActionId) ||
       this.hidden ||
       this.state?.status !== "ready" ||
       !tree
@@ -86,6 +91,7 @@ class CaffoldGithubPullFilesTree extends HTMLElement {
     return tree.actionHintScope({
       scopeId,
       actionId,
+      disclosureActionId,
       clipRoots: [this, ...clipRoots],
       isCurrent: (node) => node.source?.path === this.selectedPath,
       labelForNode: (node) => node.ariaLabel || `Open ${node.name}`,

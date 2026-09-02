@@ -58,6 +58,7 @@ test("merges owned picker buttons with the child-owned directory rows", () => {
   ]);
   assert.equal(scope.targets[3], childTarget);
   assert.equal(childOptions.includeDirectories, true);
+  assert.equal(childOptions.disclosureActionId, undefined);
   assert.deepEqual(childOptions.clipRoots, [dialog, body]);
 });
 

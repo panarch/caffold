@@ -56,5 +56,9 @@ export async function activateActionHint(page, accessibleName) {
   expect(code).toMatch(/^[A-Z]+$/);
   await page.keyboard.type(code.toLowerCase());
   await expect(dialog).toBeHidden();
+  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+    "data-action-hint-last-exit",
+    `activated:${code}`,
+  );
   return code;
 }

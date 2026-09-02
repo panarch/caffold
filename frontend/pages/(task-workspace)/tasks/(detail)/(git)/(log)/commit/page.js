@@ -399,6 +399,7 @@ class CaffoldGitLogCommitPage extends HTMLElement {
         ? this.commitTree.actionHintScope({
             scopeId: `${prefix}:files`,
             actionId: ACTION_HINT_ACTION.FILE_OPEN,
+            disclosureActionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
             clipRoots: [this, ...clipRoots],
           })
         : null,

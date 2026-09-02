@@ -602,6 +602,49 @@ test("uses Log actions and scrolls the exact visible Commit tree and diff from t
     (element) => element.scrollHeight > element.clientHeight + 1,
   )).toBe(true);
 
+  const generatedDirectory = page.locator(
+    'caffold-git-log-commit-page button[data-file-tree-path="generated"]',
+  );
+  const generatedFile = page.locator(
+    'caffold-git-log-commit-page button[data-file-tree-relative-path="generated/commit-001.rs"]',
+  );
+  await expect(generatedDirectory).toHaveAccessibleName("Collapse generated");
+  await expect(generatedDirectory).toHaveAttribute("aria-expanded", "true");
+  await expect(generatedFile).toBeVisible();
+  const directoryTop = await generatedDirectory.evaluate(
+    (element) => element.getBoundingClientRect().top,
+  );
+  const directoryHints = await enterActionHints(page);
+  await expect(directoryHints.getByLabel(/Collapse generated$/)).toBeVisible();
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "task-git-directory-disclosure-hints",
+  );
+  await page.keyboard.press("Escape");
+  await activateActionHint(page, /Collapse generated$/);
+  await expect(generatedDirectory).toHaveAccessibleName("Expand generated");
+  await expect(generatedDirectory).toHaveAttribute("aria-expanded", "false");
+  await expect(generatedFile).toHaveCount(0);
+  await expect
+    .poll(() =>
+      generatedDirectory.evaluate(
+        (element) => document.activeElement === element,
+      )
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      generatedDirectory.evaluate(
+        (element) => element.getBoundingClientRect().top,
+      )
+    )
+    .toBeCloseTo(directoryTop, 1);
+  await activateActionHint(page, /Expand generated$/);
+  await expect(generatedDirectory).toHaveAccessibleName("Collapse generated");
+  await expect(generatedDirectory).toHaveAttribute("aria-expanded", "true");
+  await expect(generatedFile).toBeVisible();
+
   if (testInfo.project.name === "phone") {
     await workspace.focus();
     await page.keyboard.press("s");

@@ -1,5 +1,6 @@
 import {
   buttonActionHintTarget,
+  disclosureActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   mergeActionHintScopes,
@@ -35,6 +36,7 @@ export {
   advanceHintBuffer,
   buttonActionHintTarget,
   clampBadgePosition,
+  disclosureActionHintTarget,
   emptyActionHintScope,
   hasActionHintLayoutBox,
   intersectRects,
@@ -308,28 +310,35 @@ export class ActionHintController {
       root.addEventListener("scroll", cancelOnScroll, { passive: true });
       session.cleanup.push(() => root.removeEventListener("scroll", cancelOnScroll));
     }
-    const cancelOnViewportChange = () => this.cancel("viewport");
-    window.addEventListener("resize", cancelOnViewportChange, { passive: true });
-    window.addEventListener("scroll", cancelOnViewportChange, { passive: true });
+    const revalidateViewport = () => {
+      if (
+        this.session === session &&
+        !this.snapshotIsCurrent(session, { refreshPresentation: true })
+      ) {
+        this.cancel("viewport");
+      }
+    };
+    window.addEventListener("resize", revalidateViewport, { passive: true });
+    window.addEventListener("scroll", revalidateViewport, { passive: true });
     session.cleanup.push(() => {
-      window.removeEventListener("resize", cancelOnViewportChange);
-      window.removeEventListener("scroll", cancelOnViewportChange);
+      window.removeEventListener("resize", revalidateViewport);
+      window.removeEventListener("scroll", revalidateViewport);
     });
     if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", cancelOnViewportChange, {
+      window.visualViewport.addEventListener("resize", revalidateViewport, {
         passive: true,
       });
-      window.visualViewport.addEventListener("scroll", cancelOnViewportChange, {
+      window.visualViewport.addEventListener("scroll", revalidateViewport, {
         passive: true,
       });
       session.cleanup.push(() => {
         window.visualViewport.removeEventListener(
           "resize",
-          cancelOnViewportChange,
+          revalidateViewport,
         );
         window.visualViewport.removeEventListener(
           "scroll",
-          cancelOnViewportChange,
+          revalidateViewport,
         );
       });
     }

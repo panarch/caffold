@@ -22,6 +22,21 @@ test.beforeEach(async ({ page }) => {
 test("browses source through the shared Files navigator and one root watch", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
+  let releasePlannerDirectory;
+  let markPlannerDirectoryRequested;
+  const plannerDirectoryRelease = new Promise((resolve) => {
+    releasePlannerDirectory = resolve;
+  });
+  const plannerDirectoryRequested = new Promise((resolve) => {
+    markPlannerDirectoryRequested = resolve;
+  });
+  await page.route((url) =>
+    url.pathname === "/api/list" &&
+    (url.searchParams.get("path") ?? "").endsWith("/planner"), async (route) => {
+    markPlannerDirectoryRequested();
+    await plannerDirectoryRelease;
+    await route.continue();
+  });
   let listRequests = 0;
   page.on("request", (request) => {
     if (new URL(request.url()).pathname === "/api/list") {
@@ -59,6 +74,37 @@ test("browses source through the shared Files navigator and one root watch", { t
     'button[data-file-tree-path="src/alpha.rs"]',
   );
   await expect(rootFolder).toBeVisible();
+  await expect(rootFolder).toHaveAttribute("aria-expanded", "false");
+  await activateActionHint(page, /Expand planner$/);
+  await plannerDirectoryRequested;
+  await expect(rootFolder).toHaveAttribute("aria-expanded", "true");
+  const loadingSnapshot = await enterActionHints(page);
+  await expect(loadingSnapshot.getByLabel(/Collapse planner$/)).toBeVisible();
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "tasks-file-tree-disclosure-hints",
+  );
+  releasePlannerDirectory();
+  await expect(loadingSnapshot).toBeHidden();
+  const plannerFile = navigator.locator(
+    'button[data-file-tree-path="src/planner/mod.rs"]',
+  );
+  await expect(plannerFile).toBeVisible();
+  await rootFolder.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  await activateActionHint(page, /Collapse planner$/);
+  await expect(rootFolder).toHaveAttribute("aria-expanded", "false");
+  await expect(plannerFile).toHaveCount(0);
+  await rootFolder.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  await activateActionHint(page, /Expand planner$/);
+  await expect(rootFolder).toHaveAttribute("aria-expanded", "true");
+  await expect(plannerFile).toBeVisible();
   await enterActionHints(page);
   await navigator.locator(".file-tree-scroll").evaluate((scroller) => {
     scroller.dispatchEvent(new Event("scroll"));

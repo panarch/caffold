@@ -191,6 +191,7 @@ class CaffoldFileList extends HTMLElement {
   actionHintScope({
     scopeId = "",
     actionId = "",
+    disclosureActionId = "",
     refreshActionId = "",
     clipRoots = [],
   } = {}) {
@@ -227,10 +228,11 @@ class CaffoldFileList extends HTMLElement {
           scrollRoots: [],
         }
       : null;
-    const treeScope = actionId
+    const treeScope = actionId || disclosureActionId
       ? tree.actionHintScope({
           scopeId,
           actionId,
+          disclosureActionId,
           clipRoots: [this, ...clipRoots],
           isCurrent: (node) => node.source?.path === this.selectedPath,
           labelForNode: (node) =>

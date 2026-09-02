@@ -46,6 +46,7 @@ test("merges Refresh files with the owned tree and delegates Scroll", () => {
   const scope = list.actionHintScope.call(owner, {
     scopeId: "review:files",
     actionId: "navigation.file.open",
+    disclosureActionId: "disclosure.toggle",
     refreshActionId: "button.activate",
   });
   assert.deepEqual(scope.targets.map(({ id }) => id), [
@@ -53,6 +54,7 @@ test("merges Refresh files with the owned tree and delegates Scroll", () => {
     "file-a",
   ]);
   assert.equal(treeActionOptions.actionId, "navigation.file.open");
+  assert.equal(treeActionOptions.disclosureActionId, "disclosure.toggle");
   assert.equal(scope.targets[0].isActionable(), true);
 
   const scrollScope = list.scrollSurfaceScope.call(owner, {

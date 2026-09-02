@@ -20,6 +20,8 @@ import "./assistant-message.js";
 import "./changed-files.js";
 import "./command.js";
 import {
+  ACTION_HINT_ACTION,
+  disclosureActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "../../../../../../action-hints.js";
@@ -220,12 +222,46 @@ class CaffoldTaskWorkDetails extends HTMLElement {
 
   actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
     this.ensureState();
+    const disclosureSelector =
+      ':scope > details[data-work-details-disclosure-key="root"]';
+    const disclosure = this.querySelector(disclosureSelector);
+    const control = disclosure?.querySelector(":scope > summary");
+    const anchor = control?.querySelector(
+      ":scope > .task-work-details-label > .task-work-details-chevron",
+    );
     const body = this.querySelector(
       ":scope > details > .task-work-details-body",
     );
-    if (!scopeId || !body || !this.identity || this.hidden) {
+    const identity = this.identity;
+    if (!scopeId || !body || !identity || this.hidden) {
       return emptyActionHintScope();
     }
+    const ownScope = disclosure && control && anchor
+      ? {
+          blocked: false,
+          targets: [disclosureActionHintTarget({
+            id: `${scopeId}:disclosure:${encodeURIComponent(identity)}:root`,
+            actionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+            label: `${disclosure.open ? "Collapse" : "Expand"} ${
+              this.snapshot.label.trim() || "Work details"
+            }`,
+            control,
+            anchor,
+            clipRoots: [this, ...clipRoots].filter(Boolean),
+            isActionable: () =>
+              this.isConnected &&
+              !this.hidden &&
+              this.identity === identity &&
+              this.querySelector(disclosureSelector) === disclosure &&
+              disclosure.querySelector(":scope > summary") === control &&
+              control.querySelector(
+                ":scope > .task-work-details-label > .task-work-details-chevron",
+              ) === anchor,
+          })],
+          mutationRoots: [this],
+          scrollRoots: [],
+        }
+      : null;
     const scopes = [];
     for (const item of body.children) {
       const commandIdentity = `${item.dataset.commandWorkIdentity ?? ""}`;
@@ -249,7 +285,7 @@ class CaffoldTaskWorkDetails extends HTMLElement {
         }));
       }
     }
-    return mergeActionHintScopes(...scopes);
+    return mergeActionHintScopes(ownScope, ...scopes);
   }
 
   rememberDisclosureState() {

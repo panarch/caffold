@@ -22,10 +22,14 @@ test("composes only active Compare tree/viewer leaves", () => {
   const viewerTarget = { id: "back" };
   const treeSurface = { id: "tree" };
   const viewerSurface = { id: "viewer" };
+  let treeOptions = null;
   let viewerOptions = null;
   const compareTree = {
     getClientRects: () => [{}],
-    actionHintScope: () => ({ targets: [treeTarget] }),
+    actionHintScope(options) {
+      treeOptions = options;
+      return { targets: [treeTarget] };
+    },
     scrollSurfaceScope: () => ({ surfaces: [treeSurface] }),
   };
   const viewer = {
@@ -46,6 +50,7 @@ test("composes only active Compare tree/viewer leaves", () => {
   const actionOptions = {
     scopeId: "git:compare",
     fileActionId: "navigation.file.open",
+    disclosureActionId: "disclosure.toggle",
     parentActionId: "navigation.parent",
     detailsActionId: "file.details.open",
     refreshActionId: "button.activate",
@@ -54,6 +59,7 @@ test("composes only active Compare tree/viewer leaves", () => {
     treeTarget,
     viewerTarget,
   ]);
+  assert.equal(treeOptions.disclosureActionId, "disclosure.toggle");
   assert.equal(viewerOptions.refreshActionId, "button.activate");
   assert.deepEqual(browser.scrollSurfaceScope.call(owner, actionOptions).surfaces, [
     treeSurface,

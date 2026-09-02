@@ -4,6 +4,7 @@ import "../../../../../../../components/pagination.js";
 import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
+  disclosureActionHintTarget,
   emptyActionHintScope,
   mergeActionHintScopes,
 } from "../../../../../action-hints.js";
@@ -179,9 +180,9 @@ class CaffoldGitLogListPage extends HTMLElement {
       if (!sha || control.disabled) {
         continue;
       }
-      targets.push(buttonActionHintTarget({
+      targets.push(disclosureActionHintTarget({
         id: `${scopeId}:commit-body:${encodeURIComponent(sha)}`,
-        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        actionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
         label: control.getAttribute("aria-label") || "Expand commit body",
         control,
         clipRoots: listClipRoots,

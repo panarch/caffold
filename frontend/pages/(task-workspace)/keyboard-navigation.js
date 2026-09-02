@@ -781,7 +781,14 @@ export class KeyboardNavigationController {
       root.addEventListener("scroll", listener, { passive: true });
       session.cleanup.push(() => root.removeEventListener("scroll", listener));
     }
-    this.attachViewportSignals(session, cancel("viewport"));
+    this.attachViewportSignals(session, () => {
+      if (
+        this.selectionSession === session &&
+        !this.selectionSnapshotIsCurrent(session)
+      ) {
+        this.cancelSelection("viewport");
+      }
+    });
     if (typeof MutationObserver === "function") {
       session.mutationObserver = new MutationObserver(() =>
         this.queueSelectionRevalidation(session)
@@ -818,7 +825,14 @@ export class KeyboardNavigationController {
   }
 
   attachActiveSignals(session) {
-    this.attachViewportSignals(session, () => this.cancelActive("viewport"));
+    this.attachViewportSignals(session, () => {
+      if (
+        this.activeSession === session &&
+        !this.activeBindingIsCurrent(session, { refreshPresentation: true })
+      ) {
+        this.cancelActive("viewport");
+      }
+    });
     if (typeof MutationObserver === "function") {
       session.mutationObserver = new MutationObserver(() =>
         this.queueActiveRevalidation(session)

@@ -145,6 +145,7 @@ class CaffoldGitComparePage extends HTMLElement {
     return this.browser.actionHintScope({
       scopeId,
       fileActionId: ACTION_HINT_ACTION.FILE_OPEN,
+      disclosureActionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
       parentActionId: ACTION_HINT_ACTION.PARENT,
       detailsActionId: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
       refreshActionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,

@@ -24,10 +24,14 @@ test("composes active PR tree/viewer actions and Scroll leaves", () => {
   const viewerTarget = { id: "back" };
   const treeSurface = { id: "tree-scroll" };
   const viewerSurface = { id: "diff-scroll" };
+  let treeActionOptions = null;
   let viewerActionOptions = null;
   const tree = {
     getClientRects: () => [{}],
-    actionHintScope: () => ({ targets: [treeTarget] }),
+    actionHintScope(options) {
+      treeActionOptions = options;
+      return { targets: [treeTarget] };
+    },
     scrollSurfaceScope: () => ({ surfaces: [treeSurface] }),
   };
   const fileViewer = {
@@ -48,6 +52,7 @@ test("composes active PR tree/viewer actions and Scroll leaves", () => {
   };
 
   assert.deepEqual(page.actionHintScope.call(owner).targets, [treeTarget, viewerTarget]);
+  assert.equal(treeActionOptions.disclosureActionId, "disclosure.toggle");
   assert.equal(viewerActionOptions.refreshActionId, "button.activate");
   assert.deepEqual(
     page.scrollSurfaceScope.call(owner).surfaces,

@@ -1117,6 +1117,12 @@ test("cancels on geometry, actionability, ownership, viewport, and route changes
 
   await enterActionHints(page);
   await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+  await expect(dialog).toBeVisible();
+  const viewport = page.viewportSize();
+  await page.setViewportSize({
+    width: viewport.width - 20,
+    height: viewport.height,
+  });
   await expect(dialog).toBeHidden();
   await expect(workspace).toHaveAttribute(
     "data-action-hint-last-exit",
@@ -1254,6 +1260,17 @@ async function installActionHintFixture(
   await page.route(/\/api\/agent\/permissions(?:\?|$)/, (route) =>
     route.fulfill({ json: TASK_PERMISSION_FIXTURE })
   );
+  await page.route(/\/api\/current-plan(?:\?|$)/, (route) => {
+    const path = new URL(route.request().url()).searchParams.get("path") ?? "";
+    return route.fulfill({
+      json: {
+        status: "absent",
+        watchPath: path,
+        plan: null,
+        problems: [],
+      },
+    });
+  });
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",

@@ -38,6 +38,7 @@ export const ACTION_HINT_ACTION = Object.freeze({
   PAGE: "navigation.page",
   DIALOG_BUTTON: "dialog.button",
   BUTTON_ACTIVATE: "button.activate",
+  DISCLOSURE_TOGGLE: "disclosure.toggle",
   DIALOG_TEXTBOX_FOCUS: "dialog.textbox.focus",
   DIALOG_SELECT_OPEN: "dialog.select.open",
 });
@@ -80,6 +81,10 @@ const ACTION_HINT_ACTION_POLICY = Object.freeze({
   }),
   [ACTION_HINT_ACTION.DIALOG_SELECT_OPEN]: Object.freeze({
     controlKind: "select",
+    allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
+  }),
+  [ACTION_HINT_ACTION.DISCLOSURE_TOGGLE]: Object.freeze({
+    controlKind: "disclosure",
     allocation: ACTION_HINT_ALLOCATION.AUTOMATIC,
   }),
   ...Object.fromEntries([
