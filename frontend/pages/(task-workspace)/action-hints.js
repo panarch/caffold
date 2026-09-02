@@ -144,6 +144,7 @@ export class ActionHintController {
       if (`${event.key ?? ""}`.length === 1) {
         event.preventDefault();
         event.stopPropagation();
+        this.cancel("no-match");
       }
       return;
     }

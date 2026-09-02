@@ -126,7 +126,7 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
   await expect(surface).toBeVisible();
 });
 
-test("closes Hint when an entered prefix has no remaining action", { tag: "@all-viewports" }, async ({
+test("closes Hint when printable input cannot match an action", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installActionHintFixture(page, actionHintTasks(2));
@@ -144,6 +144,16 @@ test("closes Hint when an entered prefix has no remaining action", { tag: "@all-
   await expect(dialog).toHaveAttribute("data-input-state", "partial");
   await page.keyboard.press("x");
 
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+  await expect(page.locator("caffold-task-workspace")).toHaveAttribute(
+    "data-action-hint-last-exit",
+    "no-match",
+  );
+
+  await page.keyboard.press("f");
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("1");
   await expect(dialog).toBeHidden();
   await expect(opener).toBeFocused();
   await expect(page.locator("caffold-task-workspace")).toHaveAttribute(

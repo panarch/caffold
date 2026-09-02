@@ -64,7 +64,7 @@ test("cancel and activation close one session and clean every owned effect", () 
   }
 });
 
-test("unmatched Hint input closes without presenting a recoverable error", () => {
+test("unmatched and unsupported printable input closes Hint without a recoverable error", () => {
   const restoreGlobals = installDomGlobals();
   try {
     const workspace = Object.assign(new FakeEventTarget(), { dataset: {} });
@@ -80,12 +80,13 @@ test("unmatched Hint input closes without presenting a recoverable error", () =>
     });
     controller.snapshotIsCurrent = () => true;
 
-    controller.startSession(snapshotFor({
+    const target = {
       id: "task-a",
       actionId: "task.open",
       code: "TA",
       activate: () => {},
-    }));
+    };
+    controller.startSession(snapshotFor(target));
     controller.applyInput("T");
     assert.equal(controller.session?.buffer, "T");
     assert.deepEqual(dialog.inputUpdates, [{
@@ -101,7 +102,29 @@ test("unmatched Hint input closes without presenting a recoverable error", () =>
     assert.equal(opener.focusCount, 1);
     assert.equal(workspace.dataset.actionHintLastExit, "no-match");
     assert.equal(dialog.inputUpdates.length, 1);
-    assert.deepEqual(exits, [{ activated: false, reason: "no-match" }]);
+    controller.startSession(snapshotFor(target));
+    const number = {
+      key: "1",
+      code: "Digit1",
+      preventDefault() {
+        this.prevented = true;
+      },
+      stopPropagation() {
+        this.stopped = true;
+      },
+    };
+    controller.handleHintKeydown(number);
+    assert.equal(number.prevented, true);
+    assert.equal(number.stopped, true);
+    assert.equal(controller.session, null);
+    assert.equal(dialog.closeCount, 2);
+    assert.equal(opener.focusCount, 2);
+    assert.equal(workspace.dataset.actionHintLastExit, "no-match");
+    assert.equal(dialog.inputUpdates.length, 1);
+    assert.deepEqual(exits, [
+      { activated: false, reason: "no-match" },
+      { activated: false, reason: "no-match" },
+    ]);
     assert.equal(window.listenerCount(), 0);
     assert.equal(document.listenerCount(), 0);
   } finally {
