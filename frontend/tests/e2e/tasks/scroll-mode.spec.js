@@ -716,8 +716,9 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
   await page.keyboard.press("Escape");
   await expect(modalHud).toBeHidden();
   await expect(dialog).toHaveAttribute("open", "");
+  const closeCount = await observeDialogClose(dialog);
   await page.keyboard.press("Escape");
-  await expect(dialog).not.toHaveAttribute("open", "");
+  await expectDialogClose(dialog, closeCount);
   await expect(checklistButton).toBeFocused();
 
   const planPath = `${workspace.logicalPath}/.caffold/plans/current/PLAN.md`;
@@ -1218,6 +1219,27 @@ async function openCurrentPlanDocumentWithHint(page, label) {
   expect(code).toBeTruthy();
   await page.keyboard.type(code.toLowerCase());
   await expect(dialog).toBeHidden();
+}
+
+async function observeDialogClose(dialog) {
+  return dialog.evaluate((element) => {
+    if (!Number.isInteger(element.caffoldTestCloseCount)) {
+      element.caffoldTestCloseCount = 0;
+      element.addEventListener("close", () => {
+        element.caffoldTestCloseCount += 1;
+      });
+    }
+    return element.caffoldTestCloseCount;
+  });
+}
+
+async function expectDialogClose(dialog, closeCount) {
+  await expect
+    .poll(() =>
+      dialog.evaluate((element) => element.caffoldTestCloseCount),
+    )
+    .toBe(closeCount + 1);
+  await expect(dialog).not.toHaveAttribute("open", "");
 }
 
 async function openTestPopover(page, id) {
