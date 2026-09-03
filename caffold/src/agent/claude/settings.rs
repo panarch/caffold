@@ -398,12 +398,23 @@ fn changed(current: &Option<String>, wanted: &Option<String>) -> Option<String> 
 }
 
 /// The models the agent listed, in Caffold's words.
+///
+/// The agent lists a model it will not accept as well, marked, so that its own
+/// interface can say what is out of reach and why. This list is what can be
+/// chosen, so a marked model is left out rather than offered and refused at
+/// the moment a turn starts.
 fn model_options(answer: &Value) -> Vec<ModelOption> {
     let Some(models) = answer.get("models").and_then(Value::as_array) else {
         return Vec::new();
     };
     models
         .iter()
+        .filter(|model| {
+            !model
+                .get("disabled")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+        })
         .filter_map(|model| {
             let value = model.get("value")?.as_str()?.to_string();
             let efforts = model
@@ -416,19 +427,23 @@ fn model_options(answer: &Value) -> Vec<ModelOption> {
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
+            let listed_name = model
+                .get("displayName")
+                .and_then(Value::as_str)
+                .unwrap_or(&value);
+            let description = model.get("description").and_then(Value::as_str);
+            // The agent names its recommendation `default` rather than marking
+            // one, so that name is the mark. It stands for whichever model the
+            // agent prefers rather than for one of them, so it keeps its name.
+            let is_default = value == "default";
             Some(ModelOption {
-                display_name: model
-                    .get("displayName")
-                    .and_then(Value::as_str)
-                    .unwrap_or(&value)
-                    .to_string(),
-                description: model
-                    .get("description")
-                    .and_then(Value::as_str)
-                    .map(str::to_string),
-                // The agent names its recommendation `default` rather than
-                // marking one, so that name is the mark.
-                is_default: value == "default",
+                display_name: if is_default {
+                    listed_name.to_string()
+                } else {
+                    generation(description).unwrap_or(listed_name).to_string()
+                },
+                description: description.map(str::to_string),
+                is_default,
                 default_effort: None,
                 supports_fast_mode: model
                     .get("supportsFastMode")
@@ -443,6 +458,19 @@ fn model_options(answer: &Value) -> Vec<ModelOption> {
             })
         })
         .collect()
+}
+
+/// Which generation a model is, as the agent wrote it.
+///
+/// Claude lists a model under a name that outlives its versions — `Sonnet`,
+/// `Fable` — and writes the generation at the head of the description, ahead
+/// of a middle dot: `Sonnet 5 · Efficient for routine tasks`. A list of names
+/// alone cannot tell one generation from the next, so the head is taken as the
+/// name, exactly as written. A description not written that way carries no
+/// generation, and the listed name stands.
+fn generation(description: Option<&str>) -> Option<&str> {
+    let head = description?.split_once(" · ")?.0.trim();
+    (!head.is_empty()).then_some(head)
 }
 
 #[cfg(test)]
@@ -835,7 +863,7 @@ mod tests {
                     "value": "default",
                     "resolvedModel": "claude-opus-5[1m]",
                     "displayName": "Default (recommended)",
-                    "description": "Opus 5 with 1M context",
+                    "description": "Opus 5 with 1M context · Best for everyday, complex tasks",
                     "supportsEffort": true,
                     "supportedEffortLevels": ["low", "medium", "high", "xhigh", "max"],
                     "supportsFastMode": true
@@ -844,7 +872,7 @@ mod tests {
                     "value": "haiku",
                     "resolvedModel": "claude-haiku-4-5-20251001",
                     "displayName": "Haiku",
-                    "description": "Fastest for quick answers"
+                    "description": "Haiku 4.5 · Fastest for quick answers"
                 }
             ]
         });
@@ -860,5 +888,94 @@ mod tests {
         assert!(!models[1].is_default);
         assert!(models[1].efforts.is_empty());
         assert!(!models[1].supports_fast_mode);
+    }
+
+    #[test]
+    fn a_model_is_named_by_the_generation_it_is() {
+        // Measured against CLI 2.1.236: `Sonnet` and `Fable` outlive their
+        // versions, so a list of those names cannot say which generation an
+        // installation actually runs.
+        let answer = json!({
+            "models": [
+                {
+                    "value": "default",
+                    "displayName": "Default (recommended)",
+                    "description": "Opus 5 with 1M context · Best for everyday, complex tasks"
+                },
+                {
+                    "value": "claude-fable-5[1m]",
+                    "displayName": "Fable",
+                    "description": "Fable 5 · Most capable for your hardest tasks"
+                },
+                {
+                    "value": "haiku",
+                    "displayName": "Haiku",
+                    "description": "Haiku 4.5 · Fastest for quick answers"
+                },
+                {
+                    "value": "sonnet",
+                    "displayName": "Sonnet",
+                    "description": "Sonnet 5"
+                }
+            ]
+        });
+
+        let models = model_options(&answer);
+
+        assert_eq!(
+            models
+                .iter()
+                .map(|model| model.display_name.as_str())
+                .collect::<Vec<_>>(),
+            [
+                // The recommendation stands for whichever model the agent
+                // prefers, not for one of them, so it keeps its own name.
+                "Default (recommended)",
+                "Fable 5",
+                "Haiku 4.5",
+                // Without the dot there is no telling a generation from a
+                // sentence, so the name the agent listed stands.
+                "Sonnet",
+            ]
+        );
+        assert_eq!(
+            models[1].description.as_deref(),
+            Some("Fable 5 · Most capable for your hardest tasks"),
+            "the sentence the agent wrote is carried whole, not consumed"
+        );
+    }
+
+    #[test]
+    fn a_model_this_installation_cannot_reach_is_not_offered() {
+        // Measured against CLI 2.1.236: a model this installation cannot run is
+        // listed marked, under a name and a description that say so.
+        let answer = json!({
+            "models": [
+                {
+                    "value": "sonnet",
+                    "resolvedModel": "claude-sonnet-5",
+                    "displayName": "Sonnet",
+                    "description": "Sonnet 5 · Efficient for routine tasks"
+                },
+                {
+                    "value": "cc-update-required-1",
+                    "resolvedModel": "cc-update-required-1",
+                    "displayName": "Fable 5.1 (disabled)",
+                    "description": "Update to 2.1.255+ to use Fable 5.1",
+                    "disabled": true
+                }
+            ]
+        });
+
+        let models = model_options(&answer);
+
+        assert_eq!(
+            models
+                .iter()
+                .map(|model| model.model.as_str())
+                .collect::<Vec<_>>(),
+            ["sonnet"],
+            "a model that cannot be chosen is not offered as a choice"
+        );
     }
 }
