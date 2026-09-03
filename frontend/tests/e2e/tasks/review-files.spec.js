@@ -86,11 +86,16 @@ test("browses source through the shared Files navigator and one root watch", { t
     "tasks-file-tree-disclosure-hints",
   );
   releasePlannerDirectory();
-  await expect(loadingSnapshot).toBeHidden();
   const plannerFile = navigator.locator(
     'button[data-file-tree-path="src/planner/mod.rs"]',
   );
   await expect(plannerFile).toBeVisible();
+  await expect(loadingSnapshot).toBeVisible();
+  await expect(
+    loadingSnapshot.getByLabel(/Open mod\.rs$/),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(loadingSnapshot).toBeHidden();
   await rootFolder.scrollIntoViewIfNeeded();
   await page.evaluate(() => new Promise((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(resolve))
@@ -109,6 +114,8 @@ test("browses source through the shared Files navigator and one root watch", { t
   await navigator.locator(".file-tree-scroll").evaluate((scroller) => {
     scroller.dispatchEvent(new Event("scroll"));
   });
+  await expect(actionHintDialog(page)).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(actionHintDialog(page)).toBeHidden();
   expect((await rootFolder.boundingBox()).y).toBeLessThan(
     (await rootFile.boundingBox()).y,

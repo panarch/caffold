@@ -264,15 +264,18 @@ class CaffoldTaskConversation extends HTMLElement {
     )) {
       const approvalId = `${control.dataset.approvalId ?? ""}`;
       const decision = `${control.dataset.decision ?? ""}`;
-      const entry = control.closest?.(
-        ".task-event[data-conversation-entry-key], .task-event[data-event-id]",
+      const card = control.closest?.(
+        ".task-approval-card[data-approval-id]",
       );
-      if (approvalId && decision && entry) {
+      if (approvalId && decision && card) {
         definitions.push({
           id: `approval:${approvalId}:${decision}`,
-          invalidationOwner: entry,
+          invalidationOwner: card,
           control,
           isCurrent: () =>
+            card.dataset.approvalId === approvalId &&
+            control.closest?.(".task-approval-card[data-approval-id]") ===
+              card &&
             control.dataset.approvalId === approvalId &&
             control.dataset.decision === decision,
         });

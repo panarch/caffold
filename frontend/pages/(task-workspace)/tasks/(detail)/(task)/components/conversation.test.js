@@ -177,10 +177,13 @@ test("merges owned Conversation actions with direct retained child providers", (
     approvalId: "approval-a",
     decision: "accept",
   }, "Accept");
-  const approvalEntry = {
-    dataset: { conversationEntryKey: "approval-a" },
+  const approvalCard = {
+    dataset: { approvalId: "approval-a" },
   };
-  approval.closest = () => approvalEntry;
+  approval.closest = (selector) =>
+    selector === ".task-approval-card[data-approval-id]"
+      ? approvalCard
+      : null;
   const command = {
     actionHintScope(options) {
       assert.equal(options.scopeId, "task:thread-a:conversation:command:command-a");
@@ -230,7 +233,7 @@ test("merges owned Conversation actions with direct retained child providers", (
   ]);
   assert.deepEqual(scope.targets.map(({ invalidationOwner }) =>
     invalidationOwner
-  ), [owner, earlierPreviewEntry, previewEntry, approvalEntry, command]);
+  ), [owner, earlierPreviewEntry, previewEntry, approvalCard, command]);
   scope.targets.slice(0, 4).forEach((target) => target.activate());
   assert.deepEqual(
     [retry, earlierPreview, preview, approval].map(({ clicks }) => clicks),
@@ -242,6 +245,9 @@ test("merges owned Conversation actions with direct retained child providers", (
   approval.dataset.decision = "decline";
   assert.equal(scope.targets[3].isActionable(), false);
   approval.dataset.decision = "accept";
+  approvalCard.dataset.approvalId = "approval-b";
+  assert.equal(scope.targets[3].isActionable(), false);
+  approvalCard.dataset.approvalId = "approval-a";
   owner.snapshot = { threadId: "thread-b", task: { threadId: "thread-b" } };
   assert.equal(scope.targets[0].isActionable(), false);
   controls = [];

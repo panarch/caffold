@@ -365,6 +365,9 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
   await expect(
     directoryHint.getByRole("button", { name: / — Open src folder$/ }),
   ).toBeVisible();
+  const cancelHint = directoryHint.getByRole("button", {
+    name: / — Cancel$/,
+  });
   await captureReviewScreenshot(
     page,
     testInfo,
@@ -386,6 +389,15 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
       expandNewDirectories: false,
     });
   });
+  await expect(directoryHint).toBeVisible();
+  await expect(cancelHint).toBeVisible();
+  await expect(
+    directoryHint.getByRole("button", { name: / — Open src folder$/ }),
+  ).toBeVisible();
+  await expect(
+    directoryHint.getByRole("button", { name: / — Open late folder$/ }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await expect(directoryHint).toBeHidden();
   await page.keyboard.press("f");
   const refreshedDirectoryHint = actionHintDialog(page);

@@ -1067,7 +1067,9 @@ test("gives every Settings route one page title and landmark hierarchy", { tag: 
     await expect(
       page.getByRole("heading", { level: 1, name: title }),
     ).toBeVisible();
-    await expect(page.getByRole("region", { name: title })).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: title, exact: true }),
+    ).toBeVisible();
     await expect(
       page.locator('nav[aria-label="Settings sections"]'),
     ).toHaveCount(1);

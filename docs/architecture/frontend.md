@@ -762,15 +762,16 @@ without destroying a retained Composer draft.
 
 Conversation also owns its delegated retry, attachment-preview, approval, and
 exact rendered Thinking disclosure controls. Retry controls use Conversation's
-coarse owner; each attachment preview, approval group, and Thinking disclosure
-uses the exact retained timeline entry that contains it. A custom child owns
+coarse owner; each attachment preview and Thinking disclosure uses the exact
+retained timeline entry that contains it, while each approval group uses its
+rendered approval card as the minimum invalidation owner. A custom child owns
 its own controls: Command owns its active disclosure or terminal View output,
 Work Details owns its root disclosure, and Markdown Code Block owns Wrap and
 Copy. Thinking Markdown intentionally remains outside code-block controls.
 Assistant Message, Markdown, and Work Details merge only the direct retained
 children they mount. A stream patch can therefore retire only the replaced
-entry or child owner while unaffected sibling, App Shell, and Composer codes
-remain frozen, without introducing a descendant-DOM scan.
+entry, approval card, or child owner while unaffected sibling, App Shell, and
+Composer codes remain frozen, without introducing a descendant-DOM scan.
 
 ### Current plan
 
