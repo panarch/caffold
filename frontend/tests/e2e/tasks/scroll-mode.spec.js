@@ -1060,6 +1060,30 @@ test("keeps selector and HUD visible at appearance and zoom extremes", { tag: "@
         selectorVisual.viewportEscapes,
         JSON.stringify(selectorVisual),
       ).toEqual([]);
+      expect(
+        Math.abs(
+          selectorVisual.badgeGeometry.width -
+            selectorVisual.badgeGeometry.height,
+        ),
+      ).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(
+          selectorVisual.badgeGeometry.width -
+            selectorVisual.badgeGeometry.visualSize,
+        ),
+      ).toBeLessThanOrEqual(1);
+      expect(selectorVisual.badgeGeometry.hitWidth).toBeGreaterThanOrEqual(
+        Math.max(
+          selectorVisual.badgeGeometry.width,
+          selectorVisual.badgeGeometry.targetFloor,
+        ) - 1,
+      );
+      expect(selectorVisual.badgeGeometry.hitHeight).toBeGreaterThanOrEqual(
+        Math.max(
+          selectorVisual.badgeGeometry.height,
+          selectorVisual.badgeGeometry.targetFloor,
+        ) - 1,
+      );
       expect(selectorVisual.contrastRatio).toBeGreaterThanOrEqual(4.5);
       expect(selectorVisual.outlineWidth).toBeGreaterThanOrEqual(2);
     }
@@ -1264,6 +1288,10 @@ async function captureScrollPresentation(page, kind) {
       const badge = dialog.querySelector("button[data-scroll-surface-code]");
       badge.focus();
       const badgeStyle = getComputedStyle(badge);
+      const badgeBounds = badge.getBoundingClientRect();
+      const hitStyle = getComputedStyle(badge, "::before");
+      const inset = (value) => Number.parseFloat(value) || 0;
+      const rootStyle = getComputedStyle(document.documentElement);
       const regions = [...dialog.querySelectorAll(
         ".scroll-surface-selector-region",
       )];
@@ -1272,6 +1300,18 @@ async function captureScrollPresentation(page, kind) {
         ...dialog.querySelectorAll("button[data-scroll-surface-code]"),
       ];
       return {
+        badgeGeometry: {
+          height: badgeBounds.height,
+          hitHeight:
+            badgeBounds.height - inset(hitStyle.top) - inset(hitStyle.bottom),
+          hitWidth:
+            badgeBounds.width - inset(hitStyle.left) - inset(hitStyle.right),
+          targetFloor: Number.parseFloat(
+            rootStyle.getPropertyValue("--interface-target-floor"),
+          ) || 0,
+          visualSize: Number.parseFloat(badgeStyle.minWidth),
+          width: badgeBounds.width,
+        },
         contrastRatio: colorContrast(
           badgeStyle.color,
           badgeStyle.backgroundColor,

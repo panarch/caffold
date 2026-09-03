@@ -33,11 +33,11 @@ caffold-action-hint-dialog {
     z-index: 1;
     display: grid;
     place-items: center;
-    min-width: 1.5rem;
-    min-height: 1.5rem;
+    min-width: var(--keyboard-choice-visual-size);
+    min-height: var(--keyboard-choice-visual-size);
     border: 1px solid var(--primary-control-bg);
     border-radius: 0.25rem;
-    padding: 0.125rem 0.375rem;
+    padding: var(--interface-space-1) var(--interface-space-2);
     background: var(--primary-control-bg);
     box-shadow: 0 0.125rem 0.375rem rgb(var(--shadow-rgb) / 24%);
     color: var(--text-inverse);
@@ -52,7 +52,9 @@ caffold-action-hint-dialog {
     position: absolute;
     inset: min(
       0px,
-      calc((1.5rem - var(--interface-target-floor)) / 2)
+      calc(
+        (var(--keyboard-choice-visual-size) - var(--interface-target-floor)) / 2
+      )
     );
     content: "";
   }

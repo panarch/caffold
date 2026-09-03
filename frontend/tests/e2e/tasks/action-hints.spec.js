@@ -1280,6 +1280,37 @@ test("keeps badges aligned and legible at appearance and zoom extremes", { tag: 
     expect(visual.scale).toBeCloseTo(scenario.pageScaleFactor, 2);
     expect(visual.alignmentErrors).toEqual([]);
     expect(visual.viewportEscapes).toEqual([]);
+    expect(
+      Math.abs(
+        visual.badgeGeometry.singleWidth -
+          visual.badgeGeometry.singleHeight,
+      ),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(
+        visual.badgeGeometry.singleWidth -
+          visual.badgeGeometry.visualSize,
+      ),
+    ).toBeLessThanOrEqual(1);
+    expect(visual.badgeGeometry.multipleWidth).toBeGreaterThan(
+      visual.badgeGeometry.singleWidth,
+    );
+    expect(visual.badgeGeometry.multipleHeight).toBeCloseTo(
+      visual.badgeGeometry.singleHeight,
+      1,
+    );
+    expect(visual.badgeGeometry.hitWidth).toBeGreaterThanOrEqual(
+      Math.max(
+        visual.badgeGeometry.singleWidth,
+        visual.badgeGeometry.targetFloor,
+      ) - 1,
+    );
+    expect(visual.badgeGeometry.hitHeight).toBeGreaterThanOrEqual(
+      Math.max(
+        visual.badgeGeometry.singleHeight,
+        visual.badgeGeometry.targetFloor,
+      ) - 1,
+    );
     expect(visual.contrastRatio).toBeGreaterThanOrEqual(4.5);
     expect(visual.outlineStyle).not.toBe("none");
     expect(visual.outlineWidth).toBeGreaterThanOrEqual(2);
@@ -1581,10 +1612,36 @@ async function captureActionHintVisualState(page) {
       }
     }
     const sample = badges[0];
+    const single = badges.find(
+      ({ dataset }) => dataset.actionHintCode.length === 1,
+    );
+    const multiple = badges.find(
+      ({ dataset }) => dataset.actionHintCode.length > 1,
+    );
+    const singleBounds = single.getBoundingClientRect();
+    const multipleBounds = multiple.getBoundingClientRect();
+    const singleStyle = getComputedStyle(single);
+    const hitStyle = getComputedStyle(single, "::before");
+    const inset = (value) => Number.parseFloat(value) || 0;
+    const rootStyle = getComputedStyle(document.documentElement);
     sample.focus();
     const style = getComputedStyle(sample);
     return {
       alignmentErrors,
+      badgeGeometry: {
+        hitHeight:
+          singleBounds.height - inset(hitStyle.top) - inset(hitStyle.bottom),
+        hitWidth:
+          singleBounds.width - inset(hitStyle.left) - inset(hitStyle.right),
+        multipleHeight: multipleBounds.height,
+        multipleWidth: multipleBounds.width,
+        singleHeight: singleBounds.height,
+        singleWidth: singleBounds.width,
+        targetFloor: Number.parseFloat(
+          rootStyle.getPropertyValue("--interface-target-floor"),
+        ) || 0,
+        visualSize: Number.parseFloat(singleStyle.minWidth),
+      },
       contrastRatio: colorContrast(style.color, style.backgroundColor),
       outlineStyle: style.outlineStyle,
       outlineWidth: Number.parseFloat(style.outlineWidth),

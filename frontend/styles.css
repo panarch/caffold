@@ -171,6 +171,7 @@
   --interface-icon-large-size: 1.125rem;
   --interface-icon-slot-size: 1.25rem;
   --interface-badge-size: 0.875rem;
+  --keyboard-choice-visual-size: 1.25rem;
   --interface-control-visual-size: 2rem;
   --interface-control-hit-size: max(
     var(--interface-control-visual-size),
