@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
+import { activateActionHint } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   PASTED_IMAGE_BASE64,
@@ -551,7 +552,7 @@ test("keeps the latest conversation when older history times out", { tag: "@all-
   await expect(tasksPage).toContainText("Latest response 12.");
   await expect(textarea).toHaveValue("Draft survives history timeout");
 
-  await tasksPage.locator('[data-task-action="retry-task-history"]').click();
+  await activateActionHint(page, /Retry loading older messages$/);
   await expect.poll(() => olderRequests).toBe(2);
   await expect(tasksPage).toContainText("Recovered older prompt.");
   await expect(tasksPage.locator(".task-history-error")).toHaveCount(0);
@@ -1321,7 +1322,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
   });
   await expect(completedCommandRow).toContainText("Completed");
   await completedCommandAction.click();
-  const commandDialog = tasksPage.locator("caffold-task-command-dialog dialog");
+  const commandDialog = tasksPage.locator("caffold-task-command-dialog > dialog");
   await expect(completedWorkDetails).toHaveAttribute("open", "");
   await expect(commandDialog).toHaveAttribute("open", "");
   await expect(commandDialog).toContainText("cargo test");

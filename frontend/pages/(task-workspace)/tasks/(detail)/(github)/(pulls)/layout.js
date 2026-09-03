@@ -5,6 +5,8 @@ import {
 import "./list/page.js";
 import "./detail/page.js";
 import "./files/page.js";
+import { emptyActionHintScope } from "../../../../../../action-hints.js";
+import { emptyScrollSurfaceScope } from "../../../../../../scroll-scope.js";
 
 const GITHUB_PULLS_PER_PAGE = 50;
 const LOADING_DELAY_MS = 180;
@@ -416,6 +418,60 @@ class CaffoldGithubPullsLayout extends HTMLElement {
 
   currentPullNumber() {
     return this.selectedPullSummary?.number ?? this.filesPage.currentPullNumber();
+  }
+
+  actionHintScope({ scopeId = "github:pulls", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    if (this.hidden) {
+      return emptyActionHintScope();
+    }
+    if (this.view === "detail") {
+      return this.detailPage.actionHintScope({
+        scopeId: `${scopeId}:detail`,
+        clipRoots: [this, ...clipRoots],
+      });
+    }
+    if (this.view === "files") {
+      return this.filesPage.actionHintScope({
+        scopeId: `${scopeId}:files`,
+        clipRoots: [this, ...clipRoots],
+      });
+    }
+    return this.listPage.actionHintScope({
+      scopeId: `${scopeId}:page:${this.page}`,
+      clipRoots: [this, ...clipRoots],
+    });
+  }
+
+  scrollSurfaceScope({ scopeId = "github:pulls", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    if (this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    const child = this.view === "detail"
+      ? this.detailPage
+      : this.view === "files"
+        ? this.filesPage
+        : this.listPage;
+    const suffix = this.view === "list" ? `page:${this.page}` : this.view;
+    return child.scrollSurfaceScope?.({
+      scopeId: `${scopeId}:${suffix}`,
+      clipRoots: [this, ...clipRoots],
+    }) ?? emptyScrollSurfaceScope();
+  }
+
+  keyboardNavigationContexts({ scopeId = "github:pulls" } = {}) {
+    this.ensureRendered();
+    return !this.hidden && this.view === "files"
+      ? this.filesPage.keyboardNavigationContexts({
+          scopeId: `${scopeId}:files`,
+        })
+      : [];
+  }
+
+  deactivate() {
+    this.ensureRendered();
+    this.filesPage.deactivate();
   }
 
   routeMatchesCurrentContext(route) {

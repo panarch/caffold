@@ -1,6 +1,16 @@
 import { BUILD_INFO } from "../../../../build-info.js";
 import { getCodexMcpDiagnostics } from "../../../../api.js";
 import "../components/detail-list.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+} from "../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../scroll-scope.js";
 
 class CaffoldSettingsAboutPage extends HTMLElement {
   connectedCallback() {
@@ -111,6 +121,94 @@ class CaffoldSettingsAboutPage extends HTMLElement {
       `Last update navigation target: ${diagnostics.lastNavigationAttemptBuildId ?? "none"}`,
       ...codexMcpDiagnosticLines(codexMcpDiagnostics),
     ].join("\n");
+  }
+
+  actionHintScope({
+    scopeId = "settings:about",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const scrollport = this.querySelector(":scope > .settings-content-scroll");
+    if (this.hidden || !scrollport) {
+      return emptyActionHintScope();
+    }
+    const definitions = [
+      {
+        id: "reload-update",
+        selector: 'button[data-action="reload-update"]',
+      },
+      {
+        id: "copy-diagnostics",
+        selector: 'button[data-action="copy-diagnostics"]',
+      },
+    ];
+    const targets = definitions.flatMap(({ id, selector }) => {
+      const control = this.querySelector(selector);
+      if (
+        !control ||
+        control.disabled ||
+        control.hidden ||
+        !hasActionHintLayoutBox(control)
+      ) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:${id}`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label") ||
+          control.textContent?.trim() ||
+          id,
+        control,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.querySelector(selector) === control &&
+          !control.disabled &&
+          !control.hidden &&
+          hasActionHintLayoutBox(control),
+      })];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [scrollport],
+    };
+  }
+
+  scrollSurfaceScope({
+    scopeId = "settings:about",
+    label = "About Caffold",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const scrollport = this.querySelector(":scope > .settings-content-scroll");
+    if (this.hidden || !scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label,
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.querySelector(":scope > .settings-content-scroll") ===
+            scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   render() {

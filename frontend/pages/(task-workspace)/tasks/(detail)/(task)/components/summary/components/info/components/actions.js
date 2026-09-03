@@ -2,6 +2,12 @@ import {
   isTaskTransportStale,
   taskThreadStatusType,
 } from "../../../../../../../runtime-state.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../../../../../../../../../action-hints.js";
+import { taskThreadId } from "../../../../../../../task-list-model.js";
 
 class CaffoldTaskDetailInfoActions extends HTMLElement {
   connectedCallback() {
@@ -96,6 +102,42 @@ class CaffoldTaskDetailInfoActions extends HTMLElement {
     }
     this.patchFork();
     this.patchArchive();
+  }
+
+  actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
+    const threadId = taskThreadId(this.snapshot.task);
+    if (!scopeId || !threadId) {
+      return emptyActionHintScope();
+    }
+    const targets = ["fork", "archive"].flatMap((type) => {
+      const control = this.actionButton(type);
+      if (!control || control.disabled) {
+        return [];
+      }
+      const actionId = type === "fork"
+        ? ACTION_HINT_ACTION.TASK_FORK
+        : ACTION_HINT_ACTION.TASK_ARCHIVE;
+      return [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:${threadId}:${type}`,
+        actionId,
+        label: control.textContent?.trim() || `${type} task`,
+        control,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          taskThreadId(this.snapshot.task) === threadId &&
+          this.actionButton(type) === control &&
+          control.dataset.taskInfoAction === type &&
+          !control.disabled,
+      })];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
   }
 
   patchArchive() {

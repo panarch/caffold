@@ -3,6 +3,17 @@ import {
   CODEX_STATUS_REFRESH_REQUEST_EVENT,
   INITIAL_CODEX_STATUS_SNAPSHOT,
 } from "../../codex-status.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  linkActionHintTarget,
+} from "../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../scroll-scope.js";
 
 const CODEX_INSTALL_COMMAND = "curl -fsSL https://chatgpt.com/codex/install.sh | sh";
 const CODEX_SETUP_GUIDE = "https://learn.chatgpt.com/docs/codex/cli";
@@ -129,6 +140,112 @@ class CaffoldCodexReadinessRecovery extends HTMLElement {
       this.copyState = "failed";
     }
     this.patch();
+  }
+
+  actionHintScope({
+    scopeId = "codex-readiness",
+    clipRoots = [],
+  } = {}) {
+    this.ensureRendered();
+    const scrollport = this.querySelector(
+      ":scope > .codex-readiness-surface",
+    );
+    if (this.hidden || !scrollport) {
+      return emptyActionHintScope();
+    }
+    const actions = ["copy-command", "restart", "retry", "settings"];
+    const targets = actions.flatMap((action) => {
+      const selector =
+        `button[data-codex-readiness-action="${action}"]`;
+      const control = this.querySelector(selector);
+      if (
+        !control ||
+        control.disabled ||
+        control.hidden ||
+        !hasActionHintLayoutBox(control)
+      ) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:${action}`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label") ||
+          control.textContent?.trim() ||
+          action,
+        control,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.querySelector(selector) === control &&
+          !control.disabled &&
+          !control.hidden &&
+          hasActionHintLayoutBox(control),
+      })];
+    });
+    const guide = this.querySelector(
+      '.codex-readiness-actions a[href]',
+    );
+    if (
+      guide &&
+      !guide.hidden &&
+      hasActionHintLayoutBox(guide)
+    ) {
+      targets.push(linkActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:official-guide`,
+        actionId: ACTION_HINT_ACTION.LINK_OPEN,
+        label: "Open Official Codex CLI guide in a new tab",
+        control: guide,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.querySelector('.codex-readiness-actions a[href]') === guide &&
+          !guide.hidden &&
+          hasActionHintLayoutBox(guide),
+      }));
+    }
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [scrollport],
+    };
+  }
+
+  scrollSurfaceScope({
+    scopeId = "codex-readiness",
+    label = "Codex readiness",
+    clipRoots = [],
+  } = {}) {
+    this.ensureRendered();
+    const scrollport = this.querySelector(
+      ":scope > .codex-readiness-surface",
+    );
+    if (this.hidden || !scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label,
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.querySelector(":scope > .codex-readiness-surface") ===
+            scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   patch() {

@@ -1,3 +1,17 @@
+import {
+  captureLinkActionHintBinding,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  linkActionHintLabel,
+  linkActionHintTarget,
+  matchesLinkActionHintBinding,
+} from "../action-hint-scope.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  mergeScrollSurfaceScopes,
+} from "../scroll-scope.js";
+
 const MARKED_IMPORT = "https://esm.sh/marked@15.0.12";
 
 let parserPromise;
@@ -21,6 +35,8 @@ class CaffoldMarkdownPreview extends HTMLElement {
       return;
     }
     this.initialized = true;
+    this.actionHintLinks = [];
+    this.scrollSurfaceRecords = [];
     this.innerHTML = '<article class="markdown-preview-body"></article>';
   }
 
@@ -39,7 +55,137 @@ class CaffoldMarkdownPreview extends HTMLElement {
     return { top: this.scrollTop, left: this.scrollLeft };
   }
 
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "Markdown preview",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    this.ensureRendered();
+    if (!scopeId || !label || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    const scrollport = this;
+    const ownScope = {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label,
+        scrollport,
+        axes: ["vertical", "horizontal"],
+        clipRoots: [this, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          hasScrollLayoutBox(this),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this],
+      scrollRoots: [this],
+    };
+    const body = this.body();
+    const nestedScopes = (this.scrollSurfaceRecords ?? []).map((record) => {
+      const nested = record.scrollport;
+      return {
+        blocked: false,
+        surfaces: [{
+          id: `${scopeId}:${record.kind}:${record.ordinal}`,
+          label: `${label} ${record.label}`,
+          scrollport: nested,
+          axes: ["horizontal"],
+          clipRoots: [this, body, nested, ...clipRoots].filter(Boolean),
+          isEligible: () =>
+            this.isConnected &&
+            !this.hidden &&
+            isCurrent() &&
+            this.dataset.renderState === "markdown" &&
+            this.body() === body &&
+            this.scrollSurfaceRecords?.includes(record) &&
+            body?.contains(nested) &&
+            hasScrollLayoutBox(this) &&
+            hasScrollLayoutBox(nested),
+        }],
+        mutationRoots: [this],
+        resizeElements: [this, nested],
+        scrollRoots: [this, nested],
+      };
+    });
+    return mergeScrollSurfaceScopes(ownScope, ...nestedScopes);
+  }
+
+  actionHintScope({
+    scopeId = "",
+    linkActionId = "",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    this.ensureRendered();
+    const body = this.body();
+    if (
+      !scopeId ||
+      !linkActionId ||
+      !body ||
+      !this.isConnected ||
+      this.hidden ||
+      this.dataset.renderState !== "markdown"
+    ) {
+      return emptyActionHintScope();
+    }
+    const tableScrollRoots = [];
+    const targets = (this.actionHintLinks ?? []).flatMap((record) => {
+      const { binding, control, ordinal } = record;
+      const label = linkActionHintLabel(control);
+      if (
+        !label ||
+        !matchesLinkActionHintBinding(control, binding) ||
+        !body.contains(control) ||
+        !hasActionHintLayoutBox(control)
+      ) {
+        return [];
+      }
+      const tableScrollRoot = control.closest(
+        ".markdown-preview-table-scroll",
+      );
+      if (tableScrollRoot && body.contains(tableScrollRoot)) {
+        tableScrollRoots.push(tableScrollRoot);
+      }
+      return [linkActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:link:${ordinal}`,
+        actionId: linkActionId,
+        label,
+        control,
+        clipRoots: [
+          this,
+          body,
+          tableScrollRoot,
+          ...clipRoots,
+        ].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.dataset.renderState === "markdown" &&
+          this.body() === body &&
+          this.actionHintLinks?.includes(record) &&
+          body.contains(control) &&
+          matchesLinkActionHintBinding(control, binding) &&
+          Boolean(linkActionHintLabel(control)) &&
+          hasActionHintLayoutBox(control),
+      })];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [this, ...new Set(tableScrollRoots)],
+    };
+  }
+
   renderPending() {
+    this.actionHintLinks = [];
+    this.scrollSurfaceRecords = [];
     const pending = document.createElement("span");
     pending.className = "markdown-preview-loading";
     pending.setAttribute("role", "status");
@@ -55,6 +201,8 @@ class CaffoldMarkdownPreview extends HTMLElement {
     const fallback = document.createElement("pre");
     fallback.className = "markdown-preview-fallback";
     fallback.textContent = this.markdown;
+    this.actionHintLinks = [];
+    this.scrollSurfaceRecords = [];
     this.body().replaceChildren(fallback);
     this.dataset.renderState = "plain";
     this.pendingScroll = null;
@@ -73,7 +221,10 @@ class CaffoldMarkdownPreview extends HTMLElement {
       if (!this.acceptRender(renderToken)) {
         return;
       }
-      this.body().replaceChildren(content);
+      const body = this.body();
+      body.replaceChildren(content);
+      this.actionHintLinks = collectActionHintLinks(body);
+      this.scrollSurfaceRecords = collectScrollSurfaceRecords(body);
       this.dataset.renderState = "markdown";
       this.pendingScroll = null;
       restoreScroll(this, scroll);
@@ -90,6 +241,38 @@ class CaffoldMarkdownPreview extends HTMLElement {
   body() {
     return this.querySelector(":scope > .markdown-preview-body");
   }
+}
+
+function collectActionHintLinks(root) {
+  return Array.from(root.querySelectorAll("a[href]")).flatMap(
+    (control, index) => {
+      const binding = captureLinkActionHintBinding(control);
+      return binding.href &&
+          !binding.href.startsWith("#") &&
+          linkActionHintLabel(control)
+        ? [{ control, ordinal: index + 1, binding }]
+        : [];
+    },
+  );
+}
+
+function collectScrollSurfaceRecords(root) {
+  const ordinals = new Map();
+  return Array.from(
+    root.querySelectorAll("pre, .markdown-preview-table-scroll"),
+  ).map((scrollport) => {
+    const kind = scrollport.localName === "pre" ? "code" : "table";
+    const ordinal = (ordinals.get(kind) ?? 0) + 1;
+    ordinals.set(kind, ordinal);
+    return {
+      kind,
+      ordinal,
+      label: kind === "code"
+        ? `code block ${ordinal}`
+        : `Markdown table ${ordinal}`,
+      scrollport,
+    };
+  });
 }
 
 if (!customElements.get("caffold-markdown-preview")) {

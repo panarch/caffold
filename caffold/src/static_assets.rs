@@ -18,6 +18,7 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "styles.css" => Some(css(include_str!("../../frontend/styles.css"))),
         "app.js" => Some(js(include_str!("../../frontend/app.js"))),
         "api.js" => Some(js(include_str!("../../frontend/api.js"))),
+        "action-hint-scope.js" => Some(js(include_str!("../../frontend/action-hint-scope.js"))),
         "origin-reachability.js" => Some(js(include_str!("../../frontend/origin-reachability.js"))),
         "file-status.js" => Some(js(include_str!("../../frontend/file-status.js"))),
         "fonts.js" => Some(js(include_str!("../../frontend/fonts.js"))),
@@ -144,6 +145,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/appearance/page.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/settings/appearance/page.js"
         ))),
+        "pages/(task-workspace)/settings/keyboard/page.css" => Some(css(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/keyboard/page.css"
+        ))),
+        "pages/(task-workspace)/settings/keyboard/page.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/keyboard/page.js"
+        ))),
         "pages/(task-workspace)/settings/files/page.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/settings/files/page.css"
         ))),
@@ -222,6 +229,61 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "pages/(task-workspace)/layout.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/layout.js"
+        ))),
+        "keyboard-navigation.js" => Some(js(include_str!("../../frontend/keyboard-navigation.js"))),
+        "scroll-scope.js" => Some(js(include_str!("../../frontend/scroll-scope.js"))),
+        "keyboard-navigation/control.js" => Some(js(include_str!(
+            "../../frontend/keyboard-navigation/control.js"
+        ))),
+        "keyboard-navigation/context.js" => Some(js(include_str!(
+            "../../frontend/keyboard-navigation/context.js"
+        ))),
+        "keyboard-navigation/model.js" => Some(js(include_str!(
+            "../../frontend/keyboard-navigation/model.js"
+        ))),
+        "keyboard-navigation/shortcuts.js" => Some(js(include_str!(
+            "../../frontend/keyboard-navigation/shortcuts.js"
+        ))),
+        "keyboard-navigation/components/hud.css" => Some(css(include_str!(
+            "../../frontend/keyboard-navigation/components/hud.css"
+        ))),
+        "keyboard-navigation/components/hud.js" => Some(js(include_str!(
+            "../../frontend/keyboard-navigation/components/hud.js"
+        ))),
+        "keyboard-navigation/components/selector.css" => Some(css(include_str!(
+            "../../frontend/keyboard-navigation/components/selector.css"
+        ))),
+        "keyboard-navigation/components/selector.js" => Some(js(include_str!(
+            "../../frontend/keyboard-navigation/components/selector.js"
+        ))),
+        "keyboard-navigation/components/presentation.css" => Some(css(include_str!(
+            "../../frontend/keyboard-navigation/components/presentation.css"
+        ))),
+        "keyboard-navigation/components/presentation.js" => Some(js(include_str!(
+            "../../frontend/keyboard-navigation/components/presentation.js"
+        ))),
+        "keyboard-navigation/components/shortcut-list.css" => Some(css(include_str!(
+            "../../frontend/keyboard-navigation/components/shortcut-list.css"
+        ))),
+        "keyboard-navigation/components/shortcut-list.js" => Some(js(include_str!(
+            "../../frontend/keyboard-navigation/components/shortcut-list.js"
+        ))),
+        "keyboard-navigation/components/shortcut-dialog.css" => Some(css(include_str!(
+            "../../frontend/keyboard-navigation/components/shortcut-dialog.css"
+        ))),
+        "keyboard-navigation/components/shortcut-dialog.js" => Some(js(include_str!(
+            "../../frontend/keyboard-navigation/components/shortcut-dialog.js"
+        ))),
+        "action-hints.js" => Some(js(include_str!("../../frontend/action-hints.js"))),
+        "action-hints/control.js" => {
+            Some(js(include_str!("../../frontend/action-hints/control.js")))
+        }
+        "action-hints/model.js" => Some(js(include_str!("../../frontend/action-hints/model.js"))),
+        "action-hints/components/dialog.css" => Some(css(include_str!(
+            "../../frontend/action-hints/components/dialog.css"
+        ))),
+        "action-hints/components/dialog.js" => Some(js(include_str!(
+            "../../frontend/action-hints/components/dialog.js"
         ))),
         "pages/(task-workspace)/live-updates.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/live-updates.js"
@@ -347,6 +409,11 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/components/composer.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/composer.js"
         ))),
+        "pages/(task-workspace)/tasks/components/composer/action-hints.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/components/composer/action-hints.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/components/task-turn-options.css" => Some(css(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/components/task-turn-options.css"
         ))),
@@ -1036,7 +1103,7 @@ mod tests {
                 task_button_js.content_type,
                 "text/javascript; charset=utf-8"
             );
-            assert!(task_button_js.body.starts_with(b"const "));
+            assert!(task_button_js.body.starts_with(b"import "));
         }
 
         for (path, owner) in [
@@ -1064,7 +1131,7 @@ mod tests {
             build_mismatch_alert.content_type,
             "text/javascript; charset=utf-8"
         );
-        assert!(build_mismatch_alert.body.starts_with(b"export "));
+        assert!(build_mismatch_alert.body.starts_with(b"import "));
 
         let pwa_update_lifecycle =
             get("pages/pwa-update-lifecycle.js").expect("PWA update lifecycle js asset");
@@ -1085,7 +1152,7 @@ mod tests {
         let update_dialog =
             get("pages/components/update-dialog.js").expect("update dialog js asset");
         assert_eq!(update_dialog.content_type, "text/javascript; charset=utf-8");
-        assert!(update_dialog.body.starts_with(b"export "));
+        assert!(update_dialog.body.starts_with(b"import "));
 
         assert!(get("pages/components/about-dialog.js").is_none());
         assert!(get("pages/components/about-dialog.css").is_none());
@@ -1124,8 +1191,23 @@ mod tests {
         assert!(settings_page.body.starts_with(b"import "));
 
         for path in [
+            "keyboard-navigation.js",
+            "keyboard-navigation/control.js",
+            "keyboard-navigation/context.js",
+            "keyboard-navigation/model.js",
+            "keyboard-navigation/shortcuts.js",
+            "keyboard-navigation/components/hud.js",
+            "keyboard-navigation/components/selector.js",
+            "keyboard-navigation/components/presentation.js",
+            "keyboard-navigation/components/shortcut-list.js",
+            "keyboard-navigation/components/shortcut-dialog.js",
+            "action-hints.js",
+            "action-hints/control.js",
+            "action-hints/model.js",
+            "action-hints/components/dialog.js",
             "pages/(task-workspace)/settings/layout.js",
             "pages/(task-workspace)/settings/navigator.js",
+            "pages/(task-workspace)/settings/keyboard/page.js",
             "pages/(task-workspace)/settings/files/page.js",
             "pages/(task-workspace)/settings/notifications/page.js",
             "pages/(task-workspace)/settings/remote-access/page.js",
@@ -1135,12 +1217,35 @@ mod tests {
             "pages/(task-workspace)/settings/claude/display.js",
             "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
             "pages/(task-workspace)/settings/about/page.js",
+            "pages/(task-workspace)/tasks/components/composer/action-hints.js",
         ] {
-            let asset = get(path).unwrap_or_else(|| panic!("missing settings asset {path}"));
+            let asset = get(path).unwrap_or_else(|| panic!("missing frontend asset {path}"));
             assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
             // The body is the module itself, not an HTML error page. A module
             // with no imports of its own opens with what it exports.
             assert!(asset.body.starts_with(b"import ") || asset.body.starts_with(b"export "));
+        }
+
+        let scroll_scope = get("scroll-scope.js").expect("Scroll scope module asset");
+        assert_eq!(scroll_scope.content_type, "text/javascript; charset=utf-8");
+        assert!(
+            scroll_scope
+                .body
+                .starts_with(b"const SCROLL_SCOPE_LIST_KEYS")
+        );
+
+        for path in [
+            "keyboard-navigation/components/hud.css",
+            "keyboard-navigation/components/selector.css",
+            "keyboard-navigation/components/presentation.css",
+            "keyboard-navigation/components/shortcut-list.css",
+            "keyboard-navigation/components/shortcut-dialog.css",
+            "action-hints/components/dialog.css",
+            "pages/(task-workspace)/settings/keyboard/page.css",
+        ] {
+            let asset = get(path).unwrap_or_else(|| panic!("missing frontend CSS asset {path}"));
+            assert_eq!(asset.content_type, "text/css; charset=utf-8");
+            assert!(asset.body.starts_with(b"caffold-"));
         }
 
         let notification_lifecycle =
@@ -1159,7 +1264,7 @@ mod tests {
             runtime_restart_dialog.content_type,
             "text/javascript; charset=utf-8"
         );
-        assert!(runtime_restart_dialog.body.starts_with(b"export const"));
+        assert!(runtime_restart_dialog.body.starts_with(b"import "));
 
         let app_shell_layout = get("pages/layout.js").expect("app shell layout js asset");
         assert_eq!(
@@ -1835,11 +1940,7 @@ mod tests {
             github_markdown.content_type,
             "text/javascript; charset=utf-8"
         );
-        assert!(
-            github_markdown
-                .body
-                .starts_with(b"const FORBIDDEN_ELEMENTS")
-        );
+        assert!(github_markdown.body.starts_with(b"import "));
         assert!(
             github_markdown
                 .body

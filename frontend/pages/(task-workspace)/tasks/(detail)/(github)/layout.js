@@ -4,6 +4,16 @@ import { routeMode } from "../../../../../navigation-routes.js";
 import "./components/task-start-dialog.js";
 import "./(issues)/layout.js";
 import "./(pulls)/layout.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../../../action-hints.js";
+import {
+  mergeKeyboardNavigationContexts,
+} from "../../../../../keyboard-navigation.js";
+import { emptyScrollSurfaceScope } from "../../../../../scroll-scope.js";
 
 class CaffoldTaskGithubLayout extends HTMLElement {
   connectedCallback() {
@@ -207,13 +217,17 @@ class CaffoldTaskGithubLayout extends HTMLElement {
   }
 
   deactivate() {
-    if (!this.rendered || !this.active) {
+    if (!this.rendered) {
+      return;
+    }
+    this.taskStartDialog.deactivate();
+    this.pullsLayout.deactivate();
+    if (!this.active) {
       return;
     }
     this.active = false;
     this.activationGeneration += 1;
     this.githubStatusRequestId += 1;
-    this.taskStartDialog.deactivate();
     this.issuesLayout.invalidateRequests();
     this.pullsLayout.invalidateRequests();
   }
@@ -439,6 +453,7 @@ class CaffoldTaskGithubLayout extends HTMLElement {
 
   prepareRoute(route) {
     this.ensureRendered();
+    this.taskStartDialog.deactivate();
     const mode = routeMode(route);
     if (mode === "issues") {
       this.setMode("issues");
@@ -661,6 +676,95 @@ class CaffoldTaskGithubLayout extends HTMLElement {
     return null;
   }
 
+  actionHintScope() {
+    this.ensureRendered();
+    if (!this.active || this.hidden || !this.mode) {
+      return emptyActionHintScope();
+    }
+    const scopeId = `github:${encodeURIComponent(
+      this.repository?.rootPath || this.currentPath || "repository",
+    )}`;
+    const body = this.querySelector(
+      ":scope > .task-github-surface > .task-domain-body",
+    );
+    const backAvailable = this.backButton && !this.backButton.hidden &&
+      !this.backButton.disabled;
+    const parentKey = backAvailable
+      ? githubParentKey(this.routeForWorkspaceBack())
+      : "";
+    const back = backAvailable && parentKey
+      ? {
+          targets: [buttonActionHintTarget({
+            invalidationOwner: this,
+            id: `${scopeId}:parent:${parentKey}`,
+            actionId: ACTION_HINT_ACTION.PARENT,
+            label: this.backButton.getAttribute("aria-label") || "Back",
+            control: this.backButton,
+            clipRoots: [this],
+            isActionable: () =>
+              this.isConnected &&
+              this.active &&
+              !this.hidden &&
+              githubParentKey(this.routeForWorkspaceBack()) === parentKey &&
+              this.backButton === this.querySelector(
+                ':scope > .task-github-surface > .task-domain-header > .task-domain-back[data-action="domain-back"]',
+              ) &&
+              !this.backButton.hidden &&
+              !this.backButton.disabled,
+          })],
+          mutationRoots: [this.backButton],
+          scrollRoots: [],
+        }
+      : null;
+    const activeChild = this.mode === "issues"
+      ? this.issuesLayout.actionHintScope({
+          scopeId: `${scopeId}:issues`,
+          clipRoots: [this, body].filter(Boolean),
+        })
+      : this.pullsLayout.actionHintScope({
+          scopeId: `${scopeId}:pulls`,
+          clipRoots: [this, body].filter(Boolean),
+        });
+    return mergeActionHintScopes(back, activeChild);
+  }
+
+  scrollSurfaceScope() {
+    this.ensureRendered();
+    if (!this.active || this.hidden || !this.mode) {
+      return emptyScrollSurfaceScope();
+    }
+    const scopeId = `github:${encodeURIComponent(
+      this.repository?.rootPath || this.currentPath || "repository",
+    )}`;
+    const body = this.querySelector(
+      ":scope > .task-github-surface > .task-domain-body",
+    );
+    const child = this.mode === "issues" ? this.issuesLayout : this.pullsLayout;
+    return child.scrollSurfaceScope?.({
+      scopeId: `${scopeId}:${this.mode}`,
+      clipRoots: [this, body].filter(Boolean),
+    }) ?? emptyScrollSurfaceScope();
+  }
+
+  keyboardNavigationContexts() {
+    this.ensureRendered();
+    if (!this.active || this.hidden || !this.mode) {
+      return [];
+    }
+    const scopeId = `github:${encodeURIComponent(
+      this.repository?.rootPath || this.currentPath || "repository",
+    )}`;
+    const activeChild = this.mode === "pulls"
+      ? this.pullsLayout.keyboardNavigationContexts({
+          scopeId: `${scopeId}:pulls`,
+        })
+      : [];
+    return mergeKeyboardNavigationContexts(
+      activeChild,
+      this.taskStartDialog.keyboardNavigationContexts(),
+    );
+  }
+
   requestGithubRoute(route, options = {}) {
     this.dispatchEvent(
       new CustomEvent("caffold:request-github-route", {
@@ -742,6 +846,10 @@ class CaffoldTaskGithubLayout extends HTMLElement {
       return;
     }
 
+    if (nextMode !== "pulls") {
+      this.pullsLayout.deactivate();
+    }
+
     this.mode = nextMode;
     this.updateVisibleMode();
   }
@@ -800,4 +908,14 @@ customElements.define("caffold-task-github-layout", CaffoldTaskGithubLayout);
 
 function normalizeGithubMode(mode) {
   return mode === "pulls" ? "pulls" : "issues";
+}
+
+function githubParentKey(route) {
+  if (!route?.kind) {
+    return "";
+  }
+  if (route.kind === "pulls" && route.number) {
+    return `pull:${encodeURIComponent(route.number)}`;
+  }
+  return `${route.kind}`;
 }

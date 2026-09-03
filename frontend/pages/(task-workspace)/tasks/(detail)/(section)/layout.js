@@ -2,6 +2,12 @@ import "../../components/task-create.js";
 import "./components/conversation-shortcuts.js";
 import "./components/github-shortcuts.js";
 import { cleanLogicalPath } from "../../task-format.js";
+import { mergeActionHintScopes } from "../../../../../action-hints.js";
+import { mergeKeyboardNavigationContexts } from "../../../../../keyboard-navigation.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../../scroll-scope.js";
 
 class CaffoldSectionDetail extends HTMLElement {
   ensureState() {
@@ -80,6 +86,73 @@ class CaffoldSectionDetail extends HTMLElement {
 
   selectedContextPath() {
     return `${this.section?.name ?? ""}`;
+  }
+
+  actionHintScope() {
+    this.ensureRendered();
+    const taskCreate = this.taskCreate();
+    const sectionId = `${this.section?.id ?? ""}`;
+    const scopeId = `section:${sectionId}`;
+    return mergeActionHintScopes(
+      {
+        targets: sectionId
+          ? taskCreate?.actionHintTargets({
+              scopeId,
+              clipRoots: [this],
+            }) ?? []
+          : [],
+        mutationRoots: [taskCreate].filter(Boolean),
+        scrollRoots: [this],
+      },
+      this.conversationShortcuts()?.actionHintScope({
+        scopeId,
+        clipRoots: [this],
+      }),
+      this.githubShortcuts()?.actionHintScope({
+        scopeId,
+        clipRoots: [this],
+      }),
+    );
+  }
+
+  scrollSurfaceScope() {
+    this.ensureRendered();
+    const sectionId = `${this.section?.id ?? ""}`;
+    if (this.hidden || !sectionId) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `section:${sectionId}:scroll`,
+        label: this.section?.name
+          ? `Section ${this.section.name}`
+          : "Section",
+        scrollport: this,
+        clipRoots: [this],
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          `${this.section?.id ?? ""}` === sectionId &&
+          hasScrollLayoutBox(this),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this],
+      scrollRoots: [this],
+    };
+  }
+
+  keyboardNavigationContexts() {
+    this.ensureRendered();
+    const sectionId = `${this.section?.id ?? ""}`;
+    return !this.hidden && sectionId
+      ? mergeKeyboardNavigationContexts(
+          this.taskCreate()?.keyboardNavigationContexts({
+            scopeId: `section:${sectionId}`,
+          }) ?? [],
+          this.conversationShortcuts()?.keyboardNavigationContexts?.() ?? [],
+        )
+      : [];
   }
 
   sectionContextKey(section) {

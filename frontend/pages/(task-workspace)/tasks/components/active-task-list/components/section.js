@@ -2,6 +2,11 @@ import { renderInlineIcon, warmIcons } from "../../../../../../components/icons.
 import { taskStoreOperationsPresentation } from "../../../../codex-status.js";
 import { taskThreadId } from "../../../task-list-model.js";
 import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  reorderHandleActionHintTarget,
+} from "../../../../../../action-hints.js";
+import {
   ACTIVE_TASK_ROW_INTENT_EVENT,
 } from "./section/components/row.js";
 
@@ -147,6 +152,59 @@ class CaffoldActiveTaskSection extends HTMLElement {
     return this.rowFor(threadId)?.querySelector(
       ":scope > caffold-active-task-row",
     ) ?? null;
+  }
+
+  actionHintTargets(options = {}) {
+    const section = this.snapshot.section;
+    if (this.snapshot.reorderMode === "sections") {
+      const target = sectionReorderActionHintTarget(this, options);
+      return target ? [target] : [];
+    }
+    const rows = [...this.querySelectorAll(
+      ":scope > .task-list > li > caffold-active-task-row",
+    )];
+    if (this.snapshot.reorderMode === "tasks") {
+      return rows.flatMap((row) => {
+        const target = row.reorderActionHintTarget(options);
+        return target ? [target] : [];
+      });
+    }
+    const sectionControl = this.querySelector(
+      ':scope > .task-repository-header > button[data-active-task-section-action="open-section"]',
+    );
+    const targets = [];
+    if (
+      section?.id &&
+      !section.recovery &&
+      this.snapshot.reorderMode === "none" &&
+      sectionControl &&
+      !sectionControl.disabled
+    ) {
+      const sectionId = `${section.id}`;
+      const label = section.label ?? activeTaskSectionLabel(section.name);
+      targets.push(buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `section:${sectionId}`,
+        actionId: ACTION_HINT_ACTION.SECTION_OPEN,
+        label: `Open section: ${label}`,
+        control: sectionControl,
+        clipRoots: [...(options.clipRoots ?? [])],
+        isActionable: () =>
+          this.isConnected &&
+          this.snapshot.section?.id === sectionId &&
+          !this.snapshot.section?.recovery &&
+          this.snapshot.reorderMode === "none" &&
+          this.querySelector(
+            ':scope > .task-repository-header > button[data-active-task-section-action="open-section"]',
+          ) === sectionControl &&
+          !sectionControl.disabled,
+      }));
+    }
+    targets.push(...rows.flatMap((row) => {
+      const target = row.actionHintTarget(options);
+      return target ? [target] : [];
+    }));
+    return targets;
   }
 
   hasTaskRow(threadId) {
@@ -620,6 +678,43 @@ class CaffoldActiveTaskSection extends HTMLElement {
 
 export function activeTaskSectionLabel(name) {
   return `${name ?? ""}`.split("/").filter(Boolean).at(-1) ?? "Directory";
+}
+
+function sectionReorderActionHintTarget(owner, { clipRoots = [] } = {}) {
+  const section = owner.snapshot.section;
+  const sectionId = `${section?.id ?? ""}`;
+  const control = owner.querySelector(
+    ":scope > .task-repository-header > .section-reorder-handle",
+  );
+  if (
+    !sectionId ||
+    section?.recovery ||
+    owner.snapshot.reorderMode !== "sections" ||
+    owner.snapshot.pending ||
+    !control ||
+    control.disabled
+  ) {
+    return null;
+  }
+  const label = section.label ?? activeTaskSectionLabel(section.name);
+  return reorderHandleActionHintTarget({
+    invalidationOwner: owner,
+    id: `section:${sectionId}:reorder`,
+    actionId: ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS,
+    label: control.getAttribute("aria-label") || `Reorder ${label}`,
+    control,
+    clipRoots: [...clipRoots],
+    isActionable: () =>
+      owner.isConnected &&
+      `${owner.snapshot.section?.id ?? ""}` === sectionId &&
+      !owner.snapshot.section?.recovery &&
+      owner.snapshot.reorderMode === "sections" &&
+      !owner.snapshot.pending &&
+      owner.querySelector(
+        ":scope > .task-repository-header > .section-reorder-handle",
+      ) === control &&
+      !control.disabled,
+  });
 }
 
 function normalizeReorderMode(mode) {

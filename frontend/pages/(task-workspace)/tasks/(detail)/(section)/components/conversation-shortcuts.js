@@ -4,6 +4,11 @@ import {
   taskStoreBlocksTaskOperations,
 } from "../../../../codex-status.js";
 import "./conversation-shortcuts/components/fork-dialog.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../../../../../action-hints.js";
 
 class CaffoldSectionConversationShortcuts extends HTMLElement {
   connectedCallback() {
@@ -108,6 +113,52 @@ class CaffoldSectionConversationShortcuts extends HTMLElement {
 
   forkDialog() {
     return this.querySelector(":scope > caffold-conversation-fork-dialog");
+  }
+
+  actionHintScope({ scopeId = "section", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    const selector =
+      'button[data-section-conversation-action="fork-codex"]';
+    const control = this.querySelector(selector);
+    const contextKey = this.context.key;
+    if (
+      !this.active ||
+      this.hidden ||
+      !contextKey ||
+      !control ||
+      control.disabled
+    ) {
+      return emptyActionHintScope();
+    }
+    return {
+      blocked: false,
+      targets: [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:fork-conversation`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label") ||
+          control.textContent?.trim() ||
+          "Fork from Codex thread ID",
+        control,
+        clipRoots: [this, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          this.active &&
+          !this.hidden &&
+          this.context.key === contextKey &&
+          this.querySelector(selector) === control &&
+          !control.disabled,
+      })],
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
+  }
+
+  keyboardNavigationContexts() {
+    this.ensureRendered();
+    return this.active && !this.hidden
+      ? this.forkDialog()?.keyboardNavigationContexts?.() ?? []
+      : [];
   }
 
   patch() {

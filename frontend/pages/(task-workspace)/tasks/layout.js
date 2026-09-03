@@ -1,6 +1,17 @@
 import { createTask } from "../../../api.js";
 import { routeDomain, routeTarget } from "../../../navigation-routes.js";
 import {
+  hasActionHintLayoutBox,
+  mergeActionHintScopes,
+} from "../../../action-hints.js";
+import {
+  hasScrollLayoutBox,
+  mergeScrollSurfaceScopes,
+} from "../../../scroll-scope.js";
+import {
+  mergeKeyboardNavigationContexts,
+} from "../../../keyboard-navigation.js";
+import {
   INITIAL_CODEX_STATUS_SNAPSHOT,
   codexBlocksTaskOperations,
   codexSetupVisible,
@@ -85,7 +96,7 @@ class CaffoldTasksPage extends HTMLElement {
 
     this.innerHTML = `
       <section class="tasks-surface" aria-label="Tasks">
-        <div class="tasks-detail-pane" role="region" aria-label="Task content">
+        <div class="tasks-detail-pane" role="region" aria-label="Task content" tabindex="-1">
           <caffold-codex-readiness-recovery hidden></caffold-codex-readiness-recovery>
           <caffold-task-new hidden></caffold-task-new>
           <caffold-detail-layout hidden></caffold-detail-layout>
@@ -542,6 +553,79 @@ class CaffoldTasksPage extends HTMLElement {
 
   taskNavigator() {
     return this.connectedTaskNavigator ?? null;
+  }
+
+  actionHintScope() {
+    this.ensureRendered();
+    const navigator = this.taskNavigator();
+    const activeOwners = !hasActionHintLayoutBox(this)
+      ? []
+      : this.activeDirectSurfaceOwners().filter(hasActionHintLayoutBox);
+    return mergeActionHintScopes(
+      hasActionHintLayoutBox(navigator)
+        ? navigator.actionHintScope()
+        : null,
+      ...activeOwners.map((owner) => owner.actionHintScope?.()),
+    );
+  }
+
+  scrollSurfaceScope() {
+    this.ensureRendered();
+    const navigator = this.taskNavigator();
+    const activeOwners = hasScrollLayoutBox(this)
+      ? this.activeDirectSurfaceOwners().filter(hasScrollLayoutBox)
+      : [];
+    return mergeScrollSurfaceScopes(
+      hasScrollLayoutBox(navigator)
+        ? navigator.scrollSurfaceScope()
+        : null,
+      ...activeOwners.map((owner) => owner.scrollSurfaceScope?.()),
+    );
+  }
+
+  activeDirectSurfaceOwners() {
+    const setup = this.codexReadinessRecovery();
+    if (this.taskStoreRecoveryVisible()) {
+      return setup && !setup.hidden ? [setup] : [];
+    }
+    const owners = [];
+    if ((this.view === "home" || this.view === "new") && !this.taskNew()?.hidden) {
+      owners.push(this.taskNew());
+    } else if (this.view === "detail" && !this.taskDetail()?.hidden) {
+      owners.push(this.taskDetail());
+    } else if (this.view === "recovery" && !this.taskRecovery()?.hidden) {
+      owners.push(this.taskRecovery());
+    }
+    if (setup && !setup.hidden) {
+      owners.push(setup);
+    }
+    return owners.filter(Boolean);
+  }
+
+  keyboardNavigationContexts() {
+    this.ensureRendered();
+    const navigator = this.taskNavigator();
+    const activeSurfaceVisible = hasScrollLayoutBox(this);
+    const activeSurface = activeSurfaceVisible
+      ? this.view === "home" || this.view === "new"
+        ? this.taskNew()?.keyboardNavigationContexts?.() ?? []
+        : this.view === "detail" && hasScrollLayoutBox(this.taskDetail())
+          ? this.taskDetail()?.keyboardNavigationContexts?.() ?? []
+          : []
+      : [];
+    return mergeKeyboardNavigationContexts(
+      hasScrollLayoutBox(navigator)
+        ? navigator.keyboardNavigationContexts?.() ?? []
+        : [],
+      this.imagePreviewDialog?.()?.keyboardNavigationContexts?.() ?? [],
+      activeSurface,
+    );
+  }
+
+  focusActionHintDestination() {
+    this.querySelector(":scope > .tasks-surface .tasks-detail-pane")?.focus({
+      preventScroll: true,
+    });
   }
 
   taskNew() {

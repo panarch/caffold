@@ -3,10 +3,15 @@ import {
   installBrowserDefaults,
   mockCodexStatus,
 } from "../support/browser-defaults.js";
+import {
+  actionHintDialog,
+  activateActionHint,
+} from "../support/action-hints.js";
 import { taskDetailFixture } from "../support/task-api-fixture.js";
 import {
   activeTaskProjection,
   canonicalTaskState,
+  captureReviewScreenshot,
   installEventSourceMock,
   mockAgentModels,
 } from "../support/task-fixtures.js";
@@ -57,14 +62,10 @@ test("selects a Section and opens fixed-directory Task creation", { tag: "@all-v
       )
       ?.closest(".task-repository-select")?.tagName ?? "";
   })).toBe("BUTTON");
-  const headerBounds = await sectionHeader.boundingBox();
-  const countBounds = await sectionCount.boundingBox();
-  await sectionHeader.click({
-    position: {
-      x: countBounds.x + countBounds.width / 2 - headerBounds.x,
-      y: countBounds.y + countBounds.height / 2 - headerBounds.y,
-    },
-  });
+  await activateActionHint(
+    page,
+    /Open section: home$/,
+  );
 
   await expect(page).toHaveURL("/?section=fixture-section-1");
   await expect(section).toHaveAttribute("aria-current", "page");
@@ -102,6 +103,28 @@ test("selects a Section and opens fixed-directory Task creation", { tag: "@all-v
   await expect(
     detail.locator("caffold-segmented-control[data-detail-view-switch]"),
   ).toBeHidden();
+
+  const sectionScroll = detail.locator("caffold-section-detail");
+  await sectionScroll.evaluate((element) => {
+    element.style.height = "120px";
+    element.style.maxHeight = "120px";
+  });
+  await expect.poll(() => sectionScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await page.locator(".task-workspace-surface").focus();
+  await page.keyboard.press("s");
+  const scrollHud = page.locator(
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
+  );
+  await expect(scrollHud).toContainText(
+    "Scroll: Section frontend/tests/e2e/fixtures/home",
+  );
+  await page.keyboard.press("j");
+  await expect.poll(() => sectionScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await expect(scrollHud).toBeHidden();
 });
 
 test("offers GitHub work shortcuts from repository Task creation", { tag: "@all-viewports" }, async ({
@@ -247,7 +270,7 @@ test("offers GitHub work shortcuts from repository Task creation", { tag: "@all-
   }
   expect(pullsBox.y).toBeGreaterThanOrEqual(issuesBox.y + issuesBox.height);
 
-  await shortcuts.getByRole("button", { name: "Issues" }).click();
+  await activateActionHint(page, /Open GitHub Issues$/);
   await expect(page).toHaveURL(
     "/?section=fixture-section-1&surface=github&tool=issues",
   );
@@ -256,7 +279,7 @@ test("offers GitHub work shortcuts from repository Task creation", { tag: "@all-
 
 test("previews a Codex thread ID and forks it into the selected Section", { tag: "@all-viewports" }, async ({
   page,
-}) => {
+}, testInfo) => {
   await installEventSourceMock(page);
   await mockAgentModels(page);
   const rootPath = "frontend/tests/e2e/fixtures/home";
@@ -368,10 +391,76 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
   const dialog = page.getByRole("dialog", { name: "Fork a Codex thread" });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator(".conversation-fork-target dd")).toHaveText(rootPath);
-  const threadIdInput = dialog.getByLabel("Thread ID");
+  let threadIdInput = dialog.locator("#conversation-fork-thread-id");
+  await expect(threadIdInput).toBeFocused();
+  await page.keyboard.press("f");
+  await expect(threadIdInput).toHaveValue("f");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  await expect(threadIdInput).toHaveValue("f");
+  await expect(dialog.getByRole("button", {
+    name: "Cancel",
+    exact: true,
+  })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(openButton).toBeFocused();
+
+  await openButton.click();
+  await expect(dialog).toBeVisible();
+  threadIdInput = dialog.locator("#conversation-fork-thread-id");
+  await expect(threadIdInput).toBeFocused();
+  await threadIdInput.evaluate((input) => {
+    input.dispatchEvent(new CompositionEvent("compositionstart", {
+      bubbles: true,
+      data: "ㅎ",
+    }));
+    input.dispatchEvent(new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      code: "Escape",
+      isComposing: true,
+      key: "Escape",
+    }));
+  });
+  await expect(threadIdInput).toBeFocused();
+  await expect(dialog).toBeVisible();
+  await threadIdInput.evaluate((input) => {
+    input.dispatchEvent(new CompositionEvent("compositionend", {
+      bubbles: true,
+      data: "ㅎ",
+    }));
+  });
+  await page.keyboard.press("Escape");
+  await expect(dialog.getByRole("button", {
+    name: "Cancel",
+    exact: true,
+  })).toBeFocused();
+  await page.keyboard.press("f");
+  const initialHint = actionHintDialog(page);
+  await expect(initialHint).toBeVisible();
+  await expect(
+    initialHint.getByRole("button", { name: / — Focus Thread ID$/ }),
+  ).toBeVisible();
+  await expect(
+    initialHint.getByRole("button", { name: / — Cancel$/ }),
+  ).toBeVisible();
+  await expect(
+    initialHint.getByRole("button", { name: / — Preview thread$/ }),
+  ).toHaveCount(0);
+  const inputCode = await initialHint.getByRole("button", {
+    name: / — Focus Thread ID$/,
+  }).getAttribute("data-action-hint-code");
+  expect(inputCode).toBeTruthy();
+  await page.keyboard.type(inputCode.toLowerCase());
+  await expect(initialHint).toBeHidden();
+  await expect(threadIdInput).toBeFocused();
   await threadIdInput.fill(`codex://threads/${sourceThreadId}`);
   expect(previewRequests).toBe(0);
-  await expect(dialog.getByRole("button", { name: "Fork task" })).toBeDisabled();
+  await expect(dialog.getByRole("button", {
+    name: "Fork task",
+    exact: true,
+  })).toBeDisabled();
   await threadIdInput.press("Enter");
 
   await expect(dialog.locator("[data-fork-preview='name']")).toHaveText(
@@ -395,11 +484,103 @@ test("previews a Codex thread ID and forks it into the selected Section", { tag:
 
   const forkButton = dialog.locator("[data-fork-dialog-action='fork']");
   await expect(forkButton).toBeEnabled();
-  await forkButton.click();
+  const forkBody = dialog.locator(".conversation-fork-body");
+  await forkBody.evaluate((element) => {
+    element.style.height = "120px";
+    element.style.maxHeight = "120px";
+  });
+  await expect.poll(() => forkBody.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await forkButton.focus();
+  await page.keyboard.press("s");
+  const forkHud = dialog.locator(
+    "caffold-keyboard-navigation-presentation caffold-scroll-mode-hud",
+  );
+  await expect(forkHud).toContainText("Scroll: Fork preview");
+  await page.keyboard.press("j");
+  await expect.poll(() => forkBody.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await expect(forkHud).toBeHidden();
+  await expect(dialog).toBeVisible();
+  await forkBody.evaluate((element) => {
+    if (element.scrollTop === 0) {
+      return;
+    }
+    return new Promise((resolve) => {
+      element.addEventListener("scroll", () => resolve(), { once: true });
+      element.scrollTop = 0;
+    });
+  });
+
+  await page.keyboard.press("f");
+  const topHint = actionHintDialog(page);
+  await expect(topHint).toBeVisible();
+  for (const name of [
+    / — Focus Thread ID$/,
+    / — Cancel$/,
+    / — Fork task$/,
+  ]) {
+    await expect(topHint.getByRole("button", { name })).toBeVisible();
+  }
+  await expect(topHint.getByRole("button", {
+    name: / — Preview thread$/,
+  })).toHaveCount(testInfo.project.name === "phone" ? 0 : 1);
+  await page.keyboard.press("Escape");
+
+  const previewButton = dialog.getByRole("button", {
+    name: "Preview thread",
+    exact: true,
+  });
+  await previewButton.evaluate((button) => {
+    const scrollport = button.closest(".conversation-fork-body");
+    if (!scrollport) {
+      throw new Error("Fork preview button lost its owning scrollport");
+    }
+    const before = scrollport.scrollTop;
+    let settle;
+    let onScroll;
+    const settled = new Promise((resolve) => {
+      settle = resolve;
+      onScroll = () => resolve();
+      scrollport.addEventListener("scroll", onScroll, { once: true });
+    });
+    button.scrollIntoView({ block: "nearest" });
+    if (scrollport.scrollTop === before) {
+      scrollport.removeEventListener("scroll", onScroll);
+      settle();
+    }
+    return settled;
+  });
+  await page.keyboard.press("f");
+  const readyHint = actionHintDialog(page);
+  await expect(readyHint).toBeVisible();
+  for (const name of [
+    / — Preview thread$/,
+    / — Cancel$/,
+    / — Fork task$/,
+  ]) {
+    await expect(readyHint.getByRole("button", { name })).toBeVisible();
+  }
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "conversation-fork-dialog-action-hints",
+  );
+  const forkCode = await readyHint.getByRole("button", {
+    name: / — Fork task$/,
+  }).getAttribute("data-action-hint-code");
+  expect(forkCode).toBeTruthy();
+  await page.keyboard.type(forkCode.toLowerCase());
+  await expect(readyHint).toBeHidden();
   await forkObserved;
   await expect(forkButton).toHaveText("Forking…");
   await expect(forkButton).toBeDisabled();
-  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  await expect(dialog.getByRole("button", {
+    name: "Cancel",
+    exact: true,
+  })).toBeDisabled();
   await expect(threadIdInput).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(dialog).toBeVisible();
@@ -749,7 +930,7 @@ test("keeps a repository Section draft while switching shared surfaces", { tag: 
     textarea.value = "Preserve this Section draft";
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
   });
-  await switcher.locator('button[data-segmented-value="working"]').click();
+  await activateActionHint(page, /Open Working Tree$/);
   await expect(page).toHaveURL(
     "/?section=fixture-section-1&surface=review",
   );

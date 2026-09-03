@@ -7,6 +7,12 @@ import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import { cleanLogicalPath } from "../task-format.js";
 import { requestTaskImagePreview } from "./image-preview-dialog.js";
+import { collectComposerActionHintTargets } from "./composer/action-hints.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  hasActionHintLayoutBox,
+} from "../../../../action-hints.js";
 import "./task-turn-options.js";
 import "./voice-level-meter.js";
 import {
@@ -234,7 +240,8 @@ class CaffoldTaskComposer extends HTMLElement {
     if (state.activeSubmissionId === submissionId) {
       state.activeSubmissionId = "";
     }
-    if (result.status === "rejected") {
+    const rejected = result.status === "rejected";
+    if (rejected) {
       state.prompt ||= submission.prompt;
       if (!state.images.length) {
         state.images = [...submission.images];
@@ -249,7 +256,7 @@ class CaffoldTaskComposer extends HTMLElement {
     }
     this.context.requestError = `${result.error?.message ?? result.error ?? ""}`;
     this.render();
-    if (submission.restorePromptFocus) {
+    if (rejected && submission.restorePromptFocusOnRejection) {
       this.focus();
     }
     return true;
@@ -359,6 +366,166 @@ class CaffoldTaskComposer extends HTMLElement {
         this.stateFor().selectionEnd,
       );
     }
+  }
+
+  actionHintTargets({ scopeId, clipRoots = [] } = {}) {
+    this.ensureState();
+    const mode = this.context.mode;
+    const existingTargets = collectComposerActionHintTargets({
+      mode,
+      scopeId,
+      modelTarget: () => {
+        const target = this.turnOptions()?.actionHintModelTarget({
+          scopeId,
+          clipRoots,
+        });
+        if (!target) {
+          return null;
+        }
+        const isActionable = target.isActionable;
+        return {
+          ...target,
+          isActionable: () =>
+            this.context.mode === mode && isActionable(),
+        };
+      },
+      permissionTarget: () => {
+        const target = this.turnOptions()?.actionHintPermissionTarget({
+          scopeId,
+          clipRoots,
+        });
+        if (!target) {
+          return null;
+        }
+        const isActionable = target.isActionable;
+        return {
+          ...target,
+          isActionable: () =>
+            this.context.mode === mode && isActionable(),
+        };
+      },
+      promptTarget: () => {
+        const textarea = this.querySelector("textarea[name='prompt']");
+        return textarea
+          ? {
+              id: `task-composer:${scopeId}:prompt`,
+              actionId: "task.prompt.focus",
+              label: mode === "create"
+                ? "Edit new task prompt"
+                : "Edit follow-up prompt",
+              invalidationOwner: this,
+              controlKind: "textbox",
+              control: textarea,
+              anchor: textarea,
+              clipRoots: [...clipRoots],
+              isActionable: () =>
+                this.context.mode === mode &&
+                this.querySelector("textarea[name='prompt']") === textarea &&
+                !textarea.disabled,
+              activate: () => this.focus(),
+            }
+          : null;
+      },
+    });
+    if (!COMPOSER_KEYBOARD_CONTEXT_MODES.has(mode) || !scopeId) {
+      return existingTargets;
+    }
+    return [
+      ...existingTargets,
+      ...this.actionHintButtonTargets({ mode, scopeId, clipRoots }),
+    ];
+  }
+
+  actionHintButtonTargets({ mode, scopeId, clipRoots }) {
+    const contextKey = JSON.stringify([
+      mode,
+      `${this.context.threadId ?? ""}`,
+      `${this.context.cwd ?? ""}`,
+      `${this.stateFor().activeSubmissionId ?? ""}`,
+    ]);
+    const definitions = [];
+    for (const [id, selector] of [
+      ["browse-cwd", 'button[data-composer-action="browse-cwd"]'],
+      ["voice", 'button[data-composer-action="voice"]'],
+      ["cancel-voice", 'button[data-composer-action="cancel-voice"]'],
+      ["cancel", 'button[data-composer-action="cancel"]'],
+      ["primary", "button.task-primary-action-button[data-primary-action]"],
+    ]) {
+      const control = this.querySelector(selector);
+      if (control) {
+        definitions.push({
+          id: id === "primary"
+            ? `primary:${control.dataset.primaryAction ?? "action"}`
+            : id,
+          selector,
+          control,
+          identity: id === "primary"
+            ? (candidate) =>
+                candidate.dataset.primaryAction === control.dataset.primaryAction
+            : null,
+        });
+      }
+    }
+    for (const control of this.querySelectorAll(
+      'button[data-composer-action="preview-image"][data-image-id], button[data-composer-action="remove-image"][data-image-id]',
+    )) {
+      const action = `${control.dataset.composerAction ?? ""}`;
+      const imageId = `${control.dataset.imageId ?? ""}`;
+      if (!imageId) {
+        continue;
+      }
+      definitions.push({
+        id: `${action}:${imageId}`,
+        selector: `button[data-composer-action="${action}"][data-image-id]`,
+        control,
+        identity: (candidate) => candidate.dataset.imageId === imageId,
+        imageId,
+      });
+    }
+    return definitions.flatMap((definition) => {
+      const { control } = definition;
+      if (control.disabled || !hasActionHintLayoutBox(control)) {
+        return [];
+      }
+      const currentControl = () => Array.from(
+        this.querySelectorAll(definition.selector),
+      ).find((candidate) =>
+        definition.identity ? definition.identity(candidate) : true
+      );
+      return [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `task-composer:${scopeId}:${definition.id}`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label") ||
+          control.title ||
+          control.textContent?.trim() ||
+          definition.id,
+        control,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          JSON.stringify([
+              this.context.mode,
+              `${this.context.threadId ?? ""}`,
+              `${this.context.cwd ?? ""}`,
+              `${this.stateFor().activeSubmissionId ?? ""}`,
+            ]) === contextKey &&
+          currentControl() === control &&
+          (!definition.imageId || this.stateFor().images.some(
+            (image) => image.id === definition.imageId
+          )) &&
+          !control.disabled &&
+          hasActionHintLayoutBox(control),
+      })];
+    });
+  }
+
+  keyboardNavigationContexts({ scopeId = "" } = {}) {
+    this.ensureState();
+    if (!COMPOSER_KEYBOARD_CONTEXT_MODES.has(this.context.mode)) {
+      return [];
+    }
+    return this.turnOptions()?.keyboardNavigationContexts({ scopeId }) ?? [];
   }
 
   stateFor() {
@@ -913,15 +1080,15 @@ class CaffoldTaskComposer extends HTMLElement {
     const options = this.turnOptions()?.submissionOptions() ?? {
       fastMode: false,
     };
+    const textarea = form.querySelector("textarea[name='prompt']");
+    const restorePromptFocusOnRejection =
+      !event.submitter && document.activeElement === textarea;
     const submission = {
       id: submissionId,
       prompt,
       images: [...state.images],
       options: { ...options },
-      restorePromptFocus:
-        !event.submitter &&
-        document.activeElement ===
-          form.querySelector("textarea[name='prompt']"),
+      restorePromptFocusOnRejection,
     };
     this.activeSubmissions.set(submissionId, submission);
     state.activeSubmissionId = submissionId;
@@ -930,6 +1097,9 @@ class CaffoldTaskComposer extends HTMLElement {
     state.imageError = "";
     this.context.requestError = "";
     this.turnOptions()?.hidePopovers();
+    if (restorePromptFocusOnRejection) {
+      textarea.blur();
+    }
     this.render();
     this.dispatchEvent(
       new CustomEvent("caffold:task-composer-submit", {
@@ -1242,6 +1412,8 @@ class CaffoldTaskComposer extends HTMLElement {
 
 }
 
+const COMPOSER_KEYBOARD_CONTEXT_MODES = new Set(["create", "follow-up"]);
+
 function renderImages(images) {
   if (!images.length) {
     return "";
@@ -1386,7 +1558,9 @@ function submissionDetail(submission, threadId = "") {
     images: submission.images.map((image) => image.dataUrl),
     attachments: [...submission.images],
     options: { ...(submission.options ?? {}) },
-    restorePromptFocus: Boolean(submission.restorePromptFocus),
+    restorePromptFocusOnRejection: Boolean(
+      submission.restorePromptFocusOnRejection,
+    ),
   };
 }
 
@@ -1415,7 +1589,9 @@ function normalizeAdoptedSubmission(value) {
     prompt,
     images: attachments,
     options: { ...(value?.options ?? {}) },
-    restorePromptFocus: Boolean(value?.restorePromptFocus),
+    restorePromptFocusOnRejection: Boolean(
+      value?.restorePromptFocusOnRejection,
+    ),
   };
 }
 

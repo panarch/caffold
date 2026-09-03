@@ -2,6 +2,12 @@ import {
   buildFileTreeNodes,
   FILE_TREE_SELECT_EVENT,
 } from "../file-tree.js";
+import {
+  emptyActionHintScope,
+  mergeActionHintScopes,
+  selectActionHintTarget,
+} from "../../action-hint-scope.js";
+import { emptyScrollSurfaceScope } from "../../scroll-scope.js";
 
 class CaffoldGitCompareTree extends HTMLElement {
   connectedCallback() {
@@ -121,6 +127,114 @@ class CaffoldGitCompareTree extends HTMLElement {
 
   selectedKey() {
     return this.fileKeyByPath?.get(this.selectedPath) ?? "";
+  }
+
+  actionHintScope({
+    scopeId = "",
+    actionId = "",
+    disclosureActionId = "",
+    selectActionId = "",
+    clipRoots = [],
+  } = {}) {
+    if (!scopeId || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const tree = this.fileTree();
+    return mergeActionHintScopes(
+      selectActionId
+        ? this.baseSelectActionHintScope({
+            scopeId,
+            actionId: selectActionId,
+            clipRoots,
+          })
+        : null,
+      (actionId || disclosureActionId) &&
+          this.state?.status === "ready" &&
+          tree
+        ? tree.actionHintScope({
+            scopeId,
+            actionId,
+            disclosureActionId,
+            clipRoots: [this, ...clipRoots],
+            isCurrent: (node) => node.source?.path === this.selectedPath,
+            labelForNode: (node) =>
+              node.ariaLabel ||
+              `Open ${node.source?.repoRelativePath ?? node.name}`,
+          })
+        : null,
+    );
+  }
+
+  baseSelectActionHintScope({ scopeId, actionId, clipRoots }) {
+    if (!actionId) {
+      return emptyActionHintScope();
+    }
+    const control = this.baseRefSelect();
+    const anchor = this.querySelector(".compare-base");
+    const selection = this.baseSelection;
+    if (
+      !this.isConnected ||
+      !selection?.enabled ||
+      !selection.refs?.length ||
+      !control ||
+      !anchor ||
+      control.hidden ||
+      control.disabled
+    ) {
+      return emptyActionHintScope();
+    }
+    return {
+      blocked: false,
+      targets: [selectActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:base-ref`,
+        actionId,
+        label: selection.value
+          ? `Choose comparison base (current ${selection.value})`
+          : "Choose comparison base",
+        control,
+        anchor,
+        clipRoots: [this, ...clipRoots],
+        isActionable: () => {
+          const currentSelection = this.baseSelection;
+          return Boolean(
+            this.isConnected &&
+              !this.hidden &&
+              currentSelection?.enabled &&
+              currentSelection.refs?.length &&
+              this.baseRefSelect() === control &&
+              this.querySelector(".compare-base") === anchor &&
+              !control.hidden &&
+              !control.disabled
+          );
+        },
+      })],
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "Compared files",
+    clipRoots = [],
+  } = {}) {
+    const tree = this.fileTree();
+    if (
+      !scopeId ||
+      this.hidden ||
+      this.state?.status !== "ready" ||
+      !tree
+    ) {
+      return emptyScrollSurfaceScope();
+    }
+    return tree.scrollSurfaceScope({
+      scopeId,
+      label,
+      clipRoots: [this, ...clipRoots],
+      isCurrent: () =>
+        this.state?.status === "ready" && this.fileTree() === tree,
+    });
   }
 
   renderState() {

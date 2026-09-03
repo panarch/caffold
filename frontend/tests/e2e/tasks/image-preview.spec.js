@@ -1,4 +1,8 @@
 import { expect, test } from "@playwright/test";
+import {
+  actionHintDialog,
+  activateActionHint,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 
@@ -30,7 +34,7 @@ test("previews a composer image without coupling preview and removal", { tag: "@
   );
 
   await expect(previewTrigger).toBeVisible();
-  await clickComposerPreview(previewTrigger);
+  await activateActionHint(page, /Preview composer-preview\.png$/);
   await expect(dialog).toHaveAttribute("open", "");
   await expect(dialog).toHaveAttribute("closedby", "any");
   await expect(dialog.locator("[data-task-image-preview-name]")).toHaveText(
@@ -45,7 +49,16 @@ test("previews a composer image without coupling preview and removal", { tag: "@
   ).toBeFocused();
   await expectPreviewContained(dialog, { portrait: true });
 
-  await page.keyboard.press("Escape");
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  const closeHint = hint.getByRole("button", {
+    name: / — Close image preview$/,
+  });
+  await expect(closeHint).toBeVisible();
+  const closeCode = await closeHint.getAttribute("data-action-hint-code");
+  expect(closeCode).toBeTruthy();
+  await page.keyboard.type(closeCode.toLowerCase());
+  await expect(hint).toBeHidden();
   await expect(dialog).toBeHidden();
   await expect(previewTrigger).toBeFocused();
 
@@ -55,7 +68,7 @@ test("previews a composer image without coupling preview and removal", { tag: "@
   await expect(dialog).toBeHidden();
   await expect(previewTrigger).toBeFocused();
 
-  await remove.click();
+  await activateActionHint(page, /Remove composer-preview\.png$/);
   await expect(attachment).toHaveCount(0);
   await expect(dialog).toBeHidden();
 });
@@ -76,11 +89,15 @@ test("keeps one sent-image dialog stable through live conversation updates", { t
     name: "Preview planner-layout.png",
   });
   await expect(sentPreview).toBeVisible();
+  await sentPreview.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
   await dialog.evaluate((element) => {
     window.__taskImagePreviewDialog = element;
   });
 
-  await sentPreview.click();
+  await activateActionHint(page, /Preview planner-layout\.png$/);
   await expect(dialog).toBeVisible();
   await expect(dialog.locator("[data-task-image-preview-name]")).toHaveText(
     "planner-layout.png",

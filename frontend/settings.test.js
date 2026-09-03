@@ -30,6 +30,7 @@ test("normalizes settings, malformed input, ranges, steps, and file order", asyn
       conversationTextPx: 12.5,
       codeTextPx: 24.4,
       fileSortMode: "name",
+      actionHintsEnabled: false,
     }),
     {
       themeMode: "dark",
@@ -38,6 +39,7 @@ test("normalizes settings, malformed input, ranges, steps, and file order", asyn
       conversationTextPx: 13,
       codeTextPx: 20,
       fileSortMode: "name",
+      actionHintsEnabled: false,
     },
   );
   assert.deepEqual(
@@ -47,6 +49,7 @@ test("normalizes settings, malformed input, ranges, steps, and file order", asyn
       interfaceScalePercent: 118,
       conversationTextPx: 19.6,
       codeTextPx: 11.2,
+      actionHintsEnabled: "false",
     }),
     {
       themeMode: "system",
@@ -55,6 +58,7 @@ test("normalizes settings, malformed input, ranges, steps, and file order", asyn
       conversationTextPx: 20,
       codeTextPx: 12,
       fileSortMode: "folders-first",
+      actionHintsEnabled: true,
     },
   );
 });
@@ -109,6 +113,7 @@ test("initial load rewrites obsolete state without publishing a change", async (
         conversationTextPx: 14,
         codeTextPx: 13,
         fileSortMode: "folders-first",
+        actionHintsEnabled: true,
       },
     ],
   ]);
@@ -148,12 +153,13 @@ test("malformed storage resets and persists the defaults silently", async () => 
         conversationTextPx: 14,
         codeTextPx: 13,
         fileSortMode: "folders-first",
+        actionHintsEnabled: true,
       },
     ],
   ]);
 });
 
-test("appearance reset preserves the global file ordering preference", async () => {
+test("appearance reset preserves global file ordering and Action Hint preferences", async () => {
   const events = [];
   const properties = new Map();
 
@@ -167,6 +173,7 @@ test("appearance reset preserves the global file ordering preference", async () 
     async () => {
       const settings = await importFreshSettings("updates");
       settings.setFileSortMode("name");
+      settings.setActionHintsEnabled(false);
       settings.setAppearanceRangeSetting("interfaceScalePercent", 113);
       settings.setAppearanceRangeSetting("conversationTextPx", 19.6);
       settings.resetAppearanceRangeSetting("conversationTextPx");
@@ -175,11 +182,12 @@ test("appearance reset preserves the global file ordering preference", async () 
       assert.deepEqual(settings.getSettings(), {
         ...settings.DEFAULT_SETTINGS,
         fileSortMode: "name",
+        actionHintsEnabled: false,
       });
     },
   );
 
-  assert.equal(events.length, 5);
+  assert.equal(events.length, 6);
   assert.deepEqual(events[0].detail.settings, {
     themeMode: "system",
     typefacePreset: "d2-coding",
@@ -187,6 +195,7 @@ test("appearance reset preserves the global file ordering preference", async () 
     conversationTextPx: 14,
     codeTextPx: 13,
     fileSortMode: "name",
+    actionHintsEnabled: true,
   });
   assert.equal(properties.get("--interface-scale"), "1");
   assert.equal(properties.get("--conversation-font-size"), "14px");
@@ -218,6 +227,36 @@ test("invalid file ordering values normalize to folders first", async () => {
     events.map((event) => event.detail.settings.fileSortMode),
     ["name", "folders-first"],
   );
+});
+
+test("Action Hints default on and boolean updates persist and publish", async () => {
+  const events = [];
+  const writes = [];
+  const properties = new Map();
+
+  await withBrowserGlobals(
+    {
+      getItem: () => null,
+      setItem: (key, value) => writes.push([key, JSON.parse(value)]),
+    },
+    events,
+    properties,
+    async () => {
+      const settings = await importFreshSettings("action-hints");
+      assert.equal(settings.getSettings().actionHintsEnabled, true);
+      settings.setActionHintsEnabled(false);
+      assert.equal(settings.getSettings().actionHintsEnabled, false);
+      settings.setActionHintsEnabled(true);
+      assert.equal(settings.getSettings().actionHintsEnabled, true);
+    },
+  );
+
+  assert.deepEqual(
+    events.map((event) => event.detail.settings.actionHintsEnabled),
+    [false, true],
+  );
+  assert.equal(writes.at(-2)[1].actionHintsEnabled, false);
+  assert.equal(writes.at(-1)[1].actionHintsEnabled, true);
 });
 
 test("storage failure does not roll back the live session value", async () => {

@@ -141,7 +141,7 @@ caffold-task-navigator {
     align-content: start;
   }
 
-  & .task-list-reorder-popover button {
+  & .task-list-reorder-popover > button[data-task-action="select-reorder-mode"] {
     box-sizing: border-box;
     height: var(--interface-compact-control-size);
     min-height: var(--interface-compact-control-size);
@@ -156,8 +156,10 @@ caffold-task-navigator {
     cursor: pointer;
   }
 
-  & .task-list-reorder-popover button:hover,
-  & .task-list-reorder-popover button:focus-visible {
+  & .task-list-reorder-popover
+    > button[data-task-action="select-reorder-mode"]:hover,
+  & .task-list-reorder-popover
+    > button[data-task-action="select-reorder-mode"]:focus-visible {
     background: var(--control-hover-bg);
     outline: none;
   }

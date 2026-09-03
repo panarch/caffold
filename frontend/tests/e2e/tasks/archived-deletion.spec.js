@@ -1,4 +1,8 @@
 import { expect, test } from "@playwright/test";
+import {
+  actionHintDialog,
+  activateActionHint,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
@@ -82,7 +86,7 @@ test("confirms permanent deletion and removes the archived row only after succes
     ),
   ).toEqual(["Restore Delete archived task", "Delete Delete archived task"]);
 
-  await row.getByRole("button", { name: "Delete Delete archived task" }).click();
+  await activateActionHint(page, /Delete Delete archived task$/);
   const dialog = page.getByRole("dialog", {
     name: "Permanently delete archived task?",
   });
@@ -99,13 +103,32 @@ test("confirms permanent deletion and removes the archived row only after succes
   await expect(cancel).toBeFocused();
   await captureReviewScreenshot(page, testInfo, "tasks-delete-confirmation");
 
-  await cancel.click();
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await expect(hint.getByRole("button", { name: / — Cancel$/ })).toBeVisible();
+  await expect(
+    hint.getByRole("button", { name: / — Delete permanently$/ }),
+  ).toBeVisible();
+  const cancelCode = await hint.getByRole("button", {
+    name: / — Cancel$/,
+  }).getAttribute("data-action-hint-code");
+  expect(cancelCode).toBeTruthy();
+  await page.keyboard.type(cancelCode.toLowerCase());
+  await expect(hint).toBeHidden();
   await expect(dialog).not.toBeVisible();
   await expect(row).toBeVisible();
   expect(deleteRequests).toBe(0);
 
-  await row.getByRole("button", { name: "Delete Delete archived task" }).click();
-  await dialog.getByRole("button", { name: "Delete permanently" }).click();
+  await activateActionHint(page, /Delete Delete archived task$/);
+  await dialog.getByRole("button", { name: "Cancel" }).focus();
+  await page.keyboard.press("f");
+  const deleteHint = actionHintDialog(page).getByRole("button", {
+    name: / — Delete permanently$/,
+  });
+  const deleteCode = await deleteHint.getAttribute("data-action-hint-code");
+  expect(deleteCode).toBeTruthy();
+  await page.keyboard.type(deleteCode.toLowerCase());
   const deleting = row.getByRole("button", {
     name: "Deleting Delete archived task",
   });
@@ -118,6 +141,107 @@ test("confirms permanent deletion and removes the archived row only after succes
 
   releaseDelete();
   await expect(row).toHaveCount(0);
+});
+
+test("activates Archived retry, paging, restore, and Task-list scrolling through the workspace", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  const firstPage = Array.from({ length: 28 }, (_, index) =>
+    archivedTask(
+      `thread_archived_page_${index + 1}`,
+      `Archived page task ${index + 1}`,
+    )
+  );
+  const pagedTask = archivedTask(
+    "thread_archived_page_more",
+    "Archived loaded later",
+  );
+  let archivedReads = 0;
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection() })
+  );
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) => {
+    archivedReads += 1;
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    if (archivedReads === 1) {
+      return route.fulfill({
+        status: 503,
+        json: { error: "Archived list unavailable" },
+      });
+    }
+    return route.fulfill({
+      json: cursor === "archived-next"
+        ? { tasks: [pagedTask], nextCursor: null }
+        : { tasks: firstPage, nextCursor: "archived-next" },
+    });
+  });
+  let restoreRequests = 0;
+  await page.route(
+    `/api/tasks/${firstPage[0].threadId}/restore`,
+    (route) => {
+      restoreRequests += 1;
+      return route.fulfill({
+        json: {
+          task: firstPage[0],
+          activeTopPlacement: {
+            section: {
+              id: "fixture-restored-section",
+              name: "frontend/tests/e2e/fixtures/home/project",
+              repository: false,
+            },
+          },
+        },
+      });
+    },
+  );
+
+  await page.goto("/tasks");
+  await expect(page.getByRole("alert")).toContainText(
+    "Archived list unavailable",
+  );
+  await activateActionHint(page, /Retry$/);
+  await expect.poll(() => archivedReads).toBe(2);
+
+  const taskList = page.locator(".task-list-scroll");
+  await expect.poll(() => taskList.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await page.locator(".task-workspace-surface").focus();
+  await page.keyboard.press("s");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog:modal");
+  const scrollHud = page.locator(
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
+  );
+  await expect.poll(async () =>
+    await selector.isVisible() || await scrollHud.isVisible()
+  ).toBe(true);
+  if (await selector.isVisible()) {
+    await selector.getByLabel(/^[A-Z]+ — Task list$/).click();
+  }
+  await expect(scrollHud).toContainText("Scroll: Task list");
+  await page.keyboard.press("j");
+  await expect.poll(() => taskList.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+
+  const loadMore = page.getByRole("button", {
+    name: "Load more archived tasks",
+  });
+  await revealActionTarget(page, loadMore);
+  await activateActionHint(page, /Load more archived tasks$/);
+  await expect.poll(() => archivedReads).toBe(3);
+  await expect(page.locator(".task-row-title").filter({
+    hasText: "Archived loaded later",
+  })).toHaveText("Archived loaded later");
+
+  const restore = page.getByRole("button", {
+    name: "Restore Archived page task 1",
+    exact: true,
+  });
+  await revealActionTarget(page, restore);
+  await activateActionHint(page, /Restore Archived page task 1$/);
+  await expect.poll(() => restoreRequests).toBe(1);
+  await expect(restore).toHaveCount(0);
 });
 
 test("offers delete without restore when the archived conversation is unavailable", { tag: "@all-viewports" }, async ({
@@ -173,3 +297,10 @@ test("offers delete without restore when the archived conversation is unavailabl
     row.getByRole("button", { name: "Retry deleting Thread unavailable" }),
   ).toBeVisible();
 });
+
+async function revealActionTarget(page, control) {
+  await control.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+}

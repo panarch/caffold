@@ -1,6 +1,18 @@
 import { escapeHtml } from "../../../../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../../../../components/icons.js";
 import "../../components/markdown.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  linkActionHintTarget,
+  mergeActionHintScopes,
+} from "../../../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../../../../scroll-scope.js";
 
 class CaffoldGithubIssueDetailPage extends HTMLElement {
   connectedCallback() {
@@ -60,6 +72,139 @@ class CaffoldGithubIssueDetailPage extends HTMLElement {
   setError(number, error) {
     this.state = { status: "error", number, error };
     this.render();
+  }
+
+  actionHintScope({ scopeId = "github:issue", clipRoots = [] } = {}) {
+    const state = this.state;
+    const issue = state?.payload?.issue;
+    const number = `${issue?.number ?? ""}`;
+    if (
+      this.hidden ||
+      this.state?.status !== "ready" ||
+      !number
+    ) {
+      return emptyActionHintScope();
+    }
+    const targets = [];
+    const startSelector =
+      ':scope > .github-issue-viewer-panel > header > .github-issue-viewer-title-row > .github-issue-actions > button.github-issue-start-button[data-action="start-github-task"]';
+    const start = this.querySelector(startSelector);
+    if (
+      start &&
+      !start.disabled &&
+      hasActionHintLayoutBox(start)
+    ) {
+      targets.push(buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:${encodeURIComponent(number)}:start-task`,
+        actionId: ACTION_HINT_ACTION.GITHUB_TASK_START,
+        label: start.getAttribute("aria-label") ||
+          `Start Task for issue #${number}`,
+        control: start,
+        clipRoots: [this, ...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state?.status === "ready" &&
+          `${this.state?.payload?.issue?.number ?? ""}` === number &&
+          this.querySelector(startSelector) === start &&
+          !start.disabled &&
+          hasActionHintLayoutBox(start),
+      }));
+    }
+    const linkSelector =
+      ":scope > .github-issue-viewer-panel > header > .github-issue-viewer-title-row > .github-issue-actions > a.github-issue-link[href]";
+    const link = this.querySelector(linkSelector);
+    if (
+      link &&
+      link.getAttribute("href") === issue.url &&
+      hasActionHintLayoutBox(link)
+    ) {
+      targets.push(linkActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:${encodeURIComponent(number)}:github`,
+        actionId: ACTION_HINT_ACTION.LINK_OPEN,
+        label: `Open issue #${number} on GitHub in a new tab`,
+        control: link,
+        clipRoots: [this, ...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state?.status === "ready" &&
+          `${this.state?.payload?.issue?.number ?? ""}` === number &&
+          this.state?.payload?.issue?.url === issue.url &&
+          this.querySelector(linkSelector) === link &&
+          link.getAttribute("href") === issue.url &&
+          hasActionHintLayoutBox(link),
+      }));
+    }
+    const ownScope = {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
+    const body = this.querySelector(
+      ":scope > .github-issue-viewer-panel > .github-issue-body",
+    );
+    return mergeActionHintScopes(
+      ownScope,
+      body?.actionHintScope?.({
+        scopeId: `${scopeId}:${encodeURIComponent(number)}:body`,
+        clipRoots: [this, ...clipRoots].filter(Boolean),
+        isCurrent: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state === state &&
+          this.querySelector(
+            ":scope > .github-issue-viewer-panel > .github-issue-body",
+          ) === body,
+      }),
+    );
+  }
+
+  scrollSurfaceScope({ scopeId = "github:issue", clipRoots = [] } = {}) {
+    const state = this.state;
+    if (this.hidden || state?.status !== "ready") {
+      return emptyScrollSurfaceScope();
+    }
+    const body = this.querySelector(
+      ":scope > .github-issue-viewer-panel > .github-issue-body",
+    );
+    if (!body) {
+      return emptyScrollSurfaceScope();
+    }
+    const isCurrent = () =>
+      this.isConnected &&
+      !this.hidden &&
+      this.state === state &&
+      this.querySelector(
+        ":scope > .github-issue-viewer-panel > .github-issue-body",
+      ) === body;
+    if (typeof body.scrollSurfaceScope === "function") {
+      return body.scrollSurfaceScope({
+        scopeId: `${scopeId}:body`,
+        label: "Issue description",
+        clipRoots: [this, ...clipRoots],
+        isCurrent,
+      });
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:body:scroll`,
+        label: "Issue description",
+        scrollport: body,
+        clipRoots: [this, body, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          isCurrent() &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(body),
+      }],
+      mutationRoots: [this, body],
+      resizeElements: [this, body],
+      scrollRoots: [body],
+    };
   }
 
   render() {

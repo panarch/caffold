@@ -3,6 +3,8 @@ import {
   buildFileTreeNodes,
   FILE_TREE_SELECT_EVENT,
 } from "../../../../../../../../components/file-tree.js";
+import { emptyActionHintScope } from "../../../../../../../../action-hint-scope.js";
+import { emptyScrollSurfaceScope } from "../../../../../../../../scroll-scope.js";
 
 class CaffoldGithubPullFilesTree extends HTMLElement {
   connectedCallback() {
@@ -68,6 +70,55 @@ class CaffoldGithubPullFilesTree extends HTMLElement {
 
   selectedKey() {
     return this.fileKeyByPath?.get(this.selectedPath) ?? "";
+  }
+
+  actionHintScope({
+    scopeId = "",
+    actionId = "",
+    disclosureActionId = "",
+    clipRoots = [],
+  } = {}) {
+    const tree = this.fileTree();
+    if (
+      !scopeId ||
+      (!actionId && !disclosureActionId) ||
+      this.hidden ||
+      this.state?.status !== "ready" ||
+      !tree
+    ) {
+      return emptyActionHintScope();
+    }
+    return tree.actionHintScope({
+      scopeId,
+      actionId,
+      disclosureActionId,
+      clipRoots: [this, ...clipRoots],
+      isCurrent: (node) => node.source?.path === this.selectedPath,
+      labelForNode: (node) => node.ariaLabel || `Open ${node.name}`,
+    });
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "Pull request files",
+    clipRoots = [],
+  } = {}) {
+    const tree = this.fileTree();
+    if (
+      !scopeId ||
+      this.hidden ||
+      this.state?.status !== "ready" ||
+      !tree
+    ) {
+      return emptyScrollSurfaceScope();
+    }
+    return tree.scrollSurfaceScope({
+      scopeId,
+      label,
+      clipRoots: [this, ...clipRoots],
+      isCurrent: () =>
+        this.state?.status === "ready" && this.fileTree() === tree,
+    });
   }
 
   renderState() {

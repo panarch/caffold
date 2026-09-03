@@ -6,6 +6,16 @@ import {
 } from "../../../../api.js";
 import { escapeHtml } from "../../../../components/dom.js";
 import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+} from "../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../scroll-scope.js";
+import {
   applicationServerKey,
   getOrCreatePushClientId,
   installationLabel,
@@ -270,6 +280,113 @@ class CaffoldSettingsNotificationsPage extends HTMLElement {
 
   isCurrent(operation) {
     return this.active && operation === this.operation;
+  }
+
+  actionHintScope({
+    scopeId = "settings:notifications",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const scrollport = this.querySelector(":scope > .settings-content-scroll");
+    if (this.hidden || !scrollport) {
+      return emptyActionHintScope();
+    }
+    const fixedDefinitions = [
+      { id: "refresh", selector: 'button[data-action="refresh"]' },
+      { id: "enable", selector: 'button[data-action="enable"]' },
+      { id: "disable", selector: 'button[data-action="disable"]' },
+    ];
+    const definitions = fixedDefinitions.flatMap(({ id, selector }) => {
+      const control = this.querySelector(selector);
+      return control ? [{ id, selector, control }] : [];
+    });
+    for (const control of this.querySelectorAll(
+      'button[data-action="remove-installation"][data-client-id]',
+    )) {
+      const clientId = control.dataset.clientId;
+      definitions.push({
+        id: `remove-installation:${clientId}`,
+        selector: 'button[data-action="remove-installation"][data-client-id]',
+        control,
+        identity: (candidate) => candidate.dataset.clientId === clientId,
+        label: `Remove ${
+          this.installations.find((item) => item.clientId === clientId)
+            ?.installationLabel ?? "browser installation"
+        }`,
+      });
+    }
+    const targets = definitions.flatMap((definition) => {
+      const { control } = definition;
+      if (
+        control.disabled ||
+        control.hidden ||
+        !hasActionHintLayoutBox(control)
+      ) {
+        return [];
+      }
+      const currentControl = () => Array.from(
+        this.querySelectorAll(definition.selector),
+      ).find((candidate) =>
+        definition.identity ? definition.identity(candidate) : true
+      );
+      return [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:${definition.id}`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label") ||
+          definition.label ||
+          control.textContent?.trim() ||
+          definition.id,
+        control,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          currentControl() === control &&
+          !control.disabled &&
+          !control.hidden &&
+          hasActionHintLayoutBox(control),
+      })];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [scrollport],
+    };
+  }
+
+  scrollSurfaceScope({
+    scopeId = "settings:notifications",
+    label = "Notification settings",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const scrollport = this.querySelector(":scope > .settings-content-scroll");
+    if (this.hidden || !scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label,
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.querySelector(":scope > .settings-content-scroll") ===
+            scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   render() {

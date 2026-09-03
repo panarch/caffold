@@ -784,7 +784,10 @@ function renderThinkingEvent(event, text, task, eventState) {
     <li class="task-event task-thinking"${conversationEntryAttributes(event, state)} data-event-type="${escapeHtml(event.type)}" data-thinking-state="${escapeHtml(state)}">
       <details${open}${disclosureIdentityAttribute("thinking", eventIdentityKey(event))}>
         <summary>
-          <span>Thinking</span>
+          <span class="task-thinking-label">
+            <span>Thinking</span>
+            <span class="task-thinking-disclosure-chevron" aria-hidden="true"></span>
+          </span>
           ${renderObservedTime(event)}
         </summary>
         <div class="task-thinking-content">
@@ -856,9 +859,13 @@ function renderToolEvent(event, label, text, tone = "neutral") {
   if (!value) {
     return renderStatusEvent(event);
   }
+  const identity = eventIdentityKey(event) || `${event?.id ?? ""}`;
+  const identityAttribute = identity
+    ? ` data-conversation-entry-key="${escapeHtml(identity)}"`
+    : "";
 
   return `
-    <li class="task-event task-tool-card" data-event-type="${escapeHtml(event.type)}" data-tool-tone="${escapeHtml(tone)}">
+    <li class="task-event task-tool-card"${identityAttribute} data-event-type="${escapeHtml(event.type)}" data-tool-tone="${escapeHtml(tone)}">
       <header>
         <strong>${escapeHtml(label)}</strong>
         ${renderObservedTime(event)}
@@ -932,7 +939,7 @@ function renderApprovalCard(event, options = {}) {
   const requestError = options.approvalErrors?.get(approvalId) ?? null;
 
   return `
-    <article class="task-approval-card">
+    <article class="task-approval-card" data-approval-id="${escapeHtml(approvalId)}">
       <header>
         <h3>${escapeHtml(payload.title ?? "Approval requested")}</h3>
         ${payload.reason ? `<p class="task-approval-reason">${escapeHtml(payload.reason)}</p>` : ""}

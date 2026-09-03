@@ -1,4 +1,11 @@
 import { taskThreadId } from "../task-list-model.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../../../action-hints.js";
+import { keyboardNavigationContext } from "../../../../keyboard-navigation.js";
+import "../../../../keyboard-navigation/components/presentation.js";
 
 export const TASK_ARCHIVED_DELETE_CONFIRMED_EVENT =
   "caffold:task-archived-delete-confirmed";
@@ -16,6 +23,65 @@ class CaffoldTaskArchivedDeleteDialog extends HTMLElement {
 
   dialog() {
     return this.querySelector(":scope > dialog");
+  }
+
+  keyboardNavigationContexts() {
+    const dialog = this.dialog();
+    const presentation = dialog?.querySelector(
+      ":scope > caffold-keyboard-navigation-presentation",
+    );
+    const hintDialog = presentation?.actionHintDialog?.();
+    if (!dialog || !hintDialog) {
+      return [];
+    }
+    const threadId = `${this.pendingThreadId ?? ""}`;
+    return [keyboardNavigationContext({
+      id: threadId
+        ? `archived-task-delete:${encodeURIComponent(threadId)}`
+        : "archived-task-delete",
+      kind: "modal",
+      root: dialog,
+      actionHints: {
+        dialog: hintDialog,
+        scope: this.actionHintScope(),
+      },
+    })];
+  }
+
+  actionHintScope() {
+    const dialog = this.dialog();
+    const threadId = `${this.pendingThreadId ?? ""}`;
+    if (!dialog) {
+      return emptyActionHintScope();
+    }
+    const targets = ["cancel", "delete"].flatMap((value) => {
+      const control = dialog.querySelector(`button[value="${value}"]`);
+      if (!control) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `archived-task-delete:${encodeURIComponent(threadId)}:${value}`,
+        actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
+        label: control.textContent?.trim() || value,
+        control,
+        clipRoots: [dialog],
+        isActionable: () =>
+          this.isConnected &&
+          this.dialog() === dialog &&
+          dialog.open &&
+          `${this.pendingThreadId ?? ""}` === threadId &&
+          Boolean(threadId) &&
+          dialog.querySelector(`button[value="${value}"]`) === control &&
+          !control.disabled,
+      })];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
   }
 
   openTask(task) {
@@ -36,6 +102,9 @@ class CaffoldTaskArchivedDeleteDialog extends HTMLElement {
   }
 
   handleClose() {
+    if (this.dialog().open) {
+      return;
+    }
     const threadId = this.pendingThreadId;
     const confirmed = this.dialog().returnValue === "delete";
     this.pendingThreadId = null;
@@ -69,6 +138,7 @@ class CaffoldTaskArchivedDeleteDialog extends HTMLElement {
             <button type="submit" class="task-delete-dialog-button task-delete-confirm" value="delete">Delete permanently</button>
           </footer>
         </form>
+        <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
       </dialog>
     `;
   }

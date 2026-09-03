@@ -8,6 +8,7 @@ import {
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { actionHintDialog } from "../support/action-hints.js";
 import {
   installTaskApiFixture,
   taskDetailFixture,
@@ -25,8 +26,15 @@ test.afterEach(async ({}, testInfo) => {
 });
 
 test("floats ignored current documents above the stable composer and updates the open checklist", { tag: "@all-viewports" }, async ({
+  context,
   page,
 }, testInfo) => {
+  await context.route("https://example.com/current-plan", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>Current plan reference</title>",
+    }),
+  );
   const workspace = prepareWorkspace(testInfo);
   await installTaskApiFixture(page);
   const detail = detailFor("thread-1", workspace.logicalPath);
@@ -72,8 +80,9 @@ test("floats ignored current documents above the stable composer and updates the
 
   const planTitle =
     "Coordinate current plan documents without exposing native agent Plan mode";
+  const planMarkdown = `# ${planTitle}\n\nThe agent keeps this document in Markdown.\n\n[Plan reference](https://example.com/current-plan)\n`;
   writeCurrentDocuments(workspace.absolutePath, {
-    plan: `# ${planTitle}\n\nThe agent keeps this document in Markdown.\n`,
+    plan: planMarkdown,
     checklist: checklistMarkdown(64, 2),
   });
   const readyResponse = currentPlanResponse(page, workspace.logicalPath);
@@ -220,7 +229,9 @@ test("floats ignored current documents above the stable composer and updates the
   );
   await planButton.click();
   await planFileResponse;
-  const dialog = currentPlan.locator("caffold-current-plan-document-dialog dialog");
+  const dialog = currentPlan.locator(
+    "caffold-current-plan-document-dialog > dialog",
+  );
   await expect(dialog).toHaveAttribute("open", "");
   const dialogPath = dialog.locator("[data-current-plan-dialog-path]");
   await expect(dialogPath).toHaveText(".caffold/plans/current/PLAN.md");
@@ -228,7 +239,10 @@ test("floats ignored current documents above the stable composer and updates the
     "title",
     `${workspace.logicalPath}/.caffold/plans/current/PLAN.md`,
   );
-  const closeButton = dialog.getByRole("button", { name: "Close document" });
+  const closeButton = dialog.getByRole("button", {
+    name: "Close document",
+    exact: true,
+  });
   await expect(
     closeButton.locator(".current-plan-document-close-icon"),
   ).toBeVisible();
@@ -241,6 +255,36 @@ test("floats ignored current documents above the stable composer and updates the
     )
     .toBeLessThan(1);
   await expect(dialog.locator(".markdown-preview-body h1")).toHaveText(planTitle);
+  const planReference = dialog.getByRole("link", {
+    name: "Plan reference",
+    exact: true,
+  });
+  await expect(planReference).toHaveAttribute("target", "_blank");
+  await page.keyboard.press("f");
+  const documentHint = actionHintDialog(page);
+  await expect(
+    documentHint.getByRole("button", { name: / — Close document$/ }),
+  ).toBeVisible();
+  const planReferenceHint = documentHint.getByRole("button", {
+    name: / — Open Plan reference in a new tab$/,
+  });
+  await expect(planReferenceHint).toBeVisible();
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "tasks-current-plan-link-hints",
+  );
+  const planReferenceCode = await planReferenceHint.getAttribute(
+    "data-action-hint-code",
+  );
+  expect(planReferenceCode).toBeTruthy();
+  const popupPromise = page.waitForEvent("popup");
+  await page.keyboard.type(planReferenceCode.toLowerCase());
+  const popup = await popupPromise;
+  await expect(popup).toHaveURL("https://example.com/current-plan");
+  await popup.close();
+  await expect(documentHint).toBeHidden();
+  await expect(dialog).toHaveAttribute("open", "");
   await page.keyboard.press("Escape");
   await expect(dialog).not.toHaveAttribute("open", "");
   await expect(planButton).toBeFocused();
@@ -278,7 +322,7 @@ test("floats ignored current documents above the stable composer and updates the
   expect(previewScroll).toBeGreaterThan(0);
 
   writeCurrentDocuments(workspace.absolutePath, {
-    plan: `# ${planTitle}\n\nThe agent keeps this document in Markdown.\n`,
+    plan: planMarkdown,
     checklist: checklistMarkdown(64, 3, "Live checkpoint"),
   });
   const refreshedProjection = currentPlanResponse(page, workspace.logicalPath);
@@ -339,6 +383,23 @@ test("floats ignored current documents above the stable composer and updates the
   expect((await (await unreadableProjection).json()).status).toBe("problem");
   expect((await unreadableChecklist).status()).toBe(404);
   await expect(dialog.locator("[data-current-plan-dialog-error]")).toBeVisible();
+  await page.keyboard.press("f");
+  const errorHint = actionHintDialog(page);
+  await expect(
+    errorHint.getByRole("button", { name: / — Close document$/ }),
+  ).toBeVisible();
+  const retryHint = errorHint.getByRole("button", {
+    name: / — Retry$/,
+  });
+  await expect(retryHint).toBeVisible();
+  const retryCode = await retryHint.getAttribute("data-action-hint-code");
+  expect(retryCode).toBeTruthy();
+  const retriedChecklist = fileResponse(page, checklistPath);
+  await page.keyboard.type(retryCode.toLowerCase());
+  expect((await retriedChecklist).status()).toBe(404);
+  await expect(errorHint).toBeHidden();
+  await expect(dialog).toHaveAttribute("open", "");
+  await expect(dialog.locator("[data-current-plan-dialog-error]")).toBeVisible();
 
   writeFileSync(
     join(workspace.absolutePath, ".caffold/plans/current/CHECKLIST.md"),
@@ -358,7 +419,10 @@ test("floats ignored current documents above the stable composer and updates the
     preview.getByText("Recovered checkpoint", { exact: true }),
   ).toBeVisible();
 
-  await dialog.getByRole("button", { name: "Close" }).click();
+  await dialog.getByRole("button", {
+    name: "Close document",
+    exact: true,
+  }).click();
   await expect(checklistButton).toBeFocused();
 
   writeFileSync(
@@ -517,7 +581,7 @@ test("uses the Task cwd instead of its managed worktree root", { tag: "@desktop"
   const planResponse = fileResponse(page, planPath);
   await currentPlan.getByRole("button", { name: /^Open plan:/ }).click();
   await planResponse;
-  const dialog = currentPlan.locator("caffold-current-plan-document-dialog dialog");
+  const dialog = currentPlan.locator("caffold-current-plan-document-dialog > dialog");
   await expect(dialog.locator("[data-current-plan-dialog-path]")).toHaveText(
     "packages/app/.caffold/plans/current/PLAN.md",
   );

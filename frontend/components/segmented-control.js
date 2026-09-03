@@ -1,3 +1,8 @@
+import {
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../action-hint-scope.js";
+
 class CaffoldSegmentedControl extends HTMLElement {
   connectedCallback() {
     this.ensureState();
@@ -48,6 +53,49 @@ class CaffoldSegmentedControl extends HTMLElement {
     this.snapshot = next;
     this.snapshotKey = nextKey;
     this.patch();
+  }
+
+  actionHintScope({
+    scopeId = "",
+    actionId = "",
+    clipRoots = [],
+    labelForChoice = (choice) => `Select ${choice.label}`,
+  } = {}) {
+    this.ensureState();
+    if (!scopeId || !actionId || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const targets = this.snapshot.choices.flatMap((choice) => {
+      const value = choice.value;
+      const control = this.querySelector(
+        `:scope > button[data-segmented-value="${CSS.escape(value)}"]`,
+      );
+      if (!control || value === this.snapshot.selected || control.disabled) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:choice:${encodeURIComponent(value)}`,
+        actionId,
+        label: `${labelForChoice(choice) ?? ""}` || choice.label,
+        control,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.snapshot.selected !== value &&
+          this.querySelector(
+            `:scope > button[data-segmented-value="${CSS.escape(value)}"]`,
+          ) === control &&
+          !control.disabled,
+      })];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
   }
 
   handleClick(event) {

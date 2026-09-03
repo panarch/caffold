@@ -8,6 +8,7 @@ export async function installTaskReviewFixture(page) {
   let gitCompareDiffRequests = 0;
   let includeLiveFile = false;
   let largeChangeSet = false;
+  let wideTreeEntry = false;
   let edgeCaseFiles = false;
   let cleanWorkingTree = false;
   let cleanBranch = false;
@@ -15,6 +16,7 @@ export async function installTaskReviewFixture(page) {
   let gitDiffDelayMs = 0;
   let workingDiffText = "new planner behavior";
   const compareDelays = new Map();
+  const compareGates = new Map();
   let refs = [
     { name: "main", kind: "local" },
     { name: "origin/main", kind: "remote" },
@@ -168,6 +170,19 @@ export async function installTaskReviewFixture(page) {
                 },
               ]
             : []),
+          ...(wideTreeEntry
+            ? [{
+                path: `src/${"intrinsically-wide-file-tree-segment-".repeat(12)}.rs`,
+                repoRelativePath: `${
+                  "intrinsically-wide-file-tree-segment-".repeat(12)
+                }.rs`,
+                status: " M",
+                category: "unstaged",
+                staged: false,
+                unstaged: true,
+                untracked: false,
+              }]
+            : []),
           ...(largeChangeSet
             ? Array.from({ length: 180 }, (_, index) => ({
                 path: `src/generated/deep/review/file-${`${index + 1}`.padStart(3, "0")}-with-a-long-review-name.rs`,
@@ -238,6 +253,7 @@ export async function installTaskReviewFixture(page) {
     if (delay > 0) {
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
+    await compareGates.get(baseRef)?.promise;
     const path = baseRef === "origin/release" ? "src/release.rs" : "src/planner.rs";
     return route.fulfill({
       contentType: "application/json",
@@ -310,6 +326,9 @@ export async function installTaskReviewFixture(page) {
     set largeChangeSet(value) {
       largeChangeSet = value;
     },
+    set wideTreeEntry(value) {
+      wideTreeEntry = value;
+    },
     set edgeCaseFiles(value) {
       edgeCaseFiles = value;
     },
@@ -330,6 +349,24 @@ export async function installTaskReviewFixture(page) {
     },
     setCompareDelay(baseRef, delayMs) {
       compareDelays.set(baseRef, delayMs);
+    },
+    holdCompare(baseRef) {
+      if (compareGates.has(baseRef)) {
+        throw new Error(`Compare request already held for ${baseRef}`);
+      }
+      let releaseGate;
+      const gate = {
+        promise: new Promise((resolve) => {
+          releaseGate = resolve;
+        }),
+      };
+      compareGates.set(baseRef, gate);
+      return () => {
+        if (compareGates.get(baseRef) === gate) {
+          compareGates.delete(baseRef);
+        }
+        releaseGate();
+      };
     },
     removeRef(name) {
       refs = refs.filter((ref) => ref.name !== name);

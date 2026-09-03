@@ -1,6 +1,8 @@
 import { assistantMessagePhase } from "../../../../../task-events.js";
 import { formatDate, taskEventObservedMs } from "../../../../../task-format.js";
 import "./markdown.js";
+import { emptyActionHintScope } from "../../../../../../../../action-hints.js";
+import { emptyScrollSurfaceScope } from "../../../../../../../../scroll-scope.js";
 
 /**
  * What the agent said, drawn the same way wherever the conversation shows it.
@@ -71,6 +73,40 @@ class CaffoldTaskAssistantMessage extends HTMLElement {
       this.renderedMarkdown = rendered;
       markdown.setMarkdown(text);
     }
+  }
+
+  actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
+    const markdown = this.querySelector(
+      ":scope > .task-assistant-message-body > caffold-task-markdown",
+    );
+    return scopeId && markdown && !this.hidden
+      ? markdown.actionHintScope?.({
+          scopeId: `${scopeId}:markdown`,
+          clipRoots: [this, ...clipRoots].filter(Boolean),
+        }) ?? emptyActionHintScope()
+      : emptyActionHintScope();
+  }
+
+  scrollSurfaceScope({ scopeId = "", clipRoots = [], isCurrent } = {}) {
+    const markdown = this.querySelector(
+      ":scope > .task-assistant-message-body > caffold-task-markdown",
+    );
+    const parentIsCurrent = typeof isCurrent === "function"
+      ? isCurrent
+      : () => true;
+    return scopeId && markdown && !this.hidden
+      ? markdown.scrollSurfaceScope?.({
+          scopeId: `${scopeId}:markdown`,
+          clipRoots: [this, ...clipRoots].filter(Boolean),
+          isCurrent: () =>
+            this.isConnected &&
+            !this.hidden &&
+            parentIsCurrent() &&
+            this.querySelector(
+                ":scope > .task-assistant-message-body > caffold-task-markdown",
+              ) === markdown,
+        }) ?? emptyScrollSurfaceScope()
+      : emptyScrollSurfaceScope();
   }
 
   ensureState() {

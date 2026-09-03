@@ -5,6 +5,22 @@ import {
   taskStoreOperationsPresentation,
 } from "../../codex-status.js";
 import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  mergeActionHintScopes,
+} from "../../../../action-hints.js";
+import {
+  keyboardNavigationContext,
+  popoverScrollSurfaceScope,
+} from "../../../../keyboard-navigation.js";
+import "../../../../keyboard-navigation/components/presentation.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../scroll-scope.js";
+import {
   TASK_TRANSPORT_STATE,
 } from "../runtime-state.js";
 import { taskThreadId } from "../task-list-model.js";
@@ -25,6 +41,7 @@ class CaffoldTaskNavigator extends HTMLElement {
   connectedCallback() {
     this.ensureState();
     this.addEventListener("click", this.boundClick);
+    this.addEventListener("keydown", this.boundKeydown);
     this.addEventListener(
       ACTIVE_TASK_LIST_STATE_EVENT,
       this.boundSectionStateChange,
@@ -65,7 +82,9 @@ class CaffoldTaskNavigator extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.closeReorderPopover();
     this.removeEventListener("click", this.boundClick);
+    this.removeEventListener("keydown", this.boundKeydown);
     this.removeEventListener(
       ACTIVE_TASK_LIST_STATE_EVENT,
       this.boundSectionStateChange,
@@ -115,6 +134,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.lastPublishedListState = "";
     this.liveUpdates = null;
     this.boundClick = (event) => this.handleClick(event);
+    this.boundKeydown = (event) => this.handleKeydown(event);
     this.boundIconsReady = () => this.syncPrimaryHeader();
     this.boundSectionStateChange = (event) =>
       this.handleSectionStateChange(event);
@@ -149,6 +169,206 @@ class CaffoldTaskNavigator extends HTMLElement {
 
   get taskListStream() {
     return this.activeTaskList?.taskListStream ?? null;
+  }
+
+  actionHintScope() {
+    this.ensureChildren();
+    const scrollRoot = this.querySelector(":scope > .task-list-scroll");
+    const primaryHeader = this.querySelector(
+      ":scope > .task-list-primary-header",
+    );
+    const newTask = primaryHeader?.querySelector(
+      ":scope .task-list-new-task[data-task-action='open-new']",
+    );
+    const targets = [];
+    const reorderTarget = this.actionHintReorderTarget();
+    if (reorderTarget) {
+      targets.push(reorderTarget);
+    }
+    if (this.reorderMode === "none" && newTask) {
+      targets.push({
+        id: "task-create:global",
+        actionId: "task.create",
+        label: "Create a new task",
+        invalidationOwner: this,
+        controlKind: "button",
+        control: newTask,
+        anchor: newTask,
+        clipRoots: [this],
+        isActionable: () =>
+          this.querySelector(
+            ":scope > .task-list-primary-header .task-list-new-task[data-task-action='open-new']",
+          ) === newTask &&
+          !this.taskOperations.blocked &&
+          !newTask.disabled,
+        activate: () => newTask.click(),
+      });
+    }
+    if (scrollRoot) {
+      targets.push(...this.activeTaskList.actionHintTargets({
+        clipRoots: [this, scrollRoot],
+      }));
+    }
+    const ownScope = {
+      blocked: false,
+      targets,
+      mutationRoots: [primaryHeader, this.activeTaskList].filter(Boolean),
+      scrollRoots: [scrollRoot].filter(Boolean),
+    };
+    const archived = this.archivedTaskList;
+    return mergeActionHintScopes(
+      ownScope,
+      this.reorderMode === "none" &&
+          scrollRoot &&
+          archived &&
+          hasActionHintLayoutBox(archived)
+        ? archived.actionHintScope({
+            scopeId: "task-list:archived",
+            clipRoots: [this, scrollRoot],
+          })
+        : null,
+    );
+  }
+
+  actionHintReorderTarget() {
+    const control = this.reorderButton;
+    const popover = this.reorderPopover();
+    if (!control || !popover) {
+      return null;
+    }
+    const mode = this.reorderMode;
+    const active = mode !== "none";
+    return buttonActionHintTarget({
+      invalidationOwner: this,
+      id: active
+        ? `task-list:reorder:finish:${mode}`
+        : "task-list:reorder:open",
+      actionId: active
+        ? ACTION_HINT_ACTION.REORDER_FINISH
+        : ACTION_HINT_ACTION.REORDER_OPEN,
+      label: control.getAttribute("aria-label") ||
+        (active ? `Finish reordering ${mode}` : "Choose what to reorder"),
+      control,
+      clipRoots: [this],
+      isActionable: () =>
+        this.isConnected &&
+        this.active &&
+        !this.hidden &&
+        this.reorderMode === mode &&
+        this.reorderButton === control &&
+        this.reorderPopover() === popover &&
+        control.getAttribute("popovertarget") === popover.id &&
+        !control.disabled &&
+        (active || !popover.matches(":popover-open")),
+    });
+  }
+
+  keyboardNavigationContexts() {
+    this.ensureChildren();
+    const popover = this.reorderPopover();
+    const presentation = popover?.querySelector(
+      ":scope > caffold-keyboard-navigation-presentation",
+    );
+    const dialog = presentation?.actionHintDialog?.();
+    const hud = presentation?.scrollModeHud?.();
+    const selector = presentation?.scrollSurfaceSelector?.();
+    if (!popover || !dialog || !hud || !selector) {
+      return [];
+    }
+    const contextId = "task-list:reorder";
+    return [keyboardNavigationContext({
+      id: contextId,
+      kind: "popover",
+      root: popover,
+      actionHints: {
+        dialog,
+        scope: this.reorderActionHintScope({ contextId, popover }),
+      },
+      scroll: {
+        hud,
+        selector,
+        scope: popoverScrollSurfaceScope({
+          id: contextId,
+          label: "Reorder options",
+          popover,
+          isCurrent: () =>
+            this.isConnected &&
+            this.active &&
+            !this.hidden &&
+            this.reorderMode === "none" &&
+            this.reorderPopover() === popover,
+        }),
+      },
+    })];
+  }
+
+  reorderActionHintScope({ contextId, popover }) {
+    if (!popover) {
+      return emptyActionHintScope();
+    }
+    const targets = [...popover.querySelectorAll(
+      ":scope > button[data-task-action='select-reorder-mode']",
+    )].flatMap((control) => {
+      const mode = `${control.dataset.reorderMode ?? ""}`;
+      if (!["tasks", "sections"].includes(mode) || control.disabled) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${contextId}:${mode}`,
+        actionId: ACTION_HINT_ACTION.REORDER_SELECT,
+        label: control.textContent?.trim() || `Reorder ${mode}`,
+        control,
+        clipRoots: [popover],
+        isActionable: () =>
+          this.isConnected &&
+          this.active &&
+          !this.hidden &&
+          this.reorderMode === "none" &&
+          this.reorderPopover() === popover &&
+          popover.matches(":popover-open") &&
+          popover.contains(control) &&
+          control.dataset.taskAction === "select-reorder-mode" &&
+          control.dataset.reorderMode === mode &&
+          !control.disabled,
+      })];
+    });
+    return {
+      blocked: this.reorderMode !== "none",
+      targets,
+      mutationRoots: [popover],
+      scrollRoots: [popover],
+    };
+  }
+
+  scrollSurfaceScope() {
+    this.ensureChildren();
+    const scrollport = this.querySelector(":scope > .task-list-scroll");
+    if (!scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: this.reorderMode !== "none",
+      surfaces: [{
+        id: "task-list",
+        label: "Task list",
+        scrollport,
+        clipRoots: [this, scrollport],
+        isEligible: () =>
+          this.isConnected &&
+          this.active &&
+          !this.hidden &&
+          this.reorderMode === "none" &&
+          this.querySelector(":scope > .task-list-scroll") === scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this, this.activeTaskList, this.archivedTaskList].filter(
+        Boolean,
+      ),
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   setLiveUpdates(liveUpdates) {
@@ -309,7 +529,20 @@ class CaffoldTaskNavigator extends HTMLElement {
   }
 
   exitReorderMode(options = {}) {
+    this.closeReorderPopover();
     this.setReorderMode("none", options);
+  }
+
+  closeReorderPopover() {
+    const popover = this.reorderPopover();
+    if (!popover?.matches?.(":popover-open")) {
+      return;
+    }
+    try {
+      popover.hidePopover();
+    } catch {
+      // A parent transition may already have detached the retained shell.
+    }
   }
 
   setCodexStatusSnapshot(snapshot) {
@@ -353,6 +586,23 @@ class CaffoldTaskNavigator extends HTMLElement {
       this.exitReorderMode({ restoreFocus: false });
       this.dispatchIntent("new-task");
     }
+  }
+
+  handleKeydown(event) {
+    if (
+      this.reorderMode === "none" ||
+      event.defaultPrevented ||
+      event.key !== "Escape" ||
+      event.isComposing ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.metaKey
+    ) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    this.exitReorderMode();
   }
 
   dispatchIntent(type, detail = {}) {
@@ -556,6 +806,7 @@ class CaffoldTaskNavigator extends HTMLElement {
               popovertarget="${this.reorderPopoverId}"
               popovertargetaction="hide"
             >Reorder Sections</button>
+            <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
           </div>
           <button
             type="button"
@@ -568,6 +819,12 @@ class CaffoldTaskNavigator extends HTMLElement {
         </span>
       </header>
     `;
+  }
+
+  reorderPopover() {
+    return this.querySelector(
+      `:scope > .task-list-primary-header #${this.reorderPopoverId}`,
+    );
   }
 
 }

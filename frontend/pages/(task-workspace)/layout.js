@@ -16,6 +16,22 @@ import {
 import {
   CLAUDE_RUNTIME_RESTART_CONFIRMED_EVENT,
 } from "./settings/claude/components/runtime-restart-dialog.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  mergeActionHintScopes,
+  separatorActionHintTarget,
+} from "../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  mergeScrollSurfaceScopes,
+} from "../../scroll-scope.js";
+import {
+  mergeKeyboardNavigationContexts,
+} from "../../keyboard-navigation.js";
 import "./components/navigation.js";
 import {
   TASK_ARCHIVED_DELETE_CONFIRMED_EVENT,
@@ -91,7 +107,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
       >
         ${renderInlineIcon("X", "Close new task", "task-workspace-route-control-icon")}
       </button>
-      <section class="task-workspace-surface">
+      <section class="task-workspace-surface" aria-label="Task workspace" tabindex="-1">
         <div class="task-workspace-master-detail">
           <aside class="task-workspace-master-pane" aria-label="Workspace navigation">
             <caffold-task-navigator class="tasks-list-region"></caffold-task-navigator>
@@ -120,8 +136,10 @@ class CaffoldTaskWorkspace extends HTMLElement {
     `;
     this.backButton = this.querySelector(".task-workspace-back");
     this.closeButton = this.querySelector(".task-workspace-close");
+    this.workspaceSurface = this.querySelector(":scope > .task-workspace-surface");
     this.masterDetail = this.querySelector(".task-workspace-master-detail");
     this.masterPane = this.querySelector(".task-workspace-master-pane");
+    this.detailPane = this.querySelector(".task-workspace-detail-pane");
     this.taskNavigator = this.querySelector("caffold-task-navigator");
     this.settingsNavigator = this.querySelector("caffold-settings-navigator");
     this.masterResizer = this.querySelector(".task-workspace-master-resizer");
@@ -444,6 +462,159 @@ class CaffoldTaskWorkspace extends HTMLElement {
     this.settingsWorkspace.setUpdateStatus(status);
   }
 
+  actionHintScope() {
+    if (this.hidden) {
+      return emptyActionHintScope();
+    }
+    const navigationClipRoots = [this, this.masterPane].filter(Boolean);
+    const detailClipRoots = [this, this.querySelector(
+      ":scope > .task-workspace-surface > .task-workspace-master-detail > .task-workspace-detail-pane",
+    )].filter(Boolean);
+    const routeControl = [this.backButton, this.closeButton].find(
+      (control) =>
+        control && !control.hidden && hasActionHintLayoutBox(control),
+    ) ?? null;
+    const ownScope = routeControl
+      ? {
+          blocked: false,
+          targets: [buttonActionHintTarget({
+            invalidationOwner: this,
+            id: `workspace:parent:${routeControl === this.backButton ? "tasks" : "close"}`,
+            actionId: ACTION_HINT_ACTION.PARENT,
+            label: routeControl.getAttribute("aria-label") || "Back",
+            control: routeControl,
+            clipRoots: [this],
+            isActionable: () =>
+              this.isConnected &&
+              !this.hidden &&
+              !routeControl.hidden &&
+              [this.backButton, this.closeButton].includes(routeControl) &&
+              !routeControl.disabled,
+          })],
+          mutationRoots: [routeControl],
+          scrollRoots: [],
+        }
+      : emptyActionHintScope();
+    const modeScope = this.mode === "tasks"
+      ? this.tasksPage?.actionHintScope()
+      : this.mode === "settings"
+        ? mergeActionHintScopes(
+            hasActionHintLayoutBox(this.settingsNavigator)
+              ? this.settingsNavigator.actionHintScope({
+                  scopeId: "settings",
+                  clipRoots: navigationClipRoots,
+                })
+              : null,
+            hasActionHintLayoutBox(this.settingsWorkspace)
+              ? this.settingsWorkspace.actionHintScope({
+                  scopeId: "settings",
+                  clipRoots: detailClipRoots,
+                })
+              : null,
+          )
+        : null;
+    const resizerScope = workspaceResizerActionHintScope(this, {
+      clipRoots: [this, this.masterDetail].filter(Boolean),
+    });
+    return mergeActionHintScopes(
+      ownScope,
+      hasActionHintLayoutBox(this.navigation)
+        ? this.navigation.actionHintScope({
+            scopeId: "workspace",
+            clipRoots: navigationClipRoots,
+          })
+        : null,
+      resizerScope,
+      modeScope,
+    );
+  }
+
+  keyboardNavigationContexts() {
+    this.ensureRendered();
+    const childContexts =
+      !this.hidden && this.mode === "tasks"
+        ? this.tasksPage.keyboardNavigationContexts()
+        : [];
+    return mergeKeyboardNavigationContexts(
+      this.codexRuntimeRestartDialog?.keyboardNavigationContexts?.() ?? [],
+      this.claudeRuntimeRestartDialog?.keyboardNavigationContexts?.() ?? [],
+      this.archivedDeleteDialog?.keyboardNavigationContexts?.() ?? [],
+      childContexts,
+    );
+  }
+
+  scrollSurfaceScope() {
+    if (this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    if (this.mode === "tasks") {
+      return this.tasksPage?.scrollSurfaceScope?.() ??
+        emptyScrollSurfaceScope();
+    }
+    if (this.mode !== "settings") {
+      return emptyScrollSurfaceScope();
+    }
+    return mergeScrollSurfaceScopes(
+      hasScrollLayoutBox(this.settingsNavigator)
+        ? this.settingsNavigator.scrollSurfaceScope({
+            scopeId: "settings",
+            clipRoots: [this.masterPane, this.workspaceSurface].filter(Boolean),
+          })
+        : null,
+      hasScrollLayoutBox(this.settingsWorkspace)
+        ? this.settingsWorkspace.scrollSurfaceScope({
+            scopeId: "settings",
+            clipRoots: [this.detailPane, this.workspaceSurface].filter(Boolean),
+          })
+        : null,
+    );
+  }
+
+  actionHintEditingEscapeTarget(editable) {
+    if (this.tasksPage?.contains(editable)) {
+      return this.tasksPage.querySelector(":scope .tasks-detail-pane");
+    }
+    if (this.settingsWorkspace?.contains(editable)) {
+      return this.settingsWorkspace.querySelector(
+        ":scope .settings-workspace-detail-pane",
+      );
+    }
+    return this.querySelector(":scope > .task-workspace-surface");
+  }
+
+  afterActionHintActivation(target) {
+    if (![ACTION_HINT_ACTION.TASK_OPEN, ACTION_HINT_ACTION.TASK_OPEN_RECOVERY]
+      .includes(target.actionId)) {
+      return;
+    }
+    const threadId = target.id.startsWith("task:")
+      ? target.id.slice("task:".length)
+      : "";
+    const focusDestination = () => {
+      if (
+        !this.isConnected ||
+        this.mode !== "tasks" ||
+        !threadId ||
+        this.route?.threadId !== threadId
+      ) {
+        return;
+      }
+      if (window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches) {
+        if (target.control?.isConnected && !target.control.disabled) {
+          target.control.focus({ preventScroll: true });
+        }
+        return;
+      }
+      this.tasksPage.focusActionHintDestination();
+    };
+    const navigationFinished = window.navigation?.transition?.finished;
+    if (navigationFinished && typeof navigationFinished.then === "function") {
+      void navigationFinished.then(focusDestination, () => {});
+      return;
+    }
+    queueMicrotask(focusDestination);
+  }
+
   updateChrome() {
     if (!this.backButton || !this.closeButton) {
       return;
@@ -598,6 +769,40 @@ class CaffoldTaskWorkspace extends HTMLElement {
       `${Math.round(this.navigationPaneWidth)}`,
     );
   }
+}
+
+function workspaceResizerActionHintScope(owner, { clipRoots }) {
+  const control = owner.masterResizer;
+  if (!workspaceResizerAvailable(owner, control)) {
+    return null;
+  }
+  return {
+    blocked: false,
+    targets: [separatorActionHintTarget({
+      invalidationOwner: owner,
+      id: "workspace:navigation-pane:separator",
+      actionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
+      label: control.getAttribute("aria-label") || "Resize navigation pane",
+      control,
+      clipRoots,
+      isActionable: () =>
+        owner.isConnected &&
+        !owner.hidden &&
+        owner.masterResizer === control &&
+        workspaceResizerAvailable(owner, control),
+    })],
+    mutationRoots: [control],
+    scrollRoots: [],
+  };
+}
+
+function workspaceResizerAvailable(owner, control) {
+  return Boolean(
+    control &&
+      ["tasks", "settings"].includes(owner.mode) &&
+      window.matchMedia(WORKSPACE_MASTER_DETAIL_MEDIA_QUERY).matches &&
+      hasActionHintLayoutBox(control),
+  );
 }
 
 customElements.define("caffold-task-workspace", CaffoldTaskWorkspace);

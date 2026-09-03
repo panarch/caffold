@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { copyFile, rm, writeFile } from "node:fs/promises";
 import { repositoryPath } from "../../repository-paths.mjs";
+import {
+  actionHintDialog,
+  activateActionHint,
+  enterActionHints,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { openCompletedTaskForReview } from "../support/task-review-test.js";
 import {
@@ -17,6 +22,21 @@ test.beforeEach(async ({ page }) => {
 test("browses source through the shared Files navigator and one root watch", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
+  let releasePlannerDirectory;
+  let markPlannerDirectoryRequested;
+  const plannerDirectoryRelease = new Promise((resolve) => {
+    releasePlannerDirectory = resolve;
+  });
+  const plannerDirectoryRequested = new Promise((resolve) => {
+    markPlannerDirectoryRequested = resolve;
+  });
+  await page.route((url) =>
+    url.pathname === "/api/list" &&
+    (url.searchParams.get("path") ?? "").endsWith("/planner"), async (route) => {
+    markPlannerDirectoryRequested();
+    await plannerDirectoryRelease;
+    await route.continue();
+  });
   let listRequests = 0;
   page.on("request", (request) => {
     if (new URL(request.url()).pathname === "/api/list") {
@@ -25,12 +45,19 @@ test("browses source through the shared Files navigator and one root watch", { t
   });
   const { taskScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
-  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
-  await taskReview.getByRole("button", { name: "Files", exact: true }).click();
+  await activateActionHint(page, /Open Working Tree$/);
+  await expect(page).toHaveURL(`/tasks/${taskScenario.threadId}/review`);
+  await activateActionHint(page, /Show Files$/);
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?nav=files`,
+  );
+  await expect(
+    taskReview.getByRole("button", { name: "Files", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   if (testInfo.project.name === "phone") {
     await taskReview.evaluate((review) => review.updateAxis("viewer", "source"));
   } else {
-    await taskReview.getByRole("button", { name: "Source", exact: true }).click();
+    await activateActionHint(page, /Show Source$/);
   }
   await expect(taskReview.getByRole("button", { name: "Refresh review" })).toHaveCount(0);
   await expect(taskReview.getByRole("button", { name: "Refresh files" })).toHaveCount(0);
@@ -47,6 +74,49 @@ test("browses source through the shared Files navigator and one root watch", { t
     'button[data-file-tree-path="src/alpha.rs"]',
   );
   await expect(rootFolder).toBeVisible();
+  await expect(rootFolder).toHaveAttribute("aria-expanded", "false");
+  await activateActionHint(page, /Expand planner$/);
+  await plannerDirectoryRequested;
+  await expect(rootFolder).toHaveAttribute("aria-expanded", "true");
+  const loadingSnapshot = await enterActionHints(page);
+  await expect(loadingSnapshot.getByLabel(/Collapse planner$/)).toBeVisible();
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "tasks-file-tree-disclosure-hints",
+  );
+  releasePlannerDirectory();
+  const plannerFile = navigator.locator(
+    'button[data-file-tree-path="src/planner/mod.rs"]',
+  );
+  await expect(plannerFile).toBeVisible();
+  await expect(loadingSnapshot).toBeVisible();
+  await expect(
+    loadingSnapshot.getByLabel(/Open mod\.rs$/),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(loadingSnapshot).toBeHidden();
+  await rootFolder.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  await activateActionHint(page, /Collapse planner$/);
+  await expect(rootFolder).toHaveAttribute("aria-expanded", "false");
+  await expect(plannerFile).toHaveCount(0);
+  await rootFolder.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  await activateActionHint(page, /Expand planner$/);
+  await expect(rootFolder).toHaveAttribute("aria-expanded", "true");
+  await expect(plannerFile).toBeVisible();
+  await enterActionHints(page);
+  await navigator.locator(".file-tree-scroll").evaluate((scroller) => {
+    scroller.dispatchEvent(new Event("scroll"));
+  });
+  await expect(actionHintDialog(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(actionHintDialog(page)).toBeHidden();
   expect((await rootFolder.boundingBox()).y).toBeLessThan(
     (await rootFile.boundingBox()).y,
   );
@@ -93,18 +163,68 @@ test("browses source through the shared Files navigator and one root watch", { t
     await rm(livePath, { force: true });
   }
 
-  await navigator.locator('button[data-file-tree-path="src/alpha.rs"]').click();
+  await activateActionHint(page, /alpha\.rs file$/);
   await expect(page).toHaveURL(
     `/tasks/${taskScenario.threadId}/review?nav=files&view=source&file=alpha.rs`,
   );
   await expect(taskReview.locator("caffold-review-file-viewer")).toContainText(
     "pub const ALPHA",
   );
+  await activateActionHint(page, /Show details for alpha\.rs$/);
+  const detailsPopover = taskReview.locator(
+    "caffold-review-file-viewer:not([hidden]) .viewer-meta-popover",
+  );
+  await expect(detailsPopover).toBeVisible();
+  await expect.poll(() => detailsPopover.evaluate(
+    (popover) => popover.scrollHeight <= popover.clientHeight + 1,
+  )).toBe(true);
+  await page.keyboard.press("f");
+  await expect(actionHintDialog(page)).toBeHidden();
+  await expect(detailsPopover).toBeVisible();
+  await page.keyboard.press("s");
+  await expect(
+    detailsPopover.locator("caffold-scroll-mode-hud .scroll-mode-status"),
+  ).toBeHidden();
+  await expect(detailsPopover).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(detailsPopover).toBeHidden();
+
+  if (testInfo.project.name === "desktop") {
+    await taskReview.locator(
+      "caffold-review-file-viewer:not([hidden]) .viewer-info-button",
+    ).click();
+    await expect(detailsPopover).toBeVisible();
+    await page.setViewportSize({ width: 1280, height: 160 });
+    await expect.poll(() => detailsPopover.evaluate(
+      (popover) => popover.scrollHeight > popover.clientHeight + 1,
+    )).toBe(true);
+    const before = await detailsPopover.evaluate((popover) => popover.scrollTop);
+    await page.keyboard.press("s");
+    const localHud = detailsPopover.locator(
+      "caffold-scroll-mode-hud .scroll-mode-status",
+    );
+    await expect(localHud).toContainText("Scroll: File details");
+    await page.keyboard.press("j");
+    await expect.poll(() => detailsPopover.evaluate((popover) => popover.scrollTop))
+      .toBeGreaterThan(before);
+    await page.keyboard.press("Escape");
+    await expect(localHud).toBeHidden();
+    await expect(detailsPopover).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(detailsPopover).toBeHidden();
+    await page.setViewportSize({ width: 1280, height: 800 });
+  }
   await stabilizeDynamicText(page);
   await captureReviewScreenshot(page, testInfo, "tasks-file-browser");
 
   if (testInfo.project.name === "phone") {
-    await taskReview.getByRole("button", { name: "Back to navigator" }).click();
+    await enterActionHints(page);
+    await navigator.locator(".file-tree-scroll").evaluate((scroller) => {
+      scroller.dispatchEvent(new Event("scroll"));
+    });
+    await expect(actionHintDialog(page)).toBeVisible();
+    await page.keyboard.press("Escape");
+    await activateActionHint(page, /Back to navigator$/);
     await expect(page).toHaveURL(
       `/tasks/${taskScenario.threadId}/review?nav=files&view=source`,
     );
@@ -121,8 +241,15 @@ test("browses source through the shared Files navigator and one root watch", { t
 });
 
 test("renders a route-owned text-only Markdown Preview without changing file selection", { tag: "@all-viewports" }, async ({
+  context,
   page,
 }, testInfo) => {
+  await context.route("https://example.com/docs", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>External documentation</title>",
+    }),
+  );
   const embeddedResourceRequests = [];
   page.on("request", (request) => {
     if (request.url() === "https://example.com/preview.png") {
@@ -226,6 +353,21 @@ test("renders a route-owned text-only Markdown Preview without changing file sel
   await markdownPreview.evaluate((element) => {
     element.scrollTop = 0;
   });
+  await page.locator(".task-workspace-surface").focus();
+  await page.keyboard.press("s");
+  await expect(page.locator("caffold-scroll-surface-selector > dialog:modal")).toBeHidden();
+  const workspaceHud = page.locator(
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
+  );
+  await expect(workspaceHud).toContainText("Scroll: README.md preview");
+  await page.keyboard.press("j");
+  await expect.poll(() => markdownPreview.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await expect(workspaceHud).toBeHidden();
+  await markdownPreview.evaluate((element) => {
+    element.scrollTop = 0;
+  });
   await expect(preview.locator("h1")).toHaveText("Markdown file preview");
   await expect(preview.locator("strong")).toHaveText("textual Markdown");
   await expect(preview.locator("table")).toContainText("Renders safe text content");
@@ -234,7 +376,10 @@ test("renders a route-owned text-only Markdown Preview without changing file sel
   await expect(preview.locator(".markdown-preview-image-placeholder")).toHaveText(
     "[Image: Architecture diagram]",
   );
-  await expect(preview.getByRole("link", { name: "External documentation" })).toHaveAttribute(
+  const externalDocumentation = preview.getByRole("link", {
+    name: "External documentation",
+  });
+  await expect(externalDocumentation).toHaveAttribute(
     "target",
     "_blank",
   );
@@ -245,6 +390,22 @@ test("renders a route-owned text-only Markdown Preview without changing file sel
   ).toBeUndefined();
   expect(embeddedResourceRequests).toEqual([]);
   await expect(previewControl).toHaveAttribute("aria-pressed", "true");
+  await externalDocumentation.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  const popupPromise = page.waitForEvent("popup");
+  await activateActionHint(
+    page,
+    /Open External documentation in a new tab$/,
+  );
+  const popup = await popupPromise;
+  await expect(popup).toHaveURL("https://example.com/docs");
+  await popup.close();
+  await expect(previewControl).toHaveAttribute("aria-pressed", "true");
+  await markdownPreview.evaluate((element) => {
+    element.scrollTop = 0;
+  });
 
   const layout = await taskReview.evaluate((review) => {
     const axis = review.querySelector(
@@ -284,6 +445,12 @@ test("renders a route-owned text-only Markdown Preview without changing file sel
   await expect(markdownPreview.locator(".markdown-preview-fallback")).toHaveText(
     "[[caffold-test:markdown-error]]",
   );
+  expect(await page.locator("caffold-task-workspace").evaluate((workspace) =>
+    workspace.actionHintScope().targets.some(
+      (target) => target.label ===
+        "Open External documentation in a new tab",
+    )
+  )).toBe(false);
 
   await page.reload();
   await expect(markdownPreview).toHaveAttribute("data-render-state", "markdown");
@@ -342,6 +509,43 @@ test("selects supported source and preview representations for images", { tag: "
       "src",
       new RegExp(`/api/image\\?path=src%2F${rasterName}&revision=\\d+$`),
     );
+    const imageStage = viewer.locator(".image-stage");
+    await viewer.locator("img.image-preview").evaluate((image) => {
+      image.style.height = "1200px";
+      image.style.width = "1200px";
+      image.style.maxHeight = "none";
+      image.style.maxWidth = "none";
+    });
+    await expect.poll(() => imageStage.evaluate(
+      (element) => element.scrollHeight > element.clientHeight + 1,
+    )).toBe(true);
+    await expect.poll(() => imageStage.evaluate(
+      (element) => element.scrollWidth > element.clientWidth + 1,
+    )).toBe(true);
+    await page.locator(".task-workspace-surface").focus();
+    await page.keyboard.press("s");
+    const surfaceSelector = page.locator(
+      "caffold-scroll-surface-selector > dialog:modal",
+    );
+    const workspaceHud = page.locator(
+      "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
+    );
+    if (await surfaceSelector.isVisible()) {
+      await surfaceSelector.getByLabel(
+        new RegExp(`^[A-Z]+ — ${rasterName.replace(".", "\\.")} image$`),
+      ).click();
+    }
+    await expect(workspaceHud).toContainText(`Scroll: ${rasterName} image`);
+    await expect(workspaceHud.locator("[data-scroll-mode-shortcut-help]"))
+      .toContainText("?");
+    await page.keyboard.press("l");
+    await expect.poll(() => imageStage.evaluate((element) => element.scrollLeft))
+      .toBeGreaterThan(0);
+    await page.keyboard.press("j");
+    await expect.poll(() => imageStage.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    await page.keyboard.press("Escape");
+    await expect(workspaceHud).toBeHidden();
 
     if (testInfo.project.name === "phone") {
       await taskReview.getByRole("button", { name: "Back to navigator" }).click();

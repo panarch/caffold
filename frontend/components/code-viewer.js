@@ -1,4 +1,8 @@
 import { escapeHtml } from "./dom.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../scroll-scope.js";
 
 const HIGHLIGHT_IMPORT = "https://esm.sh/highlight.js@11.11.1/lib/common";
 
@@ -53,6 +57,41 @@ class CaffoldCodeViewer extends HTMLElement {
 
   getScrollState() {
     return this.captureScroll();
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "File content",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const scrollport = this.querySelector(
+      ":scope > .code-viewer > .code-lines",
+    );
+    if (!scopeId || !label || !scrollport || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label,
+        scrollport,
+        axes: ["vertical", "horizontal"],
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.querySelector(":scope > .code-viewer > .code-lines") ===
+            scrollport &&
+          isCurrent() &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   visibleLine() {

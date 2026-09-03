@@ -3,6 +3,17 @@ import { diffViewerPresentation } from "./file-viewer-presentation.js";
 import "./file-viewer.js";
 import "./git-compare-browser/compare-tree.js";
 import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "./review-responsive.js";
+import {
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  mergeActionHintScopes,
+  separatorActionHintTarget,
+} from "../action-hint-scope.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  mergeScrollSurfaceScopes,
+} from "../scroll-scope.js";
 
 const LOADING_DELAY_MS = 180;
 const PANEL_DEFAULT_WIDTH = 320;
@@ -13,6 +24,14 @@ const PANEL_MAX_RATIO = 0.7;
 class CaffoldGitCompareBrowser extends HTMLElement {
   connectedCallback() {
     this.ensureRendered();
+  }
+
+  disconnectedCallback() {
+    this.deactivate();
+  }
+
+  deactivate() {
+    this.viewer?.deactivate?.();
   }
 
   ensureRendered() {
@@ -485,6 +504,90 @@ class CaffoldGitCompareBrowser extends HTMLElement {
     return target === this.viewer;
   }
 
+  actionHintScope({
+    scopeId = "",
+    fileActionId = "",
+    disclosureActionId = "",
+    selectActionId = "",
+    parentActionId = "",
+    detailsActionId = "",
+    refreshActionId = "",
+    linkActionId = "",
+    separatorActionId = "",
+    clipRoots = [],
+  } = {}) {
+    this.ensureRendered();
+    if (!scopeId || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const listActive = this.detailView === "list" ||
+      !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches;
+    const viewerActive = this.detailView === "viewer";
+    const separatorScope = gitCompareSeparatorActionHintScope(this, {
+      scopeId,
+      actionId: separatorActionId,
+      clipRoots: [this, ...clipRoots],
+    });
+    return mergeActionHintScopes(
+      listActive
+        ? this.compareTree.actionHintScope({
+            scopeId: `${scopeId}:compare`,
+            actionId: fileActionId,
+            disclosureActionId,
+            selectActionId,
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
+      separatorScope,
+      viewerActive
+        ? this.viewer.actionHintScope({
+            scopeId: `${scopeId}:viewer`,
+            actionId: parentActionId,
+            detailsActionId,
+            refreshActionId,
+            linkActionId,
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
+    );
+  }
+
+  scrollSurfaceScope({ scopeId = "", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    if (!scopeId || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    const singlePane = window.matchMedia(
+      REVIEW_SINGLE_PANE_MEDIA_QUERY,
+    ).matches;
+    const listActive = this.detailView === "list" || !singlePane;
+    const viewerActive = this.detailView === "viewer";
+    return mergeScrollSurfaceScopes(
+      listActive && hasScrollLayoutBox(this.compareTree)
+        ? this.compareTree.scrollSurfaceScope({
+            scopeId: `${scopeId}:compare`,
+            label: "Compared files",
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
+      viewerActive && hasScrollLayoutBox(this.viewer)
+        ? this.viewer.scrollSurfaceScope({
+            scopeId: `${scopeId}:viewer`,
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
+    );
+  }
+
+  keyboardNavigationContexts({ scopeId = "" } = {}) {
+    this.ensureRendered();
+    return scopeId && !this.hidden && this.detailView === "viewer"
+      ? this.viewer.keyboardNavigationContexts({
+          scopeId: `${scopeId}:viewer`,
+        })
+      : [];
+  }
+
   compareSubtitle(fallback = "Branches") {
     if (!this.compare) {
       return fallback;
@@ -501,6 +604,9 @@ class CaffoldGitCompareBrowser extends HTMLElement {
 
   setView(view) {
     const nextView = view === "viewer" ? "viewer" : "list";
+    if (nextView !== "viewer") {
+      this.viewer?.deactivate?.();
+    }
     const changed = this.detailView !== nextView || this.dataset.detailView !== nextView;
     this.detailView = nextView;
     this.dataset.detailView = this.detailView;
@@ -665,6 +771,40 @@ class CaffoldGitCompareBrowser extends HTMLElement {
       }),
     );
   }
+}
+
+function gitCompareSeparatorActionHintScope(
+  owner,
+  { scopeId, actionId, clipRoots },
+) {
+  const control = owner.panelResizer;
+  if (
+    !actionId ||
+    !control ||
+    !owner.canResizePanel?.() ||
+    !hasActionHintLayoutBox(control)
+  ) {
+    return null;
+  }
+  return {
+    blocked: false,
+    targets: [separatorActionHintTarget({
+      invalidationOwner: owner,
+      id: `${scopeId}:separator`,
+      actionId,
+      label: control.getAttribute("aria-label") || "Resize review side panel",
+      control,
+      clipRoots,
+      isActionable: () =>
+        owner.isConnected &&
+        !owner.hidden &&
+        owner.panelResizer === control &&
+        owner.canResizePanel() &&
+        hasActionHintLayoutBox(control),
+    })],
+    mutationRoots: [owner, control],
+    scrollRoots: [],
+  };
 }
 
 customElements.define("caffold-git-compare-browser", CaffoldGitCompareBrowser);

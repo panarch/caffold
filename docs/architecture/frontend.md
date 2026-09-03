@@ -40,28 +40,31 @@ directories, an expanded module directory contains no `page.js` or `layout.js`.
 ```text
 caffold-app-shell
 |-- caffold-task-workspace
-    |-- Task navigator
-    |-- Tasks
-    |   |-- Global New Task
-    |   |   `-- Directory Picker
-    |   `-- Detail Layout
-    |       |-- Task subject
-    |       |   |-- Conversation
-    |       |   |-- Current plan
-    |       |   `-- Follow-up Composer
-    |       |-- Section subject
-    |       |   |-- Fixed-context New Task
-    |       |   `-- Existing-conversation shortcuts
-    |       |-- Integrated Review
-    |       |-- Git
-    |       |   |-- Compare
-    |       |   `-- Log
-    |       `-- GitHub
-    |           |-- Issues
-    |           `-- Pull Requests
-    `-- Settings
+|   |-- Task navigator
+|   |-- Tasks
+|   |   |-- Global New Task
+|   |   |   `-- Directory Picker
+|   |   `-- Detail Layout
+|   |       |-- Task subject
+|   |       |   |-- Conversation
+|   |       |   |-- Current plan
+|   |       |   `-- Follow-up Composer
+|   |       |-- Section subject
+|   |       |   |-- Fixed-context New Task
+|   |       |   `-- Existing-conversation shortcuts
+|   |       |-- Integrated Review
+|   |       |-- Git
+|   |       |   |-- Compare
+|   |       |   `-- Log
+|   |       `-- GitHub
+|   |           |-- Issues
+|   |           `-- Pull Requests
+|   `-- Settings
+|       `-- Keyboard
 |-- caffold-build-mismatch-alert
-`-- caffold-update-dialog
+|-- caffold-update-dialog
+|   `-- Update-local keyboard presentation
+`-- Workspace keyboard presentation
 ```
 
 Task Workspace stays mounted while Tasks switches among home, Global New, Task
@@ -78,7 +81,27 @@ application-lifetime coordination:
 - Navigation API and History fallback integration;
 - foreground/resume recovery coordination;
 - settings application;
-- build-update presentation.
+- build-update presentation;
+- the one document-level keyboard-navigation coordinator and normal-context
+  presentation; and
+- composition of its own actions with Task Workspace and registered overlay
+  context providers.
+
+The app shell owns the only `KeyboardNavigationController` attached to the
+document. Its one normal `kind: "workspace"` context is rooted at the shell and
+uses a retained direct-child presentation containing the Action Hint dialog,
+Scroll selector, and Scroll HUD. The shell merges only public owner scopes:
+its bootstrap and foreground Retry buttons, the Build Mismatch Alert's Reload
+button, and Task Workspace action and Scroll providers. It does not inspect
+Task descendants or infer controls from DOM semantics. Every App Shell route
+entry cleans the current keyboard session before route or history mutation.
+
+The Update dialog publishes a separate modal context rooted at its exact native
+`<dialog>`. Its retained local presentation stays inside that top-layer root,
+and its Later and Reload buttons use their existing native form paths. Opening
+the dialog first closes a background Hint or Scroll session; the user presses
+`F` again inside the dialog, and the coordinator never predicts an automatic
+handoff.
 
 The app shell owns one `ForegroundRecoveryLifecycle` behind the public
 `foreground-recovery.js` entry point. It normalizes browser activation and
@@ -194,6 +217,8 @@ owns:
 - the user-resizable desktop navigation pane;
 - compact top-level Task/New Task Back or Close controls;
 - the one physical live-update connection for this browser tab;
+- public Action Hint, Scroll, editing-Escape, post-activation, and registered
+  product-overlay context providers for the App Shell coordinator;
 - forwarding routes to Tasks or Settings.
 
 The workspace consumes the semantic presentation snapshot published by Tasks:
@@ -203,6 +228,328 @@ query nested Git/GitHub DOM or read their private state.
 Reading surfaces keep the Task navigator on desktop. Code surfaces use the full
 workspace width. Foldable and phone presentation is owned by the same
 master/detail layout system.
+
+The App Shell keyboard-navigation coordinator is the only document-level key
+owner. It derives normal versus editing state from focus and composition, and
+stores at most one mutually exclusive Action Hint, Scroll selection, active
+Scroll, or shortcut-help mode. Keyboard navigation being disabled closes the
+stored mode and leaves `F`, `S`, and `?` unhandled. App Shell route changes,
+disconnect, competing native overlay ownership, and composition changes run
+through the same cleanup authority. Task Workspace does not install a second
+document listener or global presentation.
+
+Workspace, registered modal, and registered popover owners publish one thin
+keyboard-navigation context identified by stable ID, ownership kind, and exact
+retained root. Action Hint and Scroll remain separate optional capabilities on
+that context. The same fresh context resolution serves both `F` and `S`: one
+open registered popover wins over the workspace, including when it is an exact
+descendant of the currently open product modal; otherwise an unknown or
+unrelated open overlay, duplicate root, or ambiguous popover rejects entry. The
+coordinator reads native
+`:popover-open` and `dialog:modal` state only to validate ownership. It does not
+infer actions or scrollports from overlay descendants.
+
+The coordinator enters Action Hint mode from a non-editing `F` key and
+pulls one-shot semantic descriptors from explicitly participating owners.
+Each participating component provides its retained native control, stable
+semantic identity, action meaning, accessible name, anchor, and clip
+dependencies. This includes Workspace and Settings navigation and page
+buttons; Task and Section selection; archived-list, recovery, and Codex
+readiness buttons; Composer Model, Permission, Prompt, attachment, voice,
+cancel, submit, and interrupt actions; Conversation retry, image-preview, and
+approval actions; Section Fork; Current Plan document openers; and direct
+Integrated Review, Git, GitHub, file-navigation, and file-viewer actions. Git
+declares Refresh, while GitHub detail declares Start Task and Pull Files.
+Activation reuses each owner's existing native button click, form, or
+product-intent path.
+
+Product-owned native controls use distinct closed action kinds rather than
+pretending to be buttons. Appearance declares non-current Theme radios, its
+Typeface select, and the three size ranges; Files declares its non-current
+ordering radio; Keyboard declares its enabled On/Off switch; Git Compare
+declares its visible Base and Head selects; and the Branch Review Compare Tree
+declares its comparison-base select while the Review owner injects the action
+meaning. The Branch target remains available while its compared File Tree is
+loading, empty, or showing an error, provided the retained select and refs are
+still available. Its badge is anchored to the stable visible `vs <ref>`
+affordance, while the transparent native select keeps covering the full primary
+header. This keeps selected-value label updates on one frozen binding, while
+activation still uses the exact select. Radio and switch activation
+focuses and clicks the exact retained input after Hint cleanup. A select
+focuses and calls native `showPicker()` in the trusted key stack, with a
+focus-only fallback when the browser cannot open it. A range target only
+receives focus. The native control and its product owner continue to own option
+selection, value changes, persistence, and subsequent keyboard input.
+
+Keyboard-operable split separators follow the same focus-only handoff. Task
+Workspace owns its navigation separator, Git Compare owns its tree/viewer
+separator, and the reusable Review Panel Resizer publishes a child scope that
+Integrated Review, Git Log Commit, and GitHub Pull Files merge. Actual layout
+and resizing capability are required, so single-pane or hidden separators do
+not become targets. Arrow, Shift+Arrow, Home, and End remain component-owned.
+
+Product-owned disclosure uses the same one-shot flow through a distinct
+`disclosure.toggle` action and `disclosure` control kind. The shared File Tree
+declares only expandable directory buttons; non-expandable Directory Picker
+rows keep their existing navigation meaning. Work Details declares its root
+summary, active Command declares its summary while terminal Command keeps View
+output, Conversation declares only the exact Thinking summaries it rendered,
+and Git Log declares its commit-body toggle. Target identity stays stable
+across open state while the accessible Hint label changes between Expand and
+Collapse. The Hint overlay closes before the retained summary or button
+receives focus and its existing click path. Opening or closing never starts a
+second Hint session; the user presses `F` again against the new visible state.
+
+Links use the distinct `link.open` action and `link` control kind. A component
+that renders a direct product link declares that exact retained anchor: Remote
+Access owns its current Tailnet link, Settings and Task readiness own their
+conditional Codex guide, and GitHub Issue or Pull detail owns its header,
+comment, and commit links. Each target freezes the anchor's raw `href`,
+`target`, and `rel`. After Hint cleanup and final revalidation, activation
+focuses and clicks that native anchor; the helper does not call a router or
+`window.open()`. Consequently same-tab Caffold paths, external tabs, and
+`mailto:` links preserve their existing browser semantics. Changing any frozen
+link attribute retires that link's declared owner group, while an
+accessible-name-only patch updates the existing badge and code.
+
+Rendered-content owners register links only after their existing sanitizer and
+final DOM mount. Task Markdown and the shared Markdown Preview enumerate the
+final anchors in their own light-DOM body; GitHub Markdown enumerates its own
+open Shadow DOM. The registry stores the exact anchor, a render-local ordinal,
+and the frozen native binding. Generated IDs combine the stable parent scope
+with that ordinal and never contain the URL, so duplicate hrefs or labels remain
+distinct. A raw href beginning with `#`, an absent href, or an anchor without an
+accessible name is omitted; a normal internal or external URL that contains a
+fragment later is retained. Loading, fallback, rerender, representation change,
+and content replacement replace or clear the registry. A disconnected owner
+publishes no scope and may reuse only its still-current mounted registry after
+reconnection. Markdown table-scroll wrappers are explicit per-link clip and
+scroll dependencies, and GitHub Markdown publishes both its host and Shadow
+root as mutation dependencies.
+
+Custom children retain their own action knowledge. Work Details merges its own
+summary with its direct retained children. Command declares active disclosure
+or terminal View output from the same provider, Markdown Code Block declares
+Wrap and Copy, and Conversation merges those public scopes through its
+retained Assistant Message, Markdown, and Work Details children. Reusable
+controls such as the segmented control, file tree, pagination, file navigator,
+and file viewer expose public scope providers; their screen owner supplies the
+semantic action and scope context. Ancestors never discover these actions by
+scanning descendant buttons, `summary` elements, or `aria-expanded`.
+
+Parent layouts merge these renderer-owned link scopes through the same public
+child interface as other retained controls; they do not rediscover anchors.
+App Shell bootstrap and unavailable-foreground Retry controls participate as
+direct shell-owned targets, and Build Mismatch Reload participates through its
+component-owned public scope. Arbitrary third-party `summary` disclosures
+remain outside Action Hint. A native summary participates only when its product
+component explicitly owns and declares that disclosure. Registered dialog
+textboxes keep their owner-specific focus behavior, while dialog selects use
+the same general native select contract as workspace controls. Popover and
+dialog openers are ordinary workspace actions, but after either opens the user
+presses `F` again to enter the new retained context; the coordinator never
+predicts or automatically hands off to it. File details deliberately declares
+no internal Action Hint target.
+
+Provider collection is hierarchical: each layout merges its own actions with
+only its active direct child scopes through `action-hint-scope.js`. Ancestors
+do not enumerate or reach through descendant DOM. A retained pane with no
+layout box is omitted before merge, so its hidden mutation and scroll
+dependencies cannot invalidate the visible pane's session.
+
+The nine registered Task Workspace product dialogs follow the same owner-first
+contract: Codex restart, Claude restart, archived-task deletion, image preview,
+directory picker, Conversation fork, command output, Current Plan document,
+and GitHub Task Start. Every currently visible and enabled button has an owner
+declaration, without semantic deduplication, and controls owned by a direct
+child compose through the same public scope interface. Fork additionally
+declares its Thread-ID textbox, while the Task Start issue child declares its
+native Base branch select. Textbox activation only focuses the retained input.
+The general select activation contract applies to that Base branch control;
+native options and change handling remain with the browser and product state
+owners. These registrations do not create a generic dialog registry or DOM
+discovery path. The App Shell update dialog is outside this Task Workspace
+context set and publishes its own exact modal context. Later and Reload are
+declared by the dialog owner, while native form return values and PWA intent
+handling remain unchanged.
+
+The controller validates every action and control kind against a closed central
+policy. Task selection retains generated `T*` codes and New Task, Model, and
+Prompt retain `N`, `M`, and `P`. Task suffixes and actions in the automatic
+pool receive compact, balanced prefix-free codes in
+`ASDFGHJKLQWERTYUIOPZXCVBNM` order after visual sorting. The allocator
+minimizes the longest code first and total code length second, assigns shorter
+codes to earlier targets, and expands the lowest-priority tail branches first,
+so code lengths within each generated allocation pool differ by at most one.
+Automatic first characters reserve the `N`, `M`, `P`, and `T` namespaces. The
+full result must be unique and prefix-free. Initial capture freezes each
+visible, actionable target's identity, exact native binding, code, activation
+closure, and exact retained `invalidationOwner`. It intersects anchors directly
+with the visual viewport and every owning scrollport, then renders buttons in
+one viewport-sized native modal dialog. The target set is monotonic for that
+session: later descriptors never receive codes, and a retired or initially
+offscreen target can participate only after a fresh `F`.
+
+Mutation, resize, and declared owner-scroll observations request one coalesced
+scope revalidation; their roots are signals, not evidence from which the
+controller infers ownership. If a frozen target disappears, becomes
+non-actionable or invisible, changes owner, or changes any native binding, the
+controller retires every frozen target with that same frozen owner. Exact
+survivors retain their original code, order, control, and activation closure;
+only their current accessible label and visible geometry are patched onto the
+retained badge. No allocator runs during this reconciliation. Conversation can
+therefore use retained entry and child components as fine-grained owners,
+while providers whose render boundary is still broader use their current
+component instance as a coarse owner without changing the central algorithm.
+
+Route or keyboard-context replacement, dialog binding changes, competing or
+ambiguous modal/popover ownership, malformed scope data, and real window or
+visual-viewport movement remain whole-session invalidations. A partial prefix
+keeps Action Hint or Scroll selection open while at least one frozen code still
+matches. If owner retirement leaves no target or no target matching the
+current prefix, the mode closes and restores its invoking focus. A printable
+character that leaves no match is likewise consumed and closes the selection
+mode.
+
+Each registered popover retains a small shared presentation host containing its
+own Action Hint dialog, Scroll selector, and Scroll HUD. Dynamic Model and
+Permission rendering replaces only an option-content child, preserving the
+popover root and presentation identity. If a frozen option control is replaced,
+its option owner group retires even when the semantic value is unchanged. A
+popover context containing no surviving target consequently closes; a later
+`F` collects fresh bindings and options. Product owners continue to own native
+open, light dismiss, deactivation, and focus-return lifecycle, while the
+coordinator only cleans its current keyboard session.
+
+Each registered product dialog likewise retains one shared presentation host
+as a direct child of its exact native `<dialog>`. The host owns only that
+context's Action Hint dialog, Scroll selector, and Scroll HUD; it neither
+discovers product controls nor owns product open, close, return-value,
+submission, mutation, or external focus-return behavior. Product content
+patches preserve the dialog, presentation, and declared control or scrollport
+identities unless a real topology change requires a fresh session.
+
+`normal` and `editing` are derived from current focus and composition; `hint`,
+`scroll-selecting`, `scroll-active`, and `shortcut-help` are the stored
+keyboard-navigation nodes. The complete node edges are
+`normal -> normal | editing | hint | scroll-selecting | scroll-active | shortcut-help`,
+`editing -> editing | normal`, `hint -> hint | normal`,
+`scroll-selecting -> scroll-selecting | scroll-active | normal`,
+`scroll-active -> scroll-active | normal`, and
+`shortcut-help -> normal`. One transition table gates session creation, input,
+cancel, selection, commands, and activation close. Closing a stored mode
+releases its scoped listeners and observers before an existing route, model
+popover, document dialog, or prompt-focus owner takes control.
+Composition and unregistered modal or popover owners keep their own key and
+Escape ownership.
+
+An editable inside a registered modal may publish one exact same-modal Editing
+escape destination. A non-composing `Escape` received by the coordinator ends
+Editing by focusing that retained control without changing the input value or
+closing the product dialog; a following `Escape` is left to the native dialog
+close path. An open browser-native picker may consume its own `Escape` before
+the document receives it. Fork and Task Start use their own Cancel button for
+this handoff. Missing, stale, hidden, disabled, outside-root, composing, or
+unregistered destinations do not cause the coordinator to infer a fallback or
+consume the key.
+
+Scroll mode enters from a non-editing `S` key and uses only surfaces
+explicitly published through `scroll-scope.js`; it does not discover generic
+scrollable DOM. Each owner declares a closed list of `vertical` and
+`horizontal` axes for its exact retained scrollport. An omitted declaration
+keeps the migration default of `vertical`, while empty, duplicate, or unknown
+axes fail context normalization. The central capture intersects those declared
+axes with the element's current measured overflow. Owners therefore validate
+identity, lifecycle, and layout without duplicating overflow policy or
+manufacturing CSS overflow for short content.
+
+Settings publishes its navigator plus the exact active page surface. Tasks
+publishes its navigator plus the visible New, Recovery, Codex-readiness,
+Section, or Task Detail child. Detail delegates to the exact active
+Conversation, Integrated Review, Git, or GitHub domain. Integrated Review, Git
+Compare and Commit, and GitHub Pull Files merge their simultaneously visible
+tree and viewer leaves on desktop and omit the pane without a layout box on
+single-pane layouts. File tree, source, diff, Markdown preview, image stage,
+and scrollable notice owners publish their actual retained leaf rather than
+having a screen parent reach into their DOM. File tree, source, diff, Markdown
+preview hosts, GitHub Issue Markdown hosts, and image stages declare both axes;
+one element that overflows in both directions remains one surface with one
+selection code.
+
+Git Log, GitHub Issue and Pull lists, GitHub Issue Markdown or raw body, and
+Pull Request detail publish their exact vertical scrollports. Markdown owners
+retain final-mount registries for native code blocks and table wrappers, so Task
+Markdown, the shared Markdown Preview, and GitHub Markdown's Shadow DOM publish
+their exact horizontal children without coordinator inspection. Pull detail
+merges each direct description, comment, and review Markdown child through that
+same public scope. Conversation merges its vertical transcript with direct
+retained Assistant Message,
+Thinking, active Command, expanded Work Details, tool-output, and approval
+command scopes. Collapsed disclosures publish no inner surface.
+
+Five registered product dialogs publish their exact parent surface: directory
+picker `.file-tree-scroll`, Conversation fork body, command-output body,
+Current Plan Markdown preview, and Task Start body. Command Output additionally
+publishes its output `pre`; Current Plan delegates the shared preview's code
+and table scopes; and Pull Task Start merges its base/head relationship
+`dl`. A modal may therefore select among parent and nested surfaces. Each
+registered popover continues to publish only its own root as an optional
+surface. Composer textareas, control strips, native editable internals,
+document/window scrolling, and other undeclared overflow remain with their
+native owner.
+
+Containers merge only active direct-child scopes. Workspace, an open
+registered modal, and an open registered popover are exclusive interaction
+contexts, so overlay scrolling never shares a selection set with background
+workspace surfaces.
+
+Eligibility directly checks the bound element, current declared-axis overflow,
+layout box, visual viewport, clip roots, and owner revalidation. One eligible
+surface enters active mode directly. Multiple workspace or modal surfaces
+receive temporary same-width `ASDFGHJKLQWERTYUIOPZXCVBNM` codes in visual
+order and appear in their context-local native modal selector; a popover with
+multiple eligible surfaces rejects entry. Parent and nested badges use
+deterministic non-overlapping placements within the visual viewport. The
+selector session freezes the context, surface IDs, element bindings, declared
+and available axes, geometry, and codes. Ancestor scrolling, viewport, zoom,
+geometry, visibility, axis availability, topology, route, or context changes
+close that session instead of reallocating or retargeting it.
+
+Active Scroll mode sends `J/K` by 10 percent and `D/U` by 50 percent of the
+selected scrollport height. `H/L` moves left or right by 10 percent of its
+width. Every delta is at least one CSS pixel and clamps immediately to the exact
+axis boundary. Supported commands are consumed even at a boundary and accept
+key repeat without chaining into a parent or the window. The context-local HUD
+shows only the active surface label and a `?` shortcut-help affordance in the
+selected surface's top-right corner; the selected surface keeps its outline.
+`Escape` closes only Scroll mode. A non-repeated,
+non-composing `F` without Ctrl, Alt, or Meta first closes active Scroll mode
+and releases its scoped observers, then captures a fresh Action Hint snapshot
+in the current context. A context with no eligible action leaves no stored
+keyboard mode. Scroll selection continues to treat `F` as a possible surface
+code rather than switching modes.
+
+Action Hint and multi-surface Scroll selection show only their target badges
+and outlines. Their title, instructions, and typed-code status remain available
+to assistive technology without occupying product UI. The App Shell owns one
+global native shortcut-help dialog rather than duplicating it in every
+context-local presentation. Outside editing fields, a `?` keydown without
+Ctrl, Alt, or Meta that is neither repeated nor composing opens it from Normal,
+Action Hint, Scroll selection, or active Scroll state. Entering help first
+closes any active mode and its frozen snapshot; closing help with `?`, `Escape`,
+or its Close button returns to Normal and restores the original focus target.
+It never recreates a previous overlay session.
+
+Active revalidation preserves the exact context, surface ID, element binding,
+and axes. Scrolling the selected element itself keeps the session active;
+ancestor, sibling, viewport, or ownership movement revalidates it. A label or
+layout change on the same binding patches or repositions its HUD, while loss of
+visibility, overflow, axis availability, or ownership closes the mode. The
+reusable non-interactive HUD and outline are mounted by the active context
+itself: the workspace owns one for Task list or Conversation, while each
+registered product dialog or popover owns one inside its retained root. Native
+scroll events, focus, Conversation anchoring, popover light dismiss, and
+product-dialog refresh/close lifecycle remain owned by those components.
 
 The workspace also owns the one browser lifecycle for backend-owned Codex
 readiness requests and forwards a request snapshot to Tasks, Settings, and the
@@ -264,6 +611,13 @@ snapshot and live event application, Conversation, Command dialog, current-plan
 strip, follow-up Composer, and Task mutations. It publishes a subject snapshot
 upward; it does not mount Integrated Review, Git, GitHub, or their Summary
 controls.
+
+For keyboard navigation, each of these layout owners merges only the public
+scope of the child it currently presents. `caffold-tasks-page` composes Task
+Navigator with the visible New, Recovery, readiness, or Detail owner;
+setup-beside is an independent sibling when it is actually visible. The common
+Detail layout delegates Action and Scroll scopes to Conversation, Section New,
+Integrated Review, Git, or GitHub without rebuilding child descriptors.
 
 One pending prompt per Task belongs to Detail, whether it originated in the
 Task Composer or was transferred from a New Task or GitHub creation surface.
@@ -406,6 +760,19 @@ the Task subject and are preserved by Task identity through incremental shell
 updates. Moving from Tasks to Settings ends active editing and transport work
 without destroying a retained Composer draft.
 
+Conversation also owns its delegated retry, attachment-preview, approval, and
+exact rendered Thinking disclosure controls. Retry controls use Conversation's
+coarse owner; each attachment preview and Thinking disclosure uses the exact
+retained timeline entry that contains it, while each approval group uses its
+rendered approval card as the minimum invalidation owner. A custom child owns
+its own controls: Command owns its active disclosure or terminal View output,
+Work Details owns its root disclosure, and Markdown Code Block owns Wrap and
+Copy. Thinking Markdown intentionally remains outside code-block controls.
+Assistant Message, Markdown, and Work Details merge only the direct retained
+children they mount. A stream patch can therefore retire only the replaced
+entry, approval card, or child owner while unaffected sibling, App Shell, and
+Composer codes remain frozen, without introducing a descendant-DOM scan.
+
 ### Current plan
 
 `caffold-task-current-plan` is another stable child of Task Detail inside the
@@ -461,6 +828,15 @@ image Preview. The file viewer owns representation chrome and image rendering,
 and delegates Markdown rendering, sanitization, fallback, and local scroll to
 the shared `caffold-markdown-preview` component also used by the current-plan
 dialog.
+
+The shared file stack owns keyboard surfaces at the same boundaries. File List
+merges its Refresh button with the public file-tree selection and directory
+disclosure scope, File Navigator forwards caller semantics, and File Viewer
+publishes its current source, diff, Markdown, image, or notice leaf plus its
+existing Back, Details, Source/Preview, and conditional Refresh actions.
+Integrated Review chooses the current navigator and viewer roles and merges
+those public scopes; it never queries a child's `.file-tree-scroll`,
+`.code-lines`, `.diff-lines`, or directory buttons.
 
 Integrated Review uses a bounded cache keyed by explicit Task or Section
 identity. Disconnecting an inactive entry invalidates its requests and releases
@@ -585,10 +961,24 @@ lifetime.
 ## Settings
 
 Settings lives inside Task Workspace. Appearance owns theme and Interface,
-Conversation, and Code scales. Settings Codex renders the shared status and
-runtime-restart request snapshots, repair guidance, diagnostics, and intents
-for Refresh or restart. The workspace Codex status lifecycle remains active
-across Tasks and Settings route changes and owns the HTTP request generations.
+Conversation, and Code scales. Keyboard owns the persisted Keyboard navigation
+On/Off control; Off closes any active keyboard-navigation mode and leaves its
+keys unhandled. Settings Codex renders the shared status and runtime-restart
+request snapshots, repair guidance,
+diagnostics, and intents for Refresh or restart. The workspace Codex status
+lifecycle remains active across Tasks and Settings route changes and owns the
+HTTP request generations.
+
+Each Settings page explicitly provides its current visible native buttons and
+exact page scrollport. The Settings workspace merges responsive Back with only
+the presented page, and the Task Workspace merges that result with the visible
+Settings navigator. Desktop may therefore expose independent navigator and
+page Scroll surfaces, while foldable and phone layouts contribute only the pane
+with a layout box. Appearance registers non-current Theme choices, Typeface, and
+its three ranges; Files registers the non-current ordering choice; and Keyboard
+registers its switch only while keyboard navigation is enabled. These controls
+keep their native editing, choice, and persistence behavior after the Action
+Hint coordinator hands off focus or click ownership.
 
 `caffold-settings-detail-list` renders the label and value rows that Codex,
 Claude, and About report. It owns row identity, the placeholder a row shows
@@ -635,9 +1025,28 @@ Relevant source ownership follows the routed hierarchy:
 
 ```text
 frontend/
+|-- action-hint-scope.js
+|-- action-hints.js
+|-- action-hints/
+|   |-- control.js
+|   |-- model.js
+|   `-- components/dialog.js
+|-- scroll-scope.js
+|-- keyboard-navigation.js
+|-- keyboard-navigation/
+|   |-- context.js
+|   |-- control.js
+|   |-- model.js
+|   `-- components/
+|       |-- presentation.js
+|       |-- hud.js
+|       `-- selector.js
 |-- navigation-routes.js
 |-- pages/
 |   |-- layout.js
+|   |-- components/
+|   |   |-- build-mismatch-alert.js
+|   |   `-- update-dialog.js
 |   |-- foreground-recovery.js
 |   |-- foreground-recovery/...
 |   |-- pwa-update-lifecycle.js
@@ -648,7 +1057,9 @@ frontend/
 |       |-- live-updates/lifecycle.js
 |       |-- codex-status.js
 |       |-- codex-status/...
-|       |-- settings/...
+|       |-- settings/
+|       |   |-- keyboard/page.js
+|       |   `-- ...
 |       `-- tasks/
 |           |-- layout.js
 |           |-- stream.js
@@ -664,7 +1075,9 @@ frontend/
 |           |   |       |-- section.js
 |           |   |       `-- section/components/row.js
 |           |   |-- task-create.js
-|           |   `-- composer.js
+|           |   |-- task-turn-options.js
+|           |   |-- composer.js
+|           |   `-- composer/action-hints.js
 |           `-- (detail)/
 |               |-- layout.js
 |               |-- components/
@@ -700,10 +1113,12 @@ frontend/
 |                   |-- (issues)/...
 |                   `-- (pulls)/...
 `-- components/
+    |-- file-tree.js
     |-- file-navigator.js
     |-- file-viewer.js
     |-- git-compare-browser.js
     |-- markdown-preview.js
+    |-- pagination.js
     |-- review-panel-resizer.js
     `-- segmented-control.js
 ```
@@ -722,7 +1137,14 @@ active projection and serialized local reorder mutations. Each
 `caffold-active-task-section` owns its Section header and Task list, while each
 private `caffold-active-task-row` owns one Task row's selection and reorder
 interaction. Section and row components raise semantic intents to their parent
-instead of acquiring list API or persistence ownership.
+instead of acquiring list API or persistence ownership. Normal Action Hint
+scope exposes Task and Section navigation. Active Task reorder scope replaces
+those navigation targets with visible row handles; active Section reorder scope
+uses visible Section handles. The navigator also exposes its exact Finish
+button. Handle activation only focuses the retained button, so its existing
+Arrow-key move, pending gate, focus restoration, and live announcement remain
+with the row or Section owner. Reorder blocks Scroll scope, and moving or
+finishing never starts another Hint session automatically.
 
 ## Styling and assets
 

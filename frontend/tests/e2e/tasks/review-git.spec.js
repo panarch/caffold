@@ -1,4 +1,10 @@
 import { expect, test } from "@playwright/test";
+import {
+  actionHintBadgePresentation,
+  actionHintDialog,
+  enterActionHints,
+  waitForActionHintTarget,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   openCompletedTaskForReview,
@@ -585,6 +591,200 @@ test("selects local and remote Branch bases without replacing the picker", { tag
   );
 });
 
+test("hands the Branch comparison base Hint to its retained native select", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const { reviewScenario, taskScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await selectTaskReviewScope(tasksPage, "branch");
+
+  const compareTree = taskReview.locator("caffold-git-compare-tree");
+  const baseSelect = compareTree.getByLabel("Branch comparison base");
+  await expect(baseSelect).toHaveValue("origin/main");
+  const hint = await enterActionHints(page);
+  const badge = hint.getByLabel(
+    / — Choose comparison base \(current origin\/main\)$/,
+  );
+  await expect(badge).toBeVisible();
+  await expect(compareTree.locator(".compare-file-count")).toBeVisible();
+  expect(await actionHintBadgePresentation(badge)).toEqual({
+    backgroundMatches: true,
+    borderVisible: true,
+    colorMatches: true,
+    hasBlockPadding: true,
+    position: "absolute",
+  });
+  const geometry = await badge.evaluate((element) => {
+    const anchor = document.querySelector(
+      "caffold-task-review caffold-git-compare-tree .compare-base",
+    );
+    const primary = anchor.closest(".compare-tree-primary");
+    const control = anchor.querySelector("select[data-compare-base-ref]");
+    const badgeRect = element.getBoundingClientRect();
+    const anchorRect = anchor.getBoundingClientRect();
+    const primaryRect = primary.getBoundingClientRect();
+    const controlRect = control.getBoundingClientRect();
+    return {
+      alignedLeft: Math.abs(badgeRect.left - anchorRect.left) <= 1,
+      alignedTop: Math.abs(badgeRect.top - anchorRect.top) <= 1,
+      controlCoversPrimary:
+        Math.abs(controlRect.left - primaryRect.left) <= 1 &&
+        Math.abs(controlRect.top - primaryRect.top) <= 1 &&
+        Math.abs(controlRect.right - primaryRect.right) <= 1 &&
+        Math.abs(controlRect.bottom - primaryRect.bottom) <= 1,
+      insideViewport:
+        badgeRect.left >= 0 &&
+        badgeRect.right <= window.innerWidth &&
+        badgeRect.top >= 0 &&
+        badgeRect.bottom <= window.innerHeight,
+    };
+  });
+  expect(geometry).toEqual({
+    alignedLeft: true,
+    alignedTop: true,
+    controlCoversPrimary: true,
+    insideViewport: true,
+  });
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "tasks-branch-base-action-hints",
+  );
+
+  const code = await badge.getAttribute("data-action-hint-code");
+  expect(code).toMatch(/^[A-Z]+$/);
+  await compareTree.evaluate((tree) => {
+    tree.setBaseSelection({
+      refs: tree.baseSelection.refs,
+      value: "origin/release",
+    });
+  });
+  const updatedBadge = hint.locator(`[data-action-hint-code="${code}"]`);
+  await expect(updatedBadge).toHaveAttribute(
+    "aria-label",
+    `${code} — Choose comparison base (current origin/release)`,
+  );
+  await compareTree.evaluate((tree) => {
+    tree.setBaseSelection({
+      refs: tree.baseSelection.refs,
+      value: "origin/main",
+    });
+  });
+  await expect(updatedBadge).toHaveAttribute(
+    "aria-label",
+    `${code} — Choose comparison base (current origin/main)`,
+  );
+
+  await page.keyboard.type(code.toLowerCase());
+  await expect(actionHintDialog(page)).toBeHidden();
+  await expect(baseSelect).toBeFocused();
+  const requestsBefore = reviewScenario.gitCompareRequests;
+  await baseSelect.selectOption("origin/release");
+  await expect.poll(() => reviewScenario.gitCompareRequests)
+    .toBeGreaterThan(requestsBefore);
+  await expect(page).toHaveURL(
+    `/tasks/${taskScenario.threadId}/review?scope=branch&base=origin%2Frelease`,
+  );
+  await expect(baseSelect).toHaveValue("origin/release");
+  await expect(compareTree.locator(".compare-base-label")).toHaveText(
+    "vs release",
+  );
+  await expect(
+    compareTree.locator('button[data-file-tree-path="src/release.rs"]'),
+  ).toBeAttached();
+});
+
+test("retires the Branch base owner when its select binding is replaced", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  await selectTaskReviewScope(tasksPage, "branch");
+
+  const compareTree = taskReview.locator("caffold-git-compare-tree");
+  await expect(compareTree.getByLabel("Branch comparison base")).toHaveValue(
+    "origin/main",
+  );
+  await waitForActionHintTarget(
+    page,
+    "Choose comparison base (current origin/main)",
+  );
+  const hint = await enterActionHints(page);
+  const baseBadge = hint.getByLabel(
+    / — Choose comparison base \(current origin\/main\)$/,
+  );
+  await expect(baseBadge).toBeVisible();
+  const baseCode = await baseBadge.getAttribute("data-action-hint-code");
+  expect(baseCode).toBeTruthy();
+  await compareTree.evaluate((tree) => {
+    const select = tree.querySelector("select[data-compare-base-ref]");
+    select.replaceWith(select.cloneNode(true));
+  });
+
+  await expect(hint).toBeVisible();
+  await expect(hint.locator(
+    `[data-action-hint-code="${baseCode}"]`,
+  )).toHaveCount(0);
+  await expect(compareTree.getByLabel("Branch comparison base")).not.toBeFocused();
+  await page.keyboard.press("Escape");
+});
+
+test("keeps the Branch base Hint available without ready compared files", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const { reviewScenario, tasksPage, taskReview } =
+    await openCompletedTaskForReview(page);
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+  const releaseCompare = reviewScenario.holdCompare("origin/main");
+
+  const compareTree = taskReview.locator("caffold-git-compare-tree");
+  const assertSelectOnly = async () => {
+    const hint = await enterActionHints(page);
+    await expect(
+      hint.getByLabel(/ — Choose comparison base \(current origin\/main\)$/),
+    ).toBeVisible();
+    await expect(hint.getByLabel(/Show compare diff for /)).toHaveCount(0);
+    await page.keyboard.press("Escape");
+  };
+
+  try {
+    await selectTaskReviewScope(tasksPage, "branch");
+    await expect(compareTree.locator(".surface-message")).toHaveText(
+      "Loading compare...",
+    );
+    await assertSelectOnly();
+  } finally {
+    releaseCompare();
+  }
+  await expect(
+    compareTree.locator('button[data-file-tree-path="src/planner.rs"]'),
+  ).toBeAttached();
+
+  await compareTree.evaluate((tree) => {
+    tree.setError(new Error("fixture compare unavailable"));
+  });
+  await expect(compareTree.locator(".surface-message")).toHaveText(
+    "fixture compare unavailable",
+  );
+  await assertSelectOnly();
+
+  await compareTree.evaluate((tree) => {
+    tree.setCompare({
+      repository: { rootPath: "src", branch: "main", dirty: true },
+      baseRef: "origin/main",
+      headRef: "main",
+      additions: 0,
+      deletions: 0,
+      files: [],
+    });
+  });
+  await expect(compareTree.locator(".surface-message")).toHaveText(
+    "No changes compared with origin/main.",
+  );
+  await assertSelectOnly();
+});
+
 test("keeps equivalent Branch header refreshes mutation-free", { tag: "@all-viewports" }, async ({ page }) => {
   const { reviewScenario, tasksPage, taskReview } =
     await openCompletedTaskForReview(page);
@@ -1129,6 +1329,133 @@ test("keeps a 180-file change set inspectable without clipping its identity", { 
   );
 });
 
+test("scrolls the exact visible Review tree and diff through the workspace root", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ ...viewport, height: 360 });
+  const { tasksPage, taskReview } = await openCompletedTaskForReview(page, {
+    configureReview(review) {
+      review.largeChangeSet = true;
+      review.wideTreeEntry = true;
+      review.workingDiffText = Array.from(
+        { length: 80 },
+        (_, index) => `new planner behavior ${index + 1} ${
+          "intrinsically-wide-diff-segment-".repeat(10)
+        }`,
+      ).join("\n+");
+    },
+  });
+  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+
+  const treeScroll = taskReview.locator(
+    "caffold-git-diff-changes-tree .file-tree-scroll",
+  );
+  const workspace = page.locator(".task-workspace-surface");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog:modal");
+  const hud = page.locator(
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
+  );
+  await expect.poll(() => treeScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await expect.poll(() => treeScroll.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
+
+  if (testInfo.project.name === "phone") {
+    await workspace.focus();
+    await page.keyboard.press("s");
+    await expect(selector).toBeHidden();
+    await expect(hud).toContainText("Scroll: Working tree changes");
+    await expect(hud.locator("[data-scroll-mode-shortcut-help]"))
+      .toContainText("?");
+    await page.keyboard.press("l");
+    await expect.poll(() => treeScroll.evaluate((element) => element.scrollLeft))
+      .toBeGreaterThan(0);
+    await page.keyboard.press("j");
+    await expect.poll(() => treeScroll.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    await page.keyboard.press("Escape");
+    await treeScroll.evaluate((element) => {
+      element.scrollTop = 0;
+      element.scrollLeft = 0;
+    });
+  }
+
+  await taskReview
+    .locator('caffold-git-diff-changes-tree button[data-file-tree-relative-path="planner.rs"]')
+    .click();
+  const diffScroll = taskReview.locator(
+    "caffold-review-file-viewer:not([hidden]) caffold-diff-viewer .diff-lines",
+  );
+  await expect(diffScroll).toContainText("new planner behavior 80");
+  await expect.poll(() => diffScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await expect.poll(() => diffScroll.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
+
+  await workspace.focus();
+  await page.keyboard.press("s");
+  if (testInfo.project.name === "phone") {
+    await expect(selector).toBeHidden();
+    await expect(hud).toContainText("Scroll: planner.rs diff");
+  } else {
+    await expect(selector).toBeVisible();
+    const badges = selector.locator("button[data-scroll-surface-code]");
+    await expect(badges).toHaveCount(2);
+    expect(new Set(await badges.evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute("aria-label")
+        .replace(/^[A-Z]+ — /, ""))
+    ))).toEqual(new Set(["Working tree changes", "planner.rs diff"]));
+
+    const treeBadge = selector.getByLabel(
+      /^[A-Z]+ — Working tree changes$/,
+    );
+    await treeBadge.click();
+    const diffBeforeTreeScroll = await diffScroll.evaluate(
+      (element) => element.scrollTop,
+    );
+    await page.keyboard.press("j");
+    await expect.poll(() => treeScroll.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    expect(await diffScroll.evaluate((element) => element.scrollTop)).toBe(
+      diffBeforeTreeScroll,
+    );
+    await page.keyboard.press("Escape");
+
+    await workspace.focus();
+    await page.keyboard.press("s");
+    await selector.getByLabel(/^[A-Z]+ — planner\.rs diff$/).click();
+    await expect(hud).toContainText("Scroll: planner.rs diff");
+  }
+
+  const treeBeforeDiffScroll = await treeScroll.evaluate(
+    (element) => element.scrollTop,
+  );
+  const treeHorizontalBeforeDiffScroll = await treeScroll.evaluate(
+    (element) => element.scrollLeft,
+  );
+  await expect(hud.locator("[data-scroll-mode-shortcut-help]"))
+    .toContainText("?");
+  await page.keyboard.press("l");
+  await expect.poll(() => diffScroll.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  expect(await treeScroll.evaluate((element) => element.scrollLeft)).toBe(
+    treeHorizontalBeforeDiffScroll,
+  );
+  await page.keyboard.press("j");
+  await expect.poll(() => diffScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  expect(await treeScroll.evaluate((element) => element.scrollTop)).toBe(
+    treeBeforeDiffScroll,
+  );
+  await page.keyboard.press("Escape");
+  await expect(hud).toBeHidden();
+});
+
 test("maps the visible source line when Diff and Source representations switch", { tag: "@all-viewports" }, async ({
   page,
 }) => {
@@ -1167,6 +1494,41 @@ test("maps the visible source line when Diff and Source representations switch",
   expect(sourceControl.selectedShadow).toContain("0px 0px 0px 1px");
   await expect(viewer.locator("caffold-code-viewer")).toBeVisible();
   await expect(viewer.locator("caffold-code-viewer header")).toHaveCount(0);
+  const codeScroll = viewer.locator("caffold-code-viewer .code-lines");
+  await expect.poll(() => codeScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await codeScroll.locator(".line-code").first().evaluate((element) => {
+    element.textContent = "intrinsically-wide-source-segment-".repeat(20);
+  });
+  await expect.poll(() => codeScroll.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
+  const scrollSelector = page.locator(
+    "caffold-scroll-surface-selector > dialog:modal",
+  );
+  const workspaceHud = page.locator(
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
+  );
+  await page.locator(".task-workspace-surface").focus();
+  await page.keyboard.press("s");
+  await expect.poll(async () =>
+    await scrollSelector.isVisible() || await workspaceHud.isVisible()
+  ).toBe(true);
+  if (await scrollSelector.isVisible()) {
+    await scrollSelector.getByLabel(/^[A-Z]+ — planner\.rs source$/).click();
+  }
+  await expect(workspaceHud).toContainText("Scroll: planner.rs source");
+  await expect(workspaceHud.locator("[data-scroll-mode-shortcut-help]"))
+    .toContainText("?");
+  await page.keyboard.press("l");
+  await expect.poll(() => codeScroll.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("j");
+  await expect.poll(() => codeScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await expect(workspaceHud).toBeHidden();
   expect(await viewer.evaluate((element) => element.scrollToLine(60))).toBe(true);
   await expect
     .poll(() => viewer.evaluate((element) => element.visibleLine()))
@@ -1197,6 +1559,70 @@ test("maps the visible source line when Diff and Source representations switch",
   await expect
     .poll(() => viewer.evaluate((element) => element.visibleLine()))
     .toBe(sourceLine);
+
+  await viewer.locator("caffold-code-viewer").evaluate((element) => {
+    element.setFile({
+      content: "horizontal-only-source-segment-".repeat(30),
+      languageHint: "text",
+    });
+  });
+  await expect(codeScroll).toContainText("horizontal-only-source-segment");
+  await expect.poll(() => codeScroll.evaluate(
+    (element) => element.scrollHeight <= element.clientHeight + 1,
+  )).toBe(true);
+  await expect.poll(() => codeScroll.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
+  await page.locator(".task-workspace-surface").focus();
+  await page.keyboard.press("s");
+  await expect.poll(async () =>
+    await scrollSelector.isVisible() || await workspaceHud.isVisible()
+  ).toBe(true);
+  if (await scrollSelector.isVisible()) {
+    await scrollSelector.getByLabel(/^[A-Z]+ — planner\.rs source$/).click();
+  }
+  await expect(workspaceHud).toContainText("Scroll: planner.rs source");
+  await expect(workspaceHud.locator("[data-scroll-mode-shortcut-help]"))
+    .toContainText("?");
+  await page.keyboard.press("l");
+  await expect.poll(() => codeScroll.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+
+  await taskReview.getByRole("button", { name: "Diff", exact: true }).click();
+  const horizontalDiff = viewer.locator("caffold-diff-viewer .diff-lines");
+  await viewer.locator("caffold-diff-viewer").evaluate((element) => {
+    element.setDiff({
+      diff: [
+        "@@ -1 +1 @@",
+        "-short",
+        `+${"horizontal-only-diff-segment-".repeat(30)}`,
+      ].join("\n"),
+    });
+  });
+  await expect(horizontalDiff).toContainText("horizontal-only-diff-segment");
+  await expect.poll(() => horizontalDiff.evaluate(
+    (element) => element.scrollHeight <= element.clientHeight + 1,
+  )).toBe(true);
+  await expect.poll(() => horizontalDiff.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
+  await page.locator(".task-workspace-surface").focus();
+  await page.keyboard.press("s");
+  await expect.poll(async () =>
+    await scrollSelector.isVisible() || await workspaceHud.isVisible()
+  ).toBe(true);
+  if (await scrollSelector.isVisible()) {
+    await scrollSelector.getByLabel(/^[A-Z]+ — planner\.rs diff$/).click();
+  }
+  await expect(workspaceHud).toContainText("Scroll: planner.rs diff");
+  await expect(workspaceHud.locator("[data-scroll-mode-shortcut-help]"))
+    .toContainText("?");
+  await page.keyboard.press("l");
+  await expect.poll(() => horizontalDiff.evaluate(
+    (element) => element.scrollLeft,
+  )).toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
 });
 
 test("rejects a late branch response after returning to the working tree", { tag: "@all-viewports" }, async ({ page }) => {

@@ -1,6 +1,19 @@
 import { escapeHtml } from "../../../../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../../../../components/icons.js";
 import "../../components/markdown.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  linkActionHintTarget,
+  mergeActionHintScopes,
+} from "../../../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  mergeScrollSurfaceScopes,
+} from "../../../../../../../scroll-scope.js";
 
 class CaffoldGithubPullDetailPage extends HTMLElement {
   connectedCallback() {
@@ -68,6 +81,244 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
   setError(number, error) {
     this.state = { status: "error", number, error };
     this.render();
+  }
+
+  actionHintScope({ scopeId = "github:pull", clipRoots = [] } = {}) {
+    const state = this.state;
+    const pull = state?.payload?.pull;
+    const number = `${pull?.number ?? ""}`;
+    if (
+      this.hidden ||
+      this.state?.status !== "ready" ||
+      !number
+    ) {
+      return emptyActionHintScope();
+    }
+    const definitions = [
+      {
+        identity: "start-task",
+        actionId: ACTION_HINT_ACTION.GITHUB_TASK_START,
+        selector:
+          ':scope > .github-pull-viewer-panel > header > .github-pull-viewer-title-row > .github-pull-actions > button.github-pull-start-button[data-action="start-github-task"]',
+        fallbackLabel: `Start Task for pull request #${number}`,
+        matchesControl: () => true,
+      },
+      {
+        identity: "files",
+        actionId: ACTION_HINT_ACTION.PULL_FILES,
+        selector:
+          ':scope > .github-pull-viewer-panel > header > .github-pull-viewer-title-row > .github-pull-actions > button.github-pull-files-button[data-action="open-github-pull-files"][data-pull-number]',
+        fallbackLabel: `Open files for PR #${number}`,
+        matchesControl: (control) =>
+          `${control.dataset.pullNumber ?? ""}` === number,
+      },
+    ];
+    const targets = definitions.flatMap((definition) => {
+      const control = this.querySelector(definition.selector);
+      if (
+        !control ||
+        control.disabled ||
+        !definition.matchesControl(control) ||
+        !hasActionHintLayoutBox(control)
+      ) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:${encodeURIComponent(number)}:${definition.identity}`,
+        actionId: definition.actionId,
+        label: control.getAttribute("aria-label") || definition.fallbackLabel,
+        control,
+        clipRoots: [this, ...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state?.status === "ready" &&
+          `${this.state?.payload?.pull?.number ?? ""}` === number &&
+          this.querySelector(definition.selector) === control &&
+          definition.matchesControl(control) &&
+          !control.disabled &&
+          hasActionHintLayoutBox(control),
+      })];
+    });
+    const headerLinkSelector =
+      ":scope > .github-pull-viewer-panel > header > .github-pull-viewer-title-row > .github-pull-actions > a.github-pull-link[href]";
+    const headerLink = this.querySelector(headerLinkSelector);
+    if (
+      headerLink &&
+      headerLink.getAttribute("href") === pull.url &&
+      hasActionHintLayoutBox(headerLink)
+    ) {
+      targets.push(linkActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:${encodeURIComponent(number)}:github`,
+        actionId: ACTION_HINT_ACTION.LINK_OPEN,
+        label: `Open pull request #${number} on GitHub in a new tab`,
+        control: headerLink,
+        clipRoots: [this, ...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state === state &&
+          this.querySelector(headerLinkSelector) === headerLink &&
+          headerLink.getAttribute("href") === pull.url &&
+          hasActionHintLayoutBox(headerLink),
+      }));
+    }
+    const scrollport = this.querySelector(
+      ":scope > .github-pull-viewer-panel > .github-pull-viewer-scroll",
+    );
+    if (scrollport) {
+      for (
+        const [index, comment] of (pull.conversationComments ?? []).entries()
+      ) {
+        if (!comment.url) {
+          continue;
+        }
+        const selector =
+          `:scope > .github-pull-viewer-panel > .github-pull-viewer-scroll a[data-github-pull-comment-index="${index}"][href]`;
+        const link = this.querySelector(selector);
+        if (
+          !link ||
+          link.getAttribute("href") !== comment.url ||
+          !hasActionHintLayoutBox(link)
+        ) {
+          continue;
+        }
+        targets.push(linkActionHintTarget({
+          invalidationOwner: this,
+          id: `${scopeId}:${encodeURIComponent(number)}:comment:${index}`,
+          actionId: ACTION_HINT_ACTION.LINK_OPEN,
+          label: `Open conversation comment ${index + 1} on GitHub in a new tab`,
+          control: link,
+          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+          isActionable: () =>
+            this.isConnected &&
+            !this.hidden &&
+            this.state === state &&
+            this.state?.payload?.pull?.conversationComments?.[index] ===
+              comment &&
+            this.querySelector(selector) === link &&
+            link.getAttribute("href") === comment.url &&
+            hasActionHintLayoutBox(link),
+        }));
+      }
+      for (
+        const [index, commit] of (pull.commitSummaries ?? []).entries()
+      ) {
+        const selector =
+          `:scope > .github-pull-viewer-panel > .github-pull-viewer-scroll a[data-github-pull-commit-index="${index}"][href]`;
+        const link = this.querySelector(selector);
+        if (
+          !link ||
+          link.getAttribute("href") !== commit.url ||
+          !hasActionHintLayoutBox(link)
+        ) {
+          continue;
+        }
+        targets.push(linkActionHintTarget({
+          invalidationOwner: this,
+          id: `${scopeId}:${encodeURIComponent(number)}:commit:${encodeURIComponent(commit.sha)}`,
+          actionId: ACTION_HINT_ACTION.LINK_OPEN,
+          label: `Open commit ${commit.shortSha} on GitHub in a new tab`,
+          control: link,
+          clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+          isActionable: () =>
+            this.isConnected &&
+            !this.hidden &&
+            this.state === state &&
+            this.state?.payload?.pull?.commitSummaries?.[index] === commit &&
+            this.querySelector(selector) === link &&
+            link.getAttribute("href") === commit.url &&
+            hasActionHintLayoutBox(link),
+        }));
+      }
+    }
+    const ownScope = {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: scrollport ? [scrollport] : [],
+    };
+    if (!scrollport) {
+      return ownScope;
+    }
+    const markdownScopes = Array.from(this.querySelectorAll(
+      ":scope > .github-pull-viewer-panel > .github-pull-viewer-scroll caffold-github-markdown[data-markdown-index]",
+    )).map((markdown) => {
+      const index = `${markdown.dataset.markdownIndex ?? ""}`;
+      return index
+        ? markdown.actionHintScope?.({
+            scopeId:
+              `${scopeId}:${encodeURIComponent(number)}:markdown:${index}`,
+            clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+            isCurrent: () =>
+              this.isConnected &&
+              !this.hidden &&
+              this.state === state &&
+              this.querySelector(
+                `:scope > .github-pull-viewer-panel > .github-pull-viewer-scroll caffold-github-markdown[data-markdown-index="${index}"]`,
+              ) === markdown,
+          })
+        : null;
+    });
+    return mergeActionHintScopes(ownScope, ...markdownScopes);
+  }
+
+  scrollSurfaceScope({ scopeId = "github:pull", clipRoots = [] } = {}) {
+    const state = this.state;
+    const number = `${state?.payload?.pull?.number ?? ""}`;
+    if (this.hidden || state?.status !== "ready" || !number) {
+      return emptyScrollSurfaceScope();
+    }
+    const scrollport = this.querySelector(
+      ":scope > .github-pull-viewer-panel > .github-pull-viewer-scroll",
+    );
+    if (!scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    const ownScope = {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:body:scroll`,
+        label: "Pull request details",
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state === state &&
+          this.querySelector(
+            ":scope > .github-pull-viewer-panel > .github-pull-viewer-scroll",
+          ) === scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this, scrollport],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
+    const markdownScopes = Array.from(this.querySelectorAll(
+      ":scope > .github-pull-viewer-panel > .github-pull-viewer-scroll caffold-github-markdown[data-markdown-index]",
+    )).map((markdown) => {
+      const index = `${markdown.dataset.markdownIndex ?? ""}`;
+      return index
+        ? markdown.scrollSurfaceScope?.({
+            scopeId:
+              `${scopeId}:${encodeURIComponent(number)}:markdown:${index}`,
+            label: `Pull request Markdown ${Number(index) + 1}`,
+            clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+            isCurrent: () =>
+              this.isConnected &&
+              !this.hidden &&
+              this.state === state &&
+              this.querySelector(
+                `:scope > .github-pull-viewer-panel > .github-pull-viewer-scroll caffold-github-markdown[data-markdown-index="${index}"]`,
+              ) === markdown,
+          })
+        : null;
+    });
+    return mergeScrollSurfaceScopes(ownScope, ...markdownScopes);
   }
 
   render() {
@@ -206,7 +457,9 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
         <h3>${escapeHtml(title)}</h3>
         <ol class="github-pull-comments">
           ${comments
-            .map((comment) => this.renderComment(comment, markdownBlocks))
+            .map((comment, index) =>
+              this.renderComment(comment, index, markdownBlocks)
+            )
             .join("")}
         </ol>
       </section>
@@ -233,7 +486,7 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
     `;
   }
 
-  renderComment(comment, markdownBlocks) {
+  renderComment(comment, index, markdownBlocks) {
     return `
       <li class="github-pull-comment">
         <div class="github-pull-comment-meta">
@@ -241,7 +494,7 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
           ${comment.updatedAt ? `<span>${escapeHtml(comment.updatedAt)}</span>` : ""}
           ${
             comment.url
-              ? `<a href="${escapeHtml(comment.url)}" target="_blank" rel="noreferrer">GitHub</a>`
+              ? `<a data-github-pull-comment-index="${index}" href="${escapeHtml(comment.url)}" target="_blank" rel="noreferrer">GitHub</a>`
               : ""
           }
         </div>
@@ -277,16 +530,18 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
       <section class="github-pull-section">
         <h3>Commits</h3>
         <ol class="github-pull-commits">
-          ${commits.map((commit) => this.renderCommit(commit)).join("")}
+          ${commits.map((commit, index) =>
+            this.renderCommit(commit, index)
+          ).join("")}
         </ol>
       </section>
     `;
   }
 
-  renderCommit(commit) {
+  renderCommit(commit, index) {
     return `
       <li class="github-pull-commit">
-        <a href="${escapeHtml(commit.url)}" target="_blank" rel="noreferrer">
+        <a data-github-pull-commit-index="${index}" href="${escapeHtml(commit.url)}" target="_blank" rel="noreferrer">
           <span>${escapeHtml(commit.shortSha)}</span>
           <span>${escapeHtml(commit.subject)}</span>
         </a>

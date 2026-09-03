@@ -1197,6 +1197,12 @@ class CaffoldActiveTaskList extends HTMLElement {
     ];
   }
 
+  actionHintTargets(options = {}) {
+    return [...this.querySelectorAll(
+      ":scope > .task-list-content > .task-repository-groups > .task-repository-group > caffold-active-task-section",
+    )].flatMap((section) => section.actionHintTargets(options));
+  }
+
   taskFor(threadId) {
     return this.allTasks().find(
       (task) => taskThreadId(task) === threadId,

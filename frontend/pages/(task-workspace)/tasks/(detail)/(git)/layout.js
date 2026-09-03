@@ -7,6 +7,15 @@ import {
 import "./components/controls.js";
 import "./compare/page.js";
 import "./(log)/layout.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+} from "../../../../../scroll-scope.js";
 
 class CaffoldTaskGitLayout extends HTMLElement {
   connectedCallback() {
@@ -182,7 +191,12 @@ class CaffoldTaskGitLayout extends HTMLElement {
   }
 
   deactivate() {
-    if (!this.rendered || !this.active) {
+    if (!this.rendered) {
+      return;
+    }
+    this.comparePage.deactivate();
+    this.logLayout.deactivate();
+    if (!this.active) {
       return;
     }
     this.active = false;
@@ -467,6 +481,99 @@ class CaffoldTaskGitLayout extends HTMLElement {
     return null;
   }
 
+  actionHintScope() {
+    this.ensureRendered();
+    if (!this.active || this.hidden || !this.mode) {
+      return emptyActionHintScope();
+    }
+    const scopeId = `git:${encodeURIComponent(
+      this.repository?.rootPath || this.currentPath || "repository",
+    )}`;
+    const body = this.querySelector(
+      ":scope > .task-git-surface > .task-domain-body",
+    );
+    const back = this.backButton && !this.backButton.hidden &&
+        !this.backButton.disabled
+      ? {
+          targets: [buttonActionHintTarget({
+            invalidationOwner: this,
+            id: `${scopeId}:parent:log`,
+            actionId: ACTION_HINT_ACTION.PARENT,
+            label: this.backButton.getAttribute("aria-label") || "Back to log",
+            control: this.backButton,
+            clipRoots: [this],
+            isActionable: () =>
+              this.isConnected &&
+              this.active &&
+              !this.hidden &&
+              this.backButton === this.querySelector(
+                ':scope > .task-git-surface > .task-domain-header > .task-domain-back[data-action="domain-back"]',
+              ) &&
+              !this.backButton.hidden &&
+              !this.backButton.disabled,
+          })],
+          mutationRoots: [this.backButton],
+          scrollRoots: [],
+        }
+      : null;
+    const activeChild = this.mode === "compare"
+      ? this.comparePage.actionHintScope({
+          scopeId: `${scopeId}:compare`,
+          clipRoots: [this, body].filter(Boolean),
+        })
+      : this.logLayout.actionHintScope({
+          scopeId: `${scopeId}:log`,
+          clipRoots: [this, body].filter(Boolean),
+        });
+    return mergeActionHintScopes(
+      back,
+      this.controls?.actionHintScope({
+        scopeId,
+        clipRoots: [this],
+      }),
+      activeChild,
+    );
+  }
+
+  scrollSurfaceScope() {
+    this.ensureRendered();
+    if (!this.active || this.hidden || !this.mode) {
+      return emptyScrollSurfaceScope();
+    }
+    const scopeId = `git:${encodeURIComponent(
+      this.repository?.rootPath || this.currentPath || "repository",
+    )}`;
+    const body = this.querySelector(
+      ":scope > .task-git-surface > .task-domain-body",
+    );
+    return this.mode === "compare"
+      ? this.comparePage.scrollSurfaceScope?.({
+          scopeId: `${scopeId}:compare`,
+          clipRoots: [this, body].filter(Boolean),
+        }) ?? emptyScrollSurfaceScope()
+      : this.logLayout.scrollSurfaceScope?.({
+          scopeId: `${scopeId}:log`,
+          clipRoots: [this, body].filter(Boolean),
+        }) ?? emptyScrollSurfaceScope();
+  }
+
+  keyboardNavigationContexts() {
+    this.ensureRendered();
+    if (!this.active || this.hidden || !this.mode) {
+      return [];
+    }
+    const scopeId = `git:${encodeURIComponent(
+      this.repository?.rootPath || this.currentPath || "repository",
+    )}`;
+    return this.mode === "compare"
+      ? this.comparePage.keyboardNavigationContexts({
+          scopeId: `${scopeId}:compare`,
+        })
+      : this.logLayout.keyboardNavigationContexts({
+          scopeId: `${scopeId}:log`,
+        });
+  }
+
   routeForCompareRefs(baseRef, headRef) {
     return { kind: "compare", baseRef, headRef, path: "" };
   }
@@ -483,6 +590,11 @@ class CaffoldTaskGitLayout extends HTMLElement {
   setMode(mode) {
     const nextMode = mode === "log" ? "log" : "compare";
     if (this.mode !== nextMode) {
+      if (nextMode === "compare") {
+        this.logLayout.deactivate();
+      } else {
+        this.comparePage.deactivate();
+      }
       this.mode = nextMode;
       this.updateVisibleMode();
     }

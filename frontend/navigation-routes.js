@@ -64,6 +64,17 @@ const ROUTE_DEFINITIONS = [
     parent: () => settingsRoute(),
   }),
   routeDefinition({
+    id: "settings-keyboard",
+    kind: "settings",
+    pattern: "/settings/keyboard",
+    surface: "task-workspace",
+    target: "keyboard",
+    toRoute: () => settingsRoute("keyboard"),
+    matchesRoute: (route) =>
+      route?.kind === "settings" && route.section === "keyboard",
+    parent: () => settingsRoute(),
+  }),
+  routeDefinition({
     id: "settings-files",
     kind: "settings",
     pattern: "/settings/files",
@@ -744,6 +755,7 @@ function settingsRoute(section = "") {
     kind: "settings",
     section: [
       "appearance",
+      "keyboard",
       "files",
       "notifications",
       "remote-access",

@@ -70,6 +70,22 @@ test("shows a prompt as the text it was typed as", () => {
   }
 });
 
+test("renders Thinking with a retained aria-hidden disclosure marker", () => {
+  const html = renderConversationEvent(
+    turnEvent("thread-1:turn-1:reasoning-1", "reasoning", 2, {
+      itemId: "reasoning-1",
+      content: ["Inspect the planner diff."],
+    }),
+    activeTask(),
+  );
+
+  assert.match(
+    html,
+    /<span class="task-thinking-label">\s*<span>Thinking<\/span>\s*<span class="task-thinking-disclosure-chevron" aria-hidden="true"><\/span>/,
+  );
+  assert.match(html, /data-disclosure-key="thinking:/);
+});
+
 test("hands the message component the phase its placement decided", () => {
   const finalMessages = new Map();
   renderConversationEvent(
@@ -322,4 +338,3 @@ function messageEvent(type, payload = {}) {
     position: { anchorMs: 1, index: 0 },
   };
 }
-

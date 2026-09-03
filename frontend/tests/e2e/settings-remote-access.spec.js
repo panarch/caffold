@@ -1,4 +1,9 @@
 import { expect, test } from "@playwright/test";
+import {
+  actionHintDialog,
+  activateActionHint,
+  enterActionHints,
+} from "./support/action-hints.js";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 import {
   captureReviewScreenshot,
@@ -6,6 +11,8 @@ import {
 } from "./support/task-fixtures.js";
 
 const TAILNET_URL = "https://caffold-review-host.long-tailnet-name.ts.net/";
+const REPLACEMENT_TAILNET_URL =
+  "https://caffold-replacement-host.long-tailnet-name.ts.net/";
 
 function tailscaleStatus(state, overrides = {}) {
   return {
@@ -103,7 +110,11 @@ test("enables, retries, and disables only Caffold's Serve mapping", { tag: "@all
 
   await page.goto("/settings/remote-access");
   const remoteAccess = page.locator("caffold-settings-remote-access-page");
-  await remoteAccess.getByRole("button", { name: "Enable" }).click();
+  await revealActionTarget(
+    page,
+    remoteAccess.getByRole("button", { name: "Enable" }),
+  );
+  await activateActionHint(page, /Enable$/);
   await expect(
     remoteAccess.getByRole("heading", { name: "Configuring private access" }),
   ).toBeVisible();
@@ -112,11 +123,19 @@ test("enables, retries, and disables only Caffold's Serve mapping", { tag: "@all
     remoteAccess.getByRole("heading", { name: "Remote access setup failed" }),
   ).toBeVisible();
 
-  await remoteAccess.getByRole("button", { name: "Retry" }).click();
+  await revealActionTarget(
+    page,
+    remoteAccess.getByRole("button", { name: "Retry" }),
+  );
+  await activateActionHint(page, /Retry$/);
   await expect(
     remoteAccess.getByRole("heading", { name: "Private access is ready" }),
   ).toBeVisible();
-  await remoteAccess.getByRole("button", { name: "Disable" }).click();
+  await revealActionTarget(
+    page,
+    remoteAccess.getByRole("button", { name: "Disable" }),
+  );
+  await activateActionHint(page, /Disable$/);
   await expect(
     remoteAccess.getByRole("heading", { name: "Ready to enable" }),
   ).toBeVisible();
@@ -129,10 +148,14 @@ test("hands off one exact private URL while remote management stays read-only", 
 }, testInfo) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   let serveUpdates = 0;
+  let tailnetUrl = TAILNET_URL;
   await page.route(/\/api\/tailscale\/status(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify(tailscaleStatus("ready", { canManage: false })),
+      body: JSON.stringify(tailscaleStatus("ready", {
+        canManage: false,
+        tailnetUrl,
+      })),
     }),
   );
   await page.route(/\/api\/tailscale\/serve(?:\?|$)/, (route) => {
@@ -161,14 +184,22 @@ test("hands off one exact private URL while remote management stays read-only", 
   );
   await expect.poll(() => qr.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
 
-  await remoteAccess.getByRole("button", { name: "Copy link" }).click();
+  await revealActionTarget(
+    page,
+    remoteAccess.getByRole("button", { name: "Copy link" }),
+  );
+  await activateActionHint(page, /Copy link$/);
   await expect(remoteAccess.getByRole("button", { name: "Copied" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(
     TAILNET_URL,
   );
 
   const popupPromise = page.waitForEvent("popup");
-  await open.click();
+  await revealActionTarget(page, open);
+  await activateActionHint(
+    page,
+    /Open private access address in a new tab$/,
+  );
   const popup = await popupPromise;
   await expect.poll(() => popup.url()).toBe(TAILNET_URL);
   await popup.close();
@@ -197,6 +228,48 @@ test("hands off one exact private URL while remote management stays read-only", 
   });
   await expect(qr).toBeVisible();
   await captureReviewScreenshot(page, testInfo, "settings-remote-access-qr");
+
+  await revealActionTarget(page, open);
+  const hint = await enterActionHints(page);
+  const openBadge = hint.getByLabel(
+    /Open private access address in a new tab$/,
+  );
+  const outsideLabel = testInfo.project.name === "phone"
+    ? "Back to settings"
+    : "Open Tasks";
+  const outsideBadge = hint.getByLabel(
+    new RegExp(` — ${outsideLabel}$`),
+  );
+  await expect(openBadge).toBeVisible();
+  await expect(outsideBadge).toBeVisible();
+  const openCode = await openBadge.getAttribute("data-action-hint-code");
+  const outsideCode = await outsideBadge.getAttribute(
+    "data-action-hint-code",
+  );
+  expect(openCode).toBeTruthy();
+  expect(outsideCode).toBeTruthy();
+  await outsideBadge.evaluate((element) => {
+    window.__remoteAccessOutsideBadge = element;
+  });
+  tailnetUrl = REPLACEMENT_TAILNET_URL;
+  await remoteAccess.evaluate((element) => element.lifecycle.refresh());
+  await expect(open).toHaveAttribute("href", REPLACEMENT_TAILNET_URL);
+  await expect(actionHintDialog(page)).toBeVisible();
+  await expect(hint.locator(
+    `[data-action-hint-code="${openCode}"]`,
+  )).toHaveCount(0);
+  await expect(hint.getByLabel(
+    /Open private access address in a new tab$/,
+  )).toHaveCount(0);
+  await expect(hint.locator(
+    `[data-action-hint-code="${outsideCode}"]`,
+  )).toHaveAttribute("aria-label", `${outsideCode} — ${outsideLabel}`);
+  expect(await page.evaluate((code) =>
+    window.__remoteAccessOutsideBadge === document.querySelector(
+      `caffold-action-hint-dialog [data-action-hint-code="${code}"]`,
+    ), outsideCode)).toBe(true);
+  await page.keyboard.press("Escape");
+  expect(serveUpdates).toBe(0);
 });
 
 test("keeps canonical local status when a refresh request fails", { tag: "@desktop" }, async ({
@@ -255,3 +328,10 @@ test("presents an initial status request failure without inventing read-only sta
   await expect(remoteAccess.getByText("Serve settings are read-only")).toBeHidden();
   await expect(remoteAccess.getByRole("button", { name: "Retry" })).toBeEnabled();
 });
+
+async function revealActionTarget(page, target) {
+  await target.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+}

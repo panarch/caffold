@@ -12,6 +12,17 @@ import {
   formatResetCredits,
 } from "../../codex-status.js";
 import "../components/detail-list.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  linkActionHintTarget,
+} from "../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../scroll-scope.js";
 
 const CODEX_INSTALL_COMMAND = "curl -fsSL https://chatgpt.com/codex/install.sh | sh";
 const CODEX_SETUP_GUIDE = "https://learn.chatgpt.com/docs/codex/cli";
@@ -96,6 +107,122 @@ class CaffoldSettingsCodexPage extends HTMLElement {
       this.copyState = "failed";
     }
     this.render();
+  }
+
+  actionHintScope({
+    scopeId = "settings:codex",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const scrollport = this.querySelector(":scope > .settings-content-scroll");
+    if (this.hidden || !scrollport) {
+      return emptyActionHintScope();
+    }
+    const definitions = [
+      {
+        id: "refresh",
+        selector: 'button[data-action="refresh-codex-status"]',
+      },
+      {
+        id: "copy-install-command",
+        selector: 'button[data-action="copy-codex-install"]',
+      },
+      {
+        id: "restart-runtime",
+        selector: 'button[data-action="open-codex-restart"]',
+      },
+    ];
+    const targets = definitions.flatMap(({ id, selector }) => {
+      const control = this.querySelector(selector);
+      if (
+        !control ||
+        control.disabled ||
+        control.hidden ||
+        !hasActionHintLayoutBox(control)
+      ) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:${id}`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label") ||
+          control.textContent?.trim() ||
+          id,
+        control,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.querySelector(selector) === control &&
+          !control.disabled &&
+          !control.hidden &&
+          hasActionHintLayoutBox(control),
+      })];
+    });
+    const guide = this.querySelector(
+      '.settings-codex-repair a[href]',
+    );
+    if (
+      guide &&
+      !guide.hidden &&
+      hasActionHintLayoutBox(guide)
+    ) {
+      targets.push(linkActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:official-guide`,
+        actionId: ACTION_HINT_ACTION.LINK_OPEN,
+        label: "Open Official Codex CLI guide in a new tab",
+        control: guide,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.querySelector('.settings-codex-repair a[href]') === guide &&
+          !guide.hidden &&
+          hasActionHintLayoutBox(guide),
+      }));
+    }
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [scrollport],
+    };
+  }
+
+  scrollSurfaceScope({
+    scopeId = "settings:codex",
+    label = "Codex settings",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const scrollport = this.querySelector(":scope > .settings-content-scroll");
+    if (this.hidden || !scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label,
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.querySelector(":scope > .settings-content-scroll") ===
+            scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   render() {

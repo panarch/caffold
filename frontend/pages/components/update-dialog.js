@@ -1,3 +1,11 @@
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../action-hints.js";
+import { keyboardNavigationContext } from "../../keyboard-navigation.js";
+import "../../keyboard-navigation/components/presentation.js";
+
 export const CAFFOLD_UPDATE_LATER_EVENT = "caffold:update-later";
 export const CAFFOLD_UPDATE_RELOAD_EVENT = "caffold:update-reload";
 
@@ -49,6 +57,59 @@ class CaffoldUpdateDialog extends HTMLElement {
     );
   }
 
+  keyboardNavigationContexts() {
+    const dialog = this.dialog();
+    const presentation = dialog?.querySelector(
+      ":scope > caffold-keyboard-navigation-presentation",
+    );
+    const hintDialog = presentation?.actionHintDialog?.();
+    if (!dialog || !hintDialog) {
+      return [];
+    }
+    return [keyboardNavigationContext({
+      id: "app:update",
+      kind: "modal",
+      root: dialog,
+      actionHints: {
+        dialog: hintDialog,
+        scope: this.actionHintScope(),
+      },
+    })];
+  }
+
+  actionHintScope() {
+    const dialog = this.dialog();
+    if (!dialog) {
+      return emptyActionHintScope();
+    }
+    const targets = ["later", "reload"].flatMap((value) => {
+      const control = dialog.querySelector(`button[value="${value}"]`);
+      if (!control) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `app:update:${value}`,
+        actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
+        label: control.textContent?.trim() || value,
+        control,
+        clipRoots: [dialog],
+        isActionable: () =>
+          this.isConnected &&
+          this.dialog() === dialog &&
+          dialog.open &&
+          dialog.querySelector(`button[value="${value}"]`) === control &&
+          !control.disabled,
+      })];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
+  }
+
   render() {
     this.innerHTML = `
       <dialog closedby="any" aria-labelledby="caffold-update-dialog-title" aria-describedby="caffold-update-dialog-description">
@@ -63,6 +124,7 @@ class CaffoldUpdateDialog extends HTMLElement {
             <button type="submit" value="reload">Reload</button>
           </footer>
         </form>
+        <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
       </dialog>
     `;
   }

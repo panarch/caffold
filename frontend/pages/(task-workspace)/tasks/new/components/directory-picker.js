@@ -3,6 +3,18 @@ import {
   FILE_TREE_SELECT_EVENT,
 } from "../../../../../components/file-tree.js";
 import { renderInlineIcon, warmIcons } from "../../../../../components/icons.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../../../action-hints.js";
+import { keyboardNavigationContext } from "../../../../../keyboard-navigation.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../../scroll-scope.js";
+import "../../../../../keyboard-navigation/components/presentation.js";
 
 const DIRECTORY_LOADING_DELAY_MS = 180;
 
@@ -73,6 +85,7 @@ class CaffoldTaskDirectoryPicker extends HTMLElement {
             >Use This Folder</button>
           </footer>
         </article>
+        <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
       </dialog>
     `;
 
@@ -98,6 +111,116 @@ class CaffoldTaskDirectoryPicker extends HTMLElement {
 
   tree() {
     return this.querySelector("caffold-file-tree");
+  }
+
+  keyboardNavigationContexts() {
+    this.ensureRendered();
+    const dialog = this.dialog();
+    const presentation = dialog?.querySelector(
+      ":scope > caffold-keyboard-navigation-presentation",
+    );
+    const hintDialog = presentation?.actionHintDialog?.();
+    const hud = presentation?.scrollModeHud?.();
+    const selector = presentation?.scrollSurfaceSelector?.();
+    if (!dialog || !hintDialog || !hud || !selector) {
+      return [];
+    }
+    return [keyboardNavigationContext({
+      id: "new:directory-picker",
+      kind: "modal",
+      root: dialog,
+      actionHints: {
+        dialog: hintDialog,
+        scope: this.actionHintScope(),
+      },
+      scroll: {
+        hud,
+        selector,
+        scope: this.scrollSurfaceScope(),
+      },
+    })];
+  }
+
+  actionHintScope() {
+    this.ensureRendered();
+    const dialog = this.dialog();
+    const body = dialog?.querySelector(".task-directory-picker-body");
+    const tree = this.tree();
+    if (!dialog) {
+      return emptyActionHintScope();
+    }
+    const controls = [
+      ["header-close", ".task-directory-picker-close"],
+      ["cancel", ".task-directory-picker-footer [data-directory-picker-action='close']"],
+      ["choose", ".task-directory-picker-footer [data-directory-picker-action='choose']"],
+    ];
+    const ownScope = {
+      blocked: false,
+      targets: controls.flatMap(([identity, selector]) => {
+        const control = dialog.querySelector(selector);
+        if (!control) {
+          return [];
+        }
+        return [buttonActionHintTarget({
+          invalidationOwner: this,
+          id: `new:directory-picker:${identity}`,
+          actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
+          label: control.getAttribute("aria-label") ||
+            control.textContent?.trim() || identity,
+          control,
+          clipRoots: [dialog],
+          isActionable: () =>
+            this.isConnected &&
+            this.dialog() === dialog &&
+            dialog.open &&
+            dialog.querySelector(selector) === control &&
+            !control.disabled,
+        })];
+      }),
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
+    return mergeActionHintScopes(
+      ownScope,
+      tree?.actionHintScope({
+        scopeId: "new:directory-picker",
+        actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
+        clipRoots: [dialog, body].filter(Boolean),
+        includeDirectories: true,
+        labelForNode: (node) =>
+          node.ariaLabel ?? node.title ?? `Open ${node.name ?? "folder"}`,
+      }),
+    );
+  }
+
+  scrollSurfaceScope() {
+    this.ensureRendered();
+    const dialog = this.dialog();
+    const tree = this.tree();
+    const scrollport = tree?.scroller?.();
+    if (!dialog || !tree || !scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: "new:directory-picker:folders",
+        label: "Directory folders",
+        scrollport,
+        clipRoots: [dialog, scrollport],
+        isEligible: () =>
+          this.isConnected &&
+          this.dialog() === dialog &&
+          dialog.open &&
+          this.tree() === tree &&
+          tree.scroller?.() === scrollport &&
+          hasScrollLayoutBox(dialog) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this, tree],
+      resizeElements: [dialog, tree, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   open(path = "", options = {}) {

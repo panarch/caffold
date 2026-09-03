@@ -1,6 +1,8 @@
 import { fetchGitRemote, getGitLog } from "../../../../../../api.js";
 import "./commit/page.js";
 import "./list/page.js";
+import { emptyActionHintScope } from "../../../../../../action-hints.js";
+import { emptyScrollSurfaceScope } from "../../../../../../scroll-scope.js";
 
 const LOADING_DELAY_MS = 180;
 
@@ -275,6 +277,52 @@ class CaffoldGitLogLayout extends HTMLElement {
 
   currentCommitSha() {
     return this.commitPage.currentCommitSha();
+  }
+
+  actionHintScope({ scopeId = "git:log", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    if (this.hidden) {
+      return emptyActionHintScope();
+    }
+    return this.view === "detail"
+      ? this.commitPage.actionHintScope({
+          scopeId: `${scopeId}:commit`,
+          clipRoots: [this, ...clipRoots],
+        })
+      : this.list.actionHintScope({
+          scopeId: `${scopeId}:list:${this.page}`,
+          clipRoots: [this, ...clipRoots],
+        });
+  }
+
+  scrollSurfaceScope({ scopeId = "git:log", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    if (this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    return this.view === "detail"
+      ? this.commitPage.scrollSurfaceScope?.({
+          scopeId: `${scopeId}:commit`,
+          clipRoots: [this, ...clipRoots],
+        }) ?? emptyScrollSurfaceScope()
+      : this.list.scrollSurfaceScope?.({
+          scopeId: `${scopeId}:list:${this.page}`,
+          clipRoots: [this, ...clipRoots],
+        }) ?? emptyScrollSurfaceScope();
+  }
+
+  keyboardNavigationContexts({ scopeId = "git:log" } = {}) {
+    this.ensureRendered();
+    return !this.hidden && this.view === "detail"
+      ? this.commitPage.keyboardNavigationContexts({
+          scopeId: `${scopeId}:commit`,
+        })
+      : [];
+  }
+
+  deactivate() {
+    this.ensureRendered();
+    this.commitPage.deactivate();
   }
 
   findCommitFile(path) {

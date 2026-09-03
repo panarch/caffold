@@ -1,5 +1,15 @@
 import { escapeHtml } from "../../../../../../../components/dom.js";
 import "../../../../../../../components/pagination.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../../../../scroll-scope.js";
 
 class CaffoldGithubIssuesListPage extends HTMLElement {
   connectedCallback() {
@@ -77,6 +87,98 @@ class CaffoldGithubIssuesListPage extends HTMLElement {
         button.removeAttribute("aria-current");
       }
     }
+  }
+
+  actionHintScope({ scopeId = "github:issues", clipRoots = [] } = {}) {
+    if (this.hidden || this.state?.status !== "ready") {
+      return emptyActionHintScope();
+    }
+    const issues = new Map(
+      (this.state.payload?.issues ?? []).map((issue) => [`${issue.number}`, issue]),
+    );
+    const scroller = this.querySelector(
+      ":scope > .github-issues-panel > .github-issues-list",
+    );
+    const rowClipRoots = [this, scroller, ...clipRoots].filter(Boolean);
+    const targets = [...this.querySelectorAll(
+      ":scope > .github-issues-panel > .github-issues-list > .github-issue-row > button.github-issue-button[data-issue-number]",
+    )].flatMap((control) => {
+      const number = `${control.dataset.issueNumber ?? ""}`;
+      const issue = issues.get(number);
+      if (
+        !number ||
+        !issue ||
+        control.disabled ||
+        issue.number === this.selectedIssueNumber
+      ) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:issue:${number}`,
+        actionId: ACTION_HINT_ACTION.ISSUE_OPEN,
+        label: `Open issue #${number}: ${issue.title || "(no title)"}`,
+        control,
+        clipRoots: rowClipRoots,
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state?.status === "ready" &&
+          `${this.selectedIssueNumber ?? ""}` !== number &&
+          this.querySelector(
+            `:scope > .github-issues-panel > .github-issues-list > .github-issue-row > button.github-issue-button[data-issue-number="${CSS.escape(number)}"]`,
+          ) === control &&
+          !control.disabled,
+      })];
+    });
+    const pagination = this.querySelector(
+      ":scope > .github-issues-panel > caffold-pagination",
+    );
+    return mergeActionHintScopes(
+      {
+        targets,
+        mutationRoots: [this],
+        scrollRoots: [scroller].filter(Boolean),
+      },
+      pagination?.actionHintScope({
+        scopeId: `${scopeId}:pagination`,
+        actionId: ACTION_HINT_ACTION.PAGE,
+        clipRoots: [this, ...clipRoots],
+      }),
+    );
+  }
+
+  scrollSurfaceScope({ scopeId = "github:issues", clipRoots = [] } = {}) {
+    if (this.hidden || this.state?.status !== "ready") {
+      return emptyScrollSurfaceScope();
+    }
+    const scrollport = this.querySelector(
+      ":scope > .github-issues-panel > .github-issues-list",
+    );
+    if (!scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label: "GitHub issues",
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state?.status === "ready" &&
+          this.querySelector(
+            ":scope > .github-issues-panel > .github-issues-list",
+          ) === scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   render() {

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
+import { activateActionHint } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   installTaskApiFixture,
@@ -206,7 +207,7 @@ test("keeps the composer Stop action stable while an interrupt request is pendin
   const primaryAction = form.locator(".task-primary-action-button");
   await expect(primaryAction).toHaveAttribute("data-primary-action", "stop");
 
-  await primaryAction.click();
+  await activateActionHint(page, /Stop current turn$/);
   await expect.poll(() => interruptRequests).toBe(1);
   await expect(form).toHaveAttribute("aria-busy", "true");
   await expect(primaryAction).toHaveAttribute("data-primary-action", "stop");
@@ -1604,9 +1605,7 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
   await expect(approvalError).toHaveCount(0);
   await expect(composerError).toHaveCount(0);
 
-  await approvalCard
-    .locator('[data-task-action="approval"][data-decision="allow"]')
-    .click();
+  await activateActionHint(page, /Allow$/);
   await expect(approvalError).toHaveText("Approval failed by fixture.");
   await expect(interruptError).toHaveText("Interrupt failed by fixture.");
   await expect(composerError).toHaveCount(0);

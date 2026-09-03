@@ -42,8 +42,10 @@ canonical query route; Task URLs use path routes:
 /tasks/:threadId/github/pulls/:number/files?page=...&file=...
 /settings
 /settings/appearance
+/settings/keyboard
 /settings/files
 /settings/notifications
+/settings/remote-access
 /settings/codex
 /settings/claude
 /settings/about

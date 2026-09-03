@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { activateActionHint } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
@@ -349,7 +350,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
   await prompt.fill("Submitted by button");
   await expect(send).toHaveAttribute("data-primary-action", "send");
   await expect(send).toBeEnabled();
-  await send.click();
+  await activateActionHint(page, /Send prompt$/);
   await expect.poll(() => submittedPrompts).toEqual(["Submitted by button"]);
   await expect(tasksPage).toContainText("Submitted by button");
   await expect(tasksPage).toContainText("Submitted by button");
@@ -401,7 +402,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
     "Submitted by Enter",
   ]);
   await expect(tasksPage).toContainText("Submitted by Enter");
-  await expect(prompt).toBeFocused();
+  await expect(prompt).not.toBeFocused();
 
   canonicalEvents = [
     ...canonicalEvents,
@@ -462,7 +463,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
   ).toBeVisible();
 
   await prompt.fill("Timed out prompt");
-  await send.click();
+  await prompt.press("Enter");
   await expect.poll(() => timedOutAttempts).toBe(1);
   await expect(form).toHaveAttribute("aria-busy", "false");
   await expect(prompt).toHaveValue("");

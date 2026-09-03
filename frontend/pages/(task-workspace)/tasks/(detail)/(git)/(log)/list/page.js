@@ -1,6 +1,17 @@
 import { escapeHtml } from "../../../../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../../../../components/icons.js";
 import "../../../../../../../components/pagination.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  disclosureActionHintTarget,
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../../../../scroll-scope.js";
 
 class CaffoldGitLogListPage extends HTMLElement {
   connectedCallback() {
@@ -128,6 +139,111 @@ class CaffoldGitLogListPage extends HTMLElement {
 
   findCommit(sha) {
     return (this.state?.log?.commits ?? []).find((commit) => commit.sha === sha);
+  }
+
+  actionHintScope({ scopeId = "git:log", clipRoots = [] } = {}) {
+    if (this.hidden || this.state?.status !== "ready") {
+      return emptyActionHintScope();
+    }
+    const scroller = this.querySelector(
+      ":scope > .log-list-panel > .log-list",
+    );
+    const listClipRoots = [this, scroller, ...clipRoots].filter(Boolean);
+    const targets = [...this.querySelectorAll(
+      ':scope > .log-list-panel > .log-list > .log-entry > button[data-action="open-commit"][data-commit-sha]',
+    )].flatMap((control) => {
+      const sha = `${control.dataset.commitSha ?? ""}`;
+      if (!sha || control.disabled) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:commit:${encodeURIComponent(sha)}`,
+        actionId: ACTION_HINT_ACTION.COMMIT_OPEN,
+        label: control.getAttribute("aria-label") || `Open commit ${sha.slice(0, 7)}`,
+        control,
+        clipRoots: listClipRoots,
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state?.status === "ready" &&
+          this.querySelector(
+            `:scope > .log-list-panel > .log-list > .log-entry > button[data-action="open-commit"][data-commit-sha="${CSS.escape(sha)}"]`,
+          ) === control &&
+          !control.disabled,
+      })];
+    });
+    for (const control of this.querySelectorAll(
+      ':scope > .log-list-panel > .log-list > .log-entry > button[data-action="toggle-commit-body"][data-commit-sha]',
+    )) {
+      const sha = `${control.dataset.commitSha ?? ""}`;
+      if (!sha || control.disabled) {
+        continue;
+      }
+      targets.push(disclosureActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:commit-body:${encodeURIComponent(sha)}`,
+        actionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+        label: control.getAttribute("aria-label") || "Expand commit body",
+        control,
+        clipRoots: listClipRoots,
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state?.status === "ready" &&
+          this.querySelector(
+            `:scope > .log-list-panel > .log-list > .log-entry > button[data-action="toggle-commit-body"][data-commit-sha="${CSS.escape(sha)}"]`,
+          ) === control &&
+          !control.disabled,
+      }));
+    }
+    const pagination = this.querySelector(
+      ":scope > .log-list-panel > caffold-pagination",
+    );
+    return mergeActionHintScopes(
+      {
+        targets,
+        mutationRoots: [this],
+        scrollRoots: [scroller].filter(Boolean),
+      },
+      pagination?.actionHintScope({
+        scopeId: `${scopeId}:pagination`,
+        actionId: ACTION_HINT_ACTION.PAGE,
+        clipRoots: [this, ...clipRoots],
+      }),
+    );
+  }
+
+  scrollSurfaceScope({ scopeId = "git:log", clipRoots = [] } = {}) {
+    if (this.hidden || this.state?.status !== "ready") {
+      return emptyScrollSurfaceScope();
+    }
+    const scrollport = this.querySelector(
+      ":scope > .log-list-panel > .log-list",
+    );
+    if (!scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label: "Git log",
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state?.status === "ready" &&
+          this.querySelector(":scope > .log-list-panel > .log-list") ===
+            scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   patchCommitBody(commit, expanded) {

@@ -9,6 +9,20 @@ import {
 } from "../../../../../api.js";
 import { escapeHtml } from "../../../../../components/dom.js";
 import { routeDomain } from "../../../../../navigation-routes.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  mergeActionHintScopes,
+} from "../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../../scroll-scope.js";
+import {
+  mergeKeyboardNavigationContexts,
+} from "../../../../../keyboard-navigation.js";
 import "../../components/composer.js";
 import "./components/conversation.js";
 import "./components/command-dialog.js";
@@ -365,6 +379,120 @@ class CaffoldTaskDetail extends HTMLElement {
       archiveState: this.archiveStateValue,
       forkState: this.forkStateValue,
     };
+  }
+
+  actionHintScope() {
+    this.ensureRendered();
+    if (
+      this.hidden ||
+      this.view !== "detail" ||
+      this.reviewView !== "conversation" ||
+      !this.selectedThreadId
+    ) {
+      return emptyActionHintScope();
+    }
+    const composer = this.followUpComposer();
+    const slot = this.followUpComposerSlot();
+    const conversation = this.querySelector(":scope .task-conversation-pane");
+    if (!conversation) {
+      return emptyActionHintScope();
+    }
+    const scopeId = `task:${this.selectedThreadId}`;
+    const clipRoots = [this, conversation];
+    const retrySelector =
+      'button[data-task-action="retry-task-detail"]:not([data-conversation-action])';
+    const retryControl = this.querySelector(retrySelector);
+    const retryScope = retryControl &&
+        !retryControl.disabled &&
+        hasActionHintLayoutBox(retryControl)
+      ? {
+          blocked: false,
+          targets: [buttonActionHintTarget({
+            invalidationOwner: this,
+            id: `${scopeId}:retry-detail`,
+            actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            label: retryControl.getAttribute("aria-label") ||
+              retryControl.textContent?.trim() ||
+              "Retry Task detail",
+            control: retryControl,
+            clipRoots,
+            isActionable: () =>
+              this.isConnected &&
+              !this.hidden &&
+              this.view === "detail" &&
+              this.reviewView === "conversation" &&
+              this.querySelector(retrySelector) === retryControl &&
+              !retryControl.disabled &&
+              hasActionHintLayoutBox(retryControl),
+          })],
+          mutationRoots: [this],
+          scrollRoots: [],
+        }
+      : null;
+    const composerScope = composer && slot && composer.parentElement === slot
+      ? {
+          targets: composer.actionHintTargets({
+            scopeId,
+            clipRoots,
+          }),
+          mutationRoots: [slot],
+          scrollRoots: [],
+        }
+      : null;
+    const currentPlanScope = this.currentPlanComponent()?.actionHintScope({
+      scopeId: `${scopeId}:current-plan`,
+      clipRoots,
+    });
+    const conversationScope = this.conversationComponent()?.actionHintScope({
+      scopeId: `${scopeId}:conversation`,
+      clipRoots,
+    });
+    return mergeActionHintScopes(
+      retryScope,
+      composerScope,
+      conversationScope,
+      currentPlanScope,
+    );
+  }
+
+  scrollSurfaceScope() {
+    this.ensureRendered();
+    if (
+      this.hidden ||
+      this.view !== "detail" ||
+      this.reviewView !== "conversation" ||
+      !this.selectedThreadId ||
+      !hasScrollLayoutBox(this)
+    ) {
+      return emptyScrollSurfaceScope();
+    }
+    const conversation = this.conversationComponent();
+    return conversation && hasScrollLayoutBox(conversation)
+      ? conversation.scrollSurfaceScope()
+      : emptyScrollSurfaceScope();
+  }
+
+  keyboardNavigationContexts() {
+    this.ensureRendered();
+    if (
+      this.hidden ||
+      this.view !== "detail" ||
+      this.reviewView !== "conversation" ||
+      !this.selectedThreadId
+    ) {
+      return [];
+    }
+    const composer = this.followUpComposer();
+    const slot = this.followUpComposerSlot();
+    return mergeKeyboardNavigationContexts(
+      composer && slot && composer.parentElement === slot
+        ? composer.keyboardNavigationContexts({
+            scopeId: `task:${this.selectedThreadId}`,
+          })
+        : [],
+      this.currentPlanComponent()?.keyboardNavigationContexts() ?? [],
+      this.commandDialog()?.keyboardNavigationContexts?.() ?? [],
+    );
   }
 
   emitTaskSnapshot() {

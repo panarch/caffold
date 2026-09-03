@@ -1,10 +1,24 @@
 import { escapeHtml, formatBytes, formatModified } from "./dom.js";
 import {
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../action-hint-scope.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../scroll-scope.js";
+import {
   diffViewerPresentation,
   sourceViewerPresentation,
 } from "./file-viewer-presentation.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
 import { imageUrl } from "../api.js";
+import {
+  keyboardNavigationContext,
+  popoverScrollSurfaceScope,
+} from "../keyboard-navigation.js";
+import "../keyboard-navigation/components/presentation.js";
 import "./code-viewer.js";
 import "./diff-viewer.js";
 import "./markdown-preview.js";
@@ -37,7 +51,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
           }),
         );
       });
-      this.boundIconsReady = () => this.render();
+      this.boundIconsReady = () => this.patchViewerIcons();
       window.addEventListener("caffold:icons-ready", this.boundIconsReady);
       warmIcons();
     }
@@ -48,7 +62,20 @@ class CaffoldReviewFileViewer extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.deactivate();
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
+  }
+
+  deactivate() {
+    const popover = this.detailsPopover();
+    if (!popover?.matches?.(":popover-open")) {
+      return;
+    }
+    try {
+      popover.hidePopover();
+    } catch {
+      // A parent transition may already have detached the viewer.
+    }
   }
 
   setEmpty() {
@@ -150,6 +177,307 @@ class CaffoldReviewFileViewer extends HTMLElement {
     }
   }
 
+  actionHintScope({
+    scopeId = "",
+    actionId = "",
+    noticeActionId = "",
+    detailsActionId = "",
+    refreshActionId = "",
+    linkActionId = "",
+    clipRoots = [],
+  } = {}) {
+    const control = this.querySelector(
+      ':scope > .viewer-panel > .viewer-header > .viewer-title-row > button.viewer-close-button[data-action="close-browser-viewer"]',
+    );
+    if (!scopeId || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const targets = [];
+    const detailsControl = detailsActionId
+      ? this.querySelector(
+          ':scope > .viewer-panel > .viewer-header > .viewer-title-row .viewer-info-button',
+        )
+      : null;
+    const detailsPopover = detailsActionId ? this.detailsPopover() : null;
+    if (
+      detailsActionId &&
+      detailsControl &&
+      detailsPopover &&
+      this.hasDetailsMetadata(detailsPopover) &&
+      !detailsControl.disabled
+    ) {
+      targets.push(buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:details:open`,
+        actionId: detailsActionId,
+        label: detailsControl.getAttribute("aria-label") || "Show file details",
+        control: detailsControl,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.querySelector(
+            ':scope > .viewer-panel > .viewer-header > .viewer-title-row .viewer-info-button',
+          ) === detailsControl &&
+          this.detailsPopover() === detailsPopover &&
+          detailsControl.getAttribute("popovertarget") === detailsPopover.id &&
+          this.hasDetailsMetadata(detailsPopover) &&
+          !detailsControl.disabled &&
+          !detailsPopover.matches(":popover-open"),
+      }));
+    }
+    if (actionId && control && !control.disabled) {
+      targets.push(buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:close`,
+        actionId,
+        label: control.getAttribute("aria-label") || this.closeLabel || "Back to files",
+        control,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.querySelector(
+            ':scope > .viewer-panel > .viewer-header > .viewer-title-row > button.viewer-close-button[data-action="close-browser-viewer"]',
+          ) === control &&
+          !control.disabled,
+      }));
+    }
+    const refreshControl = refreshActionId
+      ? this.querySelector(
+          ':scope > .viewer-panel > .viewer-header > .viewer-title-row .viewer-refresh-button[data-action="refresh-viewer"]',
+        )
+      : null;
+    if (refreshControl && !refreshControl.disabled) {
+      targets.push(buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:refresh`,
+        actionId: refreshActionId,
+        label: refreshControl.getAttribute("aria-label") || "Refresh file",
+        control: refreshControl,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.querySelector(
+            ':scope > .viewer-panel > .viewer-header > .viewer-title-row .viewer-refresh-button[data-action="refresh-viewer"]',
+          ) === refreshControl &&
+          !refreshControl.disabled,
+      }));
+    }
+    const noticeControl = noticeActionId
+      ? this.querySelector(
+          ':scope > .viewer-panel.notice-panel > .viewer-notice-content > button[data-action="view-source"], :scope > .viewer-panel.notice-panel > .viewer-notice-content > button[data-action="view-preview"]',
+        )
+      : null;
+    const noticeAction = `${noticeControl?.dataset?.action ?? ""}`;
+    if (
+      noticeControl &&
+      !noticeControl.disabled &&
+      ["view-source", "view-preview"].includes(noticeAction)
+    ) {
+      targets.push(buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:notice:${noticeAction}`,
+        actionId: noticeActionId,
+        label: noticeControl.getAttribute("aria-label") ||
+          noticeControl.textContent?.trim() ||
+          (noticeAction === "view-preview" ? "View preview" : "View source"),
+        control: noticeControl,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.querySelector(
+            `:scope > .viewer-panel.notice-panel > .viewer-notice-content > button[data-action="${noticeAction}"]`,
+          ) === noticeControl &&
+          !noticeControl.disabled,
+      }));
+    }
+    const ownScope = {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
+    const state = this.state;
+    if (state?.status !== "markdown") {
+      return ownScope;
+    }
+    const preview = this.querySelector(
+      ":scope > .markdown-panel > caffold-markdown-preview",
+    );
+    return mergeActionHintScopes(
+      ownScope,
+      preview?.actionHintScope?.({
+        scopeId: `${scopeId}:preview`,
+        linkActionId,
+        clipRoots: [this, ...clipRoots].filter(Boolean),
+        isCurrent: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state === state &&
+          this.querySelector(
+            ":scope > .markdown-panel > caffold-markdown-preview",
+          ) === preview,
+      }),
+    );
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "File",
+    clipRoots = [],
+  } = {}) {
+    const state = this.state;
+    if (!scopeId || !state || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    const childOptions = (kind, childLabel) => ({
+      scopeId: `${scopeId}:${kind}`,
+      label: childLabel,
+      clipRoots: [this, ...clipRoots],
+      isCurrent: () =>
+        this.isConnected &&
+        !this.hidden &&
+        this.state === state,
+    });
+    if (state.status === "file") {
+      return this.querySelector(":scope > .file-panel > caffold-code-viewer")
+        ?.scrollSurfaceScope(childOptions(
+          "source",
+          `${state.presentation?.title || label} source`,
+        )) ?? emptyScrollSurfaceScope();
+    }
+    if (state.status === "diff") {
+      return this.querySelector(":scope > .diff-panel > caffold-diff-viewer")
+        ?.scrollSurfaceScope(childOptions(
+          "diff",
+          `${state.presentation?.title || label} diff`,
+        )) ?? emptyScrollSurfaceScope();
+    }
+    if (state.status === "markdown") {
+      return this.querySelector(
+        ":scope > .markdown-panel > caffold-markdown-preview",
+      )?.scrollSurfaceScope(childOptions(
+        "preview",
+        `${state.presentation?.title || label} preview`,
+      )) ?? emptyScrollSurfaceScope();
+    }
+    if (state.status === "image") {
+      const scrollport = this.querySelector(
+        ":scope > .image-panel > .image-stage",
+      );
+      return this.ownScrollSurfaceScope({
+        scopeId: `${scopeId}:image`,
+        label: `${state.image?.name || label} image`,
+        state,
+        scrollport,
+        currentScrollport: () => this.querySelector(
+          ":scope > .image-panel > .image-stage",
+        ),
+        axes: ["vertical", "horizontal"],
+        clipRoots,
+      });
+    }
+    if (state.status === "notice") {
+      const scrollport = this.querySelector(
+        ":scope > .notice-panel > .viewer-notice-content",
+      );
+      return this.ownScrollSurfaceScope({
+        scopeId: `${scopeId}:notice`,
+        label: `${state.title || label} notice`,
+        state,
+        scrollport,
+        currentScrollport: () => this.querySelector(
+          ":scope > .notice-panel > .viewer-notice-content",
+        ),
+        clipRoots,
+      });
+    }
+    return emptyScrollSurfaceScope();
+  }
+
+  ownScrollSurfaceScope({
+    scopeId,
+    label,
+    state,
+    scrollport,
+    currentScrollport,
+    axes,
+    clipRoots = [],
+  }) {
+    if (!scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label,
+        scrollport,
+        ...(axes ? { axes } : {}),
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.state === state &&
+          currentScrollport() === scrollport &&
+          scrollport.isConnected &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this, scrollport],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
+  }
+
+  keyboardNavigationContexts({ scopeId = "" } = {}) {
+    const popover = this.detailsPopover();
+    const presentation = popover?.querySelector(
+      ":scope > caffold-keyboard-navigation-presentation",
+    );
+    const dialog = presentation?.actionHintDialog?.();
+    const hud = presentation?.scrollModeHud?.();
+    const selector = presentation?.scrollSurfaceSelector?.();
+    if (
+      !scopeId ||
+      this.hidden ||
+      !popover ||
+      !this.hasDetailsMetadata(popover) ||
+      !dialog ||
+      !hud ||
+      !selector
+    ) {
+      return [];
+    }
+    const contextId = `${scopeId}:details`;
+    return [keyboardNavigationContext({
+      id: contextId,
+      kind: "popover",
+      root: popover,
+      actionHints: {
+        dialog,
+        scope: emptyActionHintScope(),
+      },
+      scroll: {
+        hud,
+        selector,
+        scope: popoverScrollSurfaceScope({
+          id: contextId,
+          label: "File details",
+          popover,
+          isCurrent: () =>
+            this.isConnected &&
+            !this.hidden &&
+            this.detailsPopover() === popover &&
+            this.hasDetailsMetadata(popover),
+        }),
+      },
+    })];
+  }
+
   ensureDetailsPopoverId() {
     if (!this.detailsPopoverId) {
       viewerInstanceId += 1;
@@ -158,6 +486,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
   }
 
   render(options = {}) {
+    this.deactivate();
     if (!this.state || this.state.status === "empty") {
       this.innerHTML = `
         <section class="viewer-panel empty-panel">
@@ -259,6 +588,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
   }
 
   replacePresentationHeader(panel, presentation) {
+    this.deactivate();
     const template = document.createElement("template");
     template.innerHTML = this.renderPresentationHeader(presentation);
     panel.querySelector(":scope > header")?.replaceWith(
@@ -369,6 +699,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
               )
               .join("")}
           </dl>
+          <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
         </div>
       </header>
     `;
@@ -484,6 +815,47 @@ class CaffoldReviewFileViewer extends HTMLElement {
     button.classList.toggle("is-unavailable", unavailable);
     button.setAttribute("aria-label", title);
     button.title = title;
+  }
+
+  detailsPopover() {
+    return this.querySelector(
+      `:scope > .viewer-panel > .viewer-header > #${this.detailsPopoverId}`,
+    );
+  }
+
+  hasDetailsMetadata(popover = this.detailsPopover()) {
+    return Boolean(popover?.querySelector(":scope > dl > div"));
+  }
+
+  patchViewerIcons() {
+    patchInlineIcon(
+      this.querySelector(".viewer-close-button"),
+      this.closeMode === "back" ? "ArrowLeft" : "X",
+      this.closeLabel ?? "Back to files",
+      "viewer-close-icon",
+    );
+    patchInlineIcon(
+      this.querySelector(".viewer-refresh-button"),
+      "RefreshCw",
+      "Refresh file",
+      "viewer-refresh-icon",
+    );
+    patchInlineIcon(
+      this.querySelector(".viewer-info-button"),
+      "Info",
+      "Details",
+      "viewer-info-icon",
+    );
+  }
+}
+
+function patchInlineIcon(button, name, label, className) {
+  if (!button || button.querySelector(`:scope > .${className}`)) {
+    return;
+  }
+  const markup = renderInlineIcon(name, label, className);
+  if (button.innerHTML !== markup) {
+    button.innerHTML = markup;
   }
 }
 

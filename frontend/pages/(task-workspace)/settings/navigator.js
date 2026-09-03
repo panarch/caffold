@@ -4,11 +4,21 @@ import {
   formatCodexReadiness,
 } from "../codex-status.js";
 import "../components/workspace-brand.js";
+import {
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../../action-hint-scope.js";
+import { ACTION_HINT_ACTION } from "../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../scroll-scope.js";
 
 // Each brand mark is published in a single color so it can be tinted, and the
 // theme tints it through --brand-monochrome-filter.
 const ITEMS = [
   { section: "appearance", label: "Appearance", icon: "Settings" },
+  { section: "keyboard", label: "Keyboard", icon: "Keyboard" },
   { section: "files", label: "Files", icon: "File" },
   { section: "notifications", label: "Notifications", icon: "Bell" },
   { section: "remote-access", label: "Remote Access", icon: "Link" },
@@ -55,6 +65,85 @@ class CaffoldSettingsNavigator extends HTMLElement {
   setCodexStatusSnapshot(snapshot) {
     this.codexStatusSnapshotValue = snapshot ?? null;
     this.syncCodexStatus();
+  }
+
+  actionHintScope({ scopeId = "settings", clipRoots = [] } = {}) {
+    if (!this.initialized || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const scroller = this.querySelector(":scope > .settings-navigator-list");
+    if (!scroller) {
+      return emptyActionHintScope();
+    }
+    const targets = ITEMS.flatMap((item) => {
+      const control = this.querySelector(
+        `:scope > .settings-navigator-list > button[data-settings-section="${item.section}"]`,
+      );
+      if (
+        !control ||
+        control.disabled ||
+        item.section === this.selectedSection
+      ) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:section:${item.section}`,
+        actionId: ACTION_HINT_ACTION.SETTINGS_SECTION,
+        label: control.getAttribute("aria-label") || `Open ${item.label} settings`,
+        control,
+        clipRoots: [...clipRoots, scroller],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.selectedSection !== item.section &&
+          this.querySelector(
+            `:scope > .settings-navigator-list > button[data-settings-section="${item.section}"]`,
+          ) === control &&
+          !control.disabled,
+      })];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [scroller],
+    };
+  }
+
+  scrollSurfaceScope({
+    scopeId = "settings",
+    label = "Settings sections",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    if (!this.initialized || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    const scrollport = this.querySelector(":scope > .settings-navigator-list");
+    if (!scrollport) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:sections:scroll`,
+        label,
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.querySelector(":scope > .settings-navigator-list") ===
+            scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   render() {

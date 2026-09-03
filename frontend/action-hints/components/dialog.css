@@ -1,0 +1,70 @@
+caffold-action-hint-dialog {
+  display: contents;
+
+  & > .action-hint-dialog {
+    box-sizing: border-box;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    border: 0;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+    color: var(--text);
+    font-size: var(--interface-font-size);
+    touch-action: pinch-zoom;
+  }
+
+  & > .action-hint-dialog::backdrop {
+    background: rgb(var(--shadow-rgb) / 4%);
+  }
+
+  & .action-hint-badges {
+    position: absolute;
+    inset: 0;
+  }
+
+  & .action-hint-badge {
+    position: absolute;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    min-width: var(--keyboard-choice-visual-size);
+    min-height: var(--keyboard-choice-visual-size);
+    border: 1px solid var(--primary-control-bg);
+    border-radius: 0.25rem;
+    padding: var(--interface-space-1) var(--interface-space-2);
+    background: var(--primary-control-bg);
+    box-shadow: 0 0.125rem 0.375rem rgb(var(--shadow-rgb) / 24%);
+    color: var(--text-inverse);
+    font-size: var(--interface-meta-font-size);
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+  }
+
+  & .action-hint-badge::before {
+    position: absolute;
+    inset: min(
+      0px,
+      calc(
+        (var(--keyboard-choice-visual-size) - var(--interface-target-floor)) / 2
+      )
+    );
+    content: "";
+  }
+
+  & .action-hint-badge:hover {
+    background: var(--primary-control-hover-bg);
+  }
+
+  & .action-hint-badge:focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+}

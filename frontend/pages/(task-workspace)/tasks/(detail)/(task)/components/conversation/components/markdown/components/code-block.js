@@ -2,6 +2,15 @@ import {
   renderInlineIcon,
   warmIcons,
 } from "../../../../../../../../../../components/icons.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../../../../../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../../../../../../../scroll-scope.js";
 
 const COPY_FEEDBACK_DURATION_MS = 1_800;
 
@@ -189,6 +198,80 @@ class CaffoldTaskMarkdownCodeBlock extends HTMLElement {
 
   copyButton() {
     return this.querySelector('button[data-code-action="copy"]');
+  }
+
+  actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
+    this.ensureDom();
+    if (!scopeId || !this.connected || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const targets = ["wrap", "copy"].flatMap((action) => {
+      const selector = `button[data-code-action="${action}"]`;
+      const control = this.querySelector(selector);
+      if (
+        !control ||
+        control.disabled ||
+        control.getAttribute("aria-disabled") === "true"
+      ) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:${action}`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label") ||
+          control.title ||
+          (action === "wrap" ? "Wrap code lines" : "Copy code"),
+        control,
+        clipRoots: [this, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.connected &&
+          this.isConnected &&
+          !this.hidden &&
+          this.querySelector(selector) === control &&
+          !control.disabled &&
+          control.getAttribute("aria-disabled") !== "true",
+      })];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "Code block",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    const scrollport = this.pre();
+    if (!scopeId || !label || !scrollport || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:scroll`,
+        label,
+        scrollport,
+        axes: ["horizontal"],
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.connected &&
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.pre() === scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 }
 

@@ -455,24 +455,24 @@ caffold-task-conversation {
     color: var(--muted);
   }
 
-  & .task-thinking summary span:first-child {
+  & .task-thinking-label {
     display: inline-flex;
     align-items: center;
     gap: 0.4375rem;
     min-width: 0;
   }
 
-  & .task-thinking summary span:first-child::after {
+  & .task-thinking-disclosure-chevron {
     display: inline-block;
     width: 0.375rem;
     height: 0.375rem;
     border-right: 1.5px solid currentColor;
     border-bottom: 1.5px solid currentColor;
-    content: "";
+    flex: 0 0 0.375rem;
     transform: rotate(-45deg);
   }
 
-  & .task-thinking details[open] summary span:first-child::after {
+  & .task-thinking details[open] .task-thinking-disclosure-chevron {
     transform: rotate(45deg);
   }
 

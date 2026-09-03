@@ -3,6 +3,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { repositoryPath } from "../../repository-paths.mjs";
+import {
+  actionHintBadgePresentation,
+  actionHintDialog,
+  activateActionHint,
+  enterActionHints,
+  waitForActionHintTarget,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
 import {
@@ -95,7 +102,17 @@ function taskRecord(
 async function installTaskGitFixture(
   page,
   tasks = [taskRecord()],
-  { rootPath = ROOT_PATH, branch = "feature/review", mockFetch = true } = {},
+  {
+    rootPath = ROOT_PATH,
+    branch = "feature/review",
+    commitBody = "",
+    largeCommit = false,
+    largeCompare = false,
+    largeLog = false,
+    longDiff = false,
+    mockFetch = true,
+    logTotalPages = 1,
+  } = {},
 ) {
   await installEventSourceMock(page, {
     registryKey: GIT_WATCH_REGISTRY_KEY,
@@ -116,6 +133,61 @@ async function installTaskGitFixture(
     log: 0,
     commit: 0,
   };
+  const compareFiles = [
+    { path: "src/alpha.rs", repoRelativePath: "alpha.rs", status: "A" },
+    { path: "src/example.rs", repoRelativePath: "example.rs", status: "M" },
+    {
+      path: "src/nested/module.rs",
+      repoRelativePath: "nested/module.rs",
+      status: "M",
+    },
+    ...(largeCompare
+      ? Array.from({ length: 80 }, (_, index) => ({
+          path: `src/generated/compare-${`${index + 1}`.padStart(3, "0")}.rs`,
+          repoRelativePath: `generated/compare-${`${index + 1}`.padStart(3, "0")}.rs`,
+          status: "M",
+        }))
+      : []),
+  ];
+  const compareDiff = longDiff
+    ? [
+        "@@ -1,80 +1,80 @@",
+        ...Array.from({ length: 80 }, (_, index) => [
+          `-old compare ${index + 1}`,
+          `+new compare ${index + 1}`,
+        ]).flat(),
+      ].join("\n")
+    : "@@ -1 +1 @@\n-old compare\n+new compare";
+  const fixtureCommit = { ...COMMIT, body: commitBody };
+  const logCommits = [
+    fixtureCommit,
+    ...(largeLog
+      ? Array.from({ length: 80 }, (_, index) => ({
+          ...COMMIT,
+          sha: `${index + 1}`.padStart(40, "0"),
+          shortSha: `${index + 1}`.padStart(7, "0"),
+          subject: `Scrollable commit ${index + 1}`,
+          body: "",
+          authorTimeMs: COMMIT.authorTimeMs - (index + 1) * 60_000,
+        }))
+      : []),
+  ];
+  const commitFiles = [
+    { path: "src/alpha.rs", repoRelativePath: "alpha.rs", status: "A" },
+    { path: "src/example.rs", repoRelativePath: "example.rs", status: "M" },
+    {
+      path: "src/nested/module.rs",
+      repoRelativePath: "nested/module.rs",
+      status: "M",
+    },
+    ...(largeCommit
+      ? Array.from({ length: 80 }, (_, index) => ({
+          path: `src/generated/commit-${`${index + 1}`.padStart(3, "0")}.rs`,
+          repoRelativePath: `generated/commit-${`${index + 1}`.padStart(3, "0")}.rs`,
+          status: "M",
+        }))
+      : []),
+  ];
 
   await page.exposeFunction("__taskGitDetailBootstrap", (threadId) => {
     const task = tasks.find((candidate) => candidate.threadId === threadId);
@@ -186,15 +258,7 @@ async function installTaskGitFixture(
         headRef: url.searchParams.get("head") || "feature/review",
         additions: 2,
         deletions: 1,
-        files: [
-          { path: "src/alpha.rs", repoRelativePath: "alpha.rs", status: "A" },
-          { path: "src/example.rs", repoRelativePath: "example.rs", status: "M" },
-          {
-            path: "src/nested/module.rs",
-            repoRelativePath: "nested/module.rs",
-            status: "M",
-          },
-        ],
+        files: compareFiles,
       },
     });
   });
@@ -211,22 +275,26 @@ async function installTaskGitFixture(
         kind: "origin/main...feature/review",
         additions: 1,
         deletions: 1,
-        diff: "@@ -1 +1 @@\n-old compare\n+new compare",
+        diff: compareDiff,
       },
     });
   });
   await page.route(/\/api\/git\/log(?:\?|$)/, (route) => {
     counts.log += 1;
+    const requestedPage = Number.parseInt(
+      new URL(route.request().url()).searchParams.get("page") ?? "1",
+      10,
+    );
     return route.fulfill({
       json: {
         repository,
-        commits: [COMMIT],
-        page: 1,
+        commits: logCommits,
+        page: requestedPage,
         perPage: 50,
-        totalCommits: 1,
-        totalPages: 1,
-        hasPrevious: false,
-        hasNext: false,
+        totalCommits: largeLog ? logCommits.length : logTotalPages,
+        totalPages: logTotalPages,
+        hasPrevious: requestedPage > 1,
+        hasNext: requestedPage < logTotalPages,
       },
     });
   });
@@ -267,18 +335,10 @@ async function installTaskGitFixture(
     return route.fulfill({
       json: {
         repository,
-        commit: COMMIT,
+        commit: fixtureCommit,
         additions: 2,
         deletions: 1,
-        files: [
-          { path: "src/alpha.rs", repoRelativePath: "alpha.rs", status: "A" },
-          { path: "src/example.rs", repoRelativePath: "example.rs", status: "M" },
-          {
-            path: "src/nested/module.rs",
-            repoRelativePath: "nested/module.rs",
-            status: "M",
-          },
-        ],
+        files: commitFiles,
       },
     });
   });
@@ -296,7 +356,9 @@ async function installTaskGitFixture(
         kind: COMMIT.shortSha,
         additions: 1,
         deletions: 1,
-        diff: "@@ -1 +1 @@\n-old commit\n+new commit",
+        diff: longDiff
+          ? compareDiff.replaceAll("compare", "commit")
+          : "@@ -1 +1 @@\n-old commit\n+new commit",
       },
     });
   });
@@ -326,6 +388,427 @@ async function rootTreeNames(tree) {
     )
     .allTextContents();
 }
+
+test("opens Git and selects its destination through declared keyboard contexts", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installTaskGitFixture(page);
+  await page.goto(`/tasks/${THREAD_ID}`);
+
+  await activateActionHint(page, /Open Git workspace$/);
+  const popover = page.locator(
+    ".detail-layout-summary caffold-task-detail-git > .task-git-popover",
+  );
+  await expect(popover).toBeVisible();
+  await page.keyboard.press("s");
+  await expect(
+    popover.locator("caffold-scroll-mode-hud .scroll-mode-status"),
+  ).toBeHidden();
+  await expect(popover).toBeVisible();
+
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await expect(
+    hint.getByRole("button", { name: / — Log$/ }),
+  ).toBeVisible();
+  const compare = hint.getByRole("button", { name: / — Compare$/ });
+  await expect(compare).toBeVisible();
+  await expect.poll(() => actionHintBadgePresentation(compare)).toEqual({
+    backgroundMatches: true,
+    borderVisible: true,
+    colorMatches: true,
+    hasBlockPadding: true,
+    position: "absolute",
+  });
+  const compareCode = await compare.getAttribute("data-action-hint-code");
+  expect(compareCode).toBeTruthy();
+  await page.keyboard.type(compareCode.toLowerCase());
+
+  await expect(popover).toBeHidden();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/compare`);
+  await expect(page.locator("caffold-git-compare-page")).toContainText(
+    "example.rs",
+  );
+});
+
+test("hands Compare ref and separator Hints to their native controls", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  await installTaskGitFixture(page);
+  await page.goto(
+    `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview`,
+  );
+
+  const gitLayout = page.locator("caffold-task-git-layout");
+  const comparePage = page.locator("caffold-git-compare-page");
+  const base = gitLayout.getByRole("combobox", { name: "Base ref" });
+  const head = gitLayout.getByRole("combobox", { name: "Head ref" });
+  const separator = comparePage.getByRole("separator", {
+    name: "Resize review side panel",
+  });
+  await expect(base).toHaveValue("origin/main");
+  await expect(head).toHaveValue("feature/review");
+
+  const hint = await enterActionHints(page);
+  await expect(
+    hint.getByLabel(/ — Choose Base ref \(current origin\/main\)$/),
+  ).toBeVisible();
+  await expect(
+    hint.getByLabel(/ — Choose Head ref \(current feature\/review\)$/),
+  ).toBeVisible();
+  if (testInfo.project.name === "phone") {
+    await expect(
+      hint.getByLabel(/ — Resize review side panel$/),
+    ).toHaveCount(0);
+  } else {
+    await expect(
+      hint.getByLabel(/ — Resize review side panel$/),
+    ).toBeVisible();
+  }
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "git-compare-native-control-hints",
+  );
+  await page.keyboard.press("Escape");
+
+  await activateActionHint(
+    page,
+    "Choose Base ref (current origin/main)",
+  );
+  await expect(base).toBeFocused();
+  await base.selectOption("main");
+  await expect(page).toHaveURL(
+    new RegExp(`^.*\/tasks\/${THREAD_ID}\/git\/compare\\?base=main&head=feature%2Freview$`),
+  );
+  await expect(base).toHaveValue("main");
+
+  await activateActionHint(
+    page,
+    "Choose Head ref (current feature/review)",
+  );
+  await expect(head).toBeFocused();
+  await page.keyboard.press("Escape");
+
+  if (testInfo.project.name === "phone") {
+    await expect(separator).toBeHidden();
+    return;
+  }
+
+  const before = Number(await separator.getAttribute("aria-valuenow"));
+  await activateActionHint(page, "Resize review side panel");
+  await expect(separator).toBeFocused();
+  await separator.press("ArrowRight");
+  await expect.poll(async () =>
+    Number(await separator.getAttribute("aria-valuenow"))
+  ).toBeGreaterThan(before);
+});
+
+test("refreshes Git and scrolls the exact visible Compare tree and diff from the root", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ ...viewport, height: 360 });
+  const counts = await installTaskGitFixture(page, [taskRecord()], {
+    largeCompare: true,
+    longDiff: true,
+  });
+  await page.goto(
+    `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview`,
+  );
+
+  const treeScroll = page.locator(
+    "caffold-git-compare-page caffold-file-tree .file-tree-scroll",
+  );
+  const workspace = page.locator(".task-workspace-surface");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog:modal");
+  const hud = page.locator(
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
+  );
+  await expect.poll(() => treeScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await activateActionHint(page, /Refresh compare$/);
+  await expect.poll(() => counts.refs).toBe(2);
+  await expect.poll(() => counts.compare).toBe(2);
+
+  if (testInfo.project.name === "phone") {
+    await workspace.focus();
+    await page.keyboard.press("s");
+    await expect(selector).toBeHidden();
+    await expect(hud).toContainText("Scroll: Compared files");
+    await page.keyboard.press("j");
+    await expect.poll(() => treeScroll.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    await page.keyboard.press("Escape");
+    await treeScroll.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+  }
+
+  await page
+    .locator('caffold-git-compare-page button[data-file-tree-path="src/example.rs"]')
+    .click();
+  const diffScroll = page.locator(
+    "caffold-git-compare-page caffold-review-file-viewer:not([hidden]) " +
+      "caffold-diff-viewer .diff-lines",
+  );
+  await expect(diffScroll).toContainText("new compare 80");
+  await expect.poll(() => diffScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  if (testInfo.project.name === "phone") {
+    const refsBeforeFileRefresh = counts.refs;
+    const compareBeforeFileRefresh = counts.compare;
+    const compareDiffRequests = counts.compareDiff;
+    await activateActionHint(page, /Refresh file$/);
+    await expect.poll(() => counts.refs).toBe(refsBeforeFileRefresh + 1);
+    await expect.poll(() => counts.compare).toBe(compareBeforeFileRefresh + 1);
+    await expect.poll(() => counts.compareDiff).toBe(compareDiffRequests + 1);
+  }
+
+  await workspace.focus();
+  await page.keyboard.press("s");
+  if (testInfo.project.name === "phone") {
+    await expect(selector).toBeHidden();
+    await expect(hud).toContainText("Scroll: example.rs diff");
+  } else {
+    await expect(selector).toBeVisible();
+    const badges = selector.locator("button[data-scroll-surface-code]");
+    await expect(badges).toHaveCount(2);
+    expect(new Set(await badges.evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute("aria-label")
+        .replace(/^[A-Z]+ — /, ""))
+    ))).toEqual(new Set(["Compared files", "example.rs diff"]));
+
+    await selector.getByLabel(/^[A-Z]+ — Compared files$/).click();
+    const diffBeforeTreeScroll = await diffScroll.evaluate(
+      (element) => element.scrollTop,
+    );
+    await page.keyboard.press("j");
+    await expect.poll(() => treeScroll.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    expect(await diffScroll.evaluate((element) => element.scrollTop)).toBe(
+      diffBeforeTreeScroll,
+    );
+    await page.keyboard.press("Escape");
+
+    await workspace.focus();
+    await page.keyboard.press("s");
+    await selector.getByLabel(/^[A-Z]+ — example\.rs diff$/).click();
+    await expect(hud).toContainText("Scroll: example.rs diff");
+  }
+
+  const treeBeforeDiffScroll = await treeScroll.evaluate(
+    (element) => element.scrollTop,
+  );
+  await page.keyboard.press("j");
+  await expect.poll(() => diffScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  expect(await treeScroll.evaluate((element) => element.scrollTop)).toBe(
+    treeBeforeDiffScroll,
+  );
+  await page.keyboard.press("Escape");
+  await expect(hud).toBeHidden();
+});
+
+test("uses Log actions and scrolls the exact visible Commit tree and diff from the root", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ ...viewport, height: 360 });
+  await installTaskGitFixture(page, [taskRecord()], {
+    commitBody: "Retained commit body for keyboard expansion.",
+    largeCommit: true,
+    largeLog: true,
+    longDiff: true,
+  });
+  await page.goto(`/tasks/${THREAD_ID}/git/log`);
+
+  const workspace = page.locator(".task-workspace-surface");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog:modal");
+  const hud = page.locator(
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
+  );
+  const logScroll = page.locator("caffold-git-log-list-page .log-list");
+  await expect.poll(() => logScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+
+  await activateActionHint(page, /Expand commit body for abcdef1$/);
+  const commitBodyToggle = page.locator(
+    `caffold-git-log-list-page button[data-action="toggle-commit-body"]` +
+      `[data-commit-sha="${COMMIT.sha}"]`,
+  );
+  await expect(commitBodyToggle).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("caffold-git-log-list-page .log-body")).toHaveText(
+    "Retained commit body for keyboard expansion.",
+  );
+  await activateActionHint(page, /Collapse commit body for abcdef1$/);
+  await expect(commitBodyToggle).toHaveAttribute("aria-expanded", "false");
+
+  await workspace.focus();
+  await page.keyboard.press("s");
+  await expect(selector).toBeHidden();
+  await expect(hud).toContainText("Scroll: Git log");
+  await page.keyboard.press("j");
+  await expect.poll(() => logScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await logScroll.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+
+  await activateActionHint(
+    page,
+    new RegExp(`Open commit diff for ${COMMIT.shortSha} ${COMMIT.subject}$`),
+  );
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}`);
+  const treeScroll = page.locator(
+    "caffold-git-log-commit-page caffold-file-tree .file-tree-scroll",
+  );
+  await expect.poll(() => treeScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  const commitSeparator = page.locator(
+    "caffold-git-log-commit-page",
+  ).getByRole("separator", { name: "Resize review side panel" });
+  if (testInfo.project.name === "phone") {
+    await expect(commitSeparator).toBeHidden();
+    const commitHints = await enterActionHints(page);
+    await expect(
+      commitHints.getByLabel(/ — Resize review side panel$/),
+    ).toHaveCount(0);
+    await page.keyboard.press("Escape");
+  } else {
+    const before = Number(
+      await commitSeparator.getAttribute("aria-valuenow"),
+    );
+    await activateActionHint(page, "Resize review side panel");
+    await expect(commitSeparator).toBeFocused();
+    await commitSeparator.press("ArrowRight");
+    await expect.poll(async () =>
+      Number(await commitSeparator.getAttribute("aria-valuenow"))
+    ).toBeGreaterThan(before);
+  }
+
+  const generatedDirectory = page.locator(
+    'caffold-git-log-commit-page button[data-file-tree-path="generated"]',
+  );
+  const generatedFile = page.locator(
+    'caffold-git-log-commit-page button[data-file-tree-relative-path="generated/commit-001.rs"]',
+  );
+  await expect(generatedDirectory).toHaveAccessibleName("Collapse generated");
+  await expect(generatedDirectory).toHaveAttribute("aria-expanded", "true");
+  await expect(generatedFile).toBeVisible();
+  const directoryTop = await generatedDirectory.evaluate(
+    (element) => element.getBoundingClientRect().top,
+  );
+  const directoryHints = await enterActionHints(page);
+  await expect(directoryHints.getByLabel(/Collapse generated$/)).toBeVisible();
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "task-git-directory-disclosure-hints",
+  );
+  await page.keyboard.press("Escape");
+  await activateActionHint(page, /Collapse generated$/);
+  await expect(generatedDirectory).toHaveAccessibleName("Expand generated");
+  await expect(generatedDirectory).toHaveAttribute("aria-expanded", "false");
+  await expect(generatedFile).toHaveCount(0);
+  await expect
+    .poll(() =>
+      generatedDirectory.evaluate(
+        (element) => document.activeElement === element,
+      )
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      generatedDirectory.evaluate(
+        (element) => element.getBoundingClientRect().top,
+      )
+    )
+    .toBeCloseTo(directoryTop, 1);
+  await activateActionHint(page, /Expand generated$/);
+  await expect(generatedDirectory).toHaveAccessibleName("Collapse generated");
+  await expect(generatedDirectory).toHaveAttribute("aria-expanded", "true");
+  await expect(generatedFile).toBeVisible();
+
+  if (testInfo.project.name === "phone") {
+    await workspace.focus();
+    await page.keyboard.press("s");
+    await expect(selector).toBeHidden();
+    await expect(hud).toContainText("Scroll: Commit files");
+    await page.keyboard.press("j");
+    await expect.poll(() => treeScroll.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    await page.keyboard.press("Escape");
+    await treeScroll.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+  }
+
+  const exampleFile = page.locator(
+    'caffold-git-log-commit-page button[data-file-tree-path="src/example.rs"]',
+  );
+  await exampleFile.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  await activateActionHint(page, /Show commit diff for example\.rs$/);
+  const diffScroll = page.locator(
+    "caffold-git-log-commit-page caffold-review-file-viewer:not([hidden]) " +
+      "caffold-diff-viewer .diff-lines",
+  );
+  await expect(diffScroll).toContainText("new commit 80");
+  await expect.poll(() => diffScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await treeScroll.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+
+  await workspace.focus();
+  await page.keyboard.press("s");
+  if (testInfo.project.name === "phone") {
+    await expect(selector).toBeHidden();
+    await expect(hud).toContainText("Scroll: example.rs diff");
+  } else {
+    await expect(selector).toBeVisible();
+    const badges = selector.locator("button[data-scroll-surface-code]");
+    await expect(badges).toHaveCount(2);
+    expect(new Set(await badges.evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute("aria-label")
+        .replace(/^[A-Z]+ — /, ""))
+    ))).toEqual(new Set(["Commit files", "example.rs diff"]));
+    await selector.getByLabel(/^[A-Z]+ — Commit files$/).click();
+    await page.keyboard.press("j");
+    await expect.poll(() => treeScroll.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    expect(await diffScroll.evaluate((element) => element.scrollTop)).toBe(0);
+    await page.keyboard.press("Escape");
+
+    await workspace.focus();
+    await page.keyboard.press("s");
+    await selector.getByLabel(/^[A-Z]+ — example\.rs diff$/).click();
+  }
+  const treeBeforeDiffScroll = await treeScroll.evaluate(
+    (element) => element.scrollTop,
+  );
+  await page.keyboard.press("j");
+  await expect.poll(() => diffScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  expect(await treeScroll.evaluate((element) => element.scrollTop)).toBe(
+    treeBeforeDiffScroll,
+  );
+  await page.keyboard.press("Escape");
+  await expect(hud).toBeHidden();
+});
 
 test("applies the global ordering to Compare and Commit without refetching", { tag: "@all-viewports" }, async ({
   page,
@@ -564,11 +1047,21 @@ test("keeps the loaded Git route stable across unrelated Task stream updates", {
 });
 
 test("navigates Compare files and Log commits with deterministic domain Back", { tag: "@all-viewports" }, async ({ page }) => {
-  await installTaskGitFixture(page);
+  await installTaskGitFixture(page, [taskRecord()], { logTotalPages: 2 });
   await page.goto(
     `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview`,
   );
-  await page.locator('button[data-file-tree-path="src/example.rs"]').click();
+  await waitForActionHintTarget(
+    page,
+    /Show compare diff for example\.rs$/,
+  );
+  await enterActionHints(page);
+  await page.locator(".task-list-scroll").evaluate((scroller) => {
+    scroller.dispatchEvent(new Event("scroll"));
+  });
+  await expect(actionHintDialog(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await activateActionHint(page, /Show compare diff for example\.rs$/);
   await expect(page).toHaveURL(
     `/tasks/${THREAD_ID}/git/compare?base=origin%2Fmain&head=feature%2Freview&file=example.rs`,
   );
@@ -589,7 +1082,7 @@ test("navigates Compare files and Log commits with deterministic domain Back", {
   const logCount = logHeader.locator(".task-domain-count");
   const logBranch = logHeader.locator(".task-domain-primary-meta");
   const logRelationship = logHeader.locator(".task-domain-secondary-meta");
-  await expect(logCount).toHaveText("1 commit");
+  await expect(logCount).toHaveText("2 commits");
   await expect(logBranch).toHaveText("feature/review");
   await expect(logBranch).toHaveAttribute("title", "feature/review");
   await expect(logRelationship).toBeHidden();
@@ -637,10 +1130,17 @@ test("navigates Compare files and Log commits with deterministic domain Back", {
     refreshAtTrailingEdge: true,
     noHorizontalOverflow: true,
   });
-  await page
-    .locator(`.log-entry[data-commit-sha="${COMMIT.sha}"]`)
-    .getByRole("button", { name: /Open commit diff/ })
-    .click();
+  await activateActionHint(page, /Older page$/);
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/log?page=2`);
+  await activateActionHint(page, /Newest page$/);
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/log`);
+  await expect(
+    logPage.getByRole("button", { name: "Newest page" }),
+  ).toBeDisabled();
+  await activateActionHint(
+    page,
+    new RegExp(`Open commit diff for ${COMMIT.shortSha} ${COMMIT.subject}$`),
+  );
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}`);
   await page.reload();
   await expect(page.locator("caffold-task-git-layout .task-domain-title h2")).toHaveText(
@@ -651,7 +1151,7 @@ test("navigates Compare files and Log commits with deterministic domain Back", {
     name: "Show commit diff for example.rs",
   });
   await expect(commitFile).toBeVisible();
-  await commitFile.click();
+  await activateActionHint(page, /Show commit diff for example\.rs$/);
   await expect(page).toHaveURL(
     `/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}&file=example.rs`,
   );
@@ -659,16 +1159,35 @@ test("navigates Compare files and Log commits with deterministic domain Back", {
   await expect(commitDiff).toContainText("new commit");
   await page.reload();
   await expect(commitDiff).toContainText("new commit");
+
+  await activateActionHint(page, /Show details for example\.rs$/);
+  const fileViewer = page.locator(
+    ".git-mode-log caffold-review-file-viewer:not([hidden])",
+  );
+  const detailsPopover = fileViewer.locator(".viewer-meta-popover");
+  await expect(detailsPopover).toBeVisible();
+  await page.keyboard.press("f");
+  await expect(actionHintDialog(page)).toBeHidden();
+  await expect(detailsPopover).toBeVisible();
+  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}`);
+  await expect(detailsPopover).toBeHidden();
+  await page.goBack();
+  await expect(page).toHaveURL(
+    `/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}&file=example.rs`,
+  );
+  await expect(commitDiff).toContainText("new commit");
+
   const fileBack = page.getByRole("button", { name: "Back to commit" });
   if (await fileBack.isVisible()) {
-    await fileBack.click();
+    await activateActionHint(page, /Back to commit$/);
   } else {
     await page.goBack();
   }
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/log?sha=${COMMIT.sha}`);
   const back = page.getByRole("button", { name: "Back to log" });
   await expect(back).toBeVisible();
-  await back.click();
+  await activateActionHint(page, /Back to log$/);
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/git/log`);
   await expect(page.locator("caffold-git-log-list-page")).toBeVisible();
 });

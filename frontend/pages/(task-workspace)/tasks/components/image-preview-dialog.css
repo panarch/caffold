@@ -1,7 +1,7 @@
 caffold-task-image-preview-dialog {
   position: absolute;
 
-  & dialog {
+  & > dialog {
     width: min(72rem, calc(100vw - 2rem));
     max-width: none;
     height: min(52rem, calc(100dvh - 2rem));
@@ -16,7 +16,7 @@ caffold-task-image-preview-dialog {
     box-shadow: 0 18px 48px rgb(var(--shadow-rgb) / 24%);
   }
 
-  & dialog::backdrop {
+  & > dialog::backdrop {
     background: rgb(var(--scrim-rgb) / 32%);
   }
 
@@ -147,7 +147,7 @@ caffold-task-image-preview-dialog {
 
 @media (max-width: 620px) {
   caffold-task-image-preview-dialog {
-    & dialog {
+    & > dialog {
       width: calc(100vw - 0.5rem);
       height: calc(100dvh - 0.5rem);
     }

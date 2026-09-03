@@ -1,7 +1,7 @@
 caffold-task-directory-picker {
   position: absolute;
 
-  & dialog {
+  & > dialog {
     width: min(42rem, calc(100vw - 2rem));
     max-width: none;
     height: min(38rem, calc(100dvh - 2rem));
@@ -16,7 +16,7 @@ caffold-task-directory-picker {
     box-shadow: 0 18px 48px rgb(var(--shadow-rgb) / 24%);
   }
 
-  & dialog::backdrop {
+  & > dialog::backdrop {
     background: rgb(var(--scrim-rgb) / 32%);
   }
 
@@ -136,7 +136,7 @@ caffold-task-directory-picker {
 
 @media (max-width: 620px) {
   caffold-task-directory-picker {
-    & dialog {
+    & > dialog {
       width: calc(100vw - 0.5rem);
       height: calc(100dvh - 0.5rem);
     }

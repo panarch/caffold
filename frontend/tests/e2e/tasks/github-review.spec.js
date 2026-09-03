@@ -1,5 +1,13 @@
 import { expect, test } from "@playwright/test";
+import {
+  actionHintBadgePresentation,
+  actionHintDialog,
+  activateActionHint,
+  enterActionHints,
+  waitForActionHintTarget,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
+import { TASK_PERMISSION_FIXTURE } from "../support/task-api-fixture.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
 import {
   activeTaskProjection,
@@ -71,6 +79,9 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
     bootstrapFunctionKey: "__taskGithubDetailBootstrap",
   });
   await mockAgentModels(page);
+  await page.route(/\/api\/agent\/permissions(?:\?|$)/, (route) =>
+    route.fulfill({ json: TASK_PERMISSION_FIXTURE })
+  );
 
   const task = linkedWorktreeTask();
   const repository = {
@@ -165,6 +176,99 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
     }],
     commitSummaries: [],
   };
+  const issueRows = [
+    {
+      number: 1984,
+      title: issue.title,
+      state: "open",
+      author: "panarch",
+      labels: [],
+      comments: 0,
+      updatedAt: "2026-08-07T03:00:00Z",
+      url: "https://github.com/gluesql/gluesql/issues/1984",
+    },
+    ...(options.largeLists
+      ? Array.from({ length: 80 }, (_, index) => ({
+          number: 2000 + index,
+          title: `Scrollable issue ${index + 1}`,
+          state: "open",
+          author: "panarch",
+          labels: [],
+          comments: index,
+          updatedAt: "2026-08-07T03:00:00Z",
+          url: `https://github.com/gluesql/gluesql/issues/${2000 + index}`,
+        }))
+      : []),
+  ];
+  const pullRows = [
+    {
+      number: 1983,
+      title: pull.title,
+      state: "open",
+      draft: false,
+      author: "kwondo1017",
+      labels: [],
+      comments: 4,
+      updatedAt: "2026-08-03T03:00:00Z",
+      url: "https://github.com/gluesql/gluesql/pull/1983",
+    },
+    ...(options.largeLists
+      ? Array.from({ length: 80 }, (_, index) => ({
+          number: 2100 + index,
+          title: `Scrollable pull request ${index + 1}`,
+          state: "open",
+          draft: false,
+          author: "kwondo1017",
+          labels: [],
+          comments: index,
+          updatedAt: "2026-08-03T03:00:00Z",
+          url: `https://github.com/gluesql/gluesql/pull/${2100 + index}`,
+        }))
+      : []),
+  ];
+  const pullFiles = [
+    {
+      path: PULL_FILE_PATH,
+      repoRelativePath: "src/review.rs",
+      previousPath: null,
+      previousRepoRelativePath: null,
+      status: "M",
+      additions: 2,
+      deletions: 1,
+      changes: 3,
+      patchAvailable: true,
+      blobUrl: null,
+      rawUrl: null,
+    },
+    {
+      path: PULL_ROOT_FILE_PATH,
+      repoRelativePath: "README.md",
+      previousPath: null,
+      previousRepoRelativePath: null,
+      status: "M",
+      additions: 0,
+      deletions: 0,
+      changes: 0,
+      patchAvailable: false,
+      blobUrl: null,
+      rawUrl: null,
+    },
+    ...(options.largePullFiles
+      ? Array.from({ length: 80 }, (_, index) => ({
+          path: `${WORKTREE_ROOT}/generated/pull-${`${index + 1}`.padStart(3, "0")}.rs`,
+          repoRelativePath: `generated/pull-${`${index + 1}`.padStart(3, "0")}.rs`,
+          previousPath: null,
+          previousRepoRelativePath: null,
+          status: "M",
+          additions: 1,
+          deletions: 1,
+          changes: 2,
+          patchAvailable: true,
+          blobUrl: null,
+          rawUrl: null,
+        }))
+      : []),
+  ];
   const createdTask = {
     ...task,
     id: CREATED_THREAD_ID,
@@ -292,6 +396,7 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
   await page.route(/\/api\/github\/pulls(?:\?|$)/, (route) => {
     counts.pulls += 1;
     const url = new URL(route.request().url());
+    const requestedPage = Number.parseInt(url.searchParams.get("page") ?? "1", 10);
     expect(url.searchParams.get("path")).toBe(WORKTREE_ROOT);
     expect(url.searchParams.get("state")).toBe("open");
     expect(url.searchParams.get("perPage")).toBe("50");
@@ -300,25 +405,13 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
         repository,
         github,
         state: "open",
-        pulls: [
-          {
-            number: 1983,
-            title: pull.title,
-            state: "open",
-            draft: false,
-            author: "kwondo1017",
-            labels: [],
-            comments: 4,
-            updatedAt: "2026-08-03T03:00:00Z",
-            url: "https://github.com/gluesql/gluesql/pull/1983",
-          },
-        ],
-        page: 1,
+        pulls: pullRows,
+        page: requestedPage,
         perPage: 50,
-        totalPulls: 53,
+        totalPulls: options.largeLists ? pullRows.length : 53,
         totalPages: 2,
-        hasPrevious: false,
-        hasNext: true,
+        hasPrevious: requestedPage > 1,
+        hasNext: requestedPage < 2,
       },
     });
   });
@@ -334,21 +427,10 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
         repository,
         github,
         state: "open",
-        issues: [
-          {
-            number: 1984,
-            title: issue.title,
-            state: "open",
-            author: "panarch",
-            labels: [],
-            comments: 0,
-            updatedAt: "2026-08-07T03:00:00Z",
-            url: "https://github.com/gluesql/gluesql/issues/1984",
-          },
-        ],
+        issues: issueRows,
         page: 1,
         perPage: 50,
-        totalIssues: 1,
+        totalIssues: issueRows.length,
         totalPages: 1,
         hasPrevious: false,
         hasNext: false,
@@ -419,35 +501,8 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
         repository,
         github,
         number: 1983,
-        files: [
-          {
-            path: PULL_FILE_PATH,
-            repoRelativePath: "src/review.rs",
-            previousPath: null,
-            previousRepoRelativePath: null,
-            status: "M",
-            additions: 2,
-            deletions: 1,
-            changes: 3,
-            patchAvailable: true,
-            blobUrl: null,
-            rawUrl: null,
-          },
-          {
-            path: PULL_ROOT_FILE_PATH,
-            repoRelativePath: "README.md",
-            previousPath: null,
-            previousRepoRelativePath: null,
-            status: "M",
-            additions: 0,
-            deletions: 0,
-            changes: 0,
-            patchAvailable: false,
-            blobUrl: null,
-            rawUrl: null,
-          },
-        ],
-        totalFiles: 2,
+        files: pullFiles,
+        totalFiles: pullFiles.length,
       },
     });
   });
@@ -468,7 +523,15 @@ async function installLinkedWorktreeGithubFixture(page, options = {}) {
         kind: "PR #1983",
         additions: 2,
         deletions: 1,
-        diff: "@@ -1 +1,2 @@\n-old review\n+new Task-owned review\n+fresh route",
+        diff: options.longPullDiff
+          ? [
+              "@@ -1,80 +1,80 @@",
+              ...Array.from({ length: 80 }, (_, index) => [
+                `-old pull review ${index + 1}`,
+                `+new pull review ${index + 1}`,
+              ]).flat(),
+            ].join("\n")
+          : "@@ -1 +1,2 @@\n-old review\n+new Task-owned review\n+fresh route",
         diffUnavailable: false,
         message: null,
       },
@@ -519,9 +582,22 @@ async function rootPullTreeNames(tree) {
 async function openLinkedWorktreeIssue(page) {
   await page.goto(`/tasks/${THREAD_ID}`);
   await chooseLinkedWorktreeGithubList(page, "issues");
-  await page.locator('button[data-issue-number="1984"]').click();
+  await activateActionHint(page, /Open issue #1984: Keep task GitHub lists fresh$/);
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/issues/1984`);
   return page.locator("caffold-github-issue-detail-page");
+}
+
+async function activatePopupActionHint(page, control, accessibleName, url) {
+  await control.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  await waitForActionHintTarget(page, accessibleName);
+  const popupPromise = page.waitForEvent("popup");
+  await activateActionHint(page, accessibleName);
+  const popup = await popupPromise;
+  await expect(popup).toHaveURL(url);
+  await popup.close();
 }
 
 async function taskGithubPaneGeometry(page, options = {}) {
@@ -600,6 +676,179 @@ async function taskGithubPaneGeometry(page, options = {}) {
     };
   }, options);
 }
+
+test("opens direct and rendered Issue links through the Issue owner", { tag: "@all-viewports" }, async ({
+  context,
+  page,
+}, testInfo) => {
+  await context.route("https://github.com/gluesql/gluesql/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>GitHub link target</title>",
+    }),
+  );
+  const issueBodyUrl =
+    "https://github.com/gluesql/gluesql/issues/1984#issue-body-reference";
+  await installLinkedWorktreeGithubFixture(page, {
+    issueBodyHtml:
+      `<p><a href="${issueBodyUrl}" target="_blank" rel="noreferrer">Issue body reference</a></p>`,
+  });
+
+  await page.goto(`/tasks/${THREAD_ID}/github/issues/1984`);
+  const issueDetail = page.locator("caffold-github-issue-detail-page");
+  const issueBodyReference = issueDetail.getByRole("link", {
+    name: "Issue body reference",
+    exact: true,
+  });
+  await issueBodyReference.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  const issueHint = await enterActionHints(page);
+  await expect(
+    issueHint.getByLabel(/Open issue #1984 on GitHub in a new tab$/),
+  ).toBeVisible();
+  await expect(
+    issueHint.getByLabel(/Open Issue body reference in a new tab$/),
+  ).toBeVisible();
+  await captureReviewScreenshot(page, testInfo, "github-issue-link-hints");
+  await page.keyboard.press("Escape");
+  await activatePopupActionHint(
+    page,
+    issueDetail.getByRole("link", { name: "GitHub", exact: true }),
+    /Open issue #1984 on GitHub in a new tab$/,
+    "https://github.com/gluesql/gluesql/issues/1984",
+  );
+  await activatePopupActionHint(
+    page,
+    issueBodyReference,
+    /Open Issue body reference in a new tab$/,
+    issueBodyUrl,
+  );
+});
+
+test("opens direct and rendered Pull links through the Pull owner", { tag: "@all-viewports" }, async ({
+  context,
+  page,
+}, testInfo) => {
+  await context.route("https://github.com/gluesql/gluesql/**", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<!doctype html><title>GitHub link target</title>",
+    }),
+  );
+  const pullBodyUrl =
+    "https://github.com/gluesql/gluesql/pull/1983#pull-body-reference";
+  const commentUrl =
+    "https://github.com/gluesql/gluesql/pull/1983#issuecomment-1";
+  const commentBodyUrl =
+    "https://github.com/gluesql/gluesql/pull/1983#comment-body-reference";
+  const reviewBodyUrl =
+    "https://github.com/gluesql/gluesql/pull/1983#review-body-reference";
+  const commitUrl =
+    "https://github.com/gluesql/gluesql/commit/3333333333333333333333333333333333333333";
+  const { pull } = await installLinkedWorktreeGithubFixture(page, {
+    pullBodyHtml:
+      `<p><a href="${pullBodyUrl}" target="_blank" rel="noreferrer">Pull body reference</a></p>`,
+  });
+  pull.conversationComments = [{
+    author: "maintainer",
+    body: "Please preserve the review workflow.",
+    bodyHtml:
+      `<p><a href="${commentBodyUrl}" target="_blank" rel="noreferrer">Comment body reference</a></p>`,
+    createdAt: "2026-08-03T02:30:00Z",
+    updatedAt: "2026-08-03T02:30:00Z",
+    url: commentUrl,
+  }];
+  pull.reviewComments = [{
+    author: "reviewer",
+    state: "CHANGES_REQUESTED",
+    body: "Use the exact head.",
+    bodyHtml:
+      `<p><a href="${reviewBodyUrl}" target="_blank" rel="noreferrer">Review body reference</a></p>`,
+    submittedAt: "2026-08-03T02:45:00Z",
+  }];
+  pull.commitSummaries = [{
+    sha: "3333333333333333333333333333333333333333",
+    shortSha: "3333333",
+    subject: "Keep native GitHub links",
+    authorName: "maintainer",
+    committedAt: "2026-08-03T02:50:00Z",
+    url: commitUrl,
+  }];
+
+  await page.goto(`/tasks/${THREAD_ID}/github/pulls/1983`);
+  const pullDetail = page.locator("caffold-github-pull-detail-page");
+  const pullHeaderLink = pullDetail.locator("a.github-pull-link");
+  const pullBodyReference = pullDetail.getByRole("link", {
+    name: "Pull body reference",
+    exact: true,
+  });
+  await pullBodyReference.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  const pullHint = await enterActionHints(page);
+  if (testInfo.project.name === "phone") {
+    await expect(pullHeaderLink).toBeHidden();
+    await expect(
+      pullHint.getByLabel(/Open pull request #1983 on GitHub in a new tab$/),
+    ).toHaveCount(0);
+  } else {
+    await expect(
+      pullHint.getByLabel(/Open pull request #1983 on GitHub in a new tab$/),
+    ).toBeVisible();
+  }
+  await expect(
+    pullHint.getByLabel(/Open Pull body reference in a new tab$/),
+  ).toBeVisible();
+  await captureReviewScreenshot(page, testInfo, "github-pull-link-hints");
+  await page.keyboard.press("Escape");
+  if (testInfo.project.name !== "phone") {
+    await activatePopupActionHint(
+      page,
+      pullHeaderLink,
+      /Open pull request #1983 on GitHub in a new tab$/,
+      "https://github.com/gluesql/gluesql/pull/1983",
+    );
+  }
+  await activatePopupActionHint(
+    page,
+    pullBodyReference,
+    /Open Pull body reference in a new tab$/,
+    pullBodyUrl,
+  );
+  await activatePopupActionHint(
+    page,
+    pullDetail.locator('a[data-github-pull-comment-index="0"]'),
+    /Open conversation comment 1 on GitHub in a new tab$/,
+    commentUrl,
+  );
+  await activatePopupActionHint(
+    page,
+    pullDetail.getByRole("link", {
+      name: "Comment body reference",
+      exact: true,
+    }),
+    /Open Comment body reference in a new tab$/,
+    commentBodyUrl,
+  );
+  await activatePopupActionHint(
+    page,
+    pullDetail.getByRole("link", {
+      name: "Review body reference",
+      exact: true,
+    }),
+    /Open Review body reference in a new tab$/,
+    reviewBodyUrl,
+  );
+  await activatePopupActionHint(
+    page,
+    pullDetail.locator('a[data-github-pull-commit-index="0"]'),
+    /Open commit 3333333 on GitHub in a new tab$/,
+    commitUrl,
+  );
+});
 
 test("contains Issue list and detail content within the foldable Task pane", { tag: "@foldable" }, async ({
   page,
@@ -702,6 +951,320 @@ test("contains Issue list and detail content within the foldable Task pane", { t
     preOwnsOverflow: true,
     tableOwnsOverflow: true,
   });
+});
+
+test("scrolls a retained GitHub Issue body through its public Shadow DOM host", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  await installLinkedWorktreeGithubFixture(page, {
+    issueBodyHtml: [
+      CONSTRAINED_MARKDOWN_HTML,
+      ...Array.from(
+        { length: 100 },
+        (_, index) => `<p>Issue keyboard scroll line ${index + 1}</p>`,
+      ),
+      '<p><a href="https://example.com/deep-issue-link" target="_blank">Deep issue reference</a></p>',
+    ].join(""),
+  });
+  await page.goto(`/tasks/${THREAD_ID}/github/issues/1984`);
+
+  const body = page.locator(
+    "caffold-github-issue-detail-page caffold-github-markdown.github-issue-body",
+  );
+  const workspace = page.locator(".task-workspace-surface");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog:modal");
+  const hud = page.locator(
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
+  );
+  await expect(body).toContainText("Issue keyboard scroll line 100");
+  await expect.poll(() => body.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  const code = body.locator("pre").first();
+  const table = body.locator(".markdown-table-scroll").first();
+  await expect.poll(() => code.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
+  await expect.poll(() => table.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
+  const initialHints = await enterActionHints(page);
+  await expect(
+    initialHints.getByLabel(/ — Open Deep issue reference in a new tab$/),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  await workspace.focus();
+  await page.keyboard.press("s");
+  await expect(selector).toBeVisible();
+  const badges = selector.locator("button[data-scroll-surface-code]");
+  await expect(badges).toHaveCount(3);
+  expect(new Set(await badges.evaluateAll((elements) =>
+    elements.map((element) => element.getAttribute("aria-label")
+      .replace(/^[A-Z]+ — /, ""))
+  ))).toEqual(new Set([
+    "Issue description",
+    "Issue description code block 1",
+    "Issue description Markdown table 1",
+  ]));
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "github-issue-nested-scroll-selector",
+  );
+  const bodyBeforeNested = await body.evaluate((element) => element.scrollTop);
+  await selector.getByLabel(
+    /^[A-Z]+ — Issue description code block 1$/,
+  ).click();
+  await expect(hud).toContainText(
+    "Scroll: Issue description code block 1",
+  );
+  await expect(hud.locator("[data-scroll-mode-shortcut-help]"))
+    .toContainText("?");
+  await page.keyboard.press("l");
+  await expect.poll(() => code.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  expect(await body.evaluate((element) => element.scrollTop)).toBe(
+    bodyBeforeNested,
+  );
+  expect(await table.evaluate((element) => element.scrollLeft)).toBe(0);
+  await page.keyboard.press("Escape");
+
+  await workspace.focus();
+  await page.keyboard.press("s");
+  await selector.getByLabel(
+    /^[A-Z]+ — Issue description Markdown table 1$/,
+  ).click();
+  await page.keyboard.press("l");
+  await expect.poll(() => table.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+
+  await workspace.focus();
+  await page.keyboard.press("s");
+  await selector.getByLabel(/^[A-Z]+ — Issue description$/).click();
+  await expect(hud).toContainText("Scroll: Issue description");
+  await page.keyboard.press("j");
+  await expect.poll(() => body.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await body.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect.poll(() => body.evaluate((element) =>
+    element.scrollTop + element.clientHeight >= element.scrollHeight - 1
+  )).toBe(true);
+  const scrolledHints = await enterActionHints(page);
+  await expect(
+    scrolledHints.getByLabel(/ — Open Deep issue reference in a new tab$/),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Back to issues" }).click();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/issues`);
+  await expect(hud).toBeHidden();
+  const consumed = await workspace.evaluate((element) => {
+    const event = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      code: "KeyS",
+      key: "s",
+    });
+    element.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(consumed).toBe(false);
+  await expect(selector).toBeHidden();
+});
+
+test("scrolls GitHub lists, Pull detail, and exact Pull Files surfaces from the root", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ ...viewport, height: 360 });
+  await installLinkedWorktreeGithubFixture(page, {
+    largeLists: true,
+    largePullFiles: true,
+    longPullDiff: true,
+    pullBodyHtml: [
+      '<pre><code>const pullRequestWideLine = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";</code></pre>',
+      ...Array.from(
+        { length: 100 },
+        (_, index) => `<p>Pull keyboard scroll line ${index + 1}</p>`,
+      ),
+    ].join(""),
+  });
+
+  const workspace = page.locator(".task-workspace-surface");
+  const selector = page.locator("caffold-scroll-surface-selector > dialog:modal");
+  const hud = page.locator(
+    "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
+  );
+  const scrollSingleSurface = async (scrollport, label) => {
+    await expect.poll(() => scrollport.evaluate(
+      (element) => element.scrollHeight > element.clientHeight + 1,
+    )).toBe(true);
+    await workspace.focus();
+    await page.keyboard.press("s");
+    await expect(selector).toBeHidden();
+    await expect(hud).toContainText(`Scroll: ${label}`);
+    await page.keyboard.press("j");
+    await expect.poll(() => scrollport.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    await page.keyboard.press("Escape");
+    await expect(hud).toBeHidden();
+  };
+
+  await page.goto(`/tasks/${THREAD_ID}/github/issues`);
+  await scrollSingleSurface(
+    page.locator("caffold-github-issues-list-page .github-issues-list"),
+    "GitHub issues",
+  );
+
+  await page.goto(`/tasks/${THREAD_ID}/github/pulls`);
+  await scrollSingleSurface(
+    page.locator("caffold-github-pulls-list-page .github-pulls-list"),
+    "GitHub pull requests",
+  );
+
+  await page.goto(`/tasks/${THREAD_ID}/github/pulls/1983`);
+  const pullDetailScroll = page.locator(
+    "caffold-github-pull-detail-page .github-pull-viewer-scroll",
+  );
+  const pullCode = page.locator(
+    "caffold-github-pull-detail-page caffold-github-markdown",
+  ).first().locator("pre").first();
+  await expect.poll(() => pullDetailScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await expect.poll(() => pullCode.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1,
+  )).toBe(true);
+  await workspace.focus();
+  await page.keyboard.press("s");
+  await expect(selector).toBeVisible();
+  await expect(selector.locator("button[data-scroll-surface-code]")).toHaveCount(2);
+  await selector.getByLabel(
+    /^[A-Z]+ — Pull request Markdown 1 code block 1$/,
+  ).click();
+  const pullDetailBeforeCode = await pullDetailScroll.evaluate(
+    (element) => element.scrollTop,
+  );
+  await page.keyboard.press("l");
+  await expect.poll(() => pullCode.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  expect(await pullDetailScroll.evaluate((element) => element.scrollTop)).toBe(
+    pullDetailBeforeCode,
+  );
+  await page.keyboard.press("Escape");
+  await workspace.focus();
+  await page.keyboard.press("s");
+  await selector.getByLabel(/^[A-Z]+ — Pull request details$/).click();
+  await page.keyboard.press("j");
+  await expect.poll(() =>
+    pullDetailScroll.evaluate((element) => element.scrollTop)
+  ).toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await activateActionHint(page, /Open files for PR #1983$/);
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls/1983/files`);
+
+  const treeScroll = page.locator(
+    "caffold-github-pull-files-page caffold-file-tree .file-tree-scroll",
+  );
+  await expect.poll(() => treeScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  const pullFilesSeparator = page.locator(
+    "caffold-github-pull-files-page",
+  ).getByRole("separator", { name: "Resize review side panel" });
+  if (testInfo.project.name === "phone") {
+    await expect(pullFilesSeparator).toBeHidden();
+    const pullFileHints = await enterActionHints(page);
+    await expect(
+      pullFileHints.getByLabel(/ — Resize review side panel$/),
+    ).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await workspace.focus();
+    await page.keyboard.press("s");
+    await expect(selector).toBeHidden();
+    await expect(hud).toContainText("Scroll: Pull request files");
+    await page.keyboard.press("j");
+    await expect.poll(() => treeScroll.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    await page.keyboard.press("Escape");
+  } else {
+    const before = Number(
+      await pullFilesSeparator.getAttribute("aria-valuenow"),
+    );
+    await activateActionHint(page, "Resize review side panel");
+    await expect(pullFilesSeparator).toBeFocused();
+    await pullFilesSeparator.press("ArrowRight");
+    await expect.poll(async () =>
+      Number(await pullFilesSeparator.getAttribute("aria-valuenow"))
+    ).toBeGreaterThan(before);
+  }
+
+  const reviewFile = page.locator(
+    `caffold-github-pull-files-page button[data-file-tree-path="${PULL_FILE_PATH}"]`,
+  );
+  await reviewFile.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  await activateActionHint(page, /Show pull request diff for src\/review\.rs$/);
+  const diffScroll = page.locator(
+    "caffold-github-pull-files-page caffold-review-file-viewer:not([hidden]) " +
+      "caffold-diff-viewer .diff-lines",
+  );
+  await expect(diffScroll).toContainText("new pull review 80");
+  await expect.poll(() => diffScroll.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await treeScroll.evaluate((element) => {
+    if (element.scrollTop === 0) {
+      return;
+    }
+    return new Promise((resolve) => {
+      element.addEventListener("scroll", () => resolve(), { once: true });
+      element.scrollTop = 0;
+    });
+  });
+
+  await workspace.focus();
+  await page.keyboard.press("s");
+  if (testInfo.project.name === "phone") {
+    await expect(selector).toBeHidden();
+    await expect(hud).toContainText("Scroll: src/review.rs diff");
+  } else {
+    await expect(selector).toBeVisible();
+    const badges = selector.locator("button[data-scroll-surface-code]");
+    await expect(badges).toHaveCount(2);
+    expect(new Set(await badges.evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute("aria-label")
+        .replace(/^[A-Z]+ — /, ""))
+    ))).toEqual(new Set(["Pull request files", "src/review.rs diff"]));
+    await selector.getByLabel(/^[A-Z]+ — Pull request files$/).click();
+    await page.keyboard.press("j");
+    await expect.poll(() => treeScroll.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    expect(await diffScroll.evaluate((element) => element.scrollTop)).toBe(0);
+    await page.keyboard.press("Escape");
+
+    await workspace.focus();
+    await page.keyboard.press("s");
+    await selector.getByLabel(/^[A-Z]+ — src\/review\.rs diff$/).click();
+  }
+  const treeBeforeDiffScroll = await treeScroll.evaluate(
+    (element) => element.scrollTop,
+  );
+  await page.keyboard.press("j");
+  await expect.poll(() => diffScroll.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  expect(await treeScroll.evaluate((element) => element.scrollTop)).toBe(
+    treeBeforeDiffScroll,
+  );
+  await page.keyboard.press("Escape");
+  await expect(hud).toBeHidden();
 });
 
 test("keeps Pull Request headers, actions, and Markdown inside the foldable Task pane", { tag: "@foldable" }, async ({
@@ -886,6 +1449,39 @@ test("keeps loaded GitHub routes stable across unrelated Task stream updates", {
   expect(fixture.counts.pullFile).toBe(1);
 });
 
+test("toggles retained Pull Files directories through the GitHub owner", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installLinkedWorktreeGithubFixture(page);
+  const pullDetail = await openLinkedWorktreePull(page);
+  await pullDetail.getByRole("button", { name: "Open files for PR #1983" }).click();
+
+  const tree = page.locator(
+    "caffold-github-pull-files-tree caffold-file-tree",
+  );
+  await expect(tree).toBeVisible();
+  const srcDirectory = tree.locator(
+    'button[data-file-tree-path="src"]',
+  );
+  const srcFile = tree.locator(
+    `button[data-file-tree-path="${PULL_FILE_PATH}"]`,
+  );
+  await expect(srcDirectory).toHaveAccessibleName("Collapse src");
+  await expect(srcFile).toBeVisible();
+  await activateActionHint(page, /Collapse src$/);
+  await expect(actionHintDialog(page)).toBeHidden();
+  await expect(srcDirectory).toHaveAccessibleName("Expand src");
+  await expect(srcFile).toHaveCount(0);
+  await expect
+    .poll(() =>
+      srcDirectory.evaluate((element) => document.activeElement === element)
+    )
+    .toBe(true);
+  await activateActionHint(page, /Expand src$/);
+  await expect(srcDirectory).toHaveAccessibleName("Collapse src");
+  await expect(srcFile).toBeVisible();
+});
+
 test("applies the global ordering to GitHub PR Files without refetching", { tag: "@all-viewports" }, async ({
   page,
 }) => {
@@ -917,13 +1513,66 @@ test("preserves Issue Start Task setup, focus return, and created Task selection
   const opener = issueDetail.getByRole("button", {
     name: "Start Task for issue #1984",
   });
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
 
-  await opener.click();
+  await opener.focus();
+  await page.keyboard.press("f");
+  const openerHint = actionHintDialog(page);
+  const issueStartHint = openerHint.getByRole("button", {
+    name: / — Start Task for issue #1984$/,
+  });
+  await expect(issueStartHint).toBeVisible();
+  const issueStartCode = await issueStartHint.getAttribute(
+    "data-action-hint-code",
+  );
+  expect(issueStartCode).toBeTruthy();
+  await page.keyboard.type(issueStartCode.toLowerCase());
+  await expect(openerHint).toBeHidden();
   await expect(dialog).toBeVisible();
   await expect(dialog.locator("select[name='baseRef']")).toHaveValue("origin/main");
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).focus();
+  await page.keyboard.press("f");
+  const dialogHint = actionHintDialog(page);
+  await expect(
+    dialogHint.getByRole("button", { name: / — Start Task$/ }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialogHint).toBeHidden();
+  await expect(dialog).toBeVisible();
+
+  const modelButton = dialog.locator(".task-model-button");
+  const modelPopover = dialog.locator(".task-model-popover");
+  await modelButton.click();
+  await expect(modelPopover).toBeVisible();
+  await page.keyboard.press("f");
+  let hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await expect(
+    hint.getByRole("button", { name: / — GPT-5\.6-Sol.*Selected$/ }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(hint).toBeHidden();
+  await expect(modelPopover).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(modelPopover).toBeHidden();
+
+  const permissionButton = dialog.locator(".task-permission-button");
+  const permissionPopover = dialog.locator(".task-permission-popover");
+  await permissionButton.click();
+  await expect(permissionPopover).toBeVisible();
+  await page.keyboard.press("f");
+  hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await expect(
+    hint.getByRole("button", { name: / — Approve for me.*Selected$/ }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(hint).toBeHidden();
+  await expect(permissionPopover).toBeVisible();
+
+  await dialog.evaluate((element) => element.close("cancel"));
   await expect(dialog).toBeHidden();
+  await expect(permissionPopover).toBeHidden();
   await expect(opener).toBeFocused();
 
   await opener.click();
@@ -951,6 +1600,186 @@ test("preserves Issue Start Task setup, focus return, and created Task selection
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
 });
 
+test("owns Issue Task Start Hint, native select, Editing Escape, and Scroll contexts", { tag: "@desktop" }, async ({
+  page,
+}, testInfo) => {
+  await installLinkedWorktreeGithubFixture(page);
+  const issueDetail = await openLinkedWorktreeIssue(page);
+  const opener = issueDetail.getByRole("button", {
+    name: "Start Task for issue #1984",
+  });
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
+  const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+  const select = dialog.locator("select[name='baseRef']");
+
+  await opener.click();
+  await expect(dialog).toBeVisible();
+  await expect(select).toHaveValue("origin/main");
+  await cancel.focus();
+  await page.keyboard.press("f");
+  let hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await expect(hint.locator('[data-action-hint-code="M"]')).toHaveAttribute(
+    "aria-label",
+    / — Choose model/,
+  );
+  for (const name of [
+    / — Cancel$/,
+    / — Start Task$/,
+    / — Choose approval mode$/,
+    / — Choose Base branch$/,
+  ]) {
+    await expect(hint.getByRole("button", { name })).toBeVisible();
+  }
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "github-issue-task-start-action-hints",
+  );
+
+  await page.keyboard.press("m");
+  await expect(hint).toBeHidden();
+  const modelPopover = dialog.locator(".task-model-popover");
+  await expect(modelPopover).toBeVisible();
+  await page.keyboard.press("f");
+  hint = actionHintDialog(page);
+  await expect(
+    hint.getByRole("button", { name: / — GPT-5\.6-Sol.*Selected$/ }),
+  ).toBeVisible();
+  await expect(hint.getByRole("button", { name: / — Start Task$/ }))
+    .toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(hint).toBeHidden();
+  await expect(modelPopover).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(modelPopover).toBeHidden();
+
+  await cancel.focus();
+  await page.keyboard.press("f");
+  hint = actionHintDialog(page);
+  const permissionHint = hint.getByRole("button", {
+    name: / — Choose approval mode$/,
+  });
+  const permissionCode = await permissionHint.getAttribute(
+    "data-action-hint-code",
+  );
+  expect(permissionCode).toBeTruthy();
+  await page.keyboard.type(permissionCode.toLowerCase());
+  await expect(hint).toBeHidden();
+  const permissionPopover = dialog.locator(".task-permission-popover");
+  await expect(permissionPopover).toBeVisible();
+  await page.keyboard.press("f");
+  hint = actionHintDialog(page);
+  await expect(
+    hint.getByRole("button", { name: / — Approve for me.*Selected$/ }),
+  ).toBeVisible();
+  await expect(hint.getByRole("button", { name: / — Choose Base branch$/ }))
+    .toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(hint).toBeHidden();
+  await expect(permissionPopover).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(permissionPopover).toBeHidden();
+
+  await cancel.focus();
+  await page.keyboard.press("f");
+  hint = actionHintDialog(page);
+  const baseHint = hint.getByRole("button", {
+    name: / — Choose Base branch$/,
+  });
+  expect(await actionHintBadgePresentation(baseHint)).toEqual({
+    backgroundMatches: true,
+    borderVisible: true,
+    colorMatches: true,
+    hasBlockPadding: true,
+    position: "absolute",
+  });
+  const baseCode = await baseHint.getAttribute("data-action-hint-code");
+  expect(baseCode).toBeTruthy();
+  await page.keyboard.type(baseCode.toLowerCase());
+  await expect(hint).toBeHidden();
+  await expect(select).toBeFocused();
+  await expect.poll(() => select.evaluate((element) => element.matches(":open")))
+    .toBe(true);
+  await page.keyboard.press("f");
+  await expect(actionHintDialog(page)).toBeHidden();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect.poll(() => select.evaluate((element) => element.matches(":open")))
+    .toBe(false);
+  await expect(dialog).toBeVisible();
+  await cancel.focus();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+
+  await opener.click();
+  await expect(dialog).toBeVisible();
+  await expect(select).toHaveValue("origin/main");
+  const body = dialog.locator(".github-task-start-body");
+  const hud = dialog.locator(
+    ":scope > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud",
+  );
+  await expect.poll(() => body.evaluate(
+    (element) => element.scrollHeight <= element.clientHeight + 1,
+  )).toBe(true);
+  await cancel.focus();
+  await page.keyboard.press("s");
+  await expect(hud).toBeHidden();
+  await body.evaluate((element) => {
+    element.style.height = "120px";
+    element.style.maxHeight = "120px";
+  });
+  await expect.poll(() => body.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await cancel.focus();
+  await page.keyboard.press("s");
+  await expect(hud).toContainText("Scroll: GitHub Task setup");
+  await page.keyboard.press("j");
+  await expect.poll(() => body.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await page.keyboard.press("Escape");
+  await expect(hud).toBeHidden();
+  await expect(dialog).toBeVisible();
+  await body.evaluate((element) => {
+    if (element.scrollTop === 0) {
+      return;
+    }
+    return new Promise((resolve) => {
+      element.addEventListener("scroll", () => resolve(), { once: true });
+      element.scrollTop = 0;
+    });
+  });
+
+  await select.evaluate((element) => {
+    element.showPicker = () => {
+      throw new DOMException("Picker blocked by fixture", "NotAllowedError");
+    };
+  });
+  await cancel.focus();
+  await page.keyboard.press("f");
+  hint = actionHintDialog(page);
+  const fallbackHint = hint.getByRole("button", {
+    name: / — Choose Base branch$/,
+  });
+  const fallbackCode = await fallbackHint.getAttribute("data-action-hint-code");
+  expect(fallbackCode).toBeTruthy();
+  await page.keyboard.type(fallbackCode.toLowerCase());
+  await expect(hint).toBeHidden();
+  await expect(select).toBeFocused();
+  expect(await select.evaluate((element) => element.matches(":open"))).toBe(false);
+  await select.evaluate((element) => {
+    delete element.showPicker;
+  });
+  await page.keyboard.press("Escape");
+  await expect(cancel).toBeFocused();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+});
+
 test("starts a Task from a Section-scoped GitHub Issue", { tag: "@desktop" }, async ({ page }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page, {
     sectionComposerSettings: {
@@ -973,7 +1802,7 @@ test("starts a Task from a Section-scoped GitHub Issue", { tag: "@desktop" }, as
   });
   await opener.click();
 
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
   await expect(dialog).toBeVisible();
   await expect.poll(() =>
     dialog.locator("caffold-task-turn-options").evaluate((options) =>
@@ -985,7 +1814,10 @@ test("starts a Task from a Section-scoped GitHub Issue", { tag: "@desktop" }, as
     fastMode: true,
   });
   await dialog.locator("select[name='baseRef']").selectOption("main");
-  await dialog.getByRole("button", { name: "Start Task" }).click();
+  await dialog.getByRole("button", {
+    name: "Start Task",
+    exact: true,
+  }).click();
 
   await expect.poll(() => fixture.counts.taskCreates).toBe(1);
   expect(fixture.requests.taskCreates[0].cwd).toBe(WORKTREE_ROOT);
@@ -1043,7 +1875,7 @@ test("names the tools a Claude Task actually has in its issue setup prompt", { t
     name: "Start Task for issue #1984",
   });
   await opener.click();
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
   await expect(dialog).toBeVisible();
   await expect.poll(() =>
     dialog.locator("caffold-task-turn-options").evaluate((options) =>
@@ -1069,11 +1901,27 @@ test("names the tools a Claude Task actually has in its issue setup prompt", { t
 test("starts a same-repository PR Task from the exact prepared head", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   const pullDetail = await openLinkedWorktreePull(page);
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
 
-  await pullDetail.getByRole("button", {
+  const opener = pullDetail.getByRole("button", {
     name: "Start Task for pull request #1983",
-  }).click();
+  });
+  await opener.focus();
+  await page.keyboard.press("f");
+  const openerHint = actionHintDialog(page);
+  await expect(
+    openerHint.getByRole("button", { name: / — Open files for PR #1983$/ }),
+  ).toBeVisible();
+  const pullStartHint = openerHint.getByRole("button", {
+    name: / — Start Task for pull request #1983$/,
+  });
+  await expect(pullStartHint).toBeVisible();
+  const pullStartCode = await pullStartHint.getAttribute(
+    "data-action-hint-code",
+  );
+  expect(pullStartCode).toBeTruthy();
+  await page.keyboard.type(pullStartCode.toLowerCase());
+  await expect(openerHint).toBeHidden();
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('[data-pull-ref="base"]')).toContainText(
     "gluesql/gluesql:main @ 111111111111",
@@ -1083,7 +1931,14 @@ test("starts a same-repository PR Task from the exact prepared head", { tag: "@a
   );
   await expect(dialog.locator("select[name='baseRef']")).toBeHidden();
   await captureReviewScreenshot(page, testInfo, "github-pr-start-task-dialog");
-  await dialog.getByRole("button", { name: "Start Task" }).click();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).focus();
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  const startHint = hint.getByRole("button", { name: / — Start Task$/ });
+  const startCode = await startHint.getAttribute("data-action-hint-code");
+  expect(startCode).toBeTruthy();
+  await page.keyboard.type(startCode.toLowerCase());
+  await expect(hint).toBeHidden();
 
   await expect.poll(() => fixture.counts.taskCreates).toBe(1);
   expect(fixture.requests.pullHeads).toEqual([{
@@ -1116,7 +1971,7 @@ test("keeps long PR refs in one shared horizontal scroll with sticky labels", { 
     },
   });
   const pullDetail = await openLinkedWorktreePull(page);
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
 
   await pullDetail.getByRole("button", {
     name: "Start Task for pull request #1983",
@@ -1167,7 +2022,7 @@ test("starts a fork PR Task through the base repository pull ref", { tag: "@all-
     },
   });
   const pullDetail = await openLinkedWorktreePull(page);
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
 
   await pullDetail.getByRole("button", {
     name: "Start Task for pull request #1983",
@@ -1200,7 +2055,7 @@ test("keeps PR Task setup recoverable when the canonical head is unavailable", {
     message: "Pull request head is unavailable. Refresh the PR details and try again.",
   };
   const pullDetail = await openLinkedWorktreePull(page);
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
 
   await pullDetail.getByRole("button", {
     name: "Start Task for pull request #1983",
@@ -1224,7 +2079,7 @@ test("requires an explicit PR refresh after the head moves", { tag: "@all-viewpo
     message: `Pull request head moved from ${PULL_HEAD_OID} to ${movedOid}. Refresh the PR details before starting a Task.`,
   };
   const pullDetail = await openLinkedWorktreePull(page);
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
 
   await pullDetail.getByRole("button", {
     name: "Start Task for pull request #1983",
@@ -1235,11 +2090,24 @@ test("requires an explicit PR refresh after the head moves", { tag: "@all-viewpo
 
   fixture.pull.headRefOid = movedOid;
   fixture.controls.pullHeadFailure = null;
-  await dialog.getByRole("button", { name: "Refresh PR" }).click();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).focus();
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  const refreshHint = hint.getByRole("button", { name: / — Refresh PR$/ });
+  await expect(refreshHint).toBeVisible();
+  await expect(hint.getByRole("button", { name: / — Choose Base branch$/ }))
+    .toHaveCount(0);
+  const refreshCode = await refreshHint.getAttribute("data-action-hint-code");
+  expect(refreshCode).toBeTruthy();
+  await page.keyboard.type(refreshCode.toLowerCase());
+  await expect(hint).toBeHidden();
   await expect(dialog.locator('[data-pull-ref="head"]')).toContainText(
     "@ 333333333333",
   );
-  await dialog.getByRole("button", { name: "Start Task" }).click();
+  await dialog.getByRole("button", {
+    name: "Start Task",
+    exact: true,
+  }).click();
   await expect.poll(() => fixture.counts.taskCreates).toBe(1);
   expect(fixture.requests.pullHeads.at(-1).headOid).toBe(movedOid);
 });
@@ -1253,7 +2121,7 @@ test("invalidates a pending GitHub Task start when the GitHub surface deactivate
     releasePullHead = resolve;
   });
   const pullDetail = await openLinkedWorktreePull(page);
-  const dialog = page.locator("caffold-github-task-start-dialog dialog");
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
 
   await pullDetail.getByRole("button", {
     name: "Start Task for pull request #1983",
@@ -1335,7 +2203,34 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
 }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   await page.goto(`/tasks/${THREAD_ID}`);
-  await chooseLinkedWorktreeGithubList(page, "issues");
+  await activateActionHint(page, /Open GitHub workspace$/);
+  const githubPopover = page.locator(
+    ".detail-layout-summary caffold-task-detail-github > .task-github-popover",
+  );
+  await expect(githubPopover).toBeVisible();
+  await page.keyboard.press("s");
+  await expect(
+    githubPopover.locator("caffold-scroll-mode-hud .scroll-mode-status"),
+  ).toBeHidden();
+  await page.keyboard.press("f");
+  const githubHint = actionHintDialog(page);
+  await expect(githubHint).toBeVisible();
+  await expect(
+    githubHint.getByRole("button", { name: / — Pull Requests$/ }),
+  ).toBeVisible();
+  const issues = githubHint.getByRole("button", { name: / — Issues$/ });
+  await expect(issues).toBeVisible();
+  await expect.poll(() => actionHintBadgePresentation(issues)).toEqual({
+    backgroundMatches: true,
+    borderVisible: true,
+    colorMatches: true,
+    hasBlockPadding: true,
+    position: "absolute",
+  });
+  const issuesCode = await issues.getAttribute("data-action-hint-code");
+  expect(issuesCode).toBeTruthy();
+  await page.keyboard.type(issuesCode.toLowerCase());
+  await expect(githubPopover).toBeHidden();
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/issues`);
   await page.reload();
   await expect(page.locator("caffold-github-issues-list-page")).toContainText(
@@ -1360,21 +2255,34 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
 
   await chooseLinkedWorktreeGithubList(page, "pulls");
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls`);
-  await page.locator('button[data-pull-number="1983"]').click();
+  await activateActionHint(page, /Older pull request page$/);
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls?page=2`);
+  await activateActionHint(page, /Newest pull request page$/);
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls`);
+  await activateActionHint(
+    page,
+    /Open pull request #1983: Reject unsupported table function arguments$/,
+  );
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls/1983`);
   const pullDetail = page.locator("caffold-github-pull-detail-page");
   await expect(pullDetail).toContainText("Task-owned Pull Request detail");
   await page.reload();
   await expect(pullDetail).toContainText("Task-owned Pull Request detail");
 
-  await pullDetail.getByRole("button", { name: "Open files for PR #1983" }).click();
+  const pullHints = await enterActionHints(page);
+  await expect(
+    pullHints.getByLabel(/Start Task for pull request #1983$/),
+  ).toBeVisible();
+  await expect(pullHints.getByLabel(/GitHub$/)).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await activateActionHint(page, /Open files for PR #1983$/);
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls/1983/files`);
   const pullFile = page.locator(`button[data-file-tree-path="${PULL_FILE_PATH}"]`);
   await expect(pullFile).toBeVisible();
   await page.reload();
   await expect(pullFile).toBeVisible();
 
-  await pullFile.click();
+  await activateActionHint(page, /Show pull request diff for src\/review\.rs$/);
   await expect(page).toHaveURL(
     `/tasks/${THREAD_ID}/github/pulls/1983/files?file=src%2Freview.rs`,
   );
@@ -1387,12 +2295,44 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
   );
   expect(fixture.counts.pullFile).toBeGreaterThanOrEqual(2);
 
+  await activateActionHint(page, /Show details for .*review\.rs$/);
+  const fileViewer = page.locator(
+    "caffold-github-pull-files-page caffold-review-file-viewer:not([hidden])",
+  );
+  const detailsPopover = fileViewer.locator(".viewer-meta-popover");
+  await expect(detailsPopover).toBeVisible();
+  await page.keyboard.press("f");
+  await expect(actionHintDialog(page)).toBeHidden();
+  await expect(detailsPopover).toBeVisible();
+  await page.getByRole("button", { name: "Conversation", exact: true }).click();
+  await expect(page).toHaveURL(`/tasks/${THREAD_ID}`);
+  await expect(detailsPopover).toBeHidden();
   await page.goBack();
+  await expect(page).toHaveURL(
+    `/tasks/${THREAD_ID}/github/pulls/1983/files?file=src%2Freview.rs`,
+  );
+  await expect(page.locator("caffold-diff-viewer")).toContainText(
+    "new Task-owned review",
+  );
+
+  const fileBack = page.getByRole("button", { name: "Back to files" });
+  if (await fileBack.isVisible()) {
+    await activateActionHint(page, /Back to files$/);
+  } else {
+    await page.goBack();
+  }
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls/1983/files`);
   await expect(pullFile).toBeVisible();
-  await page.getByRole("button", { name: "Back to PR" }).click();
+  await activateActionHint(page, /Back to PR$/);
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls/1983`);
-  await page.getByRole("button", { name: "Back to pull requests" }).click();
+  await expect(pullDetail).toBeVisible();
+  await expect(page.locator("caffold-github-pull-files-page")).toBeHidden();
+  const backToPulls = page.getByRole("button", {
+    name: "Back to pull requests",
+  });
+  await backToPulls.scrollIntoViewIfNeeded();
+  await expect(backToPulls).toBeInViewport();
+  await activateActionHint(page, /Back to pull requests$/);
   await expect(page).toHaveURL(`/tasks/${THREAD_ID}/github/pulls`);
 });
 

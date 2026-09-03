@@ -4,6 +4,17 @@ import "../../../../../../../components/file-viewer.js";
 import { REVIEW_PANEL_DEFAULT_WIDTH } from "../../../../../../../components/review-panel-resizer.js";
 import { REVIEW_SINGLE_PANE_MEDIA_QUERY } from "../../../../../../../components/review-responsive.js";
 import "./components/changes-tree.js";
+import {
+  ACTION_HINT_ACTION,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  mergeActionHintScopes,
+} from "../../../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  mergeScrollSurfaceScopes,
+} from "../../../../../../../scroll-scope.js";
 
 const LOADING_DELAY_MS = 180;
 
@@ -358,6 +369,11 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     this.commitTree.setSelectedPath(path ?? "");
   }
 
+  deactivate() {
+    this.ensureRendered();
+    this.fileViewer.deactivate();
+  }
+
   isFileViewer(target) {
     this.ensureRendered();
     return target === this.fileViewer;
@@ -369,9 +385,96 @@ class CaffoldGitLogCommitPage extends HTMLElement {
     return [shortSha, subject].filter(Boolean).join(" ");
   }
 
+  actionHintScope({ scopeId = "git:commit", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    const sha = this.currentCommitSha();
+    if (!sha || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const listActive = this.detailView === "list" ||
+      !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches;
+    const viewerActive = this.detailView === "viewer";
+    const prefix = `${scopeId}:${encodeURIComponent(sha)}`;
+    const resizer = this.panelResizer;
+    const resizerScope = hasActionHintLayoutBox(resizer)
+      ? resizer.actionHintScope?.({
+          scopeId: `${prefix}:files`,
+          actionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
+          clipRoots: [this, ...clipRoots],
+          isCurrent: () =>
+            this.isConnected &&
+            !this.hidden &&
+            this.currentCommitSha() === sha &&
+            this.panelResizer === resizer,
+        })
+      : null;
+    return mergeActionHintScopes(
+      listActive
+        ? this.commitTree.actionHintScope({
+            scopeId: `${prefix}:files`,
+            actionId: ACTION_HINT_ACTION.FILE_OPEN,
+            disclosureActionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
+      resizerScope,
+      viewerActive
+        ? this.fileViewer.actionHintScope({
+            scopeId: `${prefix}:viewer`,
+            actionId: ACTION_HINT_ACTION.PARENT,
+            detailsActionId: ACTION_HINT_ACTION.FILE_DETAILS_OPEN,
+            refreshActionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+            linkActionId: ACTION_HINT_ACTION.LINK_OPEN,
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
+    );
+  }
+
+  scrollSurfaceScope({ scopeId = "git:commit", clipRoots = [] } = {}) {
+    this.ensureRendered();
+    const sha = this.currentCommitSha();
+    if (!sha || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    const listActive = this.detailView === "list" ||
+      !window.matchMedia(REVIEW_SINGLE_PANE_MEDIA_QUERY).matches;
+    const viewerActive = this.detailView === "viewer";
+    const prefix = `${scopeId}:${encodeURIComponent(sha)}`;
+    return mergeScrollSurfaceScopes(
+      listActive && hasScrollLayoutBox(this.commitTree)
+        ? this.commitTree.scrollSurfaceScope({
+            scopeId: `${prefix}:files`,
+            label: "Commit files",
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
+      viewerActive && hasScrollLayoutBox(this.fileViewer)
+        ? this.fileViewer.scrollSurfaceScope({
+            scopeId: `${prefix}:viewer`,
+            clipRoots: [this, ...clipRoots],
+          })
+        : null,
+    );
+  }
+
+  keyboardNavigationContexts({ scopeId = "git:commit" } = {}) {
+    this.ensureRendered();
+    const sha = this.currentCommitSha();
+    return sha && !this.hidden && this.detailView === "viewer"
+      ? this.fileViewer.keyboardNavigationContexts({
+          scopeId: `${scopeId}:${encodeURIComponent(sha)}:viewer`,
+        })
+      : [];
+  }
+
   setDetailView(view) {
     this.ensureRendered();
-    this.detailView = view === "viewer" ? "viewer" : "list";
+    const nextView = view === "viewer" ? "viewer" : "list";
+    if (nextView !== "viewer") {
+      this.fileViewer.deactivate();
+    }
+    this.detailView = nextView;
     this.dataset.detailView = this.detailView;
   }
 

@@ -3,6 +3,15 @@ import {
   prepareGitHubPullHead,
 } from "../../../../../../../../api.js";
 import { escapeHtml } from "../../../../../../../../components/dom.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../../../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../../../../../scroll-scope.js";
 
 class CaffoldGithubPullTaskSource extends HTMLElement {
   connectedCallback() {
@@ -66,6 +75,77 @@ class CaffoldGithubPullTaskSource extends HTMLElement {
 
   readyForSubmission() {
     return Boolean(this.repository?.rootPath && pullIsValid(this.source()) && !this.pending);
+  }
+
+  actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
+    const control = this.querySelector(
+      '[data-github-pull-source-action="refresh"]',
+    );
+    if (!scopeId || !control || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const rootPath = `${this.repository?.rootPath ?? ""}`;
+    const sourceNumber = `${this.source()?.number ?? ""}`;
+    return {
+      blocked: false,
+      targets: [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:refresh`,
+        actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
+        label: control.textContent?.trim() || "Refresh PR",
+        control,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.repository?.rootPath === rootPath &&
+          `${this.source()?.number ?? ""}` === sourceNumber &&
+          this.querySelector(
+            '[data-github-pull-source-action="refresh"]',
+          ) === control &&
+          !this.pending &&
+          !this.locked &&
+          !control.disabled,
+      })],
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
+  }
+
+  scrollSurfaceScope({ scopeId = "", clipRoots = [] } = {}) {
+    const scrollport = this.querySelector(":scope > dl");
+    const rootPath = `${this.repository?.rootPath ?? ""}`;
+    const sourceNumber = `${this.source()?.number ?? ""}`;
+    if (
+      !scopeId ||
+      !scrollport ||
+      !rootPath ||
+      !sourceNumber ||
+      this.hidden
+    ) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:relationship`,
+        label: "Pull request base and head relationship",
+        scrollport,
+        axes: ["horizontal"],
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          `${this.repository?.rootPath ?? ""}` === rootPath &&
+          `${this.source()?.number ?? ""}` === sourceNumber &&
+          this.querySelector(":scope > dl") === scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   async prepareSetup(provider) {

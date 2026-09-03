@@ -9,6 +9,12 @@
 @import "./components/review-panel-resizer.css";
 @import "./components/segmented-control.css";
 @import "./pages/(task-workspace)/layout.css";
+@import "./action-hints/components/dialog.css";
+@import "./keyboard-navigation/components/hud.css";
+@import "./keyboard-navigation/components/presentation.css";
+@import "./keyboard-navigation/components/selector.css";
+@import "./keyboard-navigation/components/shortcut-list.css";
+@import "./keyboard-navigation/components/shortcut-dialog.css";
 @import "./pages/(task-workspace)/components/navigation.css";
 @import "./pages/(task-workspace)/components/workspace-brand.css";
 @import "./pages/(task-workspace)/codex-status/components/runtime-restart-dialog.css";
@@ -16,6 +22,7 @@
 @import "./pages/(task-workspace)/settings/navigator.css";
 @import "./pages/(task-workspace)/settings/components/detail-list.css";
 @import "./pages/(task-workspace)/settings/appearance/page.css";
+@import "./pages/(task-workspace)/settings/keyboard/page.css";
 @import "./pages/(task-workspace)/settings/files/page.css";
 @import "./pages/(task-workspace)/settings/notifications/page.css";
 @import "./pages/(task-workspace)/settings/remote-access/page.css";
@@ -165,6 +172,7 @@
   --interface-icon-large-size: 1.125rem;
   --interface-icon-slot-size: 1.25rem;
   --interface-badge-size: 0.875rem;
+  --keyboard-choice-visual-size: 1.25rem;
   --interface-control-visual-size: 2rem;
   --interface-control-hit-size: max(
     var(--interface-control-visual-size),

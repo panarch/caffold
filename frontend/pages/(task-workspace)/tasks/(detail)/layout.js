@@ -1,4 +1,13 @@
 import { routeDomain, routeMode, sectionDetailRoute } from "../../../../navigation-routes.js";
+import {
+  ACTION_HINT_ACTION,
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../../action-hints.js";
+import { emptyScrollSurfaceScope } from "../../../../scroll-scope.js";
+import {
+  mergeKeyboardNavigationContexts,
+} from "../../../../keyboard-navigation.js";
 import { cleanLogicalPath } from "../task-format.js";
 import "./(task)/layout.js";
 import "./(git)/layout.js";
@@ -575,6 +584,127 @@ class CaffoldDetailLayout extends HTMLElement {
     return domain || (this.taskRoute?.review ? "review" : "conversation");
   }
 
+  actionHintScope() {
+    this.ensureRendered();
+    const identityKey = detailIdentityKey(this.subjectIdentity());
+    if (!identityKey || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const surface = this.activeSurface();
+    const viewSwitchScope = this.viewSwitch()?.actionHintScope({
+      scopeId: `detail:${identityKey}:view`,
+      actionId: ACTION_HINT_ACTION.DETAIL_VIEW,
+      clipRoots: [this, this.summaryHeader()].filter(Boolean),
+      labelForChoice: (choice) => `Open ${choice.label}`,
+    });
+    let activeChildScope = null;
+    let blocked = false;
+    if (this.subjectKind === "task" && surface === "conversation") {
+      const taskDetail = this.taskDetail();
+      if (!taskDetail?.hidden) {
+        blocked = Boolean(taskDetail.loading);
+        activeChildScope = taskDetail.actionHintScope?.();
+      }
+    } else if (this.subjectKind === "section" && surface === "new") {
+      const sectionDetail = this.sectionDetail();
+      if (!sectionDetail?.hidden) {
+        activeChildScope = sectionDetail.actionHintScope?.();
+      }
+    } else if (surface === "review") {
+      activeChildScope = this.review()?.actionHintScope?.();
+    } else if (surface === "git") {
+      activeChildScope = this.gitLayout()?.actionHintScope?.();
+    } else if (surface === "github") {
+      activeChildScope = this.githubLayout()?.actionHintScope?.();
+    }
+    return mergeActionHintScopes(
+      { blocked },
+      viewSwitchScope,
+      this.gitMenu()?.actionHintScope({
+        scopeId: `detail:${identityKey}`,
+        clipRoots: [this, this.summaryHeader()].filter(Boolean),
+      }),
+      this.githubMenu()?.actionHintScope({
+        scopeId: `detail:${identityKey}`,
+        clipRoots: [this, this.summaryHeader()].filter(Boolean),
+      }),
+      this.subjectKind === "task"
+        ? this.taskSummary()?.actionHintScope({
+            scopeId: `detail:${identityKey}`,
+            clipRoots: [this, this.summaryHeader()].filter(Boolean),
+          })
+        : null,
+      activeChildScope,
+    );
+  }
+
+  keyboardNavigationContexts() {
+    this.ensureRendered();
+    const identityKey = detailIdentityKey(this.subjectIdentity());
+    if (!identityKey || this.hidden) {
+      return [];
+    }
+    const scopeId = `detail:${identityKey}`;
+    const surface = this.activeSurface();
+    let activeChild = [];
+    if (this.subjectKind === "task" && surface === "conversation") {
+      const taskDetail = this.taskDetail();
+      activeChild = !taskDetail?.hidden && !taskDetail?.loading
+        ? taskDetail.keyboardNavigationContexts?.() ?? []
+        : [];
+    } else if (this.subjectKind === "section" && surface === "new") {
+      const sectionDetail = this.sectionDetail();
+      activeChild = !sectionDetail?.hidden
+        ? sectionDetail.keyboardNavigationContexts?.() ?? []
+        : [];
+    } else if (surface === "review") {
+      activeChild = this.review()?.keyboardNavigationContexts?.() ?? [];
+    } else if (surface === "git") {
+      activeChild = this.gitLayout()?.keyboardNavigationContexts?.() ?? [];
+    } else if (surface === "github") {
+      activeChild = this.githubLayout()?.keyboardNavigationContexts?.() ?? [];
+    }
+    return mergeKeyboardNavigationContexts(
+      this.gitMenu()?.keyboardNavigationContexts({ scopeId }) ?? [],
+      this.githubMenu()?.keyboardNavigationContexts({ scopeId }) ?? [],
+      this.subjectKind === "task"
+        ? this.taskSummary()?.keyboardNavigationContexts({ scopeId }) ?? []
+        : [],
+      activeChild,
+    );
+  }
+
+  scrollSurfaceScope() {
+    this.ensureRendered();
+    if (!detailIdentityKey(this.subjectIdentity()) || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    const surface = this.activeSurface();
+    if (this.subjectKind === "task" && surface === "conversation") {
+      const taskDetail = this.taskDetail();
+      return taskDetail && !taskDetail.hidden && !taskDetail.loading
+        ? taskDetail.scrollSurfaceScope()
+        : emptyScrollSurfaceScope();
+    }
+    if (this.subjectKind === "section" && surface === "new") {
+      const sectionDetail = this.sectionDetail();
+      return sectionDetail && !sectionDetail.hidden
+        ? sectionDetail.scrollSurfaceScope?.() ?? emptyScrollSurfaceScope()
+        : emptyScrollSurfaceScope();
+    }
+    if (surface === "review") {
+      return this.review()?.scrollSurfaceScope?.() ?? emptyScrollSurfaceScope();
+    }
+    if (surface === "git") {
+      return this.gitLayout()?.scrollSurfaceScope?.() ?? emptyScrollSurfaceScope();
+    }
+    if (surface === "github") {
+      return this.githubLayout()?.scrollSurfaceScope?.() ??
+        emptyScrollSurfaceScope();
+    }
+    return emptyScrollSurfaceScope();
+  }
+
   subjectIdentity() {
     return this.subjectKind === "section"
       ? { kind: "section", id: `${this.section?.id ?? ""}` }
@@ -668,6 +798,7 @@ class CaffoldDetailLayout extends HTMLElement {
   }
 
   deactivateSharedChildren() {
+    this.taskSummary()?.deactivate();
     this.deactivateReview();
     this.gitLayout()?.deactivate();
     this.githubLayout()?.deactivate();

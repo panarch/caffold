@@ -1,7 +1,7 @@
 caffold-github-task-start-dialog {
   display: contents;
 
-  & dialog {
+  & > dialog {
     width: min(34rem, calc(100vw - 2rem));
     max-width: none;
     max-height: min(42rem, calc(100dvh - 2rem));
@@ -15,7 +15,7 @@ caffold-github-task-start-dialog {
     box-shadow: 0 18px 48px rgb(var(--shadow-rgb) / 24%);
   }
 
-  & dialog::backdrop {
+  & > dialog::backdrop {
     background: rgb(var(--scrim-rgb) / 32%);
   }
 
@@ -139,7 +139,7 @@ caffold-github-task-start-dialog {
 
 @media (max-width: 520px) {
   caffold-github-task-start-dialog {
-    & dialog {
+    & > dialog {
       width: calc(100vw - 1rem);
       max-height: calc(100dvh - 1rem);
     }

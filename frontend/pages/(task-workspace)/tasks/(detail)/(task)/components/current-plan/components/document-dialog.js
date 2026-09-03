@@ -4,6 +4,20 @@ import {
   warmIcons,
 } from "../../../../../../../../components/icons.js";
 import "../../../../../../../../components/markdown-preview.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+  mergeActionHintScopes,
+} from "../../../../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+} from "../../../../../../../../scroll-scope.js";
+import {
+  keyboardNavigationContext,
+} from "../../../../../../../../keyboard-navigation.js";
+import "../../../../../../../../keyboard-navigation/components/presentation.js";
 
 class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
   connectedCallback() {
@@ -50,6 +64,104 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
 
   preview() {
     return this.querySelector(":scope > dialog caffold-markdown-preview");
+  }
+
+  actionHintScope() {
+    const dialog = this.dialog();
+    const path = `${this.current?.path ?? ""}`;
+    if (!dialog) {
+      return emptyActionHintScope();
+    }
+    const controls = [
+      ["close", ".current-plan-document-close"],
+      ["retry", '[data-current-plan-dialog-action="retry"]'],
+    ];
+    const ownScope = {
+      blocked: false,
+      targets: controls.flatMap(([identity, selector]) => {
+        const control = dialog.querySelector(selector);
+        if (!control) {
+          return [];
+        }
+        return [buttonActionHintTarget({
+          invalidationOwner: this,
+          id: `current-plan-document:${encodeURIComponent(path)}:${identity}`,
+          actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
+          label: control.getAttribute("aria-label") ||
+            control.textContent?.trim() || identity,
+          control,
+          clipRoots: [dialog],
+          isActionable: () =>
+            this.isConnected &&
+            this.dialog() === dialog &&
+            dialog.open &&
+            this.current?.path === path &&
+            Boolean(path) &&
+            dialog.querySelector(selector) === control &&
+            hasActionHintLayoutBox(control) &&
+            !control.disabled,
+        })];
+      }),
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
+    const preview = this.preview();
+    return mergeActionHintScopes(
+      ownScope,
+      preview?.actionHintScope?.({
+        scopeId:
+          `current-plan-document:${encodeURIComponent(path)}:preview`,
+        linkActionId: ACTION_HINT_ACTION.LINK_OPEN,
+        clipRoots: [dialog],
+        isCurrent: () =>
+          this.isConnected &&
+          this.dialog() === dialog &&
+          dialog.open &&
+          this.current?.path === path &&
+          Boolean(path) &&
+          this.preview() === preview,
+      }),
+    );
+  }
+
+  keyboardNavigationContexts() {
+    const dialog = this.dialog();
+    const preview = this.preview();
+    const presentation = dialog?.querySelector(
+      ":scope > caffold-keyboard-navigation-presentation",
+    );
+    const hintDialog = presentation?.actionHintDialog?.();
+    const hud = presentation?.scrollModeHud?.();
+    const selector = presentation?.scrollSurfaceSelector?.();
+    if (!dialog || !preview || !hintDialog || !hud || !selector) {
+      return [];
+    }
+    const path = `${this.current?.path ?? ""}`;
+    const label = `${this.current?.label ?? "Document"}`.trim() || "Document";
+    const scope = !path
+      ? emptyScrollSurfaceScope()
+      : preview.scrollSurfaceScope?.({
+          scopeId: `current-plan:${path}:preview`,
+          label: `${label} document`,
+          clipRoots: [dialog],
+          isCurrent: () =>
+            this.isConnected &&
+            this.dialog() === dialog &&
+            dialog.open &&
+            this.current?.path === path &&
+            this.preview() === preview &&
+            !preview.hidden,
+        }) ?? emptyScrollSurfaceScope();
+    return [keyboardNavigationContext({
+      id: path ? `current-plan-document:${path}` : "current-plan-document",
+      kind: "modal",
+      root: dialog,
+      actionHints: {
+        dialog: hintDialog,
+        scope: this.actionHintScope(),
+      },
+      scroll: { hud, selector, scope },
+    })];
   }
 
   openDocument({ label, document, displayPath, opener } = {}) {
@@ -155,6 +267,9 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
   }
 
   handleClose() {
+    if (this.dialog()?.open) {
+      return;
+    }
     this.requestId += 1;
     this.requestController?.abort();
     this.requestController = null;
@@ -162,7 +277,7 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
     this.opener = null;
     this.current = null;
     if (opener?.isConnected) {
-      window.requestAnimationFrame(() => opener.focus());
+      opener.focus();
     }
   }
 
@@ -199,6 +314,7 @@ class CaffoldCurrentPlanDocumentDialog extends HTMLElement {
             <caffold-markdown-preview hidden></caffold-markdown-preview>
           </div>
         </article>
+        <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
       </dialog>
     `;
   }

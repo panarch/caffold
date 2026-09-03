@@ -7,6 +7,16 @@ import {
   commandPresentation,
   sameCommandPresentation,
 } from "./command/model.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  disclosureActionHintTarget,
+  emptyActionHintScope,
+} from "../../../../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../../../../../scroll-scope.js";
 
 class CaffoldTaskCommand extends HTMLElement {
   connectedCallback() {
@@ -190,6 +200,132 @@ class CaffoldTaskCommand extends HTMLElement {
     return this.querySelector(
       ":scope > .task-command-summary .task-command-summary-action",
     );
+  }
+
+  actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
+    this.ensureState();
+    const commandKey = this.commandKey;
+    if (!scopeId || !commandKey || this.hidden) {
+      return emptyActionHintScope();
+    }
+    if (this.presentation.mode === "active") {
+      const disclosure = this.disclosure();
+      const control = disclosure?.querySelector(
+        ":scope > summary.task-command-active-summary",
+      );
+      const anchor = control?.querySelector(
+        ":scope > .task-command-active-label > .task-command-disclosure-chevron",
+      );
+      if (!disclosure || !control || !anchor) {
+        return emptyActionHintScope();
+      }
+      return {
+        blocked: false,
+        targets: [disclosureActionHintTarget({
+          invalidationOwner: this,
+          id: `${scopeId}:disclosure:${encodeURIComponent(commandKey)}`,
+          actionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+          label: `${disclosure.open ? "Collapse" : "Expand"} Command`,
+          control,
+          anchor,
+          clipRoots: [this, ...clipRoots].filter(Boolean),
+          isActionable: () =>
+            this.isConnected &&
+            !this.hidden &&
+            this.commandKey === commandKey &&
+            this.presentation.mode === "active" &&
+            this.disclosure() === disclosure &&
+            disclosure.querySelector(
+              ":scope > summary.task-command-active-summary",
+            ) === control &&
+            control.querySelector(
+              ":scope > .task-command-active-label > .task-command-disclosure-chevron",
+            ) === anchor,
+        })],
+        mutationRoots: [this],
+        scrollRoots: [],
+      };
+    }
+    const control = this.action();
+    if (
+      this.presentation.mode !== "terminal" ||
+      !control ||
+      control.disabled
+    ) {
+      return emptyActionHintScope();
+    }
+    return {
+      blocked: false,
+      targets: [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:view-output`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label") ||
+          control.textContent?.trim() ||
+          "View output",
+        control,
+        clipRoots: [this, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          this.commandKey === commandKey &&
+          this.presentation.mode === "terminal" &&
+          this.action() === control &&
+          !control.disabled,
+      })],
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    label = "Command output",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    this.ensureState();
+    const commandKey = this.commandKey;
+    const disclosure = this.disclosure();
+    const scrollport = disclosure?.querySelector(
+      ":scope > .task-command-active-output",
+    );
+    if (
+      !scopeId ||
+      !commandKey ||
+      this.presentation.mode !== "active" ||
+      !disclosure ||
+      !scrollport ||
+      this.hidden
+    ) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:output`,
+        label,
+        scrollport,
+        axes: ["horizontal"],
+        clipRoots: [this, disclosure, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          isCurrent() &&
+          this.commandKey === commandKey &&
+          this.presentation.mode === "active" &&
+          this.disclosure() === disclosure &&
+          disclosure.open &&
+          disclosure.querySelector(
+            ":scope > .task-command-active-output",
+          ) === scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   rememberDisclosureState() {

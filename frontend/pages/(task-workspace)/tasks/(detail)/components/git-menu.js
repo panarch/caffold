@@ -1,3 +1,14 @@
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+} from "../../../../../action-hints.js";
+import {
+  keyboardNavigationContext,
+  popoverScrollSurfaceScope,
+} from "../../../../../keyboard-navigation.js";
+import "../../../../../keyboard-navigation/components/presentation.js";
+
 const GIT_INTENT_EVENT = "caffold:task-detail-git-intent";
 const UNAVAILABLE_TITLE =
   "Git and GitHub are unavailable outside a Git worktree";
@@ -61,6 +72,108 @@ class CaffoldTaskDetailGit extends HTMLElement {
     }
   }
 
+  actionHintScope({ scopeId = "task-detail", clipRoots = [] } = {}) {
+    this.ensureState();
+    const control = this.gitTrigger();
+    const popover = this.gitPopover();
+    if (!scopeId || !control || !popover) {
+      return emptyActionHintScope();
+    }
+    return {
+      blocked: false,
+      targets: [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:git:open`,
+        actionId: ACTION_HINT_ACTION.GIT_OPEN,
+        label: control.getAttribute("aria-label") || "Open Git workspace",
+        control,
+        clipRoots: [...clipRoots],
+        isActionable: () =>
+          this.isConnected &&
+          this.snapshot.available &&
+          this.gitTrigger() === control &&
+          this.gitPopover() === popover &&
+          control.getAttribute("popovertarget") === popover.id &&
+          !control.disabled &&
+          !popover.matches(":popover-open"),
+      })],
+      mutationRoots: [this],
+      scrollRoots: [],
+    };
+  }
+
+  keyboardNavigationContexts({ scopeId = "task-detail" } = {}) {
+    const popover = this.gitPopover();
+    const presentation = popover?.querySelector(
+      ":scope > caffold-keyboard-navigation-presentation",
+    );
+    const dialog = presentation?.actionHintDialog?.();
+    const hud = presentation?.scrollModeHud?.();
+    const selector = presentation?.scrollSurfaceSelector?.();
+    if (!scopeId || !popover || !dialog || !hud || !selector) {
+      return [];
+    }
+    const contextId = `${scopeId}:git`;
+    return [keyboardNavigationContext({
+      id: contextId,
+      kind: "popover",
+      root: popover,
+      actionHints: {
+        dialog,
+        scope: this.gitActionHintScope({ contextId, popover }),
+      },
+      scroll: {
+        hud,
+        selector,
+        scope: popoverScrollSurfaceScope({
+          id: contextId,
+          label: "Git workspace actions",
+          popover,
+          isCurrent: () =>
+            this.isConnected &&
+            this.snapshot.available &&
+            this.gitPopover() === popover,
+        }),
+      },
+    })];
+  }
+
+  gitActionHintScope({ contextId, popover }) {
+    if (!popover) {
+      return emptyActionHintScope();
+    }
+    const targets = [...popover.querySelectorAll(
+      ":scope > button[data-git-button-action]",
+    )].flatMap((control) => {
+      const destination = `${control.dataset.reviewKind ?? ""}`;
+      if (!["compare", "log"].includes(destination) || control.disabled) {
+        return [];
+      }
+      return [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${contextId}:${destination}`,
+        actionId: ACTION_HINT_ACTION.GIT_DESTINATION,
+        label: control.textContent?.trim() || destination,
+        control,
+        clipRoots: [popover],
+        isActionable: () =>
+          this.isConnected &&
+          this.snapshot.available &&
+          this.gitPopover() === popover &&
+          popover.matches(":popover-open") &&
+          popover.contains(control) &&
+          control.dataset.reviewKind === destination &&
+          !control.disabled,
+      })];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [popover],
+      scrollRoots: [popover],
+    };
+  }
+
   handleClick(event) {
     const action = closestElement(event.target, "[data-git-button-action]");
     if (!action || action.matches(":disabled")) {
@@ -109,6 +222,7 @@ class CaffoldTaskDetailGit extends HTMLElement {
           data-git-button-action
           data-review-kind="log"
         >Log</button>
+        <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
       </div>
     `;
     this.patch();

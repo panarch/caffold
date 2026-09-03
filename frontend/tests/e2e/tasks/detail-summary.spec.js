@@ -1,4 +1,8 @@
 import { expect, test } from "@playwright/test";
+import {
+  actionHintDialog,
+  activateActionHint,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
   activeTaskProjection,
@@ -377,12 +381,21 @@ test("forks an idle Codex Task and opens the distinct child", { tag: "@all-viewp
   await page.goto(`/tasks/${sourceThreadId}`);
   await emitTaskDetailBootstrap(page, summaryDetail(source));
   const summary = page.locator("caffold-task-detail-summary");
-  await summary.getByRole("button", { name: /Task details/ }).click();
+  await activateActionHint(page, /Task details, idle$/);
   const popover = summary.locator(".task-detail-popover");
   const forkButton = popover.locator('[data-task-info-action="fork"]');
   await expect(forkButton).toBeEnabled();
 
-  await forkButton.click();
+  await page.keyboard.press("f");
+  const hint = actionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await expect(
+    hint.getByRole("button", { name: / — Archive task$/ }),
+  ).toBeVisible();
+  const forkHint = hint.getByRole("button", { name: / — Fork task$/ });
+  const forkCode = await forkHint.getAttribute("data-action-hint-code");
+  expect(forkCode).toBeTruthy();
+  await page.keyboard.type(forkCode.toLowerCase());
   await forkObserved;
   await expect(forkButton).toBeDisabled();
   await expect(forkButton).toHaveText("Forking...");
@@ -604,6 +617,18 @@ test("uses light-dismiss review popovers and preserves them across same-Task syn
   await page.keyboard.press("Escape");
   await expect(gitPopover).toBeHidden();
   await expect(gitTrigger).toBeFocused();
+
+  await infoTrigger.click();
+  await expect(infoPopover).toBeVisible();
+  const settings = page.getByRole("button", { name: /^Settings/ });
+  if (await settings.isVisible()) {
+    await settings.click();
+    await expect(page).toHaveURL(/\/settings(?:\/appearance)?$/);
+  } else {
+    await page.getByRole("button", { name: "Back to tasks" }).click();
+    await expect(page).toHaveURL("/");
+  }
+  await expect(infoPopover).toBeHidden();
 });
 
 test("keeps the task info spinner stable across equivalent detail activity", { tag: "@all-viewports" }, async ({

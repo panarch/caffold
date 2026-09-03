@@ -19,6 +19,17 @@ import {
 import "./assistant-message.js";
 import "./changed-files.js";
 import "./command.js";
+import {
+  ACTION_HINT_ACTION,
+  disclosureActionHintTarget,
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../../../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+  mergeScrollSurfaceScopes,
+} from "../../../../../../../../scroll-scope.js";
 
 const disclosureStateByIdentity = new Map();
 
@@ -55,6 +66,7 @@ class CaffoldTaskWorkDetails extends HTMLElement {
     };
     this.boundClick = (event) => this.handleClick(event);
     this.boundIconsReady = () => this.refreshChevronIcons();
+    this.scrollSurfaceRecords = [];
   }
 
   attachListeners() {
@@ -148,6 +160,7 @@ class CaffoldTaskWorkDetails extends HTMLElement {
       view.commands,
       view.messages,
     );
+    this.scrollSurfaceRecords = collectRawScrollSurfaceRecords(body);
     this.restoreDisclosureState();
     this.renderedIdentity = this.snapshot.identity;
     this.refreshChevronIcons();
@@ -214,6 +227,146 @@ class CaffoldTaskWorkDetails extends HTMLElement {
     return state;
   }
 
+  actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
+    this.ensureState();
+    const disclosureSelector =
+      ':scope > details[data-work-details-disclosure-key="root"]';
+    const disclosure = this.querySelector(disclosureSelector);
+    const control = disclosure?.querySelector(":scope > summary");
+    const anchor = control?.querySelector(
+      ":scope > .task-work-details-label > .task-work-details-chevron",
+    );
+    const body = this.querySelector(
+      ":scope > details > .task-work-details-body",
+    );
+    const identity = this.identity;
+    if (!scopeId || !body || !identity || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const ownScope = disclosure && control && anchor
+      ? {
+          blocked: false,
+          targets: [disclosureActionHintTarget({
+            invalidationOwner: this,
+            id: `${scopeId}:disclosure:${encodeURIComponent(identity)}:root`,
+            actionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
+            label: `${disclosure.open ? "Collapse" : "Expand"} ${
+              this.snapshot.label.trim() || "Work details"
+            }`,
+            control,
+            anchor,
+            clipRoots: [this, ...clipRoots].filter(Boolean),
+            isActionable: () =>
+              this.isConnected &&
+              !this.hidden &&
+              this.identity === identity &&
+              this.querySelector(disclosureSelector) === disclosure &&
+              disclosure.querySelector(":scope > summary") === control &&
+              control.querySelector(
+                ":scope > .task-work-details-label > .task-work-details-chevron",
+              ) === anchor,
+          })],
+          mutationRoots: [this],
+          scrollRoots: [],
+        }
+      : null;
+    const scopes = [];
+    for (const item of body.children) {
+      const commandIdentity = `${item.dataset.commandWorkIdentity ?? ""}`;
+      const command = commandIdentity
+        ? item.querySelector(":scope > caffold-task-command")
+        : null;
+      if (command) {
+        scopes.push(command.actionHintScope?.({
+          scopeId: `${scopeId}:command:${commandIdentity}`,
+          clipRoots: [this, body, ...clipRoots].filter(Boolean),
+        }));
+      }
+      const messageIdentity = `${item.dataset.messageWorkIdentity ?? ""}`;
+      const message = messageIdentity
+        ? item.querySelector(":scope > caffold-task-assistant-message")
+        : null;
+      if (message) {
+        scopes.push(message.actionHintScope?.({
+          scopeId: `${scopeId}:message:${messageIdentity}`,
+          clipRoots: [this, body, ...clipRoots].filter(Boolean),
+        }));
+      }
+    }
+    return mergeActionHintScopes(ownScope, ...scopes);
+  }
+
+  scrollSurfaceScope({
+    scopeId = "",
+    clipRoots = [],
+    isCurrent = () => true,
+  } = {}) {
+    this.ensureState();
+    const disclosure = this.querySelector(
+      ':scope > details[data-work-details-disclosure-key="root"]',
+    );
+    const body = disclosure?.querySelector(":scope > .task-work-details-body");
+    const identity = this.identity;
+    if (!scopeId || !disclosure || !body || !identity || this.hidden) {
+      return emptyScrollSurfaceScope();
+    }
+    const current = () =>
+      this.isConnected &&
+      !this.hidden &&
+      isCurrent() &&
+      this.identity === identity &&
+      this.querySelector(
+        ':scope > details[data-work-details-disclosure-key="root"]',
+      ) === disclosure &&
+      disclosure.open &&
+      disclosure.querySelector(":scope > .task-work-details-body") === body;
+    const rawScopes = (this.scrollSurfaceRecords ?? []).map((record) => ({
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:raw:${record.ordinal}`,
+        label: record.label,
+        scrollport: record.scrollport,
+        axes: ["horizontal"],
+        clipRoots: [this, body, record.scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          current() &&
+          this.scrollSurfaceRecords?.includes(record) &&
+          body.contains(record.scrollport) &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(record.scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, record.scrollport],
+      scrollRoots: [record.scrollport],
+    }));
+    const childScopes = [];
+    for (const item of body.children) {
+      const commandIdentity = `${item.dataset.commandWorkIdentity ?? ""}`;
+      const command = commandIdentity
+        ? item.querySelector(":scope > caffold-task-command")
+        : null;
+      if (command) {
+        childScopes.push(command.scrollSurfaceScope?.({
+          scopeId: `${scopeId}:command:${commandIdentity}`,
+          clipRoots: [this, body, ...clipRoots].filter(Boolean),
+          isCurrent: current,
+        }));
+      }
+      const messageIdentity = `${item.dataset.messageWorkIdentity ?? ""}`;
+      const message = messageIdentity
+        ? item.querySelector(":scope > caffold-task-assistant-message")
+        : null;
+      if (message) {
+        childScopes.push(message.scrollSurfaceScope?.({
+          scopeId: `${scopeId}:message:${messageIdentity}`,
+          clipRoots: [this, body, ...clipRoots].filter(Boolean),
+          isCurrent: current,
+        }));
+      }
+    }
+    return mergeScrollSurfaceScopes(...rawScopes, ...childScopes);
+  }
+
   rememberDisclosureState() {
     if (!this.initialized || !this.identity) {
       return;
@@ -250,6 +403,21 @@ function sameSnapshot(left, right) {
       left.filePathPresentationBase === right.filePathPresentationBase &&
       sameEventList(left.events, right.events),
   );
+}
+
+function collectRawScrollSurfaceRecords(body) {
+  return Array.from(
+    body.querySelectorAll(":scope > .task-work-details-item > pre"),
+  ).map((scrollport, index) => {
+    const item = scrollport.parentElement;
+    const itemLabel = item?.querySelector(":scope > header > strong")
+      ?.textContent?.trim();
+    return {
+      scrollport,
+      ordinal: index + 1,
+      label: `${itemLabel || "Work details"} output ${index + 1}`,
+    };
+  });
 }
 
 function sameEventList(left, right) {

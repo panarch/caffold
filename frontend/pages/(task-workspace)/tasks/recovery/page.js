@@ -7,6 +7,16 @@ import {
 import { escapeHtml } from "../../../../components/dom.js";
 import { renderInlineIcon, warmIcons } from "../../../../components/icons.js";
 import { taskThreadId } from "../task-list-model.js";
+import {
+  ACTION_HINT_ACTION,
+  buttonActionHintTarget,
+  emptyActionHintScope,
+  hasActionHintLayoutBox,
+} from "../../../../action-hints.js";
+import {
+  emptyScrollSurfaceScope,
+  hasScrollLayoutBox,
+} from "../../../../scroll-scope.js";
 
 class CaffoldTaskRecovery extends HTMLElement {
   connectedCallback() {
@@ -164,6 +174,89 @@ class CaffoldTaskRecovery extends HTMLElement {
       this.pendingAction = "";
       this.render();
     }
+  }
+
+  actionHintScope({
+    scopeId = "task-recovery",
+    clipRoots = [],
+  } = {}) {
+    this.ensureState();
+    const scrollport = this.querySelector(
+      ":scope > .task-recovery-view > .task-recovery-body",
+    );
+    const threadId = taskThreadId(this.recovery);
+    if (this.hidden || !scrollport || !threadId) {
+      return emptyActionHintScope();
+    }
+    const targets = Array.from(this.querySelectorAll(
+      "button[data-task-recovery-action]",
+    )).flatMap((control) => {
+      const action = `${control.dataset.taskRecoveryAction ?? ""}`;
+      if (!action || control.disabled || !hasActionHintLayoutBox(control)) {
+        return [];
+      }
+      const selector =
+        `button[data-task-recovery-action="${action}"]`;
+      return [buttonActionHintTarget({
+        invalidationOwner: this,
+        id: `${scopeId}:${threadId}:${action}`,
+        actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
+        label: control.getAttribute("aria-label") ||
+          control.textContent?.trim() ||
+          action,
+        control,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isActionable: () =>
+          this.isConnected &&
+          !this.hidden &&
+          taskThreadId(this.recovery) === threadId &&
+          this.querySelector(selector) === control &&
+          !control.disabled &&
+          hasActionHintLayoutBox(control),
+      })];
+    });
+    return {
+      blocked: false,
+      targets,
+      mutationRoots: [this],
+      scrollRoots: [scrollport],
+    };
+  }
+
+  scrollSurfaceScope({
+    scopeId = "task-recovery",
+    label = "Task recovery",
+    clipRoots = [],
+  } = {}) {
+    this.ensureState();
+    const scrollport = this.querySelector(
+      ":scope > .task-recovery-view > .task-recovery-body",
+    );
+    const threadId = taskThreadId(this.recovery);
+    if (this.hidden || !scrollport || !threadId) {
+      return emptyScrollSurfaceScope();
+    }
+    return {
+      blocked: false,
+      surfaces: [{
+        id: `${scopeId}:${threadId}:scroll`,
+        label,
+        scrollport,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+        isEligible: () =>
+          this.isConnected &&
+          !this.hidden &&
+          taskThreadId(this.recovery) === threadId &&
+          this.querySelector(
+            ":scope > .task-recovery-view > .task-recovery-body",
+          ) === scrollport &&
+          hasScrollLayoutBox(this) &&
+          hasScrollLayoutBox(scrollport),
+      }],
+      mutationRoots: [this],
+      resizeElements: [this, scrollport],
+      scrollRoots: [scrollport],
+    };
   }
 
   render() {

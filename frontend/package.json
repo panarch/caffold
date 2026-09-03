@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:unit": "node --test \"*.test.js\" \"components/**/*.test.js\" \"pages/**/*.test.js\"",
+    "test:unit": "node --test \"*.test.js\" \"action-hints/**/*.test.js\" \"components/**/*.test.js\" \"keyboard-navigation/**/*.test.js\" \"pages/**/*.test.js\"",
     "test:contract": "node --test \"tests/contracts/*.test.mjs\"",
     "test:e2e": "playwright test",
     "test:codex-live": "playwright test --config=playwright.live.config.mjs"

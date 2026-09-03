@@ -1,0 +1,80 @@
+caffold-scroll-surface-selector {
+  display: contents;
+
+  & > .scroll-surface-selector {
+    box-sizing: border-box;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font-size: var(--interface-font-size);
+    touch-action: pinch-zoom;
+  }
+
+  & > .scroll-surface-selector::backdrop {
+    background: rgb(var(--shadow-rgb) / 4%);
+  }
+
+  & .scroll-surface-selector-regions {
+    position: absolute;
+    inset: 0;
+  }
+
+  & .scroll-surface-selector-region {
+    position: fixed;
+    z-index: 1;
+    box-sizing: border-box;
+    border: 2px solid var(--focus-ring);
+    border-radius: 4px;
+    pointer-events: none;
+  }
+
+  & .scroll-surface-selector-badge {
+    position: absolute;
+    z-index: 2;
+    display: grid;
+    min-width: var(--keyboard-choice-visual-size);
+    min-height: var(--keyboard-choice-visual-size);
+    place-items: center;
+    padding: var(--interface-space-1) var(--interface-space-2);
+    border: 1px solid var(--primary-control-bg);
+    border-radius: 0.25rem;
+    background: var(--primary-control-bg);
+    box-shadow: 0 0.125rem 0.375rem rgb(var(--shadow-rgb) / 24%);
+    color: var(--text-inverse);
+    font-size: var(--interface-meta-font-size);
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    pointer-events: auto;
+  }
+
+  & .scroll-surface-selector-badge::before {
+    position: absolute;
+    inset: min(
+      0px,
+      calc(
+        (var(--keyboard-choice-visual-size) - var(--interface-target-floor)) / 2
+      )
+    );
+    content: "";
+  }
+
+  & .scroll-surface-selector-badge:hover {
+    background: var(--primary-control-hover-bg);
+  }
+
+  & .scroll-surface-selector-badge:focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+}

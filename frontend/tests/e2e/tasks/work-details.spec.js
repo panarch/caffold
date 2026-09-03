@@ -1,4 +1,8 @@
 import { expect, test } from "@playwright/test";
+import {
+  activateActionHint,
+  enterActionHints,
+} from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { installTaskLoopFixture } from "../support/task-loop-fixture.js";
 import { captureReviewScreenshot } from "../support/task-fixtures.js";
@@ -45,18 +49,54 @@ test("owns disclosure presentation and preserves its identity across canonical u
   await expect
     .poll(() => chevronCenterDelta(".task-work-details-chevron-collapsed"))
     .toBeLessThanOrEqual(1);
+  await summary.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+
+  let hintDialog = await enterActionHints(page);
+  await expect(
+    hintDialog.getByLabel(/Expand (?:Worked for|Work details)/),
+  ).toBeVisible();
+  await expect(hintDialog.getByLabel(/View output/)).toHaveCount(0);
+  await page.keyboard.press("Escape");
 
   await summary.evaluate((element) => {
     window.__workDetailsOwner = element.closest("caffold-task-work-details");
   });
-  await summary.click();
+  await activateActionHint(page, /Expand (?:Worked for|Work details)/);
 
   await expect(disclosure).toHaveAttribute("open", "");
+  await expect
+    .poll(() => summary.evaluate((element) => document.activeElement === element))
+    .toBe(true);
   await expect(collapsedChevron).not.toBeVisible();
   await expect(expandedChevron).toBeVisible();
   await expect
     .poll(() => chevronCenterDelta(".task-work-details-chevron-expanded"))
     .toBeLessThanOrEqual(1);
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  hintDialog = await enterActionHints(page);
+  await expect(
+    hintDialog.getByLabel(/Collapse (?:Worked for|Work details)/),
+  ).toBeVisible();
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "task-work-details-action-hints",
+  );
+  await page.keyboard.press("Escape");
+
+  const childAction = owner.getByRole("button", { name: "View output" }).first();
+  await childAction.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  hintDialog = await enterActionHints(page);
+  await expect(hintDialog.getByLabel(/View output/).first()).toBeVisible();
+  await page.keyboard.press("Escape");
   await captureReviewScreenshot(page, testInfo, "task-work-details-expanded");
 
   await expect
@@ -90,5 +130,11 @@ test("owns disclosure presentation and preserves its identity across canonical u
     .toBe(true);
   await expect(disclosure).toHaveAttribute("open", "");
   await expect(expandedChevron).toBeVisible();
+  await summary.scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  ));
+  await activateActionHint(page, /Collapse (?:Worked for|Work details)/);
+  await expect(disclosure).not.toHaveAttribute("open", "");
   expect(scenario.pageErrors).toEqual([]);
 });
