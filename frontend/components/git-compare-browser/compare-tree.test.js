@@ -62,7 +62,7 @@ test("composes its retained base select independently of File Tree readiness", (
     },
     fileTree: () => null,
     baseRefSelect: () => control,
-    querySelector: (selector) => selector === ".compare-tree-primary"
+    querySelector: (selector) => selector === ".compare-base"
       ? anchor
       : null,
   });
@@ -130,7 +130,7 @@ test("merges the base select before ready File Tree targets", () => {
     },
     fileTree: () => tree,
     baseRefSelect: () => selectControl,
-    querySelector: (selector) => selector === ".compare-tree-primary"
+    querySelector: (selector) => selector === ".compare-base"
       ? selectAnchor
       : null,
   });
@@ -171,7 +171,7 @@ test("keeps value-only updates actionable and rejects stale base controls", () =
     },
     fileTree: () => null,
     baseRefSelect: () => currentControl,
-    querySelector: (selector) => selector === ".compare-tree-primary"
+    querySelector: (selector) => selector === ".compare-base"
       ? currentAnchor
       : null,
   });

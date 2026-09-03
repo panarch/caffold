@@ -10,7 +10,6 @@ import {
   clampBadgePosition,
   matchesActionHintPolicy,
   normalizeActionHintKey,
-  preferredBadgePosition,
   rectsEqual,
   sameActionHintSnapshot,
   sameActionHintTopology,
@@ -389,33 +388,6 @@ test("clamps badges to the visual viewport and compares captured geometry", () =
       { left: 2, top: 2, right: 10, bottom: 20 },
     ),
     false,
-  );
-});
-
-test("keeps native select values visible by placing their badge outside", () => {
-  const badgeSize = { width: 24, height: 24 };
-  const viewportRect = { left: 0, top: 0, right: 300, bottom: 200 };
-
-  assert.deepEqual(
-    preferredBadgePosition({
-      controlKind: "select",
-      visibleRect: { left: 50, top: 20, right: 150, bottom: 50 },
-    }, badgeSize, viewportRect),
-    { left: 50, top: 54 },
-  );
-  assert.deepEqual(
-    preferredBadgePosition({
-      controlKind: "select",
-      visibleRect: { left: 10, top: 170, right: 110, bottom: 195 },
-    }, badgeSize, viewportRect),
-    { left: 10, top: 142 },
-  );
-  assert.deepEqual(
-    preferredBadgePosition({
-      controlKind: "range",
-      visibleRect: { left: 10, top: 20, right: 110, bottom: 50 },
-    }, badgeSize, viewportRect),
-    { left: 10, top: 20 },
   );
 });
 

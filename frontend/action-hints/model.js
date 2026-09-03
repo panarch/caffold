@@ -416,32 +416,6 @@ export function clampBadgePosition(
   };
 }
 
-export function preferredBadgePosition(
-  target,
-  badgeSize,
-  viewportRect,
-  margin = 4,
-) {
-  const visibleRect = normalizeRect(target?.visibleRect);
-  if (!visibleRect) {
-    return { left: 0, top: 0 };
-  }
-  if (target?.controlKind !== "select") {
-    return { left: visibleRect.left, top: visibleRect.top };
-  }
-
-  const height = Math.max(0, Number(badgeSize?.height) || 0);
-  const viewport = normalizeRect(viewportRect);
-  const below = visibleRect.bottom + margin;
-  const top = !viewport || below + height <= viewport.bottom - margin
-    ? below
-    : visibleRect.top - height - margin;
-  return {
-    left: visibleRect.left,
-    top,
-  };
-}
-
 export function rectsEqual(left, right, tolerance = 0.5) {
   const a = normalizeRect(left);
   const b = normalizeRect(right);

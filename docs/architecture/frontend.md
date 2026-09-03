@@ -271,10 +271,10 @@ declares its visible Base and Head selects; and the Branch Review Compare Tree
 declares its comparison-base select while the Review owner injects the action
 meaning. The Branch target remains available while its compared File Tree is
 loading, empty, or showing an error, provided the retained select and refs are
-still available. Its badge is anchored to the stable visible primary header
-that contains `Files` and `vs <ref>` and that the transparent native select
-already covers. This keeps selected-value label updates on one frozen binding,
-while activation still uses the exact select. Radio and switch activation
+still available. Its badge is anchored to the stable visible `vs <ref>`
+affordance, while the transparent native select keeps covering the full primary
+header. This keeps selected-value label updates on one frozen binding, while
+activation still uses the exact select. Radio and switch activation
 focuses and clicks the exact retained input after Hint cleanup. A select
 focuses and calls native `showPicker()` in the trusted key stack, with a
 focus-only fallback when the browser cannot open it. A range target only

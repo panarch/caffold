@@ -617,20 +617,22 @@ test("hands the Branch comparison base Hint to its retained native select", { ta
   });
   const geometry = await badge.evaluate((element) => {
     const anchor = document.querySelector(
-      "caffold-task-review caffold-git-compare-tree .compare-tree-primary",
+      "caffold-task-review caffold-git-compare-tree .compare-base",
     );
+    const primary = anchor.closest(".compare-tree-primary");
     const control = anchor.querySelector("select[data-compare-base-ref]");
     const badgeRect = element.getBoundingClientRect();
     const anchorRect = anchor.getBoundingClientRect();
+    const primaryRect = primary.getBoundingClientRect();
     const controlRect = control.getBoundingClientRect();
     return {
       alignedLeft: Math.abs(badgeRect.left - anchorRect.left) <= 1,
-      outsideSelectOverlay: badgeRect.top >= anchorRect.bottom + 3,
-      controlMatchesAnchor:
-        Math.abs(controlRect.left - anchorRect.left) <= 1 &&
-        Math.abs(controlRect.top - anchorRect.top) <= 1 &&
-        Math.abs(controlRect.right - anchorRect.right) <= 1 &&
-        Math.abs(controlRect.bottom - anchorRect.bottom) <= 1,
+      alignedTop: Math.abs(badgeRect.top - anchorRect.top) <= 1,
+      controlCoversPrimary:
+        Math.abs(controlRect.left - primaryRect.left) <= 1 &&
+        Math.abs(controlRect.top - primaryRect.top) <= 1 &&
+        Math.abs(controlRect.right - primaryRect.right) <= 1 &&
+        Math.abs(controlRect.bottom - primaryRect.bottom) <= 1,
       insideViewport:
         badgeRect.left >= 0 &&
         badgeRect.right <= window.innerWidth &&
@@ -640,8 +642,8 @@ test("hands the Branch comparison base Hint to its retained native select", { ta
   });
   expect(geometry).toEqual({
     alignedLeft: true,
-    outsideSelectOverlay: true,
-    controlMatchesAnchor: true,
+    alignedTop: true,
+    controlCoversPrimary: true,
     insideViewport: true,
   });
   await captureReviewScreenshot(

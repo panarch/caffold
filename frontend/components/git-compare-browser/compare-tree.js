@@ -170,7 +170,7 @@ class CaffoldGitCompareTree extends HTMLElement {
       return emptyActionHintScope();
     }
     const control = this.baseRefSelect();
-    const anchor = this.querySelector(".compare-tree-primary");
+    const anchor = this.querySelector(".compare-base");
     const selection = this.baseSelection;
     if (
       !this.isConnected ||
@@ -202,7 +202,7 @@ class CaffoldGitCompareTree extends HTMLElement {
               currentSelection?.enabled &&
               currentSelection.refs?.length &&
               this.baseRefSelect() === control &&
-              this.querySelector(".compare-tree-primary") === anchor &&
+              this.querySelector(".compare-base") === anchor &&
               !control.hidden &&
               !control.disabled
           );
