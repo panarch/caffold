@@ -1,8 +1,6 @@
 import { renderInlineIcon, warmIcons } from "../../components/icons.js";
-import {
-  KEYBOARD_SHORTCUT_CLOSE_EVENT,
-  KEYBOARD_SHORTCUT_HELP_SECTIONS,
-} from "../shortcuts.js";
+import { KEYBOARD_SHORTCUT_CLOSE_EVENT } from "../shortcuts.js";
+import "./shortcut-list.js";
 
 class CaffoldKeyboardShortcutDialog extends HTMLElement {
   connectedCallback() {
@@ -78,9 +76,7 @@ class CaffoldKeyboardShortcutDialog extends HTMLElement {
               "keyboard-shortcut-close-icon",
             )}</button>
           </header>
-          <div class="keyboard-shortcut-sections">
-            ${renderShortcutSections()}
-          </div>
+          <caffold-keyboard-shortcut-list></caffold-keyboard-shortcut-list>
         </article>
       </dialog>
     `;
@@ -146,28 +142,6 @@ class CaffoldKeyboardShortcutDialog extends HTMLElement {
       }),
     );
   }
-}
-
-function renderShortcutSections() {
-  return KEYBOARD_SHORTCUT_HELP_SECTIONS.map(({ title, rows }) => `
-    <section>
-      <h3>${title}</h3>
-      <dl>
-        ${rows.map(({ keys, description }) => `
-          <div>
-            <dt>${renderKeys(keys)}</dt>
-            <dd>${description}</dd>
-          </div>
-        `).join("")}
-      </dl>
-    </section>
-  `).join("");
-}
-
-function renderKeys(keys) {
-  return keys.map((key) => `<kbd>${key}</kbd>`).join(
-    '<span aria-hidden="true">/</span>',
-  );
 }
 
 if (!customElements.get("caffold-keyboard-shortcut-dialog")) {

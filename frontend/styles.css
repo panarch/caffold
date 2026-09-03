@@ -13,6 +13,7 @@
 @import "./keyboard-navigation/components/hud.css";
 @import "./keyboard-navigation/components/presentation.css";
 @import "./keyboard-navigation/components/selector.css";
+@import "./keyboard-navigation/components/shortcut-list.css";
 @import "./keyboard-navigation/components/shortcut-dialog.css";
 @import "./pages/(task-workspace)/components/navigation.css";
 @import "./pages/(task-workspace)/components/workspace-brand.css";

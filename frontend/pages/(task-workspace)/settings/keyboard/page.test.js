@@ -10,15 +10,22 @@ await import("./page.js");
 const keyboard = registry.element("caffold-settings-keyboard-page").prototype;
 after(() => registry.restore());
 
-test("describes shortcut help and the active Scroll to Action Hint switch", () => {
+test("keeps the switch copy concise beside the shared shortcut reference", () => {
   const owner = {};
   keyboard.render.call(owner);
-  assert.match(owner.innerHTML, /Press \? outside an editing field/);
-  assert.match(owner.innerHTML, /H\/L to move horizontally/);
   assert.match(
     owner.innerHTML,
-    /Once scrolling is active, press F to switch to available actions\./,
+    /Navigate Caffold with single keys when you are not typing\./,
   );
+  assert.match(
+    owner.innerHTML,
+    /Enable keyboard shortcuts outside editing fields\./,
+  );
+  assert.match(
+    owner.innerHTML,
+    /<caffold-keyboard-shortcut-list><\/caffold-keyboard-shortcut-list>/,
+  );
+  assert.doesNotMatch(owner.innerHTML, /H\/L to move horizontally/);
 });
 
 test("provides only the exact retained keyboard settings scrollport", () => {

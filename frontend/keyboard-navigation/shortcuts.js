@@ -26,7 +26,7 @@ export const KEYBOARD_SHORTCUT_HELP_SECTIONS = Object.freeze([
       ),
       shortcut(
         [KEYBOARD_NAVIGATION_KEY.SHORTCUT_HELP],
-        "Open or close this shortcut help",
+        "Open or close keyboard shortcut help",
       ),
       shortcut(
         [KEYBOARD_NAVIGATION_KEY.ESCAPE],

@@ -12,6 +12,7 @@ import {
   emptyScrollSurfaceScope,
   hasScrollLayoutBox,
 } from "../../../../scroll-scope.js";
+import "../../../../keyboard-navigation/components/shortcut-list.js";
 
 class CaffoldSettingsKeyboardPage extends HTMLElement {
   connectedCallback() {
@@ -131,23 +132,38 @@ class CaffoldSettingsKeyboardPage extends HTMLElement {
       <div class="settings-keyboard-scroll">
         <section class="settings-keyboard-section">
           <header>
-            <p>Choose how Caffold responds to keyboard-first navigation.</p>
+            <p>Navigate Caffold with single keys when you are not typing.</p>
           </header>
           <label class="settings-keyboard-toggle">
             <span class="settings-keyboard-copy">
-              <strong>Keyboard navigation</strong>
+              <strong id="settings-action-hints-label">
+                Keyboard navigation
+              </strong>
               <span id="settings-action-hints-description">
-                Press ? outside an editing field to view the complete shortcut map. Press F to show available actions. Press S to select a scroll area, then use J/K or D/U to move vertically and H/L to move horizontally. Once scrolling is active, press F to switch to available actions.
+                Enable keyboard shortcuts outside editing fields.
               </span>
             </span>
             <input
               type="checkbox"
               role="switch"
               data-action-hints-enabled
+              aria-labelledby="settings-action-hints-label"
               aria-describedby="settings-action-hints-description"
             >
             <span class="settings-keyboard-state" aria-hidden="true"></span>
           </label>
+          <section
+            class="settings-keyboard-shortcuts"
+            aria-labelledby="settings-keyboard-shortcuts-title"
+          >
+            <header>
+              <h2 id="settings-keyboard-shortcuts-title">
+                Keyboard shortcuts
+              </h2>
+              <p>Available when Keyboard navigation is on.</p>
+            </header>
+            <caffold-keyboard-shortcut-list></caffold-keyboard-shortcut-list>
+          </section>
         </section>
       </div>
     `;

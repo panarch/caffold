@@ -262,6 +262,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "keyboard-navigation/components/presentation.js" => Some(js(include_str!(
             "../../frontend/keyboard-navigation/components/presentation.js"
         ))),
+        "keyboard-navigation/components/shortcut-list.css" => Some(css(include_str!(
+            "../../frontend/keyboard-navigation/components/shortcut-list.css"
+        ))),
+        "keyboard-navigation/components/shortcut-list.js" => Some(js(include_str!(
+            "../../frontend/keyboard-navigation/components/shortcut-list.js"
+        ))),
         "keyboard-navigation/components/shortcut-dialog.css" => Some(css(include_str!(
             "../../frontend/keyboard-navigation/components/shortcut-dialog.css"
         ))),
@@ -1193,6 +1199,7 @@ mod tests {
             "keyboard-navigation/components/hud.js",
             "keyboard-navigation/components/selector.js",
             "keyboard-navigation/components/presentation.js",
+            "keyboard-navigation/components/shortcut-list.js",
             "keyboard-navigation/components/shortcut-dialog.js",
             "action-hints.js",
             "action-hints/control.js",
@@ -1231,6 +1238,7 @@ mod tests {
             "keyboard-navigation/components/hud.css",
             "keyboard-navigation/components/selector.css",
             "keyboard-navigation/components/presentation.css",
+            "keyboard-navigation/components/shortcut-list.css",
             "keyboard-navigation/components/shortcut-dialog.css",
             "action-hints/components/dialog.css",
             "pages/(task-workspace)/settings/keyboard/page.css",

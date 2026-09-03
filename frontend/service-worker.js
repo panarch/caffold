@@ -93,6 +93,8 @@ const APP_SHELL_ASSETS = [
   "/assets/keyboard-navigation/components/selector.js",
   "/assets/keyboard-navigation/components/presentation.css",
   "/assets/keyboard-navigation/components/presentation.js",
+  "/assets/keyboard-navigation/components/shortcut-list.css",
+  "/assets/keyboard-navigation/components/shortcut-list.js",
   "/assets/keyboard-navigation/components/shortcut-dialog.css",
   "/assets/keyboard-navigation/components/shortcut-dialog.js",
   "/assets/action-hints.js",

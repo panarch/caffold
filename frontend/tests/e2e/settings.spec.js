@@ -1436,16 +1436,34 @@ test("hands Action Hints off to native Appearance controls", { tag: "@all-viewpo
 
 test("turns keyboard navigation off through its declared switch", { tag: "@all-viewports" }, async ({
   page,
-}) => {
+}, testInfo) => {
   await page.goto("/settings/keyboard");
 
   const setting = page.getByRole("switch", { name: "Keyboard navigation" });
+  const shortcutList = page.locator(
+    "caffold-settings-keyboard-page caffold-keyboard-shortcut-list",
+  );
   const surface = page.locator(".task-workspace-surface");
   await expect(setting).toBeChecked();
+  await expect(setting).toHaveAccessibleDescription(
+    "Enable keyboard shortcuts outside editing fields.",
+  );
+  await expect(shortcutList.getByText("Show available actions", {
+    exact: true,
+  })).toBeVisible();
+  await expect(shortcutList.getByText("Scroll left or right", {
+    exact: true,
+  })).toBeVisible();
+  await captureReviewScreenshot(
+    page,
+    testInfo,
+    "settings-keyboard-shortcuts",
+  );
   await activateActionHint(page, "Turn keyboard navigation off");
   await expect(actionHintDialog(page)).toBeHidden();
   await expect(setting).not.toBeChecked();
   await expect(setting).toBeFocused();
+  await expect(shortcutList).toBeVisible();
 
   const consumed = await surface.evaluate((element) => {
     const dispatch = (key, code) => {
