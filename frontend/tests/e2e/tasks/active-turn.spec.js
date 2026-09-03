@@ -333,7 +333,7 @@ test("preserves active-turn and spinner identity until the turn changes", { tag:
 
 test("does not reuse active-turn state between tasks with the same turn id", { tag: "@all-viewports" }, async ({
   page,
-}) => {
+}, testInfo) => {
   const sharedTurnId = "turn_shared_between_tasks";
   const firstStartedAtMs = Date.now() - 5_000;
   const secondStartedAtMs = Date.now() - 1_000;
@@ -394,9 +394,11 @@ test("does not reuse active-turn state between tasks with the same turn id", { t
   const secondTaskRow = page.locator(
     `caffold-task-navigator .task-row[data-thread-id="${secondTask.threadId}"]`,
   );
-  if (!(await secondTaskRow.isVisible())) {
+  if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to tasks" }).click();
+    await expect(page).toHaveURL("/");
   }
+  await expect(secondTaskRow).toBeVisible();
   await secondTaskRow.click();
   await emitTaskDetailBootstrap(page, {
     ...details.get(secondTask.threadId),

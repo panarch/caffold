@@ -476,7 +476,7 @@ test("keeps the source selected and shows a fork failure inline", { tag: "@deskt
 
 test("uses light-dismiss review popovers and preserves them across same-Task sync", { tag: "@all-viewports" }, async ({
   page,
-}) => {
+}, testInfo) => {
   const threadId = "thread_summary_review_popovers";
   const task = summaryTask(
     threadId,
@@ -621,12 +621,13 @@ test("uses light-dismiss review popovers and preserves them across same-Task syn
   await infoTrigger.click();
   await expect(infoPopover).toBeVisible();
   const settings = page.getByRole("button", { name: /^Settings/ });
-  if (await settings.isVisible()) {
-    await settings.click();
-    await expect(page).toHaveURL(/\/settings(?:\/appearance)?$/);
-  } else {
+  if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to tasks" }).click();
     await expect(page).toHaveURL("/");
+  } else {
+    await expect(settings).toBeVisible();
+    await settings.click();
+    await expect(page).toHaveURL(/\/settings(?:\/appearance)?$/);
   }
   await expect(infoPopover).toBeHidden();
 });
