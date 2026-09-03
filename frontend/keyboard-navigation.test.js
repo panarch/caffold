@@ -57,6 +57,145 @@ test("one transition authority keeps Hint, selection, and active Scroll exclusiv
   }
 });
 
+test("question mark opens one global shortcut dialog and restores its opener", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const dialog = keyboardShortcutDialog();
+    const controller = createController({ shortcutDialog: dialog });
+    const opener = element({
+      isConnected: true,
+      focus(options) {
+        assert.deepEqual(options, { preventScroll: true });
+        document.activeElement = opener;
+      },
+    });
+    document.activeElement = opener;
+
+    const open = keyEvent("?");
+    open.target = opener;
+    controller.handleKeydown(open);
+    assert.equal(open.prevented, true);
+    assert.equal(open.stopped, true);
+    assert.equal(dialog.openCalls, 1);
+    assert.equal(
+      controller.storedNode,
+      KEYBOARD_NAVIGATION_NODE.SHORTCUT_HELP,
+    );
+    assert.equal(controller.workspace.dataset.keyboardShortcutHelp, "open");
+
+    document.activeElement = dialog;
+    const close = keyEvent("?");
+    close.target = dialog;
+    controller.handleKeydown(close);
+    assert.equal(close.prevented, true);
+    assert.equal(dialog.closeCalls, 1);
+    assert.equal(controller.storedNode, null);
+    assert.equal(document.activeElement, opener);
+    assert.equal(
+      controller.workspace.dataset.keyboardShortcutHelpLastExit,
+      "keyboard",
+    );
+  } finally {
+    restoreDom();
+  }
+});
+
+test("shortcut help stays native in editing and ignores unsafe key variants", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const dialog = keyboardShortcutDialog();
+    const controller = createController({ shortcutDialog: dialog });
+    const input = element({
+      isConnected: true,
+      matches: (selector) => selector.includes("input:not"),
+    });
+    document.activeElement = input;
+    for (const event of [
+      keyEvent("?"),
+      keyEvent("?", { repeat: true }),
+      keyEvent("?", { ctrlKey: true }),
+      { ...keyEvent("?"), isComposing: true },
+    ]) {
+      event.target = input;
+      controller.handleKeydown(event);
+      assert.equal(event.prevented, false);
+    }
+    assert.equal(dialog.openCalls, 0);
+
+    document.activeElement = null;
+    const repeated = keyEvent("?", { repeat: true });
+    controller.handleKeydown(repeated);
+    assert.equal(dialog.openCalls, 0);
+    const modified = keyEvent("?", { ctrlKey: true });
+    controller.handleKeydown(modified);
+    assert.equal(dialog.openCalls, 0);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("shortcut help replaces every active keyboard mode before it opens", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    for (const node of [
+      KEYBOARD_NAVIGATION_NODE.HINT,
+      KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING,
+      KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE,
+    ]) {
+      const order = [];
+      const dialog = keyboardShortcutDialog({
+        onOpen: () => order.push("open-help"),
+      });
+      const controller = createController({ shortcutDialog: dialog });
+      controller.storedNode = node;
+      controller.cancelStoredMode = (reason, options) => {
+        assert.equal(reason, "shortcut-help");
+        assert.deepEqual(options, { restoreFocus: false });
+        order.push(`close-${node}`);
+        controller.storedNode = null;
+        return true;
+      };
+
+      const event = keyEvent("?");
+      controller.handleKeydown(event);
+      assert.deepEqual(order, [`close-${node}`, "open-help"]);
+      assert.equal(
+        controller.storedNode,
+        KEYBOARD_NAVIGATION_NODE.SHORTCUT_HELP,
+      );
+      controller.closeShortcutHelp("test", { restoreFocus: false });
+    }
+  } finally {
+    restoreDom();
+  }
+});
+
+test("route, setting, and disconnect cleanup close shortcut help", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const dialog = keyboardShortcutDialog();
+    const controller = createController({ shortcutDialog: dialog });
+
+    assert.equal(controller.startShortcutHelp(), true);
+    controller.routeWillChange();
+    assert.equal(controller.storedNode, null);
+
+    assert.equal(controller.startShortcutHelp(), true);
+    controller.boundSettingsChange({
+      detail: { settings: { actionHintsEnabled: false } },
+    });
+    assert.equal(controller.storedNode, null);
+
+    controller.connect();
+    assert.equal(controller.startShortcutHelp(), true);
+    controller.disconnect();
+    assert.equal(controller.storedNode, null);
+    assert.equal(dialog.closeCalls, 3);
+  } finally {
+    restoreDom();
+  }
+});
+
 test("coordinator alone owns the document key listener and releases all inputs", () => {
   const restoreDom = installEventGlobals();
   try {
@@ -327,24 +466,69 @@ test("active F leaves no stored mode when the fresh context has no Hint target",
   }
 });
 
-test("Scroll selection keeps F as surface-code input", () => {
+test("Scroll selection keeps matching prefixes and exits on unmatched printable input", () => {
   const restoreDom = installEventGlobals();
   try {
     const controller = createController();
-    let selectionInput = null;
-    controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING;
-    controller.applySelectionInput = (key) => {
-      selectionInput = key;
+    const selector = scrollSelector();
+    let progression = null;
+    let closeCalls = 0;
+    selector.updateInput = (next) => {
+      progression = next;
     };
-    const selecting = keyEvent("f", { code: "KeyF" });
-    controller.handleKeydown(selecting);
-    assert.equal(selectionInput, "F");
+    selector.close = () => {
+      closeCalls += 1;
+    };
+    controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING;
+    controller.selectionSession = {
+      selector,
+      surfaces: [{ code: "FA" }],
+      buffer: "",
+      cleanup: [],
+    };
+
+    const prefix = keyEvent("f", { code: "KeyF" });
+    controller.handleKeydown(prefix);
+    assert.deepEqual(progression, {
+      buffer: "F",
+      matches: ["FA"],
+      exact: "",
+      status: "partial",
+    });
     assert.equal(
       controller.storedNode,
       KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING,
     );
-    assert.equal(selecting.prevented, true);
-    assert.equal(selecting.stopped, true);
+    assert.equal(prefix.prevented, true);
+    assert.equal(prefix.stopped, true);
+
+    const unmatchedLetter = keyEvent("z", { code: "KeyZ" });
+    controller.handleKeydown(unmatchedLetter);
+    assert.equal(controller.storedNode, null);
+    assert.equal(controller.selectionSession, null);
+    assert.equal(controller.workspace.dataset.scrollModeLastExit, "no-match");
+    assert.equal(closeCalls, 1);
+    assert.equal(unmatchedLetter.prevented, true);
+    assert.equal(unmatchedLetter.stopped, true);
+
+    const unsupported = createController();
+    unsupported.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING;
+    unsupported.selectionSession = {
+      selector: scrollSelector(),
+      surfaces: [{ code: "A" }],
+      buffer: "",
+      cleanup: [],
+    };
+    const number = keyEvent("1");
+    unsupported.handleKeydown(number);
+    assert.equal(unsupported.storedNode, null);
+    assert.equal(unsupported.selectionSession, null);
+    assert.equal(
+      unsupported.workspace.dataset.scrollModeLastExit,
+      "no-match",
+    );
+    assert.equal(number.prevented, true);
+    assert.equal(number.stopped, true);
   } finally {
     restoreDom();
   }
@@ -896,11 +1080,12 @@ test("active revalidation keeps one binding and refreshes its retained presentat
   }
 });
 
-function createController() {
+function createController({ shortcutDialog = null } = {}) {
   const workspace = Object.assign(new FakeEventTarget(), { dataset: {} });
   return new KeyboardNavigationController({
     workspace,
     collectKeyboardNavigationContexts: () => [],
+    shortcutDialog,
   });
 }
 
@@ -1025,6 +1210,23 @@ function scrollSelector() {
     allowsNativeActivation: () => false,
     updateInput() {},
     updateSurfaceLabels() {},
+  });
+}
+
+function keyboardShortcutDialog({ onOpen = () => {} } = {}) {
+  return element({
+    openCalls: 0,
+    closeCalls: 0,
+    open() {
+      this.openCalls += 1;
+      onOpen();
+      return true;
+    },
+    close() {
+      this.closeCalls += 1;
+      return true;
+    },
+    allowsNativeActivation: () => false,
   });
 }
 

@@ -105,35 +105,6 @@ test("keeps pinch gestures native while blocking background wheel and one-finger
   );
 });
 
-test("positions instructions inside the captured visual viewport", () => {
-  const instructions = {
-    style: {},
-    getBoundingClientRect: () => rect(388, 750, 892, 788),
-  };
-  const owner = {
-    viewportRect: rect(0, 0, 1024, 640),
-    dialog: {
-      querySelector(selector) {
-        assert.equal(
-          selector,
-          ":scope > .scroll-surface-selector-instructions",
-        );
-        return instructions;
-      },
-    },
-  };
-
-  selector.positionInstructions.call(owner);
-
-  assert.deepEqual(instructions.style, {
-    right: "auto",
-    bottom: "auto",
-    left: "260px",
-    top: "594px",
-    transform: "none",
-  });
-});
-
 test("stacks nested badge anchors without leaving the viewport", () => {
   const viewport = rect(0, 0, 200, 120);
   const surface = rect(4, 4, 196, 116);
@@ -149,7 +120,6 @@ test("stacks nested badge anchors without leaving the viewport", () => {
     regions: { querySelectorAll: () => regions },
     surfaces: ["A", "B"].map((code) => ({ code, visibleRect: surface })),
     viewportRect: viewport,
-    positionInstructions() {},
   };
 
   selector.positionBadges.call(owner);

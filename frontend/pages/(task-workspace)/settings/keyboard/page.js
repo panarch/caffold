@@ -137,7 +137,7 @@ class CaffoldSettingsKeyboardPage extends HTMLElement {
             <span class="settings-keyboard-copy">
               <strong>Keyboard navigation</strong>
               <span id="settings-action-hints-description">
-                Press F outside an editing field to show available actions. Press S to select a scroll area, then use J/K or D/U to move vertically and H/L to move horizontally. Once scrolling is active, press F to switch to available actions.
+                Press ? outside an editing field to view the complete shortcut map. Press F to show available actions. Press S to select a scroll area, then use J/K or D/U to move vertically and H/L to move horizontally. Once scrolling is active, press F to switch to available actions.
               </span>
             </span>
             <input

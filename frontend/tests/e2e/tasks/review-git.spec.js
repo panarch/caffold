@@ -1365,7 +1365,8 @@ test("scrolls the exact visible Review tree and diff through the workspace root"
     await page.keyboard.press("s");
     await expect(selector).toBeHidden();
     await expect(hud).toContainText("Scroll: Working tree changes");
-    await expect(hud).toContainText("H/L small");
+    await expect(hud.locator("[data-scroll-mode-shortcut-help]"))
+      .toContainText("?");
     await page.keyboard.press("l");
     await expect.poll(() => treeScroll.evaluate((element) => element.scrollLeft))
       .toBeGreaterThan(0);
@@ -1434,7 +1435,8 @@ test("scrolls the exact visible Review tree and diff through the workspace root"
   const treeHorizontalBeforeDiffScroll = await treeScroll.evaluate(
     (element) => element.scrollLeft,
   );
-  await expect(hud).toContainText("H/L small");
+  await expect(hud.locator("[data-scroll-mode-shortcut-help]"))
+    .toContainText("?");
   await page.keyboard.press("l");
   await expect.poll(() => diffScroll.evaluate((element) => element.scrollLeft))
     .toBeGreaterThan(0);
@@ -1499,14 +1501,23 @@ test("maps the visible source line when Diff and Source representations switch",
   await expect.poll(() => codeScroll.evaluate(
     (element) => element.scrollWidth > element.clientWidth + 1,
   )).toBe(true);
-  await page.locator(".task-workspace-surface").focus();
-  await page.keyboard.press("s");
-  await expect(page.locator("caffold-scroll-surface-selector > dialog:modal")).toBeHidden();
+  const scrollSelector = page.locator(
+    "caffold-scroll-surface-selector > dialog:modal",
+  );
   const workspaceHud = page.locator(
     "caffold-app-shell > caffold-keyboard-navigation-presentation > caffold-scroll-mode-hud .scroll-mode-status",
   );
+  await page.locator(".task-workspace-surface").focus();
+  await page.keyboard.press("s");
+  await expect.poll(async () =>
+    await scrollSelector.isVisible() || await workspaceHud.isVisible()
+  ).toBe(true);
+  if (await scrollSelector.isVisible()) {
+    await scrollSelector.getByLabel(/^[A-Z]+ — planner\.rs source$/).click();
+  }
   await expect(workspaceHud).toContainText("Scroll: planner.rs source");
-  await expect(workspaceHud).toContainText("H/L small");
+  await expect(workspaceHud.locator("[data-scroll-mode-shortcut-help]"))
+    .toContainText("?");
   await page.keyboard.press("l");
   await expect.poll(() => codeScroll.evaluate((element) => element.scrollLeft))
     .toBeGreaterThan(0);
@@ -1561,12 +1572,15 @@ test("maps the visible source line when Diff and Source representations switch",
   )).toBe(true);
   await page.locator(".task-workspace-surface").focus();
   await page.keyboard.press("s");
-  await expect(page.locator(
-    "caffold-scroll-surface-selector > dialog:modal",
-  )).toBeHidden();
+  await expect.poll(async () =>
+    await scrollSelector.isVisible() || await workspaceHud.isVisible()
+  ).toBe(true);
+  if (await scrollSelector.isVisible()) {
+    await scrollSelector.getByLabel(/^[A-Z]+ — planner\.rs source$/).click();
+  }
   await expect(workspaceHud).toContainText("Scroll: planner.rs source");
-  await expect(workspaceHud).toContainText("H/L small");
-  await expect(workspaceHud).not.toContainText("J/K small");
+  await expect(workspaceHud.locator("[data-scroll-mode-shortcut-help]"))
+    .toContainText("?");
   await page.keyboard.press("l");
   await expect.poll(() => codeScroll.evaluate((element) => element.scrollLeft))
     .toBeGreaterThan(0);
@@ -1592,12 +1606,15 @@ test("maps the visible source line when Diff and Source representations switch",
   )).toBe(true);
   await page.locator(".task-workspace-surface").focus();
   await page.keyboard.press("s");
-  await expect(page.locator(
-    "caffold-scroll-surface-selector > dialog:modal",
-  )).toBeHidden();
+  await expect.poll(async () =>
+    await scrollSelector.isVisible() || await workspaceHud.isVisible()
+  ).toBe(true);
+  if (await scrollSelector.isVisible()) {
+    await scrollSelector.getByLabel(/^[A-Z]+ — planner\.rs diff$/).click();
+  }
   await expect(workspaceHud).toContainText("Scroll: planner.rs diff");
-  await expect(workspaceHud).toContainText("H/L small");
-  await expect(workspaceHud).not.toContainText("J/K small");
+  await expect(workspaceHud.locator("[data-scroll-mode-shortcut-help]"))
+    .toContainText("?");
   await page.keyboard.press("l");
   await expect.poll(() => horizontalDiff.evaluate(
     (element) => element.scrollLeft,

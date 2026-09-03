@@ -52,6 +52,9 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   const actionHintDialog = readFrontend(
     "action-hints/components/dialog.js",
   );
+  const shortcutDialog = readFrontend(
+    "keyboard-navigation/components/shortcut-dialog.js",
+  );
   const keyboardSettings = readFrontend(
     "pages/(task-workspace)/settings/keyboard/page.js",
   );
@@ -99,6 +102,11 @@ test("task workspace declares one shared master pane and one detail pane", () =>
     [...appShell.matchAll(/<caffold-keyboard-navigation-presentation>/g)].length,
     1,
   );
+  assert.equal(
+    [...appShell.matchAll(/<caffold-keyboard-shortcut-dialog>/g)].length,
+    1,
+  );
+  assert.match(appShell, /shortcutDialog: this\.keyboardShortcutDialog/);
   assert.match(appShell, /new KeyboardNavigationController\(/);
   assert.doesNotMatch(workspace, /new KeyboardNavigationController\(/);
   assert.match(
@@ -129,6 +137,10 @@ test("task workspace declares one shared master pane and one detail pane", () =>
   assert.match(
     actionHintDialog,
     /customElements\.define\(\s*"caffold-action-hint-dialog"/,
+  );
+  assert.match(
+    shortcutDialog,
+    /customElements\.define\(\s*"caffold-keyboard-shortcut-dialog"/,
   );
   assert.match(settingsWorkspace, /import "\.\/keyboard\/page\.js"/);
   assert.equal(
@@ -196,6 +208,7 @@ test("App Shell owns the normal context and route cleanup while Task Workspace p
   assert.match(presentation, /<caffold-action-hint-dialog>/);
   assert.match(presentation, /<caffold-scroll-mode-hud>/);
   assert.match(presentation, /<caffold-scroll-surface-selector>/);
+  assert.doesNotMatch(presentation, /<caffold-keyboard-shortcut-dialog>/);
   assert.match(context, /selector: scroll\.selector/);
   assert.match(context, /!root\.contains\(selector\)/);
 

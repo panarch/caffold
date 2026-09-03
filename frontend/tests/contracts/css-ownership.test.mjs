@@ -51,6 +51,10 @@ const ownership = new Map([
     ["caffold-keyboard-navigation-presentation"],
   ],
   [
+    "keyboard-navigation/components/shortcut-dialog.css",
+    ["caffold-keyboard-shortcut-dialog"],
+  ],
+  [
     "action-hints/components/dialog.css",
     ["caffold-action-hint-dialog"],
   ],

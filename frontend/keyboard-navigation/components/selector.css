@@ -23,41 +23,6 @@ caffold-scroll-surface-selector {
     background: rgb(var(--shadow-rgb) / 4%);
   }
 
-  & .scroll-surface-selector-instructions {
-    position: absolute;
-    z-index: 3;
-    right: 50%;
-    bottom: var(--interface-space-5);
-    display: flex;
-    align-items: center;
-    gap: var(--interface-space-4);
-    max-width: calc(100% - var(--interface-space-8));
-    padding: var(--interface-space-3) var(--interface-space-5);
-    transform: translateX(50%);
-    border: 1px solid var(--border-strong);
-    border-radius: 999px;
-    background: var(--surface);
-    box-shadow: 0 0.25rem 1rem rgb(var(--shadow-rgb) / 16%);
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-    white-space: nowrap;
-  }
-
-  & #scroll-surface-selector-title,
-  & .scroll-surface-selector-input-status {
-    color: var(--text);
-  }
-
-  & .scroll-surface-selector-input-status:empty {
-    display: none;
-  }
-
-  & .scroll-surface-selector[data-input-state="no-match"]
-    .scroll-surface-selector-input-status {
-    color: var(--danger);
-  }
-
   & .scroll-surface-selector-regions {
     position: absolute;
     inset: 0;
@@ -113,16 +78,5 @@ caffold-scroll-surface-selector {
   & .scroll-surface-selector-badge:focus-visible {
     outline: 3px solid var(--focus-ring);
     outline-offset: 2px;
-  }
-}
-
-@media (max-width: 520px) {
-  caffold-scroll-surface-selector .scroll-surface-selector-instructions {
-    max-width: calc(100% - var(--interface-space-5) * 2);
-    white-space: normal;
-  }
-
-  caffold-scroll-surface-selector #scroll-surface-selector-description {
-    display: none;
   }
 }

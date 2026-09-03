@@ -16,6 +16,7 @@ import {
   normalizeKeyboardNavigationContexts,
 } from "./keyboard-navigation/context.js";
 import {
+  SCROLL_COMMAND,
   allocateScrollSurfaceCodes,
   normalizedContextRect,
   orderScrollSurfaces,
@@ -29,6 +30,11 @@ import {
   SCROLL_SURFACE_SELECT_EVENT,
 } from "./keyboard-navigation/components/selector.js";
 import "./keyboard-navigation/components/hud.js";
+import {
+  KEYBOARD_NAVIGATION_KEY,
+  KEYBOARD_SHORTCUT_CLOSE_EVENT,
+  matchesKeyboardNavigationKey,
+} from "./keyboard-navigation/shortcuts.js";
 
 export {
   keyboardNavigationContext,
@@ -40,11 +46,13 @@ export class KeyboardNavigationController {
   constructor({
     workspace,
     collectKeyboardNavigationContexts,
+    shortcutDialog = null,
     afterActionHintActivation = () => {},
     readSettings = () => ({ actionHintsEnabled: true }),
   }) {
     this.workspace = workspace;
     this.collectKeyboardNavigationContexts = collectKeyboardNavigationContexts;
+    this.shortcutDialog = shortcutDialog;
     this.readSettings = readSettings;
     this.connected = false;
     this.compositionActive = false;
@@ -52,6 +60,7 @@ export class KeyboardNavigationController {
     this.storedNode = null;
     this.selectionSession = null;
     this.activeSession = null;
+    this.shortcutSession = null;
     this.actionHints = new ActionHintController({
       workspace,
       dialog: null,
@@ -105,6 +114,13 @@ export class KeyboardNavigationController {
       }
       this.cancelSelection(event.detail?.reason ?? "selector");
     };
+    this.boundShortcutClose = (event) => {
+      if (event.target !== this.shortcutDialog) {
+        return;
+      }
+      event.stopPropagation();
+      this.closeShortcutHelp(event.detail?.reason ?? "dialog");
+    };
   }
 
   connect() {
@@ -132,6 +148,10 @@ export class KeyboardNavigationController {
     this.workspace.addEventListener(
       SCROLL_SURFACE_CANCEL_EVENT,
       this.boundSurfaceCancel,
+    );
+    this.workspace.addEventListener(
+      KEYBOARD_SHORTCUT_CLOSE_EVENT,
+      this.boundShortcutClose,
     );
     window.addEventListener("caffold:settings-change", this.boundSettingsChange);
   }
@@ -163,6 +183,10 @@ export class KeyboardNavigationController {
       SCROLL_SURFACE_CANCEL_EVENT,
       this.boundSurfaceCancel,
     );
+    this.workspace.removeEventListener(
+      KEYBOARD_SHORTCUT_CLOSE_EVENT,
+      this.boundShortcutClose,
+    );
     window.removeEventListener(
       "caffold:settings-change",
       this.boundSettingsChange,
@@ -176,7 +200,14 @@ export class KeyboardNavigationController {
   }
 
   handleKeydown(event) {
+    if (this.storedNode === KEYBOARD_NAVIGATION_NODE.SHORTCUT_HELP) {
+      this.handleShortcutHelpKeydown(event);
+      return;
+    }
     if (this.storedNode === KEYBOARD_NAVIGATION_NODE.HINT) {
+      if (this.handleShortcutHelpEntry(event)) {
+        return;
+      }
       this.actionHints.handleHintKeydown(event, {
         compositionActive: this.compositionActive,
       });
@@ -221,14 +252,25 @@ export class KeyboardNavigationController {
     const key = normalizeActionHintKey(event, {
       compositionActive: this.compositionActive,
     });
-    if (key === "F") {
+    if (matchesKeyboardNavigationKey(
+      event,
+      KEYBOARD_NAVIGATION_KEY.SHORTCUT_HELP,
+      { compositionActive: this.compositionActive },
+    )) {
+      if (this.startShortcutHelp()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
+    if (key === KEYBOARD_NAVIGATION_KEY.ACTION_HINTS) {
       if (this.startActionHints()) {
         event.preventDefault();
         event.stopPropagation();
       }
       return;
     }
-    if (key === "S" && this.startScroll()) {
+    if (key === KEYBOARD_NAVIGATION_KEY.SCROLL_SELECT && this.startScroll()) {
       event.preventDefault();
       event.stopPropagation();
     }
@@ -248,6 +290,9 @@ export class KeyboardNavigationController {
     if (this.selectionSession?.selector?.allowsNativeActivation(event)) {
       return;
     }
+    if (this.handleShortcutHelpEntry(event)) {
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -265,6 +310,7 @@ export class KeyboardNavigationController {
       if (`${event.key ?? ""}`.length === 1) {
         event.preventDefault();
         event.stopPropagation();
+        this.cancelSelection("no-match");
       }
       return;
     }
@@ -274,6 +320,9 @@ export class KeyboardNavigationController {
   }
 
   handleActiveKeydown(event) {
+    if (this.handleShortcutHelpEntry(event)) {
+      return;
+    }
     if (event.key === "Escape" &&
       !event.isComposing &&
       !this.compositionActive &&
@@ -289,7 +338,7 @@ export class KeyboardNavigationController {
       compositionActive: this.compositionActive,
       allowRepeat: true,
     });
-    if (key === "F" && !event.repeat) {
+    if (key === KEYBOARD_NAVIGATION_KEY.ACTION_HINTS && !event.repeat) {
       if (!this.cancelActive("action-hints")) {
         return;
       }
@@ -298,7 +347,7 @@ export class KeyboardNavigationController {
       this.startActionHints();
       return;
     }
-    if (!Object.hasOwn({ J: true, K: true, D: true, U: true, H: true, L: true }, key)) {
+    if (!Object.hasOwn(SCROLL_COMMAND, key)) {
       return;
     }
     const session = this.activeSession;
@@ -330,6 +379,105 @@ export class KeyboardNavigationController {
     } else {
       session.scrollport.scrollLeft = next.position;
     }
+  }
+
+  handleShortcutHelpEntry(event) {
+    if (!matchesKeyboardNavigationKey(
+      event,
+      KEYBOARD_NAVIGATION_KEY.SHORTCUT_HELP,
+      { compositionActive: this.compositionActive },
+    )) {
+      return false;
+    }
+    if (!this.startShortcutHelp()) {
+      return false;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
+  }
+
+  handleShortcutHelpKeydown(event) {
+    if (this.shortcutDialog?.allowsNativeActivation?.(event)) {
+      return;
+    }
+    const closes = matchesKeyboardNavigationKey(
+      event,
+      KEYBOARD_NAVIGATION_KEY.SHORTCUT_HELP,
+      { compositionActive: this.compositionActive },
+    ) || matchesKeyboardNavigationKey(
+      event,
+      KEYBOARD_NAVIGATION_KEY.ESCAPE,
+      { compositionActive: this.compositionActive },
+    );
+    if (!closes || !this.closeShortcutHelp("keyboard")) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  startShortcutHelp() {
+    if (!this.shortcutDialog || this.shortcutSession) {
+      return false;
+    }
+    const current = this.controlNode();
+    if (
+      current === KEYBOARD_NAVIGATION_NODE.EDITING ||
+      current === KEYBOARD_NAVIGATION_NODE.SHORTCUT_HELP
+    ) {
+      return false;
+    }
+    const restoreTarget = this.shortcutHelpOpener();
+    if (this.storedNode && !this.cancelStoredMode("shortcut-help", {
+      restoreFocus: false,
+    })) {
+      return false;
+    }
+    if (!this.applyTransition(
+      KEYBOARD_NAVIGATION_EVENT.SHORTCUT_HELP_STARTED,
+    )) {
+      return false;
+    }
+    const session = { opener: restoreTarget };
+    this.shortcutSession = session;
+    try {
+      if (!this.shortcutDialog.open()) {
+        throw new Error("Keyboard shortcut help did not open.");
+      }
+    } catch {
+      this.shortcutSession = null;
+      this.applyTransition(KEYBOARD_NAVIGATION_EVENT.SHORTCUT_HELP_CLOSED);
+      this.restoreFocus(restoreTarget);
+      return false;
+    }
+    this.workspace.dataset.keyboardShortcutHelp = "open";
+    return true;
+  }
+
+  closeShortcutHelp(reason = "close", { restoreFocus = true } = {}) {
+    const session = this.shortcutSession;
+    if (!session) {
+      return false;
+    }
+    this.shortcutSession = null;
+    this.shortcutDialog.close();
+    this.applyTransition(KEYBOARD_NAVIGATION_EVENT.SHORTCUT_HELP_CLOSED);
+    delete this.workspace.dataset.keyboardShortcutHelp;
+    this.workspace.dataset.keyboardShortcutHelpLastExit = reason;
+    if (restoreFocus) {
+      this.restoreFocus(session.opener);
+    }
+    return true;
+  }
+
+  shortcutHelpOpener() {
+    return this.actionHints.session?.opener ??
+      this.selectionSession?.opener ??
+      this.activeSession?.opener ??
+      (document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null);
   }
 
   startActionHints() {
@@ -456,6 +604,10 @@ export class KeyboardNavigationController {
       key,
       session.surfaces.map(({ code }) => code),
     );
+    if (progression.status === "no-match") {
+      this.cancelSelection("no-match");
+      return;
+    }
     session.buffer = progression.buffer;
     session.selector.updateInput(progression);
     if (progression.exact) {
@@ -508,6 +660,11 @@ export class KeyboardNavigationController {
   beginActive(snapshot, surface) {
     const session = {
       ...surface,
+      opener: snapshot.opener instanceof HTMLElement
+        ? snapshot.opener
+        : document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null,
       context: snapshot.context,
       contextRect: snapshot.contextRect,
       viewport: snapshot.viewport,
@@ -560,6 +717,9 @@ export class KeyboardNavigationController {
     if (this.storedNode === KEYBOARD_NAVIGATION_NODE.HINT) {
       return this.actionHints.cancel(reason, options);
     }
+    if (this.storedNode === KEYBOARD_NAVIGATION_NODE.SHORTCUT_HELP) {
+      return this.closeShortcutHelp(reason, options);
+    }
     return this.cancelScroll(reason, options);
   }
 
@@ -584,6 +744,7 @@ export class KeyboardNavigationController {
       KEYBOARD_NAVIGATION_NODE.HINT,
       KEYBOARD_NAVIGATION_NODE.SCROLL_SELECTING,
       KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE,
+      KEYBOARD_NAVIGATION_NODE.SHORTCUT_HELP,
     ].includes(next)
       ? next
       : null;
@@ -791,7 +952,6 @@ export class KeyboardNavigationController {
       label: session.label,
       visibleRect: session.visibleRect,
       contextRect: session.contextRect,
-      availableAxes: session.availableAxes,
     }));
   }
 

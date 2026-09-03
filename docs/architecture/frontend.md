@@ -231,12 +231,12 @@ master/detail layout system.
 
 The App Shell keyboard-navigation coordinator is the only document-level key
 owner. It derives normal versus editing state from focus and composition, and
-stores at most one mutually exclusive Action Hint, Scroll selection, or active
-Scroll mode. Keyboard navigation being disabled closes the stored mode and
-leaves both `F` and `S` unhandled. App Shell route changes, disconnect,
-competing native overlay ownership, and composition changes run through the
-same cleanup authority. Task Workspace does not install a second document
-listener or global presentation.
+stores at most one mutually exclusive Action Hint, Scroll selection, active
+Scroll, or shortcut-help mode. Keyboard navigation being disabled closes the
+stored mode and leaves `F`, `S`, and `?` unhandled. App Shell route changes,
+disconnect, competing native overlay ownership, and composition changes run
+through the same cleanup authority. Task Workspace does not install a second
+document listener or global presentation.
 
 Workspace, registered modal, and registered popover owners publish one thin
 keyboard-navigation context identified by stable ID, ownership kind, and exact
@@ -389,10 +389,9 @@ modal dialog. Scroll, viewport, route, target topology, geometry,
 actionability, or competing modal/popover ownership closes the session. A
 presentation-only accessible-name change refreshes the existing badge without
 changing its code, while equivalent presentation patches do not retarget it.
-A partial prefix keeps Hint open while at least one frozen code still
-matches. A character that leaves no match is consumed and closes Hint while
-restoring its invoking focus; Scroll selection retains its separate input
-policy.
+A partial prefix keeps Action Hint or Scroll selection open while at least one
+frozen code still matches. A printable character that leaves no match is
+consumed and closes that selection mode while restoring its invoking focus.
 
 Each registered popover retains a small shared presentation host containing its
 own Action Hint dialog, Scroll selector, and Scroll HUD. Dynamic Model and
@@ -412,15 +411,16 @@ patches preserve the dialog, presentation, and declared control or scrollport
 identities unless a real topology change requires a fresh session.
 
 `normal` and `editing` are derived from current focus and composition; `hint`,
-`scroll-selecting`, and `scroll-active` are the stored keyboard-navigation
-nodes. The complete node edges are
-`normal -> normal | editing | hint | scroll-selecting | scroll-active`,
+`scroll-selecting`, `scroll-active`, and `shortcut-help` are the stored
+keyboard-navigation nodes. The complete node edges are
+`normal -> normal | editing | hint | scroll-selecting | scroll-active | shortcut-help`,
 `editing -> editing | normal`, `hint -> hint | normal`,
-`scroll-selecting -> scroll-selecting | scroll-active | normal`, and
-`scroll-active -> scroll-active | normal`. One transition table gates session
-creation, input, cancel, selection, commands, and activation close. Closing a
-stored mode releases its scoped listeners and observers before an existing
-route, model popover, document dialog, or prompt-focus owner takes control.
+`scroll-selecting -> scroll-selecting | scroll-active | normal`,
+`scroll-active -> scroll-active | normal`, and
+`shortcut-help -> normal`. One transition table gates session creation, input,
+cancel, selection, commands, and activation close. Closing a stored mode
+releases its scoped listeners and observers before an existing route, model
+popover, document dialog, or prompt-focus owner takes control.
 Composition and unregistered modal or popover owners keep their own key and
 Escape ownership.
 
@@ -500,14 +500,26 @@ Active Scroll mode sends `J/K` by 10 percent and `D/U` by 50 percent of the
 selected scrollport height. `H/L` moves left or right by 10 percent of its
 width. Every delta is at least one CSS pixel and clamps immediately to the exact
 axis boundary. Supported commands are consumed even at a boundary and accept
-key repeat without chaining into a parent or the window. The HUD advertises
-only the commands for the captured available axes, plus the common `F` and
-`Escape` exits. `Escape` closes only Scroll mode. A non-repeated,
+key repeat without chaining into a parent or the window. The context-local HUD
+shows only the active surface label and a `?` shortcut-help affordance in the
+selected surface's top-right corner; the selected surface keeps its outline.
+`Escape` closes only Scroll mode. A non-repeated,
 non-composing `F` without Ctrl, Alt, or Meta first closes active Scroll mode
 and releases its scoped observers, then captures a fresh Action Hint snapshot
 in the current context. A context with no eligible action leaves no stored
 keyboard mode. Scroll selection continues to treat `F` as a possible surface
 code rather than switching modes.
+
+Action Hint and multi-surface Scroll selection show only their target badges
+and outlines. Their title, instructions, and typed-code status remain available
+to assistive technology without occupying product UI. The App Shell owns one
+global native shortcut-help dialog rather than duplicating it in every
+context-local presentation. Outside editing fields, a `?` keydown without
+Ctrl, Alt, or Meta that is neither repeated nor composing opens it from Normal,
+Action Hint, Scroll selection, or active Scroll state. Entering help first
+closes any active mode and its frozen snapshot; closing help with `?`, `Escape`,
+or its Close button returns to Normal and restores the original focus target.
+It never recreates a previous overlay session.
 
 Active revalidation preserves the exact context, surface ID, element binding,
 and axes. Scrolling the selected element itself keeps the session active;
@@ -927,7 +939,7 @@ lifetime.
 
 Settings lives inside Task Workspace. Appearance owns theme and Interface,
 Conversation, and Code scales. Keyboard owns the persisted Keyboard navigation
-On/Off control; Off closes active Action Hint or Scroll mode and leaves their
+On/Off control; Off closes any active keyboard-navigation mode and leaves its
 keys unhandled. Settings Codex renders the shared status and runtime-restart
 request snapshots, repair guidance,
 diagnostics, and intents for Refresh or restart. The workspace Codex status

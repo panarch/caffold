@@ -128,6 +128,95 @@ test("selects and scrolls only the registered surface", { tag: "@all-viewports" 
   );
 });
 
+test(
+  "closes Scroll selection when printable input matches no surface",
+  { tag: ["@desktop", "@foldable"] },
+  async ({ page }) => {
+    const { detail } = await installScrollFixture(page);
+    await openScrollTask(page, detail);
+
+    const opener = page.locator(".task-workspace-surface");
+    const selector = scrollSelector(page);
+    const hud = scrollHud(page);
+    const workspace = page.locator("caffold-app-shell");
+    await opener.focus();
+    await page.keyboard.press("s");
+    await expect(selector).toBeVisible();
+
+    await page.keyboard.press("z");
+
+    await expect(selector).toBeHidden();
+    await expect(hud).toBeHidden();
+    await expect(opener).toBeFocused();
+    await expect(workspace).toHaveAttribute(
+      "data-scroll-mode-last-exit",
+      "no-match",
+    );
+
+    await page.keyboard.press("s");
+    await expect(selector).toBeVisible();
+    await page.keyboard.press("1");
+    await expect(selector).toBeHidden();
+    await expect(opener).toBeFocused();
+    await expect(workspace).toHaveAttribute(
+      "data-scroll-mode-last-exit",
+      "no-match",
+    );
+  },
+);
+
+test("opens shortcut help from Scroll selection and active Scroll", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const { detail } = await installScrollFixture(page);
+  await openScrollTask(page, detail);
+
+  const opener = page.locator(".task-workspace-surface");
+  const selector = scrollSelector(page);
+  const hud = scrollHud(page);
+  const help = page.locator(
+    "caffold-keyboard-shortcut-dialog > dialog:modal",
+  );
+  await opener.focus();
+  await page.keyboard.press("s");
+
+  if (testInfo.project.name !== "phone") {
+    await expect(selector).toBeVisible();
+    await expect(selector.locator(
+      ":scope > .scroll-surface-selector-instructions",
+    )).toHaveCount(0);
+    await expect(selector.locator(":scope > .sr-only")).toHaveCount(3);
+    await page.keyboard.press("?");
+    await expect(selector).toBeHidden();
+    await expect(help).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(help).toBeHidden();
+    await expect(selector).toBeHidden();
+    await expect(hud).toBeHidden();
+    await expect(opener).toBeFocused();
+
+    await page.keyboard.press("s");
+    await selector.getByLabel(/^[A-Z]+ — Conversation$/).click();
+  }
+
+  await expect(hud).toContainText("Scroll: Conversation");
+  await expect(hud.locator("[data-scroll-mode-shortcut-help]")).toContainText(
+    "?",
+  );
+  await page.keyboard.press("?");
+  await expect(hud).toBeHidden();
+  await expect(help).toBeVisible();
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
+    "data-scroll-mode-last-exit",
+    "shortcut-help",
+  );
+
+  await help.getByRole("button", { name: "Close keyboard shortcuts" }).click();
+  await expect(help).toBeHidden();
+  await expect(hud).toBeHidden();
+  await expect(opener).toBeFocused();
+});
+
 test("selects nested Conversation code and table scrollports and cancels a lost axis", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
@@ -180,8 +269,9 @@ test("selects nested Conversation code and table scrollports and cancels a lost 
   );
   await selector.getByLabel(/^[A-Z]+ — text code block 1$/i).click();
   await expect(hud).toContainText(/Scroll: text code block 1/i);
-  await expect(hud).toContainText("H/L small");
-  await expect(hud).not.toContainText("J/K small");
+  await expect(hud.locator("[data-scroll-mode-shortcut-help]")).toContainText(
+    "?",
+  );
   await page.keyboard.press("l");
   await expect.poll(() => code.evaluate((element) => element.scrollLeft))
     .toBeGreaterThan(0);
@@ -263,7 +353,9 @@ test("switches active Scroll to fresh Action Hints with F", { tag: "@desktop" },
   await page.locator(".task-workspace-surface").focus();
   await page.keyboard.press("s");
   await selector.getByLabel(/^[A-Z]+ — Conversation$/).click();
-  await expect(hud).toContainText("F Action Hints");
+  await expect(hud.locator("[data-scroll-mode-shortcut-help]")).toContainText(
+    "?",
+  );
 
   await page.keyboard.press("f");
 
@@ -673,8 +765,9 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
   await expect(modalHud).toContainText(
     "Scroll: Plan document code block 1",
   );
-  await expect(modalHud).toContainText("H/L small");
-  await expect(modalHud).not.toContainText("J/K small");
+  await expect(modalHud.locator("[data-scroll-mode-shortcut-help]")).toContainText(
+    "?",
+  );
   await page.keyboard.press("l");
   await expect.poll(() => planCode.evaluate((element) => element.scrollLeft))
     .toBeGreaterThan(0);
@@ -1003,6 +1096,9 @@ test("keeps selector and HUD visible at appearance and zoom extremes", { tag: "@
     expect(hudVisual.contrastRatio).toBeGreaterThanOrEqual(4.5);
     expect(hudVisual.outlineWidth).toBeGreaterThanOrEqual(2);
     expect(hudVisual.pointerEvents).toBe("none");
+    expect(hudVisual.helpPointerEvents).toBe("none");
+    expect(hudVisual.cornerInset.right).toBeCloseTo(8, 0);
+    expect(hudVisual.cornerInset.top).toBeCloseTo(8, 0);
     expect(hudVisual.scale).toBeCloseTo(scenario.pageScaleFactor, 2);
     if (index === 1) {
       await captureReviewScreenshot(
@@ -1174,7 +1270,6 @@ async function captureScrollPresentation(page, kind) {
       const inspected = [
         ...regions,
         ...dialog.querySelectorAll("button[data-scroll-surface-code]"),
-        dialog.querySelector(".scroll-surface-selector-instructions"),
       ];
       return {
         contrastRatio: colorContrast(
@@ -1195,6 +1290,9 @@ async function captureScrollPresentation(page, kind) {
       .find((element) => !element.hidden);
     const status = host.querySelector(".scroll-mode-status");
     const outline = host.querySelector(".scroll-mode-outline");
+    const help = status.querySelector("[data-scroll-mode-shortcut-help]");
+    const statusRect = status.getBoundingClientRect();
+    const outlineRect = outline.getBoundingClientRect();
     const statusStyle = getComputedStyle(status);
     return {
       contrastRatio: colorContrast(
@@ -1203,10 +1301,15 @@ async function captureScrollPresentation(page, kind) {
       ),
       outlineWidth: Number.parseFloat(getComputedStyle(outline).borderTopWidth),
       pointerEvents: getComputedStyle(host).pointerEvents,
-      geometry: [status, outline].map(geometry),
+      helpPointerEvents: getComputedStyle(help).pointerEvents,
+      cornerInset: {
+        right: outlineRect.right - statusRect.right,
+        top: statusRect.top - outlineRect.top,
+      },
+      geometry: [status, outline, help].map(geometry),
       scale: window.visualViewport?.scale ?? 1,
       viewport,
-      viewportEscapes: escapes([status, outline]),
+      viewportEscapes: escapes([status, outline, help]),
     };
 
     function colorContrast(foreground, background) {

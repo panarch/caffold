@@ -50,6 +50,9 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
 
   const dialog = actionHintDialog(page);
   await expect(dialog).toBeVisible();
+  await expect(dialog.locator(":scope > .action-hint-instructions"))
+    .toHaveCount(0);
+  await expect(dialog.locator(":scope > .sr-only")).toHaveCount(3);
   const eligible = await visibleTaskTitles(page);
   expect(eligible.length).toBeGreaterThan(0);
   expect(eligible.length).toBeLessThan(tasks.length);
@@ -124,6 +127,52 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
   await expect(dialog).toBeHidden();
   await expect(newTask).toBeFocused();
   await expect(surface).toBeVisible();
+});
+
+test("opens global shortcut help from Normal and replaces Action Hints", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  await installActionHintFixture(page, actionHintTasks(2));
+  await page.goto("/tasks");
+
+  const opener = page.locator(".task-workspace-surface");
+  const help = page.locator(
+    "caffold-keyboard-shortcut-dialog > dialog:modal",
+  );
+  await opener.focus();
+  await page.keyboard.press("?");
+  await expect(help).toBeVisible();
+  await expect(help.getByRole("heading", { name: "Keyboard shortcuts" }))
+    .toBeVisible();
+  await expect(help.getByText("Show available actions", { exact: true }))
+    .toBeVisible();
+  await expect(help.getByText("Scroll left or right", { exact: true }))
+    .toBeVisible();
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
+    "data-keyboard-shortcut-help",
+    "open",
+  );
+  await captureReviewScreenshot(page, testInfo, "keyboard-shortcut-help");
+
+  await page.keyboard.press("?");
+  await expect(help).toBeHidden();
+  await expect(opener).toBeFocused();
+
+  await page.keyboard.press("f");
+  const hints = actionHintDialog(page);
+  await expect(hints).toBeVisible();
+  await page.keyboard.press("?");
+  await expect(hints).toBeHidden();
+  await expect(help).toBeVisible();
+  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
+    "data-action-hint-last-exit",
+    "shortcut-help",
+  );
+
+  await page.keyboard.press("Escape");
+  await expect(help).toBeHidden();
+  await expect(hints).toBeHidden();
+  await expect(opener).toBeFocused();
 });
 
 test("closes Hint when printable input cannot match an action", { tag: "@all-viewports" }, async ({
@@ -753,6 +802,10 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
   await page.locator(".tasks-detail-pane").focus();
   await page.keyboard.press("f");
   await expect(actionHintDialog(page)).toBeHidden();
+  await page.keyboard.press("?");
+  await expect(page.locator(
+    "caffold-keyboard-shortcut-dialog > dialog:modal",
+  )).toBeHidden();
 
   await page.goto("/settings/keyboard");
   await setting.check();
@@ -764,6 +817,11 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
   await page.keyboard.press("f");
   await expect(prompt).toHaveValue("f");
   await expect(actionHintDialog(page)).toBeHidden();
+  await page.keyboard.press("?");
+  await expect(prompt).toHaveValue("f?");
+  await expect(page.locator(
+    "caffold-keyboard-shortcut-dialog > dialog:modal",
+  )).toBeHidden();
 
   await prompt.evaluate((textarea) => {
     textarea.dispatchEvent(new CompositionEvent("compositionstart", {

@@ -241,6 +241,9 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "keyboard-navigation/model.js" => Some(js(include_str!(
             "../../frontend/keyboard-navigation/model.js"
         ))),
+        "keyboard-navigation/shortcuts.js" => Some(js(include_str!(
+            "../../frontend/keyboard-navigation/shortcuts.js"
+        ))),
         "keyboard-navigation/components/hud.css" => Some(css(include_str!(
             "../../frontend/keyboard-navigation/components/hud.css"
         ))),
@@ -258,6 +261,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "keyboard-navigation/components/presentation.js" => Some(js(include_str!(
             "../../frontend/keyboard-navigation/components/presentation.js"
+        ))),
+        "keyboard-navigation/components/shortcut-dialog.css" => Some(css(include_str!(
+            "../../frontend/keyboard-navigation/components/shortcut-dialog.css"
+        ))),
+        "keyboard-navigation/components/shortcut-dialog.js" => Some(js(include_str!(
+            "../../frontend/keyboard-navigation/components/shortcut-dialog.js"
         ))),
         "action-hints.js" => Some(js(include_str!("../../frontend/action-hints.js"))),
         "action-hints/control.js" => {
@@ -1180,9 +1189,11 @@ mod tests {
             "keyboard-navigation/control.js",
             "keyboard-navigation/context.js",
             "keyboard-navigation/model.js",
+            "keyboard-navigation/shortcuts.js",
             "keyboard-navigation/components/hud.js",
             "keyboard-navigation/components/selector.js",
             "keyboard-navigation/components/presentation.js",
+            "keyboard-navigation/components/shortcut-dialog.js",
             "action-hints.js",
             "action-hints/control.js",
             "action-hints/model.js",
@@ -1220,6 +1231,7 @@ mod tests {
             "keyboard-navigation/components/hud.css",
             "keyboard-navigation/components/selector.css",
             "keyboard-navigation/components/presentation.css",
+            "keyboard-navigation/components/shortcut-dialog.css",
             "action-hints/components/dialog.css",
             "pages/(task-workspace)/settings/keyboard/page.css",
         ] {

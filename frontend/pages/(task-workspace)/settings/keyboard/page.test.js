@@ -10,9 +10,10 @@ await import("./page.js");
 const keyboard = registry.element("caffold-settings-keyboard-page").prototype;
 after(() => registry.restore());
 
-test("describes the active Scroll to Action Hint switch", () => {
+test("describes shortcut help and the active Scroll to Action Hint switch", () => {
   const owner = {};
   keyboard.render.call(owner);
+  assert.match(owner.innerHTML, /Press \? outside an editing field/);
   assert.match(owner.innerHTML, /H\/L to move horizontally/);
   assert.match(
     owner.innerHTML,

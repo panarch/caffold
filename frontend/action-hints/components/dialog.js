@@ -76,18 +76,16 @@ class CaffoldActionHintDialog extends HTMLElement {
         aria-describedby="${this.descriptionId}"
         tabindex="-1"
       >
-        <div class="action-hint-instructions">
-          <span id="${this.titleId}" class="action-hint-title">Action Hints</span>
-          <span id="${this.descriptionId}" class="action-hint-description">Type a shown code, or press Escape to cancel.</span>
-          <output class="action-hint-input-status" aria-live="polite"></output>
-        </div>
+        <span id="${this.titleId}" class="sr-only">Action Hints</span>
+        <span id="${this.descriptionId}" class="sr-only">Type a shown code. Press ? for keyboard shortcuts or Escape to cancel.</span>
+        <output class="action-hint-input-status sr-only" aria-live="polite"></output>
         <div class="action-hint-badges"></div>
       </dialog>
     `;
     this.dialog = this.querySelector(":scope > dialog");
     this.badges = this.dialog.querySelector(":scope > .action-hint-badges");
     this.status = this.dialog.querySelector(
-      ":scope > .action-hint-instructions > .action-hint-input-status",
+      ":scope > .action-hint-input-status",
     );
   }
 

@@ -291,8 +291,8 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
   );
   await commandSelector.getByLabel(/^[A-Z]+ — Command output$/).click();
   await expect(commandHud).toContainText("Scroll: Command output");
-  await expect(commandHud).toContainText("H/L small");
-  await expect(commandHud).not.toContainText("J/K small");
+  await expect(commandHud.locator("[data-scroll-mode-shortcut-help]"))
+    .toContainText("?");
   await page.keyboard.press("l");
   await expect.poll(() => commandOutput.evaluate((element) => element.scrollLeft))
     .toBeGreaterThan(0);
@@ -310,7 +310,8 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
   await page.keyboard.press("s");
   await expect(commandSelector).toBeHidden();
   await expect(commandHud).toContainText("Scroll: Command dialog");
-  await expect(commandHud).toContainText("J/K small");
+  await expect(commandHud.locator("[data-scroll-mode-shortcut-help]"))
+    .toContainText("?");
   await page.keyboard.press("j");
   await expect.poll(() => commandBody.evaluate((element) => element.scrollTop))
     .toBeGreaterThan(0);

@@ -32,6 +32,7 @@ import {
   CAFFOLD_UPDATE_RELOAD_EVENT,
 } from "./components/update-dialog.js";
 import "../keyboard-navigation/components/presentation.js";
+import "../keyboard-navigation/components/shortcut-dialog.js";
 import "./(task-workspace)/layout.js";
 
 class CaffoldAppShell extends HTMLElement {
@@ -78,10 +79,14 @@ class CaffoldAppShell extends HTMLElement {
     this.keyboardNavigationPresentation = this.querySelector(
       ":scope > caffold-keyboard-navigation-presentation",
     );
+    this.keyboardShortcutDialog = this.querySelector(
+      ":scope > caffold-keyboard-shortcut-dialog",
+    );
     this.keyboardNavigation = new KeyboardNavigationController({
       workspace: this,
       collectKeyboardNavigationContexts: () =>
         this.keyboardNavigationContexts(),
+      shortcutDialog: this.keyboardShortcutDialog,
       afterActionHintActivation: (target) =>
         this.taskWorkspace.afterActionHintActivation(target),
       readSettings: () => getSettings(),
@@ -202,6 +207,7 @@ class CaffoldAppShell extends HTMLElement {
       <caffold-update-dialog></caffold-update-dialog>
       <caffold-build-mismatch-alert hidden></caffold-build-mismatch-alert>
       <caffold-keyboard-navigation-presentation></caffold-keyboard-navigation-presentation>
+      <caffold-keyboard-shortcut-dialog></caffold-keyboard-shortcut-dialog>
     `;
     this.querySelector('[data-action="retry-bootstrap"]')?.addEventListener(
       "click",

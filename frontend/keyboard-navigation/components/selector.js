@@ -67,11 +67,9 @@ class CaffoldScrollSurfaceSelector extends HTMLElement {
         aria-describedby="scroll-surface-selector-description"
         tabindex="-1"
       >
-        <div class="scroll-surface-selector-instructions">
-          <span id="scroll-surface-selector-title">Select a scroll area</span>
-          <span id="scroll-surface-selector-description">Type a shown code, or press Escape to cancel.</span>
-          <output class="scroll-surface-selector-input-status" aria-live="polite"></output>
-        </div>
+        <span id="scroll-surface-selector-title" class="sr-only">Select a scroll area</span>
+        <span id="scroll-surface-selector-description" class="sr-only">Type a shown code. Press ? for keyboard shortcuts or Escape to cancel.</span>
+        <output class="scroll-surface-selector-input-status sr-only" aria-live="polite"></output>
         <div class="scroll-surface-selector-regions"></div>
       </dialog>
     `;
@@ -80,7 +78,7 @@ class CaffoldScrollSurfaceSelector extends HTMLElement {
       ":scope > .scroll-surface-selector-regions",
     );
     this.status = this.dialog.querySelector(
-      ":scope > .scroll-surface-selector-instructions > .scroll-surface-selector-input-status",
+      ":scope > .scroll-surface-selector-input-status",
     );
   }
 
@@ -133,11 +131,7 @@ class CaffoldScrollSurfaceSelector extends HTMLElement {
         ? "true"
         : "false";
     }
-    this.status.textContent = status === "no-match"
-      ? `${buffer}: no matching scroll area`
-      : buffer
-        ? `Typed ${buffer}`
-        : "";
+    this.status.textContent = buffer ? `Typed ${buffer}` : "";
   }
 
   updateSurfaceLabels(surfaces) {
@@ -232,33 +226,6 @@ class CaffoldScrollSurfaceSelector extends HTMLElement {
         bottom: position.top + bounds.height,
       });
     }
-    this.positionInstructions();
-  }
-
-  positionInstructions() {
-    const instructions = this.dialog.querySelector(
-      ":scope > .scroll-surface-selector-instructions",
-    );
-    if (!instructions || !this.viewportRect) {
-      return;
-    }
-    const bounds = instructions.getBoundingClientRect();
-    const position = clampBadgePosition(
-      {
-        left:
-          this.viewportRect.left +
-          (this.viewportRect.width - bounds.width) / 2,
-        top: this.viewportRect.bottom - bounds.height - 8,
-      },
-      bounds,
-      this.viewportRect,
-      8,
-    );
-    instructions.style.right = "auto";
-    instructions.style.bottom = "auto";
-    instructions.style.left = `${position.left}px`;
-    instructions.style.top = `${position.top}px`;
-    instructions.style.transform = "none";
   }
 }
 

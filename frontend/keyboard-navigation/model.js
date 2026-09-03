@@ -6,14 +6,39 @@ import {
   sortByVisualOrder,
   taskHintSuffix,
 } from "../action-hints.js";
+import { KEYBOARD_NAVIGATION_KEY } from "./shortcuts.js";
 
 export const SCROLL_COMMAND = Object.freeze({
-  J: Object.freeze({ axis: "vertical", direction: 1, ratio: 0.1 }),
-  K: Object.freeze({ axis: "vertical", direction: -1, ratio: 0.1 }),
-  D: Object.freeze({ axis: "vertical", direction: 1, ratio: 0.5 }),
-  U: Object.freeze({ axis: "vertical", direction: -1, ratio: 0.5 }),
-  H: Object.freeze({ axis: "horizontal", direction: -1, ratio: 0.1 }),
-  L: Object.freeze({ axis: "horizontal", direction: 1, ratio: 0.1 }),
+  [KEYBOARD_NAVIGATION_KEY.SCROLL_DOWN]: Object.freeze({
+    axis: "vertical",
+    direction: 1,
+    ratio: 0.1,
+  }),
+  [KEYBOARD_NAVIGATION_KEY.SCROLL_UP]: Object.freeze({
+    axis: "vertical",
+    direction: -1,
+    ratio: 0.1,
+  }),
+  [KEYBOARD_NAVIGATION_KEY.SCROLL_HALF_DOWN]: Object.freeze({
+    axis: "vertical",
+    direction: 1,
+    ratio: 0.5,
+  }),
+  [KEYBOARD_NAVIGATION_KEY.SCROLL_HALF_UP]: Object.freeze({
+    axis: "vertical",
+    direction: -1,
+    ratio: 0.5,
+  }),
+  [KEYBOARD_NAVIGATION_KEY.SCROLL_LEFT]: Object.freeze({
+    axis: "horizontal",
+    direction: -1,
+    ratio: 0.1,
+  }),
+  [KEYBOARD_NAVIGATION_KEY.SCROLL_RIGHT]: Object.freeze({
+    axis: "horizontal",
+    direction: 1,
+    ratio: 0.1,
+  }),
 });
 
 export function allocateScrollSurfaceCodes(surfaces) {

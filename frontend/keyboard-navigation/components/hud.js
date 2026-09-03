@@ -1,5 +1,4 @@
 import { clampBadgePosition, normalizeRect } from "../../action-hints.js";
-import { normalizeScrollAxes } from "../../scroll-scope.js";
 
 class CaffoldScrollModeHud extends HTMLElement {
   connectedCallback() {
@@ -16,25 +15,27 @@ class CaffoldScrollModeHud extends HTMLElement {
       <div class="scroll-mode-outline" aria-hidden="true"></div>
       <div class="scroll-mode-status" role="status" aria-live="polite">
         <strong data-scroll-mode-label></strong>
-        <span data-scroll-mode-instructions></span>
+        <span aria-hidden="true">·</span>
+        <span data-scroll-mode-shortcut-help>
+          <span aria-hidden="true">?</span>
+          <span class="sr-only">Press question mark for keyboard shortcuts</span>
+        </span>
       </div>
     `;
   }
 
-  show({ label, visibleRect, contextRect, availableAxes } = {}) {
+  show({ label, visibleRect, contextRect } = {}) {
     this.ensureRendered();
     const surface = normalizeRect(visibleRect);
     const context = normalizeRect(contextRect);
-    const axes = normalizeScrollAxes(availableAxes);
-    if (!label || !surface || !context || !axes) {
+    if (!label || !surface || !context) {
       this.close();
       return false;
     }
     this.querySelector("[data-scroll-mode-label]").textContent =
       `Scroll: ${label}`;
-    this.querySelector("[data-scroll-mode-instructions]").textContent =
-      scrollModeInstructions(axes);
     this.contextRect = context;
+    this.surfaceRect = surface;
     const outline = this.querySelector(":scope > .scroll-mode-outline");
     outline.style.left = `${surface.left}px`;
     outline.style.top = `${surface.top}px`;
@@ -47,18 +48,21 @@ class CaffoldScrollModeHud extends HTMLElement {
 
   positionStatus() {
     const context = this.contextRect;
+    const surface = this.surfaceRect;
     const status = this.querySelector(":scope > .scroll-mode-status");
-    if (!context || !status) {
+    if (!context || !surface || !status) {
       return false;
     }
-    status.style.maxWidth = `${Math.max(0, context.width - 16)}px`;
-    status.style.left = `${context.left + context.width / 2}px`;
-    status.style.top = `${context.bottom - 8}px`;
+    status.style.maxWidth = `${
+      Math.max(0, Math.min(context.width, surface.width) - 16)
+    }px`;
+    status.style.left = `${surface.left}px`;
+    status.style.top = `${surface.top + 8}px`;
     const bounds = status.getBoundingClientRect();
     const position = clampBadgePosition(
       {
-        left: context.left + (context.width - bounds.width) / 2,
-        top: context.bottom - bounds.height - 8,
+        left: surface.right - bounds.width - 8,
+        top: surface.top + 8,
       },
       bounds,
       context,
@@ -66,7 +70,6 @@ class CaffoldScrollModeHud extends HTMLElement {
     );
     status.style.left = `${position.left}px`;
     status.style.top = `${position.top}px`;
-    correctClampedPosition(status, context, 8);
     return true;
   }
 
@@ -82,42 +85,8 @@ class CaffoldScrollModeHud extends HTMLElement {
     this.ensureRendered();
     this.hidden = true;
     this.contextRect = null;
+    this.surfaceRect = null;
     this.querySelector("[data-scroll-mode-label]").textContent = "";
-    this.querySelector("[data-scroll-mode-instructions]").textContent = "";
-  }
-}
-
-function scrollModeInstructions(axes) {
-  const instructions = [];
-  if (axes.includes("vertical")) {
-    instructions.push("J/K small · D/U half page");
-  }
-  if (axes.includes("horizontal")) {
-    instructions.push("H/L small");
-  }
-  instructions.push("F Action Hints · Escape exits");
-  return instructions.join(" · ");
-}
-
-function correctClampedPosition(element, bounds, margin) {
-  const placed = element.getBoundingClientRect();
-  const corrected = clampBadgePosition(
-    { left: placed.left, top: placed.top },
-    placed,
-    bounds,
-    margin,
-  );
-  const deltaLeft = corrected.left - placed.left;
-  const deltaTop = corrected.top - placed.top;
-  if (Math.abs(deltaLeft) > 0.5) {
-    element.style.left = `${
-      (Number.parseFloat(element.style.left) || 0) + deltaLeft
-    }px`;
-  }
-  if (Math.abs(deltaTop) > 0.5) {
-    element.style.top = `${
-      (Number.parseFloat(element.style.top) || 0) + deltaTop
-    }px`;
   }
 }
 

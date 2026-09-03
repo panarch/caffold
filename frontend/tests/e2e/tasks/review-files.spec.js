@@ -529,7 +529,8 @@ test("selects supported source and preview representations for images", { tag: "
       ).click();
     }
     await expect(workspaceHud).toContainText(`Scroll: ${rasterName} image`);
-    await expect(workspaceHud).toContainText("H/L small");
+    await expect(workspaceHud.locator("[data-scroll-mode-shortcut-help]"))
+      .toContainText("?");
     await page.keyboard.press("l");
     await expect.poll(() => imageStage.evaluate((element) => element.scrollLeft))
       .toBeGreaterThan(0);

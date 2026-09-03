@@ -22,6 +22,7 @@ caffold-scroll-mode-hud {
     z-index: 9;
     display: flex;
     box-sizing: border-box;
+    align-items: center;
     gap: var(--interface-space-4);
     max-width: calc(100% - var(--interface-space-8));
     padding: var(--interface-space-3) var(--interface-space-5);
@@ -36,15 +37,13 @@ caffold-scroll-mode-hud {
   }
 
   & .scroll-mode-status strong {
+    min-width: 0;
+    overflow: hidden;
     color: var(--text);
+    text-overflow: ellipsis;
   }
-}
 
-@media (max-width: 520px) {
-  caffold-scroll-mode-hud .scroll-mode-status {
-    display: grid;
-    gap: var(--interface-space-1);
-    text-align: center;
-    white-space: normal;
+  & [data-scroll-mode-shortcut-help] {
+    flex: 0 0 auto;
   }
 }

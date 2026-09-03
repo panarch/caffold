@@ -23,38 +23,6 @@ caffold-action-hint-dialog {
     background: rgb(var(--shadow-rgb) / 4%);
   }
 
-  & .action-hint-instructions {
-    position: absolute;
-    inset: auto 50% var(--interface-space-5) auto;
-    z-index: 2;
-    display: flex;
-    align-items: center;
-    gap: var(--interface-space-4);
-    max-width: calc(100% - var(--interface-space-8));
-    padding: var(--interface-space-3) var(--interface-space-5);
-    border: 1px solid var(--border-strong);
-    border-radius: 999px;
-    background: var(--surface);
-    box-shadow: 0 0.25rem 1rem rgb(var(--shadow-rgb) / 16%);
-    color: var(--muted);
-    font-size: var(--interface-meta-font-size);
-    line-height: var(--interface-line-height);
-    white-space: nowrap;
-    transform: translateX(50%);
-  }
-
-  & .action-hint-title {
-    color: var(--text);
-  }
-
-  & .action-hint-input-status:empty {
-    display: none;
-  }
-
-  & .action-hint-input-status {
-    color: var(--text);
-  }
-
   & .action-hint-badges {
     position: absolute;
     inset: 0;
@@ -108,16 +76,5 @@ caffold-action-hint-dialog {
   & .action-hint-badge:focus-visible {
     outline: 3px solid var(--focus-ring);
     outline-offset: 2px;
-  }
-}
-
-@media (max-width: 520px) {
-  caffold-action-hint-dialog .action-hint-instructions {
-    max-width: calc(100% - var(--interface-space-5) * 2);
-    white-space: normal;
-  }
-
-  caffold-action-hint-dialog .action-hint-description {
-    display: none;
   }
 }

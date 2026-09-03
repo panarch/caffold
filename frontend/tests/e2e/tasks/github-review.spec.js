@@ -1019,8 +1019,8 @@ test("scrolls a retained GitHub Issue body through its public Shadow DOM host", 
   await expect(hud).toContainText(
     "Scroll: Issue description code block 1",
   );
-  await expect(hud).toContainText("H/L small");
-  await expect(hud).not.toContainText("J/K small");
+  await expect(hud.locator("[data-scroll-mode-shortcut-help]"))
+    .toContainText("?");
   await page.keyboard.press("l");
   await expect.poll(() => code.evaluate((element) => element.scrollLeft))
     .toBeGreaterThan(0);
