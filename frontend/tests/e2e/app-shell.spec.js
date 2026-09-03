@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { waitForActionHintTarget } from "./support/action-hints.js";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 
 test.beforeEach(async ({ page }) => {
@@ -117,6 +118,12 @@ test("merges foreground Retry with normal workspace targets", { tag: "@all-viewp
 }) => {
   await page.goto("/");
   const shell = page.locator("caffold-app-shell");
+  await expect.poll(() => shell.evaluate(
+    (element) => element.foregroundRecoveryLifecycle.snapshot(),
+  )).toMatchObject({
+    lastTrigger: "bootstrap",
+    presentation: "none",
+  });
   await shell.evaluate((element) => {
     element.foregroundRecoveryLifecycle.disconnect();
     window.__foregroundKeyboardRetries = 0;
@@ -129,6 +136,7 @@ test("merges foreground Retry with normal workspace targets", { tag: "@all-viewp
     });
   });
 
+  await waitForActionHintTarget(page, "Retry");
   await page.locator(".task-workspace-surface").focus();
   await page.keyboard.press("f");
   const hint = page.locator("caffold-action-hint-dialog > dialog:modal");
