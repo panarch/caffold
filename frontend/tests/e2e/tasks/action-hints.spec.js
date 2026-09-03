@@ -188,9 +188,17 @@ test("closes Hint when printable input cannot match an action", { tag: "@all-vie
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('[data-action-hint-code="TA"]')).toBeVisible();
   await expect(dialog.locator('[data-action-hint-code^="TX"]')).toHaveCount(0);
+  const unrelatedBadge = dialog.locator(
+    'button[data-action-hint-code]:not([data-action-hint-code^="T"])',
+  ).first();
+  await expect(unrelatedBadge).toBeVisible();
 
   await page.keyboard.press("t");
   await expect(dialog).toHaveAttribute("data-input-state", "partial");
+  await expect(unrelatedBadge).toBeHidden();
+  await page.keyboard.press("Backspace");
+  await expect(unrelatedBadge).toBeVisible();
+  await page.keyboard.press("t");
   await page.keyboard.press("x");
 
   await expect(dialog).toBeHidden();
@@ -749,7 +757,7 @@ test("selects Reorder through its declared popover and entered-mode contexts", {
     hint.getByRole("button", { name: / — Reorder Sections$/ }),
   ).toBeVisible();
   const tasks = hint.getByRole("button", { name: / — Reorder Tasks$/ });
-  await expect(tasks).toHaveAttribute("data-match", "true");
+  await expect(tasks).toBeVisible();
   await expect.poll(() => actionHintBadgePresentation(tasks)).toEqual({
     backgroundMatches: true,
     borderVisible: true,

@@ -2219,7 +2219,7 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
     githubHint.getByRole("button", { name: / — Pull Requests$/ }),
   ).toBeVisible();
   const issues = githubHint.getByRole("button", { name: / — Issues$/ });
-  await expect(issues).toHaveAttribute("data-match", "true");
+  await expect(issues).toBeVisible();
   await expect.poll(() => actionHintBadgePresentation(issues)).toEqual({
     backgroundMatches: true,
     borderVisible: true,

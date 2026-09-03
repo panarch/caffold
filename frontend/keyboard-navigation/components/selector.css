@@ -64,13 +64,6 @@ caffold-scroll-surface-selector {
     content: "";
   }
 
-  & .scroll-surface-selector-badge[data-match="false"] {
-    border-color: var(--border-strong);
-    background: var(--surface-muted);
-    box-shadow: none;
-    color: var(--muted);
-  }
-
   & .scroll-surface-selector-badge:hover {
     background: var(--primary-control-hover-bg);
   }

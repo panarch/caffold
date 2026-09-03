@@ -124,12 +124,12 @@ class CaffoldScrollSurfaceSelector extends HTMLElement {
     const matching = new Set(matches);
     this.dialog.dataset.inputState = status;
     this.dialog.dataset.input = buffer;
-    for (const badge of this.regions.querySelectorAll(
-      "button[data-scroll-surface-code]",
+    for (const region of this.regions.querySelectorAll(
+      ":scope > .scroll-surface-selector-region",
     )) {
-      badge.dataset.match = matching.has(badge.dataset.scrollSurfaceCode)
-        ? "true"
-        : "false";
+      const badge = region.querySelector("button[data-scroll-surface-code]");
+      region.hidden = !badge ||
+        !matching.has(badge.dataset.scrollSurfaceCode);
     }
     this.status.textContent = buffer ? `Typed ${buffer}` : "";
   }
@@ -153,7 +153,11 @@ class CaffoldScrollSurfaceSelector extends HTMLElement {
     const badge = event.target instanceof Element
       ? event.target.closest("button[data-scroll-surface-code]")
       : null;
-    if (badge && this.dialog.contains(badge)) {
+    if (
+      badge &&
+      !badge.parentElement?.hidden &&
+      this.dialog.contains(badge)
+    ) {
       event.stopPropagation();
       this.dispatchEvent(
         new CustomEvent(SCROLL_SURFACE_SELECT_EVENT, {

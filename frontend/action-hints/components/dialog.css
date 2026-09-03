@@ -57,20 +57,8 @@ caffold-action-hint-dialog {
     content: "";
   }
 
-  & .action-hint-badge[data-match="false"] {
-    border-color: var(--border-strong);
-    background: var(--surface-muted);
-    box-shadow: none;
-    color: var(--muted);
-  }
-
   & .action-hint-badge:hover {
     background: var(--primary-control-hover-bg);
-  }
-
-  & .action-hint-badge[data-match="false"]:hover {
-    background: var(--control-hover-bg);
-    color: var(--text);
   }
 
   & .action-hint-badge:focus-visible {

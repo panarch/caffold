@@ -148,10 +148,10 @@ class CaffoldActionHintDialog extends HTMLElement {
     const matching = new Set(matches);
     this.dialog.dataset.inputState = status;
     this.dialog.dataset.input = buffer;
-    for (const badge of this.badges?.querySelectorAll("button[data-action-hint-code]") ?? []) {
-      badge.dataset.match = matching.has(badge.dataset.actionHintCode)
-        ? "true"
-        : "false";
+    for (const badge of this.badges?.querySelectorAll(
+      "button[data-action-hint-code]",
+    ) ?? []) {
+      badge.hidden = !matching.has(badge.dataset.actionHintCode);
     }
     if (!this.status) {
       return;
@@ -163,7 +163,7 @@ class CaffoldActionHintDialog extends HTMLElement {
     const badge = event.target instanceof Element
       ? event.target.closest("button[data-action-hint-code]")
       : null;
-    if (badge && this.dialog.contains(badge)) {
+    if (badge && !badge.hidden && this.dialog.contains(badge)) {
       event.stopPropagation();
       this.dispatchEvent(
         new CustomEvent(ACTION_HINT_ACTIVATE_EVENT, {

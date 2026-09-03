@@ -105,6 +105,40 @@ test("keeps pinch gestures native while blocking background wheel and one-finger
   );
 });
 
+test("shows only matching retained regions and restores them", () => {
+  const regions = ["AA", "S"].map((code) => ({
+    hidden: false,
+    querySelector: () => ({ dataset: { scrollSurfaceCode: code } }),
+  }));
+  const owner = {
+    dialog: { dataset: {} },
+    regions: { querySelectorAll: () => regions },
+    status: { textContent: "" },
+  };
+
+  selector.updateInput.call(owner, {
+    buffer: "A",
+    matches: ["AA"],
+    status: "partial",
+  });
+
+  assert.deepEqual(regions.map(({ hidden }) => hidden), [false, true]);
+  assert.deepEqual(owner.dialog.dataset, {
+    input: "A",
+    inputState: "partial",
+  });
+  assert.equal(owner.status.textContent, "Typed A");
+
+  selector.updateInput.call(owner, {
+    buffer: "",
+    matches: ["AA", "S"],
+    status: "idle",
+  });
+
+  assert.deepEqual(regions.map(({ hidden }) => hidden), [false, false]);
+  assert.equal(owner.status.textContent, "");
+});
+
 test("stacks nested badge anchors without leaving the viewport", () => {
   const viewport = rect(0, 0, 200, 120);
   const surface = rect(4, 4, 196, 116);

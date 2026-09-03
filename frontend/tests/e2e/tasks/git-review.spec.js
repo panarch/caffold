@@ -413,7 +413,7 @@ test("opens Git and selects its destination through declared keyboard contexts",
     hint.getByRole("button", { name: / — Log$/ }),
   ).toBeVisible();
   const compare = hint.getByRole("button", { name: / — Compare$/ });
-  await expect(compare).toHaveAttribute("data-match", "true");
+  await expect(compare).toBeVisible();
   await expect.poll(() => actionHintBadgePresentation(compare)).toEqual({
     backgroundMatches: true,
     borderVisible: true,
