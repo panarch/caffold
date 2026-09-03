@@ -1413,7 +1413,7 @@ test("exposes every Git fetch failure through the native Fetch tooltip", { tag: 
   }
 });
 
-test("deactivates and rebinds the shared Git child when the selected Task changes", { tag: "@all-viewports" }, async ({ page }) => {
+test("deactivates and rebinds the shared Git child when the selected Task changes", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   const other = taskRecord("thread_task_git_other");
   await installTaskGitFixture(page, [taskRecord(), other]);
   await page.goto(`/tasks/${THREAD_ID}/git/log`);
@@ -1424,10 +1424,11 @@ test("deactivates and rebinds the shared Git child when the selected Task change
   });
 
   const otherTask = page.locator(`.task-row[data-thread-id="${other.threadId}"]`);
-  if (!(await otherTask.isVisible())) {
+  if (testInfo.project.name === "phone") {
     await page.getByRole("button", { name: "Back to tasks" }).click();
     await expect(page).toHaveURL("/");
   }
+  await expect(otherTask).toBeVisible();
   await otherTask.click();
   await expect(page).toHaveURL(`/tasks/${other.threadId}`);
   await expect(layout).toBeHidden();
