@@ -124,6 +124,7 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:${encodeURIComponent(number)}:${definition.identity}`,
         actionId: definition.actionId,
         label: control.getAttribute("aria-label") || definition.fallbackLabel,
@@ -149,6 +150,7 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
       hasActionHintLayoutBox(headerLink)
     ) {
       targets.push(linkActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:${encodeURIComponent(number)}:github`,
         actionId: ACTION_HINT_ACTION.LINK_OPEN,
         label: `Open pull request #${number} on GitHub in a new tab`,
@@ -184,6 +186,7 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
           continue;
         }
         targets.push(linkActionHintTarget({
+          invalidationOwner: this,
           id: `${scopeId}:${encodeURIComponent(number)}:comment:${index}`,
           actionId: ACTION_HINT_ACTION.LINK_OPEN,
           label: `Open conversation comment ${index + 1} on GitHub in a new tab`,
@@ -214,6 +217,7 @@ class CaffoldGithubPullDetailPage extends HTMLElement {
           continue;
         }
         targets.push(linkActionHintTarget({
+          invalidationOwner: this,
           id: `${scopeId}:${encodeURIComponent(number)}:commit:${encodeURIComponent(commit.sha)}`,
           actionId: ACTION_HINT_ACTION.LINK_OPEN,
           label: `Open commit ${commit.shortSha} on GitHub in a new tab`,

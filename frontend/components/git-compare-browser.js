@@ -789,6 +789,7 @@ function gitCompareSeparatorActionHintScope(
   return {
     blocked: false,
     targets: [separatorActionHintTarget({
+      invalidationOwner: owner,
       id: `${scopeId}:separator`,
       actionId,
       label: control.getAttribute("aria-label") || "Resize review side panel",

@@ -153,6 +153,7 @@ class CaffoldSettingsAboutPage extends HTMLElement {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:${id}`,
         actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
         label: control.getAttribute("aria-label") ||

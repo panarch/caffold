@@ -186,6 +186,7 @@ class CaffoldGitCompareTree extends HTMLElement {
     return {
       blocked: false,
       targets: [selectActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:base-ref`,
         actionId,
         label: selection.value

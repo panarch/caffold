@@ -310,12 +310,8 @@ test("activates a Task through its existing route and responsive focus owner", {
   await page.locator(".task-list-scroll").evaluate((scroller) => {
     scroller.dispatchEvent(new Event("scroll"));
   });
-  if (testInfo.project.name === "phone") {
-    await expect(dialog).toBeVisible();
-    await page.keyboard.press("Escape");
-  } else {
-    await expect(dialog).toBeHidden();
-  }
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
 });
 
 test("allocates Settings navigation automatically and accepts F inside Hint mode", { tag: "@all-viewports" }, async ({
@@ -329,8 +325,7 @@ test("allocates Settings navigation automatically and accepts F inside Hint mode
   await page.locator(".settings-navigator-list").evaluate((scroller) => {
     scroller.dispatchEvent(new Event("scroll"));
   });
-  await expect(dialog).toBeHidden();
-  await enterActionHints(page);
+  await expect(dialog).toBeVisible();
   const codes = await dialog.locator("button[data-action-hint-code]").evaluateAll(
     (badges) => badges.map((badge) => badge.dataset.actionHintCode),
   );
@@ -359,12 +354,7 @@ test("allocates Settings navigation automatically and accepts F inside Hint mode
   await page.locator(".settings-navigator-list").evaluate((scroller) => {
     scroller.dispatchEvent(new Event("scroll"));
   });
-  if (testInfo.project.name === "phone") {
-    await expect(dialog).toBeVisible();
-  } else {
-    await expect(dialog).toBeHidden();
-    await enterActionHints(page);
-  }
+  await expect(dialog).toBeVisible();
   const back = dialog.getByLabel(/Back to settings$/);
   if (testInfo.project.name === "phone") {
     await expect(back).toBeVisible();
@@ -903,7 +893,7 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
   await expect(dialog).toBeHidden();
 });
 
-test("keeps harmless row patches but cancels on actionability, scroll, and topology changes", { tag: "@all-viewports" }, async ({
+test("keeps unaffected row owners through local actionability, scroll, and topology changes", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installActionHintFixture(page, actionHintTasks(48));
@@ -947,11 +937,10 @@ test("keeps harmless row patches but cancels on actionability, scroll, and topol
   await offscreenRow.evaluate((button) => {
     button.disabled = true;
   });
-  await expect(dialog).toBeHidden();
+  await expect(dialog).toBeVisible();
   await offscreenRow.evaluate((button) => {
     button.disabled = false;
   });
-  await enterActionHints(page);
 
   const scroll = page.locator(".task-list-scroll");
   const routeBeforeCancel = page.url();
@@ -964,19 +953,45 @@ test("keeps harmless row patches but cancels on actionability, scroll, and topol
   await scroll.evaluate((element) => {
     element.scrollTop += 24;
   });
-  await expect(dialog).toBeHidden();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[data-action-hint-code="TA"]')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => {
+    const control = document.querySelector(
+      'button.task-row[data-thread-id="action_hint_01"]',
+    );
+    const badge = document.querySelector(
+      'caffold-action-hint-dialog [data-action-hint-code="TA"]',
+    );
+    if (!control || !badge) {
+      return Infinity;
+    }
+    return Math.abs(
+      control.getBoundingClientRect().top - badge.getBoundingClientRect().top,
+    );
+  })).toBeLessThanOrEqual(1);
   await expect(page).toHaveURL(routeBeforeCancel);
+  await page.keyboard.press("Escape");
 
   await enterActionHints(page);
   await expect(dialog).toBeVisible();
+  const removedBadge = dialog.getByLabel(
+    / — Open task: Action Hint Task 02$/,
+  );
+  const removedCode = await removedBadge.getAttribute("data-action-hint-code");
+  expect(removedCode).toBeTruthy();
   await page.locator("caffold-active-task-list").evaluate((list) => {
     list.removeTask("action_hint_02");
   });
-  await expect(dialog).toBeHidden();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(
+    `[data-action-hint-code="${removedCode}"]`,
+  )).toHaveCount(0);
+  await expect(dialog.locator('[data-action-hint-code="N"]')).toBeVisible();
   await expect(page).toHaveURL(routeBeforeCancel);
+  await page.keyboard.press("Escape");
 });
 
-test("cancels a Conversation Hint on target topology change without losing the reading anchor", { tag: "@all-viewports" }, async ({
+test("retires only a changed Conversation owner while preserving codes and the reading anchor", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   const [task] = actionHintTasks(1);
@@ -984,105 +999,249 @@ test("cancels a Conversation Hint on target topology change without losing the r
   await page.goto(`/tasks/${task.threadId}`);
   const conversation = page.locator("caffold-task-conversation");
   await expect(conversation).toBeVisible();
-  await conversation.evaluate((element, threadId) => {
+  await conversation.evaluate((element, { imageUrl, threadId }) => {
     const now = 1_780_000_100_000;
+    const events = Array.from({ length: 17 }, (_, index) => ({
+      id: `conversation_hint_filler_${index + 1}`,
+      threadId,
+      type: "user_message",
+      summary: "User prompt",
+      payload: {
+        text: `Conversation anchor line ${index + 1}.`,
+      },
+      position: { anchorMs: now + index, index: 0 },
+    }));
+    events[8] = {
+      ...events[8],
+      id: "conversation_hint_reading_anchor",
+      payload: { text: "Retain this exact reading position." },
+    };
+    events[9] = {
+      ...events[9],
+      id: "conversation_hint_owner_a",
+      payload: {
+        text: "Owner A before update.",
+        content: [{
+          type: "image",
+          url: imageUrl,
+          name: "owner-a.png",
+        }],
+      },
+    };
+    events[10] = {
+      ...events[10],
+      id: "conversation_hint_owner_b",
+      payload: {
+        text: "Owner B remains retained.",
+        content: [{
+          type: "image",
+          url: imageUrl,
+          name: "owner-b.png",
+        }],
+      },
+    };
     element.setSnapshot({
       ...element.snapshot,
-      events: Array.from({ length: 28 }, (_, index) => ({
-        id: `conversation_hint_anchor_${index + 1}`,
-        threadId,
-        type: "user_message",
-        summary: "User prompt",
-        payload: {
-          text: `Conversation anchor line ${index + 1}. ${
-            "Retain this exact reading position. ".repeat(2)
-          }`,
-        },
-        position: { anchorMs: now + index, index: 0 },
-      })),
+      events,
     });
-  }, task.threadId);
+  }, {
+    imageUrl:
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+X3PxWQAAAABJRU5ErkJggg==",
+    threadId: task.threadId,
+  });
   const scroller = conversation.locator(".task-conversation-scroll");
   await expect.poll(() => scroller.evaluate(
     (element) => element.scrollHeight > element.clientHeight + 1,
   )).toBe(true);
-  await page.locator(".task-workspace-surface").focus();
-  const anchor = await scroller.evaluate((element) => {
-    element.scrollTop = Math.round(
-      (element.scrollHeight - element.clientHeight) * 0.45,
-    );
-    element.dispatchEvent(new Event("scroll"));
-    const bounds = element.getBoundingClientRect();
-    const events = [
-      ...element.querySelectorAll(".task-event[data-event-id]"),
-    ];
-    const event = events.find((candidate) => {
-      const rect = candidate.getBoundingClientRect();
-      return rect.top >= bounds.top + 1 && rect.top < bounds.bottom - 1;
-    }) ?? events.find(
-      (candidate) => candidate.getBoundingClientRect().bottom > bounds.top + 1,
-    );
-    const eventIndex = events.indexOf(event);
-    const target = events.slice(eventIndex + 1).find((candidate) => {
-      const rect = candidate.getBoundingClientRect();
-      return rect.top < bounds.bottom - 1 && rect.bottom > bounds.top + 1;
+  const firstPreview = conversation.getByRole("button", {
+    name: "Preview owner-a.png",
+  });
+  const survivorPreview = conversation.getByRole("button", {
+    name: "Preview owner-b.png",
+  });
+  await expect(firstPreview).toBeVisible();
+  await expect(survivorPreview).toBeVisible();
+  for (const preview of [firstPreview, survivorPreview]) {
+    await preview.evaluate((button) => {
+      button.style.minHeight = "24px";
+      button.style.maxHeight = "24px";
     });
+  }
+  const anchor = await scroller.evaluate((element) => {
+    const event = element.querySelector(
+      '.task-event[data-event-id="conversation_hint_reading_anchor"]',
+    );
+    const bounds = element.getBoundingClientRect();
+    element.scrollTop += event.getBoundingClientRect().top - bounds.top - 8;
+    element.dispatchEvent(new Event("scroll"));
     return {
-      eventId: event?.dataset.eventId ?? "",
-      targetEventId: target?.dataset.eventId ?? "",
-      offset: event ? event.getBoundingClientRect().top - bounds.top : null,
+      eventId: event.dataset.eventId,
+      offset: event.getBoundingClientRect().top -
+        element.getBoundingClientRect().top,
     };
   });
-  expect(anchor.eventId).toBeTruthy();
-  expect(anchor.targetEventId).toBeTruthy();
   await page.evaluate(() => new Promise((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(resolve))
   ));
+  await expect(firstPreview).toBeInViewport();
+  await expect(survivorPreview).toBeInViewport();
 
-  const dialog = actionHintDialog(page);
-  await page.keyboard.press("f");
-  await expect(dialog).toBeVisible();
-  await expect.poll(() => scroller.evaluate((element, expected) => {
-    const event = element.querySelector(
-      `.task-event[data-event-id="${expected.eventId}"]`,
+  const dialog = await enterActionHints(page);
+  const firstBadge = dialog.getByLabel(/ — Preview owner-a\.png$/);
+  const survivorBadge = dialog.getByLabel(/ — Preview owner-b\.png$/);
+  const outsideBadge = dialog.getByLabel(/ — Open Review$/);
+  await expect(firstBadge).toBeVisible();
+  await expect(survivorBadge).toBeVisible();
+  await expect(outsideBadge).toBeVisible();
+  const firstCode = await firstBadge.getAttribute("data-action-hint-code");
+  const survivorCode = await survivorBadge.getAttribute(
+    "data-action-hint-code",
+  );
+  const outsideCode = await outsideBadge.getAttribute("data-action-hint-code");
+  expect(firstCode).toBeTruthy();
+  expect(survivorCode).toBeTruthy();
+  expect(outsideCode).toBeTruthy();
+  const initialSurvivorTop = await survivorBadge.evaluate(
+    (element) => element.getBoundingClientRect().top,
+  );
+  await survivorBadge.evaluate((element) => {
+    window.__conversationHintSurvivorBadge = element;
+  });
+  await outsideBadge.evaluate((element) => {
+    window.__conversationHintOutsideBadge = element;
+  });
+  await survivorPreview.evaluate((element) => {
+    window.__conversationHintSurvivorControl = element;
+    window.__conversationHintSurvivorOwner = element.closest(
+      ".task-event[data-conversation-entry-key]",
     );
-    return event
-      ? Math.abs(
-          event.getBoundingClientRect().top -
-            element.getBoundingClientRect().top -
-            expected.offset,
-        )
-      : Infinity;
-  }, anchor)).toBeLessThan(1);
-  await conversation.evaluate((element, targetEventId) => {
+  });
+
+  await conversation.evaluate((element, imageUrl) => {
+    const ownerB = element.snapshot.events.find(
+      (event) => event.id === "conversation_hint_owner_b",
+    );
+    const events = [...element.snapshot.events, {
+      id: "conversation_hint_owner_c",
+      threadId: element.snapshot.threadId,
+      type: "user_message",
+      summary: "User prompt",
+      payload: {
+        text: "Owner C is new during the frozen Hint session.",
+        content: [{
+          type: "image",
+          url: imageUrl,
+          name: "owner-c-new.png",
+        }],
+      },
+      position: {
+        anchorMs: ownerB.position.anchorMs + 0.5,
+        index: 0,
+      },
+    }];
     element.setSnapshot({
       ...element.snapshot,
       updateKind: "live",
-      events: element.snapshot.events.map((event) =>
-        event.id === targetEventId
-          ? {
-              ...event,
-              payload: {
-                ...event.payload,
-                content: [{
-                  type: "localImage",
-                  path: "/tmp/conversation-hint-topology.png",
-                  name: "conversation-hint-topology.png",
-                }],
-              },
-            }
-          : event
-      ),
+      events,
     });
-  }, anchor.targetEventId);
-  await expect(dialog).toBeHidden();
-  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
-    "data-action-hint-last-exit",
-    "snapshot-invalidated",
-  );
-  await expect(conversation.locator(
-    'button[data-conversation-action="preview-image"]',
-  )).toHaveCount(1);
+  }, "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+X3PxWQAAAABJRU5ErkJggg==");
+
+  const newPreview = conversation.getByRole("button", {
+    name: "Preview owner-c-new.png",
+  });
+  await expect(newPreview).toBeVisible();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel(
+    / — Preview owner-c-new\.png$/,
+  )).toHaveCount(0);
+  await expect(dialog.locator(
+    `[data-action-hint-code="${firstCode}"]`,
+  )).toBeVisible();
+  await expect(dialog.locator(
+    `[data-action-hint-code="${survivorCode}"]`,
+  )).toBeVisible();
+  await expect(dialog.locator(
+    `[data-action-hint-code="${outsideCode}"]`,
+  )).toBeVisible();
+  expect(await page.evaluate(({ outsideCode, survivorCode }) => (
+    window.__conversationHintSurvivorBadge === document.querySelector(
+      `caffold-action-hint-dialog [data-action-hint-code="${survivorCode}"]`,
+    ) &&
+    window.__conversationHintOutsideBadge === document.querySelector(
+      `caffold-action-hint-dialog [data-action-hint-code="${outsideCode}"]`,
+    )
+  ), { outsideCode, survivorCode })).toBe(true);
+
+  await conversation.evaluate((element) => {
+    const events = element.snapshot.events.map((event) =>
+      event.id === "conversation_hint_owner_a"
+        ? {
+            ...event,
+            payload: {
+              ...event.payload,
+              text: [
+                "Owner A after update.",
+                "The surviving owner below must move without a new code.",
+              ].join("\n"),
+            },
+          }
+        : event
+    );
+    element.setSnapshot({
+      ...element.snapshot,
+      updateKind: "live",
+      events,
+    });
+    const changedPreview = element.querySelector(
+      'button[aria-label="Preview owner-a.png"]',
+    );
+    changedPreview.style.minHeight = "40px";
+    changedPreview.style.maxHeight = "40px";
+  });
+
+  await expect(newPreview).toBeVisible();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(
+    `[data-action-hint-code="${firstCode}"]`,
+  )).toHaveCount(0);
+  await expect(dialog.getByLabel(/ — Preview owner-c-new\.png$/)).toHaveCount(0);
+  await expect(dialog.locator(
+    `[data-action-hint-code="${survivorCode}"]`,
+  )).toHaveAttribute("aria-label", `${survivorCode} — Preview owner-b.png`);
+  await expect(dialog.locator(
+    `[data-action-hint-code="${outsideCode}"]`,
+  )).toBeVisible();
+  expect(await page.evaluate(({ outsideCode, survivorCode }) => (
+    window.__conversationHintSurvivorBadge === document.querySelector(
+      `caffold-action-hint-dialog [data-action-hint-code="${survivorCode}"]`,
+    ) &&
+    window.__conversationHintOutsideBadge === document.querySelector(
+      `caffold-action-hint-dialog [data-action-hint-code="${outsideCode}"]`,
+    )
+  ), { outsideCode, survivorCode })).toBe(true);
+  expect(await survivorPreview.evaluate((element) =>
+    element === window.__conversationHintSurvivorControl &&
+    element.closest(".task-event[data-conversation-entry-key]") ===
+      window.__conversationHintSurvivorOwner
+  )).toBe(true);
+  await expect.poll(() => page.evaluate((code) => {
+    const control = document.querySelector(
+      'button[aria-label="Preview owner-b.png"]',
+    );
+    const badge = document.querySelector(
+      `caffold-action-hint-dialog [data-action-hint-code="${code}"]`,
+    );
+    if (!control || !badge) {
+      return Infinity;
+    }
+    return Math.abs(
+      control.getBoundingClientRect().top - badge.getBoundingClientRect().top,
+    );
+  }, survivorCode)).toBeLessThanOrEqual(1);
+  const currentSurvivorTop = await dialog.locator(
+    `[data-action-hint-code="${survivorCode}"]`,
+  ).evaluate((element) => element.getBoundingClientRect().top);
+  expect(Math.abs(currentSurvivorTop - initialSurvivorTop)).toBeGreaterThan(8);
   await expect.poll(() => scroller.evaluate((element, expected) => {
     const event = element.querySelector(
       `.task-event[data-event-id="${expected.eventId}"]`,
@@ -1095,9 +1254,27 @@ test("cancels a Conversation Hint on target topology change without losing the r
         )
       : Infinity;
   }, anchor)).toBeLessThan(1);
+
+  await page.keyboard.type(survivorCode.toLowerCase());
+  await expect(dialog).toBeHidden();
+  const previewDialog = page.locator(
+    "caffold-task-image-preview-dialog > dialog:modal",
+  );
+  await expect(previewDialog).toBeVisible();
+  await expect(previewDialog.locator("[data-task-image-preview-name]"))
+    .toHaveText("owner-b.png");
+  await previewDialog.getByRole("button", {
+    name: "Close image preview",
+  }).click();
+  await expect(previewDialog).toBeHidden();
+
+  await newPreview.scrollIntoViewIfNeeded();
+  await enterActionHints(page);
+  await expect(dialog.getByLabel(/ — Preview owner-c-new\.png$/)).toBeVisible();
+  await page.keyboard.press("Escape");
 });
 
-test("cancels on geometry, actionability, ownership, viewport, and route changes", { tag: "@desktop" }, async ({
+test("reconciles local owners and cancels on interaction, viewport, and route changes", { tag: "@desktop" }, async ({
   page,
 }) => {
   await installActionHintFixture(page, actionHintTasks(8));
@@ -1108,72 +1285,78 @@ test("cancels on geometry, actionability, ownership, viewport, and route changes
   const newTask = page.locator(".task-list-new-task");
 
   await enterActionHints(page);
+  const initialNewTaskBadge = dialog.locator('[data-action-hint-code="N"]');
+  await initialNewTaskBadge.evaluate((element) => {
+    window.__actionHintRetainedNewTaskBadge = element;
+  });
   await newTask.evaluate((button) => {
     button.style.width = `${button.getBoundingClientRect().width + 20}px`;
   });
-  await expect(dialog).toBeHidden();
-  await expect(workspace).toHaveAttribute(
-    "data-action-hint-last-exit",
-    "snapshot-invalidated",
-  );
+  await expect(dialog).toBeVisible();
+  expect(await initialNewTaskBadge.evaluate((element) =>
+    element === window.__actionHintRetainedNewTaskBadge
+  )).toBe(true);
   await newTask.evaluate((button) => button.style.removeProperty("width"));
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
 
   await enterActionHints(page);
+  await expect(dialog.locator('[data-action-hint-code="N"]')).toBeVisible();
   await newTask.evaluate((button) => {
     button.disabled = true;
   });
-  await expect(dialog).toBeHidden();
-  await expect(workspace).toHaveAttribute(
-    "data-action-hint-last-exit",
-    "snapshot-invalidated",
-  );
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[data-action-hint-code="N"]')).toHaveCount(0);
   await newTask.evaluate((button) => {
     button.disabled = false;
   });
+  await expect(dialog.locator('[data-action-hint-code="N"]')).toHaveCount(0);
+  await page.keyboard.press("Escape");
 
   const firstRow = page.locator(
     'button.task-row[data-thread-id="action_hint_01"]',
   );
   await enterActionHints(page);
+  const firstRowBadge = dialog.getByLabel(
+    / — Open task: Action Hint Task 01$/,
+  );
+  const firstRowCode = await firstRowBadge.getAttribute("data-action-hint-code");
+  expect(firstRowCode).toBeTruthy();
   await firstRow.evaluate((button) => {
     button.dataset.activeTaskRowAction = "unknown-action";
   });
-  await expect(dialog).toBeHidden();
-  await expect(workspace).toHaveAttribute(
-    "data-action-hint-last-exit",
-    "snapshot-invalidated",
-  );
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(
+    `[data-action-hint-code="${firstRowCode}"]`,
+  )).toHaveCount(0);
   await firstRow.evaluate((button) => {
     button.dataset.activeTaskRowAction = "open-task";
   });
+  await page.keyboard.press("Escape");
 
   const modelButton = page.locator("caffold-task-new .task-model-button");
   const modelPopoverTarget = await modelButton.getAttribute("popovertarget");
   await enterActionHints(page);
+  await expect(dialog.locator('[data-action-hint-code="M"]')).toBeVisible();
   await modelButton.evaluate((button) => {
     button.setAttribute("popovertarget", "missing-model-popover");
   });
-  await expect(dialog).toBeHidden();
-  await expect(workspace).toHaveAttribute(
-    "data-action-hint-last-exit",
-    "snapshot-invalidated",
-  );
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[data-action-hint-code="M"]')).toHaveCount(0);
   await modelButton.evaluate((button, target) => {
     button.setAttribute("popovertarget", target);
   }, modelPopoverTarget);
+  await page.keyboard.press("Escape");
 
   await enterActionHints(page);
   await page.locator("caffold-task-navigator").evaluate((navigator) => {
     navigator.setReorderMode("tasks");
   });
-  await expect(dialog).toBeHidden();
-  await expect(workspace).toHaveAttribute(
-    "data-action-hint-last-exit",
-    "snapshot-invalidated",
-  );
+  await expect(dialog).toBeVisible();
   await page.locator("caffold-task-navigator").evaluate((navigator) => {
     navigator.setReorderMode("none");
   });
+  await page.keyboard.press("Escape");
 
   await enterActionHints(page);
   const permissionPopover = page.locator(
@@ -1332,7 +1515,9 @@ function actionHintDialog(page) {
 async function enterActionHints(page) {
   await page.locator(".task-workspace-surface").focus();
   await page.keyboard.press("f");
-  await expect(actionHintDialog(page)).toBeVisible();
+  const dialog = actionHintDialog(page);
+  await expect(dialog).toBeVisible();
+  return dialog;
 }
 
 function actionHintTasks(count) {

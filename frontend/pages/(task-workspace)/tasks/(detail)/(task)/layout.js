@@ -408,6 +408,7 @@ class CaffoldTaskDetail extends HTMLElement {
       ? {
           blocked: false,
           targets: [buttonActionHintTarget({
+            invalidationOwner: this,
             id: `${scopeId}:retry-detail`,
             actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
             label: retryControl.getAttribute("aria-label") ||

@@ -157,6 +157,7 @@ class CaffoldGitLogListPage extends HTMLElement {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:commit:${encodeURIComponent(sha)}`,
         actionId: ACTION_HINT_ACTION.COMMIT_OPEN,
         label: control.getAttribute("aria-label") || `Open commit ${sha.slice(0, 7)}`,
@@ -180,6 +181,7 @@ class CaffoldGitLogListPage extends HTMLElement {
         continue;
       }
       targets.push(disclosureActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:commit-body:${encodeURIComponent(sha)}`,
         actionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
         label: control.getAttribute("aria-label") || "Expand commit body",

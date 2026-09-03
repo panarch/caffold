@@ -413,6 +413,7 @@ class CaffoldTaskComposer extends HTMLElement {
               label: mode === "create"
                 ? "Edit new task prompt"
                 : "Edit follow-up prompt",
+              invalidationOwner: this,
               controlKind: "textbox",
               control: textarea,
               anchor: textarea,
@@ -492,6 +493,7 @@ class CaffoldTaskComposer extends HTMLElement {
         definition.identity ? definition.identity(candidate) : true
       );
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `task-composer:${scopeId}:${definition.id}`,
         actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
         label: control.getAttribute("aria-label") ||

@@ -496,6 +496,7 @@ class CaffoldTaskGitLayout extends HTMLElement {
         !this.backButton.disabled
       ? {
           targets: [buttonActionHintTarget({
+            invalidationOwner: this,
             id: `${scopeId}:parent:log`,
             actionId: ACTION_HINT_ACTION.PARENT,
             label: this.backButton.getAttribute("aria-label") || "Back to log",

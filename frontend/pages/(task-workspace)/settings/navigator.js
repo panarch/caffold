@@ -87,6 +87,7 @@ class CaffoldSettingsNavigator extends HTMLElement {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:section:${item.section}`,
         actionId: ACTION_HINT_ACTION.SETTINGS_SECTION,
         label: control.getAttribute("aria-label") || `Open ${item.label} settings`,

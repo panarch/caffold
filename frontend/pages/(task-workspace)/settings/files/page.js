@@ -78,6 +78,7 @@ class CaffoldSettingsFilesPage extends HTMLElement {
         return [];
       }
       return [radioActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:sort:${option.value}`,
         actionId: ACTION_HINT_ACTION.CONTROL_RADIO_SELECT,
         label: `Use ${option.label} ordering`,

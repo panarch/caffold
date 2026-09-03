@@ -478,6 +478,7 @@ class CaffoldTaskWorkspace extends HTMLElement {
       ? {
           blocked: false,
           targets: [buttonActionHintTarget({
+            invalidationOwner: this,
             id: `workspace:parent:${routeControl === this.backButton ? "tasks" : "close"}`,
             actionId: ACTION_HINT_ACTION.PARENT,
             label: routeControl.getAttribute("aria-label") || "Back",
@@ -778,6 +779,7 @@ function workspaceResizerActionHintScope(owner, { clipRoots }) {
   return {
     blocked: false,
     targets: [separatorActionHintTarget({
+      invalidationOwner: owner,
       id: "workspace:navigation-pane:separator",
       actionId: ACTION_HINT_ACTION.CONTROL_SEPARATOR_FOCUS,
       label: control.getAttribute("aria-label") || "Resize navigation pane",

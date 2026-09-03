@@ -228,6 +228,7 @@ class CaffoldTaskConversation extends HTMLElement {
       if (control) {
         definitions.push({
           id,
+          invalidationOwner: this,
           control,
           isCurrent: () => this.querySelector(selector) === control,
         });
@@ -250,6 +251,7 @@ class CaffoldTaskConversation extends HTMLElement {
       previewOrdinals.set(identity, ordinal);
       definitions.push({
         id: `preview-image:${identity}:${ordinal}`,
+        invalidationOwner: entry,
         control,
         isCurrent: () => {
           const current = conversationPreviewIdentity(this, control);
@@ -262,9 +264,13 @@ class CaffoldTaskConversation extends HTMLElement {
     )) {
       const approvalId = `${control.dataset.approvalId ?? ""}`;
       const decision = `${control.dataset.decision ?? ""}`;
-      if (approvalId && decision) {
+      const entry = control.closest?.(
+        ".task-event[data-conversation-entry-key], .task-event[data-event-id]",
+      );
+      if (approvalId && decision && entry) {
         definitions.push({
           id: `approval:${approvalId}:${decision}`,
+          invalidationOwner: entry,
           control,
           isCurrent: () =>
             control.dataset.approvalId === approvalId &&
@@ -272,11 +278,17 @@ class CaffoldTaskConversation extends HTMLElement {
         });
       }
     }
-    const ownTargets = definitions.flatMap(({ id, control, isCurrent }) => {
+    const ownTargets = definitions.flatMap(({
+      id,
+      invalidationOwner,
+      control,
+      isCurrent,
+    }) => {
       if (control.disabled || !hasActionHintLayoutBox(control)) {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner,
         id: `${targetScopeId}:${id}`,
         actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
         label: control.getAttribute("aria-label") ||
@@ -345,6 +357,7 @@ class CaffoldTaskConversation extends HTMLElement {
         hasActionHintLayoutBox(thinkingSummary)
       ) {
         thinkingTargets.push(disclosureActionHintTarget({
+          invalidationOwner: entry,
           id: `${targetScopeId}:thinking:${encodeURIComponent(identity)}:${
             encodeURIComponent(thinkingKey)
           }`,

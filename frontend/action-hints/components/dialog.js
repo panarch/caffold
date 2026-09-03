@@ -45,6 +45,7 @@ class CaffoldActionHintDialog extends HTMLElement {
     this.titleId = `action-hint-title-${actionHintDialogInstanceId}`;
     this.descriptionId =
       `action-hint-description-${actionHintDialogInstanceId}`;
+    this.badgeSizes = new WeakMap();
     this.targets = [];
     this.viewportRect = null;
     this.boundClick = (event) => this.handleClick(event);
@@ -123,22 +124,50 @@ class CaffoldActionHintDialog extends HTMLElement {
     return element === this.dialog;
   }
 
-  updateTargetLabels(targets) {
-    const labels = new Map(
-      targets.map((target) => [target.code, target.label]),
+  reconcileTargets(targets, viewportRect) {
+    if (!this.dialog?.open || !this.badges) {
+      return false;
+    }
+    const nextTargets = [...targets];
+    const targetByCode = new Map(
+      nextTargets.map((target) => [target.code, target]),
     );
-    for (const badge of this.badges?.querySelectorAll(
-      "button[data-action-hint-code]",
-    ) ?? []) {
-      const label = labels.get(badge.dataset.actionHintCode);
-      if (!label) {
-        continue;
+    if (targetByCode.size !== nextTargets.length) {
+      return false;
+    }
+    const badgesByCode = new Map(
+      Array.from(this.badges.querySelectorAll(
+        "button[data-action-hint-code]",
+      )).map((badge) => [badge.dataset.actionHintCode, badge]),
+    );
+    if (nextTargets.some((target) => !badgesByCode.has(target.code))) {
+      return false;
+    }
+    const focusedBadge = document.activeElement instanceof HTMLButtonElement &&
+        this.badges.contains(document.activeElement)
+      ? document.activeElement
+      : null;
+    for (const [code, badge] of badgesByCode) {
+      if (!targetByCode.has(code)) {
+        badge.remove();
       }
-      const accessibleName = `${badge.dataset.actionHintCode} — ${label}`;
+    }
+    for (const target of nextTargets) {
+      const badge = badgesByCode.get(target.code);
+      const accessibleName = `${target.code} — ${target.label}`;
       if (badge.getAttribute("aria-label") !== accessibleName) {
         badge.setAttribute("aria-label", accessibleName);
       }
+      badge.style.left = `${target.visibleRect.left}px`;
+      badge.style.top = `${target.visibleRect.top}px`;
     }
+    this.targets = nextTargets;
+    this.viewportRect = viewportRect;
+    this.positionBadges();
+    if (focusedBadge && !focusedBadge.isConnected) {
+      this.dialog.focus({ preventScroll: true });
+    }
+    return true;
   }
 
   updateInput({ buffer = "", matches = [], status = "idle" } = {}) {
@@ -188,6 +217,7 @@ class CaffoldActionHintDialog extends HTMLElement {
   }
 
   renderBadges() {
+    this.badgeSizes = new WeakMap();
     const fragment = document.createDocumentFragment();
     for (const target of this.targets) {
       const button = document.createElement("button");
@@ -213,7 +243,14 @@ class CaffoldActionHintDialog extends HTMLElement {
       if (!target) {
         continue;
       }
-      const bounds = button.getBoundingClientRect();
+      const measured = button.getBoundingClientRect();
+      if (measured.width > 0 && measured.height > 0) {
+        this.badgeSizes.set(button, {
+          width: measured.width,
+          height: measured.height,
+        });
+      }
+      const bounds = this.badgeSizes.get(button) ?? measured;
       const position = clampBadgePosition(
         target.visibleRect,
         bounds,

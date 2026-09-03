@@ -82,6 +82,7 @@ class CaffoldTaskDetailGit extends HTMLElement {
     return {
       blocked: false,
       targets: [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:git:open`,
         actionId: ACTION_HINT_ACTION.GIT_OPEN,
         label: control.getAttribute("aria-label") || "Open Git workspace",
@@ -149,6 +150,7 @@ class CaffoldTaskDetailGit extends HTMLElement {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${contextId}:${destination}`,
         actionId: ACTION_HINT_ACTION.GIT_DESTINATION,
         label: control.textContent?.trim() || destination,

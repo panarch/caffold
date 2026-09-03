@@ -162,6 +162,7 @@ class CaffoldTaskDirectoryPicker extends HTMLElement {
           return [];
         }
         return [buttonActionHintTarget({
+          invalidationOwner: this,
           id: `new:directory-picker:${identity}`,
           actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
           label: control.getAttribute("aria-label") ||

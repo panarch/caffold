@@ -881,6 +881,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       return null;
     }
     return buttonActionHintTarget({
+      invalidationOwner: this,
       id: `task-composer:${scopeId}:model`,
       actionId: ACTION_HINT_ACTION.MODEL_CHOOSE,
       label: control.getAttribute("aria-label") || "Choose model and reasoning",
@@ -912,6 +913,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       return null;
     }
     return buttonActionHintTarget({
+      invalidationOwner: this,
       id: `task-composer:${scopeId}:permission`,
       actionId: ACTION_HINT_ACTION.PERMISSION_OPEN,
       label: control.getAttribute("aria-label") || "Choose approval mode",
@@ -1004,6 +1006,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${contextId}:${identity.id}`,
         actionId: identity.actionId,
         label,

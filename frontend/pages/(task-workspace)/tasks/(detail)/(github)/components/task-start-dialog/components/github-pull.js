@@ -89,6 +89,7 @@ class CaffoldGithubPullTaskSource extends HTMLElement {
     return {
       blocked: false,
       targets: [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:refresh`,
         actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
         label: control.textContent?.trim() || "Refresh PR",

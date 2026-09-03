@@ -207,6 +207,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
       !detailsControl.disabled
     ) {
       targets.push(buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:details:open`,
         actionId: detailsActionId,
         label: detailsControl.getAttribute("aria-label") || "Show file details",
@@ -227,6 +228,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
     }
     if (actionId && control && !control.disabled) {
       targets.push(buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:close`,
         actionId,
         label: control.getAttribute("aria-label") || this.closeLabel || "Back to files",
@@ -248,6 +250,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
       : null;
     if (refreshControl && !refreshControl.disabled) {
       targets.push(buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:refresh`,
         actionId: refreshActionId,
         label: refreshControl.getAttribute("aria-label") || "Refresh file",
@@ -274,6 +277,7 @@ class CaffoldReviewFileViewer extends HTMLElement {
       ["view-source", "view-preview"].includes(noticeAction)
     ) {
       targets.push(buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:notice:${noticeAction}`,
         actionId: noticeActionId,
         label: noticeControl.getAttribute("aria-label") ||

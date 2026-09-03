@@ -95,6 +95,7 @@ class CaffoldGithubIssueDetailPage extends HTMLElement {
       hasActionHintLayoutBox(start)
     ) {
       targets.push(buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:${encodeURIComponent(number)}:start-task`,
         actionId: ACTION_HINT_ACTION.GITHUB_TASK_START,
         label: start.getAttribute("aria-label") ||
@@ -120,6 +121,7 @@ class CaffoldGithubIssueDetailPage extends HTMLElement {
       hasActionHintLayoutBox(link)
     ) {
       targets.push(linkActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:${encodeURIComponent(number)}:github`,
         actionId: ACTION_HINT_ACTION.LINK_OPEN,
         label: `Open issue #${number} on GitHub in a new tab`,

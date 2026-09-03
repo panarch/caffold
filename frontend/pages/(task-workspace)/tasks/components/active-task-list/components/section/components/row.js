@@ -127,6 +127,7 @@ class CaffoldActiveTaskRow extends HTMLElement {
     }
     const recovery = action === "open-task-recovery";
     return buttonActionHintTarget({
+      invalidationOwner: this,
       id: `task:${threadId}`,
       actionId: recovery
         ? ACTION_HINT_ACTION.TASK_OPEN_RECOVERY
@@ -166,6 +167,7 @@ class CaffoldActiveTaskRow extends HTMLElement {
       return null;
     }
     return reorderHandleActionHintTarget({
+      invalidationOwner: this,
       id: `task:${threadId}:reorder`,
       actionId: ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS,
       label: control.getAttribute("aria-label") || `Reorder ${task.title}`,

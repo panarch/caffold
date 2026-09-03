@@ -116,6 +116,7 @@ class CaffoldPagination extends HTMLElement {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:page:${kind}:${encodeURIComponent(page)}`,
         actionId,
         label: control.getAttribute("aria-label") || `Open page ${page}`,

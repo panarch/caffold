@@ -127,6 +127,7 @@ class CaffoldGithubPullsListPage extends HTMLElement {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:pull:${number}`,
         actionId: ACTION_HINT_ACTION.PULL_OPEN,
         label: `Open pull request #${number}: ${pull.title || "(no title)"}`,

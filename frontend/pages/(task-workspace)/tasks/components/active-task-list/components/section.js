@@ -183,6 +183,7 @@ class CaffoldActiveTaskSection extends HTMLElement {
       const sectionId = `${section.id}`;
       const label = section.label ?? activeTaskSectionLabel(section.name);
       targets.push(buttonActionHintTarget({
+        invalidationOwner: this,
         id: `section:${sectionId}`,
         actionId: ACTION_HINT_ACTION.SECTION_OPEN,
         label: `Open section: ${label}`,
@@ -697,6 +698,7 @@ function sectionReorderActionHintTarget(owner, { clipRoots = [] } = {}) {
   }
   const label = section.label ?? activeTaskSectionLabel(section.name);
   return reorderHandleActionHintTarget({
+    invalidationOwner: owner,
     id: `section:${sectionId}:reorder`,
     actionId: ACTION_HINT_ACTION.REORDER_HANDLE_FOCUS,
     label: control.getAttribute("aria-label") || `Reorder ${label}`,

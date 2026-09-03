@@ -308,6 +308,7 @@ function themeActionHintTargets(owner, context) {
       return [];
     }
     return [radioActionHintTarget({
+      invalidationOwner: owner,
       id: `${context.scopeId}:theme:${theme.id}`,
       actionId: ACTION_HINT_ACTION.CONTROL_RADIO_SELECT,
       label: `Use ${theme.label} theme`,
@@ -333,6 +334,7 @@ function typefaceActionHintTargets(owner, context) {
     TYPEFACE_PRESETS[control.value]?.label ||
     control.value;
   return [selectActionHintTarget({
+    invalidationOwner: owner,
     id: `${context.scopeId}:typeface`,
     actionId: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
     label: selectedLabel
@@ -356,6 +358,7 @@ function rangeActionHintTargets(owner, context, setting, definition) {
   const currentValue = control.getAttribute("aria-valuetext") ||
     `${control.value}${definition.suffix}`;
   return [rangeActionHintTarget({
+    invalidationOwner: owner,
     id: `${context.scopeId}:range:${setting}`,
     actionId: ACTION_HINT_ACTION.CONTROL_RANGE_FOCUS,
     label: `Adjust ${definition.label} (${currentValue})`,
@@ -375,6 +378,7 @@ function resetActionHintTargets(owner, context, definitions) {
       return [];
     }
     return [buttonActionHintTarget({
+      invalidationOwner: owner,
       id: `${context.scopeId}:${id}`,
       actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
       label: control.getAttribute("aria-label") ||

@@ -651,28 +651,37 @@ test("owns final Markdown links without guessing fragments or stale bindings", {
   await page.keyboard.press("Escape");
 
   await revealActionHintControl(external);
-  await enterActionHints(page);
+  hint = await enterActionHints(page);
+  const changedLinkBadge = hint.getByLabel(
+    /Open External docs in a new tab$/,
+  );
+  const changedLinkCode = await changedLinkBadge.getAttribute(
+    "data-action-hint-code",
+  );
+  expect(changedLinkCode).toBeTruthy();
   await external.evaluate((link) => {
     link.setAttribute("href", "https://example.com/changed-after-snapshot");
   });
-  await expect(actionHintDialog(page)).toBeHidden();
-  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
-    "data-action-hint-last-exit",
-    "snapshot-invalidated",
-  );
+  await expect(actionHintDialog(page)).toBeVisible();
+  await expect(hint.locator(
+    `[data-action-hint-code="${changedLinkCode}"]`,
+  )).toHaveCount(0);
   await markdown.getByRole("link", { name: "External docs" }).evaluate((link) => {
     link.setAttribute("href", "https://example.com/action-hint-external");
   });
+  await expect(hint.getByLabel(/Open External docs in a new tab$/))
+    .toHaveCount(0);
+  await page.keyboard.press("Escape");
 
   await revealActionHintControl(external);
-  await enterActionHints(page);
+  hint = await enterActionHints(page);
+  await expect(hint.getByLabel(/Open External docs in a new tab$/)).toBeVisible();
   await markdown.evaluate((element, source) => element.setMarkdown(source), markdownSource);
-  await expect(actionHintDialog(page)).toBeHidden();
-  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
-    "data-action-hint-last-exit",
-    "snapshot-invalidated",
-  );
+  await expect(actionHintDialog(page)).toBeVisible();
+  await expect(hint.getByLabel(/Open External docs in a new tab$/))
+    .toHaveCount(0);
   await expect(markdown).toHaveAttribute("data-render-state", "markdown");
+  await page.keyboard.press("Escape");
 
   const tableScroll = markdown.locator(".markdown-table-scroll");
   const tableLink = tableScroll.getByRole("link", { name: "Table docs" });
@@ -686,11 +695,8 @@ test("owns final Markdown links without guessing fragments or stale bindings", {
   await tableScroll.evaluate((element) => {
     element.scrollLeft = Math.min(80, element.scrollWidth - element.clientWidth);
   });
-  await expect(actionHintDialog(page)).toBeHidden();
-  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
-    "data-action-hint-last-exit",
-    "scroll",
-  );
+  await expect(actionHintDialog(page)).toBeVisible();
+  await page.keyboard.press("Escape");
 
   await tableScroll.evaluate((element) => {
     element.scrollLeft = element.scrollWidth;

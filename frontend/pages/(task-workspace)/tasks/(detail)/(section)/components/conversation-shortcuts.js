@@ -133,6 +133,7 @@ class CaffoldSectionConversationShortcuts extends HTMLElement {
     return {
       blocked: false,
       targets: [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:fork-conversation`,
         actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
         label: control.getAttribute("aria-label") ||

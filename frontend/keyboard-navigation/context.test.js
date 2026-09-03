@@ -92,6 +92,7 @@ test("normalizes exact owners and rejects duplicate or malformed providers", () 
             actionId: "task.create",
             label: "New task",
             controlKind: "button",
+            invalidationOwner: workspaceRoot,
             control: targetControl,
             anchor: targetControl,
             clipRoots: [],
@@ -164,6 +165,16 @@ test("normalizes exact owners and rejects duplicate or malformed providers", () 
     actionHints: {
       ...contexts[0].actionHints,
       dialog: actionHintDialog(),
+    },
+  }]), null);
+  const incompleteDialog = actionHintDialog();
+  delete incompleteDialog.reconcileTargets;
+  workspaceRoot.append(incompleteDialog);
+  assert.equal(normalizeKeyboardNavigationContexts([{
+    ...contexts[0],
+    actionHints: {
+      ...contexts[0].actionHints,
+      dialog: incompleteDialog,
     },
   }]), null);
   assert.equal(normalizeKeyboardNavigationContexts([{
@@ -312,7 +323,7 @@ function actionHintDialog() {
     allowsNativeActivation() {},
     ownsModal() {},
     updateInput() {},
-    updateTargetLabels() {},
+    reconcileTargets() {},
   });
 }
 

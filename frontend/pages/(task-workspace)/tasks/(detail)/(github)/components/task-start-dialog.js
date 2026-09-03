@@ -111,6 +111,7 @@ class CaffoldGithubTaskStartDialog extends HTMLElement {
           return [];
         }
         return [buttonActionHintTarget({
+          invalidationOwner: this,
           id: `${scopeId}:${identity}`,
           actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
           label: control.textContent?.trim() || identity,

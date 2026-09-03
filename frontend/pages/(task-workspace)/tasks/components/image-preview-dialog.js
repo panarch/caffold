@@ -96,6 +96,7 @@ class CaffoldTaskImagePreviewDialog extends HTMLElement {
     return {
       blocked: false,
       targets: [buttonActionHintTarget({
+        invalidationOwner: this,
         id: "task-image-preview:close",
         actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
         label: control.getAttribute("aria-label") || "Close image preview",

@@ -74,6 +74,7 @@ class CaffoldSegmentedControl extends HTMLElement {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:choice:${encodeURIComponent(value)}`,
         actionId,
         label: `${labelForChoice(choice) ?? ""}` || choice.label,

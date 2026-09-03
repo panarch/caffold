@@ -695,7 +695,7 @@ test("hands the Branch comparison base Hint to its retained native select", { ta
   ).toBeAttached();
 });
 
-test("cancels a Branch base Hint when its select binding is replaced", { tag: "@desktop" }, async ({
+test("retires the Branch base owner when its select binding is replaced", { tag: "@desktop" }, async ({
   page,
 }) => {
   const { tasksPage, taskReview } = await openCompletedTaskForReview(page);
@@ -711,20 +711,23 @@ test("cancels a Branch base Hint when its select binding is replaced", { tag: "@
     "Choose comparison base (current origin/main)",
   );
   const hint = await enterActionHints(page);
-  await expect(
-    hint.getByLabel(/ — Choose comparison base \(current origin\/main\)$/),
-  ).toBeVisible();
+  const baseBadge = hint.getByLabel(
+    / — Choose comparison base \(current origin\/main\)$/,
+  );
+  await expect(baseBadge).toBeVisible();
+  const baseCode = await baseBadge.getAttribute("data-action-hint-code");
+  expect(baseCode).toBeTruthy();
   await compareTree.evaluate((tree) => {
     const select = tree.querySelector("select[data-compare-base-ref]");
     select.replaceWith(select.cloneNode(true));
   });
 
-  await expect(hint).toBeHidden();
-  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
-    "data-action-hint-last-exit",
-    "snapshot-invalidated",
-  );
+  await expect(hint).toBeVisible();
+  await expect(hint.locator(
+    `[data-action-hint-code="${baseCode}"]`,
+  )).toHaveCount(0);
   await expect(compareTree.getByLabel("Branch comparison base")).not.toBeFocused();
+  await page.keyboard.press("Escape");
 });
 
 test("keeps the Branch base Hint available without ready compared files", { tag: "@desktop" }, async ({

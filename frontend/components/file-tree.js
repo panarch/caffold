@@ -258,6 +258,7 @@ class CaffoldFileTree extends HTMLElement {
         const expanded = this.expandedKeys?.has(key) ??
           control.getAttribute?.("aria-expanded") === "true";
         return [disclosureActionHintTarget({
+          invalidationOwner: this,
           id: `${scopeId}:disclosure:${encodeURIComponent(key)}`,
           actionId: disclosureActionId,
           label: defaultAriaLabel(node, expanded),
@@ -298,6 +299,7 @@ class CaffoldFileTree extends HTMLElement {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:file:${encodeURIComponent(key)}`,
         actionId,
         label: `${labelForNode(node) ?? ""}` || `${node.name ?? key}`,

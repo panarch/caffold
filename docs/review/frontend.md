@@ -273,6 +273,10 @@ ordering, and conflict validation; component providers do not assign global
 keys. A temporary key must not silently invoke a different action from the one
 presented when the interaction began. Activation must reuse the existing
 component action rather than becoming a second navigation or mutation owner.
+If a session can partially revalidate, each action provider must declare the
+exact retained owner that forms its minimum invalidation group. Observer roots
+may request revalidation, but the central mode must not infer action ownership
+from mutated DOM or retarget a surviving key to a new control.
 
 Keyboard input has one interaction owner at a time. The keyboard mode must
 define eligible entry, accepted keys, ownership transfer or exit, and cleanup.

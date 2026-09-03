@@ -118,6 +118,7 @@ class CaffoldTaskDetailInfoActions extends HTMLElement {
         ? ACTION_HINT_ACTION.TASK_FORK
         : ACTION_HINT_ACTION.TASK_ARCHIVE;
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:${threadId}:${type}`,
         actionId,
         label: control.textContent?.trim() || `${type} task`,

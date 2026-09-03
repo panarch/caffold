@@ -54,6 +54,7 @@ class CaffoldCodexRuntimeRestartDialog extends HTMLElement {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `codex-runtime-restart:${value}`,
         actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
         label: control.textContent?.trim() || value,

@@ -154,6 +154,7 @@ class CaffoldSettingsRemoteAccessPage extends HTMLElement {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:${id}`,
         actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
         label: control.getAttribute("aria-label") ||
@@ -182,6 +183,7 @@ class CaffoldSettingsRemoteAccessPage extends HTMLElement {
       hasActionHintLayoutBox(open)
     ) {
       targets.push(linkActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:open-link`,
         actionId: ACTION_HINT_ACTION.LINK_OPEN,
         label: "Open private access address in a new tab",

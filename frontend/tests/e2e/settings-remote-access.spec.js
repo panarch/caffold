@@ -231,17 +231,44 @@ test("hands off one exact private URL while remote management stays read-only", 
 
   await revealActionTarget(page, open);
   const hint = await enterActionHints(page);
-  await expect(
-    hint.getByLabel(/Open private access address in a new tab$/),
-  ).toBeVisible();
+  const openBadge = hint.getByLabel(
+    /Open private access address in a new tab$/,
+  );
+  const outsideLabel = testInfo.project.name === "phone"
+    ? "Back to settings"
+    : "Open Tasks";
+  const outsideBadge = hint.getByLabel(
+    new RegExp(` — ${outsideLabel}$`),
+  );
+  await expect(openBadge).toBeVisible();
+  await expect(outsideBadge).toBeVisible();
+  const openCode = await openBadge.getAttribute("data-action-hint-code");
+  const outsideCode = await outsideBadge.getAttribute(
+    "data-action-hint-code",
+  );
+  expect(openCode).toBeTruthy();
+  expect(outsideCode).toBeTruthy();
+  await outsideBadge.evaluate((element) => {
+    window.__remoteAccessOutsideBadge = element;
+  });
   tailnetUrl = REPLACEMENT_TAILNET_URL;
   await remoteAccess.evaluate((element) => element.lifecycle.refresh());
   await expect(open).toHaveAttribute("href", REPLACEMENT_TAILNET_URL);
-  await expect(actionHintDialog(page)).toBeHidden();
-  await expect(page.locator("caffold-app-shell")).toHaveAttribute(
-    "data-action-hint-last-exit",
-    "snapshot-invalidated",
-  );
+  await expect(actionHintDialog(page)).toBeVisible();
+  await expect(hint.locator(
+    `[data-action-hint-code="${openCode}"]`,
+  )).toHaveCount(0);
+  await expect(hint.getByLabel(
+    /Open private access address in a new tab$/,
+  )).toHaveCount(0);
+  await expect(hint.locator(
+    `[data-action-hint-code="${outsideCode}"]`,
+  )).toHaveAttribute("aria-label", `${outsideCode} — ${outsideLabel}`);
+  expect(await page.evaluate((code) =>
+    window.__remoteAccessOutsideBadge === document.querySelector(
+      `caffold-action-hint-dialog [data-action-hint-code="${code}"]`,
+    ), outsideCode)).toBe(true);
+  await page.keyboard.press("Escape");
   expect(serveUpdates).toBe(0);
 });
 

@@ -167,6 +167,7 @@ class CaffoldCodexReadinessRecovery extends HTMLElement {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:${action}`,
         actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
         label: control.getAttribute("aria-label") ||
@@ -192,6 +193,7 @@ class CaffoldCodexReadinessRecovery extends HTMLElement {
       hasActionHintLayoutBox(guide)
     ) {
       targets.push(linkActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:official-guide`,
         actionId: ACTION_HINT_ACTION.LINK_OPEN,
         label: "Open Official Codex CLI guide in a new tab",

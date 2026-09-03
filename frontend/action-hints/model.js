@@ -427,52 +427,61 @@ export function rectsEqual(left, right, tolerance = 0.5) {
   );
 }
 
-export function sameActionHintTopology(left, right) {
-  if (left.length !== right.length) {
-    return false;
-  }
-  return left.every((entry, index) => {
-    const other = right[index];
-    return Boolean(
-      other &&
-        entry.id === other.id &&
-        entry.actionId === other.actionId &&
-        entry.controlKind === other.controlKind &&
-        entry.activationKey === other.activationKey &&
-        entry.actionable === other.actionable &&
-        entry.control === other.control &&
-        entry.anchor === other.anchor &&
-        sameElementSet(entry.clipRoots, other.clipRoots),
-    );
-  });
+export function sameActionHintTargetBinding(left, right) {
+  return Boolean(
+    left &&
+      right &&
+      left.id === right.id &&
+      left.actionId === right.actionId &&
+      left.controlKind === right.controlKind &&
+      left.activationKey === right.activationKey &&
+      left.invalidationOwner === right.invalidationOwner &&
+      left.control === right.control &&
+      left.anchor === right.anchor &&
+      sameElementSet(left.clipRoots, right.clipRoots),
+  );
 }
 
-export function sameActionHintSnapshot(left, right) {
-  if (
-    !left ||
-    !right ||
-    !sameActionHintTopology(left.topology, right.topology) ||
-    !sameViewport(left.viewport, right.viewport) ||
-    !sameDependencies(left.dependencies, right.dependencies) ||
-    !sameElementSet(left.mutationRoots, right.mutationRoots) ||
-    !sameElementSet(left.scrollRoots, right.scrollRoots) ||
-    left.targets.length !== right.targets.length
-  ) {
-    return false;
+export function reconcileActionHintTargets(frozenTargets, currentTargets) {
+  if (!Array.isArray(frozenTargets) || !Array.isArray(currentTargets)) {
+    return null;
   }
-  return left.targets.every((target, index) => {
-    const other = right.targets[index];
-    return Boolean(
-      other &&
-        target.id === other.id &&
-        target.actionId === other.actionId &&
-        target.controlKind === other.controlKind &&
-        target.code === other.code &&
-        target.control === other.control &&
-        target.anchor === other.anchor &&
-        rectsEqual(target.visibleRect, other.visibleRect),
-    );
-  });
+  const currentById = new Map();
+  for (const target of currentTargets) {
+    if (!target?.id || currentById.has(target.id)) {
+      return null;
+    }
+    currentById.set(target.id, target);
+  }
+  const retiredOwners = new Set();
+  for (const target of frozenTargets) {
+    if (!target?.invalidationOwner) {
+      return null;
+    }
+    const current = currentById.get(target.id);
+    if (
+      !current ||
+      !current.actionable ||
+      !current.visibleRect ||
+      !sameActionHintTargetBinding(target, current)
+    ) {
+      retiredOwners.add(target.invalidationOwner);
+    }
+  }
+  return {
+    retiredOwners: [...retiredOwners],
+    targets: frozenTargets.flatMap((target) => {
+      if (retiredOwners.has(target.invalidationOwner)) {
+        return [];
+      }
+      const current = currentById.get(target.id);
+      return [{
+        ...target,
+        label: current.label,
+        visibleRect: current.visibleRect,
+      }];
+    }),
+  };
 }
 
 export function sortByVisualOrder(targets) {
@@ -499,29 +508,17 @@ function assertUniqueTargetIds(targets) {
   }
 }
 
-function sameViewport(left, right) {
+export function sameActionHintViewport(left, right) {
   if (!left || !right) {
     return false;
   }
   return Boolean(
     rectsEqual(left.rect, right.rect) &&
+      Math.abs((left.scrollLeft ?? 0) - (right.scrollLeft ?? 0)) <= 0.5 &&
+      Math.abs((left.scrollTop ?? 0) - (right.scrollTop ?? 0)) <= 0.5 &&
       Math.abs(left.scale - right.scale) <= 0.001 &&
       Math.abs(left.devicePixelRatio - right.devicePixelRatio) <= 0.001,
   );
-}
-
-function sameDependencies(left, right) {
-  if (!Array.isArray(left) || !Array.isArray(right)) {
-    return false;
-  }
-  return left.length === right.length && left.every((dependency, index) => {
-    const other = right[index];
-    return Boolean(
-      other &&
-        dependency.element === other.element &&
-        rectsEqual(dependency.rect, other.rect),
-    );
-  });
 }
 
 function sameElementSet(left, right) {

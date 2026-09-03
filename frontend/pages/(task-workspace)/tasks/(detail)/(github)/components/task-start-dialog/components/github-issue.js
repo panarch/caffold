@@ -104,6 +104,7 @@ class CaffoldGithubIssueTaskSource extends HTMLElement {
     const selectScope = {
       blocked: false,
       targets: [selectActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:base-ref`,
         actionId: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
         label: "Choose Base branch",
@@ -132,6 +133,7 @@ class CaffoldGithubIssueTaskSource extends HTMLElement {
       : {
           blocked: false,
           targets: [buttonActionHintTarget({
+            invalidationOwner: this,
             id: `${scopeId}:retry-refs`,
             actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
             label: retry.textContent?.trim() || "Retry branches",

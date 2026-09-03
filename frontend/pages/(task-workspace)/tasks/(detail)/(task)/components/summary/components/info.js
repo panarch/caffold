@@ -249,6 +249,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
     return {
       blocked: false,
       targets: [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:${threadId}:details:open`,
         actionId: ACTION_HINT_ACTION.TASK_DETAILS_OPEN,
         label: control.getAttribute("aria-label") || "Task details",

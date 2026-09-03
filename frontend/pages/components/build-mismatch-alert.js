@@ -59,6 +59,7 @@ class CaffoldBuildMismatchAlert extends HTMLElement {
     return {
       blocked: false,
       targets: visible ? [buttonActionHintTarget({
+        invalidationOwner: this,
         id: "app:build-mismatch:reload",
         actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
         label: control.textContent?.trim() || "Reload Caffold",

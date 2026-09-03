@@ -10,9 +10,10 @@ import {
   clampBadgePosition,
   matchesActionHintPolicy,
   normalizeActionHintKey,
+  reconcileActionHintTargets,
   rectsEqual,
-  sameActionHintSnapshot,
-  sameActionHintTopology,
+  sameActionHintTargetBinding,
+  sameActionHintViewport,
   sortByVisualOrder,
   visibleTargetRect,
 } from "./model.js";
@@ -389,157 +390,136 @@ test("clamps badges to the visual viewport and compares captured geometry", () =
     ),
     false,
   );
-});
-
-test("freezes target topology by semantic order and DOM identity", () => {
-  const firstControl = {};
-  const secondControl = {};
-  const firstClipRoot = {};
-  const secondClipRoot = {};
-  const topology = [
-    {
-      id: "task-a",
-      actionId: "task.open",
-      controlKind: "button",
-      activationKey: "",
-      actionable: true,
-      control: firstControl,
-      anchor: firstControl,
-      clipRoots: [firstClipRoot],
-    },
-    {
-      id: "new",
-      actionId: "task.create",
-      controlKind: "button",
-      activationKey: "",
-      actionable: true,
-      control: secondControl,
-      anchor: secondControl,
-      clipRoots: [secondClipRoot],
-    },
-  ];
-  assert.equal(sameActionHintTopology(topology, topology.map((entry) => ({ ...entry }))), true);
-  assert.equal(sameActionHintTopology(topology, [...topology].reverse()), false);
-  assert.equal(
-    sameActionHintTopology(topology, [
-      { ...topology[0], control: {} },
-      topology[1],
-    ]),
-    false,
-  );
-  assert.equal(
-    sameActionHintTopology(topology, [
-      { ...topology[0], actionable: false },
-      topology[1],
-    ]),
-    false,
-  );
-  assert.equal(
-    sameActionHintTopology(topology, [
-      { ...topology[0], clipRoots: [secondClipRoot] },
-      topology[1],
-    ]),
-    false,
-  );
-  assert.equal(
-    sameActionHintTopology(topology, [
-      { ...topology[0], activationKey: "changed" },
-      topology[1],
-    ]),
-    false,
-  );
-});
-
-test("keeps presentation label changes but rejects frozen binding changes", () => {
-  const control = {};
-  const dependency = {};
-  const mutationRoot = {};
-  const scrollRoot = {};
-  const snapshot = {
-    topology: [{
-      id: "task-a",
-      actionId: "task.open",
-      controlKind: "button",
-      activationKey: "",
-      actionable: true,
-      control,
-      anchor: control,
-      clipRoots: [dependency],
-    }],
-    targets: [{
-      id: "task-a",
-      actionId: "task.open",
-      controlKind: "button",
-      code: "TA",
-      control,
-      anchor: control,
-      label: "Original title",
-      visibleRect: { left: 1, top: 2, right: 101, bottom: 42 },
-    }],
-    viewport: {
-      rect: { left: 0, top: 0, right: 300, bottom: 200 },
-      scale: 1,
-      devicePixelRatio: 2,
-    },
-    dependencies: [{
-      element: dependency,
-      rect: { left: 0, top: 0, right: 120, bottom: 200 },
-    }],
-    mutationRoots: [mutationRoot],
-    scrollRoots: [scrollRoot],
+  const viewport = {
+    rect: { left: 0, top: 0, right: 300, bottom: 200 },
+    scrollLeft: 0,
+    scrollTop: 0,
+    scale: 1,
+    devicePixelRatio: 2,
   };
-  const harmless = structuredClone(snapshot);
-  harmless.topology[0].control = control;
-  harmless.topology[0].anchor = control;
-  harmless.topology[0].clipRoots = [dependency];
-  harmless.targets[0].control = control;
-  harmless.targets[0].anchor = control;
-  harmless.targets[0].label = "Updated title";
-  harmless.dependencies[0].element = dependency;
-  harmless.mutationRoots = [mutationRoot];
-  harmless.scrollRoots = [scrollRoot];
-  assert.equal(sameActionHintSnapshot(snapshot, harmless), true);
+  assert.equal(sameActionHintViewport(viewport, { ...viewport }), true);
+  assert.equal(
+    sameActionHintViewport(viewport, { ...viewport, scrollTop: 8 }),
+    false,
+  );
+});
 
-  assert.equal(
-    sameActionHintSnapshot(snapshot, {
-      ...harmless,
-      targets: [{ ...harmless.targets[0], controlKind: "textbox" }],
+test("retires one invalid owner group without reallocating surviving targets", () => {
+  const firstOwner = {};
+  const secondOwner = {};
+  const firstControl = {};
+  const replacedControl = {};
+  const secondControl = {};
+  const firstActivate = () => {};
+  const secondActivate = () => {};
+  const frozen = [
+    ownedTargetState({
+      id: "first:a",
+      owner: firstOwner,
+      control: firstControl,
+      code: "A",
+      activate: firstActivate,
     }),
-    false,
+    ownedTargetState({
+      id: "first:b",
+      owner: firstOwner,
+      control: replacedControl,
+      code: "S",
+    }),
+    ownedTargetState({
+      id: "second:a",
+      owner: secondOwner,
+      control: secondControl,
+      code: "D",
+      activate: secondActivate,
+    }),
+  ];
+  const current = [
+    ownedTargetState({
+      id: "first:a",
+      owner: firstOwner,
+      control: firstControl,
+      label: "Updated first",
+    }),
+    ownedTargetState({
+      id: "first:b",
+      owner: firstOwner,
+      control: {},
+    }),
+    ownedTargetState({
+      id: "second:a",
+      owner: secondOwner,
+      control: secondControl,
+      label: "Updated second",
+      visibleRect: { left: 40, top: 50, right: 70, bottom: 80 },
+    }),
+    ownedTargetState({
+      id: "new:a",
+      owner: {},
+      control: {},
+      label: "New target",
+    }),
+  ];
+
+  const result = reconcileActionHintTargets(frozen, current);
+
+  assert.deepEqual(result.retiredOwners, [firstOwner]);
+  assert.equal(result.targets.length, 1);
+  assert.equal(result.targets[0].id, "second:a");
+  assert.equal(result.targets[0].code, "D");
+  assert.equal(result.targets[0].label, "Updated second");
+  assert.deepEqual(result.targets[0].visibleRect, {
+    left: 40,
+    top: 50,
+    right: 70,
+    bottom: 80,
+  });
+  assert.equal(result.targets[0].activate, secondActivate);
+  assert.equal(result.targets.some(({ id }) => id === "new:a"), false);
+  assert.equal(frozen[0].activate, firstActivate);
+});
+
+test("treats owner identity, actionability, visibility, and binding as frozen", () => {
+  const owner = {};
+  const control = {};
+  const frozen = ownedTargetState({
+    id: "target",
+    owner,
+    control,
+    code: "A",
+  });
+  const current = ownedTargetState({ id: "target", owner, control });
+
+  assert.equal(sameActionHintTargetBinding(frozen, current), true);
+  for (const patch of [
+    { invalidationOwner: {} },
+    { control: {} },
+    { anchor: {} },
+    { actionId: "button.activate" },
+    { controlKind: "link" },
+    { activationKey: "changed" },
+    { clipRoots: [{}] },
+  ]) {
+    const changed = { ...current, ...patch };
+    assert.equal(sameActionHintTargetBinding(frozen, changed), false);
+    assert.deepEqual(
+      reconcileActionHintTargets([frozen], [changed])?.targets,
+      [],
+    );
+  }
+  assert.deepEqual(
+    reconcileActionHintTargets([frozen], [{ ...current, actionable: false }])
+      ?.targets,
+    [],
+  );
+  assert.deepEqual(
+    reconcileActionHintTargets([frozen], [{ ...current, visibleRect: null }])
+      ?.targets,
+    [],
   );
   assert.equal(
-    sameActionHintSnapshot(snapshot, {
-      ...harmless,
-      targets: [{
-        ...harmless.targets[0],
-        visibleRect: { left: 3, top: 2, right: 103, bottom: 42 },
-      }],
-    }),
-    false,
-  );
-  assert.equal(
-    sameActionHintSnapshot(snapshot, {
-      ...harmless,
-      dependencies: [{
-        ...harmless.dependencies[0],
-        rect: { left: 0, top: 0, right: 130, bottom: 200 },
-      }],
-    }),
-    false,
-  );
-  assert.equal(
-    sameActionHintSnapshot(snapshot, {
-      ...harmless,
-      mutationRoots: [{}],
-    }),
-    false,
-  );
-  assert.equal(
-    sameActionHintSnapshot(snapshot, {
-      ...harmless,
-      scrollRoots: [{}],
-    }),
-    false,
+    reconcileActionHintTargets([frozen], [current, current]),
+    null,
   );
 });
 
@@ -561,6 +541,32 @@ function taskCodes(count) {
       target(`task-${index}`, ACTION_HINT_ACTION.TASK_OPEN)
     ),
   ).map(({ code }) => code);
+}
+
+function ownedTargetState({
+  id,
+  owner,
+  control,
+  code,
+  label = id,
+  activate = () => {},
+  visibleRect = { left: 0, top: 0, right: 20, bottom: 20 },
+} = {}) {
+  return {
+    id,
+    actionId: "task.open",
+    controlKind: "button",
+    activationKey: "",
+    invalidationOwner: owner,
+    control,
+    anchor: control,
+    clipRoots: [],
+    label,
+    actionable: true,
+    visibleRect,
+    ...(code ? { code } : {}),
+    activate,
+  };
 }
 
 function codeLengthCounts(codes) {

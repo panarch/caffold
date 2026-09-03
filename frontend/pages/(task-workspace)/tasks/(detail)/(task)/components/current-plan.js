@@ -362,6 +362,7 @@ class CaffoldTaskCurrentPlan extends HTMLElement {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${targetScopeId}:${action}`,
         actionId: ACTION_HINT_ACTION.CURRENT_PLAN_DOCUMENT_OPEN,
         label: control.getAttribute("aria-label") ||

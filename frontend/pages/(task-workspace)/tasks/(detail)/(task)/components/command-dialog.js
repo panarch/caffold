@@ -100,6 +100,7 @@ class CaffoldTaskCommandDialog extends HTMLElement {
     return {
       blocked: false,
       targets: [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `task-command:${encodeURIComponent(threadId)}:close`,
         actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
         label: control.getAttribute("aria-label") || "Close command output",

@@ -533,6 +533,7 @@ class CaffoldAppShell extends HTMLElement {
     return {
       blocked: false,
       targets: visible ? [buttonActionHintTarget({
+        invalidationOwner: this,
         id: "app:bootstrap:retry",
         actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
         label: control.textContent?.trim() || "Retry Caffold bootstrap",
@@ -568,6 +569,7 @@ class CaffoldAppShell extends HTMLElement {
     return {
       blocked: false,
       targets: visible ? [buttonActionHintTarget({
+        invalidationOwner: this,
         id: "app:foreground-recovery:retry",
         actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
         label: control.textContent?.trim() || "Retry foreground recovery",

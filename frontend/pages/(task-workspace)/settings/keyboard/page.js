@@ -66,6 +66,7 @@ class CaffoldSettingsKeyboardPage extends HTMLElement {
     return {
       blocked: false,
       targets: [switchActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:action-hints:disable`,
         actionId: ACTION_HINT_ACTION.CONTROL_SWITCH_TOGGLE,
         label: "Turn keyboard navigation off",

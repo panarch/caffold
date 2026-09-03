@@ -154,7 +154,7 @@ function normalizeActionHintCapability(capability, root) {
     typeof dialog.allowsNativeActivation !== "function" ||
     typeof dialog.ownsModal !== "function" ||
     typeof dialog.updateInput !== "function" ||
-    typeof dialog.updateTargetLabels !== "function" ||
+    typeof dialog.reconcileTargets !== "function" ||
     !scope ||
     typeof scope !== "object" ||
     !Array.isArray(scope.targets)

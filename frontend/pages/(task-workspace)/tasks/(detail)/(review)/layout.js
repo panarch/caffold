@@ -315,6 +315,7 @@ class CaffoldTaskReview extends HTMLElement {
     const emptyScope = navigatorActive && emptyControl && !emptyControl.disabled
       ? {
           targets: [buttonActionHintTarget({
+            invalidationOwner: this,
             id: `${scopeId}:scope:branch`,
             actionId: ACTION_HINT_ACTION.REVIEW_AXIS,
             label: emptyControl.textContent?.trim() || "Review branch changes",

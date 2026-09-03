@@ -121,6 +121,7 @@ class CaffoldConversationForkDialog extends HTMLElement {
       return emptyActionHintScope();
     }
     const inputTarget = textboxActionHintTarget({
+      invalidationOwner: this,
       id: `conversation-fork:${encodeURIComponent(sectionId)}:thread-id`,
       actionId: ACTION_HINT_ACTION.DIALOG_TEXTBOX_FOCUS,
       label: "Focus Thread ID",
@@ -143,6 +144,7 @@ class CaffoldConversationForkDialog extends HTMLElement {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `conversation-fork:${encodeURIComponent(sectionId)}:${action}`,
         actionId: ACTION_HINT_ACTION.DIALOG_BUTTON,
         label: control.textContent?.trim() || action,

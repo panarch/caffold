@@ -222,6 +222,7 @@ class CaffoldTaskCommand extends HTMLElement {
       return {
         blocked: false,
         targets: [disclosureActionHintTarget({
+          invalidationOwner: this,
           id: `${scopeId}:disclosure:${encodeURIComponent(commandKey)}`,
           actionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
           label: `${disclosure.open ? "Collapse" : "Expand"} Command`,
@@ -256,6 +257,7 @@ class CaffoldTaskCommand extends HTMLElement {
     return {
       blocked: false,
       targets: [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:view-output`,
         actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
         label: control.getAttribute("aria-label") ||

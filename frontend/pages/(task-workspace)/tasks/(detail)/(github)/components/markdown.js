@@ -244,6 +244,7 @@ class CaffoldGithubMarkdown extends HTMLElement {
         tableScrollRoots.push(tableScrollRoot);
       }
       return [linkActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:link:${ordinal}`,
         actionId: ACTION_HINT_ACTION.LINK_OPEN,
         label,

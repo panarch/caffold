@@ -198,6 +198,7 @@ class CaffoldTaskRecovery extends HTMLElement {
       const selector =
         `button[data-task-recovery-action="${action}"]`;
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:${threadId}:${action}`,
         actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
         label: control.getAttribute("aria-label") ||

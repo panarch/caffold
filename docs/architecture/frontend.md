@@ -309,8 +309,8 @@ comment, and commit links. Each target freezes the anchor's raw `href`,
 focuses and clicks that native anchor; the helper does not call a router or
 `window.open()`. Consequently same-tab Caffold paths, external tabs, and
 `mailto:` links preserve their existing browser semantics. Changing any frozen
-link attribute closes the session, while an accessible-name-only patch updates
-the existing badge and code.
+link attribute retires that link's declared owner group, while an
+accessible-name-only patch updates the existing badge and code.
 
 Rendered-content owners register links only after their existing sanitizer and
 final DOM mount. Task Markdown and the shared Markdown Preview enumerate the
@@ -382,25 +382,44 @@ minimizes the longest code first and total code length second, assigns shorter
 codes to earlier targets, and expands the lowest-priority tail branches first,
 so code lengths within each generated allocation pool differ by at most one.
 Automatic first characters reserve the `N`, `M`, `P`, and `T` namespaces. The
-full result must be unique and prefix-free. A session freezes target identity,
-binding, and code, intersects anchors directly with the visual viewport and
-every owning scrollport, and renders buttons in one viewport-sized native
-modal dialog. Scroll, viewport, route, target topology, geometry,
-actionability, or competing modal/popover ownership closes the session. A
-presentation-only accessible-name change refreshes the existing badge without
-changing its code, while equivalent presentation patches do not retarget it.
-A partial prefix keeps Action Hint or Scroll selection open while at least one
-frozen code still matches. A printable character that leaves no match is
-consumed and closes that selection mode while restoring its invoking focus.
+full result must be unique and prefix-free. Initial capture freezes each
+visible, actionable target's identity, exact native binding, code, activation
+closure, and exact retained `invalidationOwner`. It intersects anchors directly
+with the visual viewport and every owning scrollport, then renders buttons in
+one viewport-sized native modal dialog. The target set is monotonic for that
+session: later descriptors never receive codes, and a retired or initially
+offscreen target can participate only after a fresh `F`.
+
+Mutation, resize, and declared owner-scroll observations request one coalesced
+scope revalidation; their roots are signals, not evidence from which the
+controller infers ownership. If a frozen target disappears, becomes
+non-actionable or invisible, changes owner, or changes any native binding, the
+controller retires every frozen target with that same frozen owner. Exact
+survivors retain their original code, order, control, and activation closure;
+only their current accessible label and visible geometry are patched onto the
+retained badge. No allocator runs during this reconciliation. Conversation can
+therefore use retained entry and child components as fine-grained owners,
+while providers whose render boundary is still broader use their current
+component instance as a coarse owner without changing the central algorithm.
+
+Route or keyboard-context replacement, dialog binding changes, competing or
+ambiguous modal/popover ownership, malformed scope data, and real window or
+visual-viewport movement remain whole-session invalidations. A partial prefix
+keeps Action Hint or Scroll selection open while at least one frozen code still
+matches. If owner retirement leaves no target or no target matching the
+current prefix, the mode closes and restores its invoking focus. A printable
+character that leaves no match is likewise consumed and closes the selection
+mode.
 
 Each registered popover retains a small shared presentation host containing its
 own Action Hint dialog, Scroll selector, and Scroll HUD. Dynamic Model and
 Permission rendering replaces only an option-content child, preserving the
 popover root and presentation identity. If a frozen option control is replaced,
-the current Hint session closes even when its semantic value is unchanged; a
-later `F` collects a fresh binding. Product owners continue to own native open,
-light dismiss, deactivation, and focus-return lifecycle, while the coordinator
-only cleans its current keyboard session.
+its option owner group retires even when the semantic value is unchanged. A
+popover context containing no surviving target consequently closes; a later
+`F` collects fresh bindings and options. Product owners continue to own native
+open, light dismiss, deactivation, and focus-return lifecycle, while the
+coordinator only cleans its current keyboard session.
 
 Each registered product dialog likewise retains one shared presentation host
 as a direct child of its exact native `<dialog>`. The host owns only that
@@ -742,13 +761,16 @@ updates. Moving from Tasks to Settings ends active editing and transport work
 without destroying a retained Composer draft.
 
 Conversation also owns its delegated retry, attachment-preview, approval, and
-exact rendered Thinking disclosure controls. A custom child owns its own
-controls: Command owns its active disclosure or terminal View output, Work
-Details owns its root disclosure, and Markdown Code Block owns Wrap and Copy.
-Thinking Markdown intentionally remains outside code-block controls. Assistant
-Message, Markdown, and Work Details merge only the direct retained children
-they mount, so stream patches can invalidate a frozen topology without
-introducing a descendant-DOM scan.
+exact rendered Thinking disclosure controls. Retry controls use Conversation's
+coarse owner; each attachment preview, approval group, and Thinking disclosure
+uses the exact retained timeline entry that contains it. A custom child owns
+its own controls: Command owns its active disclosure or terminal View output,
+Work Details owns its root disclosure, and Markdown Code Block owns Wrap and
+Copy. Thinking Markdown intentionally remains outside code-block controls.
+Assistant Message, Markdown, and Work Details merge only the direct retained
+children they mount. A stream patch can therefore retire only the replaced
+entry or child owner while unaffected sibling, App Shell, and Composer codes
+remain frozen, without introducing a descendant-DOM scan.
 
 ### Current plan
 

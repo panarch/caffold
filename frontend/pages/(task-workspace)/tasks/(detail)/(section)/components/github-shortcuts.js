@@ -179,6 +179,7 @@ class CaffoldSectionGithubShortcuts extends HTMLElement {
       }
       const label = kind === "issues" ? "Open GitHub Issues" : "Open GitHub Pull Requests";
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:github:${kind}`,
         actionId: ACTION_HINT_ACTION.GITHUB_MODE,
         label,

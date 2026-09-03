@@ -151,6 +151,7 @@ class CaffoldMarkdownPreview extends HTMLElement {
         tableScrollRoots.push(tableScrollRoot);
       }
       return [linkActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:link:${ordinal}`,
         actionId: linkActionId,
         label,

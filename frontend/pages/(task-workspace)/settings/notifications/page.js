@@ -330,6 +330,7 @@ class CaffoldSettingsNotificationsPage extends HTMLElement {
         definition.identity ? definition.identity(candidate) : true
       );
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:${definition.id}`,
         actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
         label: control.getAttribute("aria-label") ||

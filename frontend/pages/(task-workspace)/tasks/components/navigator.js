@@ -190,6 +190,7 @@ class CaffoldTaskNavigator extends HTMLElement {
         id: "task-create:global",
         actionId: "task.create",
         label: "Create a new task",
+        invalidationOwner: this,
         controlKind: "button",
         control: newTask,
         anchor: newTask,
@@ -238,6 +239,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     const mode = this.reorderMode;
     const active = mode !== "none";
     return buttonActionHintTarget({
+      invalidationOwner: this,
       id: active
         ? `task-list:reorder:finish:${mode}`
         : "task-list:reorder:open",
@@ -312,6 +314,7 @@ class CaffoldTaskNavigator extends HTMLElement {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${contextId}:${mode}`,
         actionId: ACTION_HINT_ACTION.REORDER_SELECT,
         label: control.textContent?.trim() || `Reorder ${mode}`,

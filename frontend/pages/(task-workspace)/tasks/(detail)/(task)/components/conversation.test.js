@@ -177,13 +177,17 @@ test("merges owned Conversation actions with direct retained child providers", (
     approvalId: "approval-a",
     decision: "accept",
   }, "Accept");
-  const childTarget = { id: "command-output" };
+  const approvalEntry = {
+    dataset: { conversationEntryKey: "approval-a" },
+  };
+  approval.closest = () => approvalEntry;
   const command = {
     actionHintScope(options) {
       assert.equal(options.scopeId, "task:thread-a:conversation:command:command-a");
       return { targets: [childTarget], mutationRoots: [command] };
     },
   };
+  const childTarget = { id: "command-output", invalidationOwner: command };
   const entry = {
     dataset: { conversationEntryKey: "command-a" },
     querySelector(selector) {
@@ -224,6 +228,9 @@ test("merges owned Conversation actions with direct retained child providers", (
     "task:thread-a:conversation:approval:approval-a:accept",
     "command-output",
   ]);
+  assert.deepEqual(scope.targets.map(({ invalidationOwner }) =>
+    invalidationOwner
+  ), [owner, earlierPreviewEntry, previewEntry, approvalEntry, command]);
   scope.targets.slice(0, 4).forEach((target) => target.activate());
   assert.deepEqual(
     [retry, earlierPreview, preview, approval].map(({ clicks }) => clicks),

@@ -695,6 +695,7 @@ class CaffoldTaskGithubLayout extends HTMLElement {
     const back = backAvailable && parentKey
       ? {
           targets: [buttonActionHintTarget({
+            invalidationOwner: this,
             id: `${scopeId}:parent:${parentKey}`,
             actionId: ACTION_HINT_ACTION.PARENT,
             label: this.backButton.getAttribute("aria-label") || "Back",

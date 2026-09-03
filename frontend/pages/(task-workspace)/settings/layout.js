@@ -257,6 +257,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
         ? {
       blocked: false,
       targets: [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:parent:list`,
         actionId: ACTION_HINT_ACTION.PARENT,
         label: control.getAttribute("aria-label") || "Back to settings",

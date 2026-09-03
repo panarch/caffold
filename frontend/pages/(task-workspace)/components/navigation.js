@@ -99,6 +99,7 @@ class CaffoldTaskWorkspaceNavigation extends HTMLElement {
       const label = control.getAttribute("aria-label") ||
         `Open ${mode === "tasks" ? "Tasks" : "Settings"}`;
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:mode:${mode}`,
         actionId: ACTION_HINT_ACTION.WORKSPACE_SELECT,
         label,

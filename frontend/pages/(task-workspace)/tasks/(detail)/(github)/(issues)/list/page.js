@@ -114,6 +114,7 @@ class CaffoldGithubIssuesListPage extends HTMLElement {
         return [];
       }
       return [buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:issue:${number}`,
         actionId: ACTION_HINT_ACTION.ISSUE_OPEN,
         label: `Open issue #${number}: ${issue.title || "(no title)"}`,

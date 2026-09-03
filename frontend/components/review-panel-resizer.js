@@ -77,6 +77,7 @@ export class CaffoldReviewPanelResizer extends HTMLElement {
     return {
       blocked: false,
       targets: [separatorActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:separator`,
         actionId,
         label: this.getAttribute("aria-label") || "Resize side panel",

@@ -148,6 +148,7 @@ class CaffoldGitReviewControls extends HTMLElement {
     const control = this.refreshButton;
     if (control && !control.disabled) {
       targets.push(buttonActionHintTarget({
+        invalidationOwner: this,
         id: `${scopeId}:refresh`,
         actionId: ACTION_HINT_ACTION.BUTTON_ACTIVATE,
         label: control.getAttribute("aria-label") || "Refresh Git",
@@ -187,6 +188,7 @@ function compareRefActionHintTargets(owner, { scopeId, clipRoots }) {
     }
     const value = control.value;
     return [selectActionHintTarget({
+      invalidationOwner: owner,
       id: `${scopeId}:compare-ref:${kind}`,
       actionId: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
       label: value

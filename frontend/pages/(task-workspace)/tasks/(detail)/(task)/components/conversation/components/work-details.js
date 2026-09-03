@@ -247,6 +247,7 @@ class CaffoldTaskWorkDetails extends HTMLElement {
       ? {
           blocked: false,
           targets: [disclosureActionHintTarget({
+            invalidationOwner: this,
             id: `${scopeId}:disclosure:${encodeURIComponent(identity)}:root`,
             actionId: ACTION_HINT_ACTION.DISCLOSURE_TOGGLE,
             label: `${disclosure.open ? "Collapse" : "Expand"} ${

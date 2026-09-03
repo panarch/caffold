@@ -31,8 +31,10 @@ import {
   matchesActionHintPolicy,
   normalizeActionHintKey,
   normalizeRect,
+  reconcileActionHintTargets,
   rectsEqual,
-  sameActionHintSnapshot,
+  sameActionHintTargetBinding,
+  sameActionHintViewport,
   sortByVisualOrder,
   taskHintSuffix,
   visibleTargetRect,
@@ -59,8 +61,11 @@ export {
   normalizeRect,
   radioActionHintTarget,
   rangeActionHintTarget,
+  reconcileActionHintTargets,
   rectsEqual,
   reorderHandleActionHintTarget,
+  sameActionHintTargetBinding,
+  sameActionHintViewport,
   separatorActionHintTarget,
   sortByVisualOrder,
   selectActionHintTarget,
@@ -218,16 +223,20 @@ export class ActionHintController {
       buffer: "",
       cleanup: [],
       mutationObserver: null,
+      observedMutationRoots: [],
+      observedResizeElements: [],
+      observedScrollRoots: [],
       ownershipObserver: null,
       revalidationQueued: false,
       resizeObserver: null,
+      scrollCleanup: [],
     };
     this.session = session;
     try {
       this.attachDialogSignals(session);
       dialog.open(session.targets, session.viewport.rect);
       this.attachSessionSignals(session);
-      if (!this.snapshotIsCurrent(session, { refreshPresentation: true })) {
+      if (!this.revalidateSnapshot(session, { refreshPresentation: true })) {
         this.cancel("snapshot-invalidated");
       }
       return this.session === session;
@@ -258,15 +267,25 @@ export class ActionHintController {
 
   activate(code) {
     const session = this.session;
-    const target = session?.targets.find((candidate) => candidate.code === code);
-    if (!session || !target) {
+    const requestedTarget = session?.targets.find(
+      (candidate) => candidate.code === code,
+    );
+    if (!session || !requestedTarget) {
       return false;
     }
     if (!this.closeSession(session)) {
       return false;
     }
-    this.onSessionExit({ activated: true, target });
-    if (!this.snapshotIsCurrent(session)) {
+    this.onSessionExit({ activated: true, target: requestedTarget });
+    if (!this.revalidateSnapshot(session)) {
+      this.restoreFocus(session.opener);
+      this.workspace.dataset.actionHintLastExit = "activation-invalidated";
+      return false;
+    }
+    const target = session.targets.find(
+      (candidate) => candidate.code === code,
+    );
+    if (!target) {
       this.restoreFocus(session.opener);
       this.workspace.dataset.actionHintLastExit = "activation-invalidated";
       return false;
@@ -323,15 +342,10 @@ export class ActionHintController {
   }
 
   attachSessionSignals(session) {
-    const cancelOnScroll = () => this.cancel("scroll");
-    for (const root of session.scrollRoots) {
-      root.addEventListener("scroll", cancelOnScroll, { passive: true });
-      session.cleanup.push(() => root.removeEventListener("scroll", cancelOnScroll));
-    }
     const revalidateViewport = () => {
       if (
         this.session === session &&
-        !this.snapshotIsCurrent(session, { refreshPresentation: true })
+        !sameActionHintViewport(session.viewport, captureViewport())
       ) {
         this.cancel("viewport");
       }
@@ -361,24 +375,6 @@ export class ActionHintController {
       });
     }
 
-    const revalidate = () => this.queueRevalidation(session);
-    if (typeof MutationObserver === "function" && session.mutationRoots.length) {
-      session.mutationObserver = new MutationObserver(revalidate);
-      for (const root of session.mutationRoots) {
-        session.mutationObserver.observe(root, {
-          attributes: true,
-          childList: true,
-          characterData: true,
-          subtree: true,
-        });
-      }
-    }
-    if (typeof ResizeObserver === "function") {
-      session.resizeObserver = new ResizeObserver(revalidate);
-      for (const element of session.resizeElements) {
-        session.resizeObserver.observe(element);
-      }
-    }
     if (typeof MutationObserver === "function" && document.documentElement) {
       session.ownershipObserver = new MutationObserver(() => {
         if (this.hasOtherInteractionOwner(session.binding ?? null)) {
@@ -410,16 +406,80 @@ export class ActionHintController {
     session.cleanup.push(() =>
       document.removeEventListener("beforetoggle", handleBeforeToggle, true)
     );
+    this.replaceRevalidationSignals(session);
   }
 
   detachSessionSignals(session) {
-    session.mutationObserver?.disconnect();
+    this.detachRevalidationSignals(session);
     session.ownershipObserver?.disconnect();
-    session.resizeObserver?.disconnect();
+    session.ownershipObserver = null;
     for (const cleanup of session.cleanup ?? []) {
       cleanup();
     }
     session.cleanup = [];
+  }
+
+  detachRevalidationSignals(session) {
+    session.mutationObserver?.disconnect();
+    session.resizeObserver?.disconnect();
+    for (const cleanup of session.scrollCleanup ?? []) {
+      cleanup();
+    }
+    session.mutationObserver = null;
+    session.resizeObserver = null;
+    session.scrollCleanup = [];
+    session.observedMutationRoots = [];
+    session.observedResizeElements = [];
+    session.observedScrollRoots = [];
+  }
+
+  replaceRevalidationSignals(session) {
+    if (
+      sameElementCollection(
+        session.observedMutationRoots,
+        session.mutationRoots,
+      ) &&
+      sameElementCollection(
+        session.observedResizeElements,
+        session.resizeElements,
+      ) &&
+      sameElementCollection(session.observedScrollRoots, session.scrollRoots)
+    ) {
+      return;
+    }
+    this.detachRevalidationSignals(session);
+    const revalidate = () => this.queueRevalidation(session);
+    if (typeof MutationObserver === "function" && session.mutationRoots.length) {
+      session.mutationObserver = new MutationObserver((records) => {
+        if (records.every((record) => session.dialog.contains?.(record.target))) {
+          return;
+        }
+        revalidate();
+      });
+      for (const root of session.mutationRoots) {
+        session.mutationObserver.observe(root, {
+          attributes: true,
+          childList: true,
+          characterData: true,
+          subtree: true,
+        });
+      }
+    }
+    if (typeof ResizeObserver === "function") {
+      session.resizeObserver = new ResizeObserver(revalidate);
+      for (const element of session.resizeElements) {
+        session.resizeObserver.observe(element);
+      }
+    }
+    for (const root of session.scrollRoots) {
+      root.addEventListener("scroll", revalidate, { passive: true });
+      session.scrollCleanup.push(() =>
+        root.removeEventListener("scroll", revalidate)
+      );
+    }
+    session.observedMutationRoots = [...session.mutationRoots];
+    session.observedResizeElements = [...session.resizeElements];
+    session.observedScrollRoots = [...session.scrollRoots];
   }
 
   queueRevalidation(session) {
@@ -431,14 +491,22 @@ export class ActionHintController {
       session.revalidationQueued = false;
       if (
         this.session === session &&
-        !this.snapshotIsCurrent(session, { refreshPresentation: true })
+        !this.revalidateSnapshot(session, { refreshPresentation: true })
       ) {
         this.cancel("snapshot-invalidated");
       }
     });
   }
 
-  snapshotIsCurrent(snapshot, { refreshPresentation = false } = {}) {
+  revalidateSnapshot(snapshot, { refreshPresentation = false } = {}) {
+    try {
+      return this.reconcileSnapshot(snapshot, { refreshPresentation });
+    } catch {
+      return false;
+    }
+  }
+
+  reconcileSnapshot(snapshot, { refreshPresentation = false } = {}) {
     if (this.hasOtherInteractionOwner(snapshot.binding ?? null)) {
       return false;
     }
@@ -450,33 +518,75 @@ export class ActionHintController {
     if (!scope || scope.blocked) {
       return false;
     }
-    const current = this.captureSnapshot(scope);
-    if (!current || !sameActionHintSnapshot(snapshot, current)) {
+    const current = this.captureScopeState(scope);
+    if (
+      !current ||
+      !sameActionHintViewport(snapshot.viewport, current.viewport)
+    ) {
       return false;
     }
+    const reconciliation = reconcileActionHintTargets(
+      snapshot.targets,
+      current.descriptorStates,
+    );
+    if (!reconciliation?.targets.length) {
+      return false;
+    }
+    const presentation = advanceHintBuffer(
+      snapshot.buffer,
+      "",
+      reconciliation.targets.map(({ code }) => code),
+    );
+    if (!presentation.matches.length) {
+      return false;
+    }
+    snapshot.targets = reconciliation.targets;
+    snapshot.mutationRoots = current.mutationRoots;
+    snapshot.scrollRoots = current.scrollRoots;
+    snapshot.resizeElements = uniqueElements(
+      reconciliation.targets.flatMap(({ anchor, clipRoots }) => [
+        anchor,
+        ...clipRoots,
+      ]),
+    );
+    if (this.session === snapshot) {
+      this.replaceRevalidationSignals(snapshot);
+    }
     if (refreshPresentation) {
-      this.refreshSnapshotPresentation(snapshot, current);
+      const dialog = snapshot.binding?.dialog ?? this.dialog;
+      if (!dialog.reconcileTargets(snapshot.targets, snapshot.viewport.rect)) {
+        return false;
+      }
+      dialog.updateInput(presentation);
     }
     return true;
   }
 
-  refreshSnapshotPresentation(snapshot, current) {
-    const changed = [];
-    for (const [index, target] of snapshot.targets.entries()) {
-      const label = current.targets[index]?.label;
-      if (!label || target.label === label) {
-        continue;
-      }
-      // Binding equality was already validated; only its presented name moves.
-      target.label = label;
-      changed.push(target);
+  captureSnapshot(scope) {
+    let state;
+    try {
+      state = this.captureScopeState(scope);
+    } catch {
+      return null;
     }
-    if (changed.length) {
-      (snapshot.binding?.dialog ?? this.dialog).updateTargetLabels(changed);
+    if (!state) {
+      return null;
     }
+    const { descriptorStates, ...snapshot } = state;
+    let targets;
+    try {
+      targets = allocateActionHintCodes(sortByVisualOrder(
+        descriptorStates.filter(
+          ({ actionable, visibleRect }) => actionable && visibleRect,
+        ),
+      ));
+    } catch {
+      return null;
+    }
+    return { ...snapshot, targets };
   }
 
-  captureSnapshot(scope) {
+  captureScopeState(scope) {
     const descriptors = normalizeDescriptors(scope.targets);
     const mutationRoots = normalizeMutationRootList(scope.mutationRoots ?? []);
     const scrollRoots = normalizeElementList(scope.scrollRoots ?? []);
@@ -484,53 +594,28 @@ export class ActionHintController {
       return null;
     }
     const viewport = captureViewport();
-    const descriptorStates = descriptors.map((descriptor) => ({
-      actionable: descriptorIsActionable(descriptor),
-      descriptor,
-    }));
-    const topology = descriptorStates.map(({ actionable, descriptor }) =>
-      topologyEntry(descriptor, actionable)
-    );
-    const visible = [];
-    for (const { actionable, descriptor } of descriptorStates) {
-      if (!actionable) {
-        continue;
-      }
-      const anchorRect = normalizeRect(descriptor.anchor.getBoundingClientRect());
-      const clipRects = descriptor.clipRoots.map((root) =>
-        root.getBoundingClientRect()
-      );
-      const targetRect = visibleTargetRect(
-        anchorRect,
-        clipRects,
-        viewport.rect,
-      );
-      if (!targetRect) {
-        continue;
-      }
-      visible.push({
+    const descriptorStates = descriptors.map((descriptor) => {
+      const actionable = descriptorIsActionable(descriptor);
+      const anchorRect = actionable
+        ? normalizeRect(descriptor.anchor.getBoundingClientRect())
+        : null;
+      const clipRects = actionable
+        ? descriptor.clipRoots.map((root) => root.getBoundingClientRect())
+        : [];
+      return {
         ...descriptor,
-        anchorRect,
-        visibleRect: targetRect,
-      });
-    }
-    let targets;
-    try {
-      targets = allocateActionHintCodes(sortByVisualOrder(visible));
-    } catch {
-      return null;
-    }
+        actionable,
+        visibleRect: actionable
+          ? visibleTargetRect(anchorRect, clipRects, viewport.rect)
+          : null,
+      };
+    });
     const dependencyElements = uniqueElements(
       descriptors.flatMap(({ clipRoots }) => clipRoots),
     );
     return {
-      topology,
-      targets,
+      descriptorStates,
       viewport,
-      dependencies: dependencyElements.map((element) => ({
-        element,
-        rect: normalizeRect(element.getBoundingClientRect()),
-      })),
       mutationRoots,
       scrollRoots,
       resizeElements: uniqueElements([
@@ -616,6 +701,7 @@ function normalizeDescriptors(targets) {
         controlKind: target?.controlKind,
       }) ||
       (target?.controlKind === "link" && !activationKey) ||
+      !(target?.invalidationOwner instanceof Element) ||
       !(target?.control instanceof HTMLElement) ||
       !(target?.anchor instanceof HTMLElement) ||
       typeof target?.isActionable !== "function" ||
@@ -643,7 +729,8 @@ function normalizeDescriptors(targets) {
 function descriptorIsActionable(descriptor) {
   try {
     return Boolean(
-      descriptor.control.isConnected &&
+      descriptor.invalidationOwner.isConnected &&
+        descriptor.control.isConnected &&
         descriptor.anchor.isConnected &&
         !descriptor.control.disabled &&
         descriptor.isActionable(),
@@ -651,19 +738,6 @@ function descriptorIsActionable(descriptor) {
   } catch {
     return false;
   }
-}
-
-function topologyEntry(descriptor, actionable) {
-  return {
-    id: descriptor.id,
-    actionId: descriptor.actionId,
-    controlKind: descriptor.controlKind,
-    activationKey: descriptor.activationKey,
-    actionable,
-    control: descriptor.control,
-    anchor: descriptor.anchor,
-    clipRoots: descriptor.clipRoots,
-  };
 }
 
 function captureViewport() {
@@ -683,6 +757,12 @@ function captureViewport() {
       right: left + width,
       bottom: top + height,
     }),
+    scrollLeft: Number(
+      window.scrollX ?? document.scrollingElement?.scrollLeft ?? 0,
+    ),
+    scrollTop: Number(
+      window.scrollY ?? document.scrollingElement?.scrollTop ?? 0,
+    ),
     scale: Number(visual?.scale ?? 1),
     devicePixelRatio: Number(window.devicePixelRatio ?? 1),
   };
@@ -713,6 +793,15 @@ function uniqueValues(values) {
     }
   }
   return unique;
+}
+
+function sameElementCollection(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right)) {
+    return false;
+  }
+  return left.length === right.length && left.every(
+    (element) => right.includes(element),
+  );
 }
 
 function normalizeElementList(elements) {

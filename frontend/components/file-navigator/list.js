@@ -210,6 +210,7 @@ class CaffoldFileList extends HTMLElement {
     const refreshScope = refreshActionId && refresh && !refresh.disabled
       ? {
           targets: [buttonActionHintTarget({
+            invalidationOwner: this,
             id: `${scopeId}:refresh`,
             actionId: refreshActionId,
             label: refresh.getAttribute("aria-label") || "Refresh files",
