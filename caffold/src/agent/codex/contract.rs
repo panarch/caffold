@@ -80,14 +80,34 @@ impl From<&CodexTurn> for Turn {
                 // A turn read back is a turn that already happened. Items still
                 // running say so themselves through their own status.
                 .filter_map(|item| conversation_item(item, ActivityStatus::Completed))
+                .chain(
+                    turn.error
+                        .as_ref()
+                        .filter(|_| turn.status == TurnStatus::Failed)
+                        .and_then(|error| failure_item(&turn.id, error)),
+                )
                 .collect(),
         }
     }
 }
 
+/// A terminal Codex error, under the same turn-derived identity in live reports
+/// and history. The provider's message is carried verbatim; neither source
+/// supplies an item timestamp.
+fn failure_item(turn_id: &str, error: &Value) -> Option<ConversationItem> {
+    Some(ConversationItem {
+        id: format!("turn:{turn_id}:failure"),
+        observed_at_ms: None,
+        status: ActivityStatus::Failed,
+        kind: ItemKind::Failure {
+            text: error.get("message")?.as_str()?.to_string(),
+        },
+    })
+}
+
 /// What one app-server notification means.
 ///
-/// Codex pushes twelve kinds of notification while a thread is subscribed;
+/// Codex pushes thirteen kinds of notification this adapter consumes;
 /// this says what each one is in Caffold's vocabulary, so that the parts of
 /// Caffold reacting to it — the conversation, the Task list, Web Push, pending
 /// approvals — read one report rather than each interpreting Codex's own.
@@ -156,6 +176,20 @@ pub(crate) async fn session_event(
                 turn: Turn::from(turn),
             },
         ),
+        CodexNotification::Error {
+            thread_id,
+            turn_id,
+            error,
+            will_retry,
+        } => {
+            if *will_retry {
+                return None;
+            }
+            (
+                thread_id.clone(),
+                item_changed(turn_id, failure_item(turn_id, error)?, 0),
+            )
+        }
         // An item is announced when it starts and again when it finishes. Codex
         // reports work status only for the kinds that have work to report, so
         // which announcement this is stands in for the rest.
@@ -1558,7 +1592,7 @@ mod tests {
     ///
     /// Adding a surface for one is then a deliberate change here rather than a
     /// notification quietly going unread.
-    fn every_notification() -> [(&'static str, serde_json::Value); 12] {
+    fn every_notification() -> [(&'static str, serde_json::Value); 13] {
         let turn = json!({ "id": "turn_1", "status": "completed", "completedAt": 2.0 });
         let item = json!({ "id": "item_1", "type": "agentMessage", "text": "Done." });
         [
@@ -1605,6 +1639,13 @@ mod tests {
             (
                 "turn/completed",
                 json!({ "threadId": "thread_1", "turn": turn }),
+            ),
+            (
+                "error",
+                json!({
+                    "threadId": "thread_1", "turnId": "turn_1", "willRetry": false,
+                    "error": { "message": "Selected model is at capacity. Please try a different model." },
+                }),
             ),
             (
                 "item/started",
@@ -1665,6 +1706,149 @@ mod tests {
         client.track_approval("approval-45", json!(45)).await;
         let notification = protocol::decode_notification(method, params).expect("Codex sends this");
         session_event(&notification, &client).await
+    }
+
+    #[tokio::test]
+    async fn a_codex_terminal_error_uses_the_same_failure_item_live_and_in_history() {
+        let message = "Error running remote compact task: Selected model is at capacity. Please try a different model.";
+        let error = json!({
+            "message": message, "codexErrorInfo": "serverOverloaded", "additionalDetails": null,
+        });
+        let params = json!({
+            "threadId": "thread_1", "turnId": "turn_1", "error": error, "willRetry": false,
+        });
+        let live = reported("error", params.clone()).await.unwrap();
+        assert_eq!(live.thread_id, "thread_1");
+        let SessionEventKind::ItemChanged {
+            turn_id,
+            item,
+            at_ms,
+        } = &live.kind
+        else {
+            panic!("a terminal error is an ordinary failure item report");
+        };
+        assert_eq!(turn_id, "turn_1");
+        assert_eq!(*at_ms, 0);
+        assert_eq!(item.id, "turn:turn_1:failure");
+        assert_eq!(item.observed_at_ms, None);
+        assert_eq!(item.status, ActivityStatus::Failed);
+        assert_eq!(
+            item.kind,
+            ItemKind::Failure {
+                text: message.to_string()
+            }
+        );
+        assert_eq!(reported("error", params).await, Some(live.clone()));
+
+        let raw = json!({
+            "id": "turn_1", "status": "failed", "error": error,
+            "startedAt": 1788618338, "completedAt": 1788618590,
+            "items": [{ "id": "prompt", "type": "userMessage", "content": [
+                { "type": "text", "text": "Continue the implementation." },
+            ] }],
+        });
+        let wire: CodexTurn = serde_json::from_value(raw.clone()).unwrap();
+        let history = Turn::from(&wire);
+        assert_eq!(history.status, agent::TurnStatus::Failed);
+        assert_eq!(history.items.len(), 2);
+        assert!(matches!(
+            history.items[0].kind,
+            ItemKind::UserMessage { .. }
+        ));
+        assert_eq!(&history.items[1], item);
+        let ended = reported(
+            "turn/completed",
+            json!({ "threadId": "thread_1", "turn": raw }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(ended.kind, SessionEventKind::TurnEnded { turn: history });
+
+        let other = reported(
+            "error",
+            json!({
+                "threadId": "thread_1", "turnId": "turn_2", "error": error, "willRetry": false,
+            }),
+        )
+        .await
+        .unwrap();
+        let SessionEventKind::ItemChanged { item: other, .. } = other.kind else {
+            panic!("the other turn also reports its error as an item");
+        };
+        assert_ne!(other.id, item.id);
+    }
+
+    #[tokio::test]
+    async fn a_codex_error_keeps_its_message_without_classifying_the_code() {
+        for message in ["  API failure <details>\nSecond line.  ", "", " \n\t"] {
+            let error = json!({ "message": message, "codexErrorInfo": { "futureCode": {} } });
+            let live = reported(
+                "error",
+                json!({
+                    "threadId": "thread_1", "turnId": "turn_1", "error": error, "willRetry": false,
+                }),
+            )
+            .await
+            .unwrap();
+            let SessionEventKind::ItemChanged { item, .. } = live.kind else {
+                panic!("failure item");
+            };
+            assert_eq!(
+                item.kind,
+                ItemKind::Failure {
+                    text: message.to_string()
+                }
+            );
+            let turn: CodexTurn = serde_json::from_value(json!({
+                "id": "turn_1", "status": "failed", "error": error,
+            }))
+            .unwrap();
+            assert_eq!(Turn::from(&turn).items, vec![item]);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_codex_retry_notification_does_not_report_a_terminal_failure() {
+        assert!(reported("error", json!({
+            "threadId": "thread_1", "turnId": "turn_1", "willRetry": true,
+            "error": { "message": "Selected model is at capacity. Please try a different model." },
+        })).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_codex_error_without_a_message_does_not_invent_one() {
+        for error in [Value::Null, json!({}), json!({ "message": 42 })] {
+            assert!(reported("error", json!({
+                "threadId": "thread_1", "turnId": "turn_1", "error": error, "willRetry": false,
+            })).await.is_none());
+            let turn: CodexTurn = serde_json::from_value(json!({
+                "id": "turn_1", "status": "failed", "error": error,
+            }))
+            .unwrap();
+            let history = Turn::from(&turn);
+            assert_eq!(history.status, agent::TurnStatus::Failed);
+            assert!(history.items.is_empty());
+        }
+    }
+
+    #[test]
+    fn a_codex_command_failure_does_not_change_the_turn_outcome() {
+        for status in [
+            TurnStatus::Completed,
+            TurnStatus::Interrupted,
+            TurnStatus::InProgress,
+        ] {
+            let wire: CodexTurn = serde_json::from_value(json!({
+                "id": "turn_1", "status": status,
+                "items": [{ "id": "command", "type": "commandExecution",
+                    "command": "false", "status": "failed", "exitCode": 1 }],
+            }))
+            .unwrap();
+            let turn = Turn::from(&wire);
+            assert_eq!(turn.status, status.into());
+            assert_eq!(turn.items.len(), 1);
+            assert!(matches!(turn.items[0].kind, ItemKind::CommandExecution(_)));
+        }
     }
 
     #[tokio::test]
