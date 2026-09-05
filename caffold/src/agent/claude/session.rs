@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 
 use serde_json::Value;
 use tokio::sync::Mutex as AsyncMutex;
@@ -19,7 +19,7 @@ use super::protocol::{BASE_ARGUMENTS, SESSION_ENVIRONMENT};
 use super::runner::RunnerSession;
 use super::{
     ANSWER_TIMEOUT, ClaudeClient, ClaudeError, ClaudeRuntimeEvent, ClaudeTurnOptions, Session,
-    SessionActivity, SessionState, Turn, TurnStatus, now_ms, protocol,
+    SessionActivity, SessionState, now_ms, protocol, take_up_turn,
 };
 
 /// What asking a session to move came to.
@@ -116,6 +116,7 @@ impl ClaudeClient {
             }),
             pending: AsyncMutex::new(HashMap::new()),
             next_control_id: AtomicU64::new(1),
+            closing: AtomicBool::new(false),
         });
         self.inner
             .sessions
@@ -237,14 +238,22 @@ impl ClaudeClient {
         if let Some(activity) = activity {
             session.state.lock().await.activity = Some(activity);
         }
-        if activity == Some(SessionActivity::Running)
-            && let Some(turn) = self
-                .turn_left_running(&session.id, &session.cwd.lock().await.clone())
-                .await
-        {
+        // The agent answers *that* a prompt is outstanding and not *which*
+        // turn it belongs to, so which one is read from the conversation the
+        // agent writes for itself: a prompt still being answered opened the
+        // newest turn there. Without this, work arriving for a turn nothing
+        // knows about is dropped as belonging to nothing, and the Task reads
+        // as idle for as long as the turn runs. It is read before the agent
+        // has necessarily written that prompt, though, so the first thing the
+        // agent says is when the file is asked again.
+        if activity == Some(SessionActivity::Running) {
+            let cwd = session.cwd.lock().await.clone();
+            let filed = self.newest_filed_turn(&cwd, &session.id).await;
             let mut state = session.state.lock().await;
-            state.active_turn = Some(turn.id.clone());
-            state.turns = vec![turn];
+            if let Some(turn) = filed {
+                take_up_turn(&mut state, turn);
+            }
+            state.turn_read_at_hello = true;
         }
         // Asked again exactly as they were first asked, so a question the agent
         // is held up by reaches the reader by the path every other question
@@ -252,24 +261,6 @@ impl ClaudeClient {
         for question in hello.unanswered {
             self.handle_line(session, &question.to_string()).await;
         }
-    }
-
-    /// The turn a session is in the middle of, once the agent has said it is
-    /// in one.
-    ///
-    /// The agent answers *that* a prompt is outstanding and not *which* turn it
-    /// belongs to, so which one is read from the conversation the agent writes
-    /// for itself: a prompt still being answered opened the newest turn there.
-    ///
-    /// Without this, work arriving for a turn nothing knows about is dropped as
-    /// belonging to nothing, and the Task reads as idle for as long as the turn
-    /// runs — which is exactly as long as there is something to watch.
-    async fn turn_left_running(&self, id: &str, cwd: &str) -> Option<Turn> {
-        // The newest turn the conversation holds, which is the one the prompt
-        // the runner is still waiting on opened.
-        let mut turn = self.newest_filed_turn(cwd, id).await?;
-        turn.status = TurnStatus::InProgress;
-        Some(turn)
     }
 }
 
@@ -392,19 +383,7 @@ mod tests {
         // the Task reads as idle for exactly as long as there is something to
         // watch.
         let projects = written_conversation();
-        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
-        let mut events = client.subscribe();
-        runner
-            .greet_next_session_as(json!({ "response": { "session_state": "running" } }))
-            .await;
-        runner
-            .greet_next_session_with(vec![init_frame(SESSION)])
-            .await;
-
-        client
-            .open_conversation(SESSION, CWD, &options("opus"))
-            .await
-            .expect("the conversation opens");
+        let (client, _runner, mut events) = taken_up_running(projects.path().to_path_buf()).await;
 
         let page = client
             .read_turns(SESSION, CWD, None, 8)

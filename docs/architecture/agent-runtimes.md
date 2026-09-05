@@ -164,16 +164,32 @@ identities. Caffold reads the agent-owned transcript for the conversation and
 lays the live session state over it; it never persists a normalized transcript
 of its own.
 
+Caffold names each prompt and steering message it sends to Claude; the name
+is the stdin frame's `uuid`. Claude files a prompt under that name as the
+transcript row's `uuid` and a steering message as the queued command's
+`source_uuid`, so the live turn and the transcript turn share one identity. A
+prompt's turn opens, and the prompt request answers with that identity, when
+the runner has accepted the frame. A user-role frame without tool results is
+not drawn; the transcript reader applies the same rule to user rows. Prompt
+echoes from sessions started with `--replay-user-messages` are such frames.
+
+A Claude child's exit ends its open turn: interrupted when Caffold asked the
+session to end, failed otherwise. A runner lost under a session Caffold did not
+ask to end leaves the session unreachable; no turn is ended.
+
 Claude session activity and turn lifecycle are independent provider facts.
 Each Claude child reports its moves between idle, working, and requiring action;
 the same state is returned when a surviving child is initialized again. Caffold
-projects that observation onto the Task's activity without creating, identifying,
-or ending a turn. Replayed prompts and transcript or result evidence remain the
-only writers of Claude's turn ledger. Codex status and turn lifecycle retain
-their app-server-owned coupled path through the same shared Task state.
-An initialize answer is only a current snapshot: until this backend sees a live
-activity frame, it retains the turn-based fallback for a child that may have
-survived from before activity events were enabled.
+projects that observation onto the Task's activity without creating,
+identifying, or ending a turn; while a turn Caffold asked for on its own
+account runs, such as a depth change, the Task reads as idle. Claude's turn
+ledger is written by Caffold's prompt and steering submissions, Claude's result
+frames, the child's exit, and the transcript when a replacement takes up a
+working session. Codex status and turn lifecycle retain their app-server-owned
+coupled path through the same shared Task state. An initialize answer is only a
+current snapshot: until this backend sees a live activity frame, it retains the
+turn-based fallback for a child that may have survived from before activity
+events were enabled.
 
 The runner stops after ten minutes without a backend subscriber, ending its
 children and removing its socket. An explicit Claude runtime restart does the
@@ -188,7 +204,10 @@ fresh or recreate the conversation from its empty content; it reports the
 provider conversation unavailable. The durable Task remains an honest
 zero-turn record, but a runner restart before its first prompt is therefore an
 accepted no-transcript recovery limit rather than a hidden state or inferred
-replay rule.
+replay rule. A replacement that greets a working session takes up the newest
+transcript turn. On Claude's next message or result frame it reads the
+transcript once more; if the newest turn differs, it ends the turn it took up as
+completed and takes up the newer one.
 
 New authenticating Claude starts pass through one backend-owned gate. Direct
 measurement showed that two young CLI processes can refresh the same account

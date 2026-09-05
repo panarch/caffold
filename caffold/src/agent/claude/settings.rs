@@ -92,7 +92,8 @@ impl ClaudeClient {
     async fn ask_quietly(&self, session: &Arc<Session>, text: &str) -> Result<(), ClaudeError> {
         let (sender, receiver) = oneshot::channel();
         session.state.lock().await.quiet_turn = Some(sender);
-        if let Err(error) = session.send(protocol::user_message(text, &[])).await {
+        let (_, frame) = protocol::user_message(text, &[]);
+        if let Err(error) = session.send(frame).await {
             // Left standing, it would swallow the answer to the next turn.
             session.state.lock().await.quiet_turn = None;
             return Err(error);

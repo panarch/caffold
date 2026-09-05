@@ -63,6 +63,7 @@ pub(crate) fn message_items(
             return vec![user_message_item(
                 anchor,
                 vec![CaffoldContent::Text { text: text.clone() }],
+                None,
             )];
         }
         MessageContent::Unreadable(_) => return Vec::new(),
@@ -162,7 +163,11 @@ pub(crate) fn prompt_content(message: &Message) -> Vec<CaffoldContent> {
 ///
 /// The text is what was written and nothing else, because it is what a Task is
 /// previewed and searched by; the pictures live beside it in the content.
-pub(crate) fn user_message_item(anchor: &str, content: Vec<CaffoldContent>) -> ConversationItem {
+fn user_message_item(
+    anchor: &str,
+    content: Vec<CaffoldContent>,
+    at_ms: Option<u64>,
+) -> ConversationItem {
     let text = content
         .iter()
         .filter_map(|part| match part {
@@ -173,10 +178,46 @@ pub(crate) fn user_message_item(anchor: &str, content: Vec<CaffoldContent>) -> C
         .join("\n");
     ConversationItem {
         id: anchor.to_string(),
-        observed_at_ms: None,
+        observed_at_ms: at_ms,
         status: ActivityStatus::Completed,
         kind: ItemKind::UserMessage { text, content },
     }
+}
+
+/// Whether a user message answers tool calls, which is the one thing the
+/// agent says in a person's voice that belongs in the conversation. Both
+/// readers leave every other user message out: the note beside a large
+/// image, the caveat before a command, a prompt handed back.
+pub(crate) fn answers_tool_calls(message: &Message) -> bool {
+    match &message.content {
+        MessageContent::Blocks(blocks) => blocks
+            .iter()
+            .any(|block| matches!(block, ContentBlock::ToolResult { .. })),
+        MessageContent::Text(_) | MessageContent::Unreadable(_) => false,
+    }
+}
+
+/// The prompt that opened a turn, under the name both readers give it.
+///
+/// A live item is timed at the moment Caffold sent it; the same item read
+/// back from disk carries the time Claude wrote it down.
+pub(crate) fn prompt_item(
+    turn_id: &str,
+    said: Vec<CaffoldContent>,
+    at_ms: Option<u64>,
+) -> ConversationItem {
+    user_message_item(&format!("{turn_id}:prompt"), said, at_ms)
+}
+
+/// A message steered into a running turn, under the name both readers give
+/// it: the one Caffold sent it under, which Claude keeps as the queued
+/// command's `source_uuid`.
+pub(crate) fn steer_item(
+    name: &str,
+    said: Vec<CaffoldContent>,
+    at_ms: Option<u64>,
+) -> ConversationItem {
+    user_message_item(&format!("{name}:steer"), said, at_ms)
 }
 
 /// What a person said, out of what Caffold was given to send.

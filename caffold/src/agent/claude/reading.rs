@@ -6,45 +6,22 @@
 //! between an agent that exited and a runner that went away mid-sentence.
 
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use serde_json::{Value, json};
 
 use super::runner::{self, RunnerEvent};
-use super::translate::{message_items, user_message_item};
+use super::translate::{answers_tool_calls, message_items};
 use super::{
-    ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, ClaudeClient, ClaudeError,
+    ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, ClaudeClient,
     ClaudeRuntimeEvent, ControlRequestFrame, ConversationItem, Introduction, ItemKind,
     MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION, MessageFrame, PendingApproval, ResultFrame, Session,
     SessionActivity, SessionEventKind, StreamFrame, SystemFrame, ThreadStatus, TokenCount,
-    TokenUsage, TurnStatus, end_pending_prompt, end_pending_steer, now_ms, open_pending_turn,
-    parse_timestamp_ms, protocol, replace_item, status_of, turn_status_of,
+    TokenUsage, TurnStatus, end_active_turn, now_ms, parse_timestamp_ms, place_item, protocol,
+    status_of, take_up_turn, turn_status_of,
 };
 
 impl ClaudeClient {
-    /// Whether a written prompt is still waiting to learn its turn's name.
-    async fn awaiting_a_turn_name(&self, session: &Arc<Session>) -> bool {
-        let state = session.state.lock().await;
-        state.pending_prompt.is_some() && state.active_turn.is_none()
-    }
-
-    /// The name the agent filed the pending prompt under.
-    ///
-    /// Asked of the conversation on disk when the prompt has not come home: the
-    /// agent files a prompt the moment it takes one, so the newest turn there
-    /// is the one the pending prompt opened, under the name every later reader
-    /// of the file will use. A name this session already knows is an older turn
-    /// read ahead of a prompt not yet flushed, and is refused — new work must
-    /// not be filed into a turn that already ended.
-    async fn filed_prompt_name(&self, session: &Arc<Session>) -> Option<String> {
-        let cwd = session.cwd.lock().await.clone();
-        let candidate = self.newest_filed_turn(&cwd, &session.id).await?.id;
-        let state = session.state.lock().await;
-        if state.turns.iter().any(|turn| turn.id == candidate) {
-            return None;
-        }
-        Some(candidate)
-    }
-
     /// Read one session for as long as it says anything.
     pub(super) fn spawn_reader(&self, session: Arc<Session>, mut events: runner::SessionEvents) {
         let client = self.clone();
@@ -68,28 +45,34 @@ impl ClaudeClient {
             // A session that stops speaking is no longer one Caffold can drive,
             // whether it exited or the connection went away.
             if !said_goodbye {
-                {
+                let gone_at_ms = now_ms();
+                let ended = {
                     let mut state = session.state.lock().await;
                     state.ended = true;
-                    state.active_turn = None;
-                    end_pending_prompt(
-                        &mut state,
-                        ClaudeError::Runner(format!(
-                            "the Claude runner went away before conversation {} identified its prompt",
-                            session.id
-                        )),
-                    );
-                    end_pending_steer(
-                        &mut state,
-                        ClaudeError::Runner(format!(
-                            "the Claude runner went away before conversation {} identified its \
-                             steering message",
-                            session.id
-                        )),
-                    );
+                    if session.closing.load(Ordering::Relaxed) {
+                        // Caffold asked for this end, and the runner left
+                        // before saying so. The turn is over all the same.
+                        end_active_turn(&mut state, TurnStatus::Interrupted, gone_at_ms)
+                    } else {
+                        state.active_turn = None;
+                        None
+                    }
+                };
+                if let Some((turn, abandoned)) = ended {
+                    client.report_turn_ended(&session.id, turn, abandoned, gone_at_ms);
                 }
             }
-            client.inner.sessions.lock().await.remove(&session.id);
+            {
+                // By identity, not by name: a conversation closed and opened
+                // again in the meantime is a session this reader never read.
+                let mut sessions = client.inner.sessions.lock().await;
+                if sessions
+                    .get(&session.id)
+                    .is_some_and(|held| Arc::ptr_eq(held, &session))
+                {
+                    sessions.remove(&session.id);
+                }
+            }
             if !said_goodbye {
                 // Nothing said it was ending, so the runner went away under it.
                 // Said out loud rather than dropped: everything Caffold last
@@ -169,8 +152,8 @@ impl ClaudeClient {
     /// Record Claude's session-scoped account of whether it is working.
     ///
     /// The report carries no turn identity, so it changes only activity. A
-    /// replay, transcript entry, or terminal result remains the authority for
-    /// the turn ledger.
+    /// prompt or steering message Caffold sent, a transcript entry, or a
+    /// terminal result remains the authority for the turn ledger.
     async fn handle_session_activity(&self, session: &Arc<Session>, system: SystemFrame) {
         let Some(value) = system.state.as_deref() else {
             self.publish(ClaudeRuntimeEvent::Diagnostic {
@@ -210,31 +193,15 @@ impl ClaudeClient {
         if frame.parent_tool_use_id.is_some() {
             return;
         }
-        if frame.is_replay {
-            self.handle_replayed_prompt(session, frame).await;
+        // The agent talking to itself: the note it writes beside a large
+        // image, the caveat before a command — and, on a session an earlier
+        // Caffold started with `--replay-user-messages`, Caffold's own prompt
+        // handed back. The transcript reader draws a user row only for the
+        // tool results it carries, and this is the same row read live.
+        if spoken_by_user && !answers_tool_calls(&frame.message) {
             return;
         }
-        let awaiting_name = self.awaiting_a_turn_name(session).await;
-        if awaiting_name && spoken_by_user {
-            // A user frame between the prompt going in and the prompt coming
-            // home is the prompt's own reflection — the resize note a large
-            // image earns, or a replay that lost its marking — not new work.
-            // Taken as the agent answering unprompted, it would name the turn
-            // with an invented id while the file names it something else, and
-            // the same answer would then stand twice, once under each name.
-            // The file keeps whatever the reflection said, so nothing is lost
-            // by not drawing it live.
-            return;
-        }
-        // The name the turn will be known by, read from the conversation on
-        // disk when the prompt has not come home. Some sessions never hand one
-        // back — a session started before Caffold began asking still has the
-        // arguments it was started with — and the file names their turns too.
-        let filed = if awaiting_name {
-            self.filed_prompt_name(session).await
-        } else {
-            None
-        };
+        self.take_up_the_turn_the_file_names(session).await;
         // The frame, not the message. One assistant message is streamed as
         // several frames — thinking in one, its answer in the next — all
         // carrying the same message identifier and each numbering its own
@@ -255,11 +222,6 @@ impl ClaudeClient {
 
         let (turn_id, items) = {
             let mut state = session.state.lock().await;
-            // The agent answering a prompt it never handed back. Waiting for a
-            // handback that will never come would let this answer, and the
-            // `result` that ends it, arrive before the turn they belong to
-            // existed.
-            open_pending_turn(&mut state, filed.as_deref());
             let Some(turn_id) = state.active_turn.clone() else {
                 // This frame alone does not say what opened the work. Its
                 // terminal result asks the application to reconcile Claude's
@@ -296,74 +258,6 @@ impl ClaudeClient {
         }
     }
 
-    /// A prompt coming home, which is the agent saying what it filed it as.
-    ///
-    /// The turn opens here rather than where the prompt was written, because
-    /// this is the last moment before the agent starts answering: everything
-    /// the agent says next arrives on this same stream, in order, and finds a
-    /// turn already waiting for it.
-    ///
-    /// A prompt nobody is waiting on is one Caffold sent on its own account — a
-    /// depth change, a message steering a running turn — and opens nothing.
-    async fn handle_replayed_prompt(&self, session: &Arc<Session>, frame: MessageFrame) {
-        let Some(anchor) = frame.uuid.as_deref() else {
-            return;
-        };
-        let at_ms = frame
-            .timestamp
-            .as_deref()
-            .and_then(parse_timestamp_ms)
-            .unwrap_or_else(now_ms);
-        let steered = {
-            let mut state = session.state.lock().await;
-            if state.pending_prompt.is_some() {
-                open_pending_turn(&mut state, Some(anchor));
-                None
-            } else if let Some(pending) = state.pending_steer.take() {
-                let mut item = user_message_item(&format!("{anchor}:steer"), pending.said);
-                item.observed_at_ms = Some(at_ms);
-                if state.active_turn.as_deref() != Some(pending.turn_id.as_str()) {
-                    let _ = pending.waiting.send(Err(ClaudeError::Protocol(format!(
-                        "turn {} ended before Claude identified its steering message",
-                        pending.turn_id
-                    ))));
-                    None
-                } else {
-                    let Some(turn) = state
-                        .turns
-                        .iter_mut()
-                        .find(|turn| turn.id == pending.turn_id)
-                    else {
-                        let _ = pending.waiting.send(Err(ClaudeError::Protocol(format!(
-                            "active turn {} is missing from conversation {}",
-                            pending.turn_id, session.id
-                        ))));
-                        return;
-                    };
-                    replace_item(&mut turn.items, item.clone());
-                    state.moved_at_ms = at_ms;
-                    let _ = pending.waiting.send(Ok(item.clone()));
-                    Some((pending.turn_id, item))
-                }
-            } else {
-                // Claude also replays messages Caffold sends for its own
-                // control work. With nobody waiting for this identity, the
-                // frame does not belong to a person-visible item.
-                None
-            }
-        };
-        if let Some((turn_id, item)) = steered {
-            self.report(
-                &session.id,
-                SessionEventKind::ItemChanged {
-                    turn_id,
-                    item,
-                    at_ms,
-                },
-            );
-        }
-    }
-
     async fn handle_result(&self, session: &Arc<Session>, result: ResultFrame) {
         let status = if result.was_interrupted() {
             TurnStatus::Interrupted
@@ -374,51 +268,16 @@ impl ClaudeClient {
         };
         let completed_at_ms = now_ms();
 
-        // A turn that began and ended without the agent handing its prompt
-        // back, which is a short answer on a session that cannot hand one back
-        // at all. Its name is read from the file like any other unhanded turn.
-        let filed = if self.awaiting_a_turn_name(session).await {
-            self.filed_prompt_name(session).await
-        } else {
-            None
-        };
+        if let Some(waiting) = session.state.lock().await.quiet_turn.take() {
+            // Something Caffold asked for on its own account, answered.
+            let _ = waiting.send(());
+            return;
+        }
+        self.take_up_the_turn_the_file_names(session).await;
         let completed = {
             let mut state = session.state.lock().await;
-            if let Some(waiting) = state.quiet_turn.take() {
-                // Something Caffold asked for on its own account, answered.
-                let _ = waiting.send(());
-                return;
-            }
-            open_pending_turn(&mut state, filed.as_deref());
-            end_pending_steer(
-                &mut state,
-                ClaudeError::Protocol(format!(
-                    "conversation {} ended its active turn before identifying a steering message",
-                    session.id
-                )),
-            );
-            if let Some(turn_id) = state.active_turn.take() {
-                // Whatever the agent left open, it will not answer now.
-                let abandoned = state.calls.abandon(match status {
-                    TurnStatus::Completed => ActivityStatus::Completed,
-                    _ => ActivityStatus::Failed,
-                });
-                state.pending_approvals.clear();
-                state.declined.clear();
-                let Some(turn) = state.turns.iter_mut().find(|turn| turn.id == turn_id) else {
-                    return;
-                };
-                for item in &abandoned {
-                    replace_item(&mut turn.items, item.clone());
-                }
-                turn.status = status;
-                turn.completed_at_ms = Some(completed_at_ms);
-                let turn = turn.clone();
-                state.moved_at_ms = completed_at_ms;
-                Some((turn, abandoned))
-            } else {
-                None
-            }
+            // Whatever the agent left open, it will not answer now.
+            end_active_turn(&mut state, status, completed_at_ms)
         };
         let Some((turn, abandoned)) = completed else {
             // A result is the protocol's concrete boundary for work that has
@@ -432,16 +291,6 @@ impl ClaudeClient {
             return;
         };
 
-        for item in abandoned {
-            self.report(
-                &session.id,
-                SessionEventKind::ItemChanged {
-                    turn_id: turn.id.clone(),
-                    item,
-                    at_ms: completed_at_ms,
-                },
-            );
-        }
         if let Some(usage) = token_usage(&result) {
             self.report(
                 &session.id,
@@ -451,8 +300,53 @@ impl ClaudeClient {
                 },
             );
         }
-        self.report(&session.id, SessionEventKind::TurnEnded { turn });
+        self.report_turn_ended(&session.id, turn, abandoned, completed_at_ms);
         self.report_status(session).await;
+    }
+
+    /// Ask the file again for the turn a taken-up session is in, now that the
+    /// agent has said something.
+    ///
+    /// The agent answers hello before it has necessarily written the prompt
+    /// it is answering, so what the file named then can be the turn before;
+    /// what it names now is the turn. Asked once: the agent writes a prompt
+    /// down before it asks the model anything, so a file that names nothing
+    /// at its first word will not name it at the next.
+    async fn take_up_the_turn_the_file_names(&self, session: &Arc<Session>) {
+        let named_at_hello = {
+            let mut state = session.state.lock().await;
+            if !std::mem::take(&mut state.turn_read_at_hello) {
+                return;
+            }
+            state.active_turn.clone()
+        };
+        let cwd = session.cwd.lock().await.clone();
+        let Some(filed) = self.newest_filed_turn(&cwd, &session.id).await else {
+            return;
+        };
+        let mut state = session.state.lock().await;
+        // A turn opened while the file was being read is this session's own,
+        // and nothing read from the file outranks it.
+        if state.active_turn != named_at_hello || named_at_hello.as_deref() == Some(&filed.id) {
+            return;
+        }
+        // What hello named was the turn before this one. It ended before
+        // this backend was here, at the time the file gives.
+        let ended_at_ms = state
+            .turns
+            .iter()
+            .find(|turn| Some(&turn.id) == named_at_hello.as_ref())
+            .and_then(|turn| turn.completed_at_ms)
+            .unwrap_or_else(now_ms);
+        if let Some((turn, abandoned)) =
+            end_active_turn(&mut state, TurnStatus::Completed, ended_at_ms)
+        {
+            self.report_turn_ended(&session.id, turn, abandoned, ended_at_ms);
+        }
+        take_up_turn(&mut state, filed);
+        if let Some(opened) = state.turns.last().cloned() {
+            self.report_turn_opened(&session.id, opened);
+        }
     }
 
     async fn handle_control_request(&self, session: &Arc<Session>, frame: ControlRequestFrame) {
@@ -492,31 +386,29 @@ impl ClaudeClient {
     }
 
     async fn handle_exit(&self, session: &Arc<Session>, code: Option<i32>) {
-        {
+        let exited_at_ms = now_ms();
+        let ended = {
             let mut state = session.state.lock().await;
             state.ended = true;
-            state.active_turn = None;
-            end_pending_prompt(
-                &mut state,
-                ClaudeError::Agent(format!(
-                    "Claude conversation {} exited before identifying its prompt",
-                    session.id
-                )),
-            );
-            end_pending_steer(
-                &mut state,
-                ClaudeError::Agent(format!(
-                    "Claude conversation {} exited before identifying its steering message",
-                    session.id
-                )),
-            );
-        }
+            // Whatever the agent left open, it will not answer now. An exit
+            // Caffold asked for is a person stopping the work; any other is
+            // the agent failing it.
+            let status = if session.closing.load(Ordering::Relaxed) {
+                TurnStatus::Interrupted
+            } else {
+                TurnStatus::Failed
+            };
+            end_active_turn(&mut state, status, exited_at_ms)
+        };
         self.publish(ClaudeRuntimeEvent::Diagnostic {
             message: match code {
                 Some(code) => format!("claude {} exited with status {code}", session.id),
                 None => format!("claude {} exited", session.id),
             },
         });
+        if let Some((turn, abandoned)) = ended {
+            self.report_turn_ended(&session.id, turn, abandoned, exited_at_ms);
+        }
         self.report(
             &session.id,
             SessionEventKind::StatusChanged {
@@ -532,10 +424,7 @@ impl ClaudeClient {
         item: ConversationItem,
     ) {
         let mut state = session.state.lock().await;
-        state.moved_at_ms = now_ms();
-        if let Some(turn) = state.turns.iter_mut().find(|turn| turn.id == turn_id) {
-            replace_item(&mut turn.items, item);
-        }
+        place_item(&mut state, turn_id, item);
     }
 
     pub(super) async fn report_status(&self, session: &Arc<Session>) {
@@ -585,7 +474,7 @@ fn introduction_complaints(expected_id: &str, introduction: &Introduction) -> Ve
     {
         complaints.push(format!(
             "claude {version} is below the {MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION} Caffold \
-             drives; approvals and the model list may be missing"
+             drives; approvals, the model list, and turn identity may be missing"
         ));
     }
     complaints
@@ -682,6 +571,7 @@ fn approval_request(frame: &ControlRequestFrame, turn_id: Option<String>) -> App
 #[cfg(test)]
 mod tests {
     use super::super::protocol::MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION;
+    use super::super::runner::MockRunnerHandle;
     use super::super::{
         ClaudeClient, ClaudeError, ClaudeRuntimeEvent, ClaudeTurnOptions, status_of, transcript,
     };
@@ -690,6 +580,7 @@ mod tests {
         TurnStatus,
     };
     use std::time::Duration;
+    use tokio::sync::broadcast::Receiver;
 
     use serde_json::json;
 
@@ -762,6 +653,142 @@ mod tests {
         assert!(
             session.state.lock().await.active_turn.is_some(),
             "idle activity is not a terminal turn report"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_new_prompt_reads_as_working_before_the_agent_says_so() {
+        // The agent's last word about itself was "idle", said when the turn
+        // before ended. A prompt sent since is a turn open now, and a Task
+        // that read as idle until the agent got round to saying "running"
+        // would blink between the two.
+        let (client, runner, mut events) = watching().await;
+        running_turn(&client, &mut events, "run it").await;
+        runner.say(SESSION, session_state_frame("running")).await;
+        runner.say(SESSION, result_frame(Some("end_turn"))).await;
+        runner.say(SESSION, session_state_frame("idle")).await;
+        let idle = loop {
+            if let SessionEventKind::ActivityChanged { status } =
+                next_session_event(&mut events, "activity change").await
+                && status == ThreadStatus::Idle
+            {
+                break status;
+            }
+        };
+        assert_eq!(idle, ThreadStatus::Idle);
+
+        client
+            .start_turn(SESSION, "and again", &[], &options("opus"))
+            .await
+            .expect("the second turn starts");
+
+        let watched = client
+            .watched_conversation(SESSION)
+            .await
+            .expect("the conversation is still watched");
+        assert_eq!(
+            watched.status,
+            ThreadStatus::Active {
+                active_flags: Vec::new()
+            },
+            "the prompt is in flight, whatever the agent last said"
+        );
+        let SessionEventKind::StatusChanged { status } =
+            next_session_event(&mut events, "status change").await
+        else {
+            unreachable!("asked for a status change");
+        };
+        assert_eq!(
+            status,
+            ThreadStatus::Active {
+                active_flags: Vec::new()
+            }
+        );
+        let session = client.session(SESSION).await.expect("the session");
+        client.report_status(&session).await;
+        let SessionEventKind::ActivityChanged { status } =
+            next_session_event(&mut events, "activity change").await
+        else {
+            unreachable!("asked for an activity change");
+        };
+        assert_eq!(
+            status,
+            ThreadStatus::Active {
+                active_flags: Vec::new()
+            },
+            "and nothing reads the old idle back over the open turn"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_turn_caffold_asks_for_on_its_own_account_is_not_the_conversation_working() {
+        // A depth change runs as a turn of the agent's, reported as working
+        // and then idle like any other. Projected onto the Task, that would
+        // show the conversation working, then not, before the person's own
+        // turn had begun.
+        let (client, runner, mut events) = watching().await;
+        runner.say(SESSION, session_state_frame("idle")).await;
+        next_session_event(&mut events, "activity change").await;
+
+        let starting = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .start_turn(
+                        SESSION,
+                        "run it",
+                        &[],
+                        &ClaudeTurnOptions {
+                            effort: Some("high".to_string()),
+                            ..options("opus")
+                        },
+                    )
+                    .await
+            }
+        });
+        wrote(&runner, |frame| {
+            frame["message"]["content"][0]["text"] == "/effort high"
+        })
+        .await;
+        runner.say(SESSION, session_state_frame("running")).await;
+        runner.say(SESSION, result_frame(Some("end_turn"))).await;
+        runner.say(SESSION, session_state_frame("idle")).await;
+        starting
+            .await
+            .expect("the start task finishes")
+            .expect("the turn starts once the depth is set");
+
+        let mut reported = Vec::new();
+        loop {
+            let event = tokio::time::timeout(REPORT_TIMEOUT, events.recv())
+                .await
+                .expect("the person's turn is reported")
+                .expect("the report channel stays open");
+            let ClaudeRuntimeEvent::Session(event) = event else {
+                continue;
+            };
+            match event.kind {
+                SessionEventKind::ActivityChanged { status } => reported.push(status),
+                SessionEventKind::StatusChanged { status } => {
+                    reported.push(status);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        assert!(
+            reported.iter().all(|status| *status == ThreadStatus::Idle)
+                || reported.last()
+                    == Some(&ThreadStatus::Active {
+                        active_flags: Vec::new()
+                    }),
+            "{reported:?}"
+        );
+        assert!(
+            !reported[..reported.len() - 1]
+                .iter()
+                .any(|status| matches!(status, ThreadStatus::Active { .. })),
+            "nothing reads as working before the person's turn: {reported:?}"
         );
     }
 
@@ -880,6 +907,224 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_runner_lost_under_a_running_turn_is_reported_unreachable_and_no_longer_watched() {
+        let (client, runner, mut events) = watching().await;
+        running_turn(&client, &mut events, "run it").await;
+
+        runner.vanish(SESSION).await;
+
+        let reported = tokio::time::timeout(REPORT_TIMEOUT, async {
+            loop {
+                match events.recv().await.expect("the report channel stays open") {
+                    ClaudeRuntimeEvent::Unreachable {
+                        conversation_id, ..
+                    } => return conversation_id,
+                    ClaudeRuntimeEvent::Session(event)
+                        if matches!(
+                            &event.kind,
+                            SessionEventKind::TurnStarted { .. }
+                                | SessionEventKind::StatusChanged {
+                                    status: ThreadStatus::Active { .. },
+                                }
+                        ) =>
+                    {
+                        panic!("a lost session cannot report new work: {event:?}")
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .expect("the lost runner is reported as unreachable");
+        assert_eq!(reported, SESSION);
+        assert!(
+            client.session(SESSION).await.is_none(),
+            "and the conversation is no longer one this client holds"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_exit_ends_the_turn_the_agent_left_open() {
+        // The agent exiting is the end of whatever it was answering. A turn
+        // left open would read as running for as long as the Task is shown,
+        // with nothing left to close it.
+        let (client, runner, mut events) = watching().await;
+        let turn = running_turn(&client, &mut events, "run it").await;
+
+        runner.exit(SESSION, Some(1)).await;
+
+        let SessionEventKind::TurnEnded { turn: ended } =
+            next_session_event(&mut events, "turn end").await
+        else {
+            unreachable!("asked for a turn end");
+        };
+        assert_eq!(ended.id, turn.id);
+        assert_eq!(ended.status, TurnStatus::Failed);
+        assert!(ended.completed_at_ms.is_some());
+        let SessionEventKind::StatusChanged { status } =
+            next_session_event(&mut events, "status change").await
+        else {
+            unreachable!("asked for a status change");
+        };
+        assert_eq!(
+            status,
+            ThreadStatus::Idle,
+            "the exit is reported after the turn it ended"
+        );
+    }
+
+    const EARLIER_TURN: &str = concat!(
+        r#"{"type":"user","uuid":"turn-a","timestamp":"2026-09-05T10:00:00.000Z","promptSource":"sdk","message":{"role":"user","content":[{"type":"text","text":"first"}]}}"#,
+        "\n",
+        r#"{"type":"assistant","uuid":"a-1","timestamp":"2026-09-05T10:00:05.000Z","message":{"id":"msg_a","role":"assistant","content":[{"type":"text","text":"done"}]}}"#,
+        "\n",
+    );
+    const CURRENT_PROMPT: &str = concat!(
+        r#"{"type":"user","uuid":"turn-b","timestamp":"2026-09-05T10:01:00.000Z","promptSource":"sdk","message":{"role":"user","content":[{"type":"text","text":"second"}]}}"#,
+        "\n",
+    );
+
+    /// A session taken up while the agent says it is working, over a file
+    /// that so far holds only the turn before.
+    async fn taken_up_over(
+        projects: &tempfile::TempDir,
+    ) -> (ClaudeClient, MockRunnerHandle, Receiver<ClaudeRuntimeEvent>) {
+        transcript::plant(projects.path(), CWD, SESSION, EARLIER_TURN);
+        let (client, runner, events) = taken_up_running(projects.path().to_path_buf()).await;
+        let session = client.session(SESSION).await.expect("the session");
+        assert_eq!(
+            session.state.lock().await.active_turn.as_deref(),
+            Some("turn-a"),
+            "hello names the newest turn on disk"
+        );
+        (client, runner, events)
+    }
+
+    #[tokio::test]
+    async fn a_taken_up_session_reads_its_turn_again_once_the_agent_speaks() {
+        // The agent answers hello before it has written the prompt it is
+        // answering, so what the file names at hello can be the turn before.
+        let projects = tempfile::tempdir().expect("a projects directory");
+        let (client, runner, mut events) = taken_up_over(&projects).await;
+
+        // The prompt the agent is answering reaches the file; then the agent
+        // speaks.
+        transcript::plant(
+            projects.path(),
+            CWD,
+            SESSION,
+            &format!("{EARLIER_TURN}{CURRENT_PROMPT}"),
+        );
+        runner
+            .say(
+                SESSION,
+                assistant_frame("msg_b", json!([{ "type": "text", "text": "on it" }])),
+            )
+            .await;
+
+        let SessionEventKind::TurnEnded { turn: superseded } =
+            next_session_event(&mut events, "turn end").await
+        else {
+            unreachable!("asked for a turn end");
+        };
+        assert_eq!(superseded.id, "turn-a");
+        assert_eq!(superseded.status, TurnStatus::Completed);
+        let SessionEventKind::TurnStarted { turn: opened } =
+            next_session_event(&mut events, "turn start").await
+        else {
+            unreachable!("asked for a turn start");
+        };
+        assert_eq!(opened.id, "turn-b");
+        assert_eq!(opened.status, TurnStatus::InProgress);
+        assert!(matches!(
+            &opened.items[0].kind,
+            ItemKind::UserMessage { text, .. } if text == "second"
+        ));
+        let answered_in = loop {
+            if let SessionEventKind::ItemChanged { turn_id, item, .. } =
+                next_session_event(&mut events, "item").await
+                && matches!(item.kind, ItemKind::AssistantMessage { .. })
+            {
+                break turn_id;
+            }
+        };
+        assert_eq!(
+            answered_in, "turn-b",
+            "what the agent says lands in the turn it is answering"
+        );
+        let session = client.session(SESSION).await.expect("the session");
+        assert!(!session.state.lock().await.turn_read_at_hello);
+    }
+
+    #[tokio::test]
+    async fn a_taken_up_session_keeps_the_turn_the_file_confirms() {
+        let projects = tempfile::tempdir().expect("a projects directory");
+        let (client, runner, mut events) = taken_up_over(&projects).await;
+
+        runner
+            .say(
+                SESSION,
+                assistant_frame("msg_a2", json!([{ "type": "text", "text": "still on it" }])),
+            )
+            .await;
+
+        let SessionEventKind::ItemChanged { turn_id, .. } =
+            next_session_event(&mut events, "item").await
+        else {
+            unreachable!("asked for an item");
+        };
+        assert_eq!(turn_id, "turn-a");
+        assert!(
+            std::iter::from_fn(|| events.try_recv().ok()).all(|event| !matches!(
+                event,
+                ClaudeRuntimeEvent::Session(event)
+                    if matches!(event.kind, SessionEventKind::TurnStarted { .. } | SessionEventKind::TurnEnded { .. })
+            )),
+            "a turn the file confirms is neither reopened nor ended"
+        );
+        let session = client.session(SESSION).await.expect("the session");
+        assert!(!session.state.lock().await.turn_read_at_hello);
+    }
+
+    #[tokio::test]
+    async fn a_restart_caffold_asked_for_interrupts_the_turns_it_ends() {
+        let (client, _runner, mut events) = watching().await;
+        let turn = running_turn(&client, &mut events, "run it").await;
+
+        client
+            .restart_runtime()
+            .await
+            .expect("the runtime restarts");
+
+        let SessionEventKind::TurnEnded { turn: ended } =
+            next_session_event(&mut events, "turn end").await
+        else {
+            unreachable!("asked for a turn end");
+        };
+        assert_eq!(ended.id, turn.id);
+        assert_eq!(ended.status, TurnStatus::Interrupted);
+    }
+
+    #[tokio::test]
+    async fn a_close_caffold_asked_for_interrupts_the_turn_rather_than_failing_it() {
+        let (client, _runner, mut events) = watching().await;
+        let turn = running_turn(&client, &mut events, "run it").await;
+
+        client
+            .close_conversation(SESSION)
+            .await
+            .expect("the conversation closes");
+
+        let SessionEventKind::TurnEnded { turn: ended } =
+            next_session_event(&mut events, "turn end").await
+        else {
+            unreachable!("asked for a turn end");
+        };
+        assert_eq!(ended.id, turn.id);
+        assert_eq!(ended.status, TurnStatus::Interrupted);
+    }
+
+    #[tokio::test]
     async fn a_session_the_agent_ended_says_so_rather_than_asking_to_be_opened_again() {
         // The other half. An agent that exits has said what happened, and a
         // conversation with no process behind it is not one to re-open behind
@@ -913,46 +1158,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_prompts_reflection_does_not_take_the_turn_from_the_name_the_agent_filed() {
+    async fn a_prompts_reflection_is_not_drawn_and_does_not_rename_the_turn() {
         // A large image earns a resize note: an extra user row the agent adds
-        // beside the prompt, and on some models an extra user frame ahead of
-        // the prompt coming home. Taken as the agent answering unprompted, that
-        // frame named the turn with an invented id — and the file names it
-        // something else, so the same answer stood twice, once under each name.
-        let projects = tempfile::tempdir().expect("a projects directory");
-        transcript::plant(
-            projects.path(),
-            CWD,
-            SESSION,
-            concat!(
-                r#"{"type":"user","uuid":"filed-prompt","timestamp":"2026-08-21T13:38:40.000Z","promptSource":"sdk","message":{"role":"user","content":[{"type":"text","text":"do you see it?"}]}}"#,
-                "\n",
-                r#"{"type":"user","uuid":"note-row","timestamp":"2026-08-21T13:38:40.500Z","message":{"role":"user","content":[{"type":"text","text":"[Image: original 2004x410, displayed at 2000x409]"}]}}"#,
-                "\n",
-            ),
-        );
-        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
-        runner
-            .greet_next_session_with(vec![init_frame(SESSION)])
-            .await;
-        client
-            .open_conversation(SESSION, CWD, &options("opus"))
-            .await
-            .expect("the conversation opens");
-        runner.swallow_prompts(SESSION).await;
+        // beside the prompt. The transcript reader leaves it out, and read
+        // live it is the same row: not something a person said, and not the
+        // agent answering.
+        let (client, runner, mut events) = watching().await;
+        let turn = running_turn(&client, &mut events, "do you see it?").await;
 
-        let starting = tokio::spawn({
-            let client = client.clone();
-            async move {
-                client
-                    .start_turn(SESSION, "do you see it?", &[], &options("opus"))
-                    .await
-            }
-        });
-        heard_the_prompt(&runner).await;
-
-        // The reflection arrives before the prompt comes home: a user frame
-        // with no replay marking.
         runner
             .say(
                 SESSION,
@@ -967,7 +1180,6 @@ mod tests {
                 }),
             )
             .await;
-        // And the agent starts answering before any replay has arrived.
         runner
             .say(
                 SESSION,
@@ -975,14 +1187,30 @@ mod tests {
             )
             .await;
 
-        let turn = tokio::time::timeout(REPORT_TIMEOUT, starting)
-            .await
-            .expect("the turn opens without waiting out the handback")
-            .expect("the task finishes")
-            .expect("the turn starts");
+        let SessionEventKind::ItemChanged { turn_id, item, .. } =
+            next_session_event(&mut events, "item").await
+        else {
+            unreachable!("asked for an item");
+        };
         assert_eq!(
-            turn.id, "filed-prompt",
-            "the turn is named what the agent filed the prompt as"
+            turn_id, turn.id,
+            "the answer belongs to the turn the prompt opened"
+        );
+        assert!(
+            matches!(&item.kind, ItemKind::AssistantMessage { text, .. } if text == "I see it."),
+            "the first thing drawn after the prompt is the answer, not the note: {item:?}"
+        );
+        let watched = client
+            .watched_conversation(SESSION)
+            .await
+            .expect("the conversation is still watched");
+        assert!(
+            watched.turns[0]
+                .items
+                .iter()
+                .all(|item| !item.id.starts_with("note-row")),
+            "the note is not in the turn: {:?}",
+            watched.turns[0].items
         );
     }
 
@@ -1020,10 +1248,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_turn_is_called_what_the_agent_filed_the_prompt_as() {
-        // The name is the whole point: it is what the transcript will know this
-        // turn by, so a Caffold that restarts reads this turn back as this turn
-        // rather than as one more just like it.
+    async fn a_turn_is_called_what_caffold_named_the_prompt_and_the_agent_is_told_the_name() {
+        // The name is the whole point: the agent files the prompt under it, so
+        // it is what the transcript will know this turn by, and a Caffold that
+        // restarts reads this turn back as this turn rather than as one more
+        // just like it.
         let (client, runner, _events) = watching().await;
 
         let turn = client
@@ -1031,14 +1260,19 @@ mod tests {
             .await
             .expect("the turn starts");
 
-        assert_eq!(turn.id, format!("{SESSION}-prompt-1"));
-        assert_eq!(turn.items[0].id, format!("{SESSION}-prompt-1:prompt"));
+        let heard = runner.prompts(SESSION).await;
+        assert_eq!(heard.len(), 1, "the prompt was written once, not twice");
+        assert_eq!(heard[0]["uuid"], turn.id.as_str(), "{:?}", heard[0]);
+        assert!(
+            uuid::Uuid::parse_str(&turn.id).is_ok(),
+            "a name of Caffold's own: {}",
+            turn.id
+        );
+        assert_eq!(turn.items[0].id, format!("{}:prompt", turn.id));
         assert!(matches!(
             &turn.items[0].kind,
             ItemKind::UserMessage { text, .. } if text == "fix the test"
         ));
-        let heard = runner.prompts(SESSION).await;
-        assert_eq!(heard.len(), 1, "the prompt was written once, not twice");
     }
 
     #[tokio::test]
@@ -1086,96 +1320,48 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_session_that_never_hands_a_prompt_back_still_runs_and_ends_its_turn() {
-        // A session the runner held from before Caffold began asking to be
-        // handed prompts back cannot hand one back, and its arguments are fixed
-        // for as long as it lives. Waiting for one let the answer — and the
-        // `result` that ends the turn — go by before the turn existed, and what
-        // was opened afterwards had nothing left to close it.
+    async fn a_prompt_handed_back_by_an_older_session_changes_nothing() {
+        // A session an earlier Caffold started with `--replay-user-messages`
+        // hands every prompt back. What it hands back is the name Caffold gave
+        // the prompt, so there is nothing to learn from it and nothing to draw
+        // twice.
         let (client, runner, mut events) = watching().await;
-        runner.swallow_prompts(SESSION).await;
+        runner.hand_prompts_back(SESSION).await;
 
-        let starting = tokio::spawn({
-            let client = client.clone();
-            async move {
-                client
-                    .start_turn(SESSION, "fix the test", &[], &options("opus"))
-                    .await
-            }
-        });
-        heard_the_prompt(&runner).await;
-
-        // The agent answers as though nothing had to be acknowledged.
+        let turn = running_turn(&client, &mut events, "fix the test").await;
         runner
             .say(
                 SESSION,
                 assistant_frame("msg_1", json!([{ "type": "text", "text": "done" }])),
             )
             .await;
-        let turn = tokio::time::timeout(REPORT_TIMEOUT, starting)
-            .await
-            .expect("the turn does not wait out the handback")
-            .expect("the task finishes")
-            .expect("the turn starts");
-        assert_eq!(turn.status, TurnStatus::InProgress);
-
         runner.say(SESSION, result_frame(Some("end_turn"))).await;
 
         let ended = loop {
-            if let SessionEventKind::TurnEnded { turn } =
-                next_session_event(&mut events, "turn end").await
-            {
-                break turn;
-            }
-        };
-        assert_eq!(
-            ended.id, turn.id,
-            "the turn that ended is the one that began"
-        );
-        assert_eq!(ended.status, TurnStatus::Completed);
-        assert!(
-            ended.items.iter().any(|item| matches!(
-                &item.kind,
-                ItemKind::AssistantMessage { text, .. } if text == "done"
-            )),
-            "the answer belongs to the turn: {:?}",
-            ended.items
-        );
-    }
-
-    #[tokio::test]
-    async fn a_turn_answered_only_by_its_result_is_still_a_turn() {
-        // The shortest way for the answer to outrun the handback: nothing to
-        // say, and the turn over.
-        let (client, runner, mut events) = watching().await;
-        runner.swallow_prompts(SESSION).await;
-
-        let starting = tokio::spawn({
-            let client = client.clone();
-            async move {
-                client
-                    .start_turn(SESSION, "fix the test", &[], &options("opus"))
-                    .await
-            }
-        });
-        heard_the_prompt(&runner).await;
-        runner.say(SESSION, result_frame(Some("end_turn"))).await;
-
-        let turn = tokio::time::timeout(REPORT_TIMEOUT, starting)
-            .await
-            .expect("the turn does not wait out the handback")
-            .expect("the task finishes")
-            .expect("the turn starts");
-
-        let ended = loop {
-            if let SessionEventKind::TurnEnded { turn } =
-                next_session_event(&mut events, "turn end").await
-            {
-                break turn;
+            match next_session_event(&mut events, "turn end").await {
+                SessionEventKind::TurnEnded { turn } => break turn,
+                SessionEventKind::TurnStarted { turn } => {
+                    panic!("the handed-back prompt opened a second turn: {turn:?}")
+                }
+                SessionEventKind::ItemChanged { item, .. }
+                    if matches!(item.kind, ItemKind::UserMessage { .. }) =>
+                {
+                    panic!("the handed-back prompt was drawn again: {item:?}")
+                }
+                _ => {}
             }
         };
         assert_eq!(ended.id, turn.id);
-        assert_eq!(ended.status, TurnStatus::Completed);
+        assert_eq!(
+            ended
+                .items
+                .iter()
+                .filter(|item| matches!(item.kind, ItemKind::UserMessage { .. }))
+                .count(),
+            1,
+            "{:?}",
+            ended.items
+        );
     }
 
     #[tokio::test]

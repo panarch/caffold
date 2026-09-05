@@ -104,7 +104,7 @@ Caffold supports Apple silicon Macs running macOS 14 or later. Install and sign
 in to at least one supported agent:
 
 - the official standalone Codex CLI `0.147.0` or newer; or
-- Claude Code `2.1.236` or newer, available as `claude` on the app's `PATH`.
+- Claude Code `2.1.259` or newer, available as `claude` on the app's `PATH`.
 
 Both may be installed, and Caffold will offer the models it can reach. The
 [installation guide](docs/product/installation.md) has the agent-specific
