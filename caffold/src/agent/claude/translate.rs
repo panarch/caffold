@@ -95,9 +95,20 @@ pub(crate) fn message_items(
                 id,
                 observed_at_ms: None,
                 status: ActivityStatus::Completed,
-                kind: ItemKind::Reasoning {
-                    summary: Vec::new(),
-                    content: vec![thinking.clone()],
+                kind: if thinking.is_empty() {
+                    ItemKind::Reasoning {
+                        summary: Vec::new(),
+                        content: vec![thinking.clone()],
+                    }
+                } else {
+                    // The agent is asked to show its progress notes rather
+                    // than its reasoning, so a thinking block with words in
+                    // it is what the agent tells a person between tool calls,
+                    // and an empty one is the thinking it kept to itself.
+                    ItemKind::AssistantMessage {
+                        text: thinking.clone(),
+                        phase: None,
+                    }
                 },
             }),
             ContentBlock::ToolUse { id, name, input } => {
@@ -494,7 +505,7 @@ mod tests {
         let items = items(
             json!({
                 "content": [
-                    { "type": "thinking", "thinking": "considering" },
+                    { "type": "thinking", "thinking": "Reading the file first." },
                     { "type": "text", "text": "here is the answer" },
                 ],
             }),
@@ -503,8 +514,45 @@ mod tests {
 
         assert_eq!(items[0].id, "msg_1:0");
         assert_eq!(items[1].id, "msg_1:1");
-        assert!(matches!(items[0].kind, ItemKind::Reasoning { .. }));
-        assert!(matches!(items[1].kind, ItemKind::AssistantMessage { .. }));
+        assert!(matches!(
+            &items[0].kind,
+            ItemKind::AssistantMessage { text, .. } if text == "Reading the file first."
+        ));
+        assert!(matches!(
+            &items[1].kind,
+            ItemKind::AssistantMessage { text, .. } if text == "here is the answer"
+        ));
+    }
+
+    #[test]
+    fn a_thinking_block_with_words_in_it_is_the_agent_talking_and_an_empty_one_is_its_thinking() {
+        // Both are what the agent files as thinking: its reasoning, with the
+        // words withheld, and the progress note it writes on the way to a
+        // tool call, with the words in.
+        let mut calls = ToolCalls::default();
+
+        let items = items(
+            json!({
+                "content": [
+                    { "type": "thinking", "thinking": "", "signature": "EqQBCkYIChgC" },
+                    { "type": "thinking",
+                      "thinking": "Found the mapping. Checking its callers next.",
+                      "signature": "EqQBCkYIChgD" },
+                ],
+            }),
+            &mut calls,
+        );
+
+        assert!(matches!(
+            &items[0].kind,
+            ItemKind::Reasoning { summary, content }
+                if summary.is_empty() && content == &[String::new()]
+        ));
+        let ItemKind::AssistantMessage { text, phase } = &items[1].kind else {
+            panic!("a progress note is the agent talking: {:?}", items[1].kind);
+        };
+        assert_eq!(text, "Found the mapping. Checking its callers next.");
+        assert_eq!(*phase, None);
     }
 
     #[test]

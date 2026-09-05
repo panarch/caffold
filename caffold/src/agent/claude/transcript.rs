@@ -2142,12 +2142,26 @@ mod tests {
             .filter(|item| matches!(&item.kind, ItemKind::ToolCall { name, .. } if name == "Read"))
             .count();
         assert_eq!(file_reads, 1, "{:?}", items_of(read_a_file));
+        // What the agent wrote in its thinking block on the way to the tool
+        // is the agent talking, and it stands before the call it led to.
+        let spoke = read_a_file
+            .items
+            .iter()
+            .position(|item| matches!(&item.kind, ItemKind::AssistantMessage { .. }))
+            .expect("the agent said something before it acted");
+        let read = read_a_file
+            .items
+            .iter()
+            .position(|item| matches!(&item.kind, ItemKind::ToolCall { .. }))
+            .expect("the file was read");
+        assert!(spoke < read, "{:?}", items_of(read_a_file));
         assert!(
-            read_a_file
+            !read_a_file
                 .items
                 .iter()
                 .any(|item| matches!(&item.kind, ItemKind::Reasoning { .. })),
-            "the agent thought before it acted"
+            "a thinking block with words in it is the agent talking: {:?}",
+            items_of(read_a_file)
         );
         assert!(
             read_a_file.items.iter().any(|item| matches!(
@@ -2174,6 +2188,30 @@ mod tests {
 
         assert!(read_a_file.started_at_ms < answered.started_at_ms);
         assert!(read_a_file.completed_at_ms <= answered.started_at_ms);
+    }
+
+    #[test]
+    fn a_thinking_block_with_nothing_in_it_reads_back_as_reasoning_with_nothing_to_show() {
+        // The agent keeps its reasoning to itself and files an empty thinking
+        // block where it thought, before the tool it reached for.
+        let turns = read_turns(RECORDED_WITH_A_COMMAND);
+
+        let thought = turns[0]
+            .items
+            .iter()
+            .position(|item| matches!(&item.kind, ItemKind::Reasoning { .. }))
+            .expect("the agent thought before it acted");
+        let read = turns[0]
+            .items
+            .iter()
+            .position(|item| matches!(&item.kind, ItemKind::ToolCall { .. }))
+            .expect("a file was read");
+        assert!(thought < read, "{:?}", items_of(&turns[0]));
+        assert!(matches!(
+            &turns[0].items[thought].kind,
+            ItemKind::Reasoning { summary, content }
+                if summary.is_empty() && content == &[String::new()]
+        ));
     }
 
     #[test]

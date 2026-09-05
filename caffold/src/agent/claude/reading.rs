@@ -1255,7 +1255,7 @@ mod tests {
                 assistant_frame(
                     "msg_1",
                     json!([
-                        { "type": "thinking", "thinking": "considering" },
+                        { "type": "thinking", "thinking": "Running the tests next." },
                         { "type": "tool_use", "id": "toolu_1", "name": "Bash",
                           "input": { "command": "cargo test" } },
                     ]),
@@ -1272,7 +1272,13 @@ mod tests {
             turn_id, turn.id,
             "an item belongs to the turn that was running"
         );
-        assert!(matches!(item.kind, ItemKind::Reasoning { .. }));
+        assert!(
+            matches!(
+                &item.kind,
+                ItemKind::AssistantMessage { text, .. } if text == "Running the tests next."
+            ),
+            "{item:?}"
+        );
 
         let SessionEventKind::ItemChanged { item, .. } =
             next_session_event(&mut events, "item").await
@@ -1294,7 +1300,7 @@ mod tests {
 
         let mut thinking = assistant_frame(
             "msg_1",
-            json!([{ "type": "thinking", "thinking": "considering" }]),
+            json!([{ "type": "thinking", "thinking": "Checking the callers." }]),
         );
         thinking["uuid"] = json!("frame-thinking");
         let mut answer = assistant_frame("msg_1", json!([{ "type": "text", "text": "ok" }]));
@@ -1317,7 +1323,10 @@ mod tests {
             first.id, second.id,
             "two things the agent said are two items, not one said twice"
         );
-        assert!(matches!(first.kind, ItemKind::Reasoning { .. }));
+        let ItemKind::AssistantMessage { text, .. } = &first.kind else {
+            panic!("the note the agent wrote on the way: {first:?}");
+        };
+        assert_eq!(text, "Checking the callers.");
         let ItemKind::AssistantMessage { text, .. } = &second.kind else {
             panic!("an assistant message");
         };
