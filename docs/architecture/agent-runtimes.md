@@ -217,9 +217,12 @@ It contains only what the interface and Task lifecycle consume:
 
 The Codex driver translates app-server threads, items, notifications, and
 server requests. The Claude driver translates stream frames and transcript
-content blocks. Unknown optional events may be ignored or presented as generic
-tool activity; missing load-bearing fields fail explicitly. The provider's raw
-protocol does not escape into Task or frontend state.
+content blocks. A Claude `thinking` block that carries text is the agent's
+progress note between tool calls and reads as an agent message; an empty one
+reads as reasoning with nothing to show. Unknown optional events may be ignored
+or presented as generic tool activity; missing load-bearing fields fail
+explicitly. The provider's raw protocol does not escape into Task or frontend
+state.
 
 Provider history and live observation do not own the same facts. Codex
 app-server turn history and Claude transcript history own causal order for a
