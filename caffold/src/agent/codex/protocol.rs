@@ -697,6 +697,12 @@ pub(crate) enum CodexNotification {
         thread_id: String,
         turn: CodexTurn,
     },
+    Error {
+        thread_id: String,
+        turn_id: String,
+        error: Value,
+        will_retry: bool,
+    },
     ItemStarted {
         thread_id: String,
         turn_id: String,
@@ -883,6 +889,28 @@ pub(crate) fn decode_notification(
             } else {
                 Ok(CodexNotification::TurnCompleted { thread_id, turn })
             }
+        }
+        "error" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Params {
+                thread_id: String,
+                turn_id: String,
+                error: Value,
+                will_retry: bool,
+            }
+            let Params {
+                thread_id,
+                turn_id,
+                error,
+                will_retry,
+            } = decode_params(method, params)?;
+            Ok(CodexNotification::Error {
+                thread_id,
+                turn_id,
+                error,
+                will_retry,
+            })
         }
         "item/started" | "item/completed" => {
             #[derive(Deserialize)]
@@ -1452,6 +1480,38 @@ mod tests {
         let unknown = decode_notification("future/event", json!({ "value": 1 }))
             .expect("unknown notifications are forward compatible");
         assert!(matches!(unknown, CodexNotification::Unknown { .. }));
+    }
+
+    #[test]
+    fn decodes_codex_error_identity_payload_and_retry_flag() {
+        let error = json!({
+            "message": "Selected model is at capacity. Please try a different model.",
+            "codexErrorInfo": "serverOverloaded", "additionalDetails": null,
+        });
+        for will_retry in [false, true] {
+            let params = json!({
+                "threadId": "thread_1", "turnId": "turn_1", "error": error, "willRetry": will_retry,
+            });
+            assert_eq!(
+                decode_notification("error", params).unwrap(),
+                CodexNotification::Error {
+                    thread_id: "thread_1".to_string(),
+                    turn_id: "turn_1".to_string(),
+                    error: error.clone(),
+                    will_retry,
+                }
+            );
+        }
+        for field in ["threadId", "turnId", "willRetry"] {
+            let mut params = json!({
+                "threadId": "thread_1", "turnId": "turn_1", "error": error, "willRetry": false,
+            });
+            params.as_object_mut().unwrap().remove(field);
+            assert!(
+                decode_notification("error", params).is_err(),
+                "missing {field}"
+            );
+        }
     }
 
     #[test]
