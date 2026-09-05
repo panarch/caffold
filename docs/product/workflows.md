@@ -98,16 +98,20 @@ unclaimed child.
 
 ### Open an existing Task
 
-1. Selecting a Task keeps the loading shell until readable Task and
-   conversation data arrives.
+1. Selecting a Task immediately keeps its stable header identity from the
+   Caffold-owned Active-list row while readable conversation data loads.
 2. Caffold opens the conversation through the Task's recorded agent. Codex
    reads its app-server thread; Claude reads its transcript and overlays any
    live runner-held session state.
 3. Reconnecting preserves an already readable Detail while Caffold recovers
    current data. If live updates remain unavailable, the Detail reports that
    state without discarding readable content.
-4. Loading older history prepends it to the current conversation.
-5. Switching Tasks prevents pending work for the previous selection from
+4. If canonical Detail cannot be read, the header keeps only the matching
+   managed Task identity, the body reports the provider failure, and Retry and
+   Archive remain available. Caffold does not infer conversation content,
+   status, or repository context from that row.
+5. Loading older history prepends it to the current conversation.
+6. Switching Tasks prevents pending work for the previous selection from
    changing the new Detail.
 
 ### Current plan documents
@@ -212,11 +216,18 @@ cwd movement, ownership, archive, and restore follow the
 
 ### Archive and restore
 
-- Archiving a Task removes it from the active navigator while retaining its
-  agent conversation and Caffold-owned metadata.
+- Archiving a Task moves its Caffold-owned membership out of the active
+  navigator and retains its local metadata. Caffold also asks the recorded
+  agent to archive or close the conversation, but provider acquisition, read,
+  or archive failure does not strand the local Task in Active.
 - A clean Caffold-managed worktree is removed during archive; its branch and
   ownership record remain available for restore.
-- Dirty managed worktrees and active turns block archive.
+- Dirty managed worktrees and a successfully read current Active status block
+  archive. An unavailable provider is not presented as idle; it leaves the
+  provider state unknown while the explicit local Archive proceeds.
+- The archived Task remains visible from its durable row when its provider is
+  unavailable. Restore is withheld until the provider can confirm that the
+  conversation exists; permanent deletion remains available.
 - Restoring recreates an archived managed worktree from its retained branch and
   returns the same Task to the active navigator.
 - Tasks without a managed-worktree ownership record retain their cwd and files.

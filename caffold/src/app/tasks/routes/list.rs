@@ -1,7 +1,6 @@
-use super::membership::{task_described_as, unavailable_archived_task};
+use super::membership::{task_described_as, task_provider_driver, unavailable_archived_task};
 use super::store::task_store_list_archived;
 use super::{TASK_CANONICAL_READ_CONCURRENCY, TASK_LIST_PAGE_SIZE, TaskListResponse, TasksQuery};
-use crate::agent::AgentError;
 use crate::app::error::ApiError;
 use crate::app::tasks::active_list;
 use crate::app::tasks::{TaskRecord, TaskState, task_activity_ms};
@@ -48,7 +47,8 @@ pub(super) async fn list_archived_tasks(
     Ok(Json(TaskListResponse { tasks, next_cursor }))
 }
 
-/// One row of the archived list, described by the agent that runs it.
+/// One row of the archived list, described by the agent that runs it when the
+/// provider is available.
 ///
 /// Only one thing on the row needs the agent at all: whether there is still a
 /// conversation to go back to, which is what decides whether restoring is
@@ -59,32 +59,29 @@ pub(super) async fn list_archived_tasks(
 /// be asked without being started, and starting a session for every archived
 /// Task in a list would start them all — so the answer is whether the agent
 /// still has the conversation written down, which costs a look at the
-/// filesystem.
+/// filesystem. Provider acquisition and description are best-effort here: a
+/// failure still returns Caffold's archived row, while local projection and
+/// path failures after a successful description remain request failures.
 async fn archived_task(state: &TaskState, managed: &ManagedThread) -> Result<TaskRecord, ApiError> {
-    let driver = match state.task_runtime.agent_for(managed).await {
-        Ok(agent) => agent.driver(),
-        // An agent held by its own readiness cannot be asked about this row,
-        // and the row is still Caffold's to list. Whether it can be gone back
-        // to is unknown, so restoring is withheld until the agent can say —
-        // one held agent must not take the whole list down with it. The row
-        // says why it cannot be asked about, because held is not gone: a row
-        // reading as lost invites deleting a Task that is fine.
-        Err(AgentError::Held(diagnostic)) => {
-            let mut task = unavailable_archived_task(managed);
-            task.preview = diagnostic;
-            return Ok(task);
+    let driver = match task_provider_driver(state, managed).await? {
+        Ok(driver) => driver,
+        Err(error) => {
+            eprintln!(
+                "failed to acquire the provider while listing archived Task {}; using its Caffold row: {error}",
+                managed.thread_id
+            );
+            return Ok(unavailable_archived_task(managed));
         }
-        Err(error) => return Err(error.into()),
     };
     let described = match driver.describe(&managed.thread_id).await {
         Ok(described) => described,
-        // A conversation the agent no longer has is a Task that can be listed
-        // but not gone back to, which the row says for itself. Anything else
-        // going wrong is the list failing rather than one row being empty.
-        Err(AgentError::ConversationGone(_)) => {
+        Err(error) => {
+            eprintln!(
+                "failed to describe the provider conversation while listing archived Task {}; using its Caffold row: {error}",
+                managed.thread_id
+            );
             return Ok(unavailable_archived_task(managed));
         }
-        Err(error) => return Err(error.into()),
     };
     if let Some(conversation) = &described {
         state
@@ -242,22 +239,27 @@ mod tests {
             "an unaskable agent cannot promise the conversation is there: {:?}",
             response.tasks[0]
         );
-        assert_eq!(
-            response.tasks[0].preview, "Codex is held for this test.",
-            "held reads as held, not as a conversation that is gone"
-        );
+        assert_eq!(response.tasks[0].preview, "Conversation unavailable");
     }
 
     #[tokio::test]
-    async fn archived_list_fails_as_a_whole_without_updating_recency_on_read_error() {
+    async fn archived_list_keeps_readable_and_provider_unavailable_rows() {
         let root = tempfile::tempdir().unwrap();
         let good_id = "thread-archived-good";
         let failed_id = "thread-archived-failed";
         let mut good_thread = task_thread_list(good_id, root.path())["data"][0].clone();
         good_thread["updatedAt"] = json!(99.0);
         let client = CodexThreadClient::mock(vec![
-            MockCodexResponse::ok("thread/read", json!({ "thread": good_thread })),
-            MockCodexResponse::error("thread/read", CodexThreadError::ProcessUnavailable),
+            MockCodexResponse::ok_for(
+                "thread/read",
+                json!({ "threadId": good_id, "includeTurns": false }),
+                json!({ "thread": good_thread }),
+            ),
+            MockCodexResponse::error_for(
+                "thread/read",
+                json!({ "threadId": failed_id, "includeTurns": false }),
+                CodexThreadError::ProcessUnavailable,
+            ),
         ]);
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         for thread_id in [good_id, failed_id] {
@@ -273,10 +275,26 @@ mod tests {
             .unwrap()
             .last_observed_recency_ms;
 
-        let result =
-            list_archived_tasks(State(state.clone()), Query(TasksQuery { cursor: None })).await;
+        let response =
+            list_archived_tasks(State(state.clone()), Query(TasksQuery { cursor: None }))
+                .await
+                .expect("one provider failure does not hide the archived page")
+                .0;
 
-        assert!(matches!(result, Err(ApiError::Agent(_))));
+        assert_eq!(response.tasks.len(), 2);
+        let good = response
+            .tasks
+            .iter()
+            .find(|task| task.thread_id == good_id)
+            .expect("readable row remains present");
+        assert!(good.conversation_available);
+        let unavailable = response
+            .tasks
+            .iter()
+            .find(|task| task.thread_id == failed_id)
+            .expect("provider-unavailable row remains present");
+        assert!(!unavailable.conversation_available);
+        assert_eq!(unavailable.preview, "Conversation unavailable");
         assert_eq!(
             task_store_get_archived(&state, good_id)
                 .await
@@ -284,7 +302,7 @@ mod tests {
                 .unwrap()
                 .last_observed_recency_ms,
             before,
-            "a failed archived page must not partially update its recency cache"
+            "archived reads must not persist canonical observations"
         );
     }
 

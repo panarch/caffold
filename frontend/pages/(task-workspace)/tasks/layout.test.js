@@ -232,3 +232,66 @@ test("selects takeover or visible page owners and merges setup-beside explicitly
   setup.hidden = true;
   assert.deepEqual(tasksPage.activeDirectSurfaceOwners.call(owner), []);
 });
+
+test("passes only the selected managed Task to Detail and clears it off-route", () => {
+  const task = { threadId: "thread-a", title: "Cached task" };
+  const received = [];
+  const owner = {
+    view: "detail",
+    selectedThreadId: "thread-a",
+    selectedSectionId: "",
+    taskNavigator: () => ({
+      taskFor(threadId) {
+        return threadId === task.threadId ? task : null;
+      },
+    }),
+    taskDetail: () => ({
+      setManagedTask(value) {
+        received.push(value);
+      },
+    }),
+  };
+
+  tasksPage.syncSelectedManagedTask.call(owner);
+  owner.selectedThreadId = "thread-b";
+  tasksPage.syncSelectedManagedTask.call(owner);
+  owner.view = "home";
+  owner.selectedThreadId = "thread-a";
+  tasksPage.syncSelectedManagedTask.call(owner);
+
+  assert.deepEqual(received, [task, null, null]);
+});
+
+test("restores managed identity before reopening Detail after a store takeover", () => {
+  const calls = [];
+  let takeoverChecks = 0;
+  const detail = {
+    setCodexStatusSnapshot() {},
+    open() {
+      calls.push("open");
+    },
+  };
+  const owner = {
+    codexStatusSnapshotValue: {},
+    view: "detail",
+    selectedThreadId: "thread-a",
+    currentRoute: { kind: "tasks", threadId: "thread-a" },
+    ensureRendered() {},
+    taskStoreRecoveryVisible() {
+      takeoverChecks += 1;
+      return takeoverChecks === 1;
+    },
+    taskNew: () => null,
+    taskDetail: () => detail,
+    taskNavigator: () => null,
+    codexReadinessRecovery: () => null,
+    syncSelectedManagedTask() {
+      calls.push("managed");
+    },
+    render() {},
+  };
+
+  tasksPage.setCodexStatusSnapshot.call(owner, {});
+
+  assert.deepEqual(calls, ["managed", "open"]);
+});

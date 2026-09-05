@@ -86,11 +86,18 @@ profile and does not silently substitute one agent's default for another's.
 
 ## Archive and permanent deletion
 
-The common Task action has provider-specific conversation work behind it.
-Archiving asks Codex to archive its thread. Claude has no corresponding archive
-state, so Caffold closes any live session and keeps the archived Task row while
-Claude's transcript remains available for a later resume. Restoring reverses
-the Codex archive; a Claude restore only makes the retained Task active again.
+Archive is a Caffold membership operation with a provider-specific side effect.
+Caffold asks Codex to archive its thread. Claude has no corresponding archive
+state, so Caffold asks it to close any live session. A successfully read Active
+status still blocks the operation, but provider acquisition, description, or
+archive failure is logged and does not block the safe local worktree and
+membership transition. When no canonical conversation was read, the response
+uses the unavailable projection from Caffold's archived row rather than
+inventing provider state.
+
+Restoring remains provider-dependent: it reverses the Codex archive, while a
+Claude restore makes the retained Task active again only when its transcript
+still exists.
 
 Permanent deletion is available only after archive and asks the recorded
 driver to forget the conversation before Caffold deletes its own row. Codex
@@ -348,8 +355,11 @@ turn can begin. The full safety and recovery contract belongs to
 | Presentation, selection, and transient request state | Browser/PWA |
 
 When an owning source is unavailable, Caffold reports that condition or uses a
-strictly Caffold-owned fallback such as an archived Task row. It does not infer
-provider state from the browser, a prior event, or a copied transcript.
+strictly Caffold-owned fallback. The selected Active-list row may keep Detail's
+header identity and Archive action present, and an archived row may keep its
+list entry present. Neither becomes canonical conversation content or status;
+Caffold does not infer provider state from the browser, a prior event, or a
+copied transcript.
 
 ## Extending agent support
 

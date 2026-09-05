@@ -1256,8 +1256,7 @@ class CaffoldTaskDetail extends HTMLElement {
     if (
       !this.selectedThreadId ||
       this.archiveStateValue.loading ||
-      this.forkStateValue.loading ||
-      isTaskTransportStale(this.detailSession.state)
+      this.forkStateValue.loading
     ) {
       return;
     }

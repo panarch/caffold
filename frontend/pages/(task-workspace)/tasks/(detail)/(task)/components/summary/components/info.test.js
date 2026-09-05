@@ -79,8 +79,63 @@ test("keeps enabled Fork and Archive actions at their direct owner", () => {
   );
 });
 
+test("keeps Archive available through stale transport unless canonical status is active", () => {
+  const archive = button("Archive task", "archive");
+  const error = { textContent: "", hidden: true };
+  const owner = {
+    snapshot: {
+      task: {
+        threadId: "thread-a",
+        threadStatus: { type: "active", activeFlags: [] },
+      },
+      transportState: "unavailable",
+      archiveBlockedByActive: false,
+      archiveState: { loading: false, error: null },
+      forkState: { loading: false, error: null },
+    },
+    actionButton: () => archive,
+    querySelector: () => error,
+  };
+
+  actions.patchArchive.call(owner);
+  assert.equal(archive.disabled, false);
+
+  owner.snapshot.archiveBlockedByActive = true;
+  actions.patchArchive.call(owner);
+  assert.equal(archive.disabled, true);
+});
+
+test("keeps Fork unavailable without canonical Detail", () => {
+  const fork = button("Fork task", "fork");
+  const availability = { textContent: "", hidden: true };
+  const error = { textContent: "", hidden: true };
+  const owner = {
+    snapshot: {
+      task: { threadId: "thread-a", threadStatus: { type: "idle" } },
+      canonicalTaskAvailable: false,
+      transportState: "ready",
+      provider: "codex",
+      archiveState: { loading: false, error: null },
+      forkState: { loading: false, error: null },
+    },
+    actionButton: () => fork,
+    querySelector(selector) {
+      return selector.includes("availability") ? availability : error;
+    },
+  };
+
+  actions.patchFork.call(owner);
+
+  assert.equal(fork.disabled, true);
+  assert.equal(
+    availability.textContent,
+    "Fork is unavailable until Task details load.",
+  );
+});
+
 function button(label, action = "") {
   return {
+    attributes: new Map(),
     dataset: action ? { taskInfoAction: action } : {},
     disabled: false,
     textContent: label,
@@ -91,7 +146,16 @@ function button(label, action = "") {
       if (name === "aria-label") {
         return label;
       }
-      return name === "popovertarget" ? this.popoverId : null;
+      if (name === "popovertarget") {
+        return this.popoverId;
+      }
+      return this.attributes.get(name) ?? null;
+    },
+    setAttribute(name, value) {
+      this.attributes.set(name, value);
+    },
+    removeAttribute(name) {
+      this.attributes.delete(name);
     },
   };
 }

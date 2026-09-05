@@ -242,3 +242,76 @@ test("delegates Scroll to each exact active Detail domain", () => {
   owner.hidden = true;
   assert.deepEqual(detailLayout.scrollSurfaceScope.call(owner).surfaces, []);
 });
+
+test("uses managed identity only as a header fallback and prefers canonical Detail", () => {
+  const managed = {
+    threadId: "thread-a",
+    title: "Cached title",
+    threadStatus: { type: "active", activeFlags: [] },
+    worktree: { rootPath: "cached-worktree" },
+  };
+  const canonical = {
+    ...managed,
+    title: "Canonical title",
+    worktree: { rootPath: "canonical-worktree" },
+  };
+  const summaries = [];
+  const headers = [];
+  const choices = [];
+  const viewHidden = [];
+  const visibleSurfaces = [];
+  const owner = {
+    subjectKind: "task",
+    taskRoute: { threadId: "thread-a", review: true },
+    taskSnapshot: {
+      task: null,
+      transportState: "unavailable",
+      archiveState: { loading: false, error: null },
+      forkState: { loading: false, error: null },
+    },
+    managedTask: managed,
+    streamState: "unavailable",
+    summaryHeader: () => ({
+      toggleAttribute(name, hidden) {
+        headers.push({ name, hidden });
+      },
+    }),
+    rebindSharedDomainContext() {},
+    activeSurface: () => "review",
+    taskSummary: () => ({ setSnapshot: (snapshot) => summaries.push(snapshot) }),
+    viewSwitch: () => ({
+      setSnapshot(snapshot) {
+        choices.push(snapshot.choices.map(({ value }) => value));
+      },
+      toggleAttribute(name, hidden) {
+        assert.equal(name, "hidden");
+        viewHidden.push(hidden);
+      },
+    }),
+    gitMenu: () => ({ setSnapshot() {} }),
+    githubMenu: () => ({ setSnapshot() {} }),
+    applySurfaceVisibility(surface) {
+      visibleSurfaces.push(surface);
+    },
+    selectedTaskContextPath: () => "",
+    taskDetail: () => ({ reconcileVisibleSurface() {} }),
+  };
+
+  detailLayout.syncTaskPresentation.call(owner);
+  owner.taskSnapshot = { ...owner.taskSnapshot, task: canonical };
+  detailLayout.syncTaskPresentation.call(owner);
+
+  assert.equal(headers[0].hidden, false);
+  assert.equal(summaries[0].task, managed);
+  assert.equal(summaries[0].canonicalTaskAvailable, false);
+  assert.equal(summaries[0].archiveBlockedByActive, false);
+  assert.deepEqual(choices[0], ["conversation", "review"]);
+  assert.equal(viewHidden[0], true);
+  assert.equal(visibleSurfaces[0], "conversation");
+  assert.equal(summaries[1].task, canonical);
+  assert.equal(summaries[1].canonicalTaskAvailable, true);
+  assert.equal(summaries[1].archiveBlockedByActive, true);
+  assert.deepEqual(choices[1], ["conversation", "working", "branch"]);
+  assert.equal(viewHidden[1], false);
+  assert.equal(visibleSurfaces[1], "review");
+});

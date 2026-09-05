@@ -421,11 +421,12 @@ Caffold keeps pending approvals and live notifications as ephemeral in-memory
 state in this slice. After a backend restart, startup recovery resumes each
 managed loaded thread so app-server can re-emit a pending approval request.
 
-Archived Codex Tasks resolve their canonical display data with `thread/read`.
-A missing Codex rollout is the one exception to whole-page failure: the
-archived row remains visible with a `Conversation unavailable` warning
-indicator, exposes permanent deletion, and does not expose Restore. Other read
-and transport failures remain explicit list errors.
+Archived Codex Tasks try to resolve their canonical display data with
+`thread/read`. Any provider acquisition or read failure affects only that row:
+the Caffold-owned archived row remains visible with a
+`Conversation unavailable` warning, exposes permanent deletion, and does not
+expose Restore. Task-store and local projection failures still fail the
+request.
 
 For a Codex Task, permanent deletion is an explicit
 `DELETE /api/tasks/{thread_id}` mutation for locally archived Tasks only. It
@@ -454,6 +455,10 @@ same structured shape:
   canonical ID.
 - Before canonical metadata arrives, detail returns `syncState: "loading"` and
   `task: null`; it does not manufacture a loading Task record from Redb.
+- While canonical Detail is unavailable, the browser may keep the common
+  header from the matching local Active-list row. That shell carries stable
+  identity and the local Archive action only; it does not synthesize Codex
+  status, conversation, active-turn controls, or repository context.
 - If subscription or canonical read fails, REST rejects the stale session
   snapshot and the Task Detail channel carries an explicit unavailable detail. If the browser stream
   transport fails, Detail may use one REST fallback to provide readable content
@@ -569,12 +574,15 @@ parent Section in one local transaction, then publishes a targeted
 existing Active projection without a full list reload. Steering an active turn
 does not replace either record.
 
-Create, fork, rename, archive, restore, and permanent-delete commands update
-the Task's agent first, then commit their corresponding local projection
-change, and only then publish the browser event. Fork claims only a returned
-child and leaves its source outside that commit. Normal runtime lifecycle
-commands do not create agent-owned Sections or move conversations between local
-Sections.
+Create, fork, rename, restore, and permanent-delete commands update the Task's
+agent first, then commit their corresponding local projection change, and only
+then publish the browser event. Archive is the deliberate exception: after a
+canonical Active check when available and managed-worktree preflight, it
+attempts provider archive but continues through the local worktree and
+membership commit if that provider call fails. Its browser removal event is
+still published only after the local commit. Fork claims only a returned child
+and leaves its source outside that commit. Normal runtime lifecycle commands do
+not create agent-owned Sections or move conversations between local Sections.
 New and restored Tasks are placed at local position zero, while archive clears
 their placement and compacts the remaining positions. Creating a managed
 Section inserts it at the top of the durable Section order. Task and Section
@@ -597,12 +605,17 @@ required by Claude Tasks, without copying Codex-owned cwd state. While Codex
 is unavailable or incompatible, the HTTP server remains available with explicit
 Task-store/Codex readiness and retry controls; Codex-run operations answer
 with the blocking readiness, while Task reads and the other agent's operations
-continue.
+continue. The Caffold-owned Archive escape hatch may still complete from the
+managed row after local worktree safety checks, without claiming that Codex was
+idle or successfully archived the thread.
 
 Archived Tasks remain Caffold-owned and independent of Sections. Archived
 Codex Tasks continue to read 30 managed IDs at a time from the archived Redb
 membership, resolve their conversations with `thread/read`, sort the page by
 canonical activity, and expose the opaque recency-and-conversation-ID cursor.
+If provider acquisition or `thread/read` fails for one ID, that Task uses its
+unavailable archived-row projection and the rest of the page remains visible;
+the mixed page sorts by each canonical or local fallback activity value.
 Archived GET projection does not persist the observed read payload. Claude
 archive resolution follows the transcript boundary in
 [Agent Runtimes](agent-runtimes.md#claude-lifecycle).
@@ -619,7 +632,9 @@ The local tables own managed membership and the stable navigator projection,
 not canonical Codex Thread existence. Runtime events and explicit
 commands own persistence updates; GET handlers may read Codex where live detail
 is still required, but do not mutate Redb or schedule delayed persistence.
-Archived canonical-read failures retain their existing explicit error behavior.
+Archived provider-read failures degrade only the affected row to the explicit
+unavailable projection. Local Task-store and projection failures remain request
+errors.
 
 The Tasks surface is a global list rather than a cwd filter. New Task inherits
 the selected Task's canonical repository root when available, then the

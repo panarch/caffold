@@ -152,8 +152,7 @@ class CaffoldTaskDetailInfoActions extends HTMLElement {
     button.disabled =
       loading ||
       this.snapshot.forkState.loading ||
-      isTaskTransportStale(this.snapshot.transportState) ||
-      taskThreadStatusType(task) === "active";
+      this.snapshot.archiveBlockedByActive;
     setText(button, loading ? "Archiving..." : "Archive task");
 
     const message = actionErrorMessage(this.snapshot.archiveState.error);
@@ -204,6 +203,8 @@ if (!customElements.get("caffold-task-detail-info-actions")) {
 function normalizedSnapshot(snapshot = {}) {
   return {
     task: snapshot.task ?? null,
+    canonicalTaskAvailable: Boolean(snapshot.canonicalTaskAvailable),
+    archiveBlockedByActive: Boolean(snapshot.archiveBlockedByActive),
     transportState: snapshot.transportState ?? "idle",
     provider: `${snapshot.provider ?? ""}`,
     archiveState: {
@@ -222,6 +223,9 @@ function actionErrorMessage(error) {
 }
 
 function forkDisabledReason(snapshot) {
+  if (!snapshot.canonicalTaskAvailable) {
+    return "Fork is unavailable until Task details load.";
+  }
   if (snapshot.provider !== "codex") {
     return "Fork is currently available only for Codex Tasks.";
   }

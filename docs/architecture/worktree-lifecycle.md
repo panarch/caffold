@@ -108,9 +108,13 @@ protected ref are retained.
 Archive coordinates the selected agent's conversation, Task membership, and
 managed worktree:
 
-- an active agent turn blocks archive;
+- a successfully read current Active agent status blocks archive;
 - a dirty managed worktree blocks archive with
   `managed_worktree_dirty`;
+- managed-worktree preflight completes before any provider archive attempt;
+- provider acquisition, description, and archive are best effort, so an
+  unavailable provider does not bypass local safety and does not strand the
+  Caffold-owned Task in Active;
 - archive inspects the actual named branch and HEAD, then atomically records
   them as the checkout anchor while transitioning from `ready` to `removing`;
 - a clean managed worktree is removed from disk without `--force`;
@@ -127,8 +131,11 @@ worktree path is already absent, so deletion removes only Caffold's ownership
 record. The local branch remains in the repository and no external worktree or
 Git ref is removed.
 
-If a later coordinated step fails, Caffold attempts the inverse worktree and
-agent transition so the visible Task state and filesystem state remain aligned.
+If a later coordinated step fails, Caffold attempts the inverse worktree
+transition. It reverses the provider archive only when that provider operation
+actually succeeded in the same request, so a failed or unattempted provider
+operation is never treated as state that must be undone. This keeps the visible
+Task state and filesystem state aligned without guessing provider state.
 Interrupted transfer, `removing`, and `restoring` states are reconciled on
 startup from the ownership record and actual filesystem state. A mismatched or
 otherwise unsafe target remains in its persisted non-ready state without

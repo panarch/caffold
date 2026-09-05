@@ -108,13 +108,34 @@ pub(super) async fn task_archive(
     let Some(managed) = task_store_get(&state, &thread_id).await? else {
         return Err(task_not_managed_error());
     };
-    let agent = state.task_runtime.agent_for(&managed).await?;
-    let driver = agent.driver();
-    let task = described_task(&state, &driver, &managed).await?;
+    let driver = match task_provider_driver(&state, &managed).await? {
+        Ok(driver) => Some(driver),
+        Err(error) => {
+            eprintln!(
+                "failed to acquire the provider while archiving Task {thread_id}; continuing with Caffold archive: {error}"
+            );
+            None
+        }
+    };
+    let task = match &driver {
+        Some(driver) => match driver.describe(&managed.thread_id).await {
+            Ok(described) => Some(task_described_as(&state, driver, &managed, described).await?),
+            Err(error) => {
+                eprintln!(
+                    "failed to describe the provider conversation while archiving Task {thread_id}; continuing with Caffold archive: {error}"
+                );
+                None
+            }
+        },
+        None => None,
+    };
     // A turn still running would be archived out from under itself, and the
     // agent asked about it afterwards would be asked about a Task nothing is
     // watching any more.
-    if matches!(task.thread_status, agent::ThreadStatus::Active { .. }) {
+    if matches!(
+        task.as_ref().map(|task| &task.thread_status),
+        Some(agent::ThreadStatus::Active { .. })
+    ) {
         return Err(ApiError::BadRequest {
             code: "task_active",
             message: "active tasks cannot be archived".to_string(),
@@ -124,31 +145,99 @@ pub(super) async fn task_archive(
         .lifecycle
         .preflight_archive_worktree(thread_id.clone())
         .await?;
-    driver.archive_conversation(&thread_id).await?;
+    let provider_archived = archive_provider(driver.as_ref(), &thread_id).await;
     let worktree = match state.lifecycle.archive_worktree(thread_id.clone()).await {
         Ok(worktree) => worktree,
         Err(error) => {
-            if let Err(rollback_error) = driver.restore_conversation(&thread_id).await {
-                eprintln!(
-                    "failed to take a conversation back out after worktree archive failure: {rollback_error}"
-                );
-            }
+            rollback_provider_archive(driver.as_ref(), &thread_id, provider_archived).await;
             return Err(error);
         }
     };
-    match task_store_archive(&state, &thread_id).await {
-        Ok(Some(_)) => {}
+    let archived = match task_store_archive(&state, &thread_id).await {
+        Ok(Some(archived)) => archived,
         Ok(None) => {
-            rollback_task_archive(&state, &driver, &thread_id, &worktree).await;
+            rollback_task_archive(
+                &state,
+                driver.as_ref(),
+                &thread_id,
+                provider_archived,
+                &worktree,
+            )
+            .await;
             return Err(task_not_managed_error());
         }
         Err(error) => {
-            rollback_task_archive(&state, &driver, &thread_id, &worktree).await;
+            rollback_task_archive(
+                &state,
+                driver.as_ref(),
+                &thread_id,
+                provider_archived,
+                &worktree,
+            )
+            .await;
             return Err(error);
         }
-    }
+    };
     notify_task_removed(&state, &thread_id, "archived");
-    Ok(Json(task))
+    Ok(Json(
+        task.unwrap_or_else(|| unavailable_archived_task(&archived)),
+    ))
+}
+
+/// Resolve every Caffold-owned input before exposing provider acquisition as
+/// best-effort. The outer result is local; only the inner result belongs to the
+/// provider and may be degraded by archive/list callers.
+pub(super) async fn task_provider_driver(
+    state: &TaskState,
+    managed: &ManagedThread,
+) -> Result<Result<Driver, agent::AgentError>, ApiError> {
+    match &managed.run_by {
+        RunBy::Codex => Ok(state
+            .task_runtime
+            .connection()
+            .await
+            .map(|connection| connection.driver())
+            .map_err(agent::AgentError::from)),
+        RunBy::Claude { cwd } => {
+            let worktree = task_store_worktree_for_thread(state, &managed.thread_id).await?;
+            let cwd = worktree
+                .as_ref()
+                .map(|worktree| worktree.worktree_path.as_str())
+                .unwrap_or(cwd);
+            Ok(Ok(state.task_runtime.claude().driver(cwd)))
+        }
+    }
+}
+
+async fn archive_provider(driver: Option<&Driver>, thread_id: &str) -> bool {
+    let Some(driver) = driver else {
+        return false;
+    };
+    match driver.archive_conversation(thread_id).await {
+        Ok(()) => true,
+        Err(error) => {
+            eprintln!(
+                "failed to archive the provider conversation for Task {thread_id}; continuing with Caffold archive: {error}"
+            );
+            false
+        }
+    }
+}
+
+async fn rollback_provider_archive(
+    driver: Option<&Driver>,
+    thread_id: &str,
+    provider_archived: bool,
+) {
+    if !provider_archived {
+        return;
+    }
+    let Some(driver) = driver else {
+        return;
+    };
+    if let Err(error) = driver.restore_conversation(thread_id).await {
+        eprintln!("failed to take a conversation back out while rolling back archive: {error}");
+    }
 }
 
 /// A Task as its agent describes it, or as Caffold's own row does when the
@@ -199,9 +288,9 @@ fn conversation_from_row(managed: &ManagedThread, cwd: &str) -> Conversation {
 
 /// The record for a Task, from what its agent said about it — or did not.
 ///
-/// Split from the asking so that a caller which can read the agent's failures
-/// keeps them: an archived list turns a thread the agent no longer has into a
-/// row that cannot be restored, and turns anything else into the failure it is.
+/// Split from the provider request so each caller can choose its provider
+/// failure policy at that boundary. Once a description exists, local
+/// projection and path failures remain request failures.
 pub(super) async fn task_described_as(
     state: &TaskState,
     driver: &Driver,
@@ -522,13 +611,12 @@ pub(super) async fn task_delete(
 
 pub(super) async fn rollback_task_archive(
     state: &TaskState,
-    driver: &Driver,
+    driver: Option<&Driver>,
     thread_id: &str,
+    provider_archived: bool,
     worktree: &worktrees::ArchiveOutcome,
 ) {
-    if let Err(error) = driver.restore_conversation(thread_id).await {
-        eprintln!("failed to take a conversation back out while rolling back archive: {error}");
-    }
+    rollback_provider_archive(driver, thread_id, provider_archived).await;
     state
         .lifecycle
         .rollback_archived_worktree(thread_id, worktree)
@@ -1152,7 +1240,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn failed_codex_archive_restores_the_managed_worktree_and_keeps_the_task_active() {
+    async fn failed_provider_archive_still_archives_a_clean_managed_worktree() {
         let root = tempfile::tempdir().unwrap();
         let source = root.path().join("source");
         initialize_git_repository(&source);
@@ -1193,12 +1281,14 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert!(matches!(
-            task_archive(State(state.clone()), AxumPath(thread_id.to_string())).await,
-            Err(ApiError::Agent(_))
-        ));
-        assert!(state.task_store.get(thread_id).unwrap().is_some());
-        assert!(state.task_store.get_archived(thread_id).unwrap().is_none());
+        let archived = task_archive(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .expect("provider archive failure does not block Caffold archive")
+            .0;
+
+        assert_eq!(archived.thread_id, thread_id);
+        assert!(state.task_store.get(thread_id).unwrap().is_none());
+        assert!(state.task_store.get_archived(thread_id).unwrap().is_some());
         assert_eq!(
             state
                 .task_store
@@ -1206,9 +1296,18 @@ mod tests {
                 .unwrap()
                 .unwrap()
                 .state,
-            task_store::ManagedWorktreeState::Ready
+            task_store::ManagedWorktreeState::Archived
         );
-        assert!(std::path::Path::new(&worktree.worktree_path).is_dir());
+        assert!(!std::path::Path::new(&worktree.worktree_path).exists());
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/read", "thread/archive"]
+        );
     }
 
     #[tokio::test]
@@ -1873,7 +1972,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn archive_failure_keeps_the_task_in_the_active_membership() {
+    async fn provider_archive_failure_still_moves_caffold_membership() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-archive-failure";
         let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
@@ -1883,17 +1982,149 @@ mod tests {
         ]);
         let state = task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client).await;
         manage_test_thread(&state, thread_id, root.path()).await;
+        let cached_title = task_store_get(&state, thread_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .display_name;
 
-        let result = task_archive(State(state.clone()), AxumPath(thread_id.to_string())).await;
+        let archived = task_archive(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .expect("provider archive failure does not block Caffold archive")
+            .0;
 
-        assert!(matches!(result, Err(ApiError::Agent(_))));
-        assert!(task_store_get(&state, thread_id).await.unwrap().is_some());
+        assert_eq!(archived.thread_id, thread_id);
+        assert_eq!(archived.title, cached_title);
+        assert!(archived.conversation_available);
+        assert!(task_store_get(&state, thread_id).await.unwrap().is_none());
         assert!(
             task_store_get_archived(&state, thread_id)
                 .await
                 .unwrap()
-                .is_none()
+                .is_some()
         );
+    }
+
+    #[tokio::test]
+    async fn provider_rollback_runs_only_after_provider_archive_succeeds() {
+        let thread_id = "thread-provider-archive-rollback";
+        let failed_client = CodexThreadClient::mock(vec![MockCodexResponse::error(
+            "thread/archive",
+            CodexThreadError::ProcessUnavailable,
+        )]);
+        let failed_driver = failed_client.driver();
+
+        let provider_archived = archive_provider(Some(&failed_driver), thread_id).await;
+        rollback_provider_archive(Some(&failed_driver), thread_id, provider_archived).await;
+
+        assert!(!provider_archived);
+        assert_eq!(
+            failed_client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/archive"],
+            "a failed provider archive has nothing to unarchive"
+        );
+
+        let root = tempfile::tempdir().unwrap();
+        let thread = task_thread_list(thread_id, root.path())["data"][0].clone();
+        let successful_client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok("thread/archive", json!({})),
+            MockCodexResponse::ok("thread/unarchive", json!({ "thread": thread })),
+        ]);
+        let successful_driver = successful_client.driver();
+
+        let provider_archived = archive_provider(Some(&successful_driver), thread_id).await;
+        rollback_provider_archive(Some(&successful_driver), thread_id, provider_archived).await;
+
+        assert!(provider_archived);
+        assert_eq!(
+            successful_client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/archive", "thread/unarchive"]
+        );
+    }
+
+    #[tokio::test]
+    async fn provider_read_and_archive_failures_return_the_cached_archived_task() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-provider-unavailable-archive";
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::error(
+                "thread/read",
+                CodexThreadError::ThreadUnavailable(format!(
+                    "no rollout found for thread id {thread_id}"
+                )),
+            ),
+            MockCodexResponse::error("thread/archive", CodexThreadError::ProcessUnavailable),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        state
+            .task_store
+            .update_display_name(thread_id, "Cached task name")
+            .unwrap();
+
+        let archived = task_archive(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .expect("provider failures do not block Caffold archive")
+            .0;
+
+        assert_eq!(archived.thread_id, thread_id);
+        assert_eq!(archived.title, "Cached task name");
+        assert!(!archived.conversation_available);
+        assert_eq!(archived.preview, "Conversation unavailable");
+        assert!(task_store_get(&state, thread_id).await.unwrap().is_none());
+        assert!(
+            task_store_get_archived(&state, thread_id)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .into_iter()
+                .map(|(method, _)| method)
+                .collect::<Vec<_>>(),
+            ["thread/read", "thread/archive"]
+        );
+    }
+
+    #[tokio::test]
+    async fn unavailable_provider_acquisition_still_moves_caffold_membership() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-provider-held-archive";
+        let client = CodexThreadClient::mock(Vec::new());
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        state.task_runtime.hold_codex_readiness_for_tests().await;
+
+        let archived = task_archive(State(state.clone()), AxumPath(thread_id.to_string()))
+            .await
+            .expect("provider acquisition failure does not block Caffold archive")
+            .0;
+
+        assert_eq!(archived.thread_id, thread_id);
+        assert!(!archived.conversation_available);
+        assert!(task_store_get(&state, thread_id).await.unwrap().is_none());
+        assert!(
+            task_store_get_archived(&state, thread_id)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(client.mock_requests().await.is_empty());
     }
 
     #[tokio::test]
