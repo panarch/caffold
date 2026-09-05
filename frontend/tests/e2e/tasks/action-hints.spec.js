@@ -1436,6 +1436,16 @@ test("keeps badges aligned and legible at appearance and zoom extremes", { tag: 
   await page.goto("/tasks");
   await expect(page.getByRole("button", { name: "New Task" })).toBeVisible();
   await expect(page.locator("caffold-active-task-row")).toHaveCount(8);
+  // The expected target map reads the New Task pickers, which settle only once
+  // the model list has landed.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const taskNew = document.querySelector("caffold-task-new:not([hidden])");
+        return !taskNew || Boolean(taskNew.querySelector(".task-model-name"));
+      }),
+    )
+    .toBe(true);
   const devtools = await context.newCDPSession(page);
 
   for (const scenario of [

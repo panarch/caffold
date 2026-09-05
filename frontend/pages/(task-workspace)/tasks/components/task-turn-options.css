@@ -106,6 +106,23 @@ caffold-task-turn-options {
     stroke-width: 2;
   }
 
+  & .task-picker-spinner {
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 999px;
+    color: var(--control-fg);
+    animation: task-picker-spin 800ms linear infinite;
+  }
+
+  /* The slot holds its place unseen until the list has been pending long
+     enough, so showing the ring changes nothing around it. */
+  & .is-deferred > .task-picker-spinner {
+    visibility: hidden;
+    animation-play-state: paused;
+  }
+
   & .task-model-button:hover,
   & .task-model-button:focus-visible,
   & .task-permission-button:hover,
@@ -247,6 +264,18 @@ caffold-task-turn-options {
     color: var(--muted);
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
+  }
+}
+
+@keyframes task-picker-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  caffold-task-turn-options .task-picker-spinner {
+    animation: none;
   }
 }
 

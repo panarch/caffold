@@ -1271,11 +1271,13 @@ test("keeps an idle follow-up composer compact within the portrait content gutte
   await expect
     .poll(() =>
       form.evaluate((element) => {
-        const composer = element.closest("caffold-task-composer");
+        const turnOptions = element.querySelector("caffold-task-turn-options");
         return Boolean(
-          composer?.isConnected &&
-            !composer.modelLoading &&
-            !composer.permissionLoading,
+          turnOptions?.isConnected &&
+            turnOptions.modelLoaded &&
+            !turnOptions.modelLoading &&
+            turnOptions.permissionLoaded &&
+            !turnOptions.permissionLoading,
         );
       }),
     )
