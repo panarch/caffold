@@ -606,6 +606,14 @@ home.
 - translation between shared child intents and Task or Section routes;
 - a bounded Integrated Review cache keyed by subject identity.
 
+For a selected Task, the Tasks page also passes the matching local
+Active-list row to this layout. Canonical Detail remains preferred. When it is
+unavailable, the local row keeps only the common Task header identity and
+Archive action present; provider status is marked unavailable, provider cwd is
+omitted, and the view switch plus repository children remain canonical-Detail
+gated. A Task switch, deactivation, or successful Archive clears that fallback
+identity.
+
 `caffold-task-detail` is the canonical owner of the selected Task
 snapshot and live event application, Conversation, Command dialog, current-plan
 strip, follow-up Composer, and Task mutations. It publishes a subject snapshot

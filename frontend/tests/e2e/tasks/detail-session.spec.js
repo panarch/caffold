@@ -686,10 +686,19 @@ test("keeps a folded agent message inside the element already rendering it", { t
   ).toBe(true);
 });
 
-test("loading detail accepts a canonical task sync without a synthetic task", { tag: "@all-viewports" }, async ({
+test("keeps the managed header and Archive escape hatch when canonical Detail disappears", { tag: "@all-viewports" }, async ({
   page,
 }) => {
   await installTaskApiFixture(page);
+  const cachedTask = taskDetailFixture().task;
+  const archivedTask = {
+    ...cachedTask,
+    conversationAvailable: false,
+    preview: "Conversation unavailable",
+    threadStatus: { type: "notLoaded" },
+  };
+  let activeTasks = [cachedTask];
+  let archivedTasks = [];
   const loadingDetail = {
     threadId: "thread-1",
     syncState: "loading",
@@ -702,11 +711,19 @@ test("loading detail accepts a canonical task sync without a synthetic task", { 
     historyLoading: true,
   };
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
-    route.fulfill({ json: activeTaskProjection([taskDetailFixture().task]) }),
+    route.fulfill({ json: activeTaskProjection(activeTasks) }),
+  );
+  await page.route(/\/api\/tasks\/archived(?:\?|$)/, (route) =>
+    route.fulfill({ json: { tasks: archivedTasks, nextCursor: null } }),
   );
   await page.route("**/api/tasks/thread-1", (route) =>
     route.fulfill({ json: loadingDetail }),
   );
+  await page.route("**/api/tasks/thread-1/archive", (route) => {
+    activeTasks = [];
+    archivedTasks = [archivedTask];
+    return route.fulfill({ json: archivedTask });
+  });
 
   await page.goto("/tasks/thread-1?cwd=src");
   await emitTaskDetailBootstrap(page, loadingDetail);
@@ -729,6 +746,12 @@ test("loading detail accepts a canonical task sync without a synthetic task", { 
       loadingClearance.closeRight + 4,
     );
   }
+  await expect(
+    page.locator("caffold-task-detail-summary h2"),
+  ).toHaveText("New task");
+  await expect(
+    page.getByRole("button", { name: "Task details, unavailable" }),
+  ).toBeVisible();
   await expect(page.locator(".task-detail")).toHaveCount(0);
 
   const detail = taskDetailFixture();
@@ -773,6 +796,9 @@ test("loading detail accepts a canonical task sync without a synthetic task", { 
   await expect(
     page.locator(".task-detail-error-message"),
   ).toHaveText("Codex app-server is unavailable");
+  await expect(
+    page.locator("caffold-task-detail-summary h2"),
+  ).toHaveText("New task");
   await expect(page.locator(".task-detail")).toHaveCount(1);
   await expect(page.locator(".task-detail")).toBeHidden();
   await expect(page.locator(".task-status-chip")).toHaveCount(0);
@@ -790,6 +816,28 @@ test("loading detail accepts a canonical task sync without a synthetic task", { 
       '.task-list-section[data-task-section="managed"] [data-task-action="retry-task-list"]',
     ),
   ).toHaveCount(0);
+  await page.getByRole("button", { name: "Task details" }).click();
+  await expect(
+    page.locator(".task-detail-popover [data-task-info-provider-context]"),
+  ).toBeHidden();
+  const archiveButton = page.getByRole("button", { name: "Archive task" });
+  await expect(archiveButton).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Fork task" })).toBeDisabled();
+
+  const archiveRequest = page.waitForRequest((request) =>
+    request.method() === "POST" &&
+    new URL(request.url()).pathname === "/api/tasks/thread-1/archive"
+  );
+  await archiveButton.click();
+  await archiveRequest;
+
+  await expect(page).toHaveURL("/");
+  await expect(
+    page.locator('.task-row[data-thread-id="thread-1"]'),
+  ).toHaveCount(0);
+  await expect(
+    page.locator('.task-archived-row[data-thread-id="thread-1"]'),
+  ).toContainText("New task");
 });
 
 test("recovers task detail and prompt submission across bootstrap races", { tag: "@all-viewports" }, async ({

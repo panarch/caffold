@@ -8,7 +8,9 @@ import { emptyScrollSurfaceScope } from "../../../../scroll-scope.js";
 import {
   mergeKeyboardNavigationContexts,
 } from "../../../../keyboard-navigation.js";
+import { taskThreadStatusType } from "../runtime-state.js";
 import { cleanLogicalPath } from "../task-format.js";
+import { taskThreadId } from "../task-list-model.js";
 import "./(task)/layout.js";
 import "./(git)/layout.js";
 import "./(github)/layout.js";
@@ -37,6 +39,7 @@ class CaffoldDetailLayout extends HTMLElement {
     this.sectionRoute = null;
     this.taskRoute = null;
     this.taskSnapshot = null;
+    this.managedTask = null;
     this.sectionActivationKey = "";
     this.sharedDomainContextKey = "";
     this.domainActivationPromise = null;
@@ -185,6 +188,9 @@ class CaffoldDetailLayout extends HTMLElement {
 
   prepare(threadId, options = {}) {
     this.ensureRendered();
+    if (taskThreadId(this.managedTask) !== `${threadId ?? ""}`) {
+      this.managedTask = null;
+    }
     this.taskRoute = { ...(options.route ?? { kind: "tasks", threadId }) };
     this.activateSubject("task");
     const prepared = this.taskDetail()?.prepare(threadId, options);
@@ -222,6 +228,7 @@ class CaffoldDetailLayout extends HTMLElement {
       this.deactivate();
       return false;
     }
+    this.managedTask = null;
     const contextChanged = !this.sectionContextMatches(section);
     if (contextChanged) {
       this.deactivateSectionSurfaces();
@@ -279,6 +286,22 @@ class CaffoldDetailLayout extends HTMLElement {
     return true;
   }
 
+  setManagedTask(task) {
+    this.ensureRendered();
+    const selectedThreadId = `${this.taskRoute?.threadId ?? ""}`;
+    const nextTask =
+      selectedThreadId && taskThreadId(task) === selectedThreadId
+        ? task
+        : null;
+    if (this.managedTask === nextTask) {
+      return;
+    }
+    this.managedTask = nextTask;
+    if (this.subjectKind === "task") {
+      this.syncTaskPresentation();
+    }
+  }
+
   activateSubject(kind) {
     if (this.subjectKind === kind) {
       this.hidden = false;
@@ -312,6 +335,7 @@ class CaffoldDetailLayout extends HTMLElement {
       this.sectionDetail()?.clear();
       this.section = null;
     }
+    this.managedTask = null;
   }
 
   suspendForeground() {
@@ -393,13 +417,25 @@ class CaffoldDetailLayout extends HTMLElement {
       return;
     }
     const snapshot = this.taskSnapshot ?? {};
-    const task = snapshot.task ?? null;
+    const selectedThreadId = `${this.taskRoute?.threadId ?? ""}`;
+    const canonicalTask =
+      selectedThreadId && taskThreadId(snapshot.task) === selectedThreadId
+        ? snapshot.task
+        : null;
+    const managedTask =
+      selectedThreadId && taskThreadId(this.managedTask) === selectedThreadId
+        ? this.managedTask
+        : null;
+    const task = canonicalTask ?? managedTask;
     this.summaryHeader()?.toggleAttribute("hidden", !task);
-    const repository = Boolean(task?.worktree?.rootPath);
+    const repository = Boolean(canonicalTask?.worktree?.rootPath);
     this.rebindSharedDomainContext();
-    const surface = this.activeSurface();
+    const surface = canonicalTask ? this.activeSurface() : "conversation";
     this.taskSummary()?.setSnapshot({
       task,
+      canonicalTaskAvailable: Boolean(canonicalTask),
+      archiveBlockedByActive:
+        taskThreadStatusType(canonicalTask) === "active",
       transportState: snapshot.transportState ?? this.streamState ?? "idle",
       contextPath: snapshot.contextPath ?? this.selectedTaskContextPath(),
       provider: snapshot.provider,
@@ -426,7 +462,7 @@ class CaffoldDetailLayout extends HTMLElement {
             { value: "review", label: "Review" },
           ],
     });
-    this.viewSwitch()?.removeAttribute("hidden");
+    this.viewSwitch()?.toggleAttribute("hidden", !canonicalTask);
     this.gitMenu()?.setSnapshot({ available: repository });
     this.githubMenu()?.setSnapshot({ available: repository });
     this.applySurfaceVisibility(surface);

@@ -154,7 +154,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
             <dt>Thread</dt>
             <dd data-task-info-field="thread"></dd>
           </div>
-          <div>
+          <div data-task-info-provider-context>
             <dt>Working directory</dt>
             <dd data-task-info-field="working-directory"></dd>
           </div>
@@ -191,12 +191,17 @@ class CaffoldTaskDetailInfo extends HTMLElement {
       this.querySelector('[data-task-info-field="thread"]'),
       taskThreadId(task),
     );
+    const canonicalTaskAvailable = this.snapshot.canonicalTaskAvailable;
+    this.querySelector("[data-task-info-provider-context]").hidden =
+      !canonicalTaskAvailable;
     setText(
       this.querySelector('[data-task-info-field="working-directory"]'),
-      `${task.cwdPath || task.cwd || this.snapshot.contextPath}`,
+      canonicalTaskAvailable
+        ? `${task.cwdPath || task.cwd || this.snapshot.contextPath}`
+        : "",
     );
 
-    const hasWorktree = Boolean(task.worktree);
+    const hasWorktree = canonicalTaskAvailable && Boolean(task.worktree);
     for (const row of this.querySelectorAll("[data-task-info-worktree]")) {
       row.hidden = !hasWorktree;
     }
@@ -218,10 +223,12 @@ class CaffoldTaskDetailInfo extends HTMLElement {
       return;
     }
 
-    const statusLabel = formatTaskStatus(task);
-    const status = renderTaskStatusChip(task, "task-detail-status", {
-      label: false,
-    });
+    const statusLabel = this.snapshot.canonicalTaskAvailable
+      ? formatTaskStatus(task)
+      : "unavailable";
+    const status = this.snapshot.canonicalTaskAvailable
+      ? renderTaskStatusChip(task, "task-detail-status", { label: false })
+      : "";
     const content =
       status || renderInlineIcon("Info", "Task details", "task-action-icon");
     const renderKey = JSON.stringify([statusLabel, content]);
@@ -335,6 +342,8 @@ if (!customElements.get("caffold-task-detail-info")) {
 function normalizedSnapshot(snapshot = {}) {
   return {
     task: snapshot.task ?? null,
+    canonicalTaskAvailable: Boolean(snapshot.canonicalTaskAvailable),
+    archiveBlockedByActive: Boolean(snapshot.archiveBlockedByActive),
     transportState: snapshot.transportState ?? "idle",
     contextPath: `${snapshot.contextPath ?? "."}`,
     provider: `${snapshot.provider ?? ""}`,

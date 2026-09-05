@@ -27,6 +27,8 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     this.stateReady = true;
     this.snapshot = {
       task: null,
+      canonicalTaskAvailable: false,
+      archiveBlockedByActive: false,
       transportState: "idle",
       contextPath: ".",
       provider: "",
@@ -44,6 +46,8 @@ class CaffoldTaskDetailSummary extends HTMLElement {
     const nextThreadId = taskThreadId(task);
     this.snapshot = {
       task,
+      canonicalTaskAvailable: Boolean(snapshot.canonicalTaskAvailable),
+      archiveBlockedByActive: Boolean(snapshot.archiveBlockedByActive),
       transportState: snapshot.transportState ?? "idle",
       contextPath: `${snapshot.contextPath ?? "."}`,
       provider: `${snapshot.provider ?? ""}`,
@@ -133,6 +137,8 @@ class CaffoldTaskDetailSummary extends HTMLElement {
   syncTaskInfo() {
     this.taskInfo()?.setSnapshot({
       task: this.snapshot.task,
+      canonicalTaskAvailable: this.snapshot.canonicalTaskAvailable,
+      archiveBlockedByActive: this.snapshot.archiveBlockedByActive,
       transportState: this.snapshot.transportState,
       contextPath: this.snapshot.contextPath,
       provider: this.snapshot.provider,

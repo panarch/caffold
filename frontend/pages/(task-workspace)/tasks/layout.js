@@ -134,12 +134,14 @@ class CaffoldTasksPage extends HTMLElement {
       event.stopPropagation();
       if (event.detail?.task) {
         this.taskNavigator()?.upsertCanonicalTask(event.detail.task);
+        this.syncSelectedManagedTask();
       }
     });
     this.addEventListener("caffold:task-detail-intent", (event) => {
       event.stopPropagation();
       if (event.detail?.type === "task-archived" && event.detail.task) {
         this.taskNavigator()?.acceptArchivedTask(event.detail.task);
+        this.syncSelectedManagedTask();
         this.requestRoute({ kind: "tasks" }, { replace: true });
       } else if (
         ["review-route", "domain-route"].includes(event.detail?.type) &&
@@ -211,6 +213,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.connectedTaskNavigator?.isTransportAvailable?.(),
     );
     this.connectedTaskNavigator?.setSelectedSubject(this.selectedSubject());
+    this.syncSelectedManagedTask();
     this.publishTransportState();
   }
 
@@ -336,6 +339,7 @@ class CaffoldTasksPage extends HTMLElement {
       this.taskNew()?.deactivate();
       this.taskRecovery()?.prepare(options.recovery ?? null);
     }
+    this.syncSelectedManagedTask();
     this.render();
     return { preserveLoadedTask };
   }
@@ -424,6 +428,7 @@ class CaffoldTasksPage extends HTMLElement {
       detail.task,
       detail.activeTopPlacement,
     );
+    this.syncSelectedManagedTask();
     this.requestRoute({ kind: "tasks", threadId });
     return true;
   }
@@ -507,6 +512,7 @@ class CaffoldTasksPage extends HTMLElement {
     } else if (wasTakenOver && this.view === "detail" && this.selectedThreadId) {
       // The takeover deactivated the open Task; its clearing has to bring
       // the Task back, or the pane it uncovers is blank.
+      this.syncSelectedManagedTask();
       void this.taskDetail()?.open(this.selectedThreadId, {
         preserveLoadedTask: true,
         route: this.currentRoute,
@@ -655,6 +661,7 @@ class CaffoldTasksPage extends HTMLElement {
   syncTaskListState(state = {}) {
     this.reconcileSelectedTask(state);
     this.reconcileSelectedSection(state);
+    this.syncSelectedManagedTask();
     const count = Number(state.count ?? 0);
     const nextState = state.loaded
       ? count > 0
@@ -670,6 +677,18 @@ class CaffoldTasksPage extends HTMLElement {
     }
     this.taskListState = nextState;
     this.render();
+  }
+
+  syncSelectedManagedTask() {
+    const navigator = this.taskNavigator();
+    const selected =
+      this.view === "detail" &&
+      this.selectedThreadId &&
+      !this.selectedSectionId &&
+      !navigator?.recoveryFor?.(this.selectedThreadId)
+        ? navigator?.taskFor?.(this.selectedThreadId) ?? null
+        : null;
+    this.taskDetail()?.setManagedTask(selected);
   }
 
   reconcileSelectedTask(state = {}) {
