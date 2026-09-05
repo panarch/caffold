@@ -129,25 +129,27 @@ export async function captureReviewScreenshot(page, testInfo, name) {
   });
 }
 
+export const AGENT_MODELS_FIXTURE = {
+  models: [
+    {
+      provider: "codex",
+      model: "gpt-5.6-sol",
+      displayName: "GPT-5.6-Sol",
+      description: "Latest frontier agentic coding model.",
+      isDefault: true,
+      defaultEffort: "low",
+      efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+      supportsFastMode: true,
+    },
+  ],
+  unavailable: [],
+};
+
 export async function mockAgentModels(page) {
   await page.route(/\/api\/agent\/models(?:\?|$)/, (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({
-        models: [
-          {
-            provider: "codex",
-            model: "gpt-5.6-sol",
-            displayName: "GPT-5.6-Sol",
-            description: "Latest frontier agentic coding model.",
-            isDefault: true,
-            defaultEffort: "low",
-            efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
-            supportsFastMode: true,
-          },
-        ],
-        unavailable: [],
-      }),
+      body: JSON.stringify(AGENT_MODELS_FIXTURE),
     }),
   );
 }

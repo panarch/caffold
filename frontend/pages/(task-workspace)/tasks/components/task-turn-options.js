@@ -13,7 +13,17 @@ import {
 import { cleanLogicalPath } from "../task-format.js";
 import "../../../../keyboard-navigation/components/presentation.js";
 
+// A list that arrives quickly is never seen loading; only one still pending
+// after this long earns a spinner in the closed control.
+const LOADING_DELAY_MS = 180;
+const LOADING_SLOT_HTML =
+  '<span class="task-picker-spinner" aria-hidden="true"></span>';
+
 let turnOptionsInstanceSequence = 0;
+
+function createLoadingFeedback() {
+  return { timer: null, visible: false };
+}
 
 function createSelection() {
   return {
@@ -63,6 +73,8 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.permissionRequestId += 1;
     this.modelLoading = false;
     this.permissionLoading = false;
+    this.endLoadingFeedback(this.modelLoadingFeedback);
+    this.endLoadingFeedback(this.permissionLoadingFeedback);
   }
 
   ensureState() {
@@ -91,12 +103,14 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.modelLoaded = false;
     this.modelError = null;
     this.modelRequestId = 0;
+    this.modelLoadingFeedback = createLoadingFeedback();
     this.permissionOptions = [];
     this.permissionCwd = "";
     this.permissionLoading = false;
     this.permissionLoaded = false;
     this.permissionError = null;
     this.permissionRequestId = 0;
+    this.permissionLoadingFeedback = createLoadingFeedback();
     this.defaultPermissionMode = "";
     this.boundClick = (event) => this.handleClick(event);
     this.boundBeforeToggle = (event) => this.handleBeforeToggle(event);
@@ -337,6 +351,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     const requestId = ++this.modelRequestId;
     this.modelLoading = true;
     this.modelError = null;
+    this.startLoadingFeedback(this.modelLoadingFeedback);
     this.render();
     try {
       const response = await getAgentModels();
@@ -355,6 +370,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     } finally {
       if (requestId === this.modelRequestId) {
         this.modelLoading = false;
+        this.endLoadingFeedback(this.modelLoadingFeedback);
         this.render();
         this.emitChange();
         void this.loadPermissions(this.context.cwd);
@@ -385,6 +401,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.permissionLoading = true;
     this.permissionLoaded = false;
     this.permissionError = null;
+    this.startLoadingFeedback(this.permissionLoadingFeedback);
     this.render();
     try {
       const response = await getAgentPermissions(
@@ -418,10 +435,31 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     } finally {
       if (requestId === this.permissionRequestId) {
         this.permissionLoading = false;
+        this.endLoadingFeedback(this.permissionLoadingFeedback);
         this.render();
         this.emitChange();
       }
     }
+  }
+
+  // Feedback follows the list, not the request. A request superseded while
+  // its list is still pending hands the count on rather than starting over;
+  // only a settled list or a disconnected control ends it.
+  startLoadingFeedback(feedback) {
+    if (feedback.timer !== null || feedback.visible) {
+      return;
+    }
+    feedback.timer = window.setTimeout(() => {
+      feedback.timer = null;
+      feedback.visible = true;
+      this.render();
+    }, LOADING_DELAY_MS);
+  }
+
+  endLoadingFeedback(feedback) {
+    window.clearTimeout(feedback.timer);
+    feedback.timer = null;
+    feedback.visible = false;
   }
 
   // The models on offer here: one agent's for an existing Task, every agent's
@@ -726,8 +764,8 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     const locked = this.context.locked;
     this.dataset.placement = this.context.placement;
 
-    const modelLabel =
-      model?.displayName ?? (this.modelLoading ? "Loading model" : "Model");
+    const modelPending = !model && this.modelLoading;
+    const modelLabel = model?.displayName ?? "Model";
     // Not every model works at more than one depth. One that does not has
     // nothing to choose, and a placeholder in the summary would read as a
     // depth it was set to.
@@ -747,10 +785,16 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     modelButton.classList.toggle("has-effort", Boolean(effortValue));
     modelButton.disabled = locked;
     modelButton.setAttribute("aria-label", pickerLabel);
-    modelButton.title = locked
-      ? "Model, reasoning, and speed can be changed after the active turn finishes."
-      : summaryLabel;
-    modelButton.innerHTML = `
+    this.patchPickerButton(modelButton, {
+      busy: modelPending,
+      pending: modelPending,
+      feedback: this.modelLoadingFeedback,
+      title: locked
+        ? "Model, reasoning, and speed can be changed after the active turn finishes."
+        : modelPending
+          ? "Loading models"
+          : summaryLabel,
+      html: `
       <span class="task-model-name">${escapeHtml(compactModel)}</span>
       ${
         effortValue
@@ -762,7 +806,8 @@ class CaffoldTaskTurnOptions extends HTMLElement {
           ? `<span class="task-model-fast" title="Fast mode">${renderInlineIcon("Zap", "Fast mode", "task-model-fast-icon")}</span>`
           : ""
       }
-    `;
+    `,
+    });
 
     const modelPopover = this.modelPopover();
     const popoverLabel = listPhrase(chosen);
@@ -807,27 +852,34 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       }`,
     );
 
+    const permissionPending = !permission && this.permissionLoading;
     const permissionLabel =
       permission?.label ??
-      (this.permissionLoading
-        ? "Loading permissions"
-        : permissionMode
-          ? permissionModeLabel(permissionMode)
-          : "Agent default");
+      (permissionMode ? permissionModeLabel(permissionMode) : "Agent default");
     const compactPermission = permission
       ? compactPermissionModeLabel(permissionMode, permission.label)
-      : this.permissionLoading
-        ? "Loading"
-        : permissionMode
-          ? compactPermissionModeLabel(permissionMode)
-          : "Agent default";
+      : permissionMode
+        ? compactPermissionModeLabel(permissionMode)
+        : "Agent default";
     const permissionButton = this.permissionButton();
     permissionButton.classList.toggle("is-dangerous", Boolean(permission?.dangerous));
     permissionButton.disabled = locked;
-    permissionButton.title = locked
-      ? "Approval mode can be changed after the active turn finishes."
-      : permissionLabel;
-    permissionButton.innerHTML = `<span>${escapeHtml(compactPermission)}</span>`;
+    // A list being fetched again keeps the previous list's label in place, so
+    // the control stays busy without a slot.
+    this.patchPickerButton(permissionButton, {
+      busy: this.permissionLoading,
+      pending: permissionPending,
+      feedback: this.permissionLoadingFeedback,
+      title: locked
+        ? "Approval mode can be changed after the active turn finishes."
+        : permissionPending
+          ? "Loading permission modes"
+          : permissionLabel,
+      html: `<span>${escapeHtml(compactPermission)}</span>`,
+    });
+    // Until the model is known its width is not, and a control sitting to the
+    // right of it would be carried along when the label lands.
+    this.permissionPicker().hidden = modelPending;
     this.patchPopover(
       this.permissionPopover(),
       `<p class="task-permission-heading">Permissions</p>
@@ -846,18 +898,32 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     );
   }
 
+  // A pending list shows the shared slot in place of the label; the button
+  // says whether the ring in it may be seen yet.
+  patchPickerButton(button, { busy, pending, feedback, title, html }) {
+    if (busy) {
+      button.setAttribute("aria-busy", "true");
+    } else {
+      button.removeAttribute("aria-busy");
+    }
+    button.classList.toggle("is-deferred", pending && !feedback.visible);
+    button.title = title;
+    patchHtml(button, pending ? LOADING_SLOT_HTML : html);
+  }
+
   patchPopover(popover, html) {
     const content = popover.querySelector(
       ":scope > .task-model-popover-content, :scope > .task-permission-popover-content",
     );
-    if (!content || content.renderedHtml === html) {
+    if (!content) {
       return;
     }
     const focused = content.contains(document.activeElement)
       ? optionFocusKey(document.activeElement)
       : null;
-    content.innerHTML = html;
-    content.renderedHtml = html;
+    if (!patchHtml(content, html)) {
+      return;
+    }
     if (focused && popover.matches(":popover-open")) {
       optionForFocusKey(popover, focused)?.focus();
     }
@@ -926,6 +992,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
         control.getAttribute("popovertarget") === popover.id &&
         control.getAttribute("popovertargetaction") === "toggle" &&
         !this.context.locked &&
+        !this.permissionPicker()?.hidden &&
         !control.disabled &&
         !this.permissionPopover()?.matches(":popover-open"),
     });
@@ -1036,6 +1103,10 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     return this.querySelector(":scope .task-permission-button");
   }
 
+  permissionPicker() {
+    return this.querySelector(":scope .task-permission-picker");
+  }
+
   modelPopover() {
     return this.querySelector(":scope .task-model-popover");
   }
@@ -1134,6 +1205,17 @@ function optionForFocusKey(popover, focus) {
       (focus.key !== "model" ||
         `${element.dataset.provider ?? ""}` === focus.provider),
   );
+}
+
+// Unchanged content keeps its nodes, so one picker's response does not
+// restart the spinner still turning in the other.
+function patchHtml(node, html) {
+  if (node.renderedHtml === html) {
+    return false;
+  }
+  node.innerHTML = html;
+  node.renderedHtml = html;
+  return true;
 }
 
 function normalizeModelOptions(response) {

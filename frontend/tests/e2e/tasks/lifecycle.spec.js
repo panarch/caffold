@@ -1706,6 +1706,8 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
     const turnOptions = composer.querySelector("caffold-task-turn-options");
     turnOptions.modelLoading = true;
     turnOptions.permissionLoading = true;
+    turnOptions.modelLoadingFeedback.visible = true;
+    turnOptions.permissionLoadingFeedback.visible = true;
 
     element.remove();
     const detached = !element.isConnected;
@@ -1721,7 +1723,12 @@ test("reattaches Tasks component lifecycles without rebuilding stable children",
       sameTaskNew: taskNew === element.querySelector("caffold-task-new"),
       sameDetail: detail === element.querySelector("caffold-task-detail"),
       turnOptionRequestsReleased:
-        !turnOptions.modelLoading && !turnOptions.permissionLoading,
+        !turnOptions.modelLoading &&
+        !turnOptions.permissionLoading &&
+        !turnOptions.modelLoadingFeedback.visible &&
+        turnOptions.modelLoadingFeedback.timer === null &&
+        !turnOptions.permissionLoadingFeedback.visible &&
+        turnOptions.permissionLoadingFeedback.timer === null,
     };
   });
 

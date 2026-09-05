@@ -120,11 +120,13 @@ test("provides Permission through the same retained native popover contract", ()
     id: "permission-options",
     matches: () => false,
   };
+  const picker = { hidden: false };
   const owner = {
     isConnected: true,
     context: { locked: false },
     ensureRendered() {},
     permissionButton: () => control,
+    permissionPicker: () => picker,
     permissionPopover: () => popover,
   };
 
@@ -136,22 +138,25 @@ test("provides Permission through the same retained native popover contract", ()
   target.activate();
   assert.equal(focused, true);
   assert.equal(clicked, true);
+
+  picker.hidden = true;
+  assert.equal(target.isActionable(), false);
 });
 
 test("keeps the popover shell while replacing only its option body", () => {
-  const content = {
-    renderedHtml: "old",
-    innerHTML: "old",
-    contains: () => false,
-  };
+  const content = control();
+  content.contains = () => false;
   const popover = {
     querySelector: () => content,
     matches: () => false,
   };
 
   turnOptions.patchPopover.call({}, popover, "new");
-  assert.equal(content.innerHTML, "new");
-  assert.equal(content.renderedHtml, "new");
+  turnOptions.patchPopover.call({}, popover, "new");
+  assert.deepEqual(
+    { html: content.innerHTML, assignments: content.assignments },
+    { html: "new", assignments: 1 },
+  );
   assert.equal(popover.querySelector(), content);
 });
 
@@ -329,33 +334,17 @@ test("renders only the exact provider and model identity as selected", () => {
     supportsFast: false,
   };
   const modelPopover = control();
-  const permissionPopover = control();
   let modelHtml = "";
-  const owner = {
-    context: { locked: false, placement: "below" },
-    dataset: {},
-    modelLoading: false,
-    modelError: null,
-    permissionLoading: false,
-    permissionError: null,
-    permissionOptions: [],
-    ensureRendered() {},
+  const owner = renderOwner({
     offeredModels: () => [codex, claude],
     selectedModel: () => codex,
-    selectedEffort: () => "",
-    selectedFastMode: () => false,
-    selectedPermissionMode: () => "",
-    selectedPermission: () => null,
-    modelButton: () => control(),
     modelPopover: () => modelPopover,
-    permissionButton: () => control(),
-    permissionPopover: () => permissionPopover,
     patchPopover(popover, html) {
       if (popover === modelPopover) {
         modelHtml = html;
       }
     },
-  };
+  });
 
   turnOptions.render.call(owner);
 
@@ -367,6 +356,154 @@ test("renders only the exact provider and model identity as selected", () => {
     modelHtml,
     /data-provider="claude"[\s\S]*?data-model="shared-model"[\s\S]*?aria-pressed="false"/,
   );
+});
+
+test("keeps a closed picker wordless while its list loads", () => {
+  const modelButton = control();
+  const permissionButton = control();
+  const permissionPicker = { hidden: false };
+  const owner = renderOwner({
+    modelLoading: true,
+    permissionLoading: true,
+    modelButton: () => modelButton,
+    permissionButton: () => permissionButton,
+    permissionPicker: () => permissionPicker,
+  });
+
+  turnOptions.render.call(owner);
+  assert.equal(modelButton.innerHTML, LOADING_SLOT_HTML);
+  assert.equal(modelButton.classList.contains("is-deferred"), true);
+  assert.equal(modelButton.attributes.get("aria-busy"), "true");
+  assert.equal(modelButton.attributes.get("aria-label"), "Choose model");
+  assert.equal(modelButton.title, "Loading models");
+  assert.equal(permissionPicker.hidden, true);
+  assert.equal(permissionButton.innerHTML, LOADING_SLOT_HTML);
+  assert.equal(permissionButton.classList.contains("is-deferred"), true);
+  assert.equal(permissionButton.attributes.get("aria-busy"), "true");
+
+  // Showing the ring changes the button's class, not the slot's nodes.
+  owner.modelLoadingFeedback.visible = true;
+  turnOptions.render.call(owner);
+  assert.equal(modelButton.classList.contains("is-deferred"), false);
+  assert.equal(modelButton.assignments, 1);
+  assert.equal(permissionButton.classList.contains("is-deferred"), true);
+});
+
+test("shows the permission picker once the model is known and its label once a list describes it", () => {
+  const codex = {
+    provider: "codex",
+    model: "gpt-test",
+    displayName: "GPT Test",
+    supportedReasoningEfforts: [{ value: "low" }],
+    supportsFast: false,
+  };
+  const permissionButton = control();
+  const permissionPicker = { hidden: true };
+  const owner = renderOwner({
+    offeredModels: () => [codex],
+    selectedModel: () => codex,
+    selectedEffort: () => "low",
+    permissionLoading: true,
+    permissionLoadingFeedback: { timer: null, visible: true },
+    permissionButton: () => permissionButton,
+    permissionPicker: () => permissionPicker,
+  });
+
+  turnOptions.render.call(owner);
+  assert.equal(permissionPicker.hidden, false);
+  assert.equal(permissionButton.innerHTML, LOADING_SLOT_HTML);
+  assert.equal(permissionButton.classList.contains("is-deferred"), false);
+  assert.equal(permissionButton.attributes.get("aria-busy"), "true");
+  assert.equal(permissionButton.title, "Loading permission modes");
+
+  owner.permissionLoading = false;
+  owner.permissionOptions = [
+    {
+      mode: "approveForMe",
+      label: "Approve for me",
+      description: "",
+      allowed: true,
+      dangerous: false,
+    },
+  ];
+  owner.selectedPermissionMode = () => "approveForMe";
+  owner.selectedPermission = () => owner.permissionOptions[0];
+  turnOptions.render.call(owner);
+  assert.equal(permissionButton.innerHTML, "<span>Auto review</span>");
+  assert.equal(permissionButton.attributes.has("aria-busy"), false);
+  assert.equal(permissionButton.title, "Approve for me");
+
+  // A list fetched again keeps the previous label but says it is busy.
+  owner.permissionLoading = true;
+  turnOptions.render.call(owner);
+  assert.equal(permissionButton.innerHTML, "<span>Auto review</span>");
+  assert.equal(permissionButton.classList.contains("is-deferred"), false);
+  assert.equal(permissionButton.attributes.get("aria-busy"), "true");
+  assert.equal(permissionButton.title, "Approve for me");
+});
+
+test("counts a pending list once across the requests that ask for it", () => {
+  const previousWindow = globalThis.window;
+  const timers = [];
+  const cleared = [];
+  globalThis.window = {
+    setTimeout(callback, delay) {
+      timers.push({ callback, delay });
+      return timers.length;
+    },
+    clearTimeout(id) {
+      cleared.push(id);
+    },
+  };
+
+  try {
+    let renders = 0;
+    const owner = {
+      render() {
+        renders += 1;
+      },
+    };
+    const feedback = { timer: null, visible: false };
+
+    turnOptions.startLoadingFeedback.call(owner, feedback);
+    assert.deepEqual(
+      { delay: timers[0].delay, timer: feedback.timer },
+      { delay: 180, timer: 1 },
+    );
+    // A superseding request while the timer is armed keeps that timer.
+    turnOptions.startLoadingFeedback.call(owner, feedback);
+    assert.deepEqual({ timers: timers.length, timer: feedback.timer }, {
+      timers: 1,
+      timer: 1,
+    });
+
+    timers[0].callback();
+    assert.deepEqual(
+      { visible: feedback.visible, timer: feedback.timer, renders },
+      { visible: true, timer: null, renders: 1 },
+    );
+    // A superseding request while the ring is showing keeps it showing.
+    turnOptions.startLoadingFeedback.call(owner, feedback);
+    assert.deepEqual({ timers: timers.length, visible: feedback.visible }, {
+      timers: 1,
+      visible: true,
+    });
+
+    turnOptions.endLoadingFeedback.call(owner, feedback);
+    assert.deepEqual(
+      { visible: feedback.visible, timer: feedback.timer },
+      { visible: false, timer: null },
+    );
+    turnOptions.startLoadingFeedback.call(owner, feedback);
+    assert.deepEqual({ timers: timers.length, timer: feedback.timer }, {
+      timers: 2,
+      timer: 2,
+    });
+    turnOptions.endLoadingFeedback.call(owner, feedback);
+    assert.equal(cleared.includes(2), true);
+  } finally {
+    restoreGlobal("window", previousWindow);
+  }
 });
 
 function optionControl({
@@ -396,10 +533,71 @@ function optionControl({
   };
 }
 
+const LOADING_SLOT_HTML =
+  '<span class="task-picker-spinner" aria-hidden="true"></span>';
+
 function control() {
+  const attributes = new Map();
+  const classes = new Set();
+  let html = "";
   return {
-    classList: { toggle() {} },
-    setAttribute() {},
+    attributes,
+    assignments: 0,
+    title: "",
+    classList: {
+      toggle(name, force) {
+        if (force) {
+          classes.add(name);
+        } else {
+          classes.delete(name);
+        }
+      },
+      contains(name) {
+        return classes.has(name);
+      },
+    },
+    get innerHTML() {
+      return html;
+    },
+    set innerHTML(value) {
+      html = value;
+      this.assignments += 1;
+    },
+    setAttribute(name, value) {
+      attributes.set(name, value);
+    },
+    removeAttribute(name) {
+      attributes.delete(name);
+    },
+  };
+}
+
+function renderOwner(overrides = {}) {
+  return {
+    context: { locked: false, placement: "below" },
+    dataset: {},
+    modelLoading: false,
+    modelError: null,
+    modelLoadingFeedback: { timer: null, visible: false },
+    permissionLoading: false,
+    permissionError: null,
+    permissionOptions: [],
+    permissionLoadingFeedback: { timer: null, visible: false },
+    ensureRendered() {},
+    offeredModels: () => [],
+    selectedModel: () => null,
+    selectedEffort: () => "",
+    selectedFastMode: () => false,
+    selectedPermissionMode: () => "",
+    selectedPermission: () => undefined,
+    modelButton: () => control(),
+    modelPopover: () => control(),
+    permissionButton: () => control(),
+    permissionPicker: () => ({ hidden: false }),
+    permissionPopover: () => control(),
+    patchPickerButton: turnOptions.patchPickerButton,
+    patchPopover() {},
+    ...overrides,
   };
 }
 

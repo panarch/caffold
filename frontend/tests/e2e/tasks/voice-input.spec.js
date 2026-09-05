@@ -180,6 +180,7 @@ test("records without focusing the prompt and inserts a host transcript at the s
     levelPresentation.segmentHeight / 2,
     1,
   );
+  await expect(composer.locator(".task-model-name")).toHaveCount(1);
   const toolLayout = await composer.evaluate((form) => {
     const modelName = form.querySelector(".task-model-name");
     const items = Array.from(

@@ -36,6 +36,11 @@ test("scales visible Task controls without shrinking their touch targets", { tag
       "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
     ),
   ).toBeVisible();
+  await expect(
+    page.locator(
+      "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden]) .task-model-name",
+    ),
+  ).toHaveCount(1);
   await page.evaluate(() => {
     const composer = document.querySelector(
       "caffold-task-detail:not([hidden]) caffold-task-composer:not([hidden])",
