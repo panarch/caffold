@@ -39,12 +39,25 @@ pub enum TurnState {
     Unknown,
 }
 
+/// Whether an event is something the agent said, thought, or ran — as
+/// opposed to what a person said or what the Task is doing.
+pub fn is_agent_work(event: &Value) -> bool {
+    matches!(
+        event["type"].as_str(),
+        Some("assistant_message" | "reasoning" | "tool_call" | "command_execution")
+    )
+}
+
 /// A Task as it stands, in the terms the cases are written in.
 #[derive(Debug, Clone)]
 pub struct Reading {
     pub state: TurnState,
     pub turn_id: Option<String>,
     pub events: usize,
+    /// Whether the conversation holds anything the agent said, thought, or
+    /// ran — the agent having visibly begun, as opposed to the prompt having
+    /// merely reached it.
+    pub agent_begun: bool,
 }
 
 /// Where a backend answers. Copied rather than borrowed so that a Task can
@@ -367,6 +380,10 @@ pub struct Said {
     /// Whether the message joined a turn already running rather than opening
     /// one of its own.
     pub steered: bool,
+    /// The turn the message belongs to, as the backend named it in its answer.
+    pub turn_id: String,
+    /// The identity the backend gave the message itself.
+    pub user_message_id: String,
 }
 
 pub struct Task {
@@ -387,6 +404,7 @@ impl Task {
                 state: TurnState::Unknown,
                 turn_id: None,
                 events: 0,
+                agent_begun: false,
             };
         };
         let task = &body["task"];
@@ -395,6 +413,7 @@ impl Task {
                 state: TurnState::Unknown,
                 turn_id: None,
                 events: 0,
+                agent_begun: false,
             };
         }
         let state = match task["threadStatus"]["type"].as_str() {
@@ -402,28 +421,49 @@ impl Task {
             Some("idle") => TurnState::Idle,
             _ => TurnState::Unknown,
         };
+        let events = body["events"].as_array();
         Reading {
             state,
             turn_id: task["activeTurn"]["id"].as_str().map(str::to_string),
-            events: body["events"].as_array().map(Vec::len).unwrap_or_default(),
+            events: events.map(Vec::len).unwrap_or_default(),
+            agent_begun: events.is_some_and(|events| events.iter().any(is_agent_work)),
         }
     }
 
     pub async fn wait_for(&self, wanted: TurnState, within: Duration) -> Reading {
-        let deadline = Instant::now() + within;
-        let mut last = None;
-        while Instant::now() < deadline {
-            let reading = self.state().await;
-            if reading.state == wanted {
-                return reading;
-            }
-            last = Some(reading);
-            tokio::time::sleep(Duration::from_millis(500)).await;
-        }
-        panic!(
-            "Task {} never read as {wanted:?}; last saw {last:?}",
-            self.thread_id
-        );
+        self.wait_until(within, &format!("as {wanted:?}"), |reading| {
+            reading.state == wanted
+        })
+        .await
+    }
+
+    /// Poll the Task at the rate a person clicking would, until it reads as
+    /// the caller wants or the time is up.
+    async fn wait_until(
+        &self,
+        within: Duration,
+        wanted: &str,
+        satisfied: impl Fn(&Reading) -> bool,
+    ) -> Reading {
+        poll_until(
+            within,
+            &format!("Task {} never read {wanted}", self.thread_id),
+            async || Some(self.state().await),
+            satisfied,
+        )
+        .await
+    }
+
+    /// Wait until the agent has visibly begun: something it said, thought, or
+    /// ran stands in the turn. Reading as Running says only that the prompt
+    /// reached the agent, which is before Claude has written the prompt to its
+    /// transcript — too early for a case that takes the backend away and
+    /// expects the replacement to find the turn there.
+    pub async fn wait_for_work(&self, within: Duration) -> Reading {
+        self.wait_until(within, "as the agent having begun", |reading| {
+            reading.state == TurnState::Running && reading.turn_id.is_some() && reading.agent_begun
+        })
+        .await
     }
 
     /// Wait until the backend answers for this Task at all.
@@ -432,19 +472,10 @@ impl Task {
     /// cannot yet describe is not the same as one that is doing nothing — which
     /// is why [`TurnState::Unknown`] is its own answer rather than idle.
     pub async fn wait_until_known(&self, within: Duration) -> Reading {
-        let deadline = Instant::now() + within;
-        while Instant::now() < deadline {
-            let reading = self.state().await;
-            if reading.state != TurnState::Unknown {
-                return reading;
-            }
-            tokio::time::sleep(Duration::from_millis(200)).await;
-        }
-        panic!(
-            "Task {} was never described at all; it answered {}",
-            self.thread_id,
-            self.raw().await,
-        );
+        self.wait_until(within, "as anything at all", |reading| {
+            reading.state != TurnState::Unknown
+        })
+        .await
     }
 
     /// What the conversation records, in one line, for when a case fails
@@ -516,6 +547,11 @@ impl Task {
             .expect("the message is accepted");
         Said {
             steered: answer["steered"].as_bool().unwrap_or(false),
+            turn_id: answer["turnId"].as_str().unwrap_or_default().to_string(),
+            user_message_id: answer["userMessageId"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
         }
     }
 
@@ -716,28 +752,44 @@ impl Backend {
         wanted: &str,
         satisfied: impl Fn(&Value) -> bool,
     ) -> Value {
-        let deadline = Instant::now() + within;
-        let mut last = None;
-        while Instant::now() < deadline {
-            if let Some(rows) = self.at.list_rows().await {
-                let row = rows
-                    .iter()
-                    .find(|row| row["threadId"] == thread_id)
-                    .cloned();
-                if let Some(row) = &row
-                    && satisfied(row)
-                {
-                    return row.clone();
-                }
-                last = Some(row);
-            }
-            tokio::time::sleep(Duration::from_millis(500)).await;
-        }
-        panic!(
-            "the list never showed Task {thread_id} {wanted}; \
-             the last snapshot had {last:?}"
-        );
+        poll_until(
+            within,
+            &format!("the list never showed Task {thread_id} {wanted}"),
+            async || {
+                self.at.list_rows().await.map(|rows| {
+                    rows.iter()
+                        .find(|row| row["threadId"] == thread_id)
+                        .cloned()
+                })
+            },
+            |row| row.as_ref().is_some_and(&satisfied),
+        )
+        .await
+        .expect("a row that satisfied the caller was there")
     }
+}
+
+/// Poll at the rate a person clicking would, until what is fetched satisfies
+/// the caller or the time is up. A fetch that answers nothing is a backend
+/// not answering yet, which is neither.
+async fn poll_until<T: std::fmt::Debug>(
+    within: Duration,
+    never: &str,
+    mut fetch: impl AsyncFnMut() -> Option<T>,
+    satisfied: impl Fn(&T) -> bool,
+) -> T {
+    let deadline = Instant::now() + within;
+    let mut last = None;
+    while Instant::now() < deadline {
+        if let Some(value) = fetch().await {
+            if satisfied(&value) {
+                return value;
+            }
+            last = Some(value);
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    panic!("{never}; last saw {last:?}");
 }
 
 /// Whether this process is still running, answered at once.

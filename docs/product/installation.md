@@ -51,7 +51,7 @@ and execution; existing readable Tasks and Claude remain available.
 
 ### Claude Code
 
-Caffold supports Claude Code `2.1.236` or newer. Install Claude Code using its
+Caffold supports Claude Code `2.1.259` or newer. Install Claude Code using its
 official setup, make `claude` available on the Mac app's `PATH`, then run it and
 complete sign-in. The released wrapper searches the common executable paths
 including `~/.local/bin`, `/opt/homebrew/bin`, and `/usr/local/bin`.

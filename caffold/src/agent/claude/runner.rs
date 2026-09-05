@@ -690,14 +690,9 @@ struct MockSession {
     /// Whether the agent behind it has exited. The daemon keeps an exited
     /// session listed, and asking for it again spawns a replacement.
     exited: bool,
-    /// How many prompts have been handed back, which is what names the next
-    /// one. The real agent uses identifiers of its own; what matters to a
-    /// caller is that each is different and that the same one reaches the
-    /// transcript.
-    replays: usize,
-    /// Keep prompts rather than handing them back, standing in for an agent
-    /// that took a prompt and never said what it filed it as.
-    swallow_prompts: bool,
+    /// Hand every prompt back marked as a replay, the way a session an
+    /// earlier Caffold started with `--replay-user-messages` still does.
+    hands_prompts_back: bool,
     /// Refuse the next frame before it reaches the agent, the way the daemon
     /// refuses a `SessionSend` it cannot accept.
     reject_next_send: Option<String>,
@@ -737,8 +732,7 @@ impl MockRunner {
                 agent: sender,
                 heard: Vec::new(),
                 exited: false,
-                replays: 0,
-                swallow_prompts: false,
+                hands_prompts_back: false,
                 reject_next_send: None,
                 distrusts_moves: false,
                 refuses_moves: 0,
@@ -770,6 +764,14 @@ impl MockRunner {
         };
         if let Some(message) = existing.reject_next_send.take() {
             return Err(ClaudeError::Runner(message));
+        }
+        // The agent files a message under the name on its frame, and Caffold
+        // reads the turn back by that name. A stand-in that took a nameless
+        // message would let a turn be split without any test noticing.
+        if frame["type"] == "user" && !frame["uuid"].is_string() {
+            return Err(ClaudeError::Protocol(format!(
+                "a user message sent to {session} carries no name"
+            )));
         }
         // The agent answers what it is asked. A stand-in that stayed silent
         // would not stand in for it: every caller waiting on a control request
@@ -812,14 +814,11 @@ impl MockRunner {
                 serde_json::json!({ "type": "control_response", "response": body }).to_string(),
             ));
         }
-        // Every session runs with `--replay-user-messages`, so a prompt
-        // written to the agent comes back under the identity the agent filed it
-        // as, and that identity is what names the turn. A stand-in that kept
-        // the prompt to itself would leave every turn waiting to be named.
-        if frame["type"] == "user" && !existing.swallow_prompts {
-            existing.replays += 1;
+        // A session started with `--replay-user-messages` hands a prompt back
+        // under the name it was sent with. Sessions started now are not, and
+        // say nothing until they have something to say.
+        if frame["type"] == "user" && existing.hands_prompts_back {
             let mut replay = frame.clone();
-            replay["uuid"] = serde_json::json!(format!("{session}-prompt-{}", existing.replays));
             replay["isReplay"] = serde_json::json!(true);
             let _ = existing.agent.send(RunnerEvent::Frame(replay.to_string()));
         }
@@ -827,9 +826,13 @@ impl MockRunner {
         Ok(())
     }
 
+    /// End a session as the daemon does: the child is stopped and its exit
+    /// reported before the session is forgotten.
     async fn close(&self, session: &str) {
         let mut state = self.state.lock().await;
-        state.sessions.remove(session);
+        if let Some(held) = state.sessions.remove(session) {
+            let _ = held.agent.send(RunnerEvent::Exit(None));
+        }
     }
 
     /// Restart as the real runner restarts: every session ends, and the
@@ -885,11 +888,12 @@ impl MockRunnerHandle {
         }
     }
 
-    /// Take prompts without handing any of them back.
-    pub(crate) async fn swallow_prompts(&self, session: &str) {
+    /// Hand every prompt back, as a session an earlier Caffold started with
+    /// `--replay-user-messages` still does.
+    pub(crate) async fn hand_prompts_back(&self, session: &str) {
         let mut state = self.0.state.lock().await;
         if let Some(held) = state.sessions.get_mut(session) {
-            held.swallow_prompts = true;
+            held.hands_prompts_back = true;
         }
     }
 

@@ -61,7 +61,9 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use super::protocol::{ContentBlock, Message, MessageContent};
-use super::translate::{ToolCalls, message_items, prompt_content, user_message_item};
+use super::translate::{
+    ToolCalls, answers_tool_calls, message_items, prompt_content, prompt_item, steer_item,
+};
 use crate::agent::{
     BackgroundTask, ItemKind, MessageContent as CaffoldContent, Turn, TurnOrigin, TurnPage,
     TurnStatus,
@@ -135,6 +137,16 @@ struct Attachment {
     /// the row around it commonly does not.
     #[serde(default)]
     timestamp: Option<TranscriptString>,
+    /// The name the host sent the message under. The row's own uuid is
+    /// Claude's; this one is what the live reader holds the same message by.
+    #[serde(default)]
+    source_uuid: Option<TranscriptString>,
+}
+
+impl Attachment {
+    fn sent_as(&self) -> Option<&str> {
+        self.source_uuid.as_ref().and_then(TranscriptString::text)
+    }
 }
 
 /// An ancillary string whose shape must never decide whether its row survives.
@@ -529,11 +541,9 @@ fn turns(lines: &[&str]) -> ParsedTurns {
 
         // A message sent into a turn already running, which the agent files
         // beside the conversation rather than in it.
-        if let Some(steer) = steered_message(&row) {
+        if let Some((name, steer)) = steered_message(&row, anchor) {
             if let Some(turn) = turns.last_mut() {
-                let mut item = user_message_item(&format!("{anchor}:steer"), steer);
-                item.observed_at_ms = at_ms;
-                turn.items.push(item);
+                turn.items.push(steer_item(name, steer, at_ms));
             }
             continue;
         }
@@ -556,12 +566,8 @@ fn turns(lines: &[&str]) -> ParsedTurns {
             // writing to itself, and drawing it as words would put a line
             // nobody wrote where what somebody said belongs.
             let origin = prompt_origin(&row, message);
-            let said = (!matches!(origin, TurnOrigin::BackgroundTask(_))).then(|| {
-                let mut item =
-                    user_message_item(&format!("{anchor}:prompt"), prompt_content(message));
-                item.observed_at_ms = at_ms;
-                item
-            });
+            let said = (!matches!(origin, TurnOrigin::BackgroundTask(_)))
+                .then(|| prompt_item(anchor, prompt_content(message), at_ms));
             if let TurnOrigin::BackgroundTask(task) = &origin {
                 apply_background_task(&mut turns, task);
                 background_tasks.push(BackgroundTaskObservation {
@@ -585,10 +591,11 @@ fn turns(lines: &[&str]) -> ParsedTurns {
             }
             continue;
         }
-        if row.kind == "user" && row.tool_use_result.is_none() {
+        if row.kind == "user" && !answers_tool_calls(message) {
             // The agent talking to itself: the caveat it writes before running
             // a command, and the command it expands. Reading one as something a
             // person said would put Caffold's own `/effort` in a conversation.
+            // The live reader leaves the same message out by the same rule.
             continue;
         }
         if row.kind != "user" && row.kind != "assistant" {
@@ -796,7 +803,10 @@ fn overlay(current: &mut Option<String>, reported: &Option<String>) {
 /// A queued command with nothing in it to show is passed over rather than
 /// shown as an empty thing somebody said. Having parts is not the same as
 /// having anything to say: a blank line is one part.
-fn steered_message(row: &Row) -> Option<Vec<CaffoldContent>> {
+/// A message steered into a running turn: what it is called, and what it
+/// said. Named by the host that sent it when the row says so, and by the row
+/// itself otherwise.
+fn steered_message<'a>(row: &'a Row, anchor: &'a str) -> Option<(&'a str, Vec<CaffoldContent>)> {
     let attachment = row.attachment.as_ref()?;
     if attachment.kind != "queued_command" {
         return None;
@@ -815,7 +825,9 @@ fn steered_message(row: &Row) -> Option<Vec<CaffoldContent>> {
         id: None,
         content: attachment.prompt.clone(),
     });
-    said.iter().any(is_worth_showing).then_some(said)
+    said.iter()
+        .any(is_worth_showing)
+        .then(|| (attachment.sent_as().unwrap_or(anchor), said))
 }
 
 /// Whether one part of a message puts anything on the screen.
@@ -1035,6 +1047,49 @@ mod tests {
 
         assert_eq!(turns.len(), 1);
         assert_eq!(turns[0].items.len(), 1, "{:?}", items_of(&turns[0]));
+    }
+
+    #[test]
+    fn a_steered_message_is_known_by_the_name_the_host_sent_it_under() {
+        // The queued command's row is named by Claude; `source_uuid` is the
+        // name the host sent the message under, which is what the live reader
+        // holds the same message by. A row without one keeps its own name.
+        let contents = [
+            line(serde_json::json!({
+                "type": "user",
+                "uuid": "prompt-1",
+                "promptSource": "sdk",
+                "message": {"role": "user", "content": "go"},
+            })),
+            line(serde_json::json!({
+                "type": "attachment",
+                "uuid": "queued-1",
+                "attachment": {
+                    "type": "queued_command",
+                    "commandMode": "prompt",
+                    "prompt": [{"type": "text", "text": "stop reading"}],
+                    "source_uuid": "sent-as-1",
+                },
+            })),
+            line(serde_json::json!({
+                "type": "attachment",
+                "uuid": "queued-2",
+                "attachment": {
+                    "type": "queued_command",
+                    "commandMode": "prompt",
+                    "prompt": [{"type": "text", "text": "and then"}],
+                },
+            })),
+        ]
+        .join("\n");
+
+        let turns = read_turns(&contents);
+
+        let ids: Vec<&str> = turns[0].items.iter().map(|item| item.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["prompt-1:prompt", "sent-as-1:steer", "queued-2:steer"]
+        );
     }
 
     /// What the agent writes into a conversation when a background command it

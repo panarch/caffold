@@ -23,10 +23,9 @@
 
 mod support;
 
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use support::{Backend, TurnState};
+use support::{Backend, TurnState, is_agent_work};
 
 /// The cheapest model that can still run a tool. Nothing here asserts anything
 /// about what the model says, only about what Caffold does around it.
@@ -202,9 +201,7 @@ async fn a_turn_running_when_the_backend_is_replaced_is_still_running_afterwards
     // agent should not lose the work it was in the middle of.
     let mut backend = Backend::start().await;
     let task = backend.start_task(SLOW_WORK, MODEL).await;
-    let working = task
-        .wait_for(TurnState::Running, Duration::from_secs(90))
-        .await;
+    let working = task.wait_for_work(Duration::from_secs(90)).await;
 
     backend.replace().await;
 
@@ -233,8 +230,7 @@ async fn a_working_task_never_reads_as_idle_while_the_backend_comes_back() {
     // agent is still working on the first.
     let mut backend = Backend::start().await;
     let task = backend.start_task(SLOW_WORK, MODEL).await;
-    task.wait_for(TurnState::Running, Duration::from_secs(90))
-        .await;
+    task.wait_for_work(Duration::from_secs(90)).await;
 
     backend.replace().await;
 
@@ -243,15 +239,22 @@ async fn a_working_task_never_reads_as_idle_while_the_backend_comes_back() {
     // claimed is the order rather than the absence: working, then done, and
     // never back. The defect this catches reads as idle first and only then
     // admits the turn, which is the one order a person cannot make sense of.
-    let first_idle = readings.iter().position(|state| *state == TurnState::Idle);
+    // A backend still coming up answers nothing for the Task at all, which is
+    // neither, and the readings start where it first answers.
+    let known: Vec<TurnState> = readings
+        .iter()
+        .copied()
+        .skip_while(|state| *state == TurnState::Unknown)
+        .collect();
+    let first_idle = known.iter().position(|state| *state == TurnState::Idle);
     assert_eq!(
-        readings.first(),
+        known.first(),
         Some(&TurnState::Running),
         "the Task is working the moment it can be read: {readings:?}"
     );
     if let Some(first_idle) = first_idle {
         assert!(
-            readings[first_idle..]
+            known[first_idle..]
                 .iter()
                 .all(|state| *state == TurnState::Idle),
             "and once it is done it stays done: {readings:?}"
@@ -267,8 +270,7 @@ async fn a_task_can_be_spoken_to_again_after_the_backend_is_replaced() {
     // one sent afterwards starts a new turn.
     let mut backend = Backend::start().await;
     let task = backend.start_task(SLOW_WORK, MODEL).await;
-    task.wait_for(TurnState::Running, Duration::from_secs(90))
-        .await;
+    task.wait_for_work(Duration::from_secs(90)).await;
     backend.replace().await;
 
     let steered = task.say("and mention how many there were").await;
@@ -290,41 +292,71 @@ async fn a_task_can_be_spoken_to_again_after_the_backend_is_replaced() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires an authenticated Claude CLI and spends model usage"]
-async fn a_task_reads_as_working_before_its_prompt_receives_a_turn_identity() {
-    // The prompt request waits for Claude to replay the prompt under its exact
-    // turn identity. Session activity arrives earlier and may make the Task
-    // visibly active, but it must not finish that identity handoff itself.
-    let backend = Backend::start().await;
-    let task = Arc::new(backend.create_empty_task("activity", MODEL).await);
+async fn a_prompt_is_accepted_under_the_name_the_transcript_will_use_before_claude_answers() {
+    // The prompt request answers once the runner has the prompt, under a name
+    // Caffold gave it. Claude files the prompt under that same name, so the
+    // turn watched live and the turn read back from the transcript are one.
+    let mut backend = Backend::start().await;
+    let task = backend.create_empty_task("identity", MODEL).await;
 
-    let saying = tokio::spawn({
-        let task = Arc::clone(&task);
-        async move {
-            task.say_with_options(SLOW_WORK, MODEL, "bypassPermissions")
-                .await
-        }
-    });
+    let said = task
+        .say_with_options(SLOW_WORK, MODEL, "bypassPermissions")
+        .await;
 
-    let deadline = Instant::now() + Duration::from_secs(120);
-    let mut early_activity = None;
-    while Instant::now() < deadline {
-        let reading = task.state().await;
-        if reading.state == TurnState::Running {
-            early_activity = Some((reading.turn_id, !saying.is_finished()));
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-
-    assert_eq!(
-        early_activity,
-        Some((None, true)),
-        "activity is visible before Claude supplies the prompt's turn identity and answers the request"
+    assert!(
+        uuid::Uuid::parse_str(&said.turn_id).is_ok(),
+        "the turn is named by Caffold: {said:?}"
+    );
+    assert_eq!(said.user_message_id, format!("{}:prompt", said.turn_id));
+    let detail = task.detail().await;
+    let events = detail["events"].as_array().cloned().unwrap_or_default();
+    let of_this_turn: Vec<&serde_json::Value> = events
+        .iter()
+        .filter(|event| event["payload"]["turnId"] == said.turn_id.as_str())
+        .collect();
+    assert!(
+        of_this_turn
+            .iter()
+            .any(|event| event["type"] == "user_message"
+                && event["payload"]["itemId"] == said.user_message_id.as_str()),
+        "the prompt stands in the conversation under its accepted identity: {of_this_turn:?}"
+    );
+    assert!(
+        !of_this_turn.iter().any(|event| is_agent_work(event)),
+        "the request answered before Claude said anything: {of_this_turn:?}"
     );
 
-    saying.await.expect("the prompt request finishes");
     task.wait_for(TurnState::Idle, Duration::from_secs(300))
         .await;
+    // A replacement backend knows nothing it watched; what it shows is what
+    // Claude wrote down, read back through Caffold's own transcript reader.
+    backend.replace().await;
+    task.wait_until_known(Duration::from_secs(30)).await;
+    let detail = task.detail().await;
+    let filed: Vec<(String, String)> = detail["events"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .filter(|event| event["type"] == "user_message")
+        .map(|event| {
+            (
+                event["payload"]["turnId"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+                event["payload"]["itemId"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        filed,
+        vec![(said.turn_id.clone(), said.user_message_id.clone())],
+        "the transcript knows the turn and its prompt by the names Caffold gave them"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -348,6 +380,7 @@ async fn the_list_shows_a_working_claude_task_without_anyone_opening_it() {
         )
         .await;
     assert_eq!(row["latestTurnStatus"], "inProgress", "{row}");
+    task.wait_for_work(Duration::from_secs(90)).await;
 
     backend.replace().await;
 

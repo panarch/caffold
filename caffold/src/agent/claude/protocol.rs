@@ -24,9 +24,10 @@ use crate::agent::CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS;
 
 /// The oldest CLI Caffold drives.
 ///
-/// `--permission-prompt-tool stdio`, the interrupt receipt, and the model list
-/// are all needed, and this is the version measured to carry all three.
-pub(crate) const MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION: &str = "2.1.236";
+/// `--permission-prompt-tool stdio`, the interrupt receipt, the model list,
+/// and a prompt filed under the `uuid` the host puts on its stdin frame are
+/// all needed, and this is the version measured to carry all four.
+pub(crate) const MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION: &str = "2.1.259";
 
 /// Arguments every session is started with, whatever else the driver adds.
 ///
@@ -34,11 +35,6 @@ pub(crate) const MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION: &str = "2.1.236";
 /// the end. `--permission-prompt-tool stdio` is what makes the agent ask before
 /// it acts: without it `can_use_tool` is never sent, and a Caffold with no
 /// approval cards would look like an agent that never needed permission.
-///
-/// `--replay-user-messages` hands a prompt back under the identity the agent
-/// wrote it down as. That identity is a turn's name in the transcript, so
-/// taking it is what makes a turn watched live and the same turn read from
-/// disk one turn rather than two.
 ///
 /// `--allowedTools` grants the tools Caffold itself serves: the agent calling
 /// one is already the user asking, so they take no approval — exactly as
@@ -52,7 +48,6 @@ pub(crate) const BASE_ARGUMENTS: &[&str] = &[
     "--verbose",
     "--permission-prompt-tool",
     "stdio",
-    "--replay-user-messages",
     "--allowedTools",
     RENAME_CURRENT_TASK_QUALIFIED_NAME,
     "--allowedTools",
@@ -63,7 +58,7 @@ pub(crate) const BASE_ARGUMENTS: &[&str] = &[
 ///
 /// Claude reports session activity only when this is enabled. The resulting
 /// state frames describe whether the session is working, independently of the
-/// replay and transcript evidence that identifies its turn.
+/// prompt and transcript evidence that identifies its turn.
 pub(crate) const SESSION_ENVIRONMENT: &[(&str, &str)] =
     &[("CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS", "1")];
 
@@ -132,10 +127,6 @@ pub(crate) struct MessageFrame {
     /// conversation a person is watching.
     #[serde(default)]
     pub(crate) parent_tool_use_id: Option<String>,
-    /// A prompt handed back rather than a message arriving: this is Caffold's
-    /// own words coming home under the identity the agent filed them as.
-    #[serde(default, rename = "isReplay")]
-    pub(crate) is_replay: bool,
     /// The harness speaking, not the model: a turn that could not run at all,
     /// written where an answer would have been.
     #[serde(default)]
@@ -388,22 +379,32 @@ impl ControlResponseBody {
 // Host to agent
 // ---------------------------------------------------------------------------
 
-/// A prompt, in the shape the agent reads from stdin.
+/// A prompt, named and in the shape the agent reads from stdin.
+///
+/// The name is minted here, so that every message Caffold sends has a fresh
+/// one. The agent files the message under it — it is the `uuid` of the
+/// transcript row, and so the name of the turn a prompt opens — which is what
+/// makes a turn watched live and the same turn read back from disk one turn
+/// rather than two. Measured against CLI 2.1.259, with and without
+/// `--replay-user-messages`.
 ///
 /// An image reaches Caffold as a data URL — the browser has bytes, not a path
 /// the agent could open — and it crosses as the bytes it is. One the agent
 /// cannot read is dropped rather than described, because a line of prose about
 /// a picture is not the picture.
-pub(crate) fn user_message(text: &str, images: &[String]) -> Value {
+pub(crate) fn user_message(text: &str, images: &[String]) -> (String, Value) {
+    let name = uuid::Uuid::new_v4().to_string();
     let mut content = Vec::new();
     if !text.is_empty() {
         content.push(serde_json::json!({ "type": "text", "text": text }));
     }
     content.extend(images.iter().filter_map(|image| image_block(image)));
-    serde_json::json!({
+    let frame = serde_json::json!({
         "type": "user",
+        "uuid": name,
         "message": { "role": "user", "content": content },
-    })
+    });
+    (name, frame)
 }
 
 /// One image, from the data URL the browser sent.
@@ -811,7 +812,7 @@ mod tests {
     fn an_image_crosses_as_the_bytes_the_browser_sent() {
         // The browser has bytes, not a path the agent could open. A sentence
         // naming a file the agent cannot see is not an image.
-        let frame = user_message(
+        let (_, frame) = user_message(
             "what is this",
             &["data:image/png;base64,aGVsbG8=".to_string()],
         );
@@ -826,7 +827,7 @@ mod tests {
 
     #[test]
     fn an_image_the_agent_could_not_read_is_dropped_rather_than_described() {
-        let frame = user_message(
+        let (_, frame) = user_message(
             "what is this",
             &["https://example.test/cat.png".to_string()],
         );
@@ -837,8 +838,19 @@ mod tests {
     }
 
     #[test]
+    fn a_prompt_is_sent_under_a_fresh_name_of_caffolds_own() {
+        let (name, frame) = user_message("hello", &[]);
+        let (another, _) = user_message("hello", &[]);
+
+        assert_eq!(frame["type"], "user");
+        assert_eq!(frame["uuid"], name.as_str(), "{frame}");
+        assert!(uuid::Uuid::parse_str(&name).is_ok(), "{name}");
+        assert_ne!(name, another, "two prompts are two names");
+    }
+
+    #[test]
     fn a_prompt_that_is_only_an_image_carries_no_empty_text() {
-        let frame = user_message("", &["data:image/png;base64,aGVsbG8=".to_string()]);
+        let (_, frame) = user_message("", &["data:image/png;base64,aGVsbG8=".to_string()]);
 
         let content = frame["message"]["content"].as_array().expect("content");
         assert_eq!(content.len(), 1);
@@ -901,15 +913,13 @@ mod tests {
 
     #[test]
     fn every_session_asks_the_agent_to_stream_and_to_ask_before_acting() {
-        // All three are load-bearing and none is obvious from the flag name, so
+        // Both are load-bearing and neither is obvious from the flag name, so
         // their absence should fail here rather than as silence at run time.
         assert!(BASE_ARGUMENTS.contains(&"--verbose"));
         let permission = BASE_ARGUMENTS
             .windows(2)
             .find(|pair| pair[0] == "--permission-prompt-tool");
         assert_eq!(permission.map(|pair| pair[1]), Some("stdio"));
-        // Without this a turn has no name the transcript would know it by.
-        assert!(BASE_ARGUMENTS.contains(&"--replay-user-messages"));
     }
 
     #[test]
