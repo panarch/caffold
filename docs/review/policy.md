@@ -126,17 +126,20 @@ projection:
   timestamps, arrival proximity, conversation position, elapsed time, and
   timeouts are not identity or causality evidence.
 - The backend owns reconciliation of provider history and live observations,
-  including which source owns conflicting fields and whether a snapshot owns
-  complete membership. Do not select a source by comparing cross-source update
-  timestamps or by treating a locally observed value as provider history.
+  including which source owns conflicting fields and which extent of the
+  projection a snapshot owns. Do not select a source by comparing cross-source
+  update timestamps or by treating a locally observed value as provider
+  history.
 - Independently delivered snapshots and deltas require a Task-scoped
   publication revision: capture each accepted delta at publication and each
   snapshot with the watermark it includes. The frontend applies that contract
   mechanically; lifecycle progress, transport arrival, and legacy session
   revisions must not substitute for it.
-- A snapshot explicitly marked as still loading history owns the exact items it
-  contains but cannot declare that an absent, previously readable item was
-  deleted. A complete snapshot owns projection membership.
+- A snapshot owns projection membership only within the extent it declares.
+  Inside that extent an absent, previously readable item is deleted; outside
+  it, retained records stay until a snapshot covering them arrives. A snapshot
+  that declares no extent, such as one still loading history, owns the exact
+  items it contains and nothing else.
 - Conversation position answers only where an item appears, and direct
   observation time answers only whether an item timestamp may be displayed.
   Neither value chooses identity, source authority, lifecycle, or freshness.
