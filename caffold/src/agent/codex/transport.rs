@@ -12,7 +12,9 @@ use tokio::{
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command},
     time::timeout,
 };
-use tokio_tungstenite::{WebSocketStream, client_async};
+use tokio_tungstenite::{
+    WebSocketStream, client_async_with_config, tungstenite::protocol::WebSocketConfig,
+};
 
 use super::{CodexDaemonInfo, CodexThreadError};
 
@@ -92,13 +94,16 @@ async fn connect_proxy_with_timeout(
         CodexThreadError::Protocol("failed to open Codex app-server proxy stderr".to_string())
     })?;
     let stream = ProxyStream { reader, writer };
-    let (socket, response) = timeout(handshake_timeout, client_async("ws://localhost/", stream))
-        .await
-        .map_err(|_| CodexThreadError::StartupTimeout {
-            phase: "proxy handshake",
-            timeout_ms: handshake_timeout.as_millis() as u64,
-        })?
-        .map_err(|error| CodexThreadError::Protocol(error.to_string()))?;
+    let (socket, response) = timeout(
+        handshake_timeout,
+        client_async_with_config("ws://localhost/", stream, Some(proxy_socket_config())),
+    )
+    .await
+    .map_err(|_| CodexThreadError::StartupTimeout {
+        phase: "proxy handshake",
+        timeout_ms: handshake_timeout.as_millis() as u64,
+    })?
+    .map_err(|error| CodexThreadError::Protocol(error.to_string()))?;
     if response.status().as_u16() != 101 {
         return Err(CodexThreadError::Protocol(format!(
             "Codex app-server proxy returned WebSocket status {}",
@@ -110,6 +115,15 @@ async fn connect_proxy_with_timeout(
         child,
         stderr,
     })
+}
+
+/// The app-server answers `thread/resume` with a turn's full items in one
+/// frame, and a turn that has run for hours is larger than the 16 MiB frame
+/// tungstenite accepts by default.
+fn proxy_socket_config() -> WebSocketConfig {
+    WebSocketConfig::default()
+        .max_frame_size(None)
+        .max_message_size(None)
 }
 
 pub(super) async fn ensure_daemon(
