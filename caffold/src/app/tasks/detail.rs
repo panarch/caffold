@@ -2,7 +2,7 @@ use std::{collections::VecDeque, pin::Pin, sync::Arc};
 
 use futures_util::{Stream, stream};
 use serde::Serialize;
-use tokio::sync::{Mutex as AsyncMutex, broadcast, mpsc};
+use tokio::sync::{Mutex as AsyncMutex, broadcast};
 
 mod file_links;
 
@@ -19,10 +19,9 @@ use super::{
         resolve_conversation_cwd, task_record_from_conversation,
     },
     runtime::{CodexConnection, TaskAgent, TaskRuntime, TaskRuntimeSignal},
-    sync::{DeferredTaskRolloutSubscription, TaskSync, TaskSyncJob, TaskSyncOutcome},
+    sync::TaskSync,
     worktrees::inspect_ready_worktree,
 };
-use crate::agent;
 use crate::agent::AgentError;
 use crate::{
     agent::{
@@ -217,11 +216,6 @@ impl DetailContext {
         let receiver = self.events.subscribe();
         let sync_receiver = self.sync.subscribe_updates();
         let viewer = self.sessions.reserve_viewer(thread_id).await;
-        let snapshot = self.sessions.snapshot(thread_id).await;
-        let rollout_path = snapshot
-            .as_ref()
-            .and_then(|snapshot| snapshot.conversation.as_ref())
-            .and_then(|conversation| conversation.transcript_path.clone());
         let (detail, baseline_revision) = self.cached(thread_id).await?;
         let file_link_task_root = detail.task.as_ref().map(file_links::task_root);
         let initial_events = VecDeque::from([DetailLiveEvent::Sync(Box::new(TaskDetailSync {
@@ -231,32 +225,12 @@ impl DetailContext {
             reason: "stream-bootstrap",
             error: None,
         }))]);
-        let subscription = self.sync.subscribe(thread_id);
-        let rollout_subscription = DeferredTaskRolloutSubscription::default();
-        rollout_subscription.install_with(|| {
-            self.sync
-                .subscribe_rollout(thread_id, rollout_path.as_deref())
-        });
-        self.ensure_sync_worker().await;
-
         let bootstrap_context = self.clone();
         let bootstrap_thread_id = thread_id.to_string();
-        let bootstrap_rollout_subscription = rollout_subscription.clone();
         tokio::spawn(async move {
             bootstrap_context
                 .bootstrap(&bootstrap_thread_id, baseline_revision)
                 .await;
-            let rollout_path = bootstrap_context
-                .sessions
-                .snapshot(&bootstrap_thread_id)
-                .await
-                .and_then(|snapshot| snapshot.conversation)
-                .and_then(|conversation| conversation.transcript_path);
-            bootstrap_rollout_subscription.install_with(|| {
-                bootstrap_context
-                    .sync
-                    .subscribe_rollout(&bootstrap_thread_id, rollout_path.as_deref())
-            });
         });
 
         let shutdown = self.shutdown.subscribe();
@@ -270,8 +244,6 @@ impl DetailContext {
                 sync_receiver,
                 shutdown,
                 thread_id,
-                subscription,
-                rollout_subscription,
                 viewer,
                 sessions,
                 file_link_resolver,
@@ -283,8 +255,6 @@ impl DetailContext {
                 mut sync_receiver,
                 mut shutdown,
                 thread_id,
-                subscription,
-                rollout_subscription,
                 viewer,
                 sessions,
                 file_link_resolver,
@@ -299,8 +269,6 @@ impl DetailContext {
                             sync_receiver,
                             shutdown,
                             thread_id,
-                            subscription,
-                            rollout_subscription,
                             viewer,
                             sessions,
                             file_link_resolver,
@@ -328,8 +296,6 @@ impl DetailContext {
                                             sync_receiver,
                                             shutdown,
                                             thread_id,
-                                            subscription,
-                                            rollout_subscription,
                                             viewer,
                                             sessions,
                                             file_link_resolver,
@@ -373,8 +339,6 @@ impl DetailContext {
                                             sync_receiver,
                                             shutdown,
                                             thread_id,
-                                            subscription,
-                                            rollout_subscription,
                                             viewer,
                                             sessions,
                                             file_link_resolver,
@@ -622,90 +586,6 @@ impl DetailContext {
         });
     }
 
-    pub(in crate::app::tasks) async fn ensure_sync_worker(&self) {
-        let Some(receiver) = self.sync.take_jobs().await else {
-            return;
-        };
-        let context = self.clone();
-        tokio::spawn(async move {
-            context.run_sync_worker(receiver).await;
-        });
-    }
-
-    async fn run_sync_worker(&self, mut receiver: mpsc::UnboundedReceiver<TaskSyncJob>) {
-        let mut shutdown = self.shutdown.subscribe();
-        loop {
-            let job = tokio::select! {
-                _ = shutdown.recv() => return,
-                job = receiver.recv() => job,
-            };
-            let Some(job) = job else {
-                return;
-            };
-            self.run_sync_job(job).await;
-        }
-    }
-
-    async fn run_sync_job(&self, job: TaskSyncJob) {
-        debug_assert!(job.invalidation_revision > 0);
-        let thread_id = job.thread_id.clone();
-        let syncing = self.sessions.begin_external_sync(&thread_id).await;
-        let Ok(connection) = self.connection().await else {
-            self.sessions
-                .fail_external_sync(&thread_id, &Self::unreachable_codex())
-                .await;
-            self.broadcast_error(&thread_id, Self::unreachable_codex().to_string())
-                .await;
-            job.complete(TaskSyncOutcome::Retry);
-            return;
-        };
-        let response = tokio::try_join!(
-            connection.client.read_thread(&thread_id),
-            connection
-                .client
-                .list_thread_turns(&thread_id, None, TASK_DETAIL_TURNS_PAGE_SIZE,),
-        );
-        let (thread, latest_turns) = match response {
-            Ok(response) => response,
-            Err(error) if error.is_thread_unavailable() => {
-                self.sessions
-                    .fail_external_sync(&thread_id, &error.clone().into())
-                    .await;
-                self.broadcast_error(&thread_id, error.to_string()).await;
-                (self.refresh_task_list)();
-                job.complete(TaskSyncOutcome::Synchronized);
-                return;
-            }
-            Err(error) => {
-                self.sessions
-                    .fail_external_sync(&thread_id, &error.clone().into())
-                    .await;
-                self.broadcast_error(&thread_id, error.to_string()).await;
-                job.complete(TaskSyncOutcome::Retry);
-                return;
-            }
-        };
-        let snapshot = self
-            .sessions
-            .apply_external_read_sync(
-                &thread_id,
-                syncing.revision,
-                Conversation::from(&thread),
-                TurnPage::from(&latest_turns),
-            )
-            .await;
-        if let Ok(detail) = self.assemble_snapshot(snapshot, None).await {
-            self.sync.publish(TaskDetailSync {
-                revision: detail.revision,
-                thread_id,
-                detail,
-                reason: "canonical-read-sync",
-                error: None,
-            });
-        }
-        job.complete(TaskSyncOutcome::Synchronized);
-    }
-
     async fn broadcast_snapshot(
         &self,
         thread_id: &str,
@@ -722,11 +602,6 @@ impl DetailContext {
             reason,
             error: None,
         });
-    }
-
-    /// Codex gone quiet, in the words every agent shares.
-    fn unreachable_codex() -> agent::AgentError {
-        CodexThreadError::ProcessUnavailable.into()
     }
 
     async fn broadcast_error(&self, thread_id: &str, error: String) {
@@ -1030,7 +905,7 @@ mod request_tests {
     use super::*;
     use crate::{
         agent::{
-            ThreadStatus, TurnStatus, codex,
+            self, ThreadStatus, TurnStatus, codex,
             codex::{CodexNotification, CodexRuntimeEvent, CodexThreadClient},
         },
         app::error::ApiError,
@@ -1321,8 +1196,6 @@ mod request_tests {
             history_base_revision: Some(0),
             last_sync_ms: Some(5_000),
             last_error: None,
-            external_syncing: false,
-            external_sync_started_ms: None,
             permission_mode: None,
             model: None,
             reasoning_effort: None,
@@ -1411,8 +1284,6 @@ mod request_tests {
             history_base_revision: Some(0),
             last_sync_ms: Some(3_000),
             last_error: None,
-            external_syncing: false,
-            external_sync_started_ms: None,
             permission_mode: None,
             model: None,
             reasoning_effort: None,
@@ -2328,158 +2199,6 @@ mod request_tests {
             event["payload"]["detail"]["events"][0]["summary"],
             "canonical assistant response"
         );
-    }
-}
-
-#[cfg(test)]
-mod sync_tests {
-    use crate::agent::codex::{CodexThread, MockCodexResponse};
-    use std::time::Duration;
-
-    use serde_json::json;
-
-    use super::super::{
-        routes::{test_task_detail, test_task_stream},
-        test_support::*,
-    };
-    use super::*;
-    use crate::{agent::codex::CodexThreadClient, app::error::ApiError, fs::RootedFs};
-
-    #[tokio::test(start_paused = true)]
-    async fn rollout_invalidation_never_synthesizes_thread_activity() {
-        let root = tempfile::tempdir().unwrap();
-        let thread_id = "thread-rollout-path-after-resume";
-        let rollout_path = root.path().join("rollout.jsonl");
-        std::fs::write(&rollout_path, "").unwrap();
-        let client = CodexThreadClient::mock(vec![
-            MockCodexResponse::ok(
-                "thread/resume",
-                json!({
-                    "thread": {
-                        "id": thread_id,
-                        "preview": "External running regression",
-                        "status": { "type": "idle" },
-                        "cwd": root.path().display().to_string(),
-                        "path": rollout_path.display().to_string(),
-                        "createdAt": 1.0,
-                        "updatedAt": 2.0,
-                        "turns": []
-                    },
-                    "initialTurnsPage": {
-                        "data": [],
-                        "nextCursor": null,
-                        "backwardsCursor": null
-                    }
-                }),
-            ),
-            MockCodexResponse::ok(
-                "thread/read",
-                json!({
-                    "thread": {
-                        "id": thread_id,
-                        "preview": "External running regression",
-                        "status": { "type": "idle" },
-                        "cwd": root.path().display().to_string(),
-                        "path": rollout_path.display().to_string(),
-                        "createdAt": 1.0,
-                        "updatedAt": 2.0,
-                        "turns": []
-                    }
-                }),
-            ),
-            MockCodexResponse::ok(
-                "thread/turns/list",
-                json!({
-                    "data": [],
-                    "nextCursor": null,
-                    "backwardsCursor": null
-                }),
-            ),
-            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
-        ]);
-        let state =
-            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        manage_test_thread(&state, thread_id, root.path()).await;
-
-        let response = test_task_stream(state.clone(), thread_id.to_string())
-            .await
-            .expect("task stream succeeds");
-        wait_for_mock_method(&client, "thread/resume").await;
-        state
-            .task_sync
-            .observe_rollout_invalidation(thread_id.to_string());
-
-        wait_for_mock_method(&client, "thread/read").await;
-        let snapshot = state
-            .task_sessions
-            .snapshot(thread_id)
-            .await
-            .expect("thread session");
-
-        drop(response);
-        assert_eq!(
-            snapshot.conversation.expect("canonical thread").status,
-            agent::ThreadStatus::Idle,
-            "rollout contents only invalidate the canonical app-server snapshot"
-        );
-        assert_eq!(snapshot.active_turn_id, None);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn background_sync_timeout_broadcasts_error_and_rejects_stale_detail() {
-        let root = tempfile::tempdir().unwrap();
-        let thread_id = "thread-background-sync-timeout";
-        let client = CodexThreadClient::mock(vec![MockCodexResponse::error(
-            "thread/read",
-            CodexThreadError::RequestTimeout {
-                method: "thread/read",
-                request_id: 29,
-                timeout_ms: 120_000,
-            },
-        )]);
-        let state =
-            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
-        manage_test_thread(&state, thread_id, root.path()).await;
-        let thread: CodexThread =
-            serde_json::from_value(task_thread_list(thread_id, root.path())["data"][0].clone())
-                .expect("cached thread metadata");
-        state
-            .task_sessions
-            .observe_thread_metadata(Conversation::from(&thread))
-            .await;
-
-        let _subscription = state.task_sync.subscribe(thread_id);
-        let mut sync_events = state.task_sync.subscribe_updates();
-        state.detail.ensure_sync_worker().await;
-        state
-            .task_sync
-            .observe_rollout_invalidation(thread_id.to_string());
-
-        wait_for_mock_method(&client, "thread/read").await;
-        tokio::time::sleep(Duration::from_millis(20)).await;
-
-        let sync = tokio::time::timeout(Duration::from_millis(50), sync_events.recv())
-            .await
-            .expect("a background timeout broadcasts unavailable state")
-            .expect("task sync channel remains open");
-        assert_eq!(sync.thread_id, thread_id);
-        assert_eq!(sync.detail.sync_state, TaskSyncState::Loading);
-        assert!(sync.detail.task.is_none());
-        assert!(sync.error.is_some());
-
-        let error = test_task_detail(state.clone(), thread_id.to_string(), None)
-            .await
-            .expect_err("stale detail is rejected after a background sync timeout");
-        assert!(matches!(error, ApiError::Agent(_)));
-
-        let snapshot = state
-            .task_sessions
-            .snapshot(thread_id)
-            .await
-            .expect("cached session remains tracked");
-        assert!(snapshot.conversation.is_some());
-        assert!(snapshot.last_error.is_some());
-        assert_eq!(state.task_runtime.diagnostics().await, (1, true));
     }
 }
 

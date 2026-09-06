@@ -163,13 +163,12 @@ runtime shutdown lifecycle to `caffold/src/app.rs`.
   Codex tools. The provider driver owns MCP framing and thread capabilities;
   the route receives only the Task runtime operation needed to execute a
   verified call.
-- `sync.rs` owns subscription counts, rollout invalidation, debounce,
-  maximum-latency, and retry scheduling. It does not read Codex threads or
-  construct browser details.
+- `sync.rs` owns the revisioned Task Detail publication channel that REST
+  bootstrap, notification snapshots, and live viewers share. It does not read
+  Codex threads or construct browser details.
 - `detail.rs` owns canonical detail assembly, session/viewer lifecycle,
-  history pages, typed Detail events, and the worker that applies scheduled
-  canonical reads. Source errors produce unavailable detail rather than a Redb
-  fallback.
+  history pages, and typed Detail events. Source errors produce unavailable
+  detail rather than a Redb fallback.
 - `projection.rs` and `events.rs` do not import Axum, Redb, process lifecycle,
   or `TaskState`. Projection preserves driver-produced status; Events
   normalizes and merges transcript/live records without acquiring
@@ -195,7 +194,7 @@ Caffold keeps an ephemeral session store for that boundary; it does not
 persist a second task ledger.
 
 - The first task detail or live-channel viewer resumes the thread with `excludeTurns`
-  and an initial page of the latest eight summary turns.
+  and an initial page of the latest eight turns with full items.
 - Additional browser viewers share the same subscribed session and do not
   repeat the resume bootstrap.
 - A new thread returned by `thread/start` is registered as already subscribed.
@@ -342,26 +341,15 @@ approval is never withdrawn twice.
 
 ## Incremental History
 
-The resume response supplies the latest eight summary turns. Caffold keeps that
-page in the thread session and does not bootstrap task detail with a separate
-full `thread/read` scan. Older history is prepended with the forward pagination
-cursor. Canonical refresh uses the reverse cursor to merge updates into the
-current anchor turn, then refreshes only the newest eight turns to establish a
-new anchor.
+The resume response supplies the latest eight turns with full items. Caffold
+keeps that page in the thread session and does not bootstrap task detail with a
+separate full `thread/read` scan. Older history is prepended with the forward
+pagination cursor.
 
-Rollout-driven refresh instead starts from the newest eight turns. If that page
-overlaps the cached history, the refresh stops immediately. A missing overlap
-may fetch at most four descending pages to bridge a short gap; routine
-invalidation never walks an unbounded cursor chain. Thread metadata and the
-head page are requested concurrently. If the bounded recovery window still
-does not overlap cached history, Caffold rebases the cache to that continuous
-latest window and retains its older-history cursor instead of joining two
-discontinuous ranges.
-
-Turn IDs and item IDs are merge identities. A thread permits one canonical sync
-at a time; another invalidation received during that request records a dirty
-bit and causes at most one trailing sync. A Task session revision arbitrates
-these canonical reads. Once translated into the common conversation
+Turn IDs and item IDs are merge identities. A provider read merges into the
+cached page by turn ID, the page is bounded to the newest eight turns, and a
+Task session revision arbitrates that read against live reports that arrived
+while it was in flight. Once translated into the common conversation
 projection, independently delivered snapshots and deltas follow the
 [Agent Runtimes publication contract](agent-runtimes.md#projection-publication).
 
@@ -499,9 +487,9 @@ With Caffold's current process topology, a persistent app-server daemon outlives
 the Caffold backend. Caffold reaches it through a disposable WebSocket proxy and
 receives notifications only for threads visible to that connection. On startup,
 `thread/loaded/list` identifies daemon-loaded work and explicit `thread/resume`
-restores only the intersection with Caffold-managed membership. Rollout
-invalidation remains the best-effort reconciliation path for changes produced
-through another Codex connection.
+restores only the intersection with Caffold-managed membership. A subscribed
+thread reports changes made through any connection to the same daemon, and
+that subscription is Caffold's only reconciliation source for them.
 
 ### Daemon/proxy reconnect verification
 
@@ -522,24 +510,6 @@ This reconnect behavior was directly verified against the current minimum
 supported baseline, Codex CLI `0.147.0`. The tests are ignored by default
 because they require local authentication and make real model requests; rerun
 them when changing the baseline or daemon/proxy lifecycle.
-
-Caffold watches the rollout path reported by Codex only while a Task Detail
-live-channel viewer is active. The rollout file is an invalidation signal only: Caffold does
-not open it, parse JSONL records, or infer running/completed state from its
-contents. Multiple viewers of the same task share one native file watch, and the
-last viewer closing releases that watch.
-
-When a watched rollout changes, Caffold waits for a shared 600ms quiet period
-and then uses its single app-server connection to call `thread/read` with
-`includeTurns: false` and `thread/turns/list` for the latest eight summary turns.
-Rollout-driven reconciliation never calls `thread/resume` or
-`thread/unsubscribe`; those stateful methods remain part of viewer, prompt, and
-startup-recovery lifecycles. Continuous writes reset the deadline, so a separate
-Codex process produces one canonical read after its write burst. Concurrent changes
-coalesce into one active sync plus at most one trailing sync. The resulting
-revisioned snapshot is broadcast to every Caffold client subscribed to that
-Task Detail channel.
-Tasks without an active detail subscriber do not trigger rollout-driven reads.
 
 ## Active Navigator Projection and Archived Pagination
 
@@ -624,9 +594,7 @@ Thread state comes only from app-server `Thread.status` snapshots and
 `thread/status/changed`. `Turn.status` remains turn-local conversation state;
 turn notifications, approval requests, browser events, and active-turn pointers
 do not rewrite the thread badge. Browser reconnect and visibility resume follow
-the detail acquisition contract above. If the rollout path is absent or the
-native watcher is unavailable, app-server notifications and explicit
-synchronization continue to work; Caffold does not add a polling fallback.
+the detail acquisition contract above.
 
 The local tables own managed membership and the stable navigator projection,
 not canonical Codex Thread existence. Runtime events and explicit
@@ -691,7 +659,7 @@ managed versions returned by `codex app-server daemon start` remain available
 as transport diagnostics.
 Only sessions with viewers, runtime leases, subscription transitions, or errors
 are included in the detailed active-session list. Each entry exposes its lease
-counts, lifecycle, revision, last canonical sync time, and last protocol error.
+counts, lifecycle, revision, last provider sync time, and last protocol error.
 
 `GET /api/codex/mcp-diagnostics` is a separate on-demand observation used by
 About Caffold's copied diagnostics. It never starts a missing proxy. When a

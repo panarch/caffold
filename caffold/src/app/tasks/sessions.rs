@@ -84,10 +84,6 @@ pub(in crate::app::tasks) struct SessionSnapshot {
     #[allow(dead_code)]
     pub(in crate::app::tasks) last_sync_ms: Option<u64>,
     pub(in crate::app::tasks) last_error: Option<String>,
-    #[allow(dead_code)]
-    pub(in crate::app::tasks) external_syncing: bool,
-    #[allow(dead_code)]
-    pub(in crate::app::tasks) external_sync_started_ms: Option<u64>,
     pub(in crate::app::tasks) permission_mode: Option<String>,
     pub(in crate::app::tasks) model: Option<String>,
     pub(in crate::app::tasks) reasoning_effort: Option<String>,
@@ -234,8 +230,6 @@ struct SessionState {
     pending_thread_status: Option<ThreadStatus>,
     last_sync_ms: Option<u64>,
     last_error: Option<String>,
-    external_syncing: bool,
-    external_sync_started_ms: Option<u64>,
     permission_mode: Option<String>,
     model: Option<String>,
     reasoning_effort: Option<String>,
@@ -264,8 +258,6 @@ impl Default for SessionState {
             pending_thread_status: None,
             last_sync_ms: None,
             last_error: None,
-            external_syncing: false,
-            external_sync_started_ms: None,
             permission_mode: None,
             model: None,
             reasoning_effort: None,
@@ -385,8 +377,6 @@ fn snapshot(state: &SessionState) -> SessionSnapshot {
         history_base_revision: state.history_base_revision,
         last_sync_ms: state.last_sync_ms,
         last_error: state.last_error.clone(),
-        external_syncing: state.external_syncing,
-        external_sync_started_ms: state.external_sync_started_ms,
         permission_mode: state.permission_mode.clone(),
         model: state.model.clone(),
         reasoning_effort: state.reasoning_effort.clone(),
@@ -407,8 +397,7 @@ pub(super) mod test_support {
     pub(super) use serde_json::json;
 
     pub(super) use super::{
-        INITIAL_TURNS_PAGE_SIZE, PromptTarget, SessionSnapshot, TaskSessions,
-        TerminalTurnApplyOutcome,
+        INITIAL_TURNS_PAGE_SIZE, PromptTarget, TaskSessions, TerminalTurnApplyOutcome,
     };
     pub(super) use crate::agent::codex::{
         CodexThread, CodexThreadClient, CodexThreadError, CodexTurn, MockCodexResponse,
@@ -416,7 +405,7 @@ pub(super) mod test_support {
     };
     pub(super) use crate::agent::{
         ActivityStatus, Conversation, ConversationItem, ItemKind, SessionEvent, SessionEventKind,
-        ThreadStatus, Turn, TurnOptions, TurnPage, TurnStatus,
+        ThreadStatus, Turn, TurnOptions, TurnStatus,
     };
 
     /// A fixture written in Caffold's vocabulary and read back as Codex's.
@@ -492,19 +481,6 @@ pub(super) mod test_support {
             "updatedAt": 1.0,
             "turns": turns,
         }))
-    }
-
-    /// A page the way the session keeps it, for what the app hands over.
-    pub(super) fn turn_page(
-        turns: Vec<CodexTurn>,
-        next_cursor: Option<&str>,
-        backwards_cursor: Option<&str>,
-    ) -> TurnPage {
-        TurnPage {
-            turns: turns.iter().map(Turn::from).collect(),
-            next_cursor: next_cursor.map(str::to_string),
-            backwards_cursor: backwards_cursor.map(str::to_string),
-        }
     }
 
     /// A page the way Codex answers with it, for what a mocked call returns.

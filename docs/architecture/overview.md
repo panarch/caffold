@@ -157,7 +157,7 @@ caffold/src/app/tasks/runtime/
   bridge.rs                            Codex event bridge and managed-session recovery
   claude_bridge.rs                     Claude reports, approvals, and served-tool routing
   server_requests.rs                   Codex approvals and dynamic-tool requests
-caffold/src/app/tasks/sync.rs          invalidation scheduling and retry timing
+caffold/src/app/tasks/sync.rs          revisioned Task Detail publication channel
 caffold/src/app/tasks/projection.rs    pure conversation-to-browser Task projection
 caffold/src/app/tasks/events.rs        event normalization, merge, cache, publication
 caffold/src/agent.rs                   shared agent vocabulary

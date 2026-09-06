@@ -58,21 +58,6 @@ fn merge_external_resume_response(
     )
 }
 
-pub(super) fn merge_external_snapshot(
-    state: &mut SessionState,
-    incoming_thread: Conversation,
-    latest_turns: Option<TurnPage>,
-    base_revision: u64,
-) -> MetadataMergeOutcome {
-    merge_external_snapshot_with_active_cwd(
-        state,
-        incoming_thread,
-        latest_turns,
-        base_revision,
-        None,
-    )
-}
-
 fn merge_external_snapshot_with_active_cwd(
     state: &mut SessionState,
     mut incoming_thread: Conversation,
@@ -359,21 +344,6 @@ mod tests {
     use super::*;
     use crate::app::tasks::sessions::test_support::*;
 
-    async fn apply_external_snapshot(
-        sessions: &TaskSessions,
-        base_revision: u64,
-        response: ThreadResumeResponse,
-    ) -> SessionSnapshot {
-        sessions
-            .apply_external_read_sync(
-                "thread-1",
-                base_revision,
-                Conversation::from(&response.thread),
-                TurnPage::from(&response.initial_turns_page.expect("latest turns page")),
-            )
-            .await
-    }
-
     #[tokio::test]
     async fn subscription_recovers_the_active_turn_runtime_cwd() {
         let active = ThreadStatus::Active {
@@ -520,49 +490,6 @@ mod tests {
                 .as_deref(),
             Some("turn-current"),
             "the canonical active turn becomes eligible only after the baseline is established"
-        );
-    }
-
-    #[tokio::test]
-    async fn stale_canonical_refresh_does_not_overwrite_a_newer_thread_name() {
-        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
-            "thread/resume",
-            resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
-        )]);
-        let sessions = TaskSessions::default();
-        sessions
-            .ensure_subscribed(&client.driver(), 1, "thread-1")
-            .await
-            .expect("subscribe");
-        let syncing = sessions.begin_external_sync("thread-1").await;
-
-        sessions
-            .apply_session_event(
-                1,
-                &session_event(
-                    "thread-1",
-                    SessionEventKind::TitleChanged {
-                        title: Some("Newer name".to_string()),
-                    },
-                ),
-            )
-            .await;
-        let snapshot = sessions
-            .apply_external_read_sync(
-                "thread-1",
-                syncing.revision,
-                Conversation::from(&thread(ThreadStatus::Idle, Vec::new())),
-                turn_page(Vec::new(), None, None),
-            )
-            .await;
-
-        assert_eq!(
-            snapshot
-                .conversation
-                .expect("canonical thread")
-                .title
-                .as_deref(),
-            Some("Newer name")
         );
     }
 
@@ -726,141 +653,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn external_invalidation_reopens_the_same_completed_turn() {
-        let completed_turn = wire_turn("turn-external", TurnStatus::Completed);
-        let running_turn = wire_turn("turn-external", TurnStatus::InProgress);
-        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
-            "thread/resume",
-            resume_response(ThreadStatus::Idle, Vec::new(), vec![completed_turn]),
-        )]);
-        let sessions = TaskSessions::default();
-        let _viewer = sessions
-            .acquire_viewer(&client.driver(), 1, "thread-1")
-            .await
-            .expect("viewer");
-
-        let syncing = sessions.begin_external_sync("thread-1").await;
-        let snapshot = apply_external_snapshot(
-            &sessions,
-            syncing.revision,
-            resume_response(
-                ThreadStatus::Active {
-                    active_flags: Vec::new(),
-                },
-                Vec::new(),
-                vec![running_turn],
-            ),
-        )
-        .await;
-
-        assert_eq!(snapshot.history_base_revision, Some(syncing.revision));
-        assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-external"));
-        let thread = snapshot.conversation.as_ref().expect("canonical thread");
-        assert!(matches!(thread.status, ThreadStatus::Active { .. }));
-        assert_eq!(
-            snapshot.turns_page.expect("history").turns[0].status,
-            TurnStatus::InProgress
-        );
-    }
-
-    #[tokio::test]
-    async fn external_running_refresh_survives_a_concurrent_item_report() {
-        let external_turn = wire_turn("turn-external", TurnStatus::InProgress);
-        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
-            "thread/resume",
-            resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
-        )]);
-        let sessions = TaskSessions::default();
-        let _viewer = sessions
-            .acquire_viewer(&client.driver(), 1, "thread-1")
-            .await
-            .expect("viewer");
-
-        let syncing = sessions.begin_external_sync("thread-1").await;
-        sessions
-            .apply_session_event(
-                1,
-                &session_event(
-                    "thread-1",
-                    item_changed("turn-external", "item-external", 2),
-                ),
-            )
-            .await;
-
-        let snapshot = apply_external_snapshot(
-            &sessions,
-            syncing.revision,
-            resume_response(
-                ThreadStatus::Active {
-                    active_flags: Vec::new(),
-                },
-                Vec::new(),
-                vec![external_turn],
-            ),
-        )
-        .await;
-
-        assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-external"));
-        assert!(
-            snapshot
-                .conversation
-                .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
-        );
-    }
-
-    #[tokio::test]
-    async fn stale_turn_page_does_not_overwrite_a_concurrent_completion() {
-        let external_turn = wire_turn("turn-external", TurnStatus::InProgress);
-        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
-            "thread/resume",
-            resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
-        )]);
-        let sessions = TaskSessions::default();
-        let _viewer = sessions
-            .acquire_viewer(&client.driver(), 1, "thread-1")
-            .await
-            .expect("viewer");
-
-        let syncing = sessions.begin_external_sync("thread-1").await;
-        sessions
-            .apply_session_event(
-                1,
-                &session_event(
-                    "thread-1",
-                    SessionEventKind::TurnEnded {
-                        turn: turn("turn-external", TurnStatus::Completed),
-                    },
-                ),
-            )
-            .await;
-
-        let snapshot = apply_external_snapshot(
-            &sessions,
-            syncing.revision,
-            resume_response(
-                ThreadStatus::Active {
-                    active_flags: Vec::new(),
-                },
-                Vec::new(),
-                vec![external_turn],
-            ),
-        )
-        .await;
-
-        assert_eq!(snapshot.active_turn_id, None);
-        assert!(
-            snapshot
-                .conversation
-                .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. })),
-            "what the agent last said remains the canonical status"
-        );
-        assert_eq!(
-            snapshot.turns_page.expect("history").turns[0].status,
-            TurnStatus::Completed
-        );
-    }
-
-    #[tokio::test]
     async fn external_completion_clears_running_state_without_losing_history() {
         let active_turn = wire_turn("turn-external", TurnStatus::InProgress);
         let completed_turn = wire_turn("turn-external", TurnStatus::Completed);
@@ -902,149 +694,6 @@ mod tests {
             snapshot.turns_page.expect("history").turns[0].status,
             TurnStatus::Completed
         );
-    }
-
-    #[tokio::test]
-    async fn idle_external_read_does_not_revive_stale_in_progress_turn() {
-        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
-            "thread/resume",
-            resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
-        )]);
-        let sessions = TaskSessions::default();
-        let _viewer = sessions
-            .acquire_viewer(&client.driver(), 1, "thread-1")
-            .await
-            .expect("viewer");
-
-        let syncing = sessions.begin_external_sync("thread-1").await;
-        let snapshot = apply_external_snapshot(
-            &sessions,
-            syncing.revision,
-            resume_response(
-                ThreadStatus::Idle,
-                Vec::new(),
-                vec![wire_turn("turn-stale", TurnStatus::InProgress)],
-            ),
-        )
-        .await;
-
-        assert_eq!(snapshot.active_turn_id, None);
-        assert!(
-            snapshot
-                .conversation
-                .as_ref()
-                .is_some_and(|thread| thread.status == ThreadStatus::Idle)
-        );
-        assert_eq!(
-            snapshot.turns_page.as_ref().expect("history").turns[0].status,
-            TurnStatus::InProgress
-        );
-    }
-
-    #[tokio::test]
-    async fn canonical_completion_wins_for_the_same_turn_started_during_sync() {
-        let primary = CodexThreadClient::mock(vec![MockCodexResponse::ok(
-            "thread/resume",
-            resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
-        )]);
-        let sessions = TaskSessions::default();
-        let _viewer = sessions
-            .acquire_viewer(&primary.driver(), 7, "thread-1")
-            .await
-            .unwrap();
-
-        let syncing = sessions.begin_external_sync("thread-1").await;
-        sessions
-            .apply_session_event(
-                7,
-                &session_event(
-                    "thread-1",
-                    SessionEventKind::TurnStarted {
-                        turn: turn("turn-live", TurnStatus::InProgress),
-                    },
-                ),
-            )
-            .await;
-
-        let snapshot = apply_external_snapshot(
-            &sessions,
-            syncing.revision,
-            resume_response(
-                ThreadStatus::Idle,
-                Vec::new(),
-                vec![
-                    wire_turn("turn-live", TurnStatus::Completed),
-                    wire_turn("turn-older", TurnStatus::Completed),
-                ],
-            ),
-        )
-        .await;
-
-        assert_eq!(snapshot.active_turn_id, None);
-        assert!(
-            snapshot
-                .conversation
-                .as_ref()
-                .is_some_and(|thread| thread.status == ThreadStatus::Idle)
-        );
-        assert!(snapshot.turns_page.is_some_and(|page| {
-            page.turns
-                .iter()
-                .any(|turn| turn.id == "turn-live" && turn.status == TurnStatus::Completed)
-                && page.turns.iter().any(|turn| turn.id == "turn-older")
-        }));
-    }
-
-    #[tokio::test]
-    async fn stale_external_sync_does_not_overwrite_a_different_newer_turn() {
-        let primary = CodexThreadClient::mock(vec![MockCodexResponse::ok(
-            "thread/resume",
-            resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
-        )]);
-        let sessions = TaskSessions::default();
-        let _viewer = sessions
-            .acquire_viewer(&primary.driver(), 7, "thread-1")
-            .await
-            .unwrap();
-
-        let syncing = sessions.begin_external_sync("thread-1").await;
-        sessions
-            .apply_session_event(
-                7,
-                &session_event(
-                    "thread-1",
-                    SessionEventKind::TurnStarted {
-                        turn: turn("turn-new", TurnStatus::InProgress),
-                    },
-                ),
-            )
-            .await;
-
-        let snapshot = apply_external_snapshot(
-            &sessions,
-            syncing.revision,
-            resume_response(
-                ThreadStatus::Idle,
-                Vec::new(),
-                vec![wire_turn("turn-old", TurnStatus::Completed)],
-            ),
-        )
-        .await;
-
-        assert_eq!(snapshot.active_turn_id.as_deref(), Some("turn-new"));
-        assert!(
-            snapshot
-                .conversation
-                .as_ref()
-                .is_some_and(|thread| thread.status == ThreadStatus::Idle),
-            "a newer turn pointer must not synthesize thread status"
-        );
-        assert!(snapshot.turns_page.is_some_and(|page| {
-            page.turns
-                .iter()
-                .any(|turn| turn.id == "turn-new" && turn.status == TurnStatus::InProgress)
-                && page.turns.iter().any(|turn| turn.id == "turn-old")
-        }));
     }
 
     #[tokio::test]
@@ -1196,6 +845,66 @@ mod tests {
         assert_eq!(
             snapshot.turns_page.as_ref().expect("history").turns[0].status,
             TurnStatus::InProgress
+        );
+    }
+
+    #[tokio::test]
+    async fn stale_refresh_does_not_overwrite_a_newer_thread_name() {
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
+            ),
+            MockCodexResponse::delayed_ok(
+                "thread/resume",
+                resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
+                Duration::from_millis(150),
+            ),
+        ]);
+        let sessions = TaskSessions::default();
+        let _viewer = sessions
+            .acquire_viewer(&client.driver(), 1, "thread-1")
+            .await
+            .expect("viewer");
+
+        let refresh_sessions = sessions.clone();
+        let refresh_client = client.clone();
+        let refresh = tokio::spawn(async move {
+            refresh_sessions
+                .refresh_subscription(&refresh_client.driver(), 1, "thread-1")
+                .await
+        });
+        for _ in 0..20 {
+            if methods(&client).await.len() == 2 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+
+        sessions
+            .apply_session_event(
+                1,
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TitleChanged {
+                        title: Some("Newer name".to_string()),
+                    },
+                ),
+            )
+            .await;
+        refresh
+            .await
+            .expect("refresh task")
+            .expect("refresh result");
+        let snapshot = sessions.snapshot("thread-1").await.expect("snapshot");
+
+        assert_eq!(
+            snapshot
+                .conversation
+                .expect("canonical thread")
+                .title
+                .as_deref(),
+            Some("Newer name")
         );
     }
 

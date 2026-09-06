@@ -578,10 +578,9 @@ mod tests {
     use super::super::TaskListUpdate;
     use super::super::router;
     use super::super::store::task_store_get_archived;
-    use crate::agent;
     use crate::agent::codex::{
-        CodexReadiness, CodexReadinessReason, CodexReadinessState, CodexRuntimeEvent, CodexThread,
-        MockCodexResponse, TurnsPage, decode_server_request,
+        CodexReadiness, CodexReadinessReason, CodexReadinessState, CodexRuntimeEvent,
+        MockCodexResponse, decode_server_request,
     };
     use crate::app::tasks::active_list::ActiveTaskComposerSettings;
     use crate::git;
@@ -591,14 +590,6 @@ mod tests {
     use tower::ServiceExt;
 
     /// Decode a fixture the way the adapter decodes a real answer.
-    fn decoded_thread(thread: JsonValue) -> CodexThread {
-        serde_json::from_value(thread).expect("the fixture decodes as a Codex thread")
-    }
-
-    fn decoded_page(page: JsonValue) -> TurnsPage {
-        serde_json::from_value(page).expect("the fixture decodes as a Codex turns page")
-    }
-
     use super::super::test_support::*;
     use super::*;
     use crate::{
@@ -1551,7 +1542,6 @@ mod tests {
                     }
                 }),
             ),
-            MockCodexResponse::ok("turn/steer", json!({ "turnId": "turn-managed-follow-up" })),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -1617,69 +1607,6 @@ mod tests {
             managed_cwd.display().to_string()
         );
 
-        let syncing = state.task_sessions.begin_external_sync(thread_id).await;
-        state
-            .task_sessions
-            .apply_external_read_sync(
-                thread_id,
-                syncing.revision,
-                agent::Conversation::from(&decoded_thread(json!({
-                    "id": thread_id,
-                    "preview": "Managed follow-up",
-                    "status": { "type": "active", "activeFlags": [] },
-                    "cwd": root.path().display().to_string(),
-                    "createdAt": 1.0,
-                    "updatedAt": 2.0,
-                    "turns": []
-                }))),
-                agent::TurnPage::from(&decoded_page(json!({
-                    "data": [{
-                        "id": "turn-managed-follow-up",
-                        "items": [],
-                        "status": "inProgress"
-                    }],
-                    "nextCursor": null,
-                    "backwardsCursor": null
-                }))),
-            )
-            .await;
-        let snapshot = state.task_sessions.snapshot(thread_id).await.unwrap();
-        assert_eq!(
-            snapshot.conversation.unwrap().cwd,
-            root.path().display().to_string()
-        );
-        assert_eq!(
-            snapshot.active_turn_cwd.as_deref(),
-            Some(managed_cwd.to_str().unwrap())
-        );
-
-        let response = task_prompt(
-            State(state.clone()),
-            AxumPath(thread_id.to_string()),
-            Query(TasksQuery { cursor: None }),
-            Json(TaskPromptRequest {
-                prompt: "Steer inside the managed worktree".to_string(),
-                images: Vec::new(),
-                model: None,
-                effort: None,
-                fast_mode: false,
-                permission_mode: None,
-                active_turn_id: Some("turn-managed-follow-up".to_string()),
-            }),
-        )
-        .await
-        .expect("managed active turn remains steerable after external sync");
-
-        assert!(response.0.steered);
-        assert_eq!(
-            client
-                .mock_requests()
-                .await
-                .iter()
-                .map(|(method, _)| method.as_str())
-                .collect::<Vec<_>>(),
-            ["thread/resume", "turn/start", "turn/steer"]
-        );
         assert_eq!(
             state.task_store.worktree("worktree-1").unwrap().unwrap(),
             stored_before

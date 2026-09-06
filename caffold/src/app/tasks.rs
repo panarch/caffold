@@ -127,7 +127,7 @@ impl TaskState {
         .with_push_service(push.clone())
         .with_lifecycle(lifecycle.clone());
         let task_runtime_signals = task_runtime.subscribe();
-        let task_sync = TaskSync::new(shutdown.clone());
+        let task_sync = TaskSync::new();
         let refresh_events = task_list_events.clone();
         let detail = DetailContext::new(
             fs.clone(),
