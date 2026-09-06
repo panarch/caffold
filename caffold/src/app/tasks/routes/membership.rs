@@ -2196,7 +2196,10 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        state.task_sessions.begin_external_sync(thread_id).await;
+        state
+            .task_sessions
+            .restore_managed_fast_mode(thread_id, false)
+            .await;
         assert_eq!(state.task_sessions.diagnostics().await.tracked_sessions, 1);
 
         let archived =

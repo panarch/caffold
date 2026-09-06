@@ -1617,6 +1617,7 @@ function actionHintTaskDetail(task) {
     fileLinks: [],
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
+    eventsRange: { from: null, to: null },
     historyLoading: false,
     permissionMode: "approveForMe",
   };

@@ -660,7 +660,7 @@ mod tests {
     }
 
     #[test]
-    fn rollout_invalidation_does_not_mark_an_idle_snapshot_as_running() {
+    fn an_idle_thread_snapshot_does_not_project_as_running() {
         let temp = tempfile::tempdir().unwrap();
         let thread = json!({
             "id": "thread_external",

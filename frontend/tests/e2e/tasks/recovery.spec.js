@@ -56,6 +56,7 @@ function taskDetail(taskRecord) {
     events: [],
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
+    eventsRange: { from: null, to: null },
     historyLoading: false,
     permissionMode: "approveForMe",
     model: "gpt-test",

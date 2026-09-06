@@ -42,6 +42,7 @@ function taskDetail(task, text, revision, nextCursor = null) {
     events: [assistantEvent(task.threadId, text, revision)],
     eventsPage: { nextCursor },
     pendingApprovals: [],
+    eventsRange: { from: null, to: null },
     historyLoading: false,
     permissionMode: "approveForMe",
     model: "gpt-test",
@@ -60,6 +61,7 @@ function loadingDetail(threadId, revision) {
     events: [],
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
+    eventsRange: null,
     historyLoading: true,
   };
 }
@@ -285,6 +287,7 @@ test("preserves readable detail and buffers events through a loading reconnect b
         events: [],
         eventsPage: { nextCursor: null },
         pendingApprovals: [],
+        eventsRange: null,
         historyLoading: true,
       },
     });

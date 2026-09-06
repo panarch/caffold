@@ -679,13 +679,15 @@ process-local baseline for its connection generation. The separate Task
 session `revision` orders canonical Task reads and metadata; it does not
 substitute for conversation publication order.
 
-A complete current-page Detail snapshot owns projection membership. A
-`historyLoading` snapshot owns records under the exact identities it contains
-but retains absent readable records until a complete snapshot arrives. Older
-cursor pages and optimistic submissions remain separate visible layers rather
-than inputs to source arbitration. Within the current projection, a delta is a
-backend-authored patch under exact identity and a snapshot is a
-backend-authored replacement.
+Detail applies every Detail answer, whether a bootstrap, a notification
+snapshot, or an older cursor page, through one rule keyed on the answer's
+declared `eventsRange`: retained records inside that extent are replaced by
+what the answer contains, retained records outside it stay as they are
+including an identity the answer repeats from beyond its extent, and an answer
+without an extent updates only the identities it contains. Optimistic
+submissions are a local overlay that no extent covers. Within the current
+projection, a delta is a backend-authored patch under exact identity and a
+snapshot is a backend-authored replacement of its extent.
 
 For canonical Task events, `position.anchorMs` places an event group in the
 projected timeline, and `position.index` orders events sharing that anchor.

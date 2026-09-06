@@ -90,6 +90,7 @@ async function installTransportOverlayFixture(page, threadId, registryKey) {
       },
     ],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   };
   const bootstrapFunctionKey = `${registryKey}Bootstrap`;
@@ -182,6 +183,7 @@ test("background Task tabs release list and detail streams", { tag: "@desktop" }
     task,
     events: [],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   };
   let detailReads = 0;
@@ -303,6 +305,7 @@ test("foreground recovery refreshes status and reconciles the Task ledger and tr
       position: { anchorMs: now + (foregroundState ? 2 : 1), index: 0 },
     }],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
   await page.exposeFunction("__foregroundRecoveryBootstrap", (requestedThreadId) =>
@@ -543,6 +546,7 @@ test("notification activation refreshes stale readiness and opens its Task route
       position: { anchorMs: now + 1, index: 0 },
     }],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   };
   await page.exposeFunction("__notificationRecoveryBootstrap", (requestedThreadId) =>
@@ -683,6 +687,7 @@ test("fresh origin reachability recovers a foreground offline pause without an o
       },
     ],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
   await page.exposeFunction("__foregroundOfflineBootstrap", (requestedThreadId) =>
@@ -812,6 +817,7 @@ test("connection snapshots pause on missed offline and coalesce restored hints",
       },
     ],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
   await page.exposeFunction("__connectionChangeBootstrap", (requestedThreadId) =>
@@ -950,6 +956,7 @@ test("a late failed disconnect probe yields to a newer reconnect signal", { tag:
       },
     ],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
   await page.exposeFunction("__lateDisconnectProbeBootstrap", (requestedThreadId) =>
@@ -1059,6 +1066,7 @@ test("failed server recovery keeps useful Task UI behind one bounded global fall
       },
     ],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
   await page.exposeFunction("__offlineForegroundBootstrap", (requestedThreadId) =>
@@ -1185,6 +1193,7 @@ test("reopened Task detail waits for a readable stream bootstrap", { tag: "@desk
       },
     ],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
   const initialDetail = detail("Conversation before stream reconnect.", 1);
@@ -1353,6 +1362,7 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
       },
     ],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
   let canonicalTask = initialTask;
@@ -1490,6 +1500,7 @@ test("replaces terminal Task streams and reconciles list and detail", { tag: "@d
             },
           ],
           eventsPage: { nextCursor: null },
+          eventsRange: { from: null, to: null },
           pendingApprovals: [],
         },
       });
@@ -1792,6 +1803,7 @@ test("keeps task list and detail revisions independent", { tag: "@desktop" }, as
     task,
     events,
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
   const submittedPrompts = [];
@@ -1838,6 +1850,7 @@ test("keeps task list and detail revisions independent", { tag: "@desktop" }, as
         task: { ...task, updatedMs: task.updatedMs + 100 },
         events: [],
         eventsPage: { nextCursor: null },
+        eventsRange: { from: null, to: null },
         pendingApprovals: [],
       },
     });
@@ -1999,6 +2012,7 @@ test("isolates task detail responses and conversation scroll by thread", { tag: 
       position: { anchorMs: now + index, index: 0 },
     })),
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
   let releaseThreadAGitStatus;

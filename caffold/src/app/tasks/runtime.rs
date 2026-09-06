@@ -125,7 +125,7 @@ impl TaskAgent {
 
     /// The app-server connection, when this Task is Codex's.
     ///
-    /// Reading a rollout file, renaming a thread, and recovering a lost
+    /// Reading a thread's history, renaming a thread, and recovering a lost
     /// connection are all Codex's own, and a Claude Task simply has none of
     /// them.
     pub(in crate::app::tasks) fn codex(&self) -> Option<&CodexConnection> {

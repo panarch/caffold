@@ -1,11 +1,8 @@
 use crate::agent::AgentError;
-use crate::agent::{Conversation, TurnPage};
+use crate::agent::Conversation;
 
-use super::{SessionLifecycle, SessionSnapshot, TaskSessions, now_unix_ms, snapshot};
-use super::{
-    reconciliation::merge_external_snapshot,
-    turns::{active_turn_id, update_active_turn},
-};
+use super::turns::{active_turn_id, update_active_turn};
+use super::{SessionLifecycle, TaskSessions};
 
 impl TaskSessions {
     /// Note that this thread was listed on the current Codex connection.
@@ -37,8 +34,6 @@ impl TaskSessions {
             state.driver = None;
             state.pending_thread_status = None;
             state.last_sync_ms = None;
-            state.external_syncing = false;
-            state.external_sync_started_ms = None;
             state.revision = state.revision.saturating_add(1);
             state.status_revision = state.revision;
             state.name_revision = state.revision;
@@ -112,45 +107,6 @@ impl TaskSessions {
         }
     }
 
-    pub(in crate::app::tasks) async fn begin_external_sync(
-        &self,
-        thread_id: &str,
-    ) -> SessionSnapshot {
-        let entry = self.entry(thread_id).await;
-        let mut state = entry.state.lock().await;
-        state.external_syncing = true;
-        state
-            .external_sync_started_ms
-            .get_or_insert_with(now_unix_ms);
-        state.revision = state.revision.saturating_add(1);
-        snapshot(&state)
-    }
-
-    pub(in crate::app::tasks) async fn apply_external_read_sync(
-        &self,
-        thread_id: &str,
-        base_revision: u64,
-        thread: Conversation,
-        latest_turns: TurnPage,
-    ) -> SessionSnapshot {
-        let entry = self.entry(thread_id).await;
-        let mut state = entry.state.lock().await;
-        let applied =
-            merge_external_snapshot(&mut state, thread, Some(latest_turns), base_revision);
-        state.external_syncing = false;
-        state.external_sync_started_ms = None;
-        state.revision = state.revision.saturating_add(1);
-        if applied.status {
-            state.status_revision = state.revision;
-        }
-        if applied.name {
-            state.name_revision = state.revision;
-        }
-        state.last_sync_ms = Some(now_unix_ms());
-        state.last_error = None;
-        snapshot(&state)
-    }
-
     pub(in crate::app::tasks) async fn fail_external_sync(
         &self,
         thread_id: &str,
@@ -158,8 +114,6 @@ impl TaskSessions {
     ) {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
-        state.external_syncing = false;
-        state.external_sync_started_ms = None;
         state.last_error = Some(error.to_string());
         state.revision = state.revision.saturating_add(1);
     }
@@ -244,50 +198,6 @@ mod tests {
             snapshot.turns_page.as_ref().expect("history").turns[0].status,
             TurnStatus::InProgress
         );
-    }
-
-    #[tokio::test]
-    async fn external_sync_preserves_the_interactive_subscription_and_does_not_block_prompt() {
-        let primary = CodexThreadClient::mock(vec![MockCodexResponse::ok(
-            "thread/resume",
-            resume_response(ThreadStatus::Idle, Vec::new(), Vec::new()),
-        )]);
-        let sessions = TaskSessions::default();
-        let _viewer = sessions
-            .acquire_viewer(&primary.driver(), 7, "thread-1")
-            .await
-            .unwrap();
-
-        let syncing = sessions.begin_external_sync("thread-1").await;
-        assert!(syncing.external_syncing);
-        assert!(syncing.external_sync_started_ms.is_some());
-
-        let target = tokio::time::timeout(
-            Duration::from_millis(50),
-            sessions.prepare_prompt(&primary.driver(), 7, "thread-1"),
-        )
-        .await
-        .expect("prompt must not wait for external sync")
-        .expect("prepare prompt");
-        assert!(matches!(target, PromptTarget::Start { .. }));
-
-        let response = resume_response(
-            ThreadStatus::Idle,
-            Vec::new(),
-            vec![wire_turn("external", TurnStatus::Completed)],
-        );
-        let snapshot = sessions
-            .apply_external_read_sync(
-                "thread-1",
-                syncing.revision,
-                Conversation::from(&response.thread),
-                TurnPage::from(&response.initial_turns_page.expect("latest turns page")),
-            )
-            .await;
-        assert_eq!(snapshot.generation, 7);
-        assert_eq!(snapshot.lifecycle, SessionLifecycle::Subscribed);
-        assert!(!snapshot.external_syncing);
-        assert_eq!(methods(&primary).await, vec!["thread/resume"]);
     }
 
     fn listed_thread(id: &str, status: ThreadStatus) -> Conversation {

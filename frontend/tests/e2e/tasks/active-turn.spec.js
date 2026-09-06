@@ -467,6 +467,7 @@ function taskDetail(task, events, revision) {
     events,
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
+    eventsRange: { from: null, to: null },
     historyLoading: false,
   };
 }

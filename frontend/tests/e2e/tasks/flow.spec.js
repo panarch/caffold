@@ -71,6 +71,7 @@ test("opens global Tasks without local registry state", { tag: "@all-viewports" 
       },
     ],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   };
   const taskListQueries = [];

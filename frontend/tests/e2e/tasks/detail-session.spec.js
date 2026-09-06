@@ -708,6 +708,7 @@ test("keeps the managed header and Archive escape hatch when canonical Detail di
     events: [],
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
+    eventsRange: null,
     historyLoading: true,
   };
   await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
@@ -781,6 +782,7 @@ test("keeps the managed header and Archive escape hatch when canonical Detail di
         events: [],
         eventsPage: { nextCursor: null },
         pendingApprovals: [],
+        eventsRange: null,
         historyLoading: true,
       },
       reason: "canonical-source-error",
@@ -890,6 +892,7 @@ test("recovers task detail and prompt submission across bootstrap races", { tag:
     ],
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
+    eventsRange: { from: null, to: null },
     historyLoading: false,
   });
   const taskBeforeFailure = taskRecord(
@@ -1112,6 +1115,7 @@ test("keeps task context and retries after an initial detail timeout", { tag: "@
           },
         ],
         eventsPage: { nextCursor: null },
+        eventsRange: { from: null, to: null },
         pendingApprovals: [],
       }),
     });
@@ -1730,6 +1734,7 @@ test("canonical stream sync clears errors but waits for the prompt response iden
             },
           ],
           eventsPage: { nextCursor: null },
+          eventsRange: { from: null, to: null },
         },
       });
     }
@@ -1887,6 +1892,7 @@ test("canonical action responses reject foreign tasks and preserve history curso
             title: "Foreign interrupt response",
           },
           eventsPage: { nextCursor: null },
+          eventsRange: null,
           historyLoading: true,
         },
       });
@@ -1900,6 +1906,7 @@ test("canonical action responses reject foreign tasks and preserve history curso
           title: "Canonical interrupt response",
         },
         eventsPage: { nextCursor: null },
+        eventsRange: null,
         historyLoading: true,
       },
     });
@@ -1991,6 +1998,7 @@ test("accepts canonical task detail after stream revisions restart", { tag: "@al
     task: staleTask,
     events: [userEvent],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   };
   const canonicalDetail = {
@@ -2018,6 +2026,7 @@ test("accepts canonical task detail after stream revisions restart", { tag: "@al
       },
     ],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   };
 
@@ -2153,6 +2162,7 @@ test("reconciles a canonical final answer over a retained transient item after r
     task,
     events: [transient],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   };
 
@@ -2241,6 +2251,7 @@ test("reconciles a canonical final answer over a retained transient item after r
           task: canonicalTask,
           events: [answer],
           eventsPage: { nextCursor: null },
+          eventsRange: { from: null, to: null },
           pendingApprovals: [],
         },
         reason: "stream-bootstrap",
@@ -2413,6 +2424,7 @@ test("opens a running conversation at the latest message from the stream bootstr
     task,
     events,
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
   let detailReads = 0;
@@ -2494,6 +2506,7 @@ test("makes disconnected task state unavailable and preserves an unidentifiable 
     events,
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
+    eventsRange: { from: null, to: null },
     historyLoading: false,
   });
 

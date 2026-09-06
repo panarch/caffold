@@ -13,6 +13,15 @@ import {
   scrollTop,
 } from "../support/task-fixtures.js";
 
+// The extent an answer made of exactly these events declares: its span, or
+// everything from its first event onward for a current page.
+function positionSpan(events, { open = false } = {}) {
+  const positions = events
+    .map((event) => event.position)
+    .sort((left, right) => left.anchorMs - right.anchorMs || left.index - right.index);
+  return { from: positions[0] ?? null, to: open ? null : (positions.at(-1) ?? null) };
+}
+
 test.beforeEach(async ({ page }) => {
   await installBrowserDefaults(page);
 });
@@ -53,6 +62,7 @@ test("keeps a large task usable while conversation history is loading", { tag: "
     events: [],
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
+    eventsRange: null,
     historyLoading: true,
   };
 
@@ -102,6 +112,7 @@ test("keeps a large task usable while conversation history is loading", { tag: "
     ...pendingDetail,
     revision: 2,
     eventRevision: 2,
+    eventsRange: { from: null, to: null },
     historyLoading: false,
     events: [
       {
@@ -138,6 +149,188 @@ test("keeps a large task usable while conversation history is loading", { tag: "
   await expect(tasksPage.getByText("Recent history is ready.")).toBeVisible();
   await expect(composer).toHaveValue("Keep this draft while history arrives");
 });
+async function openBoundedExtentTask(page, { threadId, title, now, events }) {
+  await installEventSourceMock(page);
+  await mockAgentModels(page);
+  const task = {
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("active", { latestTurnStatus: "inProgress" }),
+    title,
+    preview: "Working",
+    cwd: "frontend/tests/e2e/fixtures/home",
+    cwdPath: "frontend/tests/e2e/fixtures/home",
+    relativeCwd: "frontend/tests/e2e/fixtures/home",
+    worktree: null,
+    createdMs: now,
+    updatedMs: now + 2,
+    recencyMs: now + 2,
+    lastEventSummary: "Assistant response",
+  };
+  const detail = {
+    threadId,
+    syncState: "ready",
+    revision: 1,
+    eventRevision: 1,
+    task,
+    events,
+    eventsPage: { nextCursor: null },
+    eventsRange: positionSpan(events, { open: true }),
+    pendingApprovals: [],
+    historyLoading: false,
+  };
+  await page.route("**/api/tasks**", (route) => {
+    const request = route.request();
+    const segments = new URL(request.url()).pathname.split("/").filter(Boolean);
+    if (request.method() === "GET" && segments.length === 2) {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(activeTaskProjection([task])),
+      });
+    }
+    if (request.method() === "GET" && segments.length === 3 && segments[2] === threadId) {
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify(detail) });
+    }
+    return route.continue();
+  });
+  await page.goto(`/tasks/${threadId}`);
+  await emitTaskDetailBootstrap(page, detail);
+  await expect
+    .poll(() => page.evaluate(() => window.__caffoldMockEventSources.length))
+    .toBeGreaterThan(0);
+  return { task, detail };
+}
+
+function extentEvent(threadId, now, offset, text) {
+  return {
+    id: `event_extent_${offset}`,
+    threadId,
+    type: "assistant_message",
+    summary: "Assistant response",
+    payload: { turnId: "turn-extent", itemId: `item-${offset}`, text, phase: "final" },
+    position: { anchorMs: now + offset, index: 0 },
+  };
+}
+
+async function emitTaskStream(page, threadId, name, payload) {
+  await page.evaluate(
+    ({ threadId, name, payload }) => {
+      const source = window.__caffoldMockEventSources.find((candidate) =>
+        candidate.url.includes(`/api/tasks/${threadId}/stream`),
+      );
+      source.emit(name, payload);
+    },
+    { threadId, name, payload },
+  );
+}
+
+test("keeps events seen before a bounded snapshot's extent when that snapshot arrives", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const threadId = "thread_bounded_extent";
+  const now = 1_767_310_000_000;
+  const [first, second, third] = [
+    extentEvent(threadId, now, 0, "Start the long turn"),
+    extentEvent(threadId, now, 1, "Step one done"),
+    extentEvent(threadId, now, 2, "Step two done"),
+  ];
+  const { task } = await openBoundedExtentTask(page, {
+    threadId,
+    title: "Bounded extent",
+    now,
+    events: [first, second, third],
+  });
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage).toContainText("Step two done");
+
+  const fourth = extentEvent(threadId, now, 3, "Step three done");
+  const fifth = extentEvent(threadId, now, 4, "Step four done");
+  await emitTaskStream(page, threadId, "task-event", {
+    threadId,
+    revision: 2,
+    eventRevision: 2,
+    event: fourth,
+  });
+  await emitTaskStream(page, threadId, "task-event", {
+    threadId,
+    revision: 3,
+    eventRevision: 3,
+    event: fifth,
+  });
+  await expect(tasksPage).toContainText("Step four done");
+
+  // The backend bounds this snapshot to the newest events: it owns the
+  // projection from the fourth event onward and says nothing about the rest.
+  const fourthFinal = { ...fourth, payload: { ...fourth.payload, text: "Step three done, final" } };
+  const sixth = extentEvent(threadId, now, 5, "Step five done");
+  await emitTaskStream(page, threadId, "task-sync", {
+    threadId,
+    revision: 4,
+    reason: "app-server-notification",
+    detail: {
+      threadId,
+      syncState: "ready",
+      revision: 4,
+      eventRevision: 4,
+      task,
+      events: [fourthFinal, fifth, sixth],
+      eventsPage: { nextCursor: null },
+      eventsRange: { from: fourth.position, to: null },
+      pendingApprovals: [],
+      historyLoading: false,
+    },
+  });
+
+  await expect(tasksPage).toContainText("Step five done");
+  await expect(tasksPage).toContainText("Step three done, final");
+  for (const text of ["Start the long turn", "Step one done", "Step two done", "Step four done"]) {
+    await expect(tasksPage).toContainText(text);
+  }
+});
+
+test("drops a retained event that a snapshot omits inside its extent", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  const threadId = "thread_extent_deletion";
+  const now = 1_767_320_000_000;
+  const [first, second, third] = [
+    extentEvent(threadId, now, 0, "Start the turn"),
+    extentEvent(threadId, now, 1, "Kept step"),
+    extentEvent(threadId, now, 2, "Withdrawn step"),
+  ];
+  const { task } = await openBoundedExtentTask(page, {
+    threadId,
+    title: "Extent deletion",
+    now,
+    events: [first, second, third],
+  });
+  const tasksPage = page.locator("caffold-tasks-page");
+  await expect(tasksPage).toContainText("Withdrawn step");
+
+  const fourth = extentEvent(threadId, now, 3, "Newest step");
+  await emitTaskStream(page, threadId, "task-sync", {
+    threadId,
+    revision: 2,
+    reason: "app-server-notification",
+    detail: {
+      threadId,
+      syncState: "ready",
+      revision: 2,
+      eventRevision: 2,
+      task,
+      events: [first, second, fourth],
+      eventsPage: { nextCursor: null },
+      eventsRange: { from: first.position, to: null },
+      pendingApprovals: [],
+      historyLoading: false,
+    },
+  });
+
+  await expect(tasksPage).toContainText("Newest step");
+  await expect(tasksPage).not.toContainText("Withdrawn step");
+  await expect(tasksPage).toContainText("Kept step");
+});
+
 test("keeps the visible conversation anchor while loading older events by cursor", { tag: "@all-viewports" }, async ({
   page,
 }) => {
@@ -278,6 +471,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
             ]
           : [],
         eventsPage: { nextCursor },
+        eventsRange: positionSpan(events, { open: !cursor }),
         pendingApprovals: [],
       }),
     });
@@ -300,6 +494,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
     events: latestEvents,
     eventsPage: { nextCursor: "older_cursor" },
     pendingApprovals: [],
+    eventsRange: { from: null, to: null },
     historyLoading: false,
   });
   await expect(tasksPage.locator(".task-detail-summary")).not.toContainText("notLoaded");
@@ -326,6 +521,7 @@ test("keeps the visible conversation anchor while loading older events by cursor
           events: [],
           eventsPage: { nextCursor: null },
           pendingApprovals: [],
+          eventsRange: null,
           historyLoading: true,
         },
       });
@@ -483,6 +679,7 @@ test("keeps the latest conversation when older history times out", { tag: "@all-
     task,
     events: latestEvents,
     eventsPage: { nextCursor: "older-timeout-cursor" },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   };
   let olderRequests = 0;
@@ -521,6 +718,7 @@ test("keeps the latest conversation when older history times out", { tag: "@all-
             },
           ],
           eventsPage: { nextCursor: null },
+          eventsRange: { from: null, to: null },
           pendingApprovals: [],
         }),
       });
@@ -613,6 +811,7 @@ test("renders normalized Codex user messages instead of raw ambient context", { 
       },
     ],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   };
 
@@ -702,6 +901,7 @@ test("orders separate turns by message chronology when a newer start marker is s
     events,
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
+    eventsRange: { from: null, to: null },
     historyLoading: false,
     permissionMode: null,
     model: null,
@@ -816,6 +1016,7 @@ test("keeps cross-turn work chronological and the active status at the timeline 
     task: activeTask,
     events: [user, reasoning, foreignCommand, fileChange],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   };
 
@@ -953,6 +1154,7 @@ test("keeps cross-turn work chronological and the active status at the timeline 
         user,
       ],
       eventsPage: { nextCursor: null },
+      eventsRange: { from: null, to: null },
       pendingApprovals: [],
     },
     4,
@@ -1106,6 +1308,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
     task: detailTask,
     events: detailEvents,
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
 
@@ -1247,6 +1450,7 @@ test("keeps task event chronology stable through approval, completion, and reloa
       task: detailTask,
       events: detailEvents,
       eventsPage: { nextCursor: null },
+      eventsRange: { from: null, to: null },
       pendingApprovals: [],
     },
     detailRevision,
@@ -1420,6 +1624,7 @@ test("keeps task conversation scroll anchored during live updates", { tag: "@all
     events,
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
+    eventsRange: { from: null, to: null },
     historyLoading: false,
     permissionMode: null,
     model: null,

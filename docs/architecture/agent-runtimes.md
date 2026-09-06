@@ -300,11 +300,16 @@ establishes only whether an independently delivered conversation snapshot or
 delta is already covered; it is not item identity, provider causality,
 conversation position, or time.
 
-A current-page Detail snapshot with provider history available owns the
-membership of its conversation projection. A snapshot marked `historyLoading`
-owns the exact identities it contains but cannot prove that an absent,
-previously readable item was deleted. Older cursor pages remain a separate
-history layer and do not become another current live ledger.
+Every Detail answer declares the extent of the projection it owns as an
+inclusive backend position range, `eventsRange`, or declares none. A
+current-page answer owns its first event onward. An answer bounded to
+`TASK_DETAIL_EVENT_LIMIT` events owns its first kept event onward; the turn
+boundary events it repeats from before that point update by identity without
+widening the extent. An older cursor page, whether older turns or the earlier events of a page
+already answered, owns exactly the span of the events it contains. A
+`historyLoading` answer declares no extent, so it owns the exact identities it
+contains and cannot prove that an absent, previously readable item was
+deleted.
 
 The agent still owns the meaning of a permission. Caffold owns the human answer
 vocabulary—allow, allow always, deny, and deny and stop—and each driver offers
