@@ -181,6 +181,7 @@ export async function installShowcaseFixture(page) {
     ],
     fileLinks: [],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
     permissionMode: "approveForMe",
     model: "gpt-5.6-sol",

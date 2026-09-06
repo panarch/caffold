@@ -92,6 +92,7 @@ test("renders managed Task file changes relative in live cards and Work details"
     task,
     events,
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   };
 

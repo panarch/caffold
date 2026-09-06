@@ -1122,7 +1122,7 @@ pub(in crate::app::tasks) fn task_event_record(
     }
 }
 
-fn task_event_turn_id(event: &TaskEventRecord) -> Option<&str> {
+pub(in crate::app::tasks) fn task_event_turn_id(event: &TaskEventRecord) -> Option<&str> {
     event
         .payload
         .as_ref()

@@ -40,15 +40,13 @@ import {
   withPromptSubmissionState,
 } from "../../runtime-state.js";
 import {
+  applyDetailRange,
   applyProjectionDelta,
   appendOptimisticEvent,
   eventIdentityKey,
   handoffOptimisticSubmission,
   mergeTaskEventsPage,
   optimisticUserMessageEvent,
-  prependDetailEvents,
-  projectCanonicalEvents,
-  projectHistoryLoadingEvents,
 } from "../../task-events.js";
 import { cleanLogicalPath } from "../../task-format.js";
 import {
@@ -81,7 +79,6 @@ class CaffoldTaskDetail extends HTMLElement {
     this.events = [];
     this.eventsThreadId = "";
     this.eventsByThread = new Map();
-    this.olderEventsByThread = new Map();
     this.eventsPage = { nextCursor: null };
     this.detailLoadError = null;
     this.historyLoadError = null;
@@ -656,7 +653,7 @@ class CaffoldTaskDetail extends HTMLElement {
       revision = detail?.revision,
       resetRevision = false,
       preserveCurrentTask = false,
-      preferCurrentEvents = false,
+      historyPage = false,
       updateKind = "preserve",
       detailError = null,
       clearHistoryError = false,
@@ -678,7 +675,7 @@ class CaffoldTaskDetail extends HTMLElement {
     if (!this.acceptTaskDetailRevision(threadId, revision)) {
       return false;
     }
-    const projectionDecision = preferCurrentEvents
+    const projectionDecision = historyPage
       ? { valid: true, accepted: true }
       : this.acceptProjectionSnapshotRevision(
           threadId,
@@ -687,7 +684,7 @@ class CaffoldTaskDetail extends HTMLElement {
     if (!projectionDecision.valid) {
       return false;
     }
-    if (!preferCurrentEvents && projectionDecision.accepted) {
+    if (!historyPage && projectionDecision.accepted) {
       this.rememberPendingPromptDetailPositions(
         threadId,
         detail?.events ?? [],
@@ -715,7 +712,7 @@ class CaffoldTaskDetail extends HTMLElement {
         ? this.taskDetail
         : null;
     const retainedProjection =
-      !preferCurrentEvents && !projectionDecision.accepted && previousDetail
+      !historyPage && !projectionDecision.accepted && previousDetail
         ? {
             eventRevision:
               this.projectionRevisionByThread.get(threadId) ?? 0,
@@ -735,32 +732,11 @@ class CaffoldTaskDetail extends HTMLElement {
       detail.events ?? [],
       detail.fileLinks,
     );
-    if (preferCurrentEvents) {
-      const olderEvents = prependDetailEvents(
-        this.olderEventsByThread.get(threadId) ?? [],
-        incomingEvents,
-      );
-      this.olderEventsByThread.set(threadId, olderEvents);
+    if (historyPage || projectionDecision.accepted) {
       this.setThreadEvents(
         threadId,
-        prependDetailEvents(currentEvents, incomingEvents),
+        applyDetailRange(currentEvents, incomingEvents, detail?.eventsRange ?? null),
       );
-    } else if (projectionDecision.accepted) {
-      const optimisticEvents = currentEvents.filter(
-        (event) => event.payload?.optimistic,
-      );
-      this.setThreadEvents(
-        threadId,
-        detail?.historyLoading
-          ? projectHistoryLoadingEvents(incomingEvents, currentEvents)
-          : projectCanonicalEvents(
-              incomingEvents,
-              this.olderEventsByThread.get(threadId) ?? [],
-              optimisticEvents,
-            ),
-      );
-    }
-    if (preferCurrentEvents || projectionDecision.accepted) {
       this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
     }
     const canonicalError =
@@ -1413,7 +1389,7 @@ class CaffoldTaskDetail extends HTMLElement {
         !detail?.task ||
         !this.applyCanonicalTaskDetail(threadId, detail, {
           preserveCurrentTask: true,
-          preferCurrentEvents: true,
+          historyPage: true,
           updateKind: "prepend",
           clearHistoryError: true,
           reconcilePrompt: false,

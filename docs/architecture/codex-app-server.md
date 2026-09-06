@@ -343,8 +343,20 @@ approval is never withdrawn twice.
 
 The resume response supplies the latest eight turns with full items. Caffold
 keeps that page in the thread session and does not bootstrap task detail with a
-separate full `thread/read` scan. Older history is prepended with the forward
-pagination cursor.
+separate full `thread/read` scan. A Task Detail answer carries at most
+`TASK_DETAIL_EVENT_LIMIT` events of that page, newest first, plus the boundary
+events of the turns they belong to; the [Agent Runtimes publication
+contract](agent-runtimes.md#projection-publication) owns how the answer
+declares what it covers.
+
+Older history is requested with a cursor Caffold writes and the browser hands
+back unchanged. The cursor names the app-server page the events belong to,
+or the page the session already holds, and the position the events must
+precede. A request that stays within a held page is answered from that page
+without an app-server call; a request for an older app-server page calls
+`thread/turns/list` with that page's own cursor and re-reads it for each of
+its earlier slices. Each answer continues within its page while earlier events
+remain, then moves on to the next older page.
 
 Turn IDs and item IDs are merge identities. A provider read merges into the
 cached page by turn ID, the page is bounded to the newest eight turns, and a

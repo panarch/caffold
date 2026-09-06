@@ -8,13 +8,22 @@ import {
   dedupeCanonicalEvents,
   fileChangePathPresentations,
   handoffOptimisticSubmission,
+  applyDetailRange,
   optimisticUserMessageEvent,
-  prependDetailEvents,
-  projectCanonicalEvents,
-  projectHistoryLoadingEvents,
   sortEventsChronologically,
   taskEventPosition,
 } from "./task-events.js";
+
+const WHOLE_PROJECTION = { from: null, to: null };
+
+// The extent an answer made of exactly these events would declare.
+function spanOf(events) {
+  const positions = events.map(taskEventPosition).filter(Boolean);
+  const sorted = [...positions].sort(
+    (left, right) => left.anchorMs - right.anchorMs || left.index - right.index,
+  );
+  return { from: sorted[0] ?? null, to: sorted.at(-1) ?? null };
+}
 
 function event(id, type, anchorMs, payload = {}, overrides = {}) {
   const { positionIndex = 0, ...recordOverrides } = overrides;
@@ -238,7 +247,7 @@ test("a canonical snapshot keeps a new identical optimistic overlay separate", (
   );
 
   assert.deepEqual(
-    projectCanonicalEvents([canonical], [], [optimistic]).map(({ id }) => id),
+    applyDetailRange([optimistic], [canonical], WHOLE_PROJECTION).map(({ id }) => id),
     ["canonical-1", optimistic.id],
     "presentation text cannot identify a later submission",
   );
@@ -334,7 +343,7 @@ test("distinct structured messages survive even when their text is identical", (
   });
 
   assert.deepEqual(
-    projectCanonicalEvents([first, second]).map(({ id }) => id),
+    applyDetailRange([], [first, second], WHOLE_PROJECTION).map(({ id }) => id),
     ["canonical-1", "canonical-2"],
     "two stable item identities are two messages, whatever their text says",
   );
@@ -410,9 +419,9 @@ test("a backend-selected background ledger stays once across refreshes", () => {
   );
 
   const liveState = applyProjectionDeltas([earlier], [live]);
-  const refreshed = projectCanonicalEvents([earlier, detail]);
-  const refreshedAgain = projectCanonicalEvents([earlier, detail]);
-  const reloaded = projectCanonicalEvents([earlier, detail]);
+  const refreshed = applyDetailRange([], [earlier, detail], WHOLE_PROJECTION);
+  const refreshedAgain = applyDetailRange([], [earlier, detail], WHOLE_PROJECTION);
+  const reloaded = applyDetailRange([], [earlier, detail], WHOLE_PROJECTION);
 
   for (const state of [liveState, refreshed, refreshedAgain, reloaded]) {
     assert.deepEqual(
@@ -488,7 +497,7 @@ test("a canonical snapshot replaces unrelated prior projection records", () => {
     text: "New canonical event.",
   });
 
-  const reconciled = projectCanonicalEvents([canonical]);
+  const reconciled = applyDetailRange([current], [canonical], WHOLE_PROJECTION);
 
   assert.deepEqual(reconciled, [canonical]);
   assert.equal(reconciled.includes(current), false);
@@ -521,7 +530,7 @@ test("a canonical snapshot owns item fields and position without browser enrichm
     { positionIndex: 2 },
   );
 
-  const reconciled = projectCanonicalEvents([historyPrompt, historyAnswer]);
+  const reconciled = applyDetailRange([], [historyPrompt, historyAnswer], WHOLE_PROJECTION);
 
   assert.deepEqual(
     reconciled.map((entry) => entry.type),
@@ -536,7 +545,7 @@ test("a canonical snapshot owns item fields and position without browser enrichm
   ]);
 });
 
-test("an older Detail page cannot replace the current cursor-boundary item", () => {
+test("an older Detail page owns only its span and leaves the current boundary item alone", () => {
   const olderBoundary = event(
     "older-command",
     "tool_call",
@@ -569,22 +578,74 @@ test("an older Detail page cannot replace the current cursor-boundary item", () 
     itemId: "message-0",
     text: "Earlier history",
   });
+  const staleInsideSpan = event("stale-inside", "assistant_message", 60, {
+    turnId: "turn-0",
+    itemId: "message-stale",
+    text: "No longer in the older page",
+  });
 
-  const projected = prependDetailEvents(
-    [currentBoundary],
+  const projected = applyDetailRange(
+    [currentBoundary, staleInsideSpan],
     [olderMessage, olderBoundary],
+    spanOf([olderMessage, olderBoundary]),
   );
 
   assert.deepEqual(projected.map(({ id }) => id), [
     "older-message",
     "current-command",
   ]);
-  assert.equal(projected[1].type, "command_execution");
-  assert.equal(projected[1].summary, "Current command");
-  assert.deepEqual(projected[1].position, currentBoundary.position);
-  assert.equal(projected[1].payload.status, "completed");
-  assert.equal(projected[1].payload.output, "current output");
-  assert.equal(projected[1].payload.olderOnly, true);
+  assert.deepEqual(projected[1], currentBoundary);
+});
+
+test("a bounded current page keeps retained records before its extent and owns what follows", () => {
+  const olderHistory = event("older-history", "assistant_message", 50, {
+    turnId: "turn-0",
+    itemId: "message-0",
+    text: "Loaded through the cursor",
+  });
+  const seenBeforeTheCut = event("seen-before", "command_execution", 150, {
+    turnId: "turn-1",
+    itemId: "command-150",
+    status: "completed",
+  });
+  const turnStart = event("turn-1:started", "turn_started", 100, {
+    turnId: "turn-1",
+  });
+  const goneInsideExtent = event("gone", "command_execution", 192, {
+    turnId: "turn-1",
+    itemId: "command-180",
+    status: "completed",
+  });
+  const retainedInsideExtent = event("kept", "command_execution", 190, {
+    turnId: "turn-1",
+    itemId: "command-190",
+    status: "inProgress",
+  });
+  const answerForKept = event("kept", "command_execution", 190, {
+    turnId: "turn-1",
+    itemId: "command-190",
+    status: "completed",
+  });
+  const newest = event("newest", "assistant_message", 195, {
+    turnId: "turn-1",
+    itemId: "message-195",
+    text: "Newest",
+  });
+
+  const projected = applyDetailRange(
+    [olderHistory, turnStart, seenBeforeTheCut, goneInsideExtent, retainedInsideExtent],
+    [turnStart, answerForKept, newest],
+    { from: answerForKept.position, to: null },
+  );
+
+  assert.deepEqual(projected.map(({ id }) => id), [
+    "older-history",
+    "turn-1:started",
+    "seen-before",
+    "kept",
+    "newest",
+  ]);
+  assert.equal(projected[3].payload.status, "completed");
 });
 
 test("a history-loading Detail advances exact items without deleting retained history", () => {
@@ -634,9 +695,10 @@ test("a history-loading Detail advances exact items without deleting retained hi
     },
   );
 
-  const projected = projectHistoryLoadingEvents(
-    [currentCommand, currentMessage],
+  const projected = applyDetailRange(
     [retainedHistory, retainedCommand],
+    [currentCommand, currentMessage],
+    null,
   );
 
   assert.deepEqual(projected.map(({ id }) => id), [
@@ -684,7 +746,7 @@ test("canonical Detail requires no retained-live conflict arbitration", () => {
     { summary: "Canonical command completed", positionIndex: 2 },
   );
 
-  const [reconciled] = projectCanonicalEvents([canonical]);
+  const [reconciled] = applyDetailRange([], [canonical], WHOLE_PROJECTION);
 
   assert.equal(reconciled.type, "command_execution");
   assert.equal(reconciled.summary, "Canonical command completed");
@@ -774,10 +836,10 @@ test("an exact submission handoff keeps its optimistic position until Detail own
     },
     { positionIndex: 2 },
   );
-  const reconciled = projectCanonicalEvents([
+  const reconciled = applyDetailRange([], [
     historyPrompt,
     historyAnswer,
-  ]);
+  ], WHOLE_PROJECTION);
 
   assert.deepEqual(reconciled[0].position, historyPrompt.position);
 });

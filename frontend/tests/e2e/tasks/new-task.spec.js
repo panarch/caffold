@@ -661,6 +661,7 @@ test("does not carry an older-history cursor into a newly created task", { tag: 
     events: previousEvents,
     eventsPage: { nextCursor: previousCursor },
     pendingApprovals: [],
+    eventsRange: { from: null, to: null },
     historyLoading: false,
   };
   const createdTask = {
@@ -685,6 +686,7 @@ test("does not carry an older-history cursor into a newly created task", { tag: 
     events: [],
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
+    eventsRange: null,
     historyLoading: true,
     activeTopPlacement: {
       section: { id: "fixture-section-src", name: "src", repository: false },

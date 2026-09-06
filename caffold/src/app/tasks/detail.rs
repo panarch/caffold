@@ -1,7 +1,11 @@
-use std::{collections::VecDeque, pin::Pin, sync::Arc};
+use std::{
+    collections::{HashSet, VecDeque},
+    pin::Pin,
+    sync::Arc,
+};
 
 use futures_util::{Stream, stream};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex as AsyncMutex, broadcast};
 
 mod file_links;
@@ -10,8 +14,9 @@ use file_links::{TaskFileLink, TaskFileLinkResolver};
 
 use super::{
     events::{
-        TaskEventRecord, TaskEvents, compose_pending_approval_events,
-        reconcile_provider_history_with_live_observations, sort_task_events, thread_events,
+        TaskEventPosition, TaskEventRecord, TaskEvents, compose_pending_approval_events,
+        reconcile_provider_history_with_live_observations, sort_task_events, task_event_turn_id,
+        thread_events,
     },
     lifecycle::ActiveTaskTopPlacement,
     projection::{
@@ -35,6 +40,8 @@ use crate::{
 };
 
 pub(super) const TASK_DETAIL_TURNS_PAGE_SIZE: usize = 8;
+/// The most events one Task Detail answer carries, whatever a turn holds.
+pub(super) const TASK_DETAIL_EVENT_LIMIT: usize = 200;
 
 type RefreshTaskList = Arc<dyn Fn() + Send + Sync>;
 
@@ -65,6 +72,8 @@ pub(in crate::app::tasks) struct TaskDetailResponse {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(in crate::app::tasks) file_links: Vec<TaskFileLink>,
     pub(in crate::app::tasks) events_page: TaskEventsPage,
+    /// The projection extent this answer owns; `None` owns only its events.
+    pub(in crate::app::tasks) events_range: Option<TaskEventsRange>,
     pub(in crate::app::tasks) pending_approvals: Vec<TaskEventRecord>,
     pub(in crate::app::tasks) history_loading: bool,
     /// Which agent runs this Task, when this answer knows.
@@ -95,6 +104,44 @@ pub(in crate::app::tasks) enum TaskSyncState {
 #[serde(rename_all = "camelCase")]
 pub(in crate::app::tasks) struct TaskEventsPage {
     pub(in crate::app::tasks) next_cursor: Option<String>,
+}
+
+/// Inclusive backend positions; an open end is `None`.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(in crate::app::tasks) struct TaskEventsRange {
+    pub(in crate::app::tasks) from: Option<TaskEventPosition>,
+    pub(in crate::app::tasks) to: Option<TaskEventPosition>,
+}
+
+/// Where an older-history request continues, in Caffold's own terms.
+///
+/// `turns` names the app-server page the events belong to and is absent for
+/// the page the session already holds; `before` is the position the events
+/// must precede and is absent for the page's newest events. The browser only
+/// hands the encoded value back.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(in crate::app::tasks) struct TaskDetailCursor {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(in crate::app::tasks) turns: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(in crate::app::tasks) before: Option<TaskEventPosition>,
+}
+
+impl TaskDetailCursor {
+    /// A cursor this version did not write is an app-server turn cursor a
+    /// browser kept across a replacement.
+    fn decode(cursor: &str) -> Self {
+        serde_json::from_str(cursor).unwrap_or_else(|_| Self {
+            turns: Some(cursor.to_string()),
+            before: None,
+        })
+    }
+
+    fn encode(&self) -> String {
+        serde_json::to_string(self).expect("a detail cursor holds only serializable fields")
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -365,14 +412,15 @@ impl DetailContext {
         cursor: Option<&str>,
     ) -> Result<TaskDetailResponse, ApiError> {
         self.restore_managed_fast_mode(thread_id).await?;
-        let (snapshot, response_page) = if let Some(cursor) = cursor {
+        let cursor = cursor.map(TaskDetailCursor::decode).unwrap_or_default();
+        let (snapshot, response_page) = if let Some(turns) = cursor.turns.as_deref() {
             let (snapshot, page, history_base_revision) = self
                 .sessions
                 .load_older_turns(
                     &agent.driver(),
                     agent.generation(),
                     thread_id,
-                    cursor,
+                    turns,
                     TASK_DETAIL_TURNS_PAGE_SIZE,
                 )
                 .await?;
@@ -385,7 +433,8 @@ impl DetailContext {
                 None,
             )
         };
-        self.assemble_snapshot(snapshot, response_page).await
+        self.assemble_snapshot(snapshot, response_page, cursor)
+            .await
     }
 
     pub(in crate::app::tasks) async fn cached(
@@ -408,7 +457,9 @@ impl DetailContext {
                 revision,
             ));
         }
-        let detail = self.assemble_snapshot(snapshot, None).await?;
+        let detail = self
+            .assemble_snapshot(snapshot, None, TaskDetailCursor::default())
+            .await?;
         Ok((detail, revision))
     }
 
@@ -454,6 +505,7 @@ impl DetailContext {
         &self,
         snapshot: SessionSnapshot,
         response_page: Option<(TurnPage, u64)>,
+        cursor: TaskDetailCursor,
     ) -> Result<TaskDetailResponse, ApiError> {
         let revision = snapshot.revision;
         let permission_mode = snapshot.permission_mode;
@@ -465,6 +517,7 @@ impl DetailContext {
             .as_ref()
             .map(|thread| thread.id.clone())
             .ok_or_else(|| ApiError::Agent("subscribed thread metadata is missing".to_string()))?;
+        let older_page = response_page.is_some();
         let (page, history_base_revision) = response_page
             .map(|(page, base_revision)| (Some(page), Some(base_revision)))
             .unwrap_or_else(|| (snapshot.turns_page.clone(), snapshot.history_base_revision));
@@ -476,13 +529,14 @@ impl DetailContext {
         // An agent reports its history newest first; a conversation reads
         // oldest first.
         turns.reverse();
-        let next_cursor = page.and_then(|page| page.next_cursor);
+        let older_turns = page.and_then(|page| page.next_cursor);
         let conversation = snapshot
             .conversation
             .expect("conversation metadata was checked above");
         let conversation = self.project_managed_worktree_cwd(conversation)?;
         let conversation = conversation_with_turns(&conversation, turns);
         let mut events = thread_events(&conversation);
+        let owned_extent = (!history_loading).then(|| history_extent(&events, older_page));
         self.events.observe_history_assets(&events);
         let live_snapshot = self.events.snapshot_for_thread(&thread_id);
         events = reconcile_provider_history_with_live_observations(
@@ -497,6 +551,8 @@ impl DetailContext {
         let resolved_cwd = resolve_conversation_cwd(&self.fs, &conversation);
         let mut task = task_record_from_conversation(&conversation, &events, resolved_cwd.as_ref());
         apply_canonical_turn_projection(&mut task, &conversation);
+        let (mut events, events_range, next_cursor) =
+            window_detail_events(events, owned_extent, &cursor, older_turns);
         let managed = self.store_get(&thread_id).await?;
         if let Some(current) = managed {
             task.title = current.display_name.clone();
@@ -520,6 +576,7 @@ impl DetailContext {
                 events,
                 file_links,
                 events_page: TaskEventsPage { next_cursor },
+                events_range,
                 pending_approvals,
                 history_loading,
                 provider,
@@ -592,7 +649,10 @@ impl DetailContext {
         snapshot: SessionSnapshot,
         reason: &'static str,
     ) {
-        let Ok(detail) = self.assemble_snapshot(snapshot, None).await else {
+        let Ok(detail) = self
+            .assemble_snapshot(snapshot, None, TaskDetailCursor::default())
+            .await
+        else {
             return;
         };
         self.sync.publish(TaskDetailSync {
@@ -686,6 +746,7 @@ pub(in crate::app::tasks) fn loading_detail(
         events: Vec::new(),
         file_links: Vec::new(),
         events_page: TaskEventsPage { next_cursor: None },
+        events_range: None,
         pending_approvals: Vec::new(),
         history_loading: true,
         provider: managed.map(|thread| thread.run_by.provider()),
@@ -694,6 +755,129 @@ pub(in crate::app::tasks) fn loading_detail(
         reasoning_effort: managed.and_then(|thread| thread.reasoning_effort.clone()),
         fast_mode: managed.is_some_and(|thread| thread.fast_mode),
         active_top_placement: None,
+    }
+}
+
+/// The extent a provider-history page would own: its own events, and
+/// everything after them when it is the current page.
+fn history_extent(history: &[TaskEventRecord], older_page: bool) -> TaskEventsRange {
+    let mut positions = history.iter().map(|event| event.position);
+    let Some(first) = positions.next() else {
+        return TaskEventsRange {
+            from: None,
+            to: None,
+        };
+    };
+    let (from, to) = positions.fold((first, first), |(from, to), position| {
+        (min_position(from, position), max_position(to, position))
+    });
+    TaskEventsRange {
+        from: Some(from),
+        to: older_page.then_some(to),
+    }
+}
+
+/// The slice of a page one answer carries, and where the next one continues.
+///
+/// A cursor with `before` keeps only the events ahead of that position, so
+/// the answer owns exactly the span it contains. When the newest events still
+/// leave earlier ones behind, the next cursor continues within this page;
+/// otherwise it moves on to the older app-server turns, if any.
+fn window_detail_events(
+    events: Vec<TaskEventRecord>,
+    extent: Option<TaskEventsRange>,
+    cursor: &TaskDetailCursor,
+    older_turns: Option<String>,
+) -> (
+    Vec<TaskEventRecord>,
+    Option<TaskEventsRange>,
+    Option<String>,
+) {
+    let (events, extent) = match cursor.before {
+        Some(before) => {
+            let events = events
+                .into_iter()
+                .filter(|event| {
+                    (event.position.anchor_ms, event.position.index)
+                        < (before.anchor_ms, before.index)
+                })
+                .collect::<Vec<_>>();
+            let to = events.last().map(|event| event.position);
+            let extent = to.and_then(|to| {
+                extent.map(|extent| TaskEventsRange {
+                    from: extent.from,
+                    to: Some(to),
+                })
+            });
+            (events, extent)
+        }
+        None => (events, extent),
+    };
+    let (events, range, cut_at) = bound_detail_events(events, extent);
+    let next_cursor = match cut_at {
+        Some(before) => Some(TaskDetailCursor {
+            turns: cursor.turns.clone(),
+            before: Some(before),
+        }),
+        None => older_turns.map(|turns| TaskDetailCursor {
+            turns: Some(turns),
+            before: None,
+        }),
+    }
+    .map(|cursor| cursor.encode());
+    (events, range, next_cursor)
+}
+
+/// Keep the newest `TASK_DETAIL_EVENT_LIMIT` events plus the turn boundaries
+/// they belong to. The owned extent starts at the first kept event, so the
+/// boundary events ahead of it are identity updates rather than membership.
+/// The position of the first kept event comes back when something was cut.
+fn bound_detail_events(
+    mut events: Vec<TaskEventRecord>,
+    extent: Option<TaskEventsRange>,
+) -> (
+    Vec<TaskEventRecord>,
+    Option<TaskEventsRange>,
+    Option<TaskEventPosition>,
+) {
+    if events.len() <= TASK_DETAIL_EVENT_LIMIT {
+        return (events, extent, None);
+    }
+    let tail = events.split_off(events.len() - TASK_DETAIL_EVENT_LIMIT);
+    let kept_turns = tail
+        .iter()
+        .filter_map(task_event_turn_id)
+        .map(str::to_string)
+        .collect::<HashSet<_>>();
+    let from = tail.first().map(|event| event.position);
+    let mut bounded = events
+        .into_iter()
+        .filter(|event| {
+            matches!(event.event_type.as_str(), "turn_started" | "user_message")
+                && task_event_turn_id(event).is_some_and(|turn_id| kept_turns.contains(turn_id))
+        })
+        .collect::<Vec<_>>();
+    bounded.extend(tail);
+    let range = extent.map(|extent| TaskEventsRange {
+        from,
+        to: extent.to,
+    });
+    (bounded, range, from)
+}
+
+fn min_position(left: TaskEventPosition, right: TaskEventPosition) -> TaskEventPosition {
+    if (right.anchor_ms, right.index) < (left.anchor_ms, left.index) {
+        right
+    } else {
+        left
+    }
+}
+
+fn max_position(left: TaskEventPosition, right: TaskEventPosition) -> TaskEventPosition {
+    if (right.anchor_ms, right.index) > (left.anchor_ms, left.index) {
+        right
+    } else {
+        left
     }
 }
 
@@ -715,6 +899,7 @@ fn store_join_error(error: tokio::task::JoinError) -> ApiError {
 #[cfg(test)]
 mod inline_tests {
     use crate::agent::codex::CodexThread;
+    use crate::app::tasks::events::task_event_record;
     use crate::git;
     use serde_json::json;
 
@@ -731,6 +916,218 @@ mod inline_tests {
         }))
         .expect("the fixture decodes as a Codex thread");
         Conversation::from(&thread)
+    }
+
+    fn positioned_event(turn_id: &str, event_type: &str, anchor_ms: u64) -> TaskEventRecord {
+        task_event_record(
+            "thread-1",
+            &format!("{turn_id}:{event_type}:{anchor_ms}"),
+            event_type,
+            event_type,
+            Some(json!({ "turnId": turn_id })),
+            anchor_ms,
+        )
+    }
+
+    #[test]
+    fn a_current_page_owns_its_first_event_onward_and_an_older_page_owns_its_span() {
+        let history = vec![
+            positioned_event("turn-1", "turn_started", 10),
+            positioned_event("turn-1", "command_execution", 20),
+            positioned_event("turn-2", "turn_started", 30),
+        ];
+
+        let current = history_extent(&history, false);
+        let older = history_extent(&history, true);
+
+        assert_eq!(current.from, Some(TaskEventPosition::at(10)));
+        assert_eq!(current.to, None);
+        assert_eq!(older.from, Some(TaskEventPosition::at(10)));
+        assert_eq!(older.to, Some(TaskEventPosition::at(30)));
+        assert_eq!(
+            history_extent(&[], false),
+            TaskEventsRange {
+                from: None,
+                to: None
+            }
+        );
+    }
+
+    #[test]
+    fn events_within_the_limit_pass_through_with_their_extent() {
+        let events = vec![
+            positioned_event("turn-1", "turn_started", 10),
+            positioned_event("turn-1", "command_execution", 20),
+        ];
+        let extent = Some(history_extent(&events, false));
+
+        let (bounded, range, cut_at) = bound_detail_events(events.clone(), extent);
+
+        assert_eq!(bounded, events);
+        assert_eq!(range, extent);
+        assert_eq!(cut_at, None);
+    }
+
+    #[test]
+    fn events_over_the_limit_keep_the_newest_and_the_boundaries_of_their_turns() {
+        let mut events = vec![
+            positioned_event("turn-1", "turn_started", 1),
+            positioned_event("turn-1", "user_message", 2),
+            positioned_event("turn-1", "command_execution", 3),
+            positioned_event("turn-2", "turn_started", 10),
+            positioned_event("turn-2", "user_message", 11),
+        ];
+        for offset in 0..TASK_DETAIL_EVENT_LIMIT as u64 + 5 {
+            events.push(positioned_event(
+                "turn-2",
+                "command_execution",
+                100 + offset,
+            ));
+        }
+        let extent = Some(history_extent(&events, false));
+
+        let (bounded, range, cut_at) = bound_detail_events(events.clone(), extent);
+
+        let first_kept = &events[events.len() - TASK_DETAIL_EVENT_LIMIT];
+        assert_eq!(cut_at, Some(first_kept.position));
+        assert_eq!(bounded.len(), TASK_DETAIL_EVENT_LIMIT + 2);
+        assert_eq!(bounded[0].event_type, "turn_started");
+        assert_eq!(bounded[1].event_type, "user_message");
+        assert!(
+            bounded[..2]
+                .iter()
+                .all(|event| task_event_turn_id(event) == Some("turn-2"))
+        );
+        assert_eq!(bounded[2], *first_kept);
+        assert_eq!(bounded.last(), events.last());
+        assert!(
+            bounded
+                .iter()
+                .all(|event| task_event_turn_id(event) != Some("turn-1")),
+            "a turn with no kept events contributes no boundary"
+        );
+        assert_eq!(
+            range,
+            Some(TaskEventsRange {
+                from: Some(first_kept.position),
+                to: None
+            })
+        );
+    }
+
+    #[test]
+    fn a_bounded_answer_without_history_declares_no_extent() {
+        let events = (0..TASK_DETAIL_EVENT_LIMIT as u64 + 1)
+            .map(|offset| positioned_event("turn-1", "command_execution", offset))
+            .collect::<Vec<_>>();
+
+        let (bounded, range, cut_at) = bound_detail_events(events, None);
+
+        assert_eq!(bounded.len(), TASK_DETAIL_EVENT_LIMIT);
+        assert_eq!(range, None);
+        assert!(cut_at.is_some());
+    }
+
+    #[test]
+    fn a_detail_cursor_round_trips_and_wraps_an_app_server_cursor() {
+        let within = TaskDetailCursor {
+            turns: None,
+            before: Some(TaskEventPosition::at(7)),
+        };
+        let older = TaskDetailCursor {
+            turns: Some("older-1".to_string()),
+            before: None,
+        };
+        let app_server = r#"{"turnId":"turn-1","includeAnchor":false}"#;
+
+        assert_eq!(TaskDetailCursor::decode(&within.encode()), within);
+        assert_eq!(TaskDetailCursor::decode(&older.encode()), older);
+        assert_eq!(
+            TaskDetailCursor::decode(app_server),
+            TaskDetailCursor {
+                turns: Some(app_server.to_string()),
+                before: None,
+            }
+        );
+    }
+
+    #[test]
+    fn a_page_is_walked_back_within_the_session_before_moving_to_older_turns() {
+        let mut events = vec![
+            positioned_event("turn-1", "turn_started", 1),
+            positioned_event("turn-1", "user_message", 2),
+        ];
+        for anchor_ms in 3..=450 {
+            events.push(positioned_event("turn-1", "command_execution", anchor_ms));
+        }
+        let extent = Some(history_extent(&events, false));
+        let older = Some("older-1".to_string());
+        let at = TaskEventPosition::at;
+
+        let (first, first_range, first_cursor) = window_detail_events(
+            events.clone(),
+            extent,
+            &TaskDetailCursor::default(),
+            older.clone(),
+        );
+        let first_cursor = TaskDetailCursor::decode(&first_cursor.expect("more before"));
+        let (second, second_range, second_cursor) =
+            window_detail_events(events.clone(), extent, &first_cursor, older.clone());
+        let second_cursor = TaskDetailCursor::decode(&second_cursor.expect("more before"));
+        let (third, third_range, third_cursor) =
+            window_detail_events(events.clone(), extent, &second_cursor, older);
+
+        assert_eq!(first.len(), TASK_DETAIL_EVENT_LIMIT + 2);
+        assert_eq!(
+            first_range,
+            Some(TaskEventsRange {
+                from: Some(at(251)),
+                to: None
+            })
+        );
+        assert_eq!(
+            first_cursor,
+            TaskDetailCursor {
+                turns: None,
+                before: Some(at(251)),
+            }
+        );
+        assert_eq!(second.len(), TASK_DETAIL_EVENT_LIMIT + 2);
+        assert_eq!(
+            second_range,
+            Some(TaskEventsRange {
+                from: Some(at(51)),
+                to: Some(at(250))
+            })
+        );
+        assert_eq!(
+            second_cursor,
+            TaskDetailCursor {
+                turns: None,
+                before: Some(at(51)),
+            }
+        );
+        assert_eq!(third.len(), 50);
+        assert_eq!(
+            third_range,
+            Some(TaskEventsRange {
+                from: Some(at(1)),
+                to: Some(at(50))
+            })
+        );
+        assert_eq!(
+            TaskDetailCursor::decode(&third_cursor.expect("older turns remain")),
+            TaskDetailCursor {
+                turns: Some("older-1".to_string()),
+                before: None,
+            }
+        );
+        let covered = [first, second, third]
+            .concat()
+            .into_iter()
+            .map(|event| event.id)
+            .collect::<HashSet<_>>();
+        assert_eq!(covered.len(), events.len());
     }
 
     #[test]
@@ -893,7 +1290,7 @@ mod request_tests {
     use tokio::sync::broadcast;
 
     use super::super::{
-        CodexConnection, TaskRuntime,
+        CodexConnection, TaskRuntime, TaskState,
         events::*,
         projection::*,
         routes::{
@@ -1015,6 +1412,7 @@ mod request_tests {
             "a loading response cannot cover retained events it does not include"
         );
         assert!(detail.history_loading);
+        assert!(detail.events_range.is_none());
         assert_eq!(detail.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(detail.reasoning_effort.as_deref(), Some("xhigh"));
         assert!(detail.fast_mode);
@@ -1067,7 +1465,7 @@ mod request_tests {
             .unwrap();
         let detail = state
             .detail
-            .assemble_snapshot(snapshot, None)
+            .assemble_snapshot(snapshot, None, TaskDetailCursor::default())
             .await
             .unwrap();
 
@@ -1204,7 +1602,7 @@ mod request_tests {
 
         let background = state
             .detail
-            .assemble_snapshot(snapshot.clone(), None)
+            .assemble_snapshot(snapshot.clone(), None, TaskDetailCursor::default())
             .await
             .unwrap();
         let task = background.task.unwrap();
@@ -1217,7 +1615,7 @@ mod request_tests {
         snapshot.viewer_leases = 1;
         let viewed = state
             .detail
-            .assemble_snapshot(snapshot, None)
+            .assemble_snapshot(snapshot, None, TaskDetailCursor::default())
             .await
             .unwrap();
         assert!(viewed.task.unwrap().unseen);
@@ -1310,7 +1708,7 @@ mod request_tests {
 
         let detail = state
             .detail
-            .assemble_snapshot(snapshot, None)
+            .assemble_snapshot(snapshot, None, TaskDetailCursor::default())
             .await
             .unwrap();
         assert!(
@@ -1373,7 +1771,7 @@ mod request_tests {
 
         let error = state
             .detail
-            .assemble_snapshot(snapshot, None)
+            .assemble_snapshot(snapshot, None, TaskDetailCursor::default())
             .await
             .expect_err("unmanaged canonical detail must not be exposed");
 
@@ -1415,6 +1813,7 @@ mod request_tests {
         assert_eq!(response.0.sync_state, TaskSyncState::Ready);
         assert_eq!(response.0.task.as_ref().unwrap().thread_id, thread_id);
         assert!(response.0.history_loading);
+        assert!(response.0.events_range.is_none());
         wait_for_mock_method(&client, "thread/resume").await;
     }
 
@@ -1447,6 +1846,7 @@ mod request_tests {
         assert_eq!(response.0.sync_state, TaskSyncState::Ready);
         assert_eq!(response.0.task.as_ref().unwrap().thread_id, thread_id);
         assert!(response.0.history_loading);
+        assert!(response.0.events_range.is_none());
         wait_for_mock_method(&client, "thread/resume").await;
     }
 
@@ -1527,9 +1927,283 @@ mod request_tests {
             "Cached task detail regression"
         );
         assert_eq!(
-            response.0.events_page.next_cursor.as_deref(),
-            Some("older-1")
+            TaskDetailCursor::decode(response.0.events_page.next_cursor.as_deref().unwrap()),
+            TaskDetailCursor {
+                turns: Some("older-1".to_string()),
+                before: None,
+            }
         );
+        assert!(!response.0.history_loading);
+        assert_eq!(
+            response.0.events_range,
+            Some(TaskEventsRange {
+                from: None,
+                to: None
+            }),
+            "a current page with no history yet owns the whole projection"
+        );
+    }
+
+    fn long_turn(turn_id: &str, items: usize) -> serde_json::Value {
+        let mut turn_items = vec![json!({
+            "id": format!("{turn_id}-prompt"),
+            "type": "userMessage",
+            "content": [{ "type": "text", "text": "Run the long turn" }]
+        })];
+        turn_items.extend((1..items).map(|index| {
+            json!({
+                "id": format!("{turn_id}-step-{index}"),
+                "type": "agentMessage",
+                "text": format!("Step {index}"),
+                "phase": "final"
+            })
+        }));
+        json!({
+            "id": turn_id,
+            "items": turn_items,
+            "itemsView": "full",
+            "status": "completed",
+            "startedAt": 1.0,
+            "completedAt": 2.0
+        })
+    }
+
+    async fn walk_history(state: &TaskState, thread_id: &str) -> Vec<TaskDetailResponse> {
+        let mut pages = Vec::new();
+        let mut cursor = None;
+        loop {
+            let response = test_task_detail(state.clone(), thread_id.to_string(), cursor)
+                .await
+                .expect("history page loads")
+                .0;
+            cursor = response.events_page.next_cursor.clone();
+            pages.push(response);
+            if cursor.is_none() || pages.len() > 10 {
+                return pages;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_long_current_turn_is_paged_from_the_session_without_the_app_server() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-long-current-turn";
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                json!({
+                    "cwd": root.path().display().to_string(),
+                    "thread": {
+                        "id": thread_id,
+                        "preview": "Long current turn",
+                        "status": { "type": "idle" },
+                        "cwd": root.path().display().to_string(),
+                        "createdAt": 1.0,
+                        "updatedAt": 2.0,
+                        "turns": []
+                    },
+                    "initialTurnsPage": {
+                        "data": [long_turn("turn-long", 450)],
+                        "nextCursor": null,
+                        "backwardsCursor": null
+                    }
+                }),
+            ),
+            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        let _viewer = state
+            .task_sessions
+            .acquire_viewer(&client.driver(), 1, thread_id)
+            .await
+            .expect("initial task subscription succeeds");
+
+        let pages = walk_history(&state, thread_id).await;
+
+        // turn_started, the prompt, 449 steps, and turn_completed: 452 events
+        // over three pages.
+        assert_eq!(
+            pages
+                .iter()
+                .map(|page| page.events.len())
+                .collect::<Vec<_>>(),
+            [TASK_DETAIL_EVENT_LIMIT + 2, TASK_DETAIL_EVENT_LIMIT + 2, 52]
+        );
+        let covered = pages
+            .iter()
+            .flat_map(|page| page.events.iter().map(|event| event.id.clone()))
+            .collect::<HashSet<_>>();
+        assert_eq!(covered.len(), 452);
+        assert!(
+            pages[0]
+                .events_range
+                .is_some_and(|range| range.to.is_none())
+        );
+        assert!(
+            pages[1]
+                .events_range
+                .is_some_and(|range| range.from.is_some() && range.to.is_some())
+        );
+        assert_eq!(pages[2].events[0].event_type, "turn_started");
+        assert!(pages[2].events_page.next_cursor.is_none());
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            ["thread/resume"],
+            "walking the held page never asks the app-server"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_long_older_turn_is_paged_by_rereading_its_app_server_page() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-long-older-turn";
+        let older_page = json!({
+            "data": [long_turn("turn-older", 250)],
+            "nextCursor": null,
+            "backwardsCursor": null
+        });
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                json!({
+                    "cwd": root.path().display().to_string(),
+                    "thread": {
+                        "id": thread_id,
+                        "preview": "Long older turn",
+                        "status": { "type": "idle" },
+                        "cwd": root.path().display().to_string(),
+                        "createdAt": 1.0,
+                        "updatedAt": 2.0,
+                        "turns": []
+                    },
+                    "initialTurnsPage": {
+                        "data": [],
+                        "nextCursor": "older-1",
+                        "backwardsCursor": "latest-anchor"
+                    }
+                }),
+            ),
+            MockCodexResponse::ok("thread/turns/list", older_page.clone()),
+            MockCodexResponse::ok("thread/turns/list", older_page),
+            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        let _viewer = state
+            .task_sessions
+            .acquire_viewer(&client.driver(), 1, thread_id)
+            .await
+            .expect("initial task subscription succeeds");
+
+        let pages = walk_history(&state, thread_id).await;
+
+        // The current page is empty and hands over to the older turn, whose
+        // 252 events take two answers: the newest 200, then the remaining 52.
+        assert_eq!(
+            pages
+                .iter()
+                .map(|page| page.events.len())
+                .collect::<Vec<_>>(),
+            [0, TASK_DETAIL_EVENT_LIMIT + 2, 52]
+        );
+        assert_eq!(
+            TaskDetailCursor::decode(pages[1].events_page.next_cursor.as_deref().unwrap()).turns,
+            Some("older-1".to_string()),
+            "the earlier part of an older turn names the page it belongs to"
+        );
+        assert!(pages[2].events_page.next_cursor.is_none());
+        let turns_list_calls = client
+            .mock_requests()
+            .await
+            .iter()
+            .filter(|(method, _)| method == "thread/turns/list")
+            .count();
+        assert_eq!(turns_list_calls, 2);
+    }
+
+    #[tokio::test]
+    async fn an_older_history_page_owns_only_the_span_of_its_turns() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-older-page-extent";
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                json!({
+                    "cwd": root.path().display().to_string(),
+                    "thread": {
+                        "id": thread_id,
+                        "preview": "Older page extent",
+                        "status": { "type": "idle" },
+                        "cwd": root.path().display().to_string(),
+                        "createdAt": 1.0,
+                        "updatedAt": 2.0,
+                        "turns": []
+                    },
+                    "initialTurnsPage": {
+                        "data": [],
+                        "nextCursor": "older-1",
+                        "backwardsCursor": "latest-anchor"
+                    }
+                }),
+            ),
+            MockCodexResponse::ok(
+                "thread/turns/list",
+                json!({
+                    "data": [{
+                        "id": "turn-older",
+                        "items": [
+                            {
+                                "id": "message-older",
+                                "type": "userMessage",
+                                "content": [{ "type": "text", "text": "The older prompt" }]
+                            },
+                            {
+                                "id": "answer-older",
+                                "type": "agentMessage",
+                                "text": "The older answer",
+                                "phase": "final"
+                            }
+                        ],
+                        "itemsView": "full",
+                        "status": "completed",
+                        "startedAt": 1.0,
+                        "completedAt": 1.5
+                    }],
+                    "nextCursor": null,
+                    "backwardsCursor": null
+                }),
+            ),
+            MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        let _viewer = state
+            .task_sessions
+            .acquire_viewer(&client.driver(), 1, thread_id)
+            .await
+            .expect("initial task subscription succeeds");
+
+        let response = test_task_detail(state, thread_id.to_string(), Some("older-1".to_string()))
+            .await
+            .expect("older history page loads");
+
+        let range = response
+            .0
+            .events_range
+            .expect("an older page declares its span");
+        let first = response.0.events.first().expect("older page events");
+        let last = response.0.events.last().expect("older page events");
+        assert_eq!(range.from, Some(first.position));
+        assert_eq!(range.to, Some(last.position));
         assert!(!response.0.history_loading);
     }
 
@@ -1683,6 +2357,7 @@ mod request_tests {
         assert_eq!(response.0.sync_state, TaskSyncState::Loading);
         assert!(response.0.task.is_none());
         assert!(response.0.history_loading);
+        assert!(response.0.events_range.is_none());
         blocker.await.expect("runtime blocker completes");
         wait_for_mock_method(&client, "thread/resume").await;
     }
@@ -1821,6 +2496,7 @@ mod request_tests {
         .expect("cached task detail remains available");
         assert_eq!(first.0.task.as_ref().unwrap().thread_id, thread_id);
         assert!(first.0.history_loading);
+        assert!(first.0.events_range.is_none());
 
         wait_for_mock_method(&client, "thread/resume").await;
         tokio::time::sleep(Duration::from_millis(20)).await;
@@ -2174,6 +2850,10 @@ mod request_tests {
                 events: vec![assistant],
                 file_links: Vec::new(),
                 events_page: TaskEventsPage { next_cursor: None },
+                events_range: Some(TaskEventsRange {
+                    from: None,
+                    to: None,
+                }),
                 pending_approvals: Vec::new(),
                 history_loading: false,
                 permission_mode: Some("askForApproval".to_string()),
@@ -2216,5 +2896,6 @@ mod serialization_tests {
         assert_eq!(value["syncState"], "loading");
         assert_eq!(value["eventRevision"], 0);
         assert_eq!(value["task"], JsonValue::Null);
+        assert_eq!(value["eventsRange"], JsonValue::Null);
     }
 }

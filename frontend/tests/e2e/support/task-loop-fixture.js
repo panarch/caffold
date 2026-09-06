@@ -132,6 +132,10 @@ export async function installTaskLoopFixture(
         eventIds.has(link.eventId),
       ),
       eventsPage: { nextCursor: null, ...(overrides.eventsPage ?? {}) },
+      eventsRange:
+        overrides.eventsRange === undefined
+          ? { from: null, to: null }
+          : overrides.eventsRange,
       pendingApprovals: [],
       ...(overrides.activeTopPlacement
         ? { activeTopPlacement: overrides.activeTopPlacement }

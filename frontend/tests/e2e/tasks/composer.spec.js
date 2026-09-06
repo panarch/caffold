@@ -80,6 +80,7 @@ test("starts a completed task follow-up clock only from canonical turn metadata"
     events: overrides.events ?? firstTurnEvents,
     eventsPage: { nextCursor: null },
     pendingApprovals: [],
+    eventsRange: { from: null, to: null },
     historyLoading: false,
     permissionMode: "approveForMe",
   });
@@ -222,6 +223,7 @@ test("submits completed task follow-ups and reloads canonical messages", { tag: 
     task,
     events: canonicalEvents,
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
 
@@ -525,6 +527,7 @@ test("keeps exact prompt order when Detail or live content arrives before the pr
     task,
     events: canonicalEvents,
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
 
@@ -778,6 +781,7 @@ test("unlocks canonical follow-ups after switching tasks with a pending response
     task: taskFor(threadId),
     events: eventsByThread.get(threadId),
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
   const submittedPrompts = [];

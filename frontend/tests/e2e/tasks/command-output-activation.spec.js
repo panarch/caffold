@@ -113,6 +113,7 @@ test("limits terminal command output activation to View output", { tag: "@all-vi
     task,
     events,
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   };
 

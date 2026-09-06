@@ -582,7 +582,10 @@ mod tests {
         assert_eq!(detail["task"]["cwdPath"], "");
         assert_eq!(detail["task"]["worktree"], JsonValue::Null);
         assert_eq!(detail["historyLoading"], false);
-        assert_eq!(detail["eventsPage"]["nextCursor"], "older-inherited-turns");
+        let next_cursor: JsonValue =
+            serde_json::from_str(detail["eventsPage"]["nextCursor"].as_str().unwrap())
+                .expect("a Caffold detail cursor");
+        assert_eq!(next_cursor["turns"], "older-inherited-turns");
         assert!(detail["events"].as_array().unwrap().iter().any(|event| {
             event["summary"] == "Inherited prompt" || event["payload"]["text"] == "Inherited prompt"
         }));

@@ -1275,6 +1275,7 @@ test("starts active Task navigator spinners at independent phases", { tag: "@all
         task: tasks[0],
         events: [],
         eventsPage: { nextCursor: null },
+        eventsRange: { from: null, to: null },
         pendingApprovals: [],
       }),
     }),
@@ -1289,6 +1290,7 @@ test("starts active Task navigator spinners at independent phases", { tag: "@all
     task: tasks[0],
     events: [],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
   const navigatorSpinners = page.locator(
@@ -1463,6 +1465,7 @@ test("archives and restores an idle Caffold task through the grouped Archived se
     task: activeTask,
     events: [],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   };
 
@@ -1694,6 +1697,7 @@ test("keeps an idle task active when the archive request fails", { tag: "@all-vi
     task,
     events: [],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   };
 
@@ -1841,6 +1845,7 @@ test("does not offer archive while the canonical task is active", { tag: "@all-v
     task,
     events: [],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   };
 
@@ -2014,6 +2019,7 @@ test("uses a global grouped Tasks master-detail list", { tag: "@all-viewports" }
       },
     ],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
   await page.exposeFunction(
@@ -2532,6 +2538,7 @@ test("switches Tasks to master-detail at the Fold8 landscape boundary", { tag: "
         permissionMode: "askForApproval",
         events: [],
         eventsPage: { nextCursor: null },
+        eventsRange: { from: null, to: null },
         pendingApprovals: [],
       }),
     }),
@@ -2627,6 +2634,7 @@ test("keeps the Tasks list DOM stable while opening a managed task", { tag: "@al
       },
     ],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   };
 
@@ -2785,6 +2793,7 @@ test("patches Task rows in place without reordering and preserves a running spin
         task: runningTask,
         events: [],
         eventsPage: { nextCursor: null },
+        eventsRange: { from: null, to: null },
         pendingApprovals: [],
       }),
     }),
@@ -2799,6 +2808,7 @@ test("patches Task rows in place without reordering and preserves a running spin
     task: runningTask,
     events: [],
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
   const tasksPage = page.locator("caffold-task-workspace");
@@ -2847,6 +2857,7 @@ test("patches Task rows in place without reordering and preserves a running spin
         task,
         events: [],
         eventsPage: { nextCursor: null },
+        eventsRange: { from: null, to: null },
         pendingApprovals: [],
       },
       reason: "canonical-repeat",
@@ -3043,6 +3054,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
         task: tasks[0],
         events: detailEvents,
         eventsPage: { nextCursor: null },
+        eventsRange: { from: null, to: null },
         pendingApprovals: [],
       }),
     }),
@@ -3165,6 +3177,7 @@ test("groups Tasks by repository without worktree accordions", { tag: "@all-view
     task: tasks[0],
     events: detailEvents,
     eventsPage: { nextCursor: null },
+    eventsRange: { from: null, to: null },
     pendingApprovals: [],
   });
   await expect(page).toHaveURL(/\/tasks\/thread_gluesql_feature$/);

@@ -754,6 +754,7 @@ async function installTaskRoutes(page, task) {
           task,
           events: [],
           eventsPage: { nextCursor: null },
+          eventsRange: { from: null, to: null },
           pendingApprovals: [],
         }),
       });

@@ -242,48 +242,53 @@ export function appendOptimisticEvent(events, optimisticEvent) {
   return sortEventsChronologically([...events, optimisticEvent]);
 }
 
-// Older Detail pages extend the visible transcript but cannot replace an
-// exact current projection at the cursor boundary.
-export function prependDetailEvents(currentEvents, olderDetailEvents) {
+function comparePositions(left, right) {
+  return left.anchorMs - right.anchorMs || left.index - right.index;
+}
+
+function positionWithinRange(position, range) {
+  if (!position) {
+    return false;
+  }
+  return (
+    (!range.from || comparePositions(position, range.from) >= 0) &&
+    (!range.to || comparePositions(position, range.to) <= 0)
+  );
+}
+
+// A Detail answer owns projection membership only within the extent it
+// declares: retained records inside it are replaced by what the answer
+// contains, and everything outside it stays as it is, including an identity
+// the answer repeats from beyond its extent. An answer without an extent owns
+// nothing beyond its own records and updates those by exact identity. An
+// optimistic submission is a local overlay that no extent covers.
+export function applyDetailRange(retainedEvents, detailEvents, range) {
   const byId = new Map();
-  for (const event of olderDetailEvents) {
+  const keptOutside = new Set();
+  for (const event of retainedEvents) {
     const key = eventIdentityKey(event);
-    if (key) {
+    if (!key) {
+      continue;
+    }
+    const owned =
+      Boolean(range) &&
+      !event.payload?.optimistic &&
+      positionWithinRange(taskEventPosition(event), range);
+    if (owned) {
+      continue;
+    }
+    byId.set(key, event);
+    if (range) {
+      keptOutside.add(key);
+    }
+  }
+  for (const event of detailEvents) {
+    const key = eventIdentityKey(event);
+    if (key && !keptOutside.has(key)) {
       byId.set(key, applyCanonicalDetailRecord(byId.get(key), event));
     }
   }
-  for (const event of currentEvents) {
-    const key = eventIdentityKey(event);
-    if (key) {
-      byId.set(key, projectPrimaryEvent(event, byId.get(key), event.position));
-    }
-  }
   return sortEventsChronologically([...byId.values()]);
-}
-
-// A canonical Detail snapshot is already reconciled by the backend. Older
-// cursor pages and local optimistic overlays are separate visible layers;
-// neither is allowed to arbitrate fields in the current projection.
-export function projectCanonicalEvents(
-  detailEvents,
-  olderDetailEvents = [],
-  optimisticEvents = [],
-) {
-  return sortEventsChronologically([
-    ...prependDetailEvents(detailEvents, olderDetailEvents),
-    ...optimisticEvents,
-  ]);
-}
-
-// A Detail snapshot produced while provider history is still loading owns
-// every exact identity it contains, but it cannot declare that retained
-// readable history disappeared. Keep absent records until a complete Detail
-// snapshot owns projection membership.
-export function projectHistoryLoadingEvents(
-  detailEvents,
-  retainedEvents = [],
-) {
-  return prependDetailEvents(detailEvents, retainedEvents);
 }
 
 // Once the prompt response or first provider projection proves which exact
