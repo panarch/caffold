@@ -41,7 +41,7 @@ use crate::{
 
 pub(super) const TASK_DETAIL_TURNS_PAGE_SIZE: usize = 8;
 /// The most events one Task Detail answer carries, whatever a turn holds.
-pub(super) const TASK_DETAIL_EVENT_LIMIT: usize = 200;
+pub(super) const TASK_DETAIL_EVENT_LIMIT: usize = 100;
 
 type RefreshTaskList = Arc<dyn Fn() + Send + Sync>;
 
@@ -1063,69 +1063,55 @@ mod inline_tests {
         let extent = Some(history_extent(&events, false));
         let older = Some("older-1".to_string());
         let at = TaskEventPosition::at;
+        let limit = TASK_DETAIL_EVENT_LIMIT as u64;
 
-        let (first, first_range, first_cursor) = window_detail_events(
-            events.clone(),
-            extent,
-            &TaskDetailCursor::default(),
-            older.clone(),
-        );
-        let first_cursor = TaskDetailCursor::decode(&first_cursor.expect("more before"));
-        let (second, second_range, second_cursor) =
-            window_detail_events(events.clone(), extent, &first_cursor, older.clone());
-        let second_cursor = TaskDetailCursor::decode(&second_cursor.expect("more before"));
-        let (third, third_range, third_cursor) =
-            window_detail_events(events.clone(), extent, &second_cursor, older);
+        let mut cursor = TaskDetailCursor::default();
+        let mut pages = Vec::new();
+        let final_cursor = loop {
+            let (page, range, next) =
+                window_detail_events(events.clone(), extent, &cursor, older.clone());
+            pages.push((page, range));
+            let next = TaskDetailCursor::decode(&next.expect("a cursor always follows"));
+            if next.before.is_none() {
+                break next;
+            }
+            cursor = next;
+        };
 
-        assert_eq!(first.len(), TASK_DETAIL_EVENT_LIMIT + 2);
+        let expected_pages = (events.len() - 1) / TASK_DETAIL_EVENT_LIMIT + 1;
+        assert_eq!(pages.len(), expected_pages);
+        for (index, (page, range)) in pages[..pages.len() - 1].iter().enumerate() {
+            let newest = 450 - index as u64 * limit;
+            let oldest = newest + 1 - limit;
+            assert_eq!(page.len(), TASK_DETAIL_EVENT_LIMIT + 2);
+            assert_eq!(
+                *range,
+                Some(TaskEventsRange {
+                    from: Some(at(oldest)),
+                    to: (index > 0).then_some(at(newest)),
+                })
+            );
+        }
+        let remainder = 450 - (expected_pages as u64 - 1) * limit;
+        let (last_page, last_range) = pages.last().expect("pages");
+        assert_eq!(last_page.len(), remainder as usize);
         assert_eq!(
-            first_range,
-            Some(TaskEventsRange {
-                from: Some(at(251)),
-                to: None
-            })
-        );
-        assert_eq!(
-            first_cursor,
-            TaskDetailCursor {
-                turns: None,
-                before: Some(at(251)),
-            }
-        );
-        assert_eq!(second.len(), TASK_DETAIL_EVENT_LIMIT + 2);
-        assert_eq!(
-            second_range,
-            Some(TaskEventsRange {
-                from: Some(at(51)),
-                to: Some(at(250))
-            })
-        );
-        assert_eq!(
-            second_cursor,
-            TaskDetailCursor {
-                turns: None,
-                before: Some(at(51)),
-            }
-        );
-        assert_eq!(third.len(), 50);
-        assert_eq!(
-            third_range,
+            *last_range,
             Some(TaskEventsRange {
                 from: Some(at(1)),
-                to: Some(at(50))
+                to: Some(at(remainder))
             })
         );
         assert_eq!(
-            TaskDetailCursor::decode(&third_cursor.expect("older turns remain")),
+            final_cursor,
             TaskDetailCursor {
                 turns: Some("older-1".to_string()),
                 before: None,
             }
         );
-        let covered = [first, second, third]
-            .concat()
+        let covered = pages
             .into_iter()
-            .map(|event| event.id)
+            .flat_map(|(page, _)| page.into_iter().map(|event| event.id))
             .collect::<HashSet<_>>();
         assert_eq!(covered.len(), events.len());
     }
@@ -2022,20 +2008,26 @@ mod request_tests {
 
         let pages = walk_history(&state, thread_id).await;
 
-        // turn_started, the prompt, 449 steps, and turn_completed: 452 events
-        // over three pages.
-        assert_eq!(
-            pages
+        // turn_started, the prompt, 449 steps, and turn_completed: 452 events,
+        // every answer but the last carrying the limit plus the two boundaries.
+        let total: usize = 452;
+        let expected_pages = total.div_ceil(TASK_DETAIL_EVENT_LIMIT);
+        assert_eq!(pages.len(), expected_pages);
+        assert!(
+            pages[..expected_pages - 1]
                 .iter()
-                .map(|page| page.events.len())
-                .collect::<Vec<_>>(),
-            [TASK_DETAIL_EVENT_LIMIT + 2, TASK_DETAIL_EVENT_LIMIT + 2, 52]
+                .all(|page| page.events.len() == TASK_DETAIL_EVENT_LIMIT + 2)
+        );
+        let last = pages.last().unwrap();
+        assert_eq!(
+            last.events.len(),
+            total - (expected_pages - 1) * TASK_DETAIL_EVENT_LIMIT
         );
         let covered = pages
             .iter()
             .flat_map(|page| page.events.iter().map(|event| event.id.clone()))
             .collect::<HashSet<_>>();
-        assert_eq!(covered.len(), 452);
+        assert_eq!(covered.len(), total);
         assert!(
             pages[0]
                 .events_range
@@ -2046,8 +2038,8 @@ mod request_tests {
                 .events_range
                 .is_some_and(|range| range.from.is_some() && range.to.is_some())
         );
-        assert_eq!(pages[2].events[0].event_type, "turn_started");
-        assert!(pages[2].events_page.next_cursor.is_none());
+        assert_eq!(last.events[0].event_type, "turn_started");
+        assert!(last.events_page.next_cursor.is_none());
         assert_eq!(
             client
                 .mock_requests()
@@ -2091,6 +2083,7 @@ mod request_tests {
                 }),
             ),
             MockCodexResponse::ok("thread/turns/list", older_page.clone()),
+            MockCodexResponse::ok("thread/turns/list", older_page.clone()),
             MockCodexResponse::ok("thread/turns/list", older_page),
             MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
@@ -2106,27 +2099,36 @@ mod request_tests {
         let pages = walk_history(&state, thread_id).await;
 
         // The current page is empty and hands over to the older turn, whose
-        // 252 events take two answers: the newest 200, then the remaining 52.
-        assert_eq!(
-            pages
+        // 252 events take one answer per limit-sized slice.
+        let total: usize = 252;
+        let slices = total.div_ceil(TASK_DETAIL_EVENT_LIMIT);
+        assert_eq!(pages.len(), 1 + slices);
+        assert_eq!(pages[0].events.len(), 0);
+        assert!(
+            pages[1..slices]
                 .iter()
-                .map(|page| page.events.len())
-                .collect::<Vec<_>>(),
-            [0, TASK_DETAIL_EVENT_LIMIT + 2, 52]
+                .all(|page| page.events.len() == TASK_DETAIL_EVENT_LIMIT + 2)
+        );
+        assert_eq!(
+            pages[slices].events.len(),
+            total - (slices - 1) * TASK_DETAIL_EVENT_LIMIT
         );
         assert_eq!(
             TaskDetailCursor::decode(pages[1].events_page.next_cursor.as_deref().unwrap()).turns,
             Some("older-1".to_string()),
             "the earlier part of an older turn names the page it belongs to"
         );
-        assert!(pages[2].events_page.next_cursor.is_none());
+        assert!(pages[slices].events_page.next_cursor.is_none());
         let turns_list_calls = client
             .mock_requests()
             .await
             .iter()
             .filter(|(method, _)| method == "thread/turns/list")
             .count();
-        assert_eq!(turns_list_calls, 2);
+        assert_eq!(
+            turns_list_calls, slices,
+            "each slice of an older page re-reads it"
+        );
     }
 
     #[tokio::test]
