@@ -4,6 +4,12 @@ export function actionHintDialog(page) {
   return page.locator("caffold-action-hint-dialog > dialog:modal");
 }
 
+export function popoverActionHintDialog(page) {
+  return page.locator(
+    ":popover-open caffold-action-hint-dialog > dialog:modal",
+  );
+}
+
 export function actionHintBadgePresentation(badge) {
   return badge.evaluate((element) => {
     const probe = document.createElement("span");
@@ -50,6 +56,20 @@ export async function waitForActionHintTarget(page, accessibleName) {
 }
 
 export async function activateActionHint(page, accessibleName) {
+  const { code, dialog } = await typeActionHintCode(page, accessibleName);
+  await expect(dialog).toBeHidden();
+  await expectActionHintActivated(page, code);
+  return code;
+}
+
+export async function activateActionHintIntoPopover(page, accessibleName) {
+  const { code } = await typeActionHintCode(page, accessibleName);
+  await expect(popoverActionHintDialog(page)).toBeVisible();
+  await expectActionHintActivated(page, code);
+  return code;
+}
+
+async function typeActionHintCode(page, accessibleName) {
   await waitForActionHintTarget(page, accessibleName);
   const dialog = await enterActionHints(page);
   const badge = dialog.getByLabel(accessibleName);
@@ -57,10 +77,12 @@ export async function activateActionHint(page, accessibleName) {
   const code = await badge.getAttribute("data-action-hint-code");
   expect(code).toMatch(/^[A-Z]+$/);
   await page.keyboard.type(code.toLowerCase());
-  await expect(dialog).toBeHidden();
+  return { code, dialog };
+}
+
+async function expectActionHintActivated(page, code) {
   await expect(page.locator("caffold-app-shell")).toHaveAttribute(
     "data-action-hint-last-exit",
     `activated:${code}`,
   );
-  return code;
 }

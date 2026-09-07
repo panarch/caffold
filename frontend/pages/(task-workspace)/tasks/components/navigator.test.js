@@ -250,6 +250,26 @@ test("provides Reorder opener and exact semantic popover options", () => {
       { id: "task-list:reorder:sections", actionId: "task.reorder.select" },
     ],
   );
+  assert.equal(scope.targets.every(({ badgeAtEnd }) => badgeAtEnd), true);
+  assert.equal(opener.badgeAtEnd, false);
+});
+
+test("closes the Reorder popover when its bound Action Hint session is dismissed", () => {
+  let hidden = 0;
+  const popover = {
+    matches: () => true,
+    hidePopover() {
+      hidden += 1;
+    },
+  };
+  const owner = {
+    reorderPopover: () => popover,
+    closeReorderPopover: navigator.closeReorderPopover,
+  };
+  navigator.handleDismiss.call(owner, { target: {} });
+  assert.equal(hidden, 0);
+  navigator.handleDismiss.call(owner, { target: popover });
+  assert.equal(hidden, 1);
 });
 
 test("replaces normal navigator actions with current reorder handles and Finish", () => {
@@ -317,6 +337,36 @@ test("exits active reorder only for an unclaimed Escape key", () => {
   owner.reorderMode = "none";
   navigator.handleKeydown.call(owner, keyboardEvent());
   assert.equal(exits, 1);
+});
+
+test("declares a session-bound Action Hint context for the Reorder popover context", () => {
+  const popover = {
+    id: "reorder-options",
+    matches: () => false,
+    contains: () => false,
+    querySelectorAll: () => [],
+    querySelector: () => ({
+      actionHintDialog: () => ({}),
+      scrollModeHud: () => ({}),
+      scrollSurfaceSelector: () => ({}),
+    }),
+  };
+  const owner = {
+    active: true,
+    hidden: false,
+    isConnected: true,
+    reorderMode: "none",
+    ensureChildren() {},
+    reorderPopover: () => popover,
+    reorderActionHintScope: navigator.reorderActionHintScope,
+  };
+
+  const [context] = navigator.keyboardNavigationContexts.call(owner);
+
+  assert.equal(context.id, "task-list:reorder");
+  assert.equal(context.kind, "popover");
+  assert.equal(context.root, popover);
+  assert.equal(context.actionHints.sessionBound, true);
 });
 
 function reorderOption(mode) {

@@ -7,7 +7,9 @@ import {
   canonicalTaskState,
   captureReviewScreenshot,
   installEventSourceMock,
+  isScrolledToBottom,
   mockAgentModels,
+  scrollTop,
 } from "../support/task-fixtures.js";
 
 test.beforeEach(async ({ page }) => {
@@ -456,22 +458,37 @@ test("hands create M to the native model popover and P to prompt editing", { tag
 
   await page.keyboard.press("f");
   await page.keyboard.press("m");
-  await expect(actionHintDialog(page)).toBeHidden();
+  const modelButton = page.locator("caffold-task-new .task-model-button");
   const modelPopover = page.locator(
     "caffold-task-new .task-model-popover",
   );
   await expect(modelPopover).toBeVisible();
-  await expect(
-    modelPopover.locator(
-      '[data-turn-options-action="select-model"][aria-pressed="true"]',
-    ),
-  ).toBeFocused();
-  await page.keyboard.press("f");
-  const popoverHint = actionHintDialog(page);
+  const popoverHint = popoverActionHintDialog(page);
   await expect(popoverHint).toBeVisible();
-  await expect(
-    popoverHint.getByRole("button", { name: / — low.*Selected$/ }),
-  ).toBeVisible();
+  const lowBadge = popoverHint.getByRole("button", {
+    name: / — low.*Selected$/,
+  });
+  await expect(lowBadge).toBeVisible();
+  await expectBadgeAtRowEnd(
+    lowBadge,
+    modelPopover.locator(
+      '[data-turn-options-action="select-effort"][data-effort="low"]',
+    ),
+  );
+  await page.keyboard.press("Escape");
+  await expect(popoverHint).toBeHidden();
+  await expect(modelPopover).toBeHidden();
+  await expect(modelButton).toBeFocused();
+
+  const selectedModel = modelPopover.locator(
+    '[data-turn-options-action="select-model"][aria-pressed="true"]',
+  );
+  await modelButton.click();
+  await expect(modelPopover).toBeVisible();
+  await expect(popoverHint).toBeHidden();
+  await expect(selectedModel).toBeFocused();
+  await page.keyboard.press("f");
+  await expect(popoverHint).toBeVisible();
   const high = popoverHint.getByRole("button", { name: / — high$/ });
   const highCode = await high.getAttribute("data-action-hint-code");
   expect(highCode).toBeTruthy();
@@ -484,6 +501,8 @@ test("hands create M to the native model popover and P to prompt editing", { tag
 
   await page.locator("caffold-task-new .task-model-button").click();
   await expect(modelPopover).toBeVisible();
+  await expect(popoverHint).toBeHidden();
+  await expect(selectedModel).toBeFocused();
   await page.keyboard.press("f");
   await expect(popoverHint).toBeVisible();
   const retained = await page.locator(
@@ -516,8 +535,7 @@ test("hands create M to the native model popover and P to prompt editing", { tag
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(popoverHint).toBeHidden();
-  await expect(modelPopover).toBeVisible();
-  await page.keyboard.press("Escape");
+  await expect(modelPopover).toBeHidden();
   await expect(modelPopover).toBeHidden();
 
   await page.keyboard.press("f");
@@ -591,18 +609,18 @@ test("hands follow-up M to the native model popover and P to prompt editing", { 
   );
 
   await page.keyboard.press("m");
-  await expect(dialog).toBeHidden();
   const modelPopover = page.locator(
     "caffold-task-detail .task-follow-up-form .task-model-popover",
   );
   await expect(modelPopover).toBeVisible();
-  await expect(
-    modelPopover.locator(
-      '[data-turn-options-action="select-model"][aria-pressed="true"]',
-    ),
-  ).toBeFocused();
+  const popoverHint = popoverActionHintDialog(page);
+  await expect(popoverHint).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(popoverHint).toBeHidden();
   await expect(modelPopover).toBeHidden();
+  await expect(
+    page.locator("caffold-task-detail .task-follow-up-form .task-model-button"),
+  ).toBeFocused();
 
   await enterActionHints(page);
   await page.keyboard.press("p");
@@ -610,6 +628,68 @@ test("hands follow-up M to the native model popover and P to prompt editing", { 
   await page.keyboard.type("follow-up f");
   await expect(prompt).toHaveValue("follow-up f");
   await expect(dialog).toBeHidden();
+});
+
+test("switches a session-bound popover to Scroll with S and recaptures hints with F", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installActionHintFixture(page, []);
+  await page.route(/\/api\/agent\/models(?:\?|$)/, (route) =>
+    route.fulfill({ json: manyAgentModels(40) })
+  );
+  await page.goto("/tasks");
+
+  const prompt = page.locator(
+    'caffold-task-new textarea[name="prompt"]',
+  );
+  await expect(prompt).toBeVisible();
+  await prompt.focus();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".tasks-detail-pane")).toBeFocused();
+
+  await page.keyboard.press("f");
+  await page.keyboard.press("m");
+  const modelPopover = page.locator(
+    "caffold-task-new .task-model-popover",
+  );
+  await expect(modelPopover).toBeVisible();
+  await expect.poll(() => modelPopover.evaluate(
+    (popover) => popover.scrollHeight > popover.clientHeight,
+  )).toBe(true);
+  const popoverHint = popoverActionHintDialog(page);
+  await expect(popoverHint).toBeVisible();
+  await expect(
+    popoverHint.locator('[data-action-hint-code^="S"]'),
+  ).toHaveCount(0);
+  await expect(
+    popoverHint.getByRole("button", { name: / — Model 40$/ }),
+  ).toHaveCount(0);
+
+  await page.keyboard.press("s");
+  await expect(popoverHint).toBeHidden();
+  await expect(modelPopover).toBeVisible();
+  await expect(
+    modelPopover.locator("caffold-scroll-mode-hud .scroll-mode-status"),
+  ).toBeVisible();
+  const before = await scrollTop(modelPopover);
+  await page.keyboard.press("d");
+  await expect.poll(() => scrollTop(modelPopover)).toBeGreaterThan(before);
+  for (let step = 0; step < 12; step += 1) {
+    if (await isScrolledToBottom(modelPopover)) {
+      break;
+    }
+    await page.keyboard.press("d");
+  }
+  await expect.poll(() => isScrolledToBottom(modelPopover)).toBe(true);
+
+  await page.keyboard.press("f");
+  await expect(popoverHint).toBeVisible();
+  await expect(
+    popoverHint.getByRole("button", { name: / — Model 40$/ }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(popoverHint).toBeHidden();
+  await expect(modelPopover).toBeHidden();
 });
 
 test("keeps same-named models distinct by provider through native selection", { tag: "@all-viewports" }, async ({
@@ -682,6 +762,12 @@ test("uses a mouse-open Permission context and preserves its existing confirmati
   await expect(permissionButton).toBeEnabled();
   await permissionButton.click();
   await expect(permissionPopover).toBeVisible();
+  await expect(popoverActionHintDialog(page)).toBeHidden();
+  await expect(
+    permissionPopover.locator(
+      '[data-permission-mode="approveForMe"][aria-pressed="true"]',
+    ),
+  ).toBeFocused();
 
   await page.keyboard.press("f");
   const hint = actionHintDialog(page);
@@ -740,8 +826,7 @@ test("selects Reorder through its declared popover and entered-mode contexts", {
   const navigator = page.locator("caffold-task-navigator");
   const popover = navigator.locator(".task-list-reorder-popover");
   await expect(popover).toBeVisible();
-  await page.keyboard.press("f");
-  hint = actionHintDialog(page);
+  hint = popoverActionHintDialog(page);
   await expect(hint).toBeVisible();
   await expect(
     hint.getByRole("button", { name: / — Reorder Sections$/ }),
@@ -759,6 +844,10 @@ test("selects Reorder through its declared popover and entered-mode contexts", {
     page,
     testInfo,
     "action-hints-reorder-popover",
+  );
+  await expectBadgeAtRowEnd(
+    tasks,
+    popover.getByRole("button", { name: "Reorder Tasks", exact: true }),
   );
   const tasksCode = await tasks.getAttribute("data-action-hint-code");
   expect(tasksCode).toBeTruthy();
@@ -1520,6 +1609,41 @@ test("keeps badges aligned and legible at appearance and zoom extremes", { tag: 
 
 function actionHintDialog(page) {
   return page.locator("caffold-action-hint-dialog > dialog:modal");
+}
+
+function popoverActionHintDialog(page) {
+  return page.locator(
+    ":popover-open caffold-action-hint-dialog > dialog:modal",
+  );
+}
+
+function manyAgentModels(count) {
+  return {
+    models: Array.from({ length: count }, (_, index) => ({
+      provider: "codex",
+      model: `model-${index + 1}`,
+      displayName: `Model ${index + 1}`,
+      description: "",
+      isDefault: index === 0,
+      defaultEffort: "low",
+      efforts: ["low"],
+      supportsFastMode: false,
+    })),
+    unavailable: [],
+  };
+}
+
+async function expectBadgeAtRowEnd(badge, row) {
+  const [badgeBox, rowBox] = await Promise.all([
+    badge.boundingBox(),
+    row.boundingBox(),
+  ]);
+  expect(badgeBox).not.toBeNull();
+  expect(rowBox).not.toBeNull();
+  expect(badgeBox.x + badgeBox.width).toBeLessThanOrEqual(
+    rowBox.x + rowBox.width + 1,
+  );
+  expect(badgeBox.x).toBeGreaterThanOrEqual(rowBox.x + rowBox.width / 2);
 }
 
 async function enterActionHints(page) {

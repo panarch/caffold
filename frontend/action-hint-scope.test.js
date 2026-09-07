@@ -44,6 +44,7 @@ test("button Action Hint targets preserve owner state and native activation", ()
     ...input,
     controlKind: "button",
     anchor: control,
+    badgeAtEnd: false,
   });
 
   activate();
@@ -192,6 +193,7 @@ test("disclosure Action Hint targets preserve owner semantics and native activat
     ...input,
     controlKind: "disclosure",
     anchor: control,
+    badgeAtEnd: false,
   });
 
   activate();

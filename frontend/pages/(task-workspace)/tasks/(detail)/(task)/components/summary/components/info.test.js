@@ -56,6 +56,7 @@ test("keeps enabled Fork and Archive actions at their direct owner", () => {
     scopeId: "detail:task:thread-a:details",
     clipRoots: [{}],
   });
+  assert.equal(scope.targets.every(({ badgeAtEnd }) => badgeAtEnd), true);
   assert.deepEqual(
     scope.targets.map(({ id, actionId }) => ({ id, actionId })),
     [
@@ -131,6 +132,48 @@ test("keeps Fork unavailable without canonical Detail", () => {
     availability.textContent,
     "Fork is unavailable until Task details load.",
   );
+});
+
+test("declares a session-bound Action Hint context for the Task details popover context", () => {
+  const popover = {
+    id: "task-details",
+    matches: () => false,
+    querySelector: () => ({
+      actionHintDialog: () => ({}),
+      scrollModeHud: () => ({}),
+      scrollSurfaceSelector: () => ({}),
+    }),
+  };
+  const owner = {
+    isConnected: true,
+    snapshot: { task: { threadId: "thread-a" } },
+    infoPopover: () => popover,
+    actions: () => null,
+  };
+
+  const [context] = info.keyboardNavigationContexts.call(owner, {
+    scopeId: "detail:task:thread-a",
+  });
+
+  assert.equal(context.id, "detail:task:thread-a:thread-a:details");
+  assert.equal(context.kind, "popover");
+  assert.equal(context.root, popover);
+  assert.equal(context.actionHints.sessionBound, true);
+});
+
+test("closes the Task details popover when its bound Action Hint session is dismissed", () => {
+  let hidden = 0;
+  const popover = {
+    matches: () => true,
+    hidePopover() {
+      hidden += 1;
+    },
+  };
+  const owner = { infoPopover: () => popover, deactivate: info.deactivate };
+  info.handleDismiss.call(owner, { target: {} });
+  assert.equal(hidden, 0);
+  info.handleDismiss.call(owner, { target: popover });
+  assert.equal(hidden, 1);
 });
 
 function button(label, action = "") {

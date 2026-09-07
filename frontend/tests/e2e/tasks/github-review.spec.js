@@ -3,7 +3,9 @@ import {
   actionHintBadgePresentation,
   actionHintDialog,
   activateActionHint,
+  activateActionHintIntoPopover,
   enterActionHints,
+  popoverActionHintDialog,
   waitForActionHintTarget,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
@@ -1554,8 +1556,6 @@ test("preserves Issue Start Task setup, focus return, and created Task selection
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(hint).toBeHidden();
-  await expect(modelPopover).toBeVisible();
-  await page.keyboard.press("Escape");
   await expect(modelPopover).toBeHidden();
 
   const permissionButton = dialog.locator(".task-permission-button");
@@ -1570,7 +1570,7 @@ test("preserves Issue Start Task setup, focus return, and created Task selection
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(hint).toBeHidden();
-  await expect(permissionPopover).toBeVisible();
+  await expect(permissionPopover).toBeHidden();
 
   await dialog.evaluate((element) => element.close("cancel"));
   await expect(dialog).toBeHidden();
@@ -1640,11 +1640,10 @@ test("owns Issue Task Start Hint, native select, Editing Escape, and Scroll cont
   );
 
   await page.keyboard.press("m");
-  await expect(hint).toBeHidden();
   const modelPopover = dialog.locator(".task-model-popover");
   await expect(modelPopover).toBeVisible();
-  await page.keyboard.press("f");
-  hint = actionHintDialog(page);
+  hint = popoverActionHintDialog(page);
+  await expect(hint).toBeVisible();
   await expect(
     hint.getByRole("button", { name: / — GPT-5\.6-Sol.*Selected$/ }),
   ).toBeVisible();
@@ -1652,8 +1651,6 @@ test("owns Issue Task Start Hint, native select, Editing Escape, and Scroll cont
     .toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(hint).toBeHidden();
-  await expect(modelPopover).toBeVisible();
-  await page.keyboard.press("Escape");
   await expect(modelPopover).toBeHidden();
 
   await cancel.focus();
@@ -1667,11 +1664,10 @@ test("owns Issue Task Start Hint, native select, Editing Escape, and Scroll cont
   );
   expect(permissionCode).toBeTruthy();
   await page.keyboard.type(permissionCode.toLowerCase());
-  await expect(hint).toBeHidden();
   const permissionPopover = dialog.locator(".task-permission-popover");
   await expect(permissionPopover).toBeVisible();
-  await page.keyboard.press("f");
-  hint = actionHintDialog(page);
+  hint = popoverActionHintDialog(page);
+  await expect(hint).toBeVisible();
   await expect(
     hint.getByRole("button", { name: / — Approve for me.*Selected$/ }),
   ).toBeVisible();
@@ -1679,8 +1675,6 @@ test("owns Issue Task Start Hint, native select, Editing Escape, and Scroll cont
     .toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(hint).toBeHidden();
-  await expect(permissionPopover).toBeVisible();
-  await page.keyboard.press("Escape");
   await expect(permissionPopover).toBeHidden();
 
   await cancel.focus();
@@ -2205,17 +2199,26 @@ test("navigates and reloads Task-scoped Issue, PR, and PR file routes", { tag: "
 }) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   await page.goto(`/tasks/${THREAD_ID}`);
-  await activateActionHint(page, /Open GitHub workspace$/);
+  await activateActionHintIntoPopover(page, /Open GitHub workspace$/);
   const githubPopover = page.locator(
     ".detail-layout-summary caffold-task-detail-github > .task-github-popover",
   );
   await expect(githubPopover).toBeVisible();
+  const githubHint = popoverActionHintDialog(page);
+  await expect(githubHint).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(githubHint).toBeHidden();
+  await expect(githubPopover).toBeHidden();
+  await page.locator(
+    ".detail-layout-summary caffold-task-detail-github > .task-github-button",
+  ).click();
+  await expect(githubPopover).toBeVisible();
+  await expect(githubHint).toBeHidden();
   await page.keyboard.press("s");
   await expect(
     githubPopover.locator("caffold-scroll-mode-hud .scroll-mode-status"),
   ).toBeHidden();
   await page.keyboard.press("f");
-  const githubHint = actionHintDialog(page);
   await expect(githubHint).toBeVisible();
   await expect(
     githubHint.getByRole("button", { name: / — Pull Requests$/ }),

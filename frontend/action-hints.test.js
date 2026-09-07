@@ -135,8 +135,8 @@ test("unmatched and unsupported printable input closes Hint without a recoverabl
     assert.equal(workspace.dataset.actionHintLastExit, "no-match");
     assert.equal(dialog.inputUpdates.length, 1);
     assert.deepEqual(exits, [
-      { activated: false, reason: "no-match" },
-      { activated: false, reason: "no-match" },
+      { activated: false, reason: "no-match", context: null },
+      { activated: false, reason: "no-match", context: null },
     ]);
     assert.equal(window.listenerCount(), 0);
     assert.equal(document.listenerCount(), 0);

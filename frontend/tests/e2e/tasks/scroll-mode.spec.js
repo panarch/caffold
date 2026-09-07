@@ -555,7 +555,7 @@ test("keeps keyboard scrolling on the Conversation native anchor path", { tag: "
   await expect(scrollHud(page)).toContainText("Scroll: Conversation");
 });
 
-test("scrolls a mouse-open retained Model popover and preserves native Escape", { tag: "@all-viewports" }, async ({
+test("scrolls a mouse-open retained Model popover and closes it with Escape", { tag: "@all-viewports" }, async ({
   page,
 }, testInfo) => {
   const { detail } = await installScrollFixture(page);
@@ -609,8 +609,6 @@ test("scrolls a mouse-open retained Model popover and preserves native Escape", 
 
   await page.keyboard.press("Escape");
   await expect(popoverHud).toBeHidden();
-  await expect(modelPopover).toBeVisible();
-  await page.keyboard.press("Escape");
   await expect(modelPopover).toBeHidden();
 });
 

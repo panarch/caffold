@@ -42,7 +42,47 @@ test("provides the Git opener and exact retained popover actions", () => {
     ],
   );
   assert.equal(scope.targets.every(({ isActionable }) => isActionable()), true);
+  assert.equal(scope.targets.every(({ badgeAtEnd }) => badgeAtEnd), true);
+  assert.equal(opener.badgeAtEnd, false);
 });
+
+test("closes its popover when the bound Action Hint session is dismissed", () => {
+  const { owner, popover } = menuOwner([]);
+  owner.deactivate = gitMenu.deactivate;
+  let hidden = 0;
+  popover.open = true;
+  popover.hidePopover = () => {
+    hidden += 1;
+    popover.open = false;
+  };
+  gitMenu.handleDismiss.call(owner, { target: {} });
+  assert.equal(hidden, 0);
+  gitMenu.handleDismiss.call(owner, { target: popover });
+  assert.equal(hidden, 1);
+});
+
+test("declares a session-bound Action Hint context for its retained popover context", () => {
+  const { owner, popover } = menuOwner([option("compare", "Compare")]);
+  popover.querySelector = () => presentation();
+  owner.gitActionHintScope = gitMenu.gitActionHintScope;
+
+  const [context] = gitMenu.keyboardNavigationContexts.call(owner, {
+    scopeId: "detail:task:a",
+  });
+
+  assert.equal(context.id, "detail:task:a:git");
+  assert.equal(context.kind, "popover");
+  assert.equal(context.root, popover);
+  assert.equal(context.actionHints.sessionBound, true);
+});
+
+function presentation() {
+  return {
+    actionHintDialog: () => ({}),
+    scrollModeHud: () => ({}),
+    scrollSurfaceSelector: () => ({}),
+  };
+}
 
 function menuOwner(options) {
   const control = {

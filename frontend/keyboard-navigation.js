@@ -42,6 +42,14 @@ export {
   popoverScrollSurfaceScope,
 } from "./keyboard-navigation/context.js";
 
+export const KEYBOARD_SESSION_DISMISS_EVENT =
+  "caffold:keyboard-session-dismiss";
+const KEYBOARD_SESSION_DISMISSAL_REASONS = new Set([
+  "escape",
+  "no-match",
+  "overlay",
+]);
+
 export class KeyboardNavigationController {
   constructor({
     workspace,
@@ -66,7 +74,10 @@ export class KeyboardNavigationController {
       dialog: null,
       collectScope: () => null,
       collectBinding: () => this.resolveActionHintBinding(),
-      afterActivation: afterActionHintActivation,
+      afterActivation: (target, activation) => {
+        afterActionHintActivation(target);
+        this.continueActionHints(activation);
+      },
       hasOtherInteractionOwner: (binding) =>
         this.hasHintInteractionOwner(binding),
       isCompositionActive: () => this.compositionActive,
@@ -205,7 +216,10 @@ export class KeyboardNavigationController {
       return;
     }
     if (this.storedNode === KEYBOARD_NAVIGATION_NODE.HINT) {
-      if (this.handleShortcutHelpEntry(event)) {
+      if (
+        this.handleShortcutHelpEntry(event) ||
+        this.handleHintScrollSwitch(event)
+      ) {
         return;
       }
       this.actionHints.handleHintKeydown(event, {
@@ -274,6 +288,38 @@ export class KeyboardNavigationController {
       event.preventDefault();
       event.stopPropagation();
     }
+  }
+
+  handleHintScrollSwitch(event) {
+    const session = this.actionHints.session;
+    if (
+      !session?.binding?.reservedCodes?.includes(
+        KEYBOARD_NAVIGATION_KEY.SCROLL_SELECT,
+      ) ||
+      session.buffer !== "" ||
+      normalizeActionHintKey(event, {
+        compositionActive: this.compositionActive,
+      }) !== KEYBOARD_NAVIGATION_KEY.SCROLL_SELECT
+    ) {
+      return false;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const context = this.resolveInteractionContext({
+      ownedHintDialog: session.dialog,
+    });
+    const snapshot = context ? this.captureScrollSnapshot(context) : null;
+    if (
+      !snapshot ||
+      snapshot.context.blocked ||
+      snapshot.surfaces.length === 0
+    ) {
+      return true;
+    }
+    if (this.actionHints.cancel("scroll")) {
+      this.startScroll();
+    }
+    return true;
   }
 
   handleSelectionKeydown(event) {
@@ -496,6 +542,20 @@ export class KeyboardNavigationController {
     return true;
   }
 
+  continueActionHints({ context: previous = null } = {}) {
+    if (this.controlNode() !== KEYBOARD_NAVIGATION_NODE.NORMAL) {
+      return false;
+    }
+    const context = this.resolveInteractionContext();
+    if (
+      !context?.actionHints?.sessionBound ||
+      sameContextOwner(context, previous)
+    ) {
+      return false;
+    }
+    return this.startActionHints();
+  }
+
   leaveEditing(editable, target) {
     if (!this.applyTransition(KEYBOARD_NAVIGATION_EVENT.EDITING_ENDED, {
       editable,
@@ -702,6 +762,11 @@ export class KeyboardNavigationController {
     this.applyTransition(KEYBOARD_NAVIGATION_EVENT.SCROLL_CANCELLED);
     delete this.workspace.dataset.scrollMode;
     this.workspace.dataset.scrollModeLastExit = reason;
+    this.reportDismissal(
+      session.context.root,
+      session.context.sessionBound,
+      reason,
+    );
     return true;
   }
 
@@ -723,7 +788,11 @@ export class KeyboardNavigationController {
     return this.cancelScroll(reason, options);
   }
 
-  handleHintSessionExit({ activated = false } = {}) {
+  handleHintSessionExit({
+    activated = false,
+    reason = "",
+    context = null,
+  } = {}) {
     if (this.storedNode !== KEYBOARD_NAVIGATION_NODE.HINT) {
       return;
     }
@@ -731,6 +800,22 @@ export class KeyboardNavigationController {
       activated
         ? KEYBOARD_NAVIGATION_EVENT.HINT_CLOSED_FOR_ACTIVATION
         : KEYBOARD_NAVIGATION_EVENT.HINT_CANCELLED,
+    );
+    if (!activated) {
+      this.reportDismissal(
+        context?.root,
+        Boolean(context?.actionHints?.sessionBound),
+        reason,
+      );
+    }
+  }
+
+  reportDismissal(root, sessionBound, reason) {
+    if (!sessionBound || !KEYBOARD_SESSION_DISMISSAL_REASONS.has(reason)) {
+      return;
+    }
+    root.dispatchEvent(
+      new CustomEvent(KEYBOARD_SESSION_DISMISS_EVENT, { bubbles: true }),
     );
   }
 
@@ -828,6 +913,9 @@ export class KeyboardNavigationController {
           context,
           dialog: context.actionHints.dialog,
           scope: context.actionHints.scope,
+          reservedCodes: context.actionHints.sessionBound
+            ? [KEYBOARD_NAVIGATION_KEY.SCROLL_SELECT]
+            : [],
         }
       : null;
   }
@@ -845,6 +933,7 @@ export class KeyboardNavigationController {
       id: context.id,
       kind: context.kind,
       root: context.root,
+      sessionBound: Boolean(context.actionHints?.sessionBound),
       hud: capability.hud,
       selector: capability.selector,
       ...capability.scope,

@@ -171,7 +171,7 @@ export function matchesActionHintPolicy({
   return Boolean(policy && policy.controlKind === controlKind);
 }
 
-export function allocateActionHintCodes(targets) {
+export function allocateActionHintCodes(targets, { reserved = [] } = {}) {
   const resolved = targets.map((target) => {
     const policy = ACTION_HINT_ACTION_POLICY[target.actionId];
     if (!policy || policy.controlKind !== target.controlKind) {
@@ -187,7 +187,7 @@ export function allocateActionHintCodes(targets) {
     ({ policy }) => policy.allocation === ACTION_HINT_ALLOCATION.AUTOMATIC,
   ).length;
   const taskCodes = compactHintCodes(taskCount, TASK_HINT_ALPHABET);
-  const automaticCodes = automaticHintCodes(automaticCount);
+  const automaticCodes = automaticHintCodes(automaticCount, reserved);
   let taskIndex = 0;
   let automaticIndex = 0;
   const allocated = resolved.map(({ target, policy }) => {
@@ -202,11 +202,14 @@ export function allocateActionHintCodes(targets) {
   return allocated;
 }
 
-export function automaticHintCodes(count) {
+export function automaticHintCodes(count, reserved = []) {
   if (!Number.isInteger(count) || count < 0) {
     throw new Error("Automatic Hint count must be a non-negative integer.");
   }
-  return compactHintCodes(count, AUTOMATIC_HINT_ROOT_ALPHABET);
+  const rootAlphabet = [...AUTOMATIC_HINT_ROOT_ALPHABET]
+    .filter((key) => !reserved.includes(key))
+    .join("");
+  return compactHintCodes(count, rootAlphabet);
 }
 
 export function taskHintSuffix(index, width) {

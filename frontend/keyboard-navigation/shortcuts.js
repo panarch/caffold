@@ -39,6 +39,10 @@ export const KEYBOARD_SHORTCUT_HELP_SECTIONS = Object.freeze([
     rows: Object.freeze([
       shortcut(["shown code"], "Choose the matching action or scroll area"),
       shortcut(
+        [KEYBOARD_NAVIGATION_KEY.SCROLL_SELECT],
+        "Switch to scrolling in a popover",
+      ),
+      shortcut(
         [KEYBOARD_NAVIGATION_KEY.BACKSPACE],
         "Remove the last typed letter",
       ),

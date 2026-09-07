@@ -4,6 +4,7 @@ import {
   emptyActionHintScope,
 } from "../../../../../action-hints.js";
 import {
+  KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
   popoverScrollSurfaceScope,
 } from "../../../../../keyboard-navigation.js";
@@ -21,6 +22,7 @@ class CaffoldTaskDetailGithub extends HTMLElement {
     if (!this.listenersAttached) {
       this.listenersAttached = true;
       this.addEventListener("click", this.boundClick);
+      this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, this.boundDismiss);
     }
     if (this.githubTrigger()) {
       this.patch();
@@ -36,6 +38,7 @@ class CaffoldTaskDetailGithub extends HTMLElement {
     }
     this.listenersAttached = false;
     this.removeEventListener("click", this.boundClick);
+    this.removeEventListener(KEYBOARD_SESSION_DISMISS_EVENT, this.boundDismiss);
   }
 
   ensureState() {
@@ -48,6 +51,7 @@ class CaffoldTaskDetailGithub extends HTMLElement {
     this.snapshot = { available: false };
     this.listenersAttached = false;
     this.boundClick = (event) => this.handleClick(event);
+    this.boundDismiss = (event) => this.handleDismiss(event);
   }
 
   setSnapshot(snapshot = {}) {
@@ -57,6 +61,12 @@ class CaffoldTaskDetailGithub extends HTMLElement {
       this.patch();
     } else {
       this.render();
+    }
+  }
+
+  handleDismiss(event) {
+    if (event.target === this.githubPopover()) {
+      this.deactivate();
     }
   }
 
@@ -121,6 +131,7 @@ class CaffoldTaskDetailGithub extends HTMLElement {
       actionHints: {
         dialog,
         scope: this.githubActionHintScope({ contextId, popover }),
+        sessionBound: true,
       },
       scroll: {
         hud,
@@ -156,6 +167,7 @@ class CaffoldTaskDetailGithub extends HTMLElement {
         label: control.textContent?.trim() || destination,
         control,
         clipRoots: [popover],
+        badgeAtEnd: true,
         isActionable: () =>
           this.isConnected &&
           this.snapshot.available &&
