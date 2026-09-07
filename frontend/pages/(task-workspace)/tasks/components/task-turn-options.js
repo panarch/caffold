@@ -7,6 +7,7 @@ import {
   emptyActionHintScope,
 } from "../../../../action-hints.js";
 import {
+  KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
   popoverScrollSurfaceScope,
 } from "../../../../keyboard-navigation.js";
@@ -45,7 +46,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       this.listenersAttached = true;
       this.addEventListener("click", this.boundClick);
       this.addEventListener("beforetoggle", this.boundBeforeToggle, true);
-      this.addEventListener("toggle", this.boundToggle, true);
+      this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, this.boundDismiss);
       window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     }
     this.ensureRendered();
@@ -67,7 +68,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.listenersAttached = false;
     this.removeEventListener("click", this.boundClick);
     this.removeEventListener("beforetoggle", this.boundBeforeToggle, true);
-    this.removeEventListener("toggle", this.boundToggle, true);
+    this.removeEventListener(KEYBOARD_SESSION_DISMISS_EVENT, this.boundDismiss);
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
     this.modelRequestId += 1;
     this.permissionRequestId += 1;
@@ -114,7 +115,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.defaultPermissionMode = "";
     this.boundClick = (event) => this.handleClick(event);
     this.boundBeforeToggle = (event) => this.handleBeforeToggle(event);
-    this.boundToggle = (event) => this.handleToggle(event);
+    this.boundDismiss = (event) => this.handleDismiss(event);
     this.boundIconsReady = () => this.render();
     warmIcons();
   }
@@ -586,23 +587,14 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     }
   }
 
-  handleToggle(event) {
-    if (event.newState !== "open") {
-      return;
-    }
+  handleDismiss(event) {
     const popover = event.target;
     if (
-      popover !== this.modelPopover() &&
-      popover !== this.permissionPopover()
+      popover === this.modelPopover() ||
+      popover === this.permissionPopover()
     ) {
-      return;
+      this.hidePopover(popover);
     }
-    window.requestAnimationFrame(() => {
-      if (!popover.matches(":popover-open")) {
-        return;
-      }
-      popover.querySelector('[aria-pressed="true"]:not(:disabled)')?.focus();
-    });
   }
 
   handleBeforeToggle(event) {
@@ -1037,6 +1029,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       actionHints: {
         dialog,
         scope: this.popoverActionHintScope({ contextId, kind, popover }),
+        sessionBound: true,
       },
       scroll: {
         hud,
@@ -1079,6 +1072,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
         label,
         control,
         clipRoots: [popover],
+        badgeAtEnd: true,
         isActionable: () =>
           this.isConnected &&
           !this.context.locked &&
@@ -1307,6 +1301,7 @@ function renderModelOption(option, selectedModel) {
       data-provider="${escapeHtml(option.provider)}"
       data-model="${escapeHtml(option.model)}"
       aria-pressed="${selected ? "true" : "false"}"
+      ${selected ? "autofocus" : ""}
     >
       <span><strong>${escapeHtml(option.displayName)}</strong></span>
       ${selected ? renderInlineIcon("Check", "Selected", "task-model-check") : ""}
@@ -1358,6 +1353,7 @@ function renderPermissionOption(option, selectedMode) {
       data-turn-options-action="select-permission"
       data-permission-mode="${escapeHtml(option.mode)}"
       aria-pressed="${selected ? "true" : "false"}"
+      ${selected ? "autofocus" : ""}
       ${option.allowed ? "" : "disabled"}
     >
       <span>

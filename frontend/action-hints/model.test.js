@@ -587,3 +587,10 @@ function assertBalancedPrefixFree(codes) {
     ));
   }
 }
+
+test("reserved first characters stay out of automatic codes", () => {
+  const codes = automaticHintCodes(22, ["S"]);
+  assert.equal(codes.length, 22);
+  assert.equal(codes.some((code) => code.startsWith("S")), false);
+  assert.equal(automaticHintCodes(3).join(""), "ASD");
+});

@@ -241,7 +241,8 @@ document listener or global presentation.
 Workspace, registered modal, and registered popover owners publish one thin
 keyboard-navigation context identified by stable ID, ownership kind, and exact
 retained root. Action Hint and Scroll remain separate optional capabilities on
-that context. The same fresh context resolution serves both `F` and `S`: one
+that context, and the Action Hint capability may declare the context
+session-bound. The same fresh context resolution serves both `F` and `S`: one
 open registered popover wins over the workspace, including when it is an exact
 descendant of the currently open product modal; otherwise an unknown or
 unrelated open overlay, duplicate root, or ambiguous popover rejects entry. The
@@ -346,10 +347,14 @@ remain outside Action Hint. A native summary participates only when its product
 component explicitly owns and declares that disclosure. Registered dialog
 textboxes keep their owner-specific focus behavior, while dialog selects use
 the same general native select contract as workspace controls. Popover and
-dialog openers are ordinary workspace actions, but after either opens the user
-presses `F` again to enter the new retained context; the coordinator never
-predicts or automatically hands off to it. File details deliberately declares
-no internal Action Hint target.
+dialog openers are ordinary workspace actions. A context that declares itself
+session-bound continues Action Hints when a Hint activation makes it the
+interaction owner and closes itself when the user dismisses that session; the
+coordinator reports the dismissal on the context root, and the owner hides its
+own popover. Every registered popover with actions declares it and dialogs do
+not, so the user presses `F` again inside a dialog or a popover opened by
+pointer, and such a session leaves the popover open. File details deliberately
+declares no internal Action Hint target.
 
 Provider collection is hierarchical: each layout merges its own actions with
 only its active direct child scopes through `action-hint-scope.js`. Ancestors
@@ -414,7 +419,11 @@ mode.
 Each registered popover retains a small shared presentation host containing its
 own Action Hint dialog, Scroll selector, and Scroll HUD. Dynamic Model and
 Permission rendering replaces only an option-content child, preserving the
-popover root and presentation identity. If a frozen option control is replaced,
+popover root and presentation identity. The selected Model and Permission
+options carry native `autofocus`, so the popover's initial focus is settled
+before any keyboard session is captured. Popover option targets declare
+`badgeAtEnd`, so their badges sit at the trailing edge of each row instead of
+covering the label. If a frozen option control is replaced,
 its option owner group retires even when the semantic value is unchanged. A
 popover context containing no surviving target consequently closes; a later
 `F` collects fresh bindings and options. Product owners continue to own native

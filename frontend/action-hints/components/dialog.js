@@ -158,8 +158,9 @@ class CaffoldActionHintDialog extends HTMLElement {
       if (badge.getAttribute("aria-label") !== accessibleName) {
         badge.setAttribute("aria-label", accessibleName);
       }
-      badge.style.left = `${target.visibleRect.left}px`;
-      badge.style.top = `${target.visibleRect.top}px`;
+      const origin = badgeOrigin(target, this.badgeSizes.get(badge));
+      badge.style.left = `${origin.left}px`;
+      badge.style.top = `${origin.top}px`;
     }
     this.targets = nextTargets;
     this.viewportRect = viewportRect;
@@ -226,8 +227,9 @@ class CaffoldActionHintDialog extends HTMLElement {
       button.dataset.actionHintCode = target.code;
       button.setAttribute("aria-label", `${target.code} — ${target.label}`);
       button.textContent = target.code;
-      button.style.left = `${target.visibleRect.left}px`;
-      button.style.top = `${target.visibleRect.top}px`;
+      const origin = badgeOrigin(target, null);
+      button.style.left = `${origin.left}px`;
+      button.style.top = `${origin.top}px`;
       fragment.append(button);
     }
     this.badges.replaceChildren(fragment);
@@ -252,7 +254,7 @@ class CaffoldActionHintDialog extends HTMLElement {
       }
       const bounds = this.badgeSizes.get(button) ?? measured;
       const position = clampBadgePosition(
-        target.visibleRect,
+        badgeOrigin(target, bounds),
         bounds,
         this.viewportRect,
       );
@@ -260,6 +262,15 @@ class CaffoldActionHintDialog extends HTMLElement {
       button.style.top = `${position.top}px`;
     }
   }
+}
+
+function badgeOrigin(target, bounds) {
+  const rect = target.visibleRect;
+  const width = Math.max(0, Number(bounds?.width) || 0);
+  return {
+    left: target.badgeAtEnd ? rect.right - width : rect.left,
+    top: rect.top,
+  };
 }
 
 if (!customElements.get("caffold-action-hint-dialog")) {

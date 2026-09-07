@@ -70,6 +70,40 @@ test("keeps Action Hint, Scroll, and Editing as separate optional capabilities",
   assert.equal(context.editing.escapeTarget, escapeTarget);
 });
 
+test("carries the owner-declared Action Hint session binding", () => {
+  const root = element();
+  const dialog = actionHintDialog();
+  root.append(dialog);
+  const manual = keyboardNavigationContext({
+    id: "workspace",
+    kind: "workspace",
+    root,
+    actionHints: { dialog, scope: { targets: [] } },
+  });
+  const automatic = keyboardNavigationContext({
+    id: "popover:model",
+    kind: "popover",
+    root,
+    actionHints: {
+      dialog,
+      scope: { targets: [] },
+      sessionBound: true,
+    },
+  });
+
+  assert.equal(manual.actionHints.sessionBound, false);
+  assert.equal(automatic.actionHints.sessionBound, true);
+  assert.equal(
+    normalizeKeyboardNavigationContexts([manual])[0].actionHints.sessionBound,
+    false,
+  );
+  assert.equal(
+    normalizeKeyboardNavigationContexts([automatic])[0].actionHints
+      .sessionBound,
+    true,
+  );
+});
+
 test("normalizes exact owners and rejects duplicate or malformed providers", () => {
   const workspaceRoot = element();
   const popoverRoot = element();

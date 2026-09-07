@@ -16,6 +16,7 @@ import {
   mergeActionHintScopes,
 } from "../../../../../../../../action-hints.js";
 import {
+  KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
   popoverScrollSurfaceScope,
 } from "../../../../../../../../keyboard-navigation.js";
@@ -33,6 +34,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
         "caffold:task-detail-info-action-intent",
         this.boundActionIntent,
       );
+      this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, this.boundDismiss);
       window.addEventListener("caffold:icons-ready", this.boundIconsReady);
     }
     if (this.snapshot.task) {
@@ -54,6 +56,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
       "caffold:task-detail-info-action-intent",
       this.boundActionIntent,
     );
+    this.removeEventListener(KEYBOARD_SESSION_DISMISS_EVENT, this.boundDismiss);
     window.removeEventListener("caffold:icons-ready", this.boundIconsReady);
   }
 
@@ -69,6 +72,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
     this.snapshot = normalizedSnapshot();
     this.listenersAttached = false;
     this.boundActionIntent = (event) => this.handleActionIntent(event);
+    this.boundDismiss = (event) => this.handleDismiss(event);
     this.boundIconsReady = () => this.patchStatus();
     warmIcons();
   }
@@ -88,6 +92,12 @@ class CaffoldTaskDetailInfo extends HTMLElement {
       return;
     }
     this.patch();
+  }
+
+  handleDismiss(event) {
+    if (event.target === this.infoPopover()) {
+      this.deactivate();
+    }
   }
 
   deactivate() {
@@ -305,6 +315,7 @@ class CaffoldTaskDetailInfo extends HTMLElement {
             scrollRoots: [popover],
           },
         ),
+        sessionBound: true,
       },
       scroll: {
         hud,

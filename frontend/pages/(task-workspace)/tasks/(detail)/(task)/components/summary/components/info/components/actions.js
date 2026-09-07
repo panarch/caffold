@@ -124,6 +124,7 @@ class CaffoldTaskDetailInfoActions extends HTMLElement {
         label: control.textContent?.trim() || `${type} task`,
         control,
         clipRoots: [...clipRoots],
+        badgeAtEnd: true,
         isActionable: () =>
           this.isConnected &&
           taskThreadId(this.snapshot.task) === threadId &&

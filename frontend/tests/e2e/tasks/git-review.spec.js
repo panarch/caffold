@@ -7,7 +7,9 @@ import {
   actionHintBadgePresentation,
   actionHintDialog,
   activateActionHint,
+  activateActionHintIntoPopover,
   enterActionHints,
+  popoverActionHintDialog,
   waitForActionHintTarget,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
@@ -397,11 +399,21 @@ test("opens Git and selects its destination through declared keyboard contexts",
   await installTaskGitFixture(page);
   await page.goto(`/tasks/${THREAD_ID}`);
 
-  await activateActionHint(page, /Open Git workspace$/);
+  await activateActionHintIntoPopover(page, /Open Git workspace$/);
   const popover = page.locator(
     ".detail-layout-summary caffold-task-detail-git > .task-git-popover",
   );
   await expect(popover).toBeVisible();
+  const hint = popoverActionHintDialog(page);
+  await expect(hint).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(hint).toBeHidden();
+  await expect(popover).toBeHidden();
+  await page.locator(
+    ".detail-layout-summary caffold-task-detail-git > .task-git-button",
+  ).click();
+  await expect(popover).toBeVisible();
+  await expect(hint).toBeHidden();
   await page.keyboard.press("s");
   await expect(
     popover.locator("caffold-scroll-mode-hud .scroll-mode-status"),
@@ -409,7 +421,6 @@ test("opens Git and selects its destination through declared keyboard contexts",
   await expect(popover).toBeVisible();
 
   await page.keyboard.press("f");
-  const hint = actionHintDialog(page);
   await expect(hint).toBeVisible();
   await expect(
     hint.getByRole("button", { name: / — Log$/ }),

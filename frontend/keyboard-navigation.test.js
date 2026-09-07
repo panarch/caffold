@@ -568,6 +568,249 @@ test("Scroll selection accepts events only from its pinned context selector", ()
   }
 });
 
+test("continues Action Hints into an owner that declares itself session-bound", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const { controller, order, hooks, activate } = continuationController();
+    const workspace = hintContext("workspace", "workspace");
+    const popover = hintContext("popover:model", "popover", {
+      sessionBound: true,
+    });
+    controller.collectKeyboardNavigationContexts = () => [workspace, popover];
+
+    document.popover = popover.root;
+    activate(workspace);
+
+    assert.equal(hooks(), 1);
+    assert.deepEqual(order, ["capture", "start"]);
+    assert.equal(controller.storedNode, KEYBOARD_NAVIGATION_NODE.HINT);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("continues into a declared popover inside the open product modal", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const { controller, order, activate } = continuationController();
+    const modal = hintContext("fork", "modal");
+    const popover = hintContext("fork:model", "popover", {
+      sessionBound: true,
+    });
+    const modalContains = modal.root.contains;
+    modal.root.contains = (candidate) =>
+      modalContains(candidate) || candidate === popover.root;
+    controller.collectKeyboardNavigationContexts = () => [modal, popover];
+
+    document.modal = modal.root;
+    document.popover = popover.root;
+    activate(modal);
+
+    assert.deepEqual(order, ["capture", "start"]);
+    assert.equal(controller.storedNode, KEYBOARD_NAVIGATION_NODE.HINT);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("leaves Action Hints closed unless a different session-bound owner appears", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const { controller, order, hooks, activate } = continuationController();
+    const workspace = hintContext("workspace", "workspace");
+    const manual = hintContext("popover:details", "popover");
+    const automatic = hintContext("popover:model", "popover", {
+      sessionBound: true,
+    });
+    controller.collectKeyboardNavigationContexts = () => [
+      workspace,
+      manual,
+      automatic,
+    ];
+
+    document.popover = manual.root;
+    activate(workspace);
+    assert.deepEqual(order, []);
+    assert.equal(controller.storedNode, null);
+
+    document.popover = automatic.root;
+    activate(automatic);
+    assert.deepEqual(order, []);
+    assert.equal(controller.storedNode, null);
+
+    document.popover = null;
+    activate(automatic);
+    assert.deepEqual(order, []);
+    assert.equal(controller.storedNode, null);
+
+    document.popover = automatic.root;
+    document.activeElement = element({
+      matches: (selector) => selector.includes("input:not"),
+    });
+    activate(workspace);
+    assert.deepEqual(order, []);
+    assert.equal(controller.storedNode, null);
+    document.activeElement = null;
+
+    controller.actionHints.prepareSnapshot = () => {
+      order.push("capture");
+      return null;
+    };
+    activate(workspace);
+    assert.deepEqual(order, ["capture"]);
+    assert.equal(controller.storedNode, null);
+    assert.equal(hooks(), 5);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("a user dismissal inside a session-bound context is reported to its owner", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const { controller, activate } = continuationController();
+    const workspace = hintContext("workspace", "workspace");
+    const popover = hintContext("popover:model", "popover", {
+      sessionBound: true,
+    });
+    const dispatched = [];
+    popover.root.dispatchEvent = (event) => {
+      dispatched.push(`${event.type}:${event.bubbles}`);
+      return true;
+    };
+    workspace.root.dispatchEvent = () => {
+      dispatched.push("workspace");
+      return true;
+    };
+    controller.collectKeyboardNavigationContexts = () => [workspace, popover];
+    document.popover = popover.root;
+    const exit = (detail) => controller.actionHints.onSessionExit(detail);
+
+    for (const reason of ["escape", "no-match", "overlay"]) {
+      activate(workspace);
+      assert.equal(controller.storedNode, KEYBOARD_NAVIGATION_NODE.HINT);
+      exit({ activated: false, reason, context: popover });
+      assert.equal(controller.storedNode, null);
+    }
+    controller.startActionHints();
+    assert.equal(controller.storedNode, KEYBOARD_NAVIGATION_NODE.HINT);
+    exit({ activated: false, reason: "escape", context: popover });
+    assert.deepEqual(
+      dispatched,
+      Array(4).fill("caffold:keyboard-session-dismiss:true"),
+    );
+
+    activate(workspace);
+    exit({ activated: false, reason: "snapshot-invalidated", context: popover });
+    activate(workspace);
+    exit({ activated: false, reason: "scroll", context: popover });
+    activate(workspace);
+    exit({ activated: true, target: {}, context: popover });
+    document.popover = null;
+    controller.startActionHints();
+    exit({ activated: false, reason: "escape", context: workspace });
+    assert.equal(dispatched.length, 4);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("a session-bound binding reserves S and a bare S switches Hint to Scroll", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const controller = createController();
+    const workspace = hintContext("workspace", "workspace");
+    const popover = hintContext("popover:model", "popover", {
+      sessionBound: true,
+    });
+    controller.collectKeyboardNavigationContexts = () => [workspace, popover];
+    assert.deepEqual(controller.resolveActionHintBinding().reservedCodes, []);
+    document.popover = popover.root;
+    assert.deepEqual(controller.resolveActionHintBinding().reservedCodes, ["S"]);
+
+    const order = [];
+    controller.actionHints.handleHintKeydown = () => order.push("code");
+    controller.actionHints.cancel = (reason) => {
+      order.push(`cancel:${reason}`);
+      return true;
+    };
+    controller.startScroll = () => {
+      order.push("scroll");
+      return true;
+    };
+    controller.captureScrollSnapshot = () => ({
+      context: { blocked: false },
+      surfaces: [{}],
+    });
+    controller.storedNode = KEYBOARD_NAVIGATION_NODE.HINT;
+    controller.actionHints.session = {
+      binding: { reservedCodes: ["S"] },
+      buffer: "",
+    };
+
+    const bare = keyEvent("s", { code: "KeyS" });
+    controller.handleKeydown(bare);
+    assert.deepEqual(order, ["cancel:scroll", "scroll"]);
+    assert.equal(bare.prevented, true);
+
+    controller.actionHints.session.buffer = "A";
+    controller.handleKeydown(keyEvent("s", { code: "KeyS" }));
+    assert.deepEqual(order, ["cancel:scroll", "scroll", "code"]);
+
+    controller.actionHints.session.buffer = "";
+    controller.captureScrollSnapshot = () => ({
+      context: { blocked: false },
+      surfaces: [],
+    });
+    const idle = keyEvent("s", { code: "KeyS" });
+    controller.handleKeydown(idle);
+    assert.deepEqual(order, ["cancel:scroll", "scroll", "code"]);
+    assert.equal(idle.prevented, true);
+    assert.equal(controller.storedNode, KEYBOARD_NAVIGATION_NODE.HINT);
+
+    controller.actionHints.session.binding.reservedCodes = [];
+    controller.handleKeydown(keyEvent("s", { code: "KeyS" }));
+    assert.deepEqual(order, ["cancel:scroll", "scroll", "code", "code"]);
+  } finally {
+    restoreDom();
+  }
+});
+
+test("Escape in a session-bound active Scroll reports a dismissal and switching does not", () => {
+  const restoreDom = installEventGlobals();
+  try {
+    const controller = createController();
+    const dispatched = [];
+    const root = element();
+    root.dispatchEvent = (event) => {
+      dispatched.push(event.type);
+      return true;
+    };
+    const activeSession = (sessionBound) => ({
+      cleanup: [],
+      context: { root, sessionBound, hud: { close() {} } },
+    });
+    controller.detachActiveSignals = () => {};
+
+    controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE;
+    controller.activeSession = activeSession(true);
+    assert.equal(controller.cancelActive("action-hints"), true);
+    assert.deepEqual(dispatched, []);
+
+    controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE;
+    controller.activeSession = activeSession(true);
+    assert.equal(controller.cancelActive("escape"), true);
+    assert.deepEqual(dispatched, ["caffold:keyboard-session-dismiss"]);
+
+    controller.storedNode = KEYBOARD_NAVIGATION_NODE.SCROLL_ACTIVE;
+    controller.activeSession = activeSession(false);
+    assert.equal(controller.cancelActive("escape"), true);
+    assert.deepEqual(dispatched, ["caffold:keyboard-session-dismiss"]);
+  } finally {
+    restoreDom();
+  }
+});
+
 test("resolves workspace, exact modal, and registered popover ownership", () => {
   const restoreDom = installEventGlobals();
   try {
@@ -1080,13 +1323,70 @@ test("active revalidation keeps one binding and refreshes its retained presentat
   }
 });
 
-function createController({ shortcutDialog = null } = {}) {
+function createController({
+  shortcutDialog = null,
+  afterActionHintActivation = () => {},
+} = {}) {
   const workspace = Object.assign(new FakeEventTarget(), { dataset: {} });
   return new KeyboardNavigationController({
     workspace,
     collectKeyboardNavigationContexts: () => [],
     shortcutDialog,
+    afterActionHintActivation,
   });
+}
+
+function hintContext(id, kind, { sessionBound = false } = {}) {
+  const root = element();
+  const dialog = element({
+    open() {},
+    close() {},
+    allowsNativeActivation: () => false,
+    ownsModal: () => false,
+    updateInput() {},
+    reconcileTargets: () => true,
+  });
+  root.contains = (candidate) => candidate === root || candidate === dialog;
+  return {
+    id,
+    kind,
+    root,
+    actionHints: {
+      dialog,
+      scope: { targets: [], mutationRoots: [], scrollRoots: [] },
+      sessionBound,
+    },
+  };
+}
+
+function continuationController() {
+  let hooks = 0;
+  const order = [];
+  const snapshot = { targets: [{ id: "model:high" }] };
+  const controller = createController({
+    afterActionHintActivation: () => {
+      hooks += 1;
+    },
+  });
+  controller.actionHints.prepareSnapshot = () => {
+    order.push("capture");
+    return snapshot;
+  };
+  controller.actionHints.startSession = (candidate) => {
+    assert.equal(candidate, snapshot);
+    order.push("start");
+    return true;
+  };
+  return {
+    controller,
+    order,
+    hooks: () => hooks,
+    activate: (context) =>
+      controller.actionHints.afterActivation(
+        { id: "model", actionId: "task.model.choose", code: "M" },
+        { context },
+      ),
+  };
 }
 
 function keyEvent(key, options = {}) {

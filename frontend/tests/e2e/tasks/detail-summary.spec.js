@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
-  actionHintDialog,
-  activateActionHint,
+  activateActionHintIntoPopover,
+  popoverActionHintDialog,
 } from "../support/action-hints.js";
 import { installBrowserDefaults } from "../support/browser-defaults.js";
 import {
@@ -382,13 +382,12 @@ test("forks an idle Codex Task and opens the distinct child", { tag: "@all-viewp
   await page.goto(`/tasks/${sourceThreadId}`);
   await emitTaskDetailBootstrap(page, summaryDetail(source));
   const summary = page.locator("caffold-task-detail-summary");
-  await activateActionHint(page, /Task details, idle$/);
+  await activateActionHintIntoPopover(page, /Task details, idle$/);
   const popover = summary.locator(".task-detail-popover");
   const forkButton = popover.locator('[data-task-info-action="fork"]');
   await expect(forkButton).toBeEnabled();
 
-  await page.keyboard.press("f");
-  const hint = actionHintDialog(page);
+  const hint = popoverActionHintDialog(page);
   await expect(hint).toBeVisible();
   await expect(
     hint.getByRole("button", { name: / — Archive task$/ }),

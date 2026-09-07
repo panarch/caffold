@@ -2,7 +2,9 @@ import { expect, test } from "@playwright/test";
 import {
   actionHintDialog,
   activateActionHint,
+  activateActionHintIntoPopover,
   enterActionHints,
+  popoverActionHintDialog,
 } from "../support/action-hints.js";
 import { installBrowserDefaults, mockCodexStatus } from "../support/browser-defaults.js";
 import {
@@ -91,8 +93,9 @@ async function enterReorderMode(page, mode = "Tasks") {
   await page.getByRole("button", { name: `Reorder ${mode}`, exact: true }).click();
 }
 
-async function activateContextActionHint(page, accessibleName) {
-  const hint = await enterActionHints(page);
+async function activatePopoverActionHint(page, accessibleName) {
+  const hint = popoverActionHintDialog(page);
+  await expect(hint).toBeVisible();
   const badge = hint.getByLabel(accessibleName);
   await expect(badge).toBeVisible();
   const code = await badge.getAttribute("data-action-hint-code");
@@ -203,9 +206,9 @@ test("moves a Task and finishes reorder through Action Hints", { tag: "@all-view
 
   await page.goto("/");
   const navigator = page.locator("caffold-task-navigator");
-  await activateActionHint(page, "Choose what to reorder");
+  await activateActionHintIntoPopover(page, "Choose what to reorder");
   await expect(navigator.locator(".task-list-reorder-popover")).toBeVisible();
-  await activateContextActionHint(page, "Reorder Tasks");
+  await activatePopoverActionHint(page, "Reorder Tasks");
   await expect(navigator).toHaveAttribute("data-reorder-mode", "tasks");
 
   let hint = await enterActionHints(page);
@@ -273,8 +276,8 @@ test("moves a Section and finishes reorder through Action Hints", { tag: "@all-v
   await page.goto("/");
 
   const navigator = page.locator("caffold-task-navigator");
-  await activateActionHint(page, "Choose what to reorder");
-  await activateContextActionHint(page, "Reorder Sections");
+  await activateActionHintIntoPopover(page, "Choose what to reorder");
+  await activatePopoverActionHint(page, "Reorder Sections");
   await expect(navigator).toHaveAttribute("data-reorder-mode", "sections");
 
   let hint = await enterActionHints(page);

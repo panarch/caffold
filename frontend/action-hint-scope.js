@@ -21,6 +21,7 @@ export function buttonActionHintTarget({
   control,
   anchor = control,
   clipRoots,
+  badgeAtEnd = false,
   isActionable,
 }) {
   return focusAndClickActionHintTarget({
@@ -32,6 +33,7 @@ export function buttonActionHintTarget({
     control,
     anchor,
     clipRoots,
+    badgeAtEnd,
     isActionable,
   });
 }
@@ -336,6 +338,7 @@ function focusActionHintTarget({
   control,
   anchor = control,
   clipRoots,
+  badgeAtEnd = false,
   activationKey,
   isActionable,
 }) {
@@ -351,6 +354,7 @@ function focusActionHintTarget({
     control,
     anchor,
     clipRoots,
+    badgeAtEnd: Boolean(badgeAtEnd),
     ...(activationKey == null ? {} : { activationKey }),
     isActionable,
     activate: () => control.focus({ preventScroll: true }),

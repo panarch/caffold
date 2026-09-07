@@ -81,6 +81,7 @@ test("provides Model through the owned native popover button", () => {
   );
   assert.equal(target.control, control);
   assert.equal(target.anchor, control);
+  assert.equal(target.badgeAtEnd, false);
   assert.deepEqual(target.clipRoots, [clipRoot]);
   assert.equal(target.isActionable(), true);
   target.activate();
@@ -201,6 +202,7 @@ test("provides selected model options and excludes disabled permission options",
     kind: "model",
     popover: modelPopover,
   });
+  assert.equal(modelScope.targets.every(({ badgeAtEnd }) => badgeAtEnd), true);
   assert.deepEqual(
     modelScope.targets.map(({ actionId }) => actionId),
     ["task.model.select", "task.reasoning.select", "task.speed.select"],
@@ -316,6 +318,137 @@ test("restores a retained dangerous permission option after confirmation is canc
   } finally {
     restoreGlobal("window", previousWindow);
   }
+});
+
+test("declares a session-bound Action Hint context for both retained popover contexts", () => {
+  const presentation = {
+    actionHintDialog: () => ({}),
+    scrollModeHud: () => ({}),
+    scrollSurfaceSelector: () => ({}),
+  };
+  const popover = () => ({
+    matches: () => false,
+    querySelector: () => presentation,
+    querySelectorAll: () => [],
+  });
+  const owner = {
+    isConnected: true,
+    context: { locked: false },
+    ensureRendered() {},
+    modelPopover: () => modelPopover,
+    permissionPopover: () => permissionPopover,
+    popoverKeyboardNavigationContext:
+      turnOptions.popoverKeyboardNavigationContext,
+    popoverActionHintScope: turnOptions.popoverActionHintScope,
+  };
+  const modelPopover = popover();
+  const permissionPopover = popover();
+
+  const contexts = turnOptions.keyboardNavigationContexts.call(owner, {
+    scopeId: "task:thread-a",
+  });
+
+  assert.deepEqual(
+    contexts.map(({ id, kind, root, actionHints }) => ({
+      id,
+      kind,
+      root,
+      sessionBound: actionHints.sessionBound,
+    })),
+    [
+      {
+        id: "task-composer:task:thread-a:model-options",
+        kind: "popover",
+        root: modelPopover,
+        sessionBound: true,
+      },
+      {
+        id: "task-composer:task:thread-a:permission-options",
+        kind: "popover",
+        root: permissionPopover,
+        sessionBound: true,
+      },
+    ],
+  );
+});
+
+test("marks only the selected model and permission options as the popover autofocus", () => {
+  const codex = {
+    provider: "codex",
+    model: "shared-model",
+    displayName: "Codex Shared",
+    supportedReasoningEfforts: [],
+    supportsFast: false,
+  };
+  const claude = {
+    provider: "claude",
+    model: "shared-model",
+    displayName: "Claude Shared",
+    supportedReasoningEfforts: [],
+    supportsFast: false,
+  };
+  const approveForMe = {
+    mode: "approveForMe",
+    label: "Approve for me",
+    description: "Approves routine actions",
+    allowed: true,
+    dangerous: false,
+  };
+  const fullAccess = {
+    mode: "fullAccess",
+    label: "Full access",
+    description: "Removes restrictions",
+    allowed: true,
+    dangerous: true,
+  };
+  const modelPopover = control();
+  const permissionPopover = control();
+  let modelHtml = "";
+  let permissionHtml = "";
+  const owner = renderOwner({
+    offeredModels: () => [codex, claude],
+    selectedModel: () => codex,
+    permissionOptions: [approveForMe, fullAccess],
+    selectedPermissionMode: () => "approveForMe",
+    selectedPermission: () => approveForMe,
+    modelPopover: () => modelPopover,
+    permissionPopover: () => permissionPopover,
+    patchPopover(popover, html) {
+      if (popover === modelPopover) {
+        modelHtml = html;
+      } else if (popover === permissionPopover) {
+        permissionHtml = html;
+      }
+    },
+  });
+
+  turnOptions.render.call(owner);
+
+  assert.match(
+    modelHtml,
+    /data-provider="codex"[\s\S]*?aria-pressed="true"\s+autofocus/,
+  );
+  assert.equal(modelHtml.match(/autofocus/g).length, 1);
+  assert.match(
+    permissionHtml,
+    /data-permission-mode="approveForMe"[\s\S]*?aria-pressed="true"\s+autofocus/,
+  );
+  assert.equal(permissionHtml.match(/autofocus/g).length, 1);
+});
+
+test("hides only its own popover when a bound Action Hint session is dismissed", () => {
+  const hidden = [];
+  const modelPopover = {};
+  const permissionPopover = {};
+  const owner = {
+    modelPopover: () => modelPopover,
+    permissionPopover: () => permissionPopover,
+    hidePopover: (popover) => hidden.push(popover),
+  };
+  turnOptions.handleDismiss.call(owner, { target: {} });
+  turnOptions.handleDismiss.call(owner, { target: permissionPopover });
+  turnOptions.handleDismiss.call(owner, { target: modelPopover });
+  assert.deepEqual(hidden, [permissionPopover, modelPopover]);
 });
 
 test("renders only the exact provider and model identity as selected", () => {

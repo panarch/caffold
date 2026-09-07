@@ -57,6 +57,31 @@ test("shows only matching retained badges and restores them", () => {
   assert.equal(owner.status.textContent, "");
 });
 
+test("places an end-aligned badge at the visible rect's trailing edge", () => {
+  const button = {
+    dataset: { actionHintCode: "A" },
+    style: {},
+    getBoundingClientRect: () => ({ width: 20, height: 10 }),
+  };
+  const owner = {
+    badges: { querySelectorAll: () => [button] },
+    badgeSizes: new WeakMap(),
+    targets: [{
+      code: "A",
+      badgeAtEnd: true,
+      visibleRect: { left: 10, top: 6, right: 90, bottom: 30 },
+    }],
+    viewportRect: { left: 0, top: 0, right: 100, bottom: 100 },
+  };
+
+  dialog.positionBadges.call(owner);
+  assert.deepEqual(button.style, { left: "70px", top: "6px" });
+
+  owner.targets[0].badgeAtEnd = false;
+  dialog.positionBadges.call(owner);
+  assert.deepEqual(button.style, { left: "10px", top: "6px" });
+});
+
 test("removes retired badges while retaining and repositioning survivors", () => {
   const previousDocument = globalThis.document;
   const previousButton = globalThis.HTMLButtonElement;

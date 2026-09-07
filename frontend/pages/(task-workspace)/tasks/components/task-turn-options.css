@@ -147,7 +147,8 @@ caffold-task-turn-options {
     position: fixed;
     inset: auto;
     position-try-fallbacks: flip-block, flip-inline;
-    width: min(496px, calc(100vw - 2rem));
+    width: max-content;
+    max-width: min(496px, calc(100vw - 2rem));
     max-height: min(608px, calc(100dvh - 1.125rem));
     margin: var(--interface-space-4) var(--interface-space-5);
     padding: 0.5rem;
@@ -162,7 +163,7 @@ caffold-task-turn-options {
   & .task-permission-popover {
     position-area: block-end center;
     justify-self: start;
-    width: min(410px, calc(100vw - 2rem));
+    max-width: min(410px, calc(100vw - 2rem));
   }
 
   & .task-model-popover {
@@ -203,7 +204,7 @@ caffold-task-turn-options {
 
   & .task-model-option {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) var(--interface-icon-small-size);
     align-items: center;
     gap: 0.5rem;
     width: 100%;

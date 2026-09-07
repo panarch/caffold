@@ -12,6 +12,7 @@ import {
   mergeActionHintScopes,
 } from "../../../../action-hints.js";
 import {
+  KEYBOARD_SESSION_DISMISS_EVENT,
   keyboardNavigationContext,
   popoverScrollSurfaceScope,
 } from "../../../../keyboard-navigation.js";
@@ -42,6 +43,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.ensureState();
     this.addEventListener("click", this.boundClick);
     this.addEventListener("keydown", this.boundKeydown);
+    this.addEventListener(KEYBOARD_SESSION_DISMISS_EVENT, this.boundDismiss);
     this.addEventListener(
       ACTIVE_TASK_LIST_STATE_EVENT,
       this.boundSectionStateChange,
@@ -85,6 +87,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.closeReorderPopover();
     this.removeEventListener("click", this.boundClick);
     this.removeEventListener("keydown", this.boundKeydown);
+    this.removeEventListener(KEYBOARD_SESSION_DISMISS_EVENT, this.boundDismiss);
     this.removeEventListener(
       ACTIVE_TASK_LIST_STATE_EVENT,
       this.boundSectionStateChange,
@@ -135,6 +138,7 @@ class CaffoldTaskNavigator extends HTMLElement {
     this.liveUpdates = null;
     this.boundClick = (event) => this.handleClick(event);
     this.boundKeydown = (event) => this.handleKeydown(event);
+    this.boundDismiss = (event) => this.handleDismiss(event);
     this.boundIconsReady = () => this.syncPrimaryHeader();
     this.boundSectionStateChange = (event) =>
       this.handleSectionStateChange(event);
@@ -283,6 +287,7 @@ class CaffoldTaskNavigator extends HTMLElement {
       actionHints: {
         dialog,
         scope: this.reorderActionHintScope({ contextId, popover }),
+        sessionBound: true,
       },
       scroll: {
         hud,
@@ -320,6 +325,7 @@ class CaffoldTaskNavigator extends HTMLElement {
         label: control.textContent?.trim() || `Reorder ${mode}`,
         control,
         clipRoots: [popover],
+        badgeAtEnd: true,
         isActionable: () =>
           this.isConnected &&
           this.active &&
@@ -531,6 +537,12 @@ class CaffoldTaskNavigator extends HTMLElement {
   exitReorderMode(options = {}) {
     this.closeReorderPopover();
     this.setReorderMode("none", options);
+  }
+
+  handleDismiss(event) {
+    if (event.target === this.reorderPopover()) {
+      this.closeReorderPopover();
+    }
   }
 
   closeReorderPopover() {

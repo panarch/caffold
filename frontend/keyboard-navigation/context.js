@@ -25,6 +25,7 @@ export function keyboardNavigationContext({
     context.actionHints = {
       dialog: actionHints.dialog,
       scope: mergeActionHintScopes(actionHints.scope),
+      sessionBound: Boolean(actionHints.sessionBound),
     };
   }
   if (scroll != null) {
@@ -168,6 +169,7 @@ function normalizeActionHintCapability(capability, root) {
   }
   return {
     dialog,
+    sessionBound: Boolean(capability.sessionBound),
     scope: {
       blocked: Boolean(scope.blocked),
       targets: [...scope.targets],

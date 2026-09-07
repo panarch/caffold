@@ -133,7 +133,7 @@ export class ActionHintController {
     if (!scope || scope.blocked) {
       return null;
     }
-    const snapshot = this.captureSnapshot(scope);
+    const snapshot = this.captureSnapshot(scope, binding);
     return snapshot?.targets.length ? { ...snapshot, binding } : null;
   }
 
@@ -243,7 +243,11 @@ export class ActionHintController {
     } catch {
       if (this.closeSession(session)) {
         this.restoreFocus(opener);
-        this.onSessionExit({ activated: false, reason: "open-failed" });
+        this.onSessionExit({
+          activated: false,
+          reason: "open-failed",
+          context: session.binding.context,
+        });
       }
       return false;
     }
@@ -261,7 +265,11 @@ export class ActionHintController {
       this.restoreFocus(session.opener);
     }
     this.workspace.dataset.actionHintLastExit = reason;
-    this.onSessionExit({ activated: false, reason });
+    this.onSessionExit({
+      activated: false,
+      reason,
+      context: session.binding.context,
+    });
     return true;
   }
 
@@ -276,7 +284,11 @@ export class ActionHintController {
     if (!this.closeSession(session)) {
       return false;
     }
-    this.onSessionExit({ activated: true, target: requestedTarget });
+    this.onSessionExit({
+      activated: true,
+      target: requestedTarget,
+      context: session.binding.context,
+    });
     if (!this.revalidateSnapshot(session)) {
       this.restoreFocus(session.opener);
       this.workspace.dataset.actionHintLastExit = "activation-invalidated";
@@ -292,7 +304,7 @@ export class ActionHintController {
     }
     try {
       target.activate();
-      this.afterActivation(target);
+      this.afterActivation(target, { context: session.binding.context });
       this.workspace.dataset.actionHintLastExit = `activated:${target.code}`;
       return true;
     } catch {
@@ -562,7 +574,7 @@ export class ActionHintController {
     return true;
   }
 
-  captureSnapshot(scope) {
+  captureSnapshot(scope, { reservedCodes = [] } = {}) {
     let state;
     try {
       state = this.captureScopeState(scope);
@@ -575,11 +587,14 @@ export class ActionHintController {
     const { descriptorStates, ...snapshot } = state;
     let targets;
     try {
-      targets = allocateActionHintCodes(sortByVisualOrder(
-        descriptorStates.filter(
-          ({ actionable, visibleRect }) => actionable && visibleRect,
+      targets = allocateActionHintCodes(
+        sortByVisualOrder(
+          descriptorStates.filter(
+            ({ actionable, visibleRect }) => actionable && visibleRect,
+          ),
         ),
-      ));
+        { reserved: reservedCodes },
+      );
     } catch {
       return null;
     }
@@ -721,6 +736,7 @@ function normalizeDescriptors(targets) {
       label,
       activationKey,
       clipRoots,
+      badgeAtEnd: Boolean(target.badgeAtEnd),
     });
   }
   return descriptors;
