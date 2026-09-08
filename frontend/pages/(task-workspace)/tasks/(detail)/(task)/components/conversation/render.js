@@ -329,6 +329,7 @@ function renderCompletedTurnGroupEntries(
           active: false,
           messagePhase: "final",
           messages,
+          turnCompletedMs: taskEventObservedMs(terminalEvent),
           filePathPresentationBase,
         }),
         eventOrder,
@@ -447,6 +448,7 @@ export function renderConversationEvent(event, task, eventState) {
       event,
       eventState?.messagePhase,
       eventState?.messages,
+      eventState?.turnCompletedMs,
     );
   }
   if (event.type === "generated_image") {
@@ -544,14 +546,19 @@ function renderMessageEvent(event, role, text, options = {}) {
 // An inline message and the same message folded into a finished turn's work
 // details are one component in two positions, so the card itself is owned by
 // `caffold-task-assistant-message` rather than drawn here twice.
-function renderAssistantMessageEvent(event, messagePhase, messages = new Map()) {
+function renderAssistantMessageEvent(
+  event,
+  messagePhase,
+  messages = new Map(),
+  turnCompletedMs = null,
+) {
   if (!`${event.payload?.text ?? ""}`.trim()) {
     return renderStatusEvent(event);
   }
   const identity = eventIdentityKey(event) || `${event?.id ?? ""}`;
   const phase = messagePhase ?? assistantMessagePhase(event.payload?.phase);
   if (identity) {
-    messages.set(identity, { event, phase });
+    messages.set(identity, { event, phase, turnCompletedMs });
   }
   return `
     <li class="task-event task-assistant-message"${eventIdentityAttribute(event)} data-conversation-entry-key="${escapeHtml(identity)}" data-event-type="${escapeHtml(event.type)}">

@@ -4,6 +4,7 @@ import test, { after } from "node:test";
 import {
   installCustomElementUnitRegistry,
 } from "../../../../../../../../tests/support/custom-element-unit.js";
+import { formatDate } from "../../../../../task-format.js";
 
 const registry = installCustomElementUnitRegistry();
 await import("./assistant-message.js");
@@ -32,6 +33,12 @@ function childScope(target) {
       return { targets: [target], mutationRoots: [this] };
     },
   };
+}
+
+function presentationOf(snapshot) {
+  const owner = Object.create(message);
+  owner.setSnapshot(snapshot);
+  return owner.presentation;
 }
 
 test("merges only the Copy and Markdown children it mounts", () => {
@@ -87,4 +94,31 @@ test("delegates Scroll only to its exact current Markdown child", () => {
   assert.equal(child.options.isCurrent(), true);
   markdown = null;
   assert.equal(child.options.isCurrent(), false);
+});
+
+test("shows the turn's time only on an answer the provider did not time", () => {
+  const answer = {
+    id: "message-1",
+    type: "assistant_message",
+    payload: { text: "Done." },
+    observedMs: null,
+  };
+
+  assert.equal(
+    presentationOf({ event: answer, turnCompletedMs: 1_800_000_000_000 }).time,
+    formatDate(1_800_000_000_000),
+  );
+  assert.equal(
+    presentationOf({
+      event: { ...answer, observedMs: 1_700_000_000_000 },
+      turnCompletedMs: 1_800_000_000_000,
+    }).time,
+    formatDate(1_700_000_000_000),
+    "an item that has its own time keeps it",
+  );
+  assert.equal(
+    presentationOf({ event: answer }).time,
+    "",
+    "a turn without a completion time of its own leaves the slot empty",
+  );
 });
