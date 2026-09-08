@@ -130,6 +130,13 @@ Conversation renders the canonical agent conversation as a review timeline:
 A prompt reads as the characters typed into the Composer, so Markdown syntax in
 it stays literal. Agent responses and reasoning summaries render as Markdown.
 
+Every agent response carries a **Copy** action beside its time: the answer of
+a finished turn, a message shown inline while a turn is in progress, and a
+message folded into a finished turn's work details. Copy places the response's
+Markdown source on the clipboard exactly as the conversation holds it and shows
+the outcome beside the action for a moment. Prompts and reasoning summaries have
+no Copy action.
+
 A Task opened straight from creation is a valid zero-turn conversation. It
 shows the retained initial submission optimistically while the ordinary prompt
 request is in flight, and only the adapter's exact accepted-message identity

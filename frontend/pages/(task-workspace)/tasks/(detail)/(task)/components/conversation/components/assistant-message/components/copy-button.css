@@ -1,0 +1,86 @@
+caffold-task-assistant-message-copy-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--interface-space-4);
+  min-width: 0;
+
+  /* A compact hit box on a meta line: the negative margin leaves only the icon
+     in flow, so the box overhangs the line instead of stretching it. */
+  & > .task-assistant-message-copy {
+    display: grid;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    place-items: center;
+    width: var(--interface-compact-hit-size);
+    height: var(--interface-compact-hit-size);
+    margin: calc(
+      (var(--interface-icon-small-size) - var(--interface-compact-hit-size)) / 2
+    );
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--border-strong);
+    cursor: pointer;
+  }
+
+  /* Touch keeps :hover after a tap, so only a hover-capable pointer takes the
+     hover colour and nothing draws a box the tap could leave behind. */
+  @media (hover: hover) {
+    & > .task-assistant-message-copy:hover {
+      color: var(--muted);
+    }
+  }
+
+  & > .task-assistant-message-copy:focus-visible {
+    outline: none;
+    color: var(--muted);
+  }
+
+  & > .task-assistant-message-copy:focus-visible
+    > .task-assistant-message-copy-icon {
+    border-radius: 2px;
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  & > .task-assistant-message-copy[data-copy-state="copied"] {
+    color: var(--success);
+  }
+
+  & > .task-assistant-message-copy[data-copy-state="failed"] {
+    color: var(--danger);
+  }
+
+  & > .task-assistant-message-copy[aria-disabled="true"] {
+    cursor: default;
+    opacity: 0.65;
+  }
+
+  & :is(
+    .task-assistant-message-copy-icon,
+    .task-assistant-message-copy-icon-svg
+  ) {
+    display: block;
+    width: var(--interface-icon-small-size);
+    height: var(--interface-icon-small-size);
+  }
+
+  & .task-assistant-message-copy-icon-svg {
+    stroke-width: 1.75;
+  }
+
+  & > .task-assistant-message-copy-status {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & > .task-assistant-message-copy-status[data-feedback="success"] {
+    color: var(--success);
+  }
+
+  & > .task-assistant-message-copy-status[data-feedback="danger"] {
+    color: var(--danger);
+  }
+}

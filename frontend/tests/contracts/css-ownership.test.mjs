@@ -95,6 +95,10 @@ const ownership = new Map([
     ["caffold-task-assistant-message"],
   ],
   [
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.css",
+    ["caffold-task-assistant-message-copy-button"],
+  ],
+  [
     "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css",
     ["caffold-task-changed-files"],
   ],

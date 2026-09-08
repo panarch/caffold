@@ -852,6 +852,11 @@ test("icon-only controls use square slots from their semantic control tier", () 
       "--interface-compact-hit-size",
     ],
     [
+      "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message/components/copy-button.css",
+      ".task-assistant-message-copy",
+      "--interface-compact-hit-size",
+    ],
+    [
       "components/file-viewer.css",
       ".viewer-info-button",
       "--interface-compact-hit-size",
