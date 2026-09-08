@@ -252,7 +252,13 @@ test("hands off one exact private URL while remote management stays read-only", 
     window.__remoteAccessOutsideBadge = element;
   });
   tailnetUrl = REPLACEMENT_TAILNET_URL;
-  await remoteAccess.evaluate((element) => element.lifecycle.refresh());
+  const refreshedStatus = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === "/api/tailscale/status",
+  );
+  await remoteAccess.evaluate((element) => {
+    element.lifecycle.refresh();
+  });
+  await refreshedStatus;
   await expect(open).toHaveAttribute("href", REPLACEMENT_TAILNET_URL);
   await expect(actionHintDialog(page)).toBeVisible();
   await expect(hint.locator(
