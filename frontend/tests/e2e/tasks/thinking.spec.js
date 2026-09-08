@@ -24,8 +24,24 @@ test("owns Thinking disclosure state, anchor, and exact target boundary", { tag:
   const thinking = thinkingDisclosure.locator(
     ":scope > .task-thinking-content > caffold-task-markdown",
   );
+  const thinkingSeam = () =>
+    thinkingDisclosure.evaluate((element) => {
+      const summary = element.querySelector(":scope > summary");
+      const content = element.querySelector(":scope > .task-thinking-content");
+      const line = (node, side) =>
+        Boolean(node) && node.checkVisibility() &&
+        parseFloat(getComputedStyle(node)[side]) > 0;
+      return {
+        content: content.checkVisibility(),
+        lines: [
+          line(summary, "borderBottomWidth"),
+          line(content, "borderTopWidth"),
+        ].filter(Boolean).length,
+      };
+    });
 
   await expect(thinkingDisclosure).toHaveAttribute("open", "");
+  await expect.poll(thinkingSeam).toEqual({ content: true, lines: 1 });
   await thinkingSummary.scrollIntoViewIfNeeded();
   await nextPaint(page);
   const thinkingHints = await enterActionHints(page);
@@ -65,6 +81,7 @@ test("owns Thinking disclosure state, anchor, and exact target boundary", { tag:
   await expect(actionHintDialog(page)).toBeHidden();
   await expect(thinkingDisclosure).not.toHaveAttribute("open", "");
   await expect(thinking).not.toBeVisible();
+  await expect.poll(thinkingSeam).toEqual({ content: false, lines: 0 });
   await expect
     .poll(() =>
       thinkingSummary.evaluate((element) => document.activeElement === element)

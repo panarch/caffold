@@ -451,6 +451,10 @@ caffold-task-conversation {
     cursor: pointer;
   }
 
+  & .task-thinking details:not([open]) > summary {
+    border-bottom: 0;
+  }
+
   & .task-thinking summary::marker {
     color: var(--muted);
   }

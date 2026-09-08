@@ -95,7 +95,6 @@ caffold-task-work-details {
     min-width: 0;
     min-height: var(--interface-control-size);
     padding: 0.4375rem 0.6875rem;
-    border-bottom: 1px solid var(--border-subtle);
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
   }
@@ -103,6 +102,10 @@ caffold-task-work-details {
   & .task-work-details-item > header > time {
     margin-left: auto;
     font-size: var(--interface-meta-font-size);
+  }
+
+  & .task-work-details-item > header + * {
+    border-top: 1px solid var(--border-subtle);
   }
 
   & .task-work-details-item > pre {

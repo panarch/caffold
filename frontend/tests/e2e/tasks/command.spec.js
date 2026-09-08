@@ -61,6 +61,23 @@ test("owns active disclosure state and terminal presentation across canonical up
   const expandedChevron = summary.locator(
     ".task-command-disclosure-chevron-expanded",
   );
+  const outputSeam = () =>
+    disclosure.evaluate((element) => {
+      const summaryRow = element.querySelector(":scope > summary");
+      const output = element.querySelector(
+        ":scope > .task-command-active-output",
+      );
+      const line = (node, side) =>
+        Boolean(node) && node.checkVisibility() &&
+        parseFloat(getComputedStyle(node)[side]) > 0;
+      return {
+        output: output.checkVisibility(),
+        lines: [
+          line(summaryRow, "borderBottomWidth"),
+          line(output, "borderTopWidth"),
+        ].filter(Boolean).length,
+      };
+    });
 
   await expect(command).toHaveCount(1);
   expect(await command.evaluate((element) => element.localName)).toBe(
@@ -71,6 +88,7 @@ test("owns active disclosure state and terminal presentation across canonical up
   await expect(disclosure).toHaveAttribute("open", "");
   await expect(collapsedChevron).not.toBeVisible();
   await expect(expandedChevron).toBeVisible();
+  await expect.poll(outputSeam).toEqual({ output: true, lines: 1 });
   await rememberCommandIdentity(command);
 
   const summaryOffset = await disclosureOffset(summary);
@@ -84,6 +102,7 @@ test("owns active disclosure state and terminal presentation across canonical up
   await page.keyboard.press("Escape");
   await activateActionHint(page, /Collapse Command$/);
   await expect(disclosure).not.toHaveAttribute("open", "");
+  await expect.poll(outputSeam).toEqual({ output: false, lines: 0 });
   await expect
     .poll(() => summary.evaluate((element) => document.activeElement === element))
     .toBe(true);
@@ -104,6 +123,7 @@ test("owns active disclosure state and terminal presentation across canonical up
 
   await activateActionHint(page, /Expand Command$/);
   await expect(disclosure).toHaveAttribute("open", "");
+  await expect.poll(outputSeam).toEqual({ output: true, lines: 1 });
   await expect
     .poll(() =>
       summary.evaluate((element) => {
