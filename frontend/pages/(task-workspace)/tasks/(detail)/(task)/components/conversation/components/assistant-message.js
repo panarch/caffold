@@ -142,10 +142,14 @@ function messagePresentation(snapshot = {}) {
   const event = snapshot.event ?? {};
   const payload = event.payload ?? {};
   const observedMs = taskEventObservedMs(event);
+  const turnCompletedMs = Number.isFinite(snapshot.turnCompletedMs)
+    ? snapshot.turnCompletedMs
+    : null;
+  const timeMs = observedMs ?? turnCompletedMs;
   const fileLinks = Array.isArray(event.fileLinks) ? event.fileLinks : [];
   return {
     text: `${payload.text ?? ""}`,
-    time: observedMs === null ? "" : formatDate(observedMs),
+    time: timeMs === null ? "" : formatDate(timeMs),
     threadId: `${event.threadId ?? payload.threadId ?? ""}`.trim(),
     fileLinks: fileLinks.length ? JSON.stringify(fileLinks) : "",
     phase: assistantMessagePhase(snapshot.phase ?? payload.phase) ?? "",

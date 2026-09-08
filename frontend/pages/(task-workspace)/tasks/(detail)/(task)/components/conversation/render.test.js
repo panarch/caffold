@@ -306,6 +306,40 @@ test("a completed background turn renders its answer without a user message", ()
   assert.doesNotMatch(html, /data-message-role="user"/);
 });
 
+test("hands the final answer the turn's own completion time", () => {
+  // Codex times items live and stops timing them in the history it returns
+  // after a restart. The turn keeps its own completion time either way.
+  const idleTask = {
+    id: "thread-1",
+    threadId: "thread-1",
+    threadStatus: { type: "idle" },
+  };
+  const answer = turnEvent("thread-1:turn-1:msg-2", "assistant_message", 3, {
+    itemId: "msg-2",
+    text: "Done.",
+    phase: "final",
+  });
+  const ended = {
+    ...turnEvent("thread-1:turn-1:end", "turn_completed", 4, {
+      status: "completed",
+    }),
+    observedMs: 1_800_000_000_000,
+  };
+
+  const { messages } = renderConversation([answer, ended], idleTask);
+  const loose = new Map();
+  renderConversationEvent(messageEvent("assistant_message"), {}, {
+    messages: loose,
+  });
+
+  assert.equal([...messages.values()][0].turnCompletedMs, 1_800_000_000_000);
+  assert.equal(
+    [...loose.values()][0].turnCompletedMs,
+    null,
+    "a message outside a completed turn is handed no turn time to stand in",
+  );
+});
+
 function activeTask() {
   return {
     id: "thread-1",

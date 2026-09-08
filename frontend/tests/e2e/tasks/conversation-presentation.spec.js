@@ -1721,3 +1721,29 @@ test("presents a completed canonical turn without duplicate or unsafe content", 
   }
   await captureReviewScreenshot(page, testInfo, "tasks-conversation");
 });
+
+test("shows the turn's time on an answer the provider did not time", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  // Codex times items while it reports them live and stops timing them in the
+  // history it returns afterwards, so a reread conversation has an untimed
+  // answer inside a turn that kept its own completion time.
+  const scenario = await installTaskLoopFixture(page, {
+    threadId: "thread_answer_turn_time",
+  });
+  await scenario.seedCompletedTask();
+  scenario.events = scenario.events.map((event) =>
+    event.id === "event_12"
+      ? { ...event, observedMs: Date.UTC(2026, 8, 8, 4, 20) }
+      : event,
+  );
+  await page.goto(`/tasks/${scenario.threadId}`);
+
+  const answer = page.locator(
+    "li.task-assistant-message caffold-task-assistant-message",
+  );
+
+  await expect(
+    answer.locator(".task-assistant-message-header time"),
+  ).not.toBeEmpty();
+});
