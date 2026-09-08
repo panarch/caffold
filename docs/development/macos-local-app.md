@@ -55,6 +55,20 @@ remains after the deadline, replacement stops before moving the installed app.
 Inspect the reported PIDs, commands, listener, and Redb file descriptors before
 manual recovery.
 
+Restart the bundled server from `Restart Server` in the menu bar. Without the
+menu bar, quit the application, wait for the wrapper and its server to exit,
+then open it again:
+
+```sh
+osascript -e 'tell application id "io.panarch.caffold.server" to quit'
+open -a "/Applications/Caffold Server.app"
+```
+
+That restarts the wrapper as well. Do not stop the server process directly. The
+wrapper is then left without a server it owns, and a replacement started
+separately is reported as `External`, which disables `Restart Server` and
+application updates until that server stops.
+
 ## Rollback
 
 If the new application fails validation after replacement, the installer first
