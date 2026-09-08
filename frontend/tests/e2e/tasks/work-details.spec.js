@@ -41,6 +41,28 @@ test("owns disclosure presentation and preserves its identity across canonical u
           (chevronRect.top + chevronRect.height / 2),
       );
     }, chevronSelector);
+  const itemSeams = () =>
+    owner.evaluate((element) =>
+      [...element.querySelectorAll(".task-work-details-item")]
+        .map((item) => {
+          const header = item.querySelector(":scope > header");
+          if (!header) {
+            return null;
+          }
+          const body = header.nextElementSibling;
+          const line = (node, side) =>
+            Boolean(node) && node.checkVisibility() &&
+            parseFloat(getComputedStyle(node)[side]) > 0;
+          return {
+            body: Boolean(body) && body.checkVisibility(),
+            lines: [
+              line(header, "borderBottomWidth"),
+              line(body, "borderTopWidth"),
+            ].filter(Boolean).length,
+          };
+        })
+        .filter(Boolean),
+    );
 
   await expect(owner).toHaveCount(1);
   await expect(disclosure).not.toHaveAttribute("open", "");
@@ -75,6 +97,13 @@ test("owns disclosure presentation and preserves its identity across canonical u
   await expect
     .poll(() => chevronCenterDelta(".task-work-details-chevron-expanded"))
     .toBeLessThanOrEqual(1);
+
+  const seams = await itemSeams();
+  expect(seams.filter((seam) => !seam.body).length).toBeGreaterThan(0);
+  expect(seams.map((seam) => seam.lines)).toEqual(
+    seams.map((seam) => (seam.body ? 1 : 0)),
+  );
+
   await page.evaluate(() => new Promise((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(resolve))
   ));

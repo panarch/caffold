@@ -29,7 +29,6 @@ caffold-task-command {
     min-width: 0;
     min-height: var(--interface-control-size);
     padding: 0.4375rem 0.6875rem;
-    border-bottom: 1px solid var(--border-subtle);
     color: var(--muted);
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
@@ -81,6 +80,7 @@ caffold-task-command {
     margin: 0;
     overflow-x: auto;
     padding: 0.625rem;
+    border-top: 1px solid var(--border-subtle);
     font-size: var(--code-font-size);
     line-height: var(--code-line-height);
     white-space: pre-wrap;
