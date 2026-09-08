@@ -709,6 +709,9 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
   const reopenedChecklist = fileResponse(page, checklistPath);
   await checklistButton.click();
   await reopenedChecklist;
+  await expect.poll(() => preview.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
   await page.keyboard.press("s");
   await expect(modalHud).toContainText("Scroll: Checklist document");
   await page.keyboard.press("Escape");
@@ -822,6 +825,9 @@ test("scrolls the Current Plan preview inside its modal and preserves native Esc
   const refreshedFile = fileResponse(page, checklistPath);
   await checklistButton.click();
   await refreshedFile;
+  await expect.poll(() => preview.evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
   await page.keyboard.press("s");
   await page.keyboard.press("j");
   const beforeRefresh = await preview.evaluate((element) => element.scrollTop);
