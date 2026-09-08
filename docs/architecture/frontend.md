@@ -330,13 +330,14 @@ root as mutation dependencies.
 
 Custom children retain their own action knowledge. Work Details merges its own
 summary with its direct retained children. Command declares active disclosure
-or terminal View output from the same provider, Markdown Code Block declares
-Wrap and Copy, and Conversation merges those public scopes through its
-retained Assistant Message, Markdown, and Work Details children. Reusable
-controls such as the segmented control, file tree, pagination, file navigator,
-and file viewer expose public scope providers; their screen owner supplies the
-semantic action and scope context. Ancestors never discover these actions by
-scanning descendant buttons, `summary` elements, or `aria-expanded`.
+or terminal View output from the same provider, Assistant Message Copy declares
+its one button, Markdown Code Block declares Wrap and Copy, and Conversation
+merges those public scopes through its retained Assistant Message, Markdown,
+and Work Details children. Reusable controls such as the segmented control,
+file tree, pagination, file navigator, and file viewer expose public scope
+providers; their screen owner supplies the semantic action and scope context.
+Ancestors never discover these actions by scanning descendant buttons,
+`summary` elements, or `aria-expanded`.
 
 Parent layouts merge these renderer-owned link scopes through the same public
 child interface as other retained controls; they do not rediscover anchors.
@@ -786,7 +787,12 @@ retained timeline entry that contains it, while each approval group uses its
 rendered approval card as the minimum invalidation owner. A custom child owns
 its own controls: Command owns its active disclosure or terminal View output,
 Work Details owns its root disclosure, and Markdown Code Block owns Wrap and
-Copy. Thinking Markdown intentionally remains outside code-block controls.
+Copy. Assistant Message mounts its Copy control as a component of its own and
+hands it only the text to place on the clipboard. That component owns the
+button, the outcome it reports, and the timer that clears it. It copies the
+message snapshot's text rather than the rendered Markdown, and text arriving
+for a different message retires a copy still in flight. Thinking Markdown
+intentionally remains outside code-block controls.
 Assistant Message, Markdown, and Work Details merge only the direct retained
 children they mount. A stream patch can therefore retire only the replaced
 entry, approval card, or child owner while unaffected sibling, App Shell, and

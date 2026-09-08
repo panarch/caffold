@@ -7,10 +7,16 @@ caffold-task-assistant-message {
   & > .task-assistant-message-header {
     display: flex;
     align-items: center;
+    gap: var(--interface-space-4);
     min-height: 1rem;
     color: var(--muted);
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
+  }
+
+  /* Without a time, Copy starts where the text starts. */
+  & > .task-assistant-message-header > time:empty {
+    display: none;
   }
 
   & > .task-assistant-message-body {

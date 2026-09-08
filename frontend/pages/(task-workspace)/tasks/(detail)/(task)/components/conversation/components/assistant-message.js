@@ -1,7 +1,11 @@
 import { assistantMessagePhase } from "../../../../../task-events.js";
 import { formatDate, taskEventObservedMs } from "../../../../../task-format.js";
 import "./markdown.js";
-import { emptyActionHintScope } from "../../../../../../../../action-hints.js";
+import "./assistant-message/components/copy-button.js";
+import {
+  emptyActionHintScope,
+  mergeActionHintScopes,
+} from "../../../../../../../../action-hints.js";
 import { emptyScrollSurfaceScope } from "../../../../../../../../scroll-scope.js";
 
 /**
@@ -10,7 +14,8 @@ import { emptyScrollSurfaceScope } from "../../../../../../../../scroll-scope.js
  * A turn in progress lists its messages inline and a finished turn folds them
  * into its work details, but that is a difference in where the message is
  * placed. Owning the card here is what keeps the message from changing shape
- * when its turn ends.
+ * when its turn ends, and what gives every message the same Copy control
+ * beside its time.
  */
 class CaffoldTaskAssistantMessage extends HTMLElement {
   connectedCallback() {
@@ -42,7 +47,10 @@ class CaffoldTaskAssistantMessage extends HTMLElement {
 
   render() {
     this.innerHTML = `
-      <div class="task-assistant-message-header"><time></time></div>
+      <div class="task-assistant-message-header">
+        <time></time>
+        <caffold-task-assistant-message-copy-button></caffold-task-assistant-message-copy-button>
+      </div>
       <div class="task-assistant-message-body">
         <caffold-task-markdown></caffold-task-markdown>
       </div>
@@ -57,12 +65,11 @@ class CaffoldTaskAssistantMessage extends HTMLElement {
       this.querySelector(":scope > .task-assistant-message-header > time"),
       time,
     );
+    this.copyButton().setText(text);
 
     // The markdown element reads these while it parses, so a change to any of
     // them has to reach it before the text does.
-    const markdown = this.querySelector(
-      ":scope > .task-assistant-message-body > caffold-task-markdown",
-    );
+    const markdown = this.markdown();
     syncAttribute(markdown, "thread-id", threadId);
     syncAttribute(markdown, "file-links", fileLinks);
     markdown.toggleAttribute("code-block-controls", phase === "final");
@@ -76,21 +83,24 @@ class CaffoldTaskAssistantMessage extends HTMLElement {
   }
 
   actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
-    const markdown = this.querySelector(
-      ":scope > .task-assistant-message-body > caffold-task-markdown",
+    if (!scopeId || this.hidden) {
+      return emptyActionHintScope();
+    }
+    const childClipRoots = [this, ...clipRoots].filter(Boolean);
+    return mergeActionHintScopes(
+      this.copyButton()?.actionHintScope?.({
+        scopeId: `${scopeId}:copy-button`,
+        clipRoots: childClipRoots,
+      }),
+      this.markdown()?.actionHintScope?.({
+        scopeId: `${scopeId}:markdown`,
+        clipRoots: childClipRoots,
+      }),
     );
-    return scopeId && markdown && !this.hidden
-      ? markdown.actionHintScope?.({
-          scopeId: `${scopeId}:markdown`,
-          clipRoots: [this, ...clipRoots].filter(Boolean),
-        }) ?? emptyActionHintScope()
-      : emptyActionHintScope();
   }
 
   scrollSurfaceScope({ scopeId = "", clipRoots = [], isCurrent } = {}) {
-    const markdown = this.querySelector(
-      ":scope > .task-assistant-message-body > caffold-task-markdown",
-    );
+    const markdown = this.markdown();
     const parentIsCurrent = typeof isCurrent === "function"
       ? isCurrent
       : () => true;
@@ -102,11 +112,21 @@ class CaffoldTaskAssistantMessage extends HTMLElement {
             this.isConnected &&
             !this.hidden &&
             parentIsCurrent() &&
-            this.querySelector(
-                ":scope > .task-assistant-message-body > caffold-task-markdown",
-              ) === markdown,
+            this.markdown() === markdown,
         }) ?? emptyScrollSurfaceScope()
       : emptyScrollSurfaceScope();
+  }
+
+  copyButton() {
+    return this.querySelector(
+      ":scope > .task-assistant-message-header > caffold-task-assistant-message-copy-button",
+    );
+  }
+
+  markdown() {
+    return this.querySelector(
+      ":scope > .task-assistant-message-body > caffold-task-markdown",
+    );
   }
 
   ensureState() {
