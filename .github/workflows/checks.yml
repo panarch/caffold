@@ -15,179 +15,19 @@ concurrency:
 
 jobs:
   frontend:
-    name: Frontend Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Check out the source
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Install Node.js 22
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: frontend
-
-      - name: Test frontend units
-        run: npm run test:unit
-        working-directory: frontend
-
-      - name: Test frontend contracts
-        run: npm run test:contract
-        working-directory: frontend
+    uses: ./.github/workflows/frontend-tests.yml
 
   documentation:
-    name: Documentation Contracts
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Check out the source
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Install Node.js 22
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-
-      - name: Test documentation contracts
-        run: node --test docs/tests/*.test.mjs
+    uses: ./.github/workflows/documentation-contracts.yml
 
   repository_tooling:
-    name: Repository Tooling Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Check out the source
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Install Node.js 22
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-
-      - name: Test repository tooling
-        run: node --test scripts/tests/*.test.mjs
+    uses: ./.github/workflows/repository-tooling-tests.yml
 
   macos_packaging:
-    name: macOS Packaging Contracts
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Check out the source
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Install Node.js 22
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-
-      # These verify shell scripts, workflow definitions, and documentation, so
-      # they need no macOS host. The Swift programs and the packaging-metadata
-      # check do, and run in the release workflow.
-      - name: Test macOS packaging contracts
-        run: desktop/macos/test-contracts
+    uses: ./.github/workflows/macos-packaging-contracts.yml
 
   browser:
-    name: Browser Tests / ${{ matrix.project }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    strategy:
-      # A viewport failure is usually specific to that viewport, so let the
-      # others finish and report. Cancelling them hides whether the change broke
-      # one layout or all of them.
-      fail-fast: false
-      matrix:
-        project: [desktop, foldable, phone]
-
-    steps:
-      - name: Check out the source
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Install Rust 1.96
-        run: |
-          rustup toolchain install 1.96.0 --profile minimal
-          rustup default 1.96.0
-
-      - name: Restore Cargo cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Install Node.js 22
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: frontend
-
-      - name: Install Chromium
-        run: npx playwright install chromium
-        working-directory: frontend
-
-      - name: Build the browser test server
-        run: cargo build --locked
-
-      - name: Test browser behavior
-        run: npm run test:e2e -- --project=${{ matrix.project }}
-        working-directory: frontend
-
-      - name: Upload browser failure artifacts
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-results-${{ matrix.project }}
-          path: test-results
-          if-no-files-found: ignore
-          retention-days: 7
+    uses: ./.github/workflows/browser-tests.yml
 
   rust:
-    name: Rust Checks
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-
-    steps:
-      - name: Check out the source
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Install Rust 1.96
-        run: |
-          rustup toolchain install 1.96.0 \
-            --profile minimal \
-            --component clippy \
-            --component rustfmt
-          rustup default 1.96.0
-
-      - name: Restore Cargo cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Check formatting
-        run: cargo fmt --check
-
-      - name: Lint Rust
-        run: cargo clippy --locked --all-targets -- -D warnings
-
-      - name: Test Rust
-        run: cargo test --locked
+    uses: ./.github/workflows/rust-checks.yml

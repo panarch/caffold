@@ -31,7 +31,7 @@ export default defineConfig({
   webServer: localServer.webServer,
   use: {
     baseURL: localServer.baseURL,
-    trace: "on-first-retry",
+    trace: "retain-on-failure",
   },
   projects: [
     {

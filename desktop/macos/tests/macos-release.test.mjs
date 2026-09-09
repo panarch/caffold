@@ -10,6 +10,14 @@ const packageApp = resolve(repoRoot, "desktop/macos/package-app");
 const release = resolve(repoRoot, "desktop/macos/release");
 const renderCask = resolve(repoRoot, "desktop/macos/render-cask");
 const releaseWorkflow = resolve(repoRoot, ".github/workflows/release.yml");
+const sharedWorkflows = {
+  frontend: "frontend-tests.yml",
+  documentation: "documentation-contracts.yml",
+  repository_tooling: "repository-tooling-tests.yml",
+  macos_packaging: "macos-packaging-contracts.yml",
+  browser: "browser-tests.yml",
+  rust: "rust-checks.yml",
+};
 const bundlePlist = resolve(repoRoot, "desktop/macos/Info.plist");
 const menuBarWrapper = resolve(repoRoot, "desktop/macos/CaffoldServer.swift");
 const rootReadme = resolve(repoRoot, "README.md");
@@ -34,6 +42,14 @@ function parseMetadata(output) {
       .split("\n")
       .map((line) => line.split("=", 2)),
   );
+}
+
+function workflowJob(workflow, name) {
+  const match = workflow.match(
+    new RegExp(`^  ${name}:\\n([\\s\\S]*?)(?=^  [a-z_]+:|(?![\\s\\S]))`, "m"),
+  );
+  assert.ok(match, `${name} must exist`);
+  return match[0];
 }
 
 test(
@@ -122,129 +138,103 @@ test("Homebrew cask installs the app and bundled CLI without a user quarantine f
   }
 });
 
-test("manual release workflow isolates versioning, verification, and publication", () => {
+test("release checks the source before versioning and packaging on macOS", () => {
   const source = readFileSync(releaseWorkflow, "utf8");
-  const rustVersion = readFileSync(resolve(repoRoot, "caffold/Cargo.toml"), "utf8").match(
-    /^rust-version = "([^"]+)"$/m,
-  )?.[1];
-  const macosStart = source.indexOf("  macos:");
-  const commitStart = source.indexOf("  commit_release:");
-  const releaseStart = source.indexOf("  publish_release:");
-  const homebrewStart = source.indexOf("  publish_homebrew:");
-  const macosJob = source.slice(macosStart, commitStart);
-  const commitJob = source.slice(commitStart, releaseStart);
-  const releaseJob = source.slice(releaseStart, homebrewStart);
-  const homebrewJob = source.slice(homebrewStart);
+  const readWorkflow = (name) => readFileSync(
+    resolve(repoRoot, ".github/workflows", name), "utf8",
+  );
+  const macosCall = workflowJob(source, "macos");
+  const releaseJob = workflowJob(source, "publish_release");
+  const homebrewJob = workflowJob(source, "publish_homebrew");
+  const common = Object.values(sharedWorkflows).map(readWorkflow).join("\n");
+  const macos = readWorkflow("macos-release.yml");
+  const checks = readWorkflow("checks.yml");
 
   assert.match(source, /^name: Release$/m);
   assert.match(source, /^\s+workflow_dispatch:$/m);
   assert.doesNotMatch(source, /^\s+(push|pull_request|schedule):$/m);
-  assert.match(source, /^\s+contents: read$/m);
-  assert.match(source, /^\s+action:$/m);
-  assert.match(source, /^\s+type: choice$/m);
   assert.match(source, /^\s+default: dry-run$/m);
-  for (const action of [
-    "dry-run",
-    "release-patch",
-    "release-minor",
-    "release-major",
-    "resume",
-  ]) {
+  for (const action of ["dry-run", "release-patch", "release-minor", "release-major", "resume"]) {
     assert.match(source, new RegExp(`^\\s+- ${action}$`, "m"));
   }
-  assert.ok(
-    macosStart >= 0 &&
-      commitStart > macosStart &&
-      releaseStart > commitStart &&
-      homebrewStart > releaseStart,
-  );
+  assert.doesNotMatch(source + common + macos, /git bundle|candidate-artifact|release-sha:|restore-release-candidate/);
+  assert.doesNotMatch(source, /^  (prepare|commit_release):/m);
 
-  assert.match(macosJob, /runs-on: macos-14/);
-  assert.match(macosJob, /REQUESTED_SHA: \$\{\{ github\.sha \}\}/);
-  assert.match(macosJob, /CANDIDATE_SHA: \$\{\{ steps\.release_commit\.outputs\.release_sha \}\}/);
-  assert.match(macosJob, /release_sha="\$\{CANDIDATE_SHA:-\$\{REQUESTED_SHA\}\}"/);
-  assert.match(macosJob, /fetch-depth: 0/);
-  assert.match(macosJob, /persist-credentials: false/);
-  assert.match(
-    macosJob,
-    /Check out the complete release history[\s\S]*?ref: main/,
-  );
-  assert.doesNotMatch(
-    macosJob,
-    /ref: \$\{\{ steps\.release_source\.outputs\.release_sha \}\}/,
-  );
-  assert.match(macosJob, /scripts\/bump-release-version\.mjs/);
-  assert.match(macosJob, /git commit -m "Release v\$\{RELEASE_VERSION\}"/);
-  assert.match(macosJob, /git bundle create/);
-  assert.match(macosJob, /git bundle verify/);
-  assert.match(macosJob, /caffold-release-candidate-v/);
-  for (const canonicalFile of ["Cargo.lock", "caffold/Cargo.toml", "frontend/package.json"]) {
-    assert.match(macosJob, new RegExp(canonicalFile.replace(".", "\\.")));
+  // CI and release call the same source checks without release-specific inputs.
+  for (const [name, filename] of Object.entries(sharedWorkflows)) {
+    const workflow = readWorkflow(filename);
+    const check = workflowJob(workflow, name);
+    const checkCall = workflowJob(checks, name);
+    const releaseCall = workflowJob(source, name);
+    assert.equal(checkCall.trim(), releaseCall.trim());
+    assert.ok(checkCall.includes(`uses: ./.github/workflows/${filename}`));
+    assert.doesNotMatch(checkCall, /with:|needs:|steps:/);
+    assert.match(workflow, /^  workflow_call:$/m);
+    assert.doesNotMatch(workflow, /inputs:/);
+    assert.deepEqual(
+      [...workflow.split("\njobs:\n")[1].matchAll(/^  ([a-z_]+):/gm)].map(([, id]) => id),
+      [name],
+      `${filename} must own only its named check`,
+    );
+    assert.match(check, /runs-on: ubuntu-latest/);
+    assert.match(check, /ref: \$\{\{ github\.sha \}\}/);
+    assert.match(macosCall, new RegExp(`^      - ${name}$`, "m"));
   }
-  assert.match(macosJob, new RegExp(`rustup toolchain install ${rustVersion}(?:\\.0)?`));
-  assert.match(macosJob, /npm ci/);
-  assert.match(macosJob, /playwright install chromium/);
-  assert.match(macosJob, /release --dry-run/);
-  assert.match(macosJob, /cargo test --locked/);
-  assert.match(macosJob, /cargo clippy --locked --all-targets -- -D warnings/);
-  const browserBuildIndex = macosJob.indexOf("cargo build --locked");
-  const browserTestIndex = macosJob.indexOf("npm run test:e2e");
-  const candidateCommitIndex = macosJob.indexOf(
-    'git commit -m "Release v${RELEASE_VERSION}"',
-  );
-  const candidateBundleIndex = macosJob.indexOf("git bundle create");
-  assert.ok(
-    candidateCommitIndex >= 0 &&
-      browserBuildIndex > candidateCommitIndex &&
-      browserTestIndex > browserBuildIndex &&
-      candidateBundleIndex > browserTestIndex,
-  );
-  for (const command of ["test:unit", "test:contract", "test:e2e"]) {
-    assert.match(macosJob, new RegExp(`npm run ${command}`));
-  }
-  for (const suite of [
-    "test-contracts",
-    "test-runtime",
-    "test-system-status",
-    "test-updater",
+  assert.doesNotMatch(common, /contents: write|HOMEBREW_TAP_TOKEN|git push|gh release create/);
+  assert.match(macosCall, /uses: \.\/\.github\/workflows\/macos-release\.yml/);
+  assert.match(macosCall, /action: \$\{\{ inputs\.action \}\}/);
+  assert.match(macosCall, /contents: write/);
+  assert.doesNotMatch(macosCall, /if:|secrets:/);
+
+  const browser = workflowJob(readWorkflow("browser-tests.yml"), "browser");
+  assert.match(browser, /fail-fast: false/);
+  assert.match(browser, /project: \[desktop, foldable, phone\]/);
+  assert.match(browser, /npm run test:e2e -- --project=\$\{\{ matrix\.project \}\}/);
+  assert.ok(browser.indexOf("cargo build --locked") < browser.indexOf("npm run test:e2e"));
+  assert.match(browser, /name: playwright-results-\$\{\{ matrix\.project \}\}/);
+  assert.match(browser, /if: failure\(\)/);
+
+  // Versioning, candidate verification, and source push share one worktree.
+  // Direct dispatch explains its purpose and offers only verification and packaging.
+  assert.match(macos, /^  workflow_call:$/m);
+  const dispatch = macos.match(/^  workflow_dispatch:\n([\s\S]*?)(?=^permissions:)/m)?.[1];
+  assert.ok(dispatch);
+  assert.match(dispatch, /description: \S/);
+  assert.match(dispatch, /type: choice/);
+  assert.deepEqual([...dispatch.matchAll(/^          - (.+)$/gm)].map(([, option]) => option), ["dry-run"]);
+  assert.match(dispatch, /^        default: dry-run$/m);
+  assert.match(macos, /^        default: dry-run$/m);
+  assert.match(macos, /runs-on: macos-14/);
+  assert.match(macos, /ref: \$\{\{ github\.sha \}\}/);
+  assert.match(macos, /persist-credentials: false/);
+  assert.match(macos, /git checkout -B main "\$\{REQUESTED_SHA\}"/);
+  assert.match(macos, /main changed after this workflow was dispatched/);
+  assert.equal(macos.match(/git commit -m "Release v/g)?.length, 1);
+  for (const name of [
+    "Bump the release version locally", "Require an unused release version",
+    "Commit the local release candidate", "Push the verified release commit",
   ]) {
-    assert.match(macosJob, new RegExp(`desktop/macos/${suite}`));
+    assert.ok(macos.includes(`- name: ${name}\n        if: startsWith(inputs.action, 'release-')`));
   }
-  assert.match(macosJob, /name: Upload browser failure artifacts/);
-  assert.match(macosJob, /name: playwright-release-results-v/);
-  assert.doesNotMatch(macosJob, /npm run test:codex-(?:compat|live)/);
-  assert.match(macosJob, /actions\/upload-artifact@v\d+/);
-  assert.doesNotMatch(macosJob, /contents: write/);
-  assert.doesNotMatch(macosJob, /HOMEBREW_TAP_TOKEN/);
-  for (const publishingCommand of ["git push", "gh release create", "brew install"]) {
-    assert.doesNotMatch(macosJob, new RegExp(publishingCommand, "i"));
+  const ordered = [
+    "node scripts/bump-release-version.mjs", 'git commit -m "Release v${RELEASE_VERSION}"',
+    "desktop/macos/test-contracts", "desktop/macos/test-runtime",
+    "cargo test --locked", "cargo clippy --locked --all-targets -- -D warnings",
+    "desktop/macos/release --dry-run", "uses: actions/upload-artifact@",
+    "gh auth setup-git", "main changed after verification", 'git push origin "${RELEASE_SHA}:refs/heads/main"',
+  ].map((command) => macos.indexOf(command));
+  assert.ok(ordered.every((index, i) => index >= 0 && (i === 0 || index > ordered[i - 1])));
+  assert.match(macos, /Release source changed during verification/);
+  assert.match(macos, /git ls-remote origin refs\/heads\/main/);
+  for (const suite of ["test-system-status", "test-updater"]) {
+    assert.match(macos, new RegExp(`desktop/macos/${suite}`));
   }
+  assert.doesNotMatch(macos, /test:e2e|playwright install|HOMEBREW_TAP_TOKEN|gh release create|brew install/);
 
-  assert.match(commitJob, /^\s+needs: macos$/m);
-  assert.match(
-    commitJob,
-    /needs\.macos\.result == 'success' && startsWith\(inputs\.action, 'release-'\)/,
-  );
-  assert.match(commitJob, /^\s+contents: write$/m);
-  assert.match(commitJob, /caffold-release-candidate-v/);
-  assert.match(commitJob, /git bundle verify/);
-  assert.match(commitJob, /Release candidate is not a direct child/);
-  assert.match(commitJob, /main changed after verification/);
-  assert.match(commitJob, /git push origin "\$\{RELEASE_SHA\}:refs\/heads\/main"/);
-  assert.match(commitJob, /git ls-remote origin refs\/heads\/main/);
-  assert.doesNotMatch(
-    commitJob,
-    /npm run|cargo (?:build|test|clippy)|gh release|brew install|HOMEBREW_TAP_TOKEN/,
-  );
-
-  assert.match(
-    releaseJob,
-    /startsWith\(inputs\.action, 'release-'\) && needs\.commit_release\.result == 'success'/,
-  );
-  assert.match(
-    releaseJob,
-    /inputs\.action == 'resume' && needs\.commit_release\.result == 'skipped'/,
-  );
+  // Default success gating carries any source/package/upload/push failure
+  // through macOS to both publication jobs, without a skipped push job.
+  assert.match(releaseJob, /^    needs: macos$/m);
+  assert.match(releaseJob, /^    if: inputs\.action != 'dry-run'$/m);
   assert.match(releaseJob, /^\s+contents: write$/m);
   assert.match(releaseJob, /RELEASE_SHA: \$\{\{ needs\.macos\.outputs\.release_sha \}\}/);
   assert.match(releaseJob, /actions\/download-artifact@v\d+/);
@@ -276,7 +266,7 @@ test("manual release workflow isolates versioning, verification, and publication
 
   assert.match(
     homebrewJob,
-    /if: always\(\) && needs\.macos\.result == 'success' && needs\.publish_release\.result == 'success' && inputs\.action != 'dry-run'/,
+    /^    if: inputs\.action != 'dry-run'$/m,
   );
   assert.match(homebrewJob, /^\s+environment: release$/m);
   assert.match(homebrewJob, /^\s+contents: read$/m);
@@ -317,4 +307,50 @@ test("manual release workflow isolates versioning, verification, and publication
   assert.match(homebrewJob, /brew install --cask panarch\/tap\/caffold/);
   assert.match(homebrewJob, /git push origin HEAD:main/);
   assert.doesNotMatch(homebrewJob, /gh release create/);
+});
+
+test("failed or skipped checks block the release chain in every mode", () => {
+  const source = readFileSync(releaseWorkflow, "utf8");
+  const dependencies = (name) => {
+    const job = workflowJob(source, name);
+    const list = job.match(/^    needs:\n((?:      - \w+\n)+)/m)?.[1];
+    return list
+      ? [...list.matchAll(/- (\w+)/g)].map(([, dependency]) => dependency)
+      : [job.match(/^    needs: (\w+)$/m)?.[1]];
+  };
+  const chain = ["macos", "publish_release", "publish_homebrew"];
+  const requiredChecks = Object.keys(sharedWorkflows);
+  assert.deepEqual(dependencies("macos"), requiredChecks);
+  assert.deepEqual(dependencies("publish_release"), ["macos"]);
+  assert.deepEqual(dependencies("publish_homebrew"), ["macos", "publish_release"]);
+  // These jobs intentionally use Actions' default success() condition. A
+  // status-function override would invalidate this failure-propagation model.
+  for (const name of chain) {
+    const condition = workflowJob(source, name).match(/^    if: (.+)$/m)?.[1];
+    assert.equal(condition, name === "macos" ? undefined : "inputs.action != 'dry-run'");
+  }
+  const runChain = (action, overrides = {}) => {
+    const results = Object.fromEntries(requiredChecks.map((name) => [name, "success"]));
+    for (const name of requiredChecks) results[name] = overrides[name] ?? results[name];
+    for (const name of chain) {
+      const enabled = dependencies(name).every((dependency) => results[dependency] === "success")
+        && (name === "macos" || action !== "dry-run");
+      results[name] = enabled ? overrides[name] ?? "success" : "skipped";
+    }
+    return results;
+  };
+  for (const action of ["dry-run", "resume", "release-patch", "release-minor", "release-major"]) {
+    const success = runChain(action);
+    assert.equal(success.macos, "success");
+    assert.equal(success.publish_release, action === "dry-run" ? "skipped" : "success");
+    assert.equal(success.publish_homebrew, success.publish_release);
+    for (const name of [...requiredChecks, "macos", "publish_release"]) {
+      for (const result of ["failure", "cancelled", "skipped"]) {
+        const failed = runChain(action, { [name]: result });
+        if (requiredChecks.includes(name)) assert.equal(failed.macos, "skipped");
+        if (name !== "publish_release") assert.equal(failed.publish_release, "skipped");
+        assert.equal(failed.publish_homebrew, "skipped", `${action}: ${name} ${result} must stop publication`);
+      }
+    }
+  }
 });
