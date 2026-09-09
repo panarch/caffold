@@ -772,7 +772,7 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   await submitPromptAndExpectAccepted(page, threadId, () =>
     followUpPrompt.press("Enter"),
   );
-  await expect(followUpPrompt).toBeFocused();
+  await expect(followUpPrompt).not.toBeFocused();
 
   const markdownMessage = assistantMessages.filter({ hasText: markdownHeading });
   await expect(markdownMessage).toBeVisible();
@@ -788,7 +788,7 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
     followUpPrompt.press("Enter"),
   );
 
-  await expect(followUpPrompt).toBeFocused();
+  await expect(followUpPrompt).not.toBeFocused();
   await expect(
     tasksPage
       .locator('.task-message[data-message-role="user"]')
@@ -847,7 +847,7 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   await expect
     .poll(() =>
       finalResponse.evaluate((response) => {
-        const timeline = response.parentElement;
+        const timeline = response.closest("caffold-task-conversation");
         const works = timeline?.querySelectorAll(".task-turn-work") ?? [];
         const work = works[works.length - 1];
         const position = work ? work.compareDocumentPosition(response) : 0;
@@ -859,7 +859,8 @@ test("creates and resumes a real Codex task through Caffold with Spark", async (
   await expect(completedWork).toContainText(commandOutput);
 
   await page.goto("/tasks");
-  await expect(createdTask).toHaveAttribute("data-task-status", "idle");
+  // Once its last viewer leaves, Codex may unload the completed thread.
+  await expect(createdTask).toHaveAttribute("data-task-status", /^(idle|notLoaded)$/);
   await createdTask.click();
   await expect(markdownMessage).toBeVisible();
   await expect(finalResponse).toBeVisible();

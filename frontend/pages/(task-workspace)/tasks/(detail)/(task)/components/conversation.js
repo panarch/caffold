@@ -24,6 +24,7 @@ import "./conversation/components/assistant-message.js";
 import "./conversation/components/changed-files.js";
 import "./conversation/components/command.js";
 import "./conversation/components/markdown.js";
+import "./conversation/components/older-history.js";
 import "./conversation/components/work-details.js";
 import { renderConversation } from "./conversation/render.js";
 
@@ -33,6 +34,7 @@ class CaffoldTaskConversation extends HTMLElement {
     this.active = true;
     this.addEventListener("click", this.boundClick);
     this.addEventListener("scroll", this.boundScroll, true);
+    this.addEventListener("caffold:task-older-history-intent", this.boundOlderHistoryIntent);
     this.addEventListener(
       "caffold:task-markdown-rendered",
       this.boundMarkdownRendered,
@@ -59,6 +61,7 @@ class CaffoldTaskConversation extends HTMLElement {
     this.pendingMarkdownScrollByThread.delete(this.snapshot.threadId);
     this.removeEventListener("click", this.boundClick);
     this.removeEventListener("scroll", this.boundScroll, true);
+    this.removeEventListener("caffold:task-older-history-intent", this.boundOlderHistoryIntent);
     this.removeEventListener(
       "caffold:task-markdown-rendered",
       this.boundMarkdownRendered,
@@ -102,6 +105,7 @@ class CaffoldTaskConversation extends HTMLElement {
     this.pendingMarkdownScrollByThread = new Map();
     this.resizeObserver = null;
     this.boundClick = (event) => this.handleClick(event);
+    this.boundOlderHistoryIntent = (event) => this.handleOlderHistoryIntent(event);
     this.boundScroll = (event) => {
       if (event.target === this.scroller()) {
         this.handleScroll();
@@ -203,6 +207,10 @@ class CaffoldTaskConversation extends HTMLElement {
     return this.querySelector(":scope > .task-conversation-scroll");
   }
 
+  olderHistory() {
+    return this.querySelector(".task-conversation-column > caffold-task-older-history");
+  }
+
   actionHintScope({ scopeId = "", clipRoots = [] } = {}) {
     this.ensureState();
     const scrollport = this.scroller();
@@ -222,7 +230,6 @@ class CaffoldTaskConversation extends HTMLElement {
     const definitions = [];
     for (const [id, selector] of [
       ["retry-detail", 'button[data-conversation-action="retry-detail"]'],
-      ["retry-history", 'button[data-conversation-action="retry-history"]'],
     ]) {
       const control = this.querySelector(selector);
       if (control) {
@@ -314,6 +321,13 @@ class CaffoldTaskConversation extends HTMLElement {
       })];
     });
     const childScopes = [];
+    const olderHistory = this.olderHistory();
+    if (olderHistory) {
+      childScopes.push(olderHistory.actionHintScope({
+        scopeId: `${targetScopeId}:older-history`,
+        clipRoots: [this, scrollport, ...clipRoots].filter(Boolean),
+      }));
+    }
     const thinkingTargets = [];
     Array.from(list.children).forEach((entry, index) => {
       const identity = entry.dataset.conversationEntryKey ||
@@ -570,12 +584,14 @@ class CaffoldTaskConversation extends HTMLElement {
       this.pendingMarkdownScrollByThread.delete(this.snapshot.threadId);
       this.disconnectResizeObserver();
       this.activeTurn()?.setActive(false);
+      this.olderHistory()?.setActive(false);
       return;
     }
     this.active = true;
     this.reconcileViewportResize();
     this.bindResizeObserver();
     this.activeTurn()?.setActive(true);
+    this.olderHistory()?.setActive(true);
   }
 
   reconcileViewportResize() {
@@ -609,6 +625,13 @@ class CaffoldTaskConversation extends HTMLElement {
     );
     this.ensureShell();
     this.renderNotices();
+    this.olderHistory().setSnapshot({
+      threadId: this.snapshot.threadId,
+      hasOlder: Boolean(this.snapshot.eventsPage?.nextCursor),
+      loading: this.snapshot.loadingOlder,
+      error: this.snapshot.historyError,
+    });
+    this.olderHistory().setActive(this.active);
     const view = renderConversation(this.snapshot.events, task, approvals, {
       controlsDisabled,
       approvalErrors: this.approvalErrors,
@@ -652,6 +675,7 @@ class CaffoldTaskConversation extends HTMLElement {
       <div class="task-conversation-scroll">
         <div class="task-conversation-column">
           <div class="task-conversation-notices"></div>
+          <caffold-task-older-history></caffold-task-older-history>
           <ol class="task-conversation" aria-label="Task conversation"></ol>
         </div>
       </div>
@@ -673,22 +697,6 @@ class CaffoldTaskConversation extends HTMLElement {
       ${
         this.snapshot.loading
           ? `<p class="task-history-loading" role="status">Loading conversation...</p>`
-          : ""
-      }
-      ${
-        this.snapshot.eventsPage?.nextCursor || this.snapshot.loadingOlder
-          ? `<div class="task-load-older">
-              ${this.snapshot.loadingOlder ? "Loading older..." : ""}
-              ${
-                this.snapshot.historyError
-                  ? `<div class="task-history-error" role="alert">
-                      <span>Older messages are temporarily unavailable.</span>
-                      <span class="task-load-error-message">${escapeHtml(this.snapshot.historyError.message)}</span>
-                      <button type="button" data-task-action="retry-task-history" data-conversation-action="retry-history">Retry loading older messages</button>
-                    </div>`
-                  : ""
-              }
-            </div>`
           : ""
       }
     `;
@@ -731,8 +739,6 @@ class CaffoldTaskConversation extends HTMLElement {
         approvalId: action.dataset.approvalId,
         decision: action.dataset.decision,
       });
-    } else if (action.dataset.conversationAction === "retry-history") {
-      this.dispatchIntent("older-history", { retry: true });
     } else if (action.dataset.conversationAction === "retry-detail") {
       this.dispatchIntent("retry-detail");
     } else if (action.dataset.conversationAction === "preview-image") {
@@ -742,6 +748,18 @@ class CaffoldTaskConversation extends HTMLElement {
         name: action.dataset.imageName,
       });
     }
+  }
+
+  handleOlderHistoryIntent(event) {
+    if (
+      event.target !== this.olderHistory() ||
+      event.detail?.threadId !== this.snapshot.threadId ||
+      !this.active
+    ) {
+      return;
+    }
+    event.stopPropagation();
+    this.dispatchIntent("older-history", { retry: event.detail.retry });
   }
 
   handleCommandIntent(event) {

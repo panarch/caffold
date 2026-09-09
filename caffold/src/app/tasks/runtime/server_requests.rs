@@ -641,7 +641,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        agent::codex::{self, CodexThreadError, MockCodexResponse, session_event},
+        agent::codex::{self, CodexThreadError, MockCodexResponse, session_events},
         app::tasks::CodexConnection,
         app::tasks::push::PushService,
         app::tasks::sessions::TaskSessions,
@@ -1119,11 +1119,11 @@ mod tests {
 
         // Only the first says which approval was answered; after that the
         // driver has nothing left on that request to name.
-        let Some(answered) = session_event(&resolved, &client).await else {
+        let Some(answered) = session_events(&resolved, &client).await.pop() else {
             panic!("the first resolution names the approval it answered");
         };
         assert!(
-            session_event(&resolved, &client).await.is_none(),
+            session_events(&resolved, &client).await.pop().is_none(),
             "the same resolution has nothing left to withdraw"
         );
         runtime.withdraw_unanswerable_approvals(&answered).await;
@@ -1436,8 +1436,9 @@ mod tests {
         .unwrap();
         runtime
             .withdraw_unanswerable_approvals(
-                &session_event(&completed, &CodexThreadClient::mock(Vec::new()))
+                &session_events(&completed, &CodexThreadClient::mock(Vec::new()))
                     .await
+                    .pop()
                     .expect("a completed turn is something Caffold acts on"),
             )
             .await;
@@ -1489,7 +1490,6 @@ mod tests {
         let lifecycle = TaskLifecycle::new(
             fs.clone(),
             sessions.clone(),
-            events.clone(),
             TaskListEvents::new(),
             store.clone(),
             worktrees,

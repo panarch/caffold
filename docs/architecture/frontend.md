@@ -780,8 +780,8 @@ the Task subject and are preserved by Task identity through incremental shell
 updates. Moving from Tasks to Settings ends active editing and transport work
 without destroying a retained Composer draft.
 
-Conversation also owns its delegated retry, attachment-preview, approval, and
-exact rendered Thinking disclosure controls. Retry controls use Conversation's
+Conversation also owns its Detail retry, attachment-preview, approval, and
+exact rendered Thinking disclosure controls. Detail retry uses Conversation's
 coarse owner; each attachment preview and Thinking disclosure uses the exact
 retained timeline entry that contains it, while each approval group uses its
 rendered approval card as the minimum invalidation owner. A custom child owns
@@ -797,6 +797,15 @@ Assistant Message, Markdown, and Work Details merge only the direct retained
 children they mount. A stream patch can therefore retire only the replaced
 entry, approval card, or child owner while unaffected sibling, App Shell, and
 Composer codes remain frozen, without introducing a descendant-DOM scan.
+
+Conversation mounts `conversation/components/older-history.js` as a retained
+child outside the timeline list. Older History owns its load button, loading
+status, error and retry presentation, styles, and Action Hint scope. It receives
+Task identity and request presentation from Conversation and emits load or
+retry intent upward. Equivalent snapshots retain its button or spinner DOM.
+Conversation composes that child's scope, forwards its intent, and owns scroll
+triggering and anchoring. Task Detail owns the actual request, cursor, duplicate
+request guard, and acceptance of asynchronous responses.
 
 ### Current plan
 

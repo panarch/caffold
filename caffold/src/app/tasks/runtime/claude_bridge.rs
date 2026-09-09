@@ -81,7 +81,7 @@ impl TaskRuntime {
                     // already lost; saying so beats carrying on as though the
                     // conversation were whole.
                     Err(broadcast::error::RecvError::Lagged(missed)) => {
-                        runtime.events.invalidate_all_continuity();
+                        runtime.sessions.invalidate_claude_history().await;
                         eprintln!("Claude runtime dropped {missed} reports behind a slow reader");
                     }
                     Err(broadcast::error::RecvError::Closed) => return,

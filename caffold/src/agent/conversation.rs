@@ -70,10 +70,10 @@ pub(crate) enum SessionEventKind {
         settings: BTreeMap<String, Value>,
     },
     TurnStarted {
-        turn: Turn,
+        turn: TurnState,
     },
     TurnEnded {
-        turn: Turn,
+        turn: TurnState,
     },
     /// One item appeared or moved on. The same item arrives more than once as
     /// it progresses, under one identity.
@@ -172,6 +172,32 @@ pub(crate) struct Turn {
     pub(crate) started_at_ms: Option<u64>,
     pub(crate) completed_at_ms: Option<u64>,
     pub(crate) items: Vec<ConversationItem>,
+}
+
+/// The lifecycle a provider reports for a turn, independently of its items.
+///
+/// Start and end reports update this state. They never replace conversation
+/// membership: item reports update exact identities, and a history read owns
+/// the complete item set of the turns it returns.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TurnState {
+    pub(crate) id: String,
+    pub(crate) origin: TurnOrigin,
+    pub(crate) status: TurnStatus,
+    pub(crate) started_at_ms: Option<u64>,
+    pub(crate) completed_at_ms: Option<u64>,
+}
+
+impl From<&Turn> for TurnState {
+    fn from(turn: &Turn) -> Self {
+        Self {
+            id: turn.id.clone(),
+            origin: turn.origin.clone(),
+            status: turn.status,
+            started_at_ms: turn.started_at_ms,
+            completed_at_ms: turn.completed_at_ms,
+        }
+    }
 }
 
 /// What opened a turn, in Caffold's shared vocabulary.

@@ -487,6 +487,9 @@ test("keeps exact prompt order when Detail or live content arrives before the pr
 
   const threadId = "thread_canonical_item_ack";
   const now = 1_767_190_300_000;
+  // Keep optimistic placement after the server positions so retaining the
+  // browser clock would fail the exact-identity handoff assertion.
+  await page.clock.setFixedTime(new Date(now + 1_000));
   const task = {
     id: threadId,
     threadId,
@@ -644,7 +647,7 @@ test("keeps exact prompt order when Detail or live content arrives before the pr
   ]);
   await expect(form).toHaveAttribute("aria-busy", "true");
 
-  const liveRaceMs = Date.now();
+  const liveTurnAnchorMs = now + 3;
   const liveAnswerRevision = ++revision;
   const acceptedPromptRevision = ++revision;
   await page.evaluate((payload) => {
@@ -677,7 +680,7 @@ test("keeps exact prompt order when Detail or live content arrives before the pr
         itemId: "answer-2",
         text: "Live race answer",
       },
-      position: { anchorMs: liveRaceMs + 1, index: 0 },
+      position: { anchorMs: liveTurnAnchorMs, index: 2 },
     },
     acceptedPrompt: {
       id: "event_live_race_prompt",
@@ -689,17 +692,34 @@ test("keeps exact prompt order when Detail or live content arrives before the pr
         itemId: "message-2",
         text: "Submitted after canonical item acknowledgement",
       },
-      position: { anchorMs: liveRaceMs + 2, index: 0 },
+      position: { anchorMs: liveTurnAnchorMs, index: 1 },
     },
   });
 
+  // Both live items must be rendered before POST supplies their exact prompt
+  // identity. Delivery order does not change their backend-owned positions.
+  await expect(
+    tasksPage.locator('[data-event-id="event_live_race_prompt"]'),
+  ).toContainText("Submitted after canonical item acknowledgement");
+  await expect(
+    tasksPage.locator('[data-event-id="event_live_race_answer"]'),
+  ).toContainText("Live race answer");
+  await expect(form).toHaveAttribute("aria-busy", "true");
   releaseSecondPrompt();
   await expect(form).toHaveAttribute("aria-busy", "false");
   await expect(messages).toHaveCount(5);
   await expect(messages.nth(3)).toContainText(
     "Submitted after canonical item acknowledgement",
   );
+  await expect(messages.nth(3)).toHaveAttribute(
+    "data-event-id",
+    "event_live_race_prompt",
+  );
   await expect(messages.nth(4)).toContainText("Live race answer");
+  await expect(messages.nth(4)).toHaveAttribute(
+    "data-event-id",
+    "event_live_race_answer",
+  );
 
 });
 test("unlocks canonical follow-ups after switching tasks with a pending response", { tag: "@desktop" }, async ({

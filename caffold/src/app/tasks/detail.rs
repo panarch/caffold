@@ -5,7 +5,7 @@ use std::{
 };
 
 use futures_util::{Stream, stream};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tokio::sync::{Mutex as AsyncMutex, broadcast};
 
 mod file_links;
@@ -14,14 +14,13 @@ use file_links::{TaskFileLink, TaskFileLinkResolver};
 
 use super::{
     events::{
-        TaskEventPosition, TaskEventRecord, TaskEvents, compose_pending_approval_events,
-        reconcile_provider_history_with_live_observations, sort_task_events, task_event_turn_id,
-        thread_events,
+        TaskEventPosition, TaskEventRecord, TaskEvents, TaskHistoryCursor, TaskHistoryPage,
+        compose_pending_approval_events, sort_task_events, task_event_turn_id,
     },
     lifecycle::ActiveTaskTopPlacement,
     projection::{
-        TaskRecord, apply_canonical_turn_projection, conversation_with_turns,
-        resolve_conversation_cwd, task_record_from_conversation,
+        TaskRecord, apply_turn_states_projection, resolve_conversation_cwd,
+        task_record_from_conversation,
     },
     runtime::{CodexConnection, TaskAgent, TaskRuntime, TaskRuntimeSignal},
     sync::TaskSync,
@@ -30,7 +29,7 @@ use super::{
 use crate::agent::AgentError;
 use crate::{
     agent::{
-        Conversation, TurnPage,
+        Conversation,
         codex::{CodexThreadClient, CodexThreadError},
     },
     app::error::ApiError,
@@ -120,14 +119,7 @@ pub(in crate::app::tasks) struct TaskEventsRange {
 /// the page the session already holds; `before` is the position the events
 /// must precede and is absent for the page's newest events. The browser only
 /// hands the encoded value back.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(in crate::app::tasks) struct TaskDetailCursor {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(in crate::app::tasks) turns: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(in crate::app::tasks) before: Option<TaskEventPosition>,
-}
+pub(in crate::app::tasks) type TaskDetailCursor = TaskHistoryCursor;
 
 impl TaskDetailCursor {
     /// A cursor this version did not write is an app-server turn cursor a
@@ -135,7 +127,7 @@ impl TaskDetailCursor {
     fn decode(cursor: &str) -> Self {
         serde_json::from_str(cursor).unwrap_or_else(|_| Self {
             turns: Some(cursor.to_string()),
-            before: None,
+            ..Self::default()
         })
     }
 
@@ -413,26 +405,67 @@ impl DetailContext {
     ) -> Result<TaskDetailResponse, ApiError> {
         self.restore_managed_fast_mode(thread_id).await?;
         let cursor = cursor.map(TaskDetailCursor::decode).unwrap_or_default();
-        let (snapshot, response_page) = if let Some(turns) = cursor.turns.as_deref() {
-            let (snapshot, page, history_base_revision) = self
-                .sessions
-                .load_older_turns(
-                    &agent.driver(),
-                    agent.generation(),
-                    thread_id,
-                    turns,
-                    TASK_DETAIL_TURNS_PAGE_SIZE,
-                )
-                .await?;
-            (snapshot, Some((page, history_base_revision)))
-        } else {
-            (
-                self.sessions
-                    .load_metadata(&agent.driver(), agent.generation(), thread_id)
-                    .await?,
-                None,
-            )
+        let mut snapshot = self
+            .sessions
+            .load_metadata(&agent.driver(), agent.generation(), thread_id)
+            .await?;
+        let older = cursor != TaskDetailCursor::default();
+        let request = older.then(|| self.events.begin_history_request(thread_id));
+        let response_page = match self.events.cached_history_page(thread_id, &cursor) {
+            Some(page) => Some(page),
+            None if older => {
+                let (current, page) = self
+                    .sessions
+                    .load_history_page(
+                        &agent.driver(),
+                        agent.generation(),
+                        thread_id,
+                        &cursor,
+                        TASK_DETAIL_TURNS_PAGE_SIZE,
+                    )
+                    .await?;
+                snapshot = current;
+                Some(page)
+            }
+            // A latest-page cache miss does not authorize a new baseline read.
+            // Subscription owns that read; retained live evidence stays usable.
+            None => None,
         };
+        if let Some(page) = &response_page {
+            if let Some(id) = &cursor.item_id
+                && !page
+                    .events
+                    .iter()
+                    .any(|event| &event.id == id && Some(event.position) == cursor.before)
+            {
+                self.events.trim(thread_id);
+                return Err(ApiError::Agent(
+                    "conversation history continuation is no longer available".to_string(),
+                ));
+            }
+            if let Some(request) = request {
+                let (window, _, next) =
+                    window_detail_events(page.events.clone(), None, &cursor, page.next.clone());
+                let pin = next
+                    .as_deref()
+                    .map(TaskDetailCursor::decode)
+                    .and_then(|next| next.turn_id)
+                    .filter(|id| {
+                        page.events
+                            .iter()
+                            .any(|event| task_event_turn_id(event) == Some(id))
+                    })
+                    .or_else(|| {
+                        window
+                            .iter()
+                            .find_map(task_event_turn_id)
+                            .map(str::to_string)
+                    });
+                self.events
+                    .finish_history_request(thread_id, request, pin.as_deref());
+            }
+        }
+        self.events.trim(thread_id);
         self.assemble_snapshot(snapshot, response_page, cursor)
             .await
     }
@@ -504,7 +537,7 @@ impl DetailContext {
     pub(in crate::app::tasks) async fn assemble_snapshot(
         &self,
         snapshot: SessionSnapshot,
-        response_page: Option<(TurnPage, u64)>,
+        response_page: Option<TaskHistoryPage>,
         cursor: TaskDetailCursor,
     ) -> Result<TaskDetailResponse, ApiError> {
         let revision = snapshot.revision;
@@ -517,40 +550,31 @@ impl DetailContext {
             .as_ref()
             .map(|thread| thread.id.clone())
             .ok_or_else(|| ApiError::Agent("subscribed thread metadata is missing".to_string()))?;
-        let older_page = response_page.is_some();
-        let (page, history_base_revision) = response_page
-            .map(|(page, base_revision)| (Some(page), Some(base_revision)))
-            .unwrap_or_else(|| (snapshot.turns_page.clone(), snapshot.history_base_revision));
-        let history_loading = page.is_none();
-        let mut turns = page
-            .as_ref()
-            .map(|page| page.turns.clone())
-            .unwrap_or_default();
-        // An agent reports its history newest first; a conversation reads
-        // oldest first.
-        turns.reverse();
-        let older_turns = page.and_then(|page| page.next_cursor);
+        let older_page =
+            cursor.turns.is_some() || cursor.before.is_some() || cursor.turn_id.is_some();
+        let page = response_page.or_else(|| self.events.cached_history_page(&thread_id, &cursor));
+        let history_loading = snapshot.turns_page.is_none();
+        let event_revision = page.as_ref().map(|page| page.revision).unwrap_or_default();
+        let older_turns = page.as_ref().and_then(|page| page.next.clone());
+        let owns_extent = page.as_ref().is_some_and(|page| page.owns_extent);
+        let mut events = page.map(|page| page.events).unwrap_or_default();
+        let owned_extent = (owns_extent && !history_loading && (!older_page || !events.is_empty()))
+            .then(|| history_extent(&events, older_page));
         let conversation = snapshot
             .conversation
             .expect("conversation metadata was checked above");
         let conversation = self.project_managed_worktree_cwd(conversation)?;
-        let conversation = conversation_with_turns(&conversation, turns);
-        let mut events = thread_events(&conversation);
-        let owned_extent = (!history_loading).then(|| history_extent(&events, older_page));
-        self.events.observe_history_assets(&events);
-        let live_snapshot = self.events.snapshot_for_thread(&thread_id);
-        events = reconcile_provider_history_with_live_observations(
-            events,
-            &live_snapshot.observations,
-            history_base_revision,
-            &live_snapshot.fully_observed_turns,
-        );
         let pending_approvals = self.runtime.approval_events(&thread_id).await;
         events = compose_pending_approval_events(events, pending_approvals.clone());
         sort_task_events(&mut events);
         let resolved_cwd = resolve_conversation_cwd(&self.fs, &conversation);
         let mut task = task_record_from_conversation(&conversation, &events, resolved_cwd.as_ref());
-        apply_canonical_turn_projection(&mut task, &conversation);
+        let turn_states = snapshot
+            .turns_page
+            .as_ref()
+            .map(|page| page.turns.iter().rev().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        apply_turn_states_projection(&mut task, &turn_states);
         let (mut events, events_range, next_cursor) =
             window_detail_events(events, owned_extent, &cursor, older_turns);
         let managed = self.store_get(&thread_id).await?;
@@ -571,7 +595,7 @@ impl DetailContext {
                 thread_id,
                 sync_state: TaskSyncState::Ready,
                 revision,
-                event_revision: live_snapshot.revision,
+                event_revision,
                 task: Some(task),
                 events,
                 file_links,
@@ -787,7 +811,7 @@ fn window_detail_events(
     events: Vec<TaskEventRecord>,
     extent: Option<TaskEventsRange>,
     cursor: &TaskDetailCursor,
-    older_turns: Option<String>,
+    older_turns: Option<TaskDetailCursor>,
 ) -> (
     Vec<TaskEventRecord>,
     Option<TaskEventsRange>,
@@ -818,11 +842,17 @@ fn window_detail_events(
         Some(before) => Some(TaskDetailCursor {
             turns: cursor.turns.clone(),
             before: Some(before),
+            turn_id: events
+                .iter()
+                .find(|event| event.position == before)
+                .and_then(task_event_turn_id)
+                .map(str::to_string),
+            item_id: events
+                .iter()
+                .find(|event| event.position == before)
+                .map(|event| event.id.clone()),
         }),
-        None => older_turns.map(|turns| TaskDetailCursor {
-            turns: Some(turns),
-            before: None,
-        }),
+        None => older_turns,
     }
     .map(|cursor| cursor.encode());
     (events, range, next_cursor)
@@ -1033,10 +1063,12 @@ mod inline_tests {
         let within = TaskDetailCursor {
             turns: None,
             before: Some(TaskEventPosition::at(7)),
+            ..TaskDetailCursor::default()
         };
         let older = TaskDetailCursor {
             turns: Some("older-1".to_string()),
             before: None,
+            ..TaskDetailCursor::default()
         };
         let app_server = r#"{"turnId":"turn-1","includeAnchor":false}"#;
 
@@ -1047,6 +1079,7 @@ mod inline_tests {
             TaskDetailCursor {
                 turns: Some(app_server.to_string()),
                 before: None,
+                ..TaskDetailCursor::default()
             }
         );
     }
@@ -1061,7 +1094,10 @@ mod inline_tests {
             events.push(positioned_event("turn-1", "command_execution", anchor_ms));
         }
         let extent = Some(history_extent(&events, false));
-        let older = Some("older-1".to_string());
+        let older = Some(TaskDetailCursor {
+            turns: Some("older-1".to_string()),
+            ..TaskDetailCursor::default()
+        });
         let at = TaskEventPosition::at;
         let limit = TASK_DETAIL_EVENT_LIMIT as u64;
 
@@ -1107,6 +1143,7 @@ mod inline_tests {
             TaskDetailCursor {
                 turns: Some("older-1".to_string()),
                 before: None,
+                ..TaskDetailCursor::default()
             }
         );
         let covered = pages
@@ -1268,6 +1305,7 @@ mod inline_tests {
 
 #[cfg(test)]
 mod request_tests {
+    use crate::agent::TurnPage;
     use crate::agent::codex::{CodexThread, MockCodexResponse, TurnsPage};
     use std::time::Duration;
 
@@ -1570,7 +1608,9 @@ mod request_tests {
         let mut snapshot = SessionSnapshot {
             lifecycle: SessionLifecycle::Subscribed,
             conversation: Some(Conversation::from(&thread)),
-            turns_page: Some(TurnPage::from(&turns_page)),
+            turns_page: Some(crate::app::tasks::sessions::SessionTurnPage::from(
+                &TurnPage::from(&turns_page),
+            )),
             active_turn_id: None,
             active_turn_cwd: None,
             viewer_leases: 0,
@@ -1586,6 +1626,12 @@ mod request_tests {
             fast_mode: false,
         };
 
+        state.task_events.accept_history_page(
+            snapshot.conversation.as_ref().unwrap(),
+            &TurnPage::from(&turns_page),
+            0,
+            None,
+        );
         let background = state
             .detail
             .assemble_snapshot(snapshot.clone(), None, TaskDetailCursor::default())
@@ -1658,7 +1704,9 @@ mod request_tests {
         let snapshot = SessionSnapshot {
             lifecycle: SessionLifecycle::Subscribed,
             conversation: Some(Conversation::from(&thread)),
-            turns_page: Some(TurnPage::from(&turns_page)),
+            turns_page: Some(crate::app::tasks::sessions::SessionTurnPage::from(
+                &TurnPage::from(&turns_page),
+            )),
             active_turn_id: None,
             active_turn_cwd: None,
             viewer_leases: 1,
@@ -1692,6 +1740,12 @@ mod request_tests {
             .task_events
             .publish_accepted_submission(late_live_prompt, None);
 
+        state.task_events.accept_history_page(
+            snapshot.conversation.as_ref().unwrap(),
+            &TurnPage::from(&turns_page),
+            0,
+            None,
+        );
         let detail = state
             .detail
             .assemble_snapshot(snapshot, None, TaskDetailCursor::default())
@@ -1917,6 +1971,7 @@ mod request_tests {
             TaskDetailCursor {
                 turns: Some("older-1".to_string()),
                 before: None,
+                ..TaskDetailCursor::default()
             }
         );
         assert!(!response.0.history_loading);
@@ -2053,7 +2108,156 @@ mod request_tests {
     }
 
     #[tokio::test]
-    async fn a_long_older_turn_is_paged_by_rereading_its_app_server_page() {
+    async fn evicted_turns_resume_from_the_same_provider_page_without_skipping_a_gap() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-evicted-page";
+        let turns = (0..8)
+            .map(|index| {
+                let mut turn = long_turn(&format!("turn-{index}"), 70);
+                turn["startedAt"] = json!((8 - index) * 10);
+                turn["completedAt"] = json!((8 - index) * 10 + 1);
+                turn
+            })
+            .collect::<Vec<_>>();
+        let provider_page = json!({"data": turns, "nextCursor": null, "backwardsCursor": null});
+        let mut responses = vec![MockCodexResponse::ok(
+            "thread/resume",
+            json!({
+                "cwd": root.path().display().to_string(),
+                "thread": {
+                    "id": thread_id, "preview": "Evicted turns", "status": {"type": "idle"},
+                    "cwd": root.path().display().to_string(),
+                    "createdAt": 1.0, "updatedAt": 81.0, "turns": []
+                },
+                "initialTurnsPage": provider_page.clone()
+            }),
+        )];
+        responses.extend(
+            (0..8).map(|_| MockCodexResponse::ok("thread/turns/list", provider_page.clone())),
+        );
+        let client = CodexThreadClient::mock(responses);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        let _viewer = state
+            .task_sessions
+            .acquire_viewer(&client.driver(), 1, thread_id)
+            .await
+            .unwrap();
+
+        let mut cursor = None;
+        let mut covered = HashSet::new();
+        let mut pages = 0;
+        loop {
+            let before_calls = client.mock_requests().await.len();
+            let page = test_task_detail(state.clone(), thread_id.into(), cursor)
+                .await
+                .unwrap()
+                .0;
+            let after_calls = client.mock_requests().await.len();
+            assert!(
+                after_calls - before_calls <= 1,
+                "one explicit page request never fills by scanning"
+            );
+            if pages == 0 {
+                assert_eq!(
+                    page.events.len(),
+                    72,
+                    "the first missing retained turn ends the window"
+                );
+                assert_eq!(
+                    after_calls, 1,
+                    "the short latest response does not fill from history"
+                );
+                let next =
+                    TaskDetailCursor::decode(page.events_page.next_cursor.as_deref().unwrap());
+                assert_eq!(next.turn_id.as_deref(), Some("turn-1"));
+                assert_eq!(
+                    next.turns, None,
+                    "the missing turn belongs to this same native page"
+                );
+            }
+            covered.extend(page.events.into_iter().map(|event| event.id));
+            cursor = page.events_page.next_cursor;
+            pages += 1;
+            assert!(pages <= 10, "continuations must advance");
+            if cursor.is_none() {
+                break;
+            }
+        }
+        assert_eq!(
+            covered.len(),
+            8 * 72,
+            "all eight turns, items and boundaries are still readable"
+        );
+        let requests = client.mock_requests().await;
+        assert!(requests.len() > 1, "eviction was exercised");
+        for (method, params) in &requests[1..] {
+            assert_eq!(method, "thread/turns/list");
+            assert_eq!(params["limit"], 8);
+            assert!(params["cursor"].is_null());
+        }
+    }
+
+    #[tokio::test]
+    async fn an_unmatched_history_boundary_ends_only_that_request_without_rereading() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-unmatched-boundary";
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            json!({
+                "cwd": root.path().display().to_string(),
+                "thread": {
+                    "id": thread_id, "preview": "History identity", "status": {"type": "idle"},
+                    "cwd": root.path().display().to_string(),
+                    "createdAt": 1.0, "updatedAt": 2.0, "turns": []
+                },
+                "initialTurnsPage": {
+                    "data": [long_turn("turn-long", 150)],
+                    "nextCursor": null, "backwardsCursor": null
+                }
+            }),
+        )]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        let _viewer = state
+            .task_sessions
+            .acquire_viewer(&client.driver(), 1, thread_id)
+            .await
+            .unwrap();
+        let before = test_task_detail(state.clone(), thread_id.into(), None)
+            .await
+            .unwrap()
+            .0;
+        let mut cursor =
+            TaskDetailCursor::decode(before.events_page.next_cursor.as_deref().unwrap());
+        // Legacy history may name a different item at the same apparent position.
+        // Position is not evidence that the native live ID means that history item.
+        cursor.item_id = Some("unmatched-native-live-id".into());
+        let error = test_task_detail(state.clone(), thread_id.into(), Some(cursor.encode()))
+            .await
+            .unwrap_err();
+        assert!(matches!(error, ApiError::Agent(ref message)
+            if message == "conversation history continuation is no longer available"));
+        let after = test_task_detail(state, thread_id.into(), None)
+            .await
+            .unwrap()
+            .0;
+        assert_eq!(after.events, before.events);
+        assert_eq!(
+            after.events_page.next_cursor,
+            before.events_page.next_cursor
+        );
+        assert_eq!(
+            client.mock_requests().await.len(),
+            1,
+            "only the initial resume reads history"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_long_older_turn_reuses_its_cached_items_for_every_slice() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-long-older-turn";
         let older_page = json!({
@@ -2082,8 +2286,6 @@ mod request_tests {
                     }
                 }),
             ),
-            MockCodexResponse::ok("thread/turns/list", older_page.clone()),
-            MockCodexResponse::ok("thread/turns/list", older_page.clone()),
             MockCodexResponse::ok("thread/turns/list", older_page),
             MockCodexResponse::ok("thread/unsubscribe", json!({ "status": "unsubscribed" })),
         ]);
@@ -2126,8 +2328,8 @@ mod request_tests {
             .filter(|(method, _)| method == "thread/turns/list")
             .count();
         assert_eq!(
-            turns_list_calls, slices,
-            "each slice of an older page re-reads it"
+            turns_list_calls, 1,
+            "all slices of the retained turn share one provider read"
         );
     }
 

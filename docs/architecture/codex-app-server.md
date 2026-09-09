@@ -341,28 +341,40 @@ approval is never withdrawn twice.
 
 ## Incremental History
 
-The resume response supplies the latest eight turns with full items. Caffold
-keeps that page in the thread session and does not bootstrap task detail with a
-separate full `thread/read` scan. A Task Detail answer carries at most
-`TASK_DETAIL_EVENT_LIMIT` events of that page, newest first, plus the boundary
-events of the turns they belong to; the [Agent Runtimes publication
-contract](agent-runtimes.md#projection-publication) owns how the answer
-declares what it covers.
+`thread/resume` requests the latest eight turns with full items, and
+`thread/turns/list` requests older turns in the same units. The Codex adapter
+rejects a partial response to a full history read. Native `Full`, `Summary`, and
+`NotLoaded` inclusion flags end at this boundary: common history is full,
+whereas turn notifications report lifecycle and any individually named items.
+A summary final answer or terminal error remains an item update, not a
+replacement for the turn.
 
-Older history is requested with a cursor Caffold writes and the browser hands
-back unchanged. The cursor names the app-server page the events belong to,
-or the page the session already holds, and the position the events must
-precede. A request that stays within a held page is answered from that page
-without an app-server call; a request for an older app-server page calls
-`thread/turns/list` with that page's own cursor and re-reads it for each of
-its earlier slices. Each answer continues within its page while earlier events
-remain, then moves on to the next older page.
+History enters the [shared retained projection](agent-runtimes.md#backend-reconciliation)
+once. A Task Detail answer carries the latest 100 events in chronological order,
+plus the existing turn-boundary and user-message context. Neither the response
+limit nor the retention budget causes additional reads to fill unused capacity.
+Caffold does not bootstrap Detail with a separate full `thread/read` scan.
 
-Turn IDs and item IDs are merge identities. A provider read merges into the
-cached page by turn ID, the page is bounded to the newest eight turns, and a
-Task session revision arbitrates that read against live reports that arrived
-while it was in flight. Once translated into the common conversation
-projection, independently delivered snapshots and deltas follow the
+The browser returns Caffold's opaque continuation unchanged. It identifies a
+provider page and, when continuing within it, the turn and boundary item with
+its position. A retained turn supplies its successive item slices without
+another app-server call. An evicted provider page is read only when requested;
+the response and next continuation are captured before retained copies are
+trimmed. A continuation that cannot be matched safely returns the existing page
+request error. It does not clear the conversation or restart at the newest page.
+
+Legacy Codex history can assign query-local IDs to assistant messages and
+reasoning that differ from live notification IDs. In Codex 0.153.4, legacy
+`thread/turns/list` reconstructs the full rollout before cutting the requested
+page; a small response is not evidence of a cheap upstream read. Caffold uses
+the turn-list interface for both supported history storage modes and does not
+require `thread/items/list` or migrate legacy threads. A continuously observed
+turn retains one live item set. Partial attachment and cross-source recovery
+use only exact identity evidence and may leave unmatched display items. A live
+continuation whose turn has been evicted may be unavailable after a source
+change. These limits do not trigger automatic baseline reads or browser resets.
+
+Projection ranges and independent snapshot/delta revisions follow the
 [Agent Runtimes publication contract](agent-runtimes.md#projection-publication).
 
 ## Task Storage Boundary

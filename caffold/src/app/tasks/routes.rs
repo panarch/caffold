@@ -54,7 +54,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
 use crate::{
-    agent::{ConversationItem, Turn, TurnOptions, codex::CodexStatusResponse},
+    agent::{ConversationItem, TurnOptions, TurnState, codex::CodexStatusResponse},
     app::tasks::sessions::SessionsDiagnostics,
 };
 
@@ -136,7 +136,7 @@ struct TaskPromptOutcome {
     turn_id: String,
     user_message: ConversationItem,
     steered: bool,
-    started_turn: Option<(Turn, TurnOptions)>,
+    started_turn: Option<(TurnState, TurnOptions)>,
 }
 
 #[derive(Debug, Deserialize)]

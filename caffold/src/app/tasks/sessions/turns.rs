@@ -1,40 +1,69 @@
 use crate::agent::AgentError;
-use crate::agent::{Conversation, Driver, ThreadStatus, Turn, TurnPage, TurnStatus};
+use crate::agent::{Conversation, Driver, ThreadStatus, TurnState, TurnStatus};
+
+use super::super::events::{TaskHistoryCursor, TaskHistoryPage};
 
 use super::{
-    INITIAL_TURNS_PAGE_SIZE, SessionLifecycle, SessionSnapshot, SessionState, TaskSessions,
-    now_unix_ms, snapshot,
+    INITIAL_TURNS_PAGE_SIZE, SessionLifecycle, SessionSnapshot, SessionState, SessionTurnPage,
+    TaskSessions, now_unix_ms, snapshot,
 };
 
 impl TaskSessions {
-    pub(in crate::app::tasks) async fn load_older_turns(
+    pub(in crate::app::tasks) async fn load_history_page(
         &self,
         driver: &Driver,
         generation: u64,
         thread_id: &str,
-        cursor: &str,
+        cursor: &TaskHistoryCursor,
         limit: usize,
-    ) -> Result<(SessionSnapshot, TurnPage, u64), AgentError> {
+    ) -> Result<(SessionSnapshot, TaskHistoryPage), AgentError> {
         self.ensure_subscribed(driver, generation, thread_id)
             .await?;
         let entry = self.entry(thread_id).await;
-        let base_revision = {
+        let (base_revision, observation_epoch) = {
             let state = entry.state.lock().await;
-            if state.generation != generation {
+            if state.generation != generation || state.lifecycle != SessionLifecycle::Subscribed {
                 return Err(AgentError::Failed(format!(
                     "conversation {thread_id} changed connection before reading its history"
                 )));
             }
-            state.revision
+            (state.revision, state.observation_epoch)
         };
-        let page = driver.read_turns(thread_id, Some(cursor), limit).await?;
+        let page = driver
+            .read_turns(thread_id, cursor.turns.as_deref(), limit)
+            .await?;
         let state = entry.state.lock().await;
-        if state.generation != generation {
+        if !state.same_observation(generation, observation_epoch)
+            || state.lifecycle != SessionLifecycle::Subscribed
+        {
             return Err(AgentError::Failed(format!(
                 "conversation {thread_id} changed connection while reading its history"
             )));
         }
-        Ok((snapshot(&state), page, base_revision))
+        if let Some(turn_id) = cursor.turn_id.as_deref()
+            && !page.turns.iter().any(|turn| turn.id == turn_id)
+        {
+            return Err(AgentError::Failed(
+                "conversation history continuation is no longer available".to_string(),
+            ));
+        }
+        let conversation = state
+            .conversation
+            .as_ref()
+            .ok_or_else(|| AgentError::Failed("conversation metadata is missing".to_string()))?;
+        state.events.accept_history_page(
+            conversation,
+            &page,
+            base_revision,
+            cursor.turns.as_deref(),
+        );
+        let history = state
+            .events
+            .cached_history_page(thread_id, cursor)
+            .ok_or_else(|| {
+                AgentError::Failed("conversation history page is unavailable".to_string())
+            })?;
+        Ok((snapshot(&state), history))
     }
 
     /// Re-read the latest canonical turns for a session already being shown.
@@ -52,10 +81,13 @@ impl TaskSessions {
             return Ok(None);
         };
         let _operation = entry.operation.lock().await;
-        let Some((driver, base_revision)) = ({
+        let Some((driver, base_revision, observation_epoch)) = ({
             let state = entry.state.lock().await;
             if state.generation == generation && state.lifecycle == SessionLifecycle::Subscribed {
-                state.driver.clone().map(|driver| (driver, state.revision))
+                state
+                    .driver
+                    .clone()
+                    .map(|driver| (driver, state.revision, state.observation_epoch))
             } else {
                 None
             }
@@ -70,7 +102,8 @@ impl TaskSessions {
             Ok(latest) => latest,
             Err(error) => {
                 let mut state = entry.state.lock().await;
-                if state.generation == generation && state.lifecycle == SessionLifecycle::Subscribed
+                if state.same_observation(generation, observation_epoch)
+                    && state.lifecycle == SessionLifecycle::Subscribed
                 {
                     let message = error.to_string();
                     if state.last_error.as_deref() != Some(message.as_str()) {
@@ -83,13 +116,21 @@ impl TaskSessions {
             }
         };
         let mut state = entry.state.lock().await;
-        if state.generation != generation || state.lifecycle != SessionLifecycle::Subscribed {
+        if !state.same_observation(generation, observation_epoch)
+            || state.lifecycle != SessionLifecycle::Subscribed
+        {
             return Ok(None);
         }
         let before = state.turns_page.clone();
         let previous_history_base_revision = state.history_base_revision;
         let recovered = state.last_error.take().is_some();
-        merge_latest_turns_page(&mut state.turns_page, latest);
+        if let Some(conversation) = state.conversation.as_ref() {
+            state
+                .events
+                .accept_history_page(conversation, &latest, base_revision, None);
+            state.events.trim(&conversation.id);
+        }
+        merge_latest_turns_page(&mut state.turns_page, SessionTurnPage::from(&latest));
         state.history_base_revision = Some(base_revision);
         if state.turns_page == before
             && previous_history_base_revision == state.history_base_revision
@@ -105,7 +146,7 @@ impl TaskSessions {
 
 pub(super) fn active_turn_id(
     thread: &Conversation,
-    turns_page: Option<&TurnPage>,
+    turns_page: Option<&SessionTurnPage>,
 ) -> Option<String> {
     if !matches!(thread.status, ThreadStatus::Active { .. }) {
         return None;
@@ -113,7 +154,12 @@ pub(super) fn active_turn_id(
     let turns = thread
         .turns
         .iter()
-        .chain(turns_page.into_iter().flat_map(|page| page.turns.iter()))
+        .map(TurnState::from)
+        .chain(
+            turns_page
+                .into_iter()
+                .flat_map(|page| page.turns.iter().cloned()),
+        )
         .collect::<Vec<_>>();
     turns
         .iter()
@@ -156,7 +202,13 @@ pub(super) fn turn_is_in_progress(state: &SessionState, turn_id: &str) -> bool {
         .conversation
         .iter()
         .flat_map(|conversation| conversation.turns.iter())
-        .chain(state.turns_page.iter().flat_map(|page| page.turns.iter()))
+        .map(TurnState::from)
+        .chain(
+            state
+                .turns_page
+                .iter()
+                .flat_map(|page| page.turns.iter().cloned()),
+        )
         .any(|turn| turn.id == turn_id && turn.status == TurnStatus::InProgress)
 }
 
@@ -165,12 +217,18 @@ pub(super) fn turn_is_terminal(state: &SessionState, turn_id: &str) -> bool {
         .conversation
         .iter()
         .flat_map(|conversation| conversation.turns.iter())
-        .chain(state.turns_page.iter().flat_map(|page| page.turns.iter()))
+        .map(TurnState::from)
+        .chain(
+            state
+                .turns_page
+                .iter()
+                .flat_map(|page| page.turns.iter().cloned()),
+        )
         .any(|turn| turn.id == turn_id && turn.status != TurnStatus::InProgress)
 }
 
-pub(super) fn upsert_turn(page: &mut Option<TurnPage>, turn: Turn) {
-    let page = page.get_or_insert_with(|| TurnPage {
+pub(super) fn upsert_turn(page: &mut Option<SessionTurnPage>, turn: TurnState) {
+    let page = page.get_or_insert_with(|| SessionTurnPage {
         turns: Vec::new(),
         next_cursor: None,
         backwards_cursor: None,
@@ -185,7 +243,10 @@ pub(super) fn upsert_turn(page: &mut Option<TurnPage>, turn: Turn) {
     bound_latest_turns_page(page);
 }
 
-pub(super) fn merge_latest_turns_page(target: &mut Option<TurnPage>, incoming: TurnPage) {
+pub(super) fn merge_latest_turns_page(
+    target: &mut Option<SessionTurnPage>,
+    incoming: SessionTurnPage,
+) {
     let next_cursor = incoming.next_cursor.clone();
     let backwards_cursor = incoming.backwards_cursor.clone();
     for turn in incoming.turns {
@@ -200,8 +261,11 @@ pub(super) fn merge_latest_turns_page(target: &mut Option<TurnPage>, incoming: T
     }
 }
 
-pub(super) fn merge_stale_turns_page(target: &mut Option<TurnPage>, incoming: TurnPage) {
-    let page = target.get_or_insert_with(|| TurnPage {
+pub(super) fn merge_stale_turns_page(
+    target: &mut Option<SessionTurnPage>,
+    incoming: SessionTurnPage,
+) {
+    let page = target.get_or_insert_with(|| SessionTurnPage {
         turns: Vec::new(),
         next_cursor: None,
         backwards_cursor: None,
@@ -216,14 +280,14 @@ pub(super) fn merge_stale_turns_page(target: &mut Option<TurnPage>, incoming: Tu
     bound_latest_turns_page(page);
 }
 
-pub(super) fn bound_latest_turns_page(page: &mut TurnPage) {
+pub(super) fn bound_latest_turns_page(page: &mut SessionTurnPage) {
     sort_turns_desc(&mut page.turns);
     page.turns.truncate(INITIAL_TURNS_PAGE_SIZE);
 }
 
 pub(super) fn merge_canonical_turns(
-    target: &mut Vec<Turn>,
-    incoming: impl IntoIterator<Item = Turn>,
+    target: &mut Vec<TurnState>,
+    incoming: impl IntoIterator<Item = TurnState>,
 ) {
     for turn in incoming {
         if let Some(existing) = target.iter_mut().find(|existing| existing.id == turn.id) {
@@ -236,7 +300,7 @@ pub(super) fn merge_canonical_turns(
     }
 }
 
-pub(super) fn sort_turns_desc(turns: &mut [Turn]) {
+pub(super) fn sort_turns_desc(turns: &mut [TurnState]) {
     turns.sort_by(|left, right| {
         right
             .started_at_ms
@@ -249,6 +313,176 @@ pub(super) fn sort_turns_desc(turns: &mut [Turn]) {
 mod tests {
     use super::*;
     use crate::app::tasks::sessions::test_support::*;
+
+    #[tokio::test]
+    async fn a_report_gap_rejects_a_pending_latest_read_without_starting_another() {
+        use crate::app::tasks::test_support::wait_for_mock_method;
+        let (pending, release) = MockCodexResponse::gated_ok(
+            "thread/turns/list",
+            wire_page(
+                vec![wire_turn("unobserved", TurnStatus::Completed)],
+                None,
+                None,
+            ),
+        );
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                resume_response(
+                    ThreadStatus::Idle,
+                    vec![],
+                    vec![wire_turn("latest", TurnStatus::Completed)],
+                ),
+            ),
+            pending,
+        ]);
+        let sessions = TaskSessions::default();
+        let _viewer = sessions
+            .acquire_viewer(&client.driver(), 1, "thread-1")
+            .await
+            .unwrap();
+        let before = sessions.events.for_thread("thread-1");
+        let refreshing = {
+            let sessions = sessions.clone();
+            tokio::spawn(async move { sessions.refresh_latest_turns(1, "thread-1").await })
+        };
+        wait_for_mock_method(&client, "thread/turns/list").await;
+        // The transport can still be subscribed after its report buffer loses
+        // events. Only its observation evidence and pending read are withdrawn.
+        sessions
+            .entry("thread-1")
+            .await
+            .state
+            .lock()
+            .await
+            .withdraw_history("thread-1");
+        release.send(()).unwrap();
+        assert!(refreshing.await.unwrap().unwrap().is_none());
+        assert_eq!(sessions.events.for_thread("thread-1"), before);
+        assert_eq!(
+            sessions.snapshot("thread-1").await.unwrap().lifecycle,
+            SessionLifecycle::Subscribed
+        );
+        assert_eq!(client.mock_requests().await.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn forgetting_a_task_releases_its_cache_and_rejects_pending_history() {
+        use crate::app::tasks::test_support::wait_for_mock_method;
+        let (pending, release) = MockCodexResponse::gated_ok(
+            "thread/turns/list",
+            wire_page(
+                vec![wire_turn("stale-history", TurnStatus::Completed)],
+                None,
+                None,
+            ),
+        );
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                resume_response(
+                    ThreadStatus::Idle,
+                    vec![],
+                    vec![wire_turn("latest", TurnStatus::Completed)],
+                ),
+            ),
+            pending,
+        ]);
+        let sessions = TaskSessions::default();
+        let _viewer = sessions
+            .acquire_viewer(&client.driver(), 1, "thread-1")
+            .await
+            .unwrap();
+        let read = {
+            let sessions = sessions.clone();
+            let driver = client.driver();
+            tokio::spawn(async move {
+                sessions
+                    .load_history_page(
+                        &driver,
+                        1,
+                        "thread-1",
+                        &TaskHistoryCursor {
+                            turns: Some("older".into()),
+                            ..TaskHistoryCursor::default()
+                        },
+                        8,
+                    )
+                    .await
+            })
+        };
+        wait_for_mock_method(&client, "thread/turns/list").await;
+        sessions.forget_thread("thread-1").await;
+        release.send(()).unwrap();
+        assert!(read.await.unwrap().is_err());
+        assert!(sessions.snapshot("thread-1").await.is_none());
+        assert!(sessions.events.for_thread("thread-1").is_empty());
+    }
+
+    #[tokio::test]
+    async fn history_read_cannot_cross_reattachment_with_the_same_provider_generation() {
+        use crate::app::tasks::test_support::wait_for_mock_method;
+        let opened = resume_response(ThreadStatus::Idle, vec![], vec![]);
+        let (pending, release) = MockCodexResponse::gated_ok(
+            "thread/turns/list",
+            wire_page(
+                vec![wire_turn("stale-history", TurnStatus::Completed)],
+                None,
+                None,
+            ),
+        );
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok("thread/resume", opened.clone()),
+            pending,
+            MockCodexResponse::ok("thread/resume", opened),
+        ]);
+        let sessions = TaskSessions::default();
+        let _viewer = sessions
+            .acquire_viewer(&client.driver(), 1, "thread-1")
+            .await
+            .unwrap();
+        let read = {
+            let sessions = sessions.clone();
+            let driver = client.driver();
+            tokio::spawn(async move {
+                sessions
+                    .load_history_page(
+                        &driver,
+                        1,
+                        "thread-1",
+                        &TaskHistoryCursor {
+                            turns: Some("older".into()),
+                            ..TaskHistoryCursor::default()
+                        },
+                        8,
+                    )
+                    .await
+            })
+        };
+        wait_for_mock_method(&client, "thread/turns/list").await;
+        sessions.session_needs_opening_again("thread-1").await;
+        sessions
+            .ensure_subscribed(&client.driver(), 1, "thread-1")
+            .await
+            .unwrap();
+        release.send(()).unwrap();
+        let error = read.await.unwrap().unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("changed connection while reading")
+        );
+        assert!(sessions.events.for_thread("thread-1").is_empty());
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .iter()
+                .filter(|(method, _)| method == "thread/turns/list")
+                .count(),
+            1
+        );
+    }
 
     #[tokio::test]
     async fn terminal_turn_copy_wins_over_stale_running_history_copy() {
@@ -473,13 +707,28 @@ mod tests {
             .await
             .expect("viewer");
 
-        let (snapshot, older_page, _) = sessions
-            .load_older_turns(&client.driver(), 1, "thread-1", "older-1", 8)
+        let (snapshot, older_page) = sessions
+            .load_history_page(
+                &client.driver(),
+                1,
+                "thread-1",
+                &crate::app::tasks::events::TaskHistoryCursor {
+                    turns: Some("older-1".to_string()),
+                    ..Default::default()
+                },
+                8,
+            )
             .await
             .expect("load older history");
         let page = snapshot.turns_page.expect("history");
 
-        assert_eq!(older_page.next_cursor.as_deref(), Some("older-2"));
+        assert_eq!(
+            older_page
+                .next
+                .as_ref()
+                .and_then(|cursor| cursor.turns.as_deref()),
+            Some("older-2")
+        );
         assert_eq!(page.next_cursor.as_deref(), Some("older-1"));
         assert_eq!(page.backwards_cursor.as_deref(), Some("latest-anchor"));
         assert_eq!(page.turns.len(), 1);
@@ -529,16 +778,33 @@ mod tests {
             .await
             .expect("viewer");
 
-        let (snapshot, older_page, _) = sessions
-            .load_older_turns(&client.driver(), 1, "thread-1", "older-1", 8)
+        let (snapshot, older_page) = sessions
+            .load_history_page(
+                &client.driver(),
+                1,
+                "thread-1",
+                &crate::app::tasks::events::TaskHistoryCursor {
+                    turns: Some("older-1".to_string()),
+                    ..Default::default()
+                },
+                8,
+            )
             .await
             .expect("load older history");
         let canonical_page = snapshot.turns_page.expect("latest history page");
 
-        assert_eq!(older_page.turns.len(), 2);
+        assert_eq!(
+            older_page
+                .events
+                .iter()
+                .filter_map(crate::app::tasks::events::task_event_turn_id)
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            2
+        );
         assert_eq!(
             canonical_page.turns,
-            latest_turns.iter().map(Turn::from).collect::<Vec<_>>()
+            latest_turns.iter().map(TurnState::from).collect::<Vec<_>>()
         );
         assert_eq!(canonical_page.next_cursor.as_deref(), Some("older-1"));
         assert_eq!(
@@ -581,7 +847,16 @@ mod tests {
         let before = sessions.snapshot("thread-1").await.expect("snapshot");
 
         let error = sessions
-            .load_older_turns(&client.driver(), 1, "thread-1", "older-1", 8)
+            .load_history_page(
+                &client.driver(),
+                1,
+                "thread-1",
+                &crate::app::tasks::events::TaskHistoryCursor {
+                    turns: Some("older-1".to_string()),
+                    ..Default::default()
+                },
+                8,
+            )
             .await
             .expect_err("older history request should time out");
         assert!(matches!(

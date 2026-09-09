@@ -68,7 +68,7 @@ use crate::agent::driver::{
 use crate::agent::{
     ActivityStatus, AgentError, ApprovalDecision, ApprovalDetail, ApprovalRequest, Conversation,
     ConversationItem, ItemKind, MessageContent, SessionEvent, SessionEventKind, ThreadActiveFlag,
-    ThreadStatus, TokenCount, TokenUsage, Turn, TurnOrigin, TurnPage, TurnStatus,
+    ThreadStatus, TokenCount, TokenUsage, Turn, TurnOrigin, TurnPage, TurnState, TurnStatus,
 };
 
 pub(crate) use self::served_tools::{AskedTool, ToolAsk};
@@ -626,14 +626,21 @@ impl ClaudeClient {
                 },
             );
         }
-        self.report(conversation_id, SessionEventKind::TurnEnded { turn });
+        self.report(
+            conversation_id,
+            SessionEventKind::TurnEnded {
+                turn: TurnState::from(&turn),
+            },
+        );
     }
 
     /// Say that a turn opened, and what it already holds.
     fn report_turn_opened(&self, conversation_id: &str, turn: Turn) {
         self.report(
             conversation_id,
-            SessionEventKind::TurnStarted { turn: turn.clone() },
+            SessionEventKind::TurnStarted {
+                turn: TurnState::from(&turn),
+            },
         );
         for item in turn.items {
             self.report(

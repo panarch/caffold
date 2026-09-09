@@ -4,8 +4,8 @@ use crate::agent::AgentError;
 use crate::agent::{Conversation, Driver, TurnPage};
 
 use super::{
-    ConversationSettings, SessionEntry, SessionLifecycle, SessionSnapshot, TaskSessions,
-    VIEWER_HANDOFF_GRACE, ViewerLease, now_unix_ms, snapshot,
+    ConversationSettings, SessionEntry, SessionLifecycle, SessionSnapshot, SessionTurnPage,
+    TaskSessions, VIEWER_HANDOFF_GRACE, ViewerLease, now_unix_ms, snapshot,
 };
 use super::{
     reconciliation::{apply_opened_conversation, apply_stale_refresh},
@@ -71,18 +71,21 @@ impl TaskSessions {
             }
         }
 
-        let (base_revision, fast_mode) = {
+        let (base_revision, fast_mode, observation_epoch) = {
             let mut state = entry.state.lock().await;
+            if state.generation != generation {
+                state.events.invalidate_continuity(thread_id);
+            }
             state.lifecycle = SessionLifecycle::Subscribing;
             state.on_connection(driver, generation);
             state.terminal_candidate_turn_id = None;
             state.last_error = None;
-            (state.revision, state.fast_mode)
+            (state.revision, state.fast_mode, state.observation_epoch)
         };
         match driver.open_conversation(thread_id, true, fast_mode).await {
             Ok(opened) => {
                 let mut state = entry.state.lock().await;
-                if state.generation != generation {
+                if !state.same_observation(generation, observation_epoch) {
                     return Err(AgentError::Failed(format!(
                         "conversation {thread_id} changed connection while being opened"
                     )));
@@ -103,8 +106,10 @@ impl TaskSessions {
             }
             Err(error) => {
                 let mut state = entry.state.lock().await;
-                state.lifecycle = SessionLifecycle::Error;
-                state.last_error = Some(error.to_string());
+                if state.same_observation(generation, observation_epoch) {
+                    state.lifecycle = SessionLifecycle::Error;
+                    state.last_error = Some(error.to_string());
+                }
                 Err(error)
             }
         }
@@ -136,18 +141,24 @@ impl TaskSessions {
             )
         };
 
-        if !preserve_subscription {
+        let observation_epoch = {
             let mut state = entry.state.lock().await;
-            state.lifecycle = SessionLifecycle::Subscribing;
-            state.on_connection(driver, generation);
-            state.terminal_candidate_turn_id = None;
-            state.last_error = None;
-        }
+            if !preserve_subscription {
+                if state.generation != generation {
+                    state.events.invalidate_continuity(thread_id);
+                }
+                state.lifecycle = SessionLifecycle::Subscribing;
+                state.on_connection(driver, generation);
+                state.terminal_candidate_turn_id = None;
+                state.last_error = None;
+            }
+            state.observation_epoch
+        };
 
         match driver.open_conversation(thread_id, true, fast_mode).await {
             Ok(opened) => {
                 let mut state = entry.state.lock().await;
-                if preserve_subscription && state.generation != generation {
+                if !state.same_observation(generation, observation_epoch) {
                     return Err(AgentError::Failed(format!(
                         "conversation {thread_id} changed connection while being reopened"
                     )));
@@ -168,10 +179,12 @@ impl TaskSessions {
             }
             Err(error) => {
                 let mut state = entry.state.lock().await;
-                if !preserve_subscription {
-                    state.lifecycle = SessionLifecycle::Error;
+                if state.same_observation(generation, observation_epoch) {
+                    if !preserve_subscription {
+                        state.lifecycle = SessionLifecycle::Error;
+                    }
+                    state.last_error = Some(error.to_string());
                 }
-                state.last_error = Some(error.to_string());
                 Err(error)
             }
         }
@@ -188,6 +201,13 @@ impl TaskSessions {
         let entry = self.entry(&thread.id).await;
         let mut state = entry.state.lock().await;
         let history_base_revision = turns_page.as_ref().map(|_| state.revision);
+        if let Some(page) = turns_page.as_ref() {
+            state
+                .events
+                .accept_history_page(&thread, page, state.revision, None);
+            state.events.trim(&thread.id);
+        }
+        let turns_page = turns_page.as_ref().map(SessionTurnPage::from);
         state.lifecycle = SessionLifecycle::Subscribed;
         state.driver = Some(driver.clone());
         state.on_connection(driver, generation);
@@ -288,6 +308,66 @@ impl TaskSessions {
 mod tests {
     use super::*;
     use crate::app::tasks::sessions::test_support::*;
+
+    #[tokio::test]
+    async fn opening_history_cannot_restore_evidence_after_its_observation_ends() {
+        use crate::app::tasks::test_support::wait_for_mock_method_count;
+        // The same admission rule owns initial open, explicit reopen, and a
+        // refresh of an already subscribed conversation.
+        for mode in 0..3 {
+            let (pending, release) = MockCodexResponse::gated_ok(
+                "thread/resume",
+                resume_response(
+                    ThreadStatus::Idle,
+                    vec![],
+                    vec![wire_turn("stale", TurnStatus::Completed)],
+                ),
+            );
+            let mut responses = Vec::new();
+            if mode == 2 {
+                responses.push(MockCodexResponse::ok(
+                    "thread/resume",
+                    resume_response(
+                        ThreadStatus::Idle,
+                        vec![],
+                        vec![wire_turn("kept", TurnStatus::Completed)],
+                    ),
+                ));
+            }
+            responses.push(pending);
+            let client = CodexThreadClient::mock(responses);
+            let sessions = TaskSessions::default();
+            if mode == 2 {
+                sessions
+                    .ensure_subscribed(&client.driver(), 1, "thread-1")
+                    .await
+                    .unwrap();
+            }
+            let before = sessions.events.for_thread("thread-1");
+            let opening = {
+                let sessions = sessions.clone();
+                let driver = client.driver();
+                tokio::spawn(async move {
+                    if mode == 0 {
+                        sessions.ensure_subscribed(&driver, 1, "thread-1").await
+                    } else {
+                        sessions.refresh_subscription(&driver, 1, "thread-1").await
+                    }
+                })
+            };
+            wait_for_mock_method_count(&client, "thread/resume", if mode == 2 { 2 } else { 1 })
+                .await;
+            sessions
+                .codex_connection_lost(1, "observation ended".into())
+                .await;
+            release.send(()).unwrap();
+            assert!(opening.await.unwrap().is_err());
+            assert_eq!(sessions.events.for_thread("thread-1"), before);
+            let state = sessions.snapshot("thread-1").await.unwrap();
+            assert_eq!(state.lifecycle, SessionLifecycle::Error);
+            assert_eq!(state.last_error.as_deref(), Some("observation ended"));
+        }
+    }
 
     #[tokio::test]
     async fn initial_subscription_bootstraps_only_from_resume() {

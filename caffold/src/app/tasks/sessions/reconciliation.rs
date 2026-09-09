@@ -3,15 +3,63 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 
 use crate::agent::{
-    Conversation, Driver, OpenedConversation, ThreadStatus, Turn, TurnPage, TurnStatus,
+    Conversation, Driver, OpenedConversation, ThreadStatus, TurnPage, TurnState, TurnStatus,
 };
 
 use super::turns::{
-    active_turn_id, bound_latest_turns_page, merge_canonical_turns, merge_latest_turns_page,
-    merge_stale_turns_page, replace_active_turn, sort_turns_desc, turn_is_in_progress,
-    update_active_turn,
+    active_turn_id, bound_latest_turns_page, merge_latest_turns_page, merge_stale_turns_page,
+    replace_active_turn, sort_turns_desc, turn_is_in_progress, update_active_turn,
 };
-use super::{SessionLifecycle, SessionState, now_unix_ms};
+use super::{SessionLifecycle, SessionState, SessionTurnPage, now_unix_ms};
+
+struct OpenedSession {
+    conversation: Conversation,
+    turns_page: Option<SessionTurnPage>,
+    cwd: String,
+    settings: BTreeMap<String, Value>,
+}
+
+/// Transfer a full read to the conversation owner before retaining lifecycle
+/// metadata. A session never keeps a second copy of the item payloads.
+fn retain_opened_history(
+    state: &SessionState,
+    mut opened: OpenedConversation,
+    base_revision: u64,
+) -> OpenedSession {
+    if !opened.conversation.turns.is_empty() {
+        let page = opened.turns_page.get_or_insert_with(TurnPage::default);
+        for turn in std::mem::take(&mut opened.conversation.turns)
+            .into_iter()
+            .rev()
+        {
+            if let Some(existing) = page
+                .turns
+                .iter_mut()
+                .find(|existing| existing.id == turn.id)
+            {
+                if existing.status == TurnStatus::InProgress
+                    && turn.status != TurnStatus::InProgress
+                {
+                    *existing = turn;
+                }
+            } else {
+                page.turns.push(turn);
+            }
+        }
+    }
+    if let Some(page) = opened.turns_page.as_ref() {
+        state
+            .events
+            .accept_history_page(&opened.conversation, page, base_revision, None);
+        state.events.trim(&opened.conversation.id);
+    }
+    OpenedSession {
+        conversation: opened.conversation,
+        turns_page: opened.turns_page.as_ref().map(SessionTurnPage::from),
+        cwd: opened.cwd,
+        settings: opened.settings,
+    }
+}
 
 /// What the agent says this conversation's settings are.
 ///
@@ -42,8 +90,9 @@ fn merge_external_resume_response(
     response: OpenedConversation,
     base_revision: u64,
 ) -> MetadataMergeOutcome {
+    let response = retain_opened_history(state, response, base_revision);
     apply_thread_settings(state, driver, &response.settings);
-    let OpenedConversation {
+    let OpenedSession {
         conversation,
         turns_page,
         cwd,
@@ -61,7 +110,7 @@ fn merge_external_resume_response(
 fn merge_external_snapshot_with_active_cwd(
     state: &mut SessionState,
     mut incoming_thread: Conversation,
-    latest_turns: Option<TurnPage>,
+    latest_turns: Option<SessionTurnPage>,
     base_revision: u64,
     resumed_active_turn_cwd: Option<String>,
 ) -> MetadataMergeOutcome {
@@ -75,11 +124,6 @@ fn merge_external_snapshot_with_active_cwd(
     let newer_active_turn_id = preserve_newer_turns
         .then(|| state.active_turn_id.clone())
         .flatten();
-    if let Some(current) = state.conversation.take() {
-        let mut turns = current.turns;
-        merge_external_turns(&mut turns, incoming_thread.turns, preserve_newer_turns);
-        incoming_thread.turns = turns;
-    }
     if let Some(status) = newer_status {
         incoming_thread.status = status;
     }
@@ -118,8 +162,8 @@ pub(super) struct MetadataMergeOutcome {
 }
 
 fn merge_external_turns(
-    target: &mut Vec<Turn>,
-    incoming: impl IntoIterator<Item = Turn>,
+    target: &mut Vec<TurnState>,
+    incoming: impl IntoIterator<Item = TurnState>,
     preserve_existing_status: bool,
 ) {
     for turn in incoming {
@@ -138,11 +182,11 @@ fn merge_external_turns(
 }
 
 fn merge_external_turns_page(
-    target: &mut Option<TurnPage>,
-    incoming: TurnPage,
+    target: &mut Option<SessionTurnPage>,
+    incoming: SessionTurnPage,
     preserve_existing_status: bool,
 ) {
-    let page = target.get_or_insert_with(|| TurnPage {
+    let page = target.get_or_insert_with(|| SessionTurnPage {
         turns: Vec::new(),
         next_cursor: None,
         backwards_cursor: None,
@@ -165,11 +209,12 @@ pub(super) fn apply_opened_conversation(
     merge_history: bool,
     history_base_revision: u64,
 ) {
+    let opened = retain_opened_history(state, opened, history_base_revision);
     let preserved_terminal_candidate = merge_history
         .then(|| state.terminal_candidate_turn_id.clone())
         .flatten();
     apply_thread_settings(state, driver, &opened.settings);
-    let OpenedConversation {
+    let OpenedSession {
         conversation: thread,
         turns_page: incoming_page,
         cwd: active_turn_cwd,
@@ -222,9 +267,10 @@ pub(super) fn apply_stale_refresh(
     opened: OpenedConversation,
     base_revision: u64,
 ) {
+    let opened = retain_opened_history(state, opened, base_revision);
     let preserved_terminal_candidate = state.terminal_candidate_turn_id.clone();
     apply_thread_settings(state, driver, &opened.settings);
-    let OpenedConversation {
+    let OpenedSession {
         conversation: incoming_thread,
         turns_page: incoming_page,
         cwd: active_turn_cwd,
@@ -240,11 +286,6 @@ pub(super) fn apply_stale_refresh(
         .then(|| state.active_turn_id.clone())
         .flatten();
     let mut thread = incoming_thread;
-    if let Some(current) = state.conversation.take() {
-        let mut turns = current.turns;
-        merge_canonical_turns(&mut turns, thread.turns);
-        thread.turns = turns;
-    }
     if let Some(status) = newer_status {
         thread.status = status;
     }
@@ -460,7 +501,7 @@ mod tests {
                 &session_event(
                     "thread-1",
                     SessionEventKind::TurnEnded {
-                        turn: Turn::from(&old_completed),
+                        turn: TurnState::from(&old_completed),
                     },
                 ),
             )
