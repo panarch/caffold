@@ -101,10 +101,6 @@ async fn fork_task(
             },
         )
         .await?;
-    let _viewer = state
-        .task_sessions
-        .reserve_viewer(&created.task.thread_id)
-        .await;
     let agent = TaskAgent::Codex(connection);
     let mut detail = state
         .detail
@@ -179,10 +175,6 @@ async fn create_task_fork(
             },
         )
         .await?;
-    let _viewer = state
-        .task_sessions
-        .reserve_viewer(&created.task.thread_id)
-        .await;
     let agent = TaskAgent::Codex(connection);
     let mut detail = state
         .detail

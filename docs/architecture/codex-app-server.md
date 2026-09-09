@@ -175,8 +175,8 @@ runtime shutdown lifecycle to `caffold/src/app.rs`.
   thread-status ownership.
 
 - `sessions.rs` owns what Caffold knows about a Task while somebody is
-  watching it: viewer leases and the grace period that survives a page
-  navigation, the revisions a reader compares against, the connection
+  watching it or a request is in progress: separate viewer, request, and
+  runtime leases, the revisions a reader compares against, the connection
   generation that decides whether a late answer still counts, and the
   arbitration between a slow read and the live stream. None of that is one
   agent's, and it names none.
@@ -197,7 +197,14 @@ persist a second task ledger.
   and an initial page of the latest eight turns with full items.
 - Additional browser viewers share the same subscribed session and do not
   repeat the resume bootstrap.
-- A new thread returned by `thread/start` is registered as already subscribed.
+- A new Codex thread is prepared before Caffold claims or publishes it.
+  After `thread/start` and MCP promotion, the adapter sets the initial name,
+  records Caffold's naming guidance with `thread/inject_items`, then resumes
+  the still-attached thread with an initial full history page. The returned
+  identity must match and the page must be present with full items.
+  Preparation submits no user turn and preserves the established MCP binding;
+  failure deletes the unclaimed provider thread. Caffold registers the
+  prepared conversation and page before publishing its navigator placement.
 - `thread/read` plus bounded `thread/turns/list` provides an external Thread-ID
   preview without `thread/resume`, a viewer lease, a session entry, or managed
   membership. The preview is a browser projection only: it does not change the
@@ -223,9 +230,9 @@ persist a second task ledger.
   carry the same backend-authored Section placement. The navigator can insert
   the row immediately without reconstructing grouping or reloading every
   Section. The response is an idle zero-turn Task and does not schedule
-  `turn/start`. Its creation-time viewer lease covers the browser handoff; with
-  no viewer or prompt runtime lease, the ordinary grace period releases the
-  subscription.
+  `turn/start`. A request lease covers initialization, local claim, session
+  registration, publication, and response assembly. After detachment, the next
+  viewer or ordinary prompt safely resumes the prepared thread.
 - New threads receive Caffold tools only through the authenticated HTTP MCP
   entry supplied in request-scoped config for `thread/start` and
   `thread/resume`. Caffold does not advertise `dynamicTools` on new threads.
@@ -283,12 +290,15 @@ persist a second task ledger.
   `thread/name/set` and returns the tool result. The resulting
   `thread/name/updated` notification updates the canonical session and browser
   title; the successful command also updates the stable Redb display name.
-  Codex config remains the source of truth for existing project
-  `developer_instructions`. Immediately before
-  `thread/start`, Caffold reads that effective value, appends its thread-naming
-  instruction, and sends the composition as `developerInstructions`; Caffold
-  does not store a copy. The thread override must contain both parts because it
-  replaces rather than extends the config value. The instruction asks the model
+  Codex config remains the source of truth for project
+  `developer_instructions`. Caffold leaves that config value intact and records
+  its separate naming policy once, during creation, as a developer message
+  through `thread/inject_items`. That API persists model context without
+  starting a user turn. A `thread/start` developer override alone is not a
+  durable creation boundary: Codex defers recording it until a real turn.
+  Resume uses the stored conversation without recomposing instructions or
+  issuing additional `thread/read` and `config/read` requests for naming.
+  The policy refers to the conversation's first user turn and asks the model
   to call the `rename_current_task` MCP tool exactly once after understanding
   the first request and before its final response, or immediately before
   first-turn isolation.
@@ -302,20 +312,43 @@ persist a second task ledger.
   `turn/steer`, Caffold refreshes one canonical resume snapshot and chooses
   Start or Steer again from that snapshot. It does not infer completion from
   the rejection.
-- The last viewer releases the subscription with `thread/unsubscribe` unless a
-  turn initiated or steered by Caffold still owns a runtime lease.
-- A completed runtime releases its lease and unsubscribes when no viewer
-  remains.
+- Viewers and unfinished creation or prompt requests each own counted leases.
+  A turn initiated or steered by Caffold owns the separate runtime lease.
+  Idle and title notifications cannot release a request lease. Every rejected
+  or completed request releases its own lease, while an accepted prompt hands
+  observation to the runtime lease unless that turn already completed.
+- Creation and prompt handlers finish their owned operation even if the HTTP
+  caller disconnects. An already sent provider command cannot be retracted by
+  dropping its response future; acceptance or failure is recorded before the
+  request lease ends. This does not retry or replay the command.
+- Releasing a viewer or request keeps the subscription reusable for 250 ms.
+  Cleanup, including cleanup prompted by provider observations, waits for that
+  grace and for all viewer, request, and runtime demand to end. New demand
+  during the grace reuses the subscription without resuming or rereading its
+  history. A per-session operation lock orders each resume or unsubscribe
+  through its RPC completion. A new consumer arriving during unsubscribe
+  waits for detachment to finish, then resumes; it cannot cancel an effect
+  already sent to app-server. Dropping a waiting caller also cannot release
+  that operation lock before its provider effect completes.
+
+The local transport lifecycle is `Unloaded`, `Subscribing`, `Subscribed`,
+`Unsubscribing`, or `Error`. `Unloaded` describes Caffold's subscription and does
+not assert the provider's `notLoaded` status. The complete allowed transition
+map and its single write authority are in
+`caffold/src/app/tasks/sessions/control.rs`; lease demand, canonical thread
+status, and connection generations remain separate axes. Connection loss or
+explicit removal invalidates in-flight observations so an older completion
+cannot restore the discarded subscription.
 
 If the proxy connection exits, Caffold marks sessions from that connection
 generation as disconnected. A replacement proxy resumes in-memory sessions
-with an open viewer or runtime lease. On backend startup it also pages
+with an open viewer, request, or runtime lease. On backend startup it also pages
 `thread/loaded/list`, intersects those IDs with Caffold's managed membership,
 and resumes the managed loaded threads. Only canonically active threads retain
 a runtime lease. Caffold never replays `turn/start`, `turn/steer`, or another
 user request automatically; app-server replays pending server requests on
 `thread/resume` with their original IDs.
-An empty Task with no viewer or runtime lease need not be resumed proactively;
+An empty Task with no viewer, request, or runtime lease need not be resumed proactively;
 its next ordinary prompt opens the managed thread on demand. Task existence,
 elapsed time, content, and position are never treated as evidence that a
 message was delivered.
@@ -681,7 +714,7 @@ The remaining `diagnostics` object reports the proxy generation and connection
 state plus aggregate thread-session counts. Daemon state, PID, socket path, and
 managed versions returned by `codex app-server daemon start` remain available
 as transport diagnostics.
-Only sessions with viewers, runtime leases, subscription transitions, or errors
+Only sessions with viewer, request, or runtime leases, subscription transitions, or errors
 are included in the detailed active-session list. Each entry exposes its lease
 counts, lifecycle, revision, last provider sync time, and last protocol error.
 

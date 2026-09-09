@@ -1,9 +1,11 @@
+use super::SubscriptionTransition;
+
 use futures_util::{StreamExt, stream};
 
 use crate::agent::AgentError;
 use crate::agent::{Driver, ThreadStatus};
 
-use super::{SessionAgent, SessionLifecycle, SessionSnapshot, TaskSessions};
+use super::{SessionAgent, SessionSnapshot, TaskSessions, snapshot};
 
 impl TaskSessions {
     /// Report the Codex connection every thread on it was being watched
@@ -32,7 +34,7 @@ impl TaskSessions {
         for (thread_id, entry) in entries {
             let mut state = entry.state.lock().await;
             if state.is_codex() && state.generation == generation {
-                state.lifecycle = SessionLifecycle::Error;
+                state.transition(SubscriptionTransition::Failed);
                 state.driver = None;
                 state.terminal_candidate_turn_id = None;
                 state.last_error = Some(message.clone());
@@ -80,7 +82,7 @@ impl TaskSessions {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
         state.withdraw_history(thread_id);
-        state.lifecycle = SessionLifecycle::Unloaded;
+        state.transition(SubscriptionTransition::Reset);
         state.driver = None;
         state.terminal_candidate_turn_id = None;
         state.revision = state.revision.saturating_add(1);
@@ -109,7 +111,7 @@ impl TaskSessions {
         for (thread_id, entry) in entries {
             let leased = {
                 let state = entry.state.lock().await;
-                state.is_codex() && (state.viewer_leases > 0 || state.runtime_lease)
+                state.is_codex() && state.has_demand()
             };
             if leased {
                 leased_threads.push(thread_id);
@@ -158,32 +160,30 @@ impl TaskSessions {
         generation: u64,
         thread_id: &str,
     ) -> Result<Option<SessionSnapshot>, AgentError> {
+        let _request = self.reserve_request(thread_id).await;
+        self.ensure_subscribed(driver, generation, thread_id)
+            .await?;
         let entry = self.entry(thread_id).await;
-        entry.state.lock().await.runtime_lease = true;
-
-        match self.ensure_subscribed(driver, generation, thread_id).await {
-            Ok(snapshot)
-                if snapshot
-                    .conversation
-                    .as_ref()
-                    .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. })) =>
-            {
-                Ok(Some(snapshot))
-            }
-            Ok(_) => {
-                self.cancel_runtime(thread_id).await;
-                Ok(None)
-            }
-            Err(error) => {
-                self.cancel_runtime(thread_id).await;
-                Err(error)
-            }
+        let mut state = entry.state.lock().await;
+        if state.generation == generation
+            && state
+                .conversation
+                .as_ref()
+                .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }))
+        {
+            // Only the provider's active observation transfers recovery's
+            // scoped demand into a lease for the surviving runtime.
+            state.runtime_lease = true;
+            Ok(Some(snapshot(&state)))
+        } else {
+            Ok(None)
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::SessionLifecycle;
     use super::*;
     use crate::agent;
     use crate::app::tasks::sessions::test_support::*;

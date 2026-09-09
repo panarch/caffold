@@ -33,6 +33,17 @@ pub(super) async fn create_task(
     State(state): State<TaskState>,
     Json(request): Json<CreateTaskRequest>,
 ) -> Result<Json<TaskDetailResponse>, ApiError> {
+    // Once creation starts, finish initialization and claim (or rollback)
+    // even if the browser disconnects while the provider is answering.
+    tokio::spawn(create_task_owned(state, request))
+        .await
+        .map_err(|error| ApiError::Internal(format!("Task creation failed: {error}")))?
+}
+
+async fn create_task_owned(
+    state: TaskState,
+    request: CreateTaskRequest,
+) -> Result<Json<TaskDetailResponse>, ApiError> {
     let cwd = task_cwd(&state, request.cwd.as_deref())?;
     let agent = new_task_agent(&state, request.provider.as_deref(), &cwd).await?;
     let turn_options = TurnOptions {
@@ -53,13 +64,6 @@ pub(super) async fn create_task(
             },
         )
         .await?;
-    // Keep the just-created subscription alive while the response is handed
-    // to a Detail stream. A create-only caller drops this viewer and the normal
-    // handoff grace releases the otherwise idle provider subscription.
-    let _viewer = state
-        .task_sessions
-        .reserve_viewer(&created.task.thread_id)
-        .await;
     let mut detail = state
         .detail
         .read(&agent, &created.task.thread_id, None)
@@ -74,11 +78,24 @@ pub(super) async fn task_prompt(
     Query(_query): Query<TasksQuery>,
     Json(request): Json<TaskPromptRequest>,
 ) -> Result<Json<TaskPromptResponse>, ApiError> {
+    // A dropped HTTP response cannot retract a submitted provider command.
+    // Keep its request lease until acceptance or failure has been recorded.
+    tokio::spawn(task_prompt_owned(state, thread_id, request))
+        .await
+        .map_err(|error| ApiError::Internal(format!("Task prompt failed: {error}")))?
+}
+
+async fn task_prompt_owned(
+    state: TaskState,
+    thread_id: String,
+    request: TaskPromptRequest,
+) -> Result<Json<TaskPromptResponse>, ApiError> {
     let prompt_observed_ms = now_ms();
     if task_store_get(&state, &thread_id).await?.is_none() {
         return Err(task_not_managed_error());
     }
     let _mutation = state.task_sessions.reserve_mutation(&thread_id).await;
+    let _request = state.task_sessions.reserve_request(&thread_id).await;
     let managed = task_store_get(&state, &thread_id)
         .await?
         .ok_or_else(task_not_managed_error)?;
@@ -169,7 +186,6 @@ pub(super) async fn task_prompt(
                     .refresh_subscription(&agent.driver(), agent.generation(), &thread_id)
                     .await
                 {
-                    state.task_sessions.cancel_runtime(&thread_id).await;
                     recover_agent_connection(&state, &agent, &refresh_error).await;
                     return Err(refresh_error.into());
                 }
@@ -180,7 +196,6 @@ pub(super) async fn task_prompt(
                 {
                     Ok(target) => target,
                     Err(refresh_error) => {
-                        state.task_sessions.cancel_runtime(&thread_id).await;
                         state
                             .task_runtime
                             .recover_connection_error_for(&agent, &refresh_error)
@@ -197,7 +212,6 @@ pub(super) async fn task_prompt(
                 }
             }
             Err(error) => {
-                state.task_sessions.cancel_runtime(&thread_id).await;
                 state
                     .task_runtime
                     .recover_connection_error_for(&agent, &error)
@@ -242,7 +256,7 @@ pub(super) async fn task_prompt(
     } else {
         state
             .task_sessions
-            .record_prompt_accepted(agent.generation(), &thread_id)
+            .record_prompt_accepted(agent.generation(), &thread_id, &turn_id)
             .await
     };
     let accepted_event =
@@ -749,16 +763,268 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn failed_initial_history_never_publishes_or_claims_the_created_task() {
+        let root = tempfile::tempdir().unwrap();
+        let id = "thread-uninitialized";
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok("thread/inject_items", json!({})),
+            MockCodexResponse::ok("thread/start", created_thread(id, root.path())),
+            MockCodexResponse::ok("thread/name/set", json!({})),
+            MockCodexResponse::error(
+                "thread/resume",
+                CodexThreadError::ThreadUnavailable("missing rollout".into()),
+            ),
+            MockCodexResponse::ok("thread/delete", json!({})),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        let (_, mut updates) = state.task_list_events.subscribe();
+        let response = router(state.clone())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/tasks")
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"titleSource":"Never publish this"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::BAD_GATEWAY);
+        assert!(task_store_get(&state, id).await.unwrap().is_none());
+        assert!(updates.try_recv().is_err());
+        assert!(state.task_events.for_thread(id).is_empty());
+        assert_eq!(state.task_sessions.diagnostics().await.request_leases, 0);
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "thread/start",
+                "thread/name/set",
+                "thread/inject_items",
+                "thread/resume",
+                "thread/delete"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_naming_persistence_never_publishes_or_claims_the_created_task() {
+        let root = tempfile::tempdir().unwrap();
+        let id = "thread-uninitialized";
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok("thread/start", created_thread(id, root.path())),
+            MockCodexResponse::ok("thread/name/set", json!({})),
+            MockCodexResponse::error(
+                "thread/inject_items",
+                CodexThreadError::Protocol("could not persist instructions".into()),
+            ),
+            MockCodexResponse::ok("thread/delete", json!({})),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        let (_, mut updates) = state.task_list_events.subscribe();
+        let response = router(state.clone())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/tasks")
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"titleSource":"Never publish this"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::BAD_GATEWAY);
+        assert!(task_store_get(&state, id).await.unwrap().is_none());
+        assert!(updates.try_recv().is_err());
+        assert!(state.task_events.for_thread(id).is_empty());
+        assert_eq!(state.task_sessions.diagnostics().await.request_leases, 0);
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "thread/start",
+                "thread/name/set",
+                "thread/inject_items",
+                "thread/delete"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_disconnected_creator_finishes_initialization_before_publishing_the_task() {
+        let root = tempfile::tempdir().unwrap();
+        let id = "thread-disconnected-creator";
+        let (initializing, release) =
+            MockCodexResponse::gated_ok("thread/resume", initial_history(id, root.path()));
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok("thread/inject_items", json!({})),
+            MockCodexResponse::ok("thread/start", created_thread(id, root.path())),
+            MockCodexResponse::ok("thread/name/set", json!({})),
+            initializing,
+            MockCodexResponse::ok("thread/unsubscribe", json!({"status":"unsubscribed"})),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        let (_, mut updates) = state.task_list_events.subscribe();
+        let request = tokio::spawn(
+            router(state.clone()).oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/tasks")
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"titleSource":"Complete the submitted creation"}"#,
+                    ))
+                    .unwrap(),
+            ),
+        );
+        wait_for_mock_method(&client, "thread/resume").await;
+        assert!(task_store_get(&state, id).await.unwrap().is_none());
+        assert!(updates.try_recv().is_err());
+        request.abort();
+        assert!(request.await.unwrap_err().is_cancelled());
+        assert_eq!(state.task_sessions.diagnostics().await.request_leases, 1);
+        release.send(()).unwrap();
+        wait_for_mock_method(&client, "thread/unsubscribe").await;
+        assert!(task_store_get(&state, id).await.unwrap().is_some());
+        assert!(updates.try_recv().is_ok());
+        let diagnostics = state.task_sessions.diagnostics().await;
+        assert_eq!(diagnostics.request_leases, 0);
+        assert_eq!(diagnostics.runtime_leases, 0);
+        assert!(state.task_events.for_thread(id).is_empty());
+    }
+
+    #[tokio::test]
+    async fn rejected_prompt_options_release_the_request_and_subscription() {
+        let root = tempfile::tempdir().unwrap();
+        let id = "thread-rejected-options";
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok("thread/resume", initial_history(id, root.path())),
+            MockCodexResponse::ok("thread/unsubscribe", json!({"status":"unsubscribed"})),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        state
+            .task_store
+            .claim(ManagedThread::new(id, RunBy::Codex, Some(1), None, None), 1)
+            .unwrap();
+        let response = router(state.clone())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/tasks/{id}/prompts"))
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        json!({"prompt":"Rejected before submission", "model":"x".repeat(129)})
+                            .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+        wait_for_mock_method(&client, "thread/unsubscribe").await;
+        let diagnostics = state.task_sessions.diagnostics().await;
+        assert_eq!(diagnostics.request_leases, 0);
+        assert_eq!(diagnostics.runtime_leases, 0);
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            ["thread/resume", "thread/unsubscribe"]
+        );
+    }
+
+    #[tokio::test]
+    async fn cancelling_the_http_prompt_keeps_ownership_until_provider_acceptance() {
+        let root = tempfile::tempdir().unwrap();
+        let id = "thread-cancelled-http";
+        let (start, release) = MockCodexResponse::gated_ok(
+            "turn/start",
+            json!({
+                "turn":{"id":"turn-accepted", "status":"inProgress", "items":[]}
+            }),
+        );
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok("thread/resume", initial_history(id, root.path())),
+            start,
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        state
+            .task_store
+            .claim(ManagedThread::new(id, RunBy::Codex, Some(1), None, None), 1)
+            .unwrap();
+        let request = tokio::spawn(
+            router(state.clone()).oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/tasks/{id}/prompts"))
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"prompt":"Accepted despite a lost HTTP response"}"#,
+                    ))
+                    .unwrap(),
+            ),
+        );
+        wait_for_mock_method(&client, "turn/start").await;
+        request.abort();
+        assert!(request.await.unwrap_err().is_cancelled());
+        assert_eq!(state.task_sessions.diagnostics().await.request_leases, 1);
+        release.send(()).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while state.task_sessions.diagnostics().await.request_leases != 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the completed command releases its request ownership");
+        assert_eq!(state.task_sessions.diagnostics().await.runtime_leases, 1);
+        assert_eq!(
+            state
+                .task_sessions
+                .snapshot(id)
+                .await
+                .unwrap()
+                .active_turn_id
+                .as_deref(),
+            Some("turn-accepted")
+        );
+        assert!(!state.task_events.for_thread(id).is_empty());
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            ["thread/resume", "turn/start"]
+        );
+    }
+
+    #[tokio::test]
     async fn create_only_accepts_an_empty_title_source_and_returns_zero_turns() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-empty-create-only";
         let client = CodexThreadClient::mock(vec![
-            MockCodexResponse::ok(
-                "config/read",
-                json!({ "config": { "developer_instructions": null } }),
-            ),
+            MockCodexResponse::ok("thread/inject_items", json!({})),
             MockCodexResponse::ok("thread/start", created_thread(thread_id, root.path())),
             MockCodexResponse::ok("thread/name/set", json!({})),
+            MockCodexResponse::ok("thread/resume", initial_history(thread_id, root.path())),
+            MockCodexResponse::ok("thread/unsubscribe", json!({"status":"unsubscribed"})),
         ]);
         let state =
             task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
@@ -778,6 +1044,7 @@ mod tests {
         .await
         .expect("create-only request succeeds");
 
+        wait_for_mock_method(&client, "thread/unsubscribe").await;
         let task = response.0.task.expect("created Task");
         assert_eq!(task.thread_id, thread_id);
         assert_eq!(task.title, "Thread thread-e");
@@ -791,7 +1058,13 @@ mod tests {
                 .into_iter()
                 .map(|(method, _)| method)
                 .collect::<Vec<_>>(),
-            ["config/read", "thread/start", "thread/name/set"]
+            [
+                "thread/start",
+                "thread/name/set",
+                "thread/inject_items",
+                "thread/resume",
+                "thread/unsubscribe"
+            ]
         );
     }
 
@@ -800,10 +1073,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-explicit-permission";
         let mut responses = vec![
-            MockCodexResponse::ok(
-                "config/read",
-                json!({ "config": { "developer_instructions": "Keep custom guidance." } }),
-            ),
+            MockCodexResponse::ok("thread/inject_items", json!({})),
             MockCodexResponse::ok(
                 "thread/start",
                 json!({
@@ -823,6 +1093,9 @@ mod tests {
                 }
                 }),
             ),
+            MockCodexResponse::ok("thread/resume", initial_history(thread_id, root.path())),
+            MockCodexResponse::ok("thread/unsubscribe", json!({"status":"unsubscribed"})),
+            MockCodexResponse::ok("thread/resume", initial_history(thread_id, root.path())),
         ];
         responses.push(MockCodexResponse::ok_for(
             "thread/name/set",
@@ -860,6 +1133,7 @@ mod tests {
         .await
         .expect("task creation succeeds");
 
+        wait_for_mock_method(&client, "thread/unsubscribe").await;
         assert_eq!(creation.0.permission_mode, Some("approveForMe".to_string()));
         assert_eq!(
             creation.0.task.as_ref().map(|task| task.title.as_str()),
@@ -874,7 +1148,13 @@ mod tests {
                 .into_iter()
                 .map(|(method, _)| method)
                 .collect::<Vec<_>>(),
-            ["config/read", "thread/start", "thread/name/set"]
+            [
+                "thread/start",
+                "thread/name/set",
+                "thread/inject_items",
+                "thread/resume",
+                "thread/unsubscribe"
+            ]
         );
         assert!(
             !state
@@ -885,6 +1165,7 @@ mod tests {
                 .runtime_lease
         );
 
+        wait_for_mock_method(&client, "thread/unsubscribe").await;
         let observed_after_creation_ms = now_ms();
         let response = task_prompt(
             State(state.clone()),
@@ -928,18 +1209,27 @@ mod tests {
             })
             .expect("ordinary prompt publishes the accepted user message");
         assert!(accepted.position.anchor_ms >= observed_after_creation_ms);
-        assert_eq!(requests[0].0, "config/read");
-        assert_eq!(requests[1].0, "thread/start");
-        assert_eq!(requests[1].1["serviceTier"], "default");
-        assert_eq!(requests[1].1["approvalsReviewer"], "auto_review");
-        let developer_instructions = requests[1].1["developerInstructions"]
-            .as_str()
-            .expect("composed developer instructions");
-        assert!(developer_instructions.starts_with("Keep custom guidance.\n\n"));
-        assert!(developer_instructions.contains("newly created Caffold task"));
-        assert_eq!(requests[1].1.get("dynamicTools"), None);
-        assert_eq!(requests[3].0, "turn/start");
-        assert_eq!(requests[3].1["approvalsReviewer"], "auto_review");
+        assert_eq!(requests[0].0, "thread/start");
+        assert_eq!(requests[0].1["serviceTier"], "default");
+        assert_eq!(requests[0].1["approvalsReviewer"], "auto_review");
+        assert!(requests[0].1.get("developerInstructions").is_none());
+        assert_eq!(requests[0].1.get("dynamicTools"), None);
+        let naming = requests
+            .iter()
+            .find(|(method, _)| method == "thread/inject_items")
+            .unwrap();
+        assert_eq!(naming.1["items"][0]["role"], "developer");
+        assert!(
+            naming.1["items"][0]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("newly created Caffold task")
+        );
+        let prompt = requests
+            .iter()
+            .find(|(method, _)| method == "turn/start")
+            .unwrap();
+        assert_eq!(prompt.1["approvalsReviewer"], "auto_review");
     }
 
     #[tokio::test]
@@ -948,10 +1238,7 @@ mod tests {
         let thread_id = "thread-model-settings";
         let mut responses = vec![
             MockCodexResponse::ok("model/list", current_model_list_response()),
-            MockCodexResponse::ok(
-                "config/read",
-                json!({ "config": { "developer_instructions": null } }),
-            ),
+            MockCodexResponse::ok("thread/inject_items", json!({})),
             MockCodexResponse::ok(
                 "thread/start",
                 json!({
@@ -968,6 +1255,9 @@ mod tests {
                     "reasoningEffort": "medium"
                 }),
             ),
+            MockCodexResponse::ok("thread/resume", initial_history(thread_id, root.path())),
+            MockCodexResponse::ok("thread/unsubscribe", json!({"status":"unsubscribed"})),
+            MockCodexResponse::ok("thread/resume", initial_history(thread_id, root.path())),
         ];
         responses.push(MockCodexResponse::ok_for(
             "thread/name/set",
@@ -1048,6 +1338,7 @@ mod tests {
         );
         assert!(stored_after_creation.fast_mode);
 
+        wait_for_mock_method(&client, "thread/unsubscribe").await;
         let prompt = task_prompt(
             State(state.clone()),
             AxumPath(thread_id.to_string()),
@@ -1108,12 +1399,23 @@ mod tests {
         );
         assert_eq!(state.task_list_events.refresh_count(), 0);
         let requests = client.mock_requests().await;
-        assert_eq!(requests[2].0, "thread/start");
-        assert_eq!(requests[2].1["serviceTier"], "priority");
-        assert_eq!(requests[5].0, "turn/start");
-        assert_eq!(requests[5].1["model"], "gpt-5.6-sol");
-        assert_eq!(requests[5].1["serviceTier"], "priority");
-        assert_eq!(requests[5].1["effort"], "xhigh");
+        assert_eq!(requests[1].0, "thread/start");
+        assert_eq!(requests[1].1["serviceTier"], "priority");
+        let prompt = requests
+            .iter()
+            .find(|(method, _)| method == "turn/start")
+            .unwrap();
+        assert_eq!(prompt.1["model"], "gpt-5.6-sol");
+        assert_eq!(prompt.1["serviceTier"], "priority");
+        assert_eq!(prompt.1["effort"], "xhigh");
+    }
+
+    fn initial_history(thread_id: &str, cwd: &std::path::Path) -> JsonValue {
+        let mut response = created_thread(thread_id, cwd);
+        response["cwd"] = json!(cwd.display().to_string());
+        response["initialTurnsPage"] =
+            json!({"data": [], "nextCursor": null, "backwardsCursor": null});
+        response
     }
 
     /// The empty thread a creation answers with.
@@ -1136,11 +1438,9 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-first-turn-pending";
         let client = CodexThreadClient::mock(vec![
-            MockCodexResponse::ok(
-                "config/read",
-                json!({ "config": { "developer_instructions": null } }),
-            ),
+            MockCodexResponse::ok("thread/inject_items", json!({})),
             MockCodexResponse::ok("thread/start", created_thread(thread_id, root.path())),
+            MockCodexResponse::ok("thread/resume", initial_history(thread_id, root.path())),
             MockCodexResponse::ok_for(
                 "thread/name/set",
                 json!({ "threadId": thread_id, "name": "[REQ] Read the planner" }),
@@ -1247,12 +1547,12 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-first-prompt-refused";
         let client = CodexThreadClient::mock(vec![
-            MockCodexResponse::ok(
-                "config/read",
-                json!({ "config": { "developer_instructions": null } }),
-            ),
+            MockCodexResponse::ok("thread/inject_items", json!({})),
             MockCodexResponse::ok("thread/start", created_thread(thread_id, root.path())),
+            MockCodexResponse::ok("thread/resume", initial_history(thread_id, root.path())),
+            MockCodexResponse::ok("thread/unsubscribe", json!({"status":"unsubscribed"})),
             MockCodexResponse::ok("thread/name/set", json!({})),
+            MockCodexResponse::ok("thread/resume", initial_history(thread_id, root.path())),
             MockCodexResponse::error(
                 "turn/start",
                 CodexThreadError::Protocol("the agent could not be reached".to_string()),
@@ -1278,6 +1578,7 @@ mod tests {
         .expect("empty Task creation succeeds");
         assert_eq!(detail.0.thread_id, thread_id);
 
+        wait_for_mock_method(&client, "thread/unsubscribe").await;
         let error = task_prompt(
             State(state.clone()),
             AxumPath(thread_id.to_string()),
@@ -1295,6 +1596,7 @@ mod tests {
         .await
         .expect_err("ordinary prompt failure is returned to its caller");
         assert!(error.to_string().contains("the agent could not be reached"));
+        wait_for_mock_method_count(&client, "thread/unsubscribe", 2).await;
         assert!(
             task_store_get(&state, thread_id).await.unwrap().is_some(),
             "the valid empty Task remains managed after prompt rejection"
@@ -1322,9 +1624,12 @@ mod tests {
                 .map(|(method, _)| method)
                 .collect::<Vec<_>>(),
             [
-                "config/read",
                 "thread/start",
                 "thread/name/set",
+                "thread/inject_items",
+                "thread/resume",
+                "thread/unsubscribe",
+                "thread/resume",
                 "turn/start",
                 "thread/unsubscribe"
             ]
@@ -1336,10 +1641,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-section-setup-failure";
         let client = CodexThreadClient::mock(vec![
-            MockCodexResponse::ok(
-                "config/read",
-                json!({ "config": { "developer_instructions": null } }),
-            ),
+            MockCodexResponse::ok("thread/inject_items", json!({})),
             MockCodexResponse::ok(
                 "thread/start",
                 json!({
@@ -1354,6 +1656,7 @@ mod tests {
                     }
                 }),
             ),
+            MockCodexResponse::ok("thread/resume", initial_history(thread_id, root.path())),
             MockCodexResponse::ok_for(
                 "thread/name/set",
                 json!({
@@ -1405,9 +1708,10 @@ mod tests {
                 .map(|(method, _)| method)
                 .collect::<Vec<_>>(),
             [
-                "config/read",
                 "thread/start",
                 "thread/name/set",
+                "thread/inject_items",
+                "thread/resume",
                 "thread/archive"
             ]
         );

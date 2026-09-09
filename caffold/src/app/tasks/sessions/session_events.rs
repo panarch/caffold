@@ -51,12 +51,7 @@ impl TaskSessions {
             } else {
                 None
             };
-            (
-                effect,
-                revision,
-                state.viewer_leases == 0 && !state.runtime_lease,
-                terminal,
-            )
+            (effect, revision, !state.has_demand(), terminal)
         };
         let advances_revision = effect != SessionEventEffect::Ignored;
         if advances_revision && should_unsubscribe {

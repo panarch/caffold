@@ -119,7 +119,7 @@ conversation ID and cwd. Neither path deletes a Git branch.
 | Caffold-served Task tools | Caffold-owned HTTP MCP config on thread start and resume; calls from dynamic tools persisted by pre-MCP threads remain supported | In-process MCP server declared whenever the session is initialized |
 | Current-plan instruction carrier | Caffold MCP `initialize` result `instructions` | Initialize `appendSystemPrompt` on fresh and resumed sessions |
 | Readiness | Typed, blocking installation and app-server readiness | Diagnostic status; an attempted operation reports its own failure |
-| Idle release | A thread subscription may be dropped when no viewer or runtime lease remains | The session stays attached; detaching and immediately reattaching is not a free operation |
+| Idle release | A thread subscription may be dropped when no viewer, request, or runtime lease remains | The session stays attached; detaching and immediately reattaching is not a free operation |
 
 The table describes ownership, not a feature score. Both drivers support the
 implemented Task loop, but they reach it through different guarantees.
@@ -356,7 +356,7 @@ progress writer.
 Each driver carries that same meaning through its native initialization
 boundary. Codex returns it as the Caffold MCP server's `instructions` on MCP
 initialization for thread start and resume. This leaves the project's Codex
-`developer_instructions` and Caffold's separate first-turn naming composition
+`developer_instructions` and Caffold's separately recorded first-turn naming policy
 unchanged. Claude supplies it through `appendSystemPrompt` on every session
 initialize; only a fresh Task appends the one-time naming instructions, while
 a resumed or reattached session receives the plan convention alone.

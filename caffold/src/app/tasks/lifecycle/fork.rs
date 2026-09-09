@@ -107,6 +107,7 @@ impl TaskLifecycle {
             .fork_thread(&source_thread_id, &cwd)
             .await?;
         let child_thread_id = forked.thread_id.clone();
+        let request = self.sessions.reserve_request(&child_thread_id).await;
         let source_after = match connection.client.read_thread(&source_thread_id).await {
             Ok(source_after) => source_after,
             Err(error) => {
@@ -177,7 +178,6 @@ impl TaskLifecycle {
             }
         };
 
-        self.list_events.place(task.clone(), placement.clone());
         self.sessions
             .register_created_thread(
                 &connection.driver(),
@@ -192,7 +192,12 @@ impl TaskLifecycle {
                 },
             )
             .await;
-        Ok(CreatedTask { task, placement })
+        self.list_events.place(task.clone(), placement.clone());
+        Ok(CreatedTask {
+            task,
+            placement,
+            _request: request,
+        })
     }
 
     async fn claim_in_section_at_top(

@@ -1,9 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use serde_json::Value;
-#[cfg(test)]
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::CodexTurnOptions;
 #[cfg(test)]
@@ -43,6 +41,7 @@ pub(crate) const THREAD_LOADED_LIST: &str = "thread/loaded/list";
 pub(crate) const THREAD_START: &str = "thread/start";
 pub(crate) const THREAD_FORK: &str = "thread/fork";
 pub(crate) const THREAD_NAME_SET: &str = "thread/name/set";
+pub(crate) const THREAD_INJECT_ITEMS: &str = "thread/inject_items";
 pub(crate) const THREAD_RESUME: &str = "thread/resume";
 pub(crate) const THREAD_ARCHIVE: &str = "thread/archive";
 pub(crate) const THREAD_DELETE: &str = "thread/delete";
@@ -651,6 +650,14 @@ pub(crate) struct InitialTurnsPageParams {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct ThreadInjectItemsParams<'a> {
+    pub thread_id: &'a str,
+    /// Codex accepts raw Responses API items at this protocol boundary.
+    pub items: [Value; 1],
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ThreadResumeParams<'a> {
     pub thread_id: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1130,6 +1137,17 @@ pub(crate) fn thread_resume_params_with_config<'a>(
             sort_direction: SortDirection::Desc,
             items_view: TurnItemsView::Full,
         }),
+    }
+}
+
+pub(crate) fn thread_naming_instructions_params(thread_id: &str) -> ThreadInjectItemsParams<'_> {
+    ThreadInjectItemsParams {
+        thread_id,
+        items: [json!({
+            "type": "message",
+            "role": "developer",
+            "content": [{"type": "input_text", "text": CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS}]
+        })],
     }
 }
 
@@ -1707,6 +1725,19 @@ mod tests {
                 json!({
                     "threadId": "thread_1",
                     "name": "Readable name"
+                }),
+            ),
+            (
+                THREAD_INJECT_ITEMS,
+                serde_json::to_value(thread_naming_instructions_params("thread_1"))
+                    .expect("naming instruction params"),
+                json!({
+                    "threadId": "thread_1",
+                    "items": [{
+                        "type": "message",
+                        "role": "developer",
+                        "content": [{"type": "input_text", "text": CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS}]
+                    }]
                 }),
             ),
             (

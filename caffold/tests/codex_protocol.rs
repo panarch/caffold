@@ -138,6 +138,7 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
     for method in [
         "thread/start",
         "thread/name/set",
+        "thread/inject_items",
         "thread/read",
         "thread/fork",
         "thread/delete",
@@ -176,6 +177,10 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
         ],
     );
     schema.assert_declares("v2/ThreadStartParams.ts", &["config?:"]);
+    schema.assert_declares(
+        "v2/ThreadInjectItemsParams.ts",
+        &["threadId: string", "items: Array<JsonValue>"],
+    );
     schema.assert_declares(
         "v2/McpResourceReadParams.ts",
         &["threadId?: string | null", "server: string", "uri: string"],

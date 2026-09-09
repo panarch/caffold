@@ -3,11 +3,10 @@
 //! The agent owns the conversation. Caffold owns watching it, and watching
 //! carries costs and races the agent knows nothing about. They live here.
 //!
-//! **Who is watching.** A subscription is not free, so it opens when the first
-//! viewer arrives and closes when the last one leaves. Following a link drops
-//! and retakes a lease within milliseconds, so closing at once would thrash:
-//! the departing viewer advances an epoch, waits [`VIEWER_HANDOFF_GRACE`], and
-//! gives the subscription up only if nobody arrived in between.
+//! **Who needs the subscription.** Viewers and in-flight requests own separate
+//! scoped leases. Provider observations own the runtime lease. A subscription
+//! may close when all three are absent. A short handoff grace reuses an idle
+//! subscription between requests; expiry never makes a conversation unusable.
 //!
 //! **How much a reader has already seen.** Every change advances a revision, so
 //! a reader holding an older one can be handed a whole snapshot instead of a
@@ -32,6 +31,7 @@
 //! This is not where a Task is kept — that is `task_store` — and not what a
 //! Task has said — that is `events`. It lives for as long as the process does.
 
+mod control;
 mod metadata;
 mod prompt;
 mod reconciliation;
@@ -43,17 +43,18 @@ mod turns;
 use std::{
     collections::HashMap,
     sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde::Serialize;
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::{sync::Mutex as AsyncMutex, time::Instant};
+
+use control::SubscriptionTransition;
 
 use super::events::TaskEvents;
 use crate::agent::{Conversation, Driver, ThreadStatus, TurnPage, TurnState};
 
 pub(super) const INITIAL_TURNS_PAGE_SIZE: usize = 8;
-const VIEWER_HANDOFF_GRACE: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -141,6 +142,7 @@ pub(in crate::app::tasks) struct SessionDiagnostics {
     pub(in crate::app::tasks) thread_id: String,
     pub(in crate::app::tasks) lifecycle: SessionLifecycle,
     pub(in crate::app::tasks) viewer_leases: usize,
+    pub(in crate::app::tasks) request_leases: usize,
     pub(in crate::app::tasks) runtime_lease: bool,
     pub(in crate::app::tasks) generation: u64,
     pub(in crate::app::tasks) revision: u64,
@@ -154,6 +156,7 @@ pub(in crate::app::tasks) struct SessionsDiagnostics {
     pub(in crate::app::tasks) tracked_sessions: usize,
     pub(in crate::app::tasks) subscribed_sessions: usize,
     pub(in crate::app::tasks) viewer_leases: usize,
+    pub(in crate::app::tasks) request_leases: usize,
     pub(in crate::app::tasks) runtime_leases: usize,
     pub(in crate::app::tasks) active_sessions: Vec<SessionDiagnostics>,
 }
@@ -193,6 +196,10 @@ impl From<&Driver> for SessionAgent {
 }
 
 impl SessionState {
+    fn has_demand(&self) -> bool {
+        self.viewer_leases > 0 || self.request_leases > 0 || self.runtime_lease
+    }
+
     /// Record the connection this session is now being watched on.
     fn on_connection(&mut self, driver: &Driver, generation: u64) {
         if self.lifecycle == SessionLifecycle::Subscribing || self.generation != generation {
@@ -243,7 +250,9 @@ struct SessionState {
     active_turn_cwd: Option<String>,
     terminal_candidate_turn_id: Option<String>,
     viewer_leases: usize,
-    viewer_epoch: u64,
+    request_leases: usize,
+    /// Reuse the subscription across a short gap after a scoped lease ends.
+    handoff_until: Option<Instant>,
     runtime_lease: bool,
     /// The agent this session is being watched through, kept so the last
     /// viewer to leave can say so without being handed one.
@@ -285,7 +294,8 @@ impl Default for SessionState {
             active_turn_cwd: None,
             terminal_candidate_turn_id: None,
             viewer_leases: 0,
-            viewer_epoch: 0,
+            request_leases: 0,
+            handoff_until: None,
             runtime_lease: false,
             driver: None,
             generation: 0,
@@ -308,6 +318,14 @@ impl Default for SessionState {
 pub(in crate::app::tasks) struct ViewerLease {
     sessions: TaskSessions,
     thread_id: String,
+    entry: Arc<SessionEntry>,
+}
+
+/// Demand owned by one backend request, independent of provider activity.
+pub(in crate::app::tasks) struct RequestLease {
+    sessions: TaskSessions,
+    thread_id: String,
+    entry: Arc<SessionEntry>,
 }
 
 impl TaskSessions {
@@ -328,6 +346,7 @@ impl TaskSessions {
             .collect::<Vec<_>>();
         let mut subscribed_sessions = 0;
         let mut viewer_leases = 0;
+        let mut request_leases = 0;
         let mut runtime_leases = 0;
         let mut active_sessions = Vec::new();
 
@@ -337,18 +356,21 @@ impl TaskSessions {
                 subscribed_sessions += 1;
             }
             viewer_leases += state.viewer_leases;
+            request_leases += state.request_leases;
             runtime_leases += usize::from(state.runtime_lease);
-            if state.viewer_leases > 0
-                || state.runtime_lease
+            if state.has_demand()
                 || matches!(
                     state.lifecycle,
-                    SessionLifecycle::Subscribing | SessionLifecycle::Error
+                    SessionLifecycle::Subscribing
+                        | SessionLifecycle::Unsubscribing
+                        | SessionLifecycle::Error
                 )
             {
                 active_sessions.push(SessionDiagnostics {
                     thread_id: thread_id.clone(),
                     lifecycle: state.lifecycle,
                     viewer_leases: state.viewer_leases,
+                    request_leases: state.request_leases,
                     runtime_lease: state.runtime_lease,
                     generation: state.generation,
                     revision: state.revision,
@@ -363,6 +385,7 @@ impl TaskSessions {
             tracked_sessions: entries.len(),
             subscribed_sessions,
             viewer_leases,
+            request_leases,
             runtime_leases,
             active_sessions,
         }
@@ -378,7 +401,7 @@ impl TaskSessions {
         let mut entries = self.entries.lock().await;
         if let Some(entry) = entries.remove(thread_id) {
             let mut state = entry.state.lock().await;
-            state.lifecycle = SessionLifecycle::Unloaded;
+            state.transition(SubscriptionTransition::Reset);
             state.observation_epoch = state.observation_epoch.saturating_add(1);
             state.driver = None;
         }

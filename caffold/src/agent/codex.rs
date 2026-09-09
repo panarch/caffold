@@ -48,18 +48,18 @@ pub(crate) use protocol::ThreadStatus;
 pub(crate) use protocol::TurnStatus;
 use protocol::{
     ACCOUNT_RATE_LIMITS_READ, ACCOUNT_READ, ACCOUNT_USAGE_READ, AccountReadResponse,
-    CAFFOLD_CLIENT_NAME, CAFFOLD_CLIENT_TITLE, CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS, CONFIG_READ,
-    ConfigReadResponse, EmptyResponse, INITIALIZE, INITIALIZED, JsonRpcError,
-    MCP_SERVER_RESOURCE_READ, MCP_SERVER_STATUS_LIST, MODEL_LIST, McpServerStatusListResponse,
-    PERMISSION_PROFILE_LIST, PermissionProfileListResponse, THREAD_ARCHIVE, THREAD_DELETE,
-    THREAD_FORK, THREAD_LIST, THREAD_NAME_SET, THREAD_READ, THREAD_RESUME, THREAD_SECTION_CREATE,
-    THREAD_SECTION_LIST, THREAD_SECTION_MOVE, THREAD_START, THREAD_TURNS_LIST, THREAD_UNARCHIVE,
-    THREAD_UNSUBSCRIBE, TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadForkResponse,
-    ThreadReadResponse, ThreadSectionCreateResponse, ThreadSectionMoveResponse,
-    ThreadStartResponse, TurnStartResponse, TurnSteerResponse, account_read_params,
-    config_read_params, decode_response, mcp_server_status_list_params, model_list_params,
-    permission_profile_list_params, section_thread_list_params, thread_archive_params,
-    thread_delete_params, thread_fork_params_with_config, thread_list_params, thread_read_params,
+    CAFFOLD_CLIENT_NAME, CAFFOLD_CLIENT_TITLE, CONFIG_READ, ConfigReadResponse, EmptyResponse,
+    INITIALIZE, INITIALIZED, JsonRpcError, MCP_SERVER_RESOURCE_READ, MCP_SERVER_STATUS_LIST,
+    MODEL_LIST, McpServerStatusListResponse, PERMISSION_PROFILE_LIST,
+    PermissionProfileListResponse, THREAD_ARCHIVE, THREAD_DELETE, THREAD_FORK, THREAD_LIST,
+    THREAD_NAME_SET, THREAD_READ, THREAD_RESUME, THREAD_SECTION_CREATE, THREAD_SECTION_LIST,
+    THREAD_SECTION_MOVE, THREAD_START, THREAD_TURNS_LIST, THREAD_UNARCHIVE, THREAD_UNSUBSCRIBE,
+    TURN_INTERRUPT, TURN_START, TURN_STEER, ThreadForkResponse, ThreadReadResponse,
+    ThreadSectionCreateResponse, ThreadSectionMoveResponse, ThreadStartResponse, TurnStartResponse,
+    TurnSteerResponse, account_read_params, config_read_params, decode_response,
+    mcp_server_status_list_params, model_list_params, permission_profile_list_params,
+    section_thread_list_params, thread_archive_params, thread_delete_params,
+    thread_fork_params_with_config, thread_list_params, thread_read_params,
     thread_resume_params_with_config, thread_section_create_params, thread_section_list_params,
     thread_section_move_params, thread_set_name_params, thread_start_params_with_config,
     thread_turns_list_params, thread_unarchive_params, thread_unsubscribe_params,
@@ -74,7 +74,8 @@ pub(crate) use protocol::{
 #[cfg(test)]
 pub(crate) use protocol::{MCP_SERVER_TOOL_CALL, decode_notification, decode_server_request};
 use protocol::{
-    THREAD_LOADED_LIST, ThreadListResponse, ThreadLoadedListResponse, thread_loaded_list_params,
+    THREAD_INJECT_ITEMS, THREAD_LOADED_LIST, ThreadListResponse, ThreadLoadedListResponse,
+    thread_loaded_list_params, thread_naming_instructions_params,
 };
 pub(crate) use readiness::{CodexInstallation, inspect_codex_installation};
 pub(crate) use readiness::{CodexReadiness, CodexReadinessReason, CodexReadinessState};
@@ -878,8 +879,6 @@ impl CodexThreadClient {
         permission_mode: Option<CodexPermissionMode>,
         service_tier: &str,
     ) -> Result<CodexThreadStart, CodexThreadError> {
-        let config = self.read_config(cwd).await?;
-        let developer_instructions = first_turn_developer_instructions(&config.config);
         let pending_binding = match &self.mcp {
             Some(bindings) => Some(
                 bindings
@@ -901,7 +900,7 @@ impl CodexThreadClient {
                     cwd,
                     permission_mode,
                     Some(service_tier),
-                    Some(&developer_instructions),
+                    None,
                     mcp_config,
                 ),
             )
@@ -981,6 +980,61 @@ impl CodexThreadClient {
             reasoning_effort,
             fast_mode,
         })
+    }
+
+    /// Finish preparing a new, still-attached thread before Task publication.
+    ///
+    /// Persist Caffold's naming guidance before the first attachment can end.
+    /// A thread/start developer override is only recorded at the first turn;
+    /// injecting a developer item records it without submitting a user turn.
+    /// The full-page resume verifies the prepared history and keeps the MCP
+    /// binding from thread/start intact.
+    pub(crate) async fn initialize_created_thread(
+        &self,
+        thread_id: &str,
+        name: &str,
+        fast_mode: bool,
+    ) -> Result<ThreadResumeResponse, CodexThreadError> {
+        let result = async {
+            self.set_thread_name(thread_id, name).await?;
+            self.request_typed::<EmptyResponse, _>(
+                THREAD_INJECT_ITEMS,
+                thread_naming_instructions_params(thread_id),
+            )
+            .await?;
+            self.initialize_thread_history(thread_id, service_tier_for_fast_mode(fast_mode))
+                .await
+        }
+        .await;
+        if result.is_err() {
+            self.delete_unclaimed_thread(thread_id, "thread history initialization")
+                .await;
+        }
+        result
+    }
+
+    async fn initialize_thread_history(
+        &self,
+        thread_id: &str,
+        service_tier: &str,
+    ) -> Result<ThreadResumeResponse, CodexThreadError> {
+        let response: ThreadResumeResponse = self
+            .request_typed(
+                THREAD_RESUME,
+                thread_resume_params_with_config(thread_id, true, Some(service_tier), None),
+            )
+            .await?;
+        if response.thread.id != thread_id {
+            return Err(CodexThreadError::Protocol(
+                "Codex initialized a different thread's history".to_string(),
+            ));
+        }
+        let page = response.initial_turns_page.as_ref().ok_or_else(|| {
+            CodexThreadError::Protocol("Codex omitted the initial thread history page".to_string())
+        })?;
+        contract::require_full_turns(&page.data)?;
+        contract::require_full_turns(&response.thread.turns)?;
+        Ok(response)
     }
 
     /// Fork a settled Codex thread into a new thread rooted at `cwd`.
@@ -1554,19 +1608,6 @@ impl CodexThreadClient {
     }
 }
 
-fn first_turn_developer_instructions(config: &Value) -> String {
-    match config
-        .get("developer_instructions")
-        .and_then(Value::as_str)
-        .filter(|instructions| !instructions.trim().is_empty())
-    {
-        Some(instructions) => {
-            format!("{instructions}\n\n{CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS}")
-        }
-        None => CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS.to_string(),
-    }
-}
-
 async fn read_thread_server_loop(
     mut reader: SplitStream<WebSocketStream<ProxyStream>>,
     inner: Arc<CodexThreadClientInner>,
@@ -1722,37 +1763,9 @@ fn server_response_message(request_id: Value, result: Value) -> Value {
 
 #[cfg(test)]
 mod tests {
+    use super::protocol::CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS;
     use super::*;
     use tokio::io::AsyncWriteExt;
-
-    #[test]
-    fn first_turn_naming_preserves_existing_developer_instructions() {
-        let existing = "Keep the user's existing guidance.";
-        let composed = first_turn_developer_instructions(&json!({
-            "developer_instructions": existing,
-        }));
-
-        assert_eq!(
-            composed,
-            format!("{existing}\n\n{CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS}")
-        );
-    }
-
-    #[test]
-    fn first_turn_naming_uses_only_caffold_guidance_when_no_custom_value_exists() {
-        assert_eq!(
-            first_turn_developer_instructions(&json!({ "developer_instructions": null })),
-            CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS
-        );
-    }
-
-    #[test]
-    fn first_turn_naming_ignores_blank_custom_developer_instructions() {
-        assert_eq!(
-            first_turn_developer_instructions(&json!({ "developer_instructions": "  \n" })),
-            CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS
-        );
-    }
 
     #[test]
     fn normalizes_current_service_tiers_to_normal_or_fast() {
@@ -2272,14 +2285,145 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn initial_history_requires_the_created_identity_and_a_full_page() {
+        let thread = json!({"id":"empty", "preview":"", "status":{"type":"idle"}, "cwd":"/tmp/project", "turns":[]});
+        let valid = json!({"thread":thread, "cwd":"/tmp/project", "initialTurnsPage":{"data":[],"nextCursor":null,"backwardsCursor":null}});
+        let mut different = valid.clone();
+        different["thread"]["id"] = json!("another-thread");
+        let mut missing = valid.clone();
+        missing.as_object_mut().unwrap().remove("initialTurnsPage");
+        let mut partial = valid.clone();
+        partial["initialTurnsPage"]["data"] =
+            json!([{"id":"turn", "status":"completed", "items":[], "itemsView":"summary"}]);
+        for response in [different, missing, partial] {
+            let client =
+                CodexThreadClient::mock(vec![MockCodexResponse::ok(THREAD_RESUME, response)]);
+            assert!(matches!(
+                client.initialize_thread_history("empty", "default").await,
+                Err(CodexThreadError::Protocol(_))
+            ));
+        }
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(THREAD_RESUME, valid)]);
+        assert!(
+            client
+                .initialize_thread_history("empty", "default")
+                .await
+                .unwrap()
+                .initial_turns_page
+                .unwrap()
+                .data
+                .is_empty()
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore = "requires installed Codex and an isolated app-server socket; does not submit model turns"]
+    async fn live_empty_codex_thread_survives_detach_and_runtime_restart() {
+        let project = tempfile::tempdir().unwrap();
+        let mut server = SocketAppServer::start()
+            .await
+            .expect("start test-owned app-server");
+        let installation = inspect_codex_installation().await.unwrap();
+        let daemon = CodexDaemonInfo {
+            status: "isolatedTestRuntime".into(),
+            backend: Some("unixSocket".into()),
+            pid: None,
+            managed_codex_path: Some(installation.path.display().to_string()),
+            managed_codex_version: installation.executable.version.clone(),
+            socket_path: Some(server.socket_path.display().to_string()),
+            cli_version: installation.executable.version.clone(),
+            app_server_version: installation.executable.version.clone(),
+        };
+        let client = CodexThreadClient::start_with_proxy(
+            &installation.path,
+            Some(&server.socket_path),
+            daemon.clone(),
+            None,
+        )
+        .await
+        .unwrap();
+        let mut cleanup = client.clone();
+        let mut created = None;
+        let result: Result<(), CodexThreadError> = async {
+            let started = client
+                .start_thread(project.path().to_str().unwrap(), None, "default")
+                .await?;
+            let id = started.thread_id;
+            created = Some(id.clone());
+            let initialized = client
+                .initialize_created_thread(&id, "Empty restart test", false)
+                .await?;
+            assert!(initialized.initial_turns_page.unwrap().data.is_empty());
+            client.unsubscribe_thread(&id).await?;
+            let resumed = client
+                .resume_thread_with_page(&id, false, "default")
+                .await?;
+            assert_eq!(resumed.thread.id, id);
+            client.shutdown().await;
+            server
+                .restart()
+                .await
+                .expect("restart only the test-owned daemon");
+            let replacement = CodexThreadClient::start_with_proxy(
+                &installation.path,
+                Some(&server.socket_path),
+                daemon,
+                None,
+            )
+            .await?;
+            cleanup = replacement.clone();
+            let resumed = replacement
+                .resume_thread_with_page(&id, true, "default")
+                .await?;
+            assert_eq!(resumed.thread.id, id);
+            assert_eq!(resumed.thread.status, ThreadStatus::Idle);
+            assert!(resumed.initial_turns_page.unwrap().data.is_empty());
+            // Inspect only the provider-owned rollout of this test-created
+            // thread. A readable empty page alone cannot prove that the first
+            // turn's developer guidance survived the restart.
+            let path = resumed.thread.path.as_deref().unwrap();
+            let rollout = tokio::fs::read_to_string(path).await.unwrap();
+            let naming_items = rollout
+                .lines()
+                .map(|line| serde_json::from_str::<Value>(line).unwrap())
+                .filter(|record| {
+                    record["type"] == "response_item"
+                        && record["payload"]["role"] == "developer"
+                        && record["payload"]["content"]
+                            .as_array()
+                            .is_some_and(|content| {
+                                content.iter().any(|item| {
+                                    item["text"] == CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS
+                                })
+                            })
+                })
+                .count();
+            assert_eq!(
+                naming_items, 1,
+                "creation must durably record the policy once"
+            );
+            eprintln!("EMPTY_THREAD_RESTART_VERIFIED thread={id}");
+            Ok(())
+        }
+        .await;
+        let deleted = match created {
+            Some(id) => cleanup.delete_thread(&id).await,
+            None => Ok(()),
+        };
+        cleanup.shutdown().await;
+        client.shutdown().await;
+        server.stop().await;
+        result.expect(
+            "empty thread must survive detachment and an app-server restart without a prompt",
+        );
+        deleted.expect("remove only the test-created provider thread");
+    }
+
+    #[tokio::test]
     async fn starts_new_threads_with_caffold_mcp_only() {
         let bindings = CodexMcpBindings::memory("http://127.0.0.1:5177/api/codex/mcp".to_string());
         let client = CodexThreadClient::mock_with_mcp(
             vec![
-                MockCodexResponse::ok(
-                    CONFIG_READ,
-                    json!({ "config": { "developer_instructions": null } }),
-                ),
                 MockCodexResponse::ok(
                     THREAD_START,
                     json!({
@@ -2302,6 +2446,16 @@ mod tests {
                     }),
                     mcp_resource_result(CAFFOLD_MCP_SESSION_READY_URI),
                 ),
+                MockCodexResponse::ok(THREAD_NAME_SET, json!({})),
+                MockCodexResponse::ok(THREAD_INJECT_ITEMS, json!({})),
+                MockCodexResponse::ok(
+                    THREAD_RESUME,
+                    json!({
+                        "thread": {"id":"thread_mcp", "preview":"MCP task", "status":{"type":"idle"}, "cwd":"/tmp/project", "turns":[]},
+                        "cwd":"/tmp/project",
+                        "initialTurnsPage":{"data":[],"nextCursor":null,"backwardsCursor":null}
+                    }),
+                ),
             ],
             bindings.clone(),
         );
@@ -2310,9 +2464,14 @@ mod tests {
             .start_thread("/tmp/project", None, "default")
             .await
             .expect("start a Caffold MCP-backed thread");
+        client
+            .initialize_created_thread("thread_mcp", "MCP task", false)
+            .await
+            .unwrap();
 
         let requests = client.mock_requests().await;
-        let started = &requests[1].1;
+        let started = &requests[0].1;
+        assert!(started.get("developerInstructions").is_none());
         assert_eq!(started.get("dynamicTools"), None);
         let server = &started["config"]["mcp_servers.caffold"];
         assert_eq!(server["url"], "http://127.0.0.1:5177/api/codex/mcp");
@@ -2320,7 +2479,22 @@ mod tests {
             .as_str()
             .expect("thread start carries an opaque binding header");
         assert_eq!(bindings.resolve(token).await, None);
-        assert_eq!(requests[2].0, MCP_SERVER_RESOURCE_READ);
+        assert_eq!(requests[1].0, MCP_SERVER_RESOURCE_READ);
+        assert_eq!(requests[3].0, THREAD_INJECT_ITEMS);
+        assert_eq!(
+            requests[3].1,
+            json!({
+                "threadId": "thread_mcp",
+                "items": [{"type":"message","role":"developer","content":[{"type":"input_text","text":CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS}]}]
+            })
+        );
+        assert_eq!(requests.len(), 5);
+        assert_eq!(requests[4].0, THREAD_RESUME);
+        assert_eq!(requests[4].1["initialTurnsPage"]["itemsView"], "full");
+        assert!(
+            requests[4].1.get("config").is_none(),
+            "initial history preserves the established MCP binding"
+        );
     }
 
     #[tokio::test]
@@ -2628,10 +2802,6 @@ mod tests {
         let client = CodexThreadClient::mock_with_mcp(
             vec![
                 MockCodexResponse::ok(
-                    CONFIG_READ,
-                    json!({ "config": { "developer_instructions": null } }),
-                ),
-                MockCodexResponse::ok(
                     THREAD_START,
                     json!({
                         "thread": {
@@ -2661,29 +2831,23 @@ mod tests {
         );
 
         let requests = client.mock_requests().await;
-        let binding = requests[1].1["config"]["mcp_servers.caffold"]["http_headers"]
+        let binding = requests[0].1["config"]["mcp_servers.caffold"]["http_headers"]
             [CAFFOLD_MCP_BINDING_HEADER]
             .as_str()
             .unwrap();
         assert_eq!(bindings.resolve(binding).await, None);
-        assert_eq!(requests[3].0, THREAD_DELETE);
-        assert_eq!(requests[3].1, json!({ "threadId": "thread_unconfirmed" }));
+        assert_eq!(requests[2].0, THREAD_DELETE);
+        assert_eq!(requests[2].1, json!({ "threadId": "thread_unconfirmed" }));
     }
 
     #[tokio::test]
     async fn a_failed_thread_start_discards_its_pending_mcp_binding() {
         let bindings = CodexMcpBindings::memory("http://127.0.0.1:5177/api/codex/mcp".to_string());
         let client = CodexThreadClient::mock_with_mcp(
-            vec![
-                MockCodexResponse::ok(
-                    CONFIG_READ,
-                    json!({ "config": { "developer_instructions": null } }),
-                ),
-                MockCodexResponse::error(
-                    THREAD_START,
-                    CodexThreadError::Protocol("start failed".to_string()),
-                ),
-            ],
+            vec![MockCodexResponse::error(
+                THREAD_START,
+                CodexThreadError::Protocol("start failed".to_string()),
+            )],
             bindings.clone(),
         );
 
@@ -2695,7 +2859,7 @@ mod tests {
         );
 
         let requests = client.mock_requests().await;
-        let token = requests[1].1["config"]["mcp_servers.caffold"]["http_headers"]
+        let token = requests[0].1["config"]["mcp_servers.caffold"]["http_headers"]
             [CAFFOLD_MCP_BINDING_HEADER]
             .as_str()
             .unwrap();
@@ -2740,6 +2904,14 @@ mod tests {
             .expect("resume with Caffold MCP");
 
         let requests = client.mock_requests().await;
+        assert_eq!(
+            requests
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            [THREAD_RESUME, MCP_SERVER_RESOURCE_READ]
+        );
+        assert!(requests[0].1.get("developerInstructions").is_none());
         let request = &requests[0].1;
         let token = request["config"]["mcp_servers.caffold"]["http_headers"]
             [CAFFOLD_MCP_BINDING_HEADER]
