@@ -815,6 +815,15 @@ impl ClaudeClient {
     /// because the session remembers only what it watched and a Task outlives
     /// every session that ever ran it.
     ///
+    /// Which directory it is read from is the running session's to say, not
+    /// the caller's. A Task is recorded as isolated the moment its worktree
+    /// stands, but the agent only relocates the transcript when the session
+    /// itself moves, which it will not do mid-turn — so for as long as that
+    /// move is outstanding the caller names a file that is not there yet, and
+    /// reading it would report a conversation with nothing in it. `cwd` is the
+    /// answer for a conversation nothing is running: no session to ask, and
+    /// where the Task last worked is where the agent left its transcript.
+    ///
     /// What a running session knows is laid over the top of it. Both describe
     /// the same turns under the same names, and where they differ the session
     /// is the one that can say a turn is still running, that a tool is waiting
@@ -826,9 +835,14 @@ impl ClaudeClient {
         cursor: Option<&str>,
         limit: usize,
     ) -> Result<TurnPage, ClaudeError> {
+        let session = self.session(conversation_id).await;
+        let cwd = match &session {
+            Some(session) => session.cwd.lock().await.clone(),
+            None => cwd.to_string(),
+        };
         let path = self
             .projects()
-            .and_then(|projects| transcript::locate(projects, cwd, conversation_id))
+            .and_then(|projects| transcript::locate(projects, &cwd, conversation_id))
             .ok_or_else(|| {
                 ClaudeError::History(format!(
                     "cannot work out where conversation {conversation_id} is written down"
@@ -850,7 +864,7 @@ impl ClaudeClient {
             });
         }
         let mut page = reading.page;
-        if let Some(session) = self.session(conversation_id).await {
+        if let Some(session) = session {
             let state = session.state.lock().await;
             for turn in &state.turns {
                 if let Some(known) = page.turns.iter_mut().find(|known| known.id == turn.id) {
@@ -2056,6 +2070,72 @@ mod tests {
         assert_eq!(
             moved.created_at_ms, opened.created_at_ms,
             "when it began does not move"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_conversation_is_read_where_its_session_still_is() {
+        // Caffold records a Task as isolated the moment its worktree stands,
+        // and callers ask with that directory from then on. The agent will not
+        // move mid-turn, so until it does the transcript is still where the
+        // session is — and reading the worktree would answer that a Task with
+        // a conversation has none.
+        const WORKTREE: &str = "/somewhere/worktrees/task-1";
+        let projects = written_conversation();
+        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
+        runner
+            .greet_next_session_with(vec![init_frame(SESSION)])
+            .await;
+        client
+            .open_conversation(SESSION, CWD, &options("opus"))
+            .await
+            .expect("the conversation opens");
+
+        let page = client
+            .read_turns(SESSION, WORKTREE, None, 8)
+            .await
+            .expect("the conversation is read");
+
+        assert!(
+            !page.turns.is_empty(),
+            "the session has not moved to {WORKTREE} yet, so neither has what it wrote"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_conversation_is_read_where_its_session_moved_to() {
+        // The other side of the same answer: a caller holding the directory
+        // the Task has left asks with it for as long as it holds it. The agent
+        // took the transcript along when it moved, and the session is what
+        // knows that it did.
+        const WORKTREE: &str = "/somewhere/worktrees/task-1";
+        let projects = tempfile::tempdir().expect("a projects directory");
+        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
+        runner
+            .greet_next_session_with(vec![init_frame(SESSION)])
+            .await;
+        client
+            .open_conversation(SESSION, CWD, &options("opus"))
+            .await
+            .expect("the conversation opens");
+        client.write_test_transcript(
+            WORKTREE,
+            SESSION,
+            include_str!("claude/transcript/a-session-claude-wrote.jsonl"),
+        );
+        client
+            .move_working_directory(SESSION, WORKTREE)
+            .await
+            .expect("the session moves");
+
+        let page = client
+            .read_turns(SESSION, CWD, None, 8)
+            .await
+            .expect("the conversation is read");
+
+        assert!(
+            !page.turns.is_empty(),
+            "the session moved to {WORKTREE} and what it wrote moved with it"
         );
     }
 
