@@ -110,7 +110,13 @@ unclaimed child.
    managed Task identity, the body reports the provider failure, and Retry and
    Archive remain available. Caffold does not infer conversation content,
    status, or repository context from that row.
-5. Loading older history prepends it to the current conversation.
+5. Scrolling to the top or choosing Load older messages prepends older history
+   to the current conversation. The button remains available when collapsed
+   work leaves no scrollbar. While a request is pending, a spinner and loading
+   text occupy the button's row without shifting the conversation. One page
+   request runs at a time; waiting for the provider does not start additional
+   requests. A failure preserves the
+   conversation and exposes an explicit retry.
 6. Switching Tasks prevents pending work for the previous selection from
    changing the new Detail.
 

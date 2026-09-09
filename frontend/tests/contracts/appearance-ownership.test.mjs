@@ -1359,9 +1359,10 @@ test("mixed surfaces keep content and controls on separate axes", () => {
     conversation,
     /\.task-approval-card pre[\s\S]*font-size: var\(--code-font-size\)/,
   );
+  const olderHistory = readFrontend("pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.css");
   assert.match(
-    conversation,
-    /\.task-approval-actions[\s\S]*\.task-history-error button[\s\S]*min-height: var\(--interface-compact-control-size\)/,
+    olderHistory,
+    /\.task-load-older button \{[^}]*min-height: var\(--interface-compact-visual-size\)/,
   );
 });
 

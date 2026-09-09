@@ -46,6 +46,7 @@ impl TaskSessions {
             let revision = if effect != SessionEventEffect::Ignored {
                 state.revision = state.revision.saturating_add(1);
                 mark_what_changed(&mut state, &event.kind);
+                state.events.publish_session_event(event, state.revision);
                 Some(state.revision)
             } else {
                 None
@@ -616,7 +617,7 @@ mod tests {
         let bootstrap_completion = session_event(
             "thread-1",
             SessionEventKind::TurnEnded {
-                turn: Turn::from(&old_completed),
+                turn: TurnState::from(&old_completed),
             },
         );
         assert_eq!(
@@ -632,7 +633,7 @@ mod tests {
         let current_completion = session_event(
             "thread-1",
             SessionEventKind::TurnEnded {
-                turn: Turn::from(&wire_turn_at("turn-current", TurnStatus::Completed, 2.0)),
+                turn: TurnState::from(&wire_turn_at("turn-current", TurnStatus::Completed, 2.0)),
             },
         );
         assert_eq!(

@@ -758,30 +758,30 @@ test("canonical Detail requires no retained-live conflict arbitration", () => {
   assert.equal(staleLive.payload.liveOnly, true);
 });
 
-test("an exact submission handoff keeps its optimistic position until Detail owns it", () => {
+test("an exact submission handoff adopts server order before Detail arrives", () => {
   const optimistic = event(
     "local-user-message",
     "user_message",
-    100,
+    200,
     { optimistic: true, text: "Test the ordering" },
     { positionIndex: 1 },
   );
   const liveAnswer = event(
     "live-answer",
     "assistant_message",
-    150,
+    100,
     {
       threadId: "thread-1",
       turnId: "turn-1",
       itemId: "answer-1",
       text: "The answer",
     },
-    { positionIndex: 2 },
+    { positionIndex: 3 },
   );
   const accepted = event(
     "accepted-user-message",
     "user_message",
-    200,
+    100,
     {
       threadId: "thread-1",
       turnId: "turn-1",
@@ -789,7 +789,7 @@ test("an exact submission handoff keeps its optimistic position until Detail own
       text: "Test the ordering",
       liveDelivery: "accepted",
     },
-    { positionIndex: 3 },
+    { positionIndex: 2 },
   );
 
   const handedOff = handoffOptimisticSubmission(
@@ -803,7 +803,7 @@ test("an exact submission handoff keeps its optimistic position until Detail own
     ["user_message", "assistant_message"],
   );
   assert.equal(handedOff[0].id, accepted.id);
-  assert.deepEqual(handedOff[0].position, optimistic.position);
+  assert.deepEqual(handedOff[0].position, accepted.position);
   assert.equal(
     Object.hasOwn(handedOff[0], "updatedMs"),
     false,

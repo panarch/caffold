@@ -292,9 +292,9 @@ export function applyDetailRange(retainedEvents, detailEvents, range) {
 }
 
 // Once the prompt response or first provider projection proves which exact
-// item an optimistic submission became, keep the position already visible in
-// this browser. A later Detail reconciliation still replaces it with provider
-// history position.
+// item an optimistic submission became, use its backend-owned position. The
+// local placeholder's clock cannot order a confirmed item against an answer
+// that arrived through a different request or stream.
 export function handoffOptimisticSubmission(
   events,
   optimisticEventId,
@@ -312,7 +312,7 @@ export function handoffOptimisticSubmission(
     existingConfirmed,
     confirmedEvent,
   );
-  const handedOff = projectPrimaryEvent(confirmed, null, optimistic.position);
+  const handedOff = projectPrimaryEvent(confirmed, null, confirmed.position);
   const remaining = events.filter(
     (event) =>
       event.id !== optimisticEventId &&

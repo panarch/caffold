@@ -3,7 +3,7 @@ use futures_util::{StreamExt, stream};
 use crate::agent::AgentError;
 use crate::agent::{Driver, ThreadStatus};
 
-use super::{SessionLifecycle, SessionSnapshot, TaskSessions};
+use super::{SessionAgent, SessionLifecycle, SessionSnapshot, TaskSessions};
 
 impl TaskSessions {
     /// Report the Codex connection every thread on it was being watched
@@ -37,10 +37,29 @@ impl TaskSessions {
                 state.terminal_candidate_turn_id = None;
                 state.last_error = Some(message.clone());
                 state.revision = state.revision.saturating_add(1);
+                state.withdraw_history(&thread_id);
                 affected.push(thread_id);
             }
         }
         affected
+    }
+
+    /// A missed Claude report withdraws only Claude history evidence. Codex
+    /// observation is independent and must not be invalidated by this channel.
+    pub(in crate::app::tasks) async fn invalidate_claude_history(&self) {
+        let entries = self
+            .entries
+            .lock()
+            .await
+            .iter()
+            .map(|(id, entry)| (id.clone(), entry.clone()))
+            .collect::<Vec<_>>();
+        for (id, entry) in entries {
+            let mut state = entry.state.lock().await;
+            if state.agent == Some(SessionAgent::Claude) {
+                state.withdraw_history(&id);
+            }
+        }
     }
 
     /// Stop treating one session as current, so the next open really opens it.
@@ -60,6 +79,7 @@ impl TaskSessions {
     pub(in crate::app::tasks) async fn session_needs_opening_again(&self, thread_id: &str) {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
+        state.withdraw_history(thread_id);
         state.lifecycle = SessionLifecycle::Unloaded;
         state.driver = None;
         state.terminal_candidate_turn_id = None;
@@ -190,6 +210,52 @@ mod tests {
                 .expect("the Claude session opens"),
         );
         driver
+    }
+
+    #[tokio::test]
+    async fn a_claude_report_gap_keeps_codex_evidence_and_reads_neither_provider() {
+        let sessions = TaskSessions::default();
+        let _claude = a_claude_session(&sessions, 1, "claude-thread").await;
+        let codex = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            resume_response(
+                ThreadStatus::Idle,
+                vec![],
+                vec![wire_turn("latest", TurnStatus::Completed)],
+            ),
+        )]);
+        let _viewer = sessions
+            .acquire_viewer(&codex.driver(), 1, "thread-1")
+            .await
+            .unwrap();
+        sessions
+            .apply_session_event_with_outcome(
+                1,
+                &session_event("claude-thread", item_changed("claude-turn", "answer", 20)),
+            )
+            .await;
+        let before_codex = sessions
+            .events
+            .cached_history_page("thread-1", &Default::default())
+            .unwrap();
+        let before_claude = sessions.events.for_thread("claude-thread");
+        assert!(!before_claude.is_empty());
+        let claude_entry = sessions.entry("claude-thread").await;
+        let before_epoch = claude_entry.state.lock().await.observation_epoch;
+
+        sessions.invalidate_claude_history().await;
+
+        let after_codex = sessions
+            .events
+            .cached_history_page("thread-1", &Default::default())
+            .unwrap();
+        assert_eq!(after_codex.events, before_codex.events);
+        assert_eq!(after_codex.owns_extent, before_codex.owns_extent);
+        assert_eq!(sessions.events.for_thread("claude-thread"), before_claude);
+        let state = claude_entry.state.lock().await;
+        assert_eq!(state.lifecycle, SessionLifecycle::Subscribed);
+        assert_eq!(state.observation_epoch, before_epoch + 1);
+        assert_eq!(codex.mock_requests().await.len(), 1);
     }
 
     #[tokio::test]

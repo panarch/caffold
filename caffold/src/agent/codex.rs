@@ -22,7 +22,7 @@ mod transport;
 
 pub(crate) use contract::{
     ApprovalKind, approval_request, approval_response, codex_mode_id, codex_models,
-    codex_permission_modes, codex_turn_options, session_event,
+    codex_permission_modes, codex_turn_options, session_events,
 };
 /// Item translation on its own, for the tests that write an item the way Codex
 /// sends it and assert on what Caffold makes of it.
@@ -136,6 +136,7 @@ pub(crate) struct MockCodexResponse {
     params: Option<Value>,
     result: Result<Value, CodexThreadError>,
     delay: Duration,
+    gate: Option<oneshot::Receiver<()>>,
 }
 
 #[cfg(test)]
@@ -147,6 +148,7 @@ impl MockCodexResponse {
             result: serde_json::to_value(value)
                 .map_err(|error| CodexThreadError::Protocol(error.to_string())),
             delay: Duration::ZERO,
+            gate: None,
         }
     }
 
@@ -161,6 +163,7 @@ impl MockCodexResponse {
             result: serde_json::to_value(value)
                 .map_err(|error| CodexThreadError::Protocol(error.to_string())),
             delay: Duration::ZERO,
+            gate: None,
         }
     }
 
@@ -170,6 +173,7 @@ impl MockCodexResponse {
             params: None,
             result: Err(error),
             delay: Duration::ZERO,
+            gate: None,
         }
     }
 
@@ -183,7 +187,18 @@ impl MockCodexResponse {
             params: Some(serde_json::to_value(params).expect("mock request params serialize")),
             result: Err(error),
             delay: Duration::ZERO,
+            gate: None,
         }
+    }
+
+    pub(crate) fn gated_ok<T: Serialize>(
+        method: &'static str,
+        value: T,
+    ) -> (Self, oneshot::Sender<()>) {
+        let (release, gate) = oneshot::channel();
+        let mut response = Self::ok(method, value);
+        response.gate = Some(gate);
+        (response, release)
     }
 
     pub(crate) fn delayed_ok<T: Serialize>(
@@ -197,6 +212,7 @@ impl MockCodexResponse {
             result: serde_json::to_value(value)
                 .map_err(|error| CodexThreadError::Protocol(error.to_string())),
             delay,
+            gate: None,
         }
     }
 }
@@ -846,11 +862,14 @@ impl CodexThreadClient {
         limit: usize,
         sort_direction: SortDirection,
     ) -> Result<TurnsPage, CodexThreadError> {
-        self.request_typed(
-            THREAD_TURNS_LIST,
-            thread_turns_list_params(thread_id, cursor, limit, sort_direction),
-        )
-        .await
+        let page: TurnsPage = self
+            .request_typed(
+                THREAD_TURNS_LIST,
+                thread_turns_list_params(thread_id, cursor, limit, sort_direction),
+            )
+            .await?;
+        contract::require_full_turns(&page.data)?;
+        Ok(page)
     }
 
     pub(crate) async fn start_thread(
@@ -1128,7 +1147,7 @@ impl CodexThreadClient {
             None => None,
         };
         let request = self
-            .request_typed(
+            .request_typed::<ThreadResumeResponse, _>(
                 THREAD_RESUME,
                 thread_resume_params_with_config(
                     thread_id,
@@ -1137,7 +1156,19 @@ impl CodexThreadClient {
                     reattachment.as_ref().map(|(_, _, config)| config.clone()),
                 ),
             )
-            .await;
+            .await
+            .and_then(|response| {
+                if initial_turns_page {
+                    contract::require_full_turns(
+                        response
+                            .initial_turns_page
+                            .iter()
+                            .flat_map(|page| &page.data),
+                    )?;
+                    contract::require_full_turns(&response.thread.turns)?;
+                }
+                Ok(response)
+            });
         match (request, reattachment) {
             (Ok(response), Some((bindings, token, _))) => {
                 bindings
@@ -1427,6 +1458,11 @@ impl CodexThreadClient {
                     .remove(index)
                     .expect("matching mock response index remains valid")
             };
+            if let Some(gate) = response.gate {
+                gate.await.map_err(|_| {
+                    CodexThreadError::Protocol("mock response gate was cancelled".into())
+                })?;
+            }
             if !response.delay.is_zero() {
                 tokio::time::sleep(response.delay).await;
             }

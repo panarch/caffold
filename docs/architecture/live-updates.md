@@ -69,7 +69,9 @@ Task Detail retains the existing viewer lease, agent subscription, bootstrap,
 sync, and event projection owners. Its first readable sequence starts with the
 same `task-sync` bootstrap contract used by the adjacent Detail session. A Task
 switch replaces the logical Task Detail generation while the physical SSE
-connection remains open.
+connection remains open. Browser reconnection does not by itself invalidate
+the provider conversation cache; its retention and membership rules belong to
+[Agent Runtimes](agent-runtimes.md#backend-reconciliation).
 
 ## Filesystem Watch
 

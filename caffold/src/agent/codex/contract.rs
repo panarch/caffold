@@ -22,7 +22,7 @@ use serde_json::{Value, json};
 
 use super::protocol::{
     CodexNotification, CodexPermissionMode, CodexThread, CodexTurn, ThreadActiveFlag, ThreadStatus,
-    ThreadTokenUsage, TokenUsageBreakdown, TurnStatus, TurnsPage, seconds_to_ms,
+    ThreadTokenUsage, TokenUsageBreakdown, TurnItemsView, TurnStatus, TurnsPage, seconds_to_ms,
     seconds_to_ms_value,
 };
 use super::{CodexThreadClient, CodexThreadError, CodexTurnOptions, NORMAL_SERVICE_TIER_ID};
@@ -31,8 +31,24 @@ use crate::agent::{
     self, ActivityStatus, ApprovalDecision, ApprovalDetail, ApprovalRequest, CommandExecution,
     Conversation, ConversationItem, GeneratedImage, ItemKind, MessageContent, MessagePhase,
     PermissionRow, SessionEvent, SessionEventKind, TokenCount, TokenUsage, Turn, TurnOrigin,
-    TurnPage,
+    TurnPage, TurnState,
 };
+
+/// Full reads and partial notifications have different contracts, entirely
+/// inside the Codex adapter. Never present a summary as a complete shared Turn.
+pub(super) fn require_full_turns<'a>(
+    turns: impl IntoIterator<Item = &'a CodexTurn>,
+) -> Result<(), CodexThreadError> {
+    for turn in turns {
+        if turn.items_view != TurnItemsView::Full {
+            return Err(CodexThreadError::Protocol(format!(
+                "Codex returned {:?} items for full history turn {}",
+                turn.items_view, turn.id
+            )));
+        }
+    }
+    Ok(())
+}
 
 impl From<&CodexThread> for Conversation {
     fn from(thread: &CodexThread) -> Self {
@@ -74,21 +90,36 @@ impl From<&CodexTurn> for Turn {
             status: turn.status.into(),
             started_at_ms: turn.started_at.map(seconds_to_ms_value).filter(is_a_time),
             completed_at_ms: turn.completed_at.map(seconds_to_ms_value).filter(is_a_time),
-            items: turn
-                .items
-                .iter()
-                // A turn read back is a turn that already happened. Items still
-                // running say so themselves through their own status.
-                .filter_map(|item| conversation_item(item, ActivityStatus::Completed))
-                .chain(
-                    turn.error
-                        .as_ref()
-                        .filter(|_| turn.status == TurnStatus::Failed)
-                        .and_then(|error| failure_item(&turn.id, error)),
-                )
-                .collect(),
+            items: turn_items(turn, ActivityStatus::Completed),
         }
     }
+}
+
+impl From<&CodexTurn> for TurnState {
+    fn from(turn: &CodexTurn) -> Self {
+        Self {
+            id: turn.id.clone(),
+            origin: TurnOrigin::Unknown,
+            status: turn.status.into(),
+            started_at_ms: turn.started_at.map(seconds_to_ms_value).filter(is_a_time),
+            completed_at_ms: turn.completed_at.map(seconds_to_ms_value).filter(is_a_time),
+        }
+    }
+}
+
+/// Named items in a native response. On a notification these are individual
+/// updates, even when Codex included only its last answer.
+fn turn_items(turn: &CodexTurn, fallback: ActivityStatus) -> Vec<ConversationItem> {
+    turn.items
+        .iter()
+        .filter_map(|item| conversation_item(item, fallback))
+        .chain(
+            turn.error
+                .as_ref()
+                .filter(|_| turn.status == TurnStatus::Failed)
+                .and_then(|error| failure_item(&turn.id, error)),
+        )
+        .collect()
 }
 
 /// A terminal Codex error, under the same turn-derived identity in live reports
@@ -112,13 +143,48 @@ fn failure_item(turn_id: &str, error: &Value) -> Option<ConversationItem> {
 /// Caffold reacting to it — the conversation, the Task list, Web Push, pending
 /// approvals — read one report rather than each interpreting Codex's own.
 ///
-/// `None` is a notification Caffold does nothing with, including one from a
+/// An empty result is a notification Caffold does nothing with, including one from a
 /// version of app-server that knows more than this does.
 ///
 /// Approvals are the one kind that needs the connection: which approval a
 /// self-resolved request belonged to is a routing question, and routing is the
 /// driver's.
-pub(crate) async fn session_event(
+pub(crate) async fn session_events(
+    notification: &CodexNotification,
+    client: &CodexThreadClient,
+) -> Vec<SessionEvent> {
+    let Some(event) = session_event(notification, client).await else {
+        return Vec::new();
+    };
+    let (thread_id, turn, starting) = match notification {
+        CodexNotification::TurnStarted { thread_id, turn } => (thread_id, turn, true),
+        CodexNotification::TurnCompleted { thread_id, turn } => (thread_id, turn, false),
+        _ => return vec![event],
+    };
+    // Even a summary turn notification can contain a final item or error.
+    // Each named item is an update, regardless of how much of the turn Codex
+    // included. Only explicit history reads own the turn's item membership.
+    let status = if starting {
+        ActivityStatus::InProgress
+    } else {
+        ActivityStatus::Completed
+    };
+    let items = turn_items(turn, status);
+    let mut events = Vec::with_capacity(items.len() + 1);
+    if starting {
+        events.push(event.clone());
+    }
+    events.extend(items.into_iter().map(|item| SessionEvent {
+        thread_id: thread_id.clone(),
+        kind: item_changed(&turn.id, item, 0),
+    }));
+    if !starting {
+        events.push(event);
+    }
+    events
+}
+
+async fn session_event(
     notification: &CodexNotification,
     client: &super::CodexThreadClient,
 ) -> Option<SessionEvent> {
@@ -167,13 +233,13 @@ pub(crate) async fn session_event(
         CodexNotification::TurnStarted { thread_id, turn } => (
             thread_id.clone(),
             SessionEventKind::TurnStarted {
-                turn: Turn::from(turn),
+                turn: TurnState::from(turn),
             },
         ),
         CodexNotification::TurnCompleted { thread_id, turn } => (
             thread_id.clone(),
             SessionEventKind::TurnEnded {
-                turn: Turn::from(turn),
+                turn: TurnState::from(turn),
             },
         ),
         CodexNotification::Error {
@@ -1025,6 +1091,73 @@ mod tests {
     use crate::agent::codex::protocol;
     use crate::agent::codex::{CodexThreadClient, MockCodexResponse};
 
+    #[tokio::test]
+    async fn turn_notifications_deliver_named_items_without_a_shared_items_view() {
+        let client = CodexThreadClient::mock(vec![]);
+        for view in ["full", "summary"] {
+            let notification = protocol::decode_notification("turn/completed", json!({
+                "threadId": "thread", "turn": {"id": "turn", "status": "completed", "itemsView": view,
+                    "items": [{"id": "answer", "type": "agentMessage", "text": "Final answer", "phase": "final_answer"}]}
+            })).unwrap();
+            let reports = session_events(&notification, &client).await;
+            assert_eq!(reports.len(), 2);
+            assert!(
+                matches!(&reports[0].kind, SessionEventKind::ItemChanged { turn_id, item, .. }
+                if turn_id == "turn" && item.id == "answer" && matches!(&item.kind, ItemKind::AssistantMessage { text, .. } if text == "Final answer"))
+            );
+            assert!(
+                matches!(&reports[1].kind, SessionEventKind::TurnEnded { turn } if turn.id == "turn")
+            );
+        }
+        let notification = protocol::decode_notification("turn/completed", json!({
+            "threadId": "thread", "turn": {"id": "turn", "status": "completed", "itemsView": "notLoaded", "items": []}
+        })).unwrap();
+        let reports = session_events(&notification, &client).await;
+        assert_eq!(reports.len(), 1);
+        assert!(matches!(
+            &reports[0].kind,
+            SessionEventKind::TurnEnded { .. }
+        ));
+        assert!(client.mock_requests().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn partial_history_is_rejected_at_codex_boundary_without_a_second_read() {
+        for view in ["summary", "notLoaded"] {
+            let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+                "thread/turns/list",
+                json!({
+                    "data": [{"id": "turn", "status": "completed", "itemsView": view, "items": []}], "nextCursor": "older"
+                }),
+            )]);
+            let error = client
+                .driver()
+                .read_turns("thread", None, 8)
+                .await
+                .unwrap_err();
+            assert!(error.to_string().contains("full history turn turn"));
+            let requests = client.mock_requests().await;
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0].1["itemsView"], "full");
+        }
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/turns/list",
+            json!({
+                "data": [{"id": "turn", "status": "completed", "itemsView": "full", "items": []}]
+            }),
+        )]);
+        assert!(
+            client
+                .driver()
+                .read_turns("thread", None, 8)
+                .await
+                .unwrap()
+                .turns[0]
+                .items
+                .is_empty()
+        );
+    }
+
     fn codex_client(responses: Vec<MockCodexResponse>) -> CodexThreadClient {
         CodexThreadClient::mock(responses)
     }
@@ -1762,7 +1895,12 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(ended.kind, SessionEventKind::TurnEnded { turn: history });
+        assert_eq!(
+            ended.kind,
+            SessionEventKind::TurnEnded {
+                turn: TurnState::from(&history)
+            }
+        );
 
         let other = reported(
             "error",

@@ -1,9 +1,11 @@
 use crate::agent::AgentError;
-use crate::agent::{Driver, ThreadStatus, Turn, TurnOptions, TurnStatus};
+use crate::agent::{
+    Driver, SessionEvent, SessionEventKind, ThreadStatus, TurnOptions, TurnState, TurnStatus,
+};
 
 use super::{
-    INITIAL_TURNS_PAGE_SIZE, PromptTarget, SessionLifecycle, SessionSnapshot, TaskSessions,
-    now_unix_ms, snapshot,
+    INITIAL_TURNS_PAGE_SIZE, PromptTarget, SessionLifecycle, SessionSnapshot, SessionTurnPage,
+    TaskSessions, now_unix_ms, snapshot,
 };
 use super::{
     reconciliation::apply_prompt_resume,
@@ -76,13 +78,28 @@ impl TaskSessions {
             let turn_id = if let Some(turn_id) = current.active_turn_id {
                 turn_id
             } else {
+                let observation_epoch = {
+                    let state = entry.state.lock().await;
+                    if state.generation != generation
+                        || state.lifecycle != SessionLifecycle::Subscribed
+                    {
+                        return Err(AgentError::Failed(format!(
+                            "conversation {thread_id} changed connection before locating its active turn"
+                        )));
+                    }
+                    state.observation_epoch
+                };
                 let page = match driver
                     .read_turns(thread_id, None, INITIAL_TURNS_PAGE_SIZE)
                     .await
                 {
                     Ok(page) => page,
                     Err(error) => {
-                        entry.state.lock().await.last_error = Some(error.to_string());
+                        let mut state = entry.state.lock().await;
+                        if state.same_observation(generation, observation_epoch) {
+                            state.last_error = Some(error.to_string());
+                        }
+                        drop(state);
                         self.cancel_runtime(thread_id).await;
                         return Err(error);
                     }
@@ -99,10 +116,19 @@ impl TaskSessions {
                     )));
                 };
                 let mut state = entry.state.lock().await;
+                if !state.same_observation(generation, observation_epoch) {
+                    return Err(AgentError::Failed(format!(
+                        "conversation {thread_id} changed connection while locating its active turn"
+                    )));
+                }
                 state.active_turn_id = Some(turn_id.clone());
                 state.active_turn_cwd = Some(thread.cwd.clone());
                 state.terminal_candidate_turn_id = Some(turn_id.clone());
-                merge_latest_turns_page(&mut state.turns_page, page);
+                state
+                    .events
+                    .accept_history_page(&thread, &page, current.revision, None);
+                state.events.trim(thread_id);
+                merge_latest_turns_page(&mut state.turns_page, SessionTurnPage::from(&page));
                 state.revision = state.revision.saturating_add(1);
                 state.last_sync_ms = Some(now_unix_ms());
                 state.last_error = None;
@@ -139,21 +165,31 @@ impl TaskSessions {
                 return Ok(snapshot(&state));
             }
         }
-        let (base_revision, fast_mode) = {
+        let (base_revision, fast_mode, read_generation, observation_epoch) = {
             let state = entry.state.lock().await;
-            (state.revision, state.fast_mode)
+            if state.generation != generation {
+                state.events.invalidate_continuity(thread_id);
+            }
+            (
+                state.revision,
+                state.fast_mode,
+                state.generation,
+                state.observation_epoch,
+            )
         };
         let opened = match driver.open_conversation(thread_id, false, fast_mode).await {
             Ok(opened) => opened,
             Err(error) => {
                 let mut state = entry.state.lock().await;
-                state.lifecycle = SessionLifecycle::Error;
-                state.last_error = Some(error.to_string());
+                if state.same_observation(read_generation, observation_epoch) {
+                    state.lifecycle = SessionLifecycle::Error;
+                    state.last_error = Some(error.to_string());
+                }
                 return Err(error);
             }
         };
         let mut state = entry.state.lock().await;
-        if state.generation > generation {
+        if !state.same_observation(read_generation, observation_epoch) {
             return Err(AgentError::Failed(format!(
                 "conversation {thread_id} changed connection while preparing a prompt"
             )));
@@ -167,7 +203,7 @@ impl TaskSessions {
         generation: u64,
         thread_id: &str,
         cwd: Option<&str>,
-        turn: Turn,
+        turn: TurnState,
         options: TurnOptions,
     ) -> Option<u64> {
         let entry = self.entry(thread_id).await;
@@ -197,8 +233,15 @@ impl TaskSessions {
         }
         state.fast_mode = options.fast_mode;
         state.runtime_lease = true;
-        upsert_turn(&mut state.turns_page, turn);
+        upsert_turn(&mut state.turns_page, turn.clone());
         state.revision = state.revision.saturating_add(1);
+        state.events.publish_session_event(
+            &SessionEvent {
+                thread_id: thread_id.to_string(),
+                kind: SessionEventKind::TurnStarted { turn },
+            },
+            state.revision,
+        );
         state.last_sync_ms = Some(now_unix_ms());
         Some(state.revision)
     }
@@ -265,7 +308,15 @@ impl TaskSessions {
                 .map(|thread| thread.cwd.clone())
         });
         state.terminal_candidate_turn_id = turn_id.clone();
-        merge_latest_turns_page(&mut state.turns_page, page);
+        if state.generation != generation || state.revision != snapshot.revision {
+            return Ok(state.active_turn_id.clone());
+        }
+        if let Some(conversation) = state.conversation.as_ref() {
+            state
+                .events
+                .accept_history_page(conversation, &page, snapshot.revision, None);
+        }
+        merge_latest_turns_page(&mut state.turns_page, SessionTurnPage::from(&page));
         state.revision = state.revision.saturating_add(1);
         Ok(turn_id)
     }
@@ -275,6 +326,33 @@ impl TaskSessions {
 mod tests {
     use super::*;
     use crate::app::tasks::sessions::test_support::*;
+
+    #[tokio::test]
+    async fn a_prompt_resume_cannot_retain_history_after_the_task_is_forgotten() {
+        use crate::app::tasks::test_support::wait_for_mock_method;
+        let (pending, release) = MockCodexResponse::gated_ok(
+            "thread/resume",
+            resume_response(
+                ThreadStatus::Idle,
+                vec![wire_turn("stale", TurnStatus::Completed)],
+                vec![],
+            ),
+        );
+        let client = CodexThreadClient::mock(vec![pending]);
+        let sessions = TaskSessions::default();
+        let preparing = {
+            let sessions = sessions.clone();
+            let driver = client.driver();
+            tokio::spawn(async move { sessions.resume_for_prompt(&driver, 1, "thread-1").await })
+        };
+        wait_for_mock_method(&client, "thread/resume").await;
+        sessions.forget_thread("thread-1").await;
+        release.send(()).unwrap();
+        assert!(preparing.await.unwrap().is_err());
+        assert!(sessions.snapshot("thread-1").await.is_none());
+        assert!(sessions.events.for_thread("thread-1").is_empty());
+        assert_eq!(client.mock_requests().await.len(), 1);
+    }
 
     #[tokio::test]
     async fn completed_subscribed_prompt_starts_without_another_resume() {

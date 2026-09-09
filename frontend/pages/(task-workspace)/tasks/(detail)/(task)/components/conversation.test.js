@@ -157,7 +157,7 @@ function layoutElement(properties = {}) {
 }
 
 test("merges owned Conversation actions with direct retained child providers", () => {
-  const retry = conversationButton({ conversationAction: "retry-history" }, "Retry");
+  const detailButton = conversationButton({ conversationAction: "retry-detail" }, "Older messages");
   const earlierPreviewEntry = {
     dataset: { conversationEntryKey: "event-earlier" },
   };
@@ -191,6 +191,14 @@ test("merges owned Conversation actions with direct retained child providers", (
     },
   };
   const childTarget = { id: "command-output", invalidationOwner: command };
+  const olderHistory = {
+    actionHintScope(options) {
+      assert.equal(options.scopeId, "task:thread-a:conversation:older-history");
+      assert.deepEqual(options.clipRoots, [owner, scrollport]);
+      return { targets: [historyTarget], mutationRoots: [olderHistory] };
+    },
+  };
+  const historyTarget = { id: "older-page", invalidationOwner: olderHistory };
   const entry = {
     dataset: { conversationEntryKey: "command-a" },
     querySelector(selector) {
@@ -199,7 +207,7 @@ test("merges owned Conversation actions with direct retained child providers", (
   };
   const list = { children: [entry] };
   const scrollport = {};
-  let controls = [retry, earlierPreview, preview, approval];
+  let controls = [detailButton, earlierPreview, preview, approval];
   const owner = {
     active: true,
     hidden: false,
@@ -208,9 +216,10 @@ test("merges owned Conversation actions with direct retained child providers", (
     ensureState() {},
     scroller: () => scrollport,
     conversationList: () => list,
+    olderHistory: () => olderHistory,
     contains: (control) => controls.includes(control),
     querySelector(selector) {
-      return selector.includes("retry-history") ? retry : null;
+      return selector.includes("retry-detail") ? detailButton : null;
     },
     querySelectorAll(selector) {
       if (selector.includes("preview-image")) {
@@ -225,18 +234,19 @@ test("merges owned Conversation actions with direct retained child providers", (
     scopeId: "task:thread-a:conversation",
   });
   assert.deepEqual(scope.targets.map(({ id }) => id), [
-    "task:thread-a:conversation:retry-history",
+    "task:thread-a:conversation:retry-detail",
     "task:thread-a:conversation:preview-image:event-earlier:1",
     "task:thread-a:conversation:preview-image:event-a:1",
     "task:thread-a:conversation:approval:approval-a:accept",
+    "older-page",
     "command-output",
   ]);
   assert.deepEqual(scope.targets.map(({ invalidationOwner }) =>
     invalidationOwner
-  ), [owner, earlierPreviewEntry, previewEntry, approvalCard, command]);
+  ), [owner, earlierPreviewEntry, previewEntry, approvalCard, olderHistory, command]);
   scope.targets.slice(0, 4).forEach((target) => target.activate());
   assert.deepEqual(
-    [retry, earlierPreview, preview, approval].map(({ clicks }) => clicks),
+    [detailButton, earlierPreview, preview, approval].map(({ clicks }) => clicks),
     [1, 1, 1, 1],
   );
   previewEntry.dataset.conversationEntryKey = "event-b";
@@ -251,6 +261,33 @@ test("merges owned Conversation actions with direct retained child providers", (
   owner.snapshot = { threadId: "thread-b", task: { threadId: "thread-b" } };
   assert.equal(scope.targets[0].isActionable(), false);
   controls = [];
+});
+
+test("forwards only the current direct history child's intent", () => {
+  const child = {};
+  const intents = [];
+  const owner = {
+    active: true,
+    snapshot: { threadId: "a" },
+    olderHistory: () => child,
+    dispatchIntent: (...intent) => intents.push(intent),
+  };
+  const emit = (target, threadId, retry = false) =>
+    conversation.handleOlderHistoryIntent.call(owner, {
+      target, detail: { threadId, retry }, stopPropagation() {},
+    });
+  emit({}, "a");
+  emit(child, "old-task");
+  assert.deepEqual(intents, []);
+  emit(child, "a");
+  emit(child, "a", true);
+  assert.deepEqual(intents, [
+    ["older-history", { retry: false }],
+    ["older-history", { retry: true }],
+  ]);
+  owner.active = false;
+  emit(child, "a");
+  assert.equal(intents.length, 2);
 });
 
 test("provides only direct owner-known Thinking disclosures with inner Markdown", () => {
@@ -299,6 +336,7 @@ test("provides only direct owner-known Thinking disclosures with inner Markdown"
     ensureState() {},
     scroller: () => scrollport,
     conversationList: () => list,
+    olderHistory: () => null,
     contains: (control) => control === summary,
     querySelector: () => null,
     querySelectorAll: () => [],

@@ -1036,10 +1036,13 @@ mod tests {
         };
         assert_eq!(opened.id, "turn-b");
         assert_eq!(opened.status, TurnStatus::InProgress);
-        assert!(matches!(
-            &opened.items[0].kind,
-            ItemKind::UserMessage { text, .. } if text == "second"
-        ));
+        let SessionEventKind::ItemChanged { turn_id, item, .. } =
+            next_session_event(&mut events, "item").await
+        else {
+            panic!("the opened turn reports its prompt separately");
+        };
+        assert_eq!(turn_id, opened.id);
+        assert!(matches!(&item.kind, ItemKind::UserMessage { text, .. } if text == "second"));
         let answered_in = loop {
             if let SessionEventKind::ItemChanged { turn_id, item, .. } =
                 next_session_event(&mut events, "item").await
@@ -1352,16 +1355,9 @@ mod tests {
             }
         };
         assert_eq!(ended.id, turn.id);
-        assert_eq!(
-            ended
-                .items
-                .iter()
-                .filter(|item| matches!(item.kind, ItemKind::UserMessage { .. }))
-                .count(),
-            1,
-            "{:?}",
-            ended.items
-        );
+        assert_eq!(ended.status, TurnStatus::Completed);
+        // The loop above rejects any replayed user item. Lifecycle reports do
+        // not carry a second copy of the conversation's items.
     }
 
     #[tokio::test]

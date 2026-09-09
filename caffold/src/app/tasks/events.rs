@@ -1,7 +1,8 @@
-use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    sync::{Arc, Mutex},
-};
+#[cfg(test)]
+use crate::agent::Turn;
+use std::collections::HashMap;
+#[cfg(test)]
+use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
@@ -9,7 +10,8 @@ use tokio::sync::broadcast;
 
 use crate::agent::{
     ActivityStatus, ApprovalOutcome, ApprovalRequest, BackgroundTask, Conversation,
-    ConversationItem, ItemKind, MessageContent, Turn, TurnOrigin, TurnStatus,
+    ConversationItem, ItemKind, MessageContent, SessionEvent, SessionEventKind, ThreadStatus,
+    TurnOrigin, TurnPage, TurnState, TurnStatus,
 };
 
 use super::generated_images::{GeneratedImageObservation, GeneratedImageStore};
@@ -68,6 +70,7 @@ pub(in crate::app::tasks) struct TaskEventRecord {
 /// inferred from payload, position, wall time, or event type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TaskEventObservationSource {
+    ProviderHistory,
     ProviderLifecycle,
     AcceptedSubmission,
     LocalProjection,
@@ -99,268 +102,43 @@ pub(in crate::app::tasks) struct TaskEventPublication {
 
 /// An atomic view of retained live evidence and its publication watermark.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg(test)]
 pub(in crate::app::tasks) struct TaskEventSnapshot {
     pub(in crate::app::tasks) revision: u64,
     pub(in crate::app::tasks) observations: Vec<TaskEventObservation>,
     pub(in crate::app::tasks) fully_observed_turns: HashSet<String>,
 }
 
-#[derive(Default)]
-struct LiveTaskEventCacheState {
-    events: HashMap<String, Vec<TaskEventObservation>>,
-    /// Thread ids from least to most recently observed.
-    ///
-    /// This bounds backend memory only. It is not conversation placement,
-    /// provider causality, lifecycle authority, or frontend publication order.
-    threads_by_observation_recency: VecDeque<String>,
-    /// Per-Task publication sequence. Entries survive cache eviction so a
-    /// later empty snapshot or new event cannot move a connected browser
-    /// backwards. Explicit Task removal clears the entry.
-    revisions: HashMap<String, u64>,
-    /// Turns whose live journal lost continuity after its boundary was seen.
-    ///
-    /// Their records remain useful observations, but no longer prove that the
-    /// live journal is a complete replacement for provider history.
-    invalidated_turns: HashMap<String, HashSet<String>>,
+/// An opaque continuation of one provider page, optionally inside one turn.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(in crate::app::tasks) struct TaskHistoryCursor {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(in crate::app::tasks) turns: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(in crate::app::tasks) before: Option<TaskEventPosition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(in crate::app::tasks) turn_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(in crate::app::tasks) item_id: Option<String>,
 }
 
-#[derive(Clone, Default)]
-pub(in crate::app::tasks) struct LiveTaskEventCache {
-    state: Arc<Mutex<LiveTaskEventCacheState>>,
+#[derive(Debug, Clone)]
+pub(in crate::app::tasks) struct TaskHistoryPage {
+    pub(in crate::app::tasks) events: Vec<TaskEventRecord>,
+    pub(in crate::app::tasks) next: Option<TaskHistoryCursor>,
+    pub(in crate::app::tasks) owns_extent: bool,
+    pub(in crate::app::tasks) revision: u64,
 }
 
-pub(in crate::app::tasks) const LIVE_TASK_EVENT_LIMIT_PER_THREAD: usize = 256;
-pub(in crate::app::tasks) const LIVE_TASK_THREAD_LIMIT: usize = 128;
+mod cache;
 
-impl LiveTaskEventCache {
-    #[cfg(test)]
-    pub(in crate::app::tasks) fn observe_provider_lifecycle(&self, events: &[TaskEventRecord]) {
-        for event in events {
-            self.record_provider_lifecycle(event.clone());
-        }
-    }
-
-    #[cfg(test)]
-    pub(in crate::app::tasks) fn record_provider_lifecycle(
-        &self,
-        event: TaskEventRecord,
-    ) -> TaskEventRecord {
-        self.record_observation(event, TaskEventObservationSource::ProviderLifecycle, None)
-            .event
-    }
-
-    #[cfg(test)]
-    pub(in crate::app::tasks) fn record_accepted(&self, event: TaskEventRecord) -> TaskEventRecord {
-        self.record_observation(event, TaskEventObservationSource::AcceptedSubmission, None)
-            .event
-    }
-
-    #[cfg(test)]
-    pub(in crate::app::tasks) fn record_local(&self, event: TaskEventRecord) -> TaskEventRecord {
-        self.record_observation(event, TaskEventObservationSource::LocalProjection, None)
-            .event
-    }
-
-    fn record_observation(
-        &self,
-        mut event: TaskEventRecord,
-        source: TaskEventObservationSource,
-        session_revision: Option<u64>,
-    ) -> TaskEventPublication {
-        let Ok(mut state) = self.state.lock() else {
-            return TaskEventPublication { revision: 0, event };
-        };
-        let thread_id = event.thread_id.clone();
-        if !state.events.contains_key(&thread_id)
-            && state.events.len() >= LIVE_TASK_THREAD_LIMIT
-            && let Some(oldest_thread) = state.threads_by_observation_recency.pop_front()
-        {
-            state.events.remove(&oldest_thread);
-            state.invalidated_turns.remove(&oldest_thread);
-            advance_revision(&mut state.revisions, &oldest_thread);
-        }
-        observe_thread_recency(&mut state.threads_by_observation_recency, &thread_id);
-        let publication_revision = advance_revision(&mut state.revisions, &thread_id);
-        let thread_events = state.events.entry(thread_id).or_default();
-        if let Some(existing) = thread_events
-            .iter_mut()
-            .find(|item| item.event.id == event.id)
-        {
-            let (merged, merged_source, merged_session_revision) =
-                advance_cached_observation(existing, event, source, session_revision);
-            existing.event = merged;
-            existing.source = merged_source;
-            existing.publication_revision = publication_revision;
-            existing.session_revision = merged_session_revision;
-            return TaskEventPublication {
-                revision: publication_revision,
-                event: existing.event.clone(),
-            };
-        }
-        event.position.index = thread_events
-            .iter()
-            .filter(|existing| existing.event.position.anchor_ms == event.position.anchor_ms)
-            .map(|existing| existing.event.position.index)
-            .max()
-            .map_or(0, |index| index.saturating_add(1));
-        thread_events.push(TaskEventObservation {
-            event: event.clone(),
-            publication_revision,
-            session_revision,
-            source,
-        });
-        if thread_events.len() > LIVE_TASK_EVENT_LIMIT_PER_THREAD {
-            thread_events.remove(0);
-        }
-        TaskEventPublication {
-            revision: publication_revision,
-            event,
-        }
-    }
-
-    #[cfg(test)]
-    pub(in crate::app::tasks) fn for_thread(&self, thread_id: &str) -> Vec<TaskEventRecord> {
-        self.state
-            .lock()
-            .ok()
-            .and_then(|state| state.events.get(thread_id).cloned())
-            .unwrap_or_default()
-            .into_iter()
-            .map(|observation| observation.event)
-            .collect()
-    }
-
-    fn snapshot_for_thread(&self, thread_id: &str) -> TaskEventSnapshot {
-        let Ok(mut state) = self.state.lock() else {
-            return TaskEventSnapshot {
-                revision: 0,
-                observations: Vec::new(),
-                fully_observed_turns: HashSet::new(),
-            };
-        };
-        let revision = advance_revision(&mut state.revisions, thread_id);
-        let observations = state.events.get(thread_id).cloned().unwrap_or_default();
-        let fully_observed_turns = fully_observed_turns(&state, thread_id);
-        TaskEventSnapshot {
-            revision,
-            observations,
-            fully_observed_turns,
-        }
-    }
-
-    /// Turns whose live item journal is known to start at the real turn
-    /// boundary and has remained continuous since.
-    #[cfg(test)]
-    pub(in crate::app::tasks) fn fully_observed_turns(&self, thread_id: &str) -> HashSet<String> {
-        let Ok(state) = self.state.lock() else {
-            return HashSet::new();
-        };
-        fully_observed_turns(&state, thread_id)
-    }
-
-    /// Keep the observations, but withdraw the claim that this thread's live
-    /// journal is complete. A reconnect can recover provider history; it cannot
-    /// recover reports that may have fallen between two live connections.
-    pub(in crate::app::tasks) fn invalidate_continuity(&self, thread_id: &str) {
-        let Ok(mut state) = self.state.lock() else {
-            return;
-        };
-        let turn_ids = state
-            .events
-            .get(thread_id)
-            .into_iter()
-            .flatten()
-            .filter(|event| {
-                event.source == TaskEventObservationSource::ProviderLifecycle
-                    && event.event.event_type == "turn_started"
-            })
-            .filter_map(|event| task_event_turn_id(&event.event))
-            .map(str::to_string)
-            .collect::<Vec<_>>();
-        state
-            .invalidated_turns
-            .entry(thread_id.to_string())
-            .or_default()
-            .extend(turn_ids);
-        advance_revision(&mut state.revisions, thread_id);
-    }
-
-    /// The receiver cannot identify which conversation its missed reports
-    /// belonged to, so every live-ledger claim is withdrawn conservatively.
-    pub(in crate::app::tasks) fn invalidate_all_continuity(&self) {
-        let Ok(mut state) = self.state.lock() else {
-            return;
-        };
-        let turn_ids = state
-            .events
-            .iter()
-            .flat_map(|(thread_id, events)| {
-                events
-                    .iter()
-                    .filter(|event| {
-                        event.source == TaskEventObservationSource::ProviderLifecycle
-                            && event.event.event_type == "turn_started"
-                    })
-                    .filter_map(|event| task_event_turn_id(&event.event))
-                    .map(|turn_id| (thread_id.clone(), turn_id.to_string()))
-            })
-            .collect::<Vec<_>>();
-        for (thread_id, turn_id) in turn_ids {
-            let inserted = state
-                .invalidated_turns
-                .entry(thread_id.clone())
-                .or_default()
-                .insert(turn_id);
-            if inserted {
-                advance_revision(&mut state.revisions, &thread_id);
-            }
-        }
-    }
-
-    pub(in crate::app::tasks) fn remove_thread(&self, thread_id: &str) {
-        if let Ok(mut state) = self.state.lock() {
-            state.events.remove(thread_id);
-            state.invalidated_turns.remove(thread_id);
-            state.revisions.remove(thread_id);
-            state
-                .threads_by_observation_recency
-                .retain(|existing| existing != thread_id);
-        }
-    }
-}
-
-fn observe_thread_recency(recency: &mut VecDeque<String>, thread_id: &str) {
-    recency.retain(|existing| existing != thread_id);
-    recency.push_back(thread_id.to_string());
-}
-
-fn advance_revision(revisions: &mut HashMap<String, u64>, thread_id: &str) -> u64 {
-    let revision = revisions.entry(thread_id.to_string()).or_default();
-    *revision = revision.saturating_add(1);
-    *revision
-}
-
-fn fully_observed_turns(state: &LiveTaskEventCacheState, thread_id: &str) -> HashSet<String> {
-    let invalidated = state.invalidated_turns.get(thread_id);
-    state
-        .events
-        .get(thread_id)
-        .into_iter()
-        .flatten()
-        .filter(|event| {
-            event.source == TaskEventObservationSource::ProviderLifecycle
-                && event.event.event_type == "turn_started"
-        })
-        .filter_map(|event| task_event_turn_id(&event.event))
-        .filter(|turn_id| invalidated.is_none_or(|turns| !turns.contains(*turn_id)))
-        .map(str::to_string)
-        .collect()
-}
+use cache::TurnEventCache;
 
 #[derive(Clone)]
 pub(in crate::app::tasks) struct TaskEvents {
     sender: broadcast::Sender<TaskEventPublication>,
-    cache: LiveTaskEventCache,
+    cache: TurnEventCache,
     generated_images: GeneratedImageStore,
 }
 
@@ -369,13 +147,125 @@ impl Default for TaskEvents {
         let (sender, _) = broadcast::channel(256);
         Self {
             sender,
-            cache: LiveTaskEventCache::default(),
+            cache: TurnEventCache::default(),
             generated_images: GeneratedImageStore::default(),
         }
     }
 }
 
 impl TaskEvents {
+    /// Normalize one accepted common report at the item projection owner.
+    /// The session calls this while accepting the report's causal revision.
+    pub(in crate::app::tasks) fn publish_session_event(&self, event: &SessionEvent, revision: u64) {
+        let thread_id = event.thread_id.as_str();
+        let record = match &event.kind {
+            SessionEventKind::TurnStarted { turn } => Some(turn_started_event(
+                thread_id,
+                turn,
+                turn.started_at_ms.unwrap_or_else(now_ms),
+            )),
+            SessionEventKind::TurnEnded { turn } => Some(turn_completed_event(
+                thread_id,
+                turn,
+                turn.completed_at_ms.unwrap_or_else(now_ms),
+            )),
+            SessionEventKind::ItemChanged {
+                turn_id,
+                item,
+                at_ms,
+            } => task_event_from_item(
+                thread_id,
+                turn_id,
+                if *at_ms == 0 { now_ms() } else { *at_ms },
+                item,
+            ),
+            SessionEventKind::StatusChanged { status }
+            | SessionEventKind::ActivityChanged { status } => {
+                let (status, summary) = match status {
+                    ThreadStatus::Active { .. } => ("running", "Thread running"),
+                    ThreadStatus::Idle | ThreadStatus::NotLoaded => ("idle", "Thread idle"),
+                    ThreadStatus::SystemError => ("failed", "Thread failed"),
+                };
+                Some(task_event_record(
+                    thread_id,
+                    "thread_status_changed",
+                    "thread_status_changed",
+                    summary,
+                    Some(json!({ "threadId": thread_id, "status": status })),
+                    now_ms(),
+                ))
+            }
+            SessionEventKind::DiffChanged => Some(task_event_record(
+                thread_id,
+                "diff_updated",
+                "diff_updated",
+                "Diff updated",
+                Some(json!({ "threadId": thread_id })),
+                now_ms(),
+            )),
+            SessionEventKind::ConversationStarted { .. }
+            | SessionEventKind::TitleChanged { .. }
+            | SessionEventKind::SettingsChanged { .. }
+            | SessionEventKind::UsageReported { .. }
+            | SessionEventKind::ApprovalAnsweredElsewhere { .. } => None,
+        };
+        if let Some(record) = record {
+            self.publish_provider_lifecycle(record, revision);
+        }
+    }
+
+    /// Retain the normalized items once. The read result is transient; sessions
+    /// retain only the separate turn lifecycle states.
+    pub(in crate::app::tasks) fn accept_history_page(
+        &self,
+        conversation: &Conversation,
+        page: &TurnPage,
+        base_revision: u64,
+        cursor: Option<&str>,
+    ) -> TaskHistoryPage {
+        let mut history = Conversation {
+            turns: page.turns.clone(),
+            ..conversation.clone()
+        };
+        history.turns.reverse();
+        let mut by_turn = HashMap::<String, Vec<TaskEventRecord>>::new();
+        for mut event in thread_events(&history) {
+            self.generated_images.observe(&event);
+            event.generated_image = None;
+            if let Some(turn_id) = task_event_turn_id(&event) {
+                by_turn.entry(turn_id.to_string()).or_default().push(event);
+            }
+        }
+        self.cache
+            .accept_page(&conversation.id, page, by_turn, base_revision, cursor)
+    }
+
+    pub(in crate::app::tasks) fn cached_history_page(
+        &self,
+        thread_id: &str,
+        cursor: &TaskHistoryCursor,
+    ) -> Option<TaskHistoryPage> {
+        self.cache.cached_page(thread_id, cursor)
+    }
+
+    pub(in crate::app::tasks) fn trim(&self, thread_id: &str) {
+        self.cache.trim(thread_id);
+    }
+
+    pub(in crate::app::tasks) fn begin_history_request(&self, thread_id: &str) -> u64 {
+        self.cache.begin_history_request(thread_id)
+    }
+
+    pub(in crate::app::tasks) fn finish_history_request(
+        &self,
+        thread_id: &str,
+        request: u64,
+        turn_id: Option<&str>,
+    ) {
+        self.cache
+            .finish_history_request(thread_id, request, turn_id);
+    }
+
     pub(in crate::app::tasks) fn subscribe(&self) -> broadcast::Receiver<TaskEventPublication> {
         self.sender.subscribe()
     }
@@ -445,19 +335,12 @@ impl TaskEvents {
         let _ = self.sender.send(event);
     }
 
-    /// Preserve history-backed assets without turning provider history into a
-    /// second copy of the live journal.
-    pub(in crate::app::tasks) fn observe_history_assets(&self, events: &[TaskEventRecord]) {
-        for event in events {
-            self.generated_images.observe(event);
-        }
-    }
-
     #[cfg(test)]
     pub(in crate::app::tasks) fn for_thread(&self, thread_id: &str) -> Vec<TaskEventRecord> {
         self.cache.for_thread(thread_id)
     }
 
+    #[cfg(test)]
     pub(in crate::app::tasks) fn snapshot_for_thread(&self, thread_id: &str) -> TaskEventSnapshot {
         self.cache.snapshot_for_thread(thread_id)
     }
@@ -471,10 +354,6 @@ impl TaskEvents {
         self.cache.invalidate_continuity(thread_id);
     }
 
-    pub(in crate::app::tasks) fn invalidate_all_continuity(&self) {
-        self.cache.invalidate_all_continuity();
-    }
-
     pub(in crate::app::tasks) fn generated_images(&self) -> &GeneratedImageStore {
         &self.generated_images
     }
@@ -483,54 +362,6 @@ impl TaskEvents {
         self.cache.remove_thread(thread_id);
         self.generated_images.remove_thread(thread_id);
     }
-}
-
-/// Join a provider-history snapshot with the live reports Caffold observed.
-///
-/// A live `turn_started` plus uninterrupted observation proves Caffold watched
-/// that turn from its boundary. That live stream therefore owns the whole item
-/// set for the turn: mixing in a second provider projection whose item ids are
-/// local to a history read would draw the same work twice and would replace
-/// direct event times with a turn-level fallback. A turn Caffold joined after
-/// it began, or whose live connection lost continuity, has no such proof, so
-/// history remains the baseline and only exact identities reconcile. No
-/// content, proximity, or arrival-order matching is involved.
-pub(in crate::app::tasks) fn reconcile_provider_history_with_live_observations(
-    history: Vec<TaskEventRecord>,
-    live: &[TaskEventObservation],
-    history_base_revision: Option<u64>,
-    fully_observed_turns: &HashSet<String>,
-) -> Vec<TaskEventRecord> {
-    let mut events = history
-        .into_iter()
-        .filter(|event| {
-            task_event_turn_id(event).is_none_or(|turn_id| !fully_observed_turns.contains(turn_id))
-        })
-        .collect::<Vec<_>>();
-    let mut index_by_id = events
-        .iter()
-        .enumerate()
-        .map(|(index, event)| (event.id.clone(), index))
-        .collect::<HashMap<_, _>>();
-    for observation in live {
-        if let Some(index) = index_by_id.get(&observation.event.id).copied() {
-            let live_is_after_read = observation.source
-                == TaskEventObservationSource::ProviderLifecycle
-                && observation
-                    .session_revision
-                    .zip(history_base_revision)
-                    .is_some_and(|(live, history)| live > history);
-            events[index] = reconcile_history_record(
-                events[index].clone(),
-                observation.event.clone(),
-                live_is_after_read,
-            );
-        } else {
-            index_by_id.insert(observation.event.id.clone(), events.len());
-            events.push(observation.event.clone());
-        }
-    }
-    events
 }
 
 /// Compose current Caffold-owned approval requests into a conversation view.
@@ -568,6 +399,21 @@ fn advance_cached_observation(
 ) -> (TaskEventRecord, TaskEventObservationSource, Option<u64>) {
     let position = existing.event.position;
     let incoming_owns_projection = match (existing.source, incoming_source) {
+        (_, TaskEventObservationSource::ProviderHistory) => {
+            unreachable!("history enters through the turn extent owner")
+        }
+        (
+            TaskEventObservationSource::ProviderHistory,
+            TaskEventObservationSource::ProviderLifecycle,
+        ) => {
+            !provider_revision_is_older(existing.session_revision, incoming_session_revision)
+                && !provider_lifecycle_regresses(&existing.event, &incoming)
+        }
+        (
+            TaskEventObservationSource::ProviderHistory,
+            TaskEventObservationSource::AcceptedSubmission
+            | TaskEventObservationSource::LocalProjection,
+        ) => false,
         (
             TaskEventObservationSource::ProviderLifecycle,
             TaskEventObservationSource::ProviderLifecycle,
@@ -637,25 +483,6 @@ fn provider_revision_is_older(existing: Option<u64>, incoming: Option<u64>) -> b
     existing
         .zip(incoming)
         .is_some_and(|(existing, incoming)| incoming < existing)
-}
-
-fn reconcile_history_record(
-    history: TaskEventRecord,
-    live: TaskEventRecord,
-    live_is_after_read: bool,
-) -> TaskEventRecord {
-    let position = history.position;
-    if live_is_after_read && !provider_lifecycle_regresses(&history, &live) {
-        let history_event_type = history.event_type.clone();
-        let mut reconciled = project_primary_record(live, history, position);
-        // Item kind is stable provider-history structure. Mutable live payload
-        // and summary may advance after the read begins, but cannot reclassify
-        // the exact item into another surface.
-        reconciled.event_type = history_event_type;
-        reconciled
-    } else {
-        project_primary_record(history, live, position)
-    }
 }
 
 fn provider_lifecycle_regresses(existing: &TaskEventRecord, incoming: &TaskEventRecord) -> bool {
@@ -746,7 +573,11 @@ pub(in crate::app::tasks) fn thread_events(conversation: &Conversation) -> Vec<T
             .or(turn.completed_at_ms)
             .unwrap_or(inferred_ms);
         if turn.started_at_ms.is_some() {
-            events.push(turn_started_event(thread_id, turn, timeline_ms));
+            events.push(turn_started_event(
+                thread_id,
+                &TurnState::from(turn),
+                timeline_ms,
+            ));
         }
         for item in &turn.items {
             if let Some(mut event) = task_event_from_item(thread_id, turn_id, timeline_ms, item) {
@@ -759,7 +590,11 @@ pub(in crate::app::tasks) fn thread_events(conversation: &Conversation) -> Vec<T
         }
         if let Some(completed_ms) = turn.completed_at_ms {
             let completed_ms = completed_ms.max(timeline_ms);
-            events.push(turn_completed_event(thread_id, turn, completed_ms));
+            events.push(turn_completed_event(
+                thread_id,
+                &TurnState::from(turn),
+                completed_ms,
+            ));
             previous_turn_ms = completed_ms;
         } else {
             previous_turn_ms = timeline_ms;
@@ -786,7 +621,7 @@ fn assign_anchor_indexes_in_current_order(events: &mut [TaskEventRecord]) {
 /// are one record however the turn was observed.
 pub(in crate::app::tasks) fn turn_started_event(
     thread_id: &str,
-    turn: &Turn,
+    turn: &TurnState,
     started_ms: u64,
 ) -> TaskEventRecord {
     let turn_id = turn.id.as_str();
@@ -809,7 +644,7 @@ pub(in crate::app::tasks) fn turn_started_event(
 
 pub(in crate::app::tasks) fn turn_completed_event(
     thread_id: &str,
-    turn: &Turn,
+    turn: &TurnState,
     completed_ms: u64,
 ) -> TaskEventRecord {
     let summary = match turn.status {
@@ -1367,7 +1202,7 @@ mod tests {
 
         assert_eq!(raw.id, canonical.id);
         assert_eq!(raw.event_type, canonical.event_type);
-        let cache = LiveTaskEventCache::default();
+        let cache = TurnEventCache::default();
         cache.record_provider_lifecycle(canonical);
         cache.record_provider_lifecycle(raw);
         assert_eq!(cache.for_thread("thread_1").len(), 1);
@@ -1395,7 +1230,7 @@ mod tests {
 
         assert_eq!(live.id, history.id);
         assert_ne!(live.id, separate.id);
-        let cache = LiveTaskEventCache::default();
+        let cache = TurnEventCache::default();
         cache.record_provider_lifecycle(live.clone());
         cache.record_provider_lifecycle(history.clone());
         cache.record_provider_lifecycle(separate.clone());
@@ -1405,12 +1240,38 @@ mod tests {
             provider_lifecycle_observation(live, 1),
             provider_lifecycle_observation(separate, 1),
         ];
-        let merged = reconcile_provider_history_with_live_observations(
-            vec![history],
-            &observations,
-            Some(2),
-            &HashSet::new(),
-        );
+        let merged = {
+            let projection = TurnEventCache::default();
+            for observation in &observations {
+                projection.record_observation(
+                    observation.event.clone(),
+                    observation.source,
+                    observation.session_revision,
+                );
+            }
+            let history = vec![history];
+            let turn_id = task_event_turn_id(&history[0]).unwrap().to_string();
+            let page = TurnPage {
+                turns: vec![Turn {
+                    id: turn_id.clone(),
+                    origin: TurnOrigin::Unknown,
+                    status: TurnStatus::Completed,
+                    started_at_ms: Some(history[0].position.anchor_ms),
+                    completed_at_ms: None,
+                    items: vec![],
+                }],
+                ..TurnPage::default()
+            };
+            projection
+                .accept_page(
+                    "thread_1",
+                    &page,
+                    HashMap::from([(turn_id, history)]),
+                    2,
+                    None,
+                )
+                .events
+        };
         assert_eq!(merged.len(), 2);
         assert_eq!(
             merged
@@ -1472,12 +1333,38 @@ mod tests {
         late_live_prompt.position.index = 0;
 
         let observations = [accepted_observation(late_live_prompt)];
-        let mut merged = reconcile_provider_history_with_live_observations(
-            vec![history_prompt, history_answer],
-            &observations,
-            Some(0),
-            &HashSet::new(),
-        );
+        let mut merged = {
+            let projection = TurnEventCache::default();
+            for observation in &observations {
+                projection.record_observation(
+                    observation.event.clone(),
+                    observation.source,
+                    observation.session_revision,
+                );
+            }
+            let history = vec![history_prompt, history_answer];
+            let turn_id = task_event_turn_id(&history[0]).unwrap().to_string();
+            let page = TurnPage {
+                turns: vec![Turn {
+                    id: turn_id.clone(),
+                    origin: TurnOrigin::Unknown,
+                    status: TurnStatus::Completed,
+                    started_at_ms: Some(history[0].position.anchor_ms),
+                    completed_at_ms: None,
+                    items: vec![],
+                }],
+                ..TurnPage::default()
+            };
+            projection
+                .accept_page(
+                    "thread_1",
+                    &page,
+                    HashMap::from([(turn_id, history)]),
+                    0,
+                    None,
+                )
+                .events
+        };
         sort_task_events(&mut merged);
 
         assert_eq!(
@@ -1566,12 +1453,37 @@ mod tests {
             .enumerate()
             .map(|(index, event)| provider_lifecycle_observation(event, index as u64 + 1))
             .collect::<Vec<_>>();
-        let mut merged = reconcile_provider_history_with_live_observations(
-            history,
-            &live,
-            Some(0),
-            &HashSet::from([turn_id.to_string()]),
-        );
+        let mut merged = {
+            let projection = TurnEventCache::default();
+            for observation in &live {
+                projection.record_observation(
+                    observation.event.clone(),
+                    observation.source,
+                    observation.session_revision,
+                );
+            }
+            let turn_id = task_event_turn_id(&history[0]).unwrap().to_string();
+            let page = TurnPage {
+                turns: vec![Turn {
+                    id: turn_id.clone(),
+                    origin: TurnOrigin::Unknown,
+                    status: TurnStatus::Completed,
+                    started_at_ms: Some(history[0].position.anchor_ms),
+                    completed_at_ms: None,
+                    items: vec![],
+                }],
+                ..TurnPage::default()
+            };
+            projection
+                .accept_page(
+                    "thread_1",
+                    &page,
+                    HashMap::from([(turn_id, history)]),
+                    0,
+                    None,
+                )
+                .events
+        };
         sort_task_events(&mut merged);
 
         assert_eq!(
@@ -1594,11 +1506,11 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![
                 (100, Some(100)),
-                (110, Some(110)),
-                (120, Some(120)),
-                (130, Some(130)),
+                (100, Some(110)),
+                (100, Some(120)),
+                (100, Some(130)),
             ],
-            "direct live times must not collapse onto the history turn anchor"
+            "turn placement is stable while direct observation times stay distinct"
         );
     }
 
@@ -1632,12 +1544,38 @@ mod tests {
         );
 
         let observations = [provider_lifecycle_observation(live, 1)];
-        let merged = reconcile_provider_history_with_live_observations(
-            vec![history],
-            &observations,
-            Some(0),
-            &HashSet::new(),
-        );
+        let merged = {
+            let projection = TurnEventCache::default();
+            for observation in &observations {
+                projection.record_observation(
+                    observation.event.clone(),
+                    observation.source,
+                    observation.session_revision,
+                );
+            }
+            let history = vec![history];
+            let turn_id = task_event_turn_id(&history[0]).unwrap().to_string();
+            let page = TurnPage {
+                turns: vec![Turn {
+                    id: turn_id.clone(),
+                    origin: TurnOrigin::Unknown,
+                    status: TurnStatus::Completed,
+                    started_at_ms: Some(history[0].position.anchor_ms),
+                    completed_at_ms: None,
+                    items: vec![],
+                }],
+                ..TurnPage::default()
+            };
+            projection
+                .accept_page(
+                    "thread_1",
+                    &page,
+                    HashMap::from([(turn_id, history)]),
+                    0,
+                    None,
+                )
+                .events
+        };
 
         assert_eq!(
             merged.len(),
@@ -1681,12 +1619,38 @@ mod tests {
 
         live.activity_status = Some(ActivityStatus::InProgress);
         let observations = [provider_lifecycle_observation(live, 6)];
-        let merged = reconcile_provider_history_with_live_observations(
-            vec![history],
-            &observations,
-            Some(5),
-            &HashSet::new(),
-        );
+        let merged = {
+            let projection = TurnEventCache::default();
+            for observation in &observations {
+                projection.record_observation(
+                    observation.event.clone(),
+                    observation.source,
+                    observation.session_revision,
+                );
+            }
+            let history = vec![history];
+            let turn_id = task_event_turn_id(&history[0]).unwrap().to_string();
+            let page = TurnPage {
+                turns: vec![Turn {
+                    id: turn_id.clone(),
+                    origin: TurnOrigin::Unknown,
+                    status: TurnStatus::Completed,
+                    started_at_ms: Some(history[0].position.anchor_ms),
+                    completed_at_ms: None,
+                    items: vec![],
+                }],
+                ..TurnPage::default()
+            };
+            projection
+                .accept_page(
+                    "thread_1",
+                    &page,
+                    HashMap::from([(turn_id, history)]),
+                    5,
+                    None,
+                )
+                .events
+        };
         let item = &merged[0];
 
         assert_eq!(item.position.anchor_ms, 100);
@@ -1720,12 +1684,38 @@ mod tests {
         live.position = TaskEventPosition::at(200);
 
         let observations = [provider_lifecycle_observation(live, 4)];
-        let merged = reconcile_provider_history_with_live_observations(
-            vec![history],
-            &observations,
-            Some(5),
-            &HashSet::new(),
-        );
+        let merged = {
+            let projection = TurnEventCache::default();
+            for observation in &observations {
+                projection.record_observation(
+                    observation.event.clone(),
+                    observation.source,
+                    observation.session_revision,
+                );
+            }
+            let history = vec![history];
+            let turn_id = task_event_turn_id(&history[0]).unwrap().to_string();
+            let page = TurnPage {
+                turns: vec![Turn {
+                    id: turn_id.clone(),
+                    origin: TurnOrigin::Unknown,
+                    status: TurnStatus::Completed,
+                    started_at_ms: Some(history[0].position.anchor_ms),
+                    completed_at_ms: None,
+                    items: vec![],
+                }],
+                ..TurnPage::default()
+            };
+            projection
+                .accept_page(
+                    "thread_1",
+                    &page,
+                    HashMap::from([(turn_id, history)]),
+                    5,
+                    None,
+                )
+                .events
+        };
         let item = &merged[0];
 
         assert_eq!(item.position.anchor_ms, 100);
@@ -1768,12 +1758,38 @@ mod tests {
         live.activity_status = Some(ActivityStatus::Completed);
 
         let observations = [provider_lifecycle_observation(live, 6)];
-        let merged = reconcile_provider_history_with_live_observations(
-            vec![history],
-            &observations,
-            Some(5),
-            &HashSet::new(),
-        );
+        let merged = {
+            let projection = TurnEventCache::default();
+            for observation in &observations {
+                projection.record_observation(
+                    observation.event.clone(),
+                    observation.source,
+                    observation.session_revision,
+                );
+            }
+            let history = vec![history];
+            let turn_id = task_event_turn_id(&history[0]).unwrap().to_string();
+            let page = TurnPage {
+                turns: vec![Turn {
+                    id: turn_id.clone(),
+                    origin: TurnOrigin::Unknown,
+                    status: TurnStatus::Completed,
+                    started_at_ms: Some(history[0].position.anchor_ms),
+                    completed_at_ms: None,
+                    items: vec![],
+                }],
+                ..TurnPage::default()
+            };
+            projection
+                .accept_page(
+                    "thread_1",
+                    &page,
+                    HashMap::from([(turn_id, history)]),
+                    5,
+                    None,
+                )
+                .events
+        };
         let item = &merged[0];
 
         assert_eq!(
@@ -1830,7 +1846,7 @@ mod tests {
 
     #[test]
     fn local_turn_shaped_event_cannot_claim_a_complete_provider_ledger() {
-        let cache = LiveTaskEventCache::default();
+        let cache = TurnEventCache::default();
         cache.record_local(task_event_record(
             "thread_1",
             "turn_1:started",
@@ -1848,7 +1864,7 @@ mod tests {
 
     #[test]
     fn a_connection_gap_withdraws_live_ledger_ownership_without_erasing_evidence() {
-        let cache = LiveTaskEventCache::default();
+        let cache = TurnEventCache::default();
         let turn_started = task_event_record(
             "thread_1",
             "turn_1:started",
@@ -1900,13 +1916,30 @@ mod tests {
             })),
             100,
         );
-        let snapshot = cache.snapshot_for_thread("thread_1");
-        let merged = reconcile_provider_history_with_live_observations(
-            vec![history_item],
-            &snapshot.observations,
-            None,
-            &snapshot.fully_observed_turns,
-        );
+        let merged = {
+            let history = vec![history_item];
+            let turn_id = task_event_turn_id(&history[0]).unwrap().to_string();
+            let page = TurnPage {
+                turns: vec![Turn {
+                    id: turn_id.clone(),
+                    origin: TurnOrigin::Unknown,
+                    status: TurnStatus::Completed,
+                    started_at_ms: Some(history[0].position.anchor_ms),
+                    completed_at_ms: None,
+                    items: vec![],
+                }],
+                ..TurnPage::default()
+            };
+            cache
+                .accept_page(
+                    "thread_1",
+                    &page,
+                    HashMap::from([(turn_id, history)]),
+                    0,
+                    None,
+                )
+                .events
+        };
         assert_eq!(
             merged.len(),
             3,
@@ -2014,7 +2047,7 @@ mod tests {
         );
         assert_eq!(started.payload.as_ref().unwrap()["status"], "inProgress");
 
-        let cache = LiveTaskEventCache::default();
+        let cache = TurnEventCache::default();
         cache.record_provider_lifecycle(started);
         let merged = cache.record_provider_lifecycle(completed);
         assert_eq!(merged.position.anchor_ms, 10);
@@ -2823,7 +2856,7 @@ mod tests {
 
     #[test]
     fn live_task_event_cache_preserves_latest_transient_item_state() {
-        let cache = LiveTaskEventCache::default();
+        let cache = TurnEventCache::default();
         let mut started = task_event_record(
             "thread_1",
             "turn_1:command_1",
@@ -2881,7 +2914,7 @@ mod tests {
 
     #[test]
     fn live_task_event_cache_preserves_items_omitted_from_later_thread_reads() {
-        let cache = LiveTaskEventCache::default();
+        let cache = TurnEventCache::default();
         let command = task_event_record(
             "thread_1",
             "turn_1:command_1",
@@ -2895,13 +2928,7 @@ mod tests {
         );
 
         cache.observe_provider_lifecycle(std::slice::from_ref(&command));
-        let snapshot = cache.snapshot_for_thread("thread_1");
-        let merged = reconcile_provider_history_with_live_observations(
-            Vec::new(),
-            &snapshot.observations,
-            None,
-            &snapshot.fully_observed_turns,
-        );
+        let merged = cache.for_thread("thread_1");
         let mut positioned_command = command;
         positioned_command.position.index = 0;
 
@@ -2910,7 +2937,7 @@ mod tests {
 
     #[test]
     fn canonical_user_message_replaces_the_locally_accepted_prompt() {
-        let cache = LiveTaskEventCache::default();
+        let cache = TurnEventCache::default();
         let image = "data:image/png;base64,aGVsbG8=".to_string();
         let accepted = codex_item(
             ActivityStatus::Completed,
@@ -2996,7 +3023,7 @@ mod tests {
 
     #[test]
     fn late_local_acceptance_does_not_duplicate_an_existing_canonical_prompt() {
-        let cache = LiveTaskEventCache::default();
+        let cache = TurnEventCache::default();
         let canonical = codex_item_event(
             "turn_1",
             20,
@@ -3047,7 +3074,7 @@ mod tests {
 
     #[test]
     fn matching_words_do_not_erase_a_second_accepted_prompt() {
-        let cache = LiveTaskEventCache::default();
+        let cache = TurnEventCache::default();
         let first = codex_item_event(
             "turn_1",
             20,
@@ -3215,104 +3242,6 @@ mod tests {
                 .is_none(),
             "an adapter-owned item is canonical already"
         );
-    }
-
-    #[test]
-    fn live_task_event_cache_evicts_the_least_recently_observed_thread() {
-        let cache = LiveTaskEventCache::default();
-        for index in 0..=LIVE_TASK_THREAD_LIMIT {
-            cache.record_provider_lifecycle(task_event_record(
-                &format!("thread_{index}"),
-                "event_1",
-                "assistant_message",
-                "Answer",
-                None,
-                if index == 0 { u64::MAX } else { index as u64 },
-            ));
-        }
-
-        assert!(
-            cache.for_thread("thread_0").is_empty(),
-            "conversation position cannot keep the least recently observed cache entry alive"
-        );
-        assert_eq!(
-            cache
-                .for_thread(&format!("thread_{LIVE_TASK_THREAD_LIMIT}"))
-                .len(),
-            1
-        );
-        assert_eq!(
-            cache.state.lock().unwrap().events.len(),
-            LIVE_TASK_THREAD_LIMIT
-        );
-    }
-
-    #[test]
-    fn live_task_event_cache_refreshes_thread_observation_recency() {
-        let cache = LiveTaskEventCache::default();
-        for index in 0..LIVE_TASK_THREAD_LIMIT {
-            cache.record_provider_lifecycle(task_event_record(
-                &format!("thread_{index}"),
-                "event_1",
-                "assistant_message",
-                "Answer",
-                None,
-                index as u64,
-            ));
-        }
-        cache.record_provider_lifecycle(task_event_record(
-            "thread_0",
-            "event_2",
-            "assistant_message",
-            "Later answer",
-            None,
-            0,
-        ));
-        cache.record_provider_lifecycle(task_event_record(
-            &format!("thread_{LIVE_TASK_THREAD_LIMIT}"),
-            "event_1",
-            "assistant_message",
-            "Overflow answer",
-            None,
-            0,
-        ));
-
-        assert_eq!(cache.for_thread("thread_0").len(), 2);
-        assert!(cache.for_thread("thread_1").is_empty());
-    }
-
-    #[test]
-    fn removing_a_thread_also_removes_its_cache_recency_entry() {
-        let cache = LiveTaskEventCache::default();
-        for index in 0..LIVE_TASK_THREAD_LIMIT {
-            cache.record_provider_lifecycle(task_event_record(
-                &format!("thread_{index}"),
-                "event_1",
-                "assistant_message",
-                "Answer",
-                None,
-                index as u64,
-            ));
-        }
-        cache.remove_thread("thread_0");
-        for index in LIVE_TASK_THREAD_LIMIT..=LIVE_TASK_THREAD_LIMIT + 1 {
-            cache.record_provider_lifecycle(task_event_record(
-                &format!("thread_{index}"),
-                "event_1",
-                "assistant_message",
-                "Replacement answer",
-                None,
-                index as u64,
-            ));
-        }
-
-        let state = cache.state.lock().unwrap();
-        assert_eq!(state.events.len(), LIVE_TASK_THREAD_LIMIT);
-        assert_eq!(
-            state.threads_by_observation_recency.len(),
-            LIVE_TASK_THREAD_LIMIT
-        );
-        assert!(!state.events.contains_key("thread_1"));
     }
 
     #[test]

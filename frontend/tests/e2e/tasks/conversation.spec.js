@@ -6,6 +6,7 @@ import {
   PASTED_IMAGE_BASE64,
   activeTaskProjection,
   canonicalTaskState,
+  captureReviewScreenshot,
   emitTaskDetailBootstrap,
   installEventSourceMock,
   isScrolledToBottom,
@@ -224,6 +225,71 @@ async function emitTaskStream(page, threadId, name, payload) {
   );
 }
 
+for (const delivery of [
+  ["POST", "SSE", "Detail"], ["POST", "Detail", "SSE"],
+  ["SSE", "POST", "Detail"], ["SSE", "Detail", "POST"],
+  ["Detail", "POST", "SSE"], ["Detail", "SSE", "POST"],
+]) {
+  test(`keeps a confirmed question before its answer with ${delivery.join(" / ")}`, { tag: "@desktop" }, async ({ page }, testInfo) => {
+    const threadId = "thread-confirmed-order";
+    const now = Date.now() - 10_000;
+    const question = {
+      id: "confirmed-question", threadId, type: "user_message", summary: "User prompt",
+      payload: { turnId: "turn-extent", itemId: "question", text: "A question while working" },
+      position: { anchorMs: now, index: 2 }, observedMs: now + 2,
+    };
+    const answer = {
+      id: "final-answer", threadId, type: "assistant_message", summary: "Final answer",
+      payload: { turnId: "turn-extent", itemId: "answer", text: "The answer to that question", phase: "final" },
+      position: { anchorMs: now, index: 3 }, observedMs: now + 3,
+    };
+    let releasePost;
+    const postGate = new Promise((resolve) => { releasePost = resolve; });
+    let requestStarted;
+    const started = new Promise((resolve) => { requestStarted = resolve; });
+    const { detail } = await openBoundedExtentTask(page, {
+      threadId, now, title: "Question and answer ordering", events: [],
+    });
+    await page.route(`**/api/tasks/${threadId}/prompts`, async (route) => {
+      requestStarted();
+      await postGate;
+      await route.fulfill({ json: { threadId, turnId: "turn-extent", userMessageId: "question", steered: true } });
+    });
+    const composer = page.locator('.task-follow-up-form textarea[name="prompt"]');
+    await composer.fill(question.payload.text);
+    await composer.press("Enter");
+    await started;
+    // The answer can arrive while the POST still has not supplied prompt identity.
+    await emitTaskStream(page, threadId, "task-event", { threadId, revision: 2, eventRevision: 2, event: answer });
+    for (const source of delivery) {
+      if (source === "POST") {
+        const response = page.waitForResponse((response) => response.url().endsWith(`/api/tasks/${threadId}/prompts`));
+        releasePost();
+        await response;
+      } else if (source === "SSE") {
+        await emitTaskStream(page, threadId, "task-event", { threadId, revision: 3, eventRevision: 3, event: question });
+      } else {
+        await emitTaskStream(page, threadId, "task-sync", {
+          threadId, revision: 4, reason: "canonical", detail: {
+            ...detail, revision: 4, eventRevision: 4, events: [question, answer],
+            eventsRange: positionSpan([question, answer], { open: true }),
+          },
+        });
+      }
+    }
+    const messages = page.getByRole("list", { name: "Task conversation", exact: true })
+      .getByRole("listitem").filter({ hasText: /A question while working|The answer to that question/ });
+    await expect(messages).toHaveCount(2);
+    await expect(messages.nth(0)).toContainText(question.payload.text);
+    await expect(messages.nth(1)).toContainText(answer.payload.text);
+    await expect(composer).toBeEmpty();
+    await expect(composer).not.toBeFocused();
+    if (delivery.join("/") === "SSE/POST/Detail") {
+      await page.screenshot({ path: testInfo.outputPath("confirmed-question-order.png") });
+    }
+  });
+}
+
 test("keeps events seen before a bounded snapshot's extent when that snapshot arrives", { tag: "@desktop" }, async ({
   page,
 }) => {
@@ -329,6 +395,172 @@ test("drops a retained event that a snapshot omits inside its extent", { tag: "@
   await expect(tasksPage).toContainText("Newest step");
   await expect(tasksPage).not.toContainText("Withdrawn step");
   await expect(tasksPage).toContainText("Kept step");
+});
+
+test("loads older collapsed work without a scrollbar and waits for each requested page", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  await installEventSourceMock(page, { autoOpen: true });
+  await mockAgentModels(page);
+  const threadId = "thread_short_collapsed_history";
+  const now = 1_767_100_000_000;
+  const task = {
+    id: threadId,
+    threadId,
+    ...canonicalTaskState("idle", { latestTurnStatus: "completed" }),
+    title: "Collapsed history",
+    preview: "Done.",
+    cwd: "src",
+    relativeCwd: "",
+    createdMs: now,
+    updatedMs: now,
+    recencyMs: now,
+    lastEventSummary: "Done.",
+  };
+  const event = (index, type, payload) => ({
+    id: `short_history_${index}`,
+    threadId,
+    type,
+    summary: type,
+    payload: { turnId: "short-history-turn", ...payload },
+    position: { anchorMs: now, index },
+  });
+  const command = (index) => event(index, "command_execution", {
+    itemId: `command-${index}`,
+    command: "pwd",
+    status: "completed",
+    exitCode: 0,
+    output: "src",
+  });
+  const latestEvents = [
+    ...Array.from({ length: 98 }, (_, index) => command(index + 2)),
+    event(100, "assistant_message", { text: "Done.", phase: "final" }),
+    event(101, "turn_completed", { status: "completed" }),
+  ];
+  const detail = (events, nextCursor, revision) => ({
+    threadId,
+    task,
+    revision,
+    eventRevision: revision,
+    events,
+    eventsPage: { nextCursor },
+    eventsRange: positionSpan(events, { open: revision === 1 }),
+    pendingApprovals: [],
+  });
+  const latestDetail = detail(latestEvents, "older-1", 1);
+  const cursors = [];
+  let releaseOlder;
+  const olderGate = new Promise((resolve) => { releaseOlder = resolve; });
+  await page.route(/\/api\/tasks(?:\?|$)/, (route) =>
+    route.fulfill({ json: activeTaskProjection([task]) }),
+  );
+  await page.route(/\/api\/tasks\/thread_short_collapsed_history(?:\?|$)/, async (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    if (!cursor) return route.fulfill({ json: latestDetail });
+    cursors.push(cursor);
+    if (cursor === "older-1") {
+      await olderGate;
+      return route.fulfill({ json: detail([command(1)], "older-2", 4) });
+    }
+    expect(cursor).toBe("older-2");
+    return route.fulfill({
+      json: detail([event(0, "user_message", { text: "Original request." })], null, 5),
+    });
+  });
+
+  try {
+    await page.goto(`/tasks/${threadId}?cwd=src`);
+    await emitTaskDetailBootstrap(page, latestDetail);
+    const conversation = page.locator("caffold-task-conversation");
+    const history = conversation.locator("caffold-task-older-history");
+    const scroller = conversation.locator(".task-conversation-scroll");
+    const work = conversation.locator("caffold-task-work-details > details");
+    const loadOlder = conversation.getByRole("button", { name: "Load older messages", exact: true });
+    const expectNoOverflow = async () => {
+      expect(await scroller.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(true);
+    };
+    const historyLayout = () => scroller.evaluate((element) => ({
+      noticeHeight: element.querySelector(".task-load-older").getBoundingClientRect().height,
+      workTop: element.querySelector("caffold-task-work-details").getBoundingClientRect().top,
+    }));
+    await expect(conversation).toContainText("Done.");
+    await expect(work).toHaveCount(1);
+    await expect(work).not.toHaveAttribute("open", "");
+    await expectNoOverflow();
+    expect(cursors).toEqual([]);
+    await expect(loadOlder).toBeVisible();
+    const historyHost = await history.elementHandle();
+    const readyButton = await loadOlder.elementHandle();
+    const refreshAnswer = async (revision) => {
+      const events = latestEvents.map((entry) => entry.type === "assistant_message"
+        ? { ...entry, payload: { ...entry.payload, text: `Done. Updated ${revision}.` } }
+        : entry);
+      await emitTaskStream(page, threadId, "task-sync", {
+        threadId,
+        revision,
+        reason: "canonical-sync",
+        detail: detail(events, "older-1", revision),
+      });
+      await expect(conversation).toContainText(`Done. Updated ${revision}.`);
+      expect(await history.evaluate((element, original) => element === original, historyHost)).toBe(true);
+    };
+    await loadOlder.focus();
+    await refreshAnswer(2);
+    await expect(loadOlder).toBeFocused();
+    expect(await loadOlder.evaluate((element, original) => element === original, readyButton)).toBe(true);
+    const readyLayout = await historyLayout();
+    await captureReviewScreenshot(page, testInfo, "collapsed-history-ready");
+    await loadOlder.click();
+    await expect.poll(() => cursors).toEqual(["older-1"]);
+    const loading = conversation.getByRole("status").filter({ hasText: "Loading older messages..." });
+    await expect(loading).toBeVisible();
+    await expect(conversation.locator(".task-load-older button")).toHaveCount(0);
+    const spinner = loading.locator('[aria-hidden="true"]');
+    await expect(spinner).toBeVisible();
+    const loadingSpinner = await spinner.elementHandle();
+    await refreshAnswer(3);
+    expect(await spinner.evaluate((element, original) => element === original, loadingSpinner)).toBe(true);
+    expect(await spinner.evaluate((element) => element.getAnimations().some((animation) => animation.playState === "running"))).toBe(true);
+    expect(await historyLayout()).toEqual(readyLayout);
+    const hintLabels = await page.locator("caffold-app-shell").evaluate(
+      (shell) => shell.actionHintScope().targets.map((target) => target.label),
+    );
+    expect(hintLabels.some((label) => /Load older|Loading older/.test(label))).toBe(false);
+    await loading.click();
+    await scroller.evaluate((element) => {
+      element.dispatchEvent(new Event("scroll"));
+      element.dispatchEvent(new Event("scroll"));
+    });
+    await expect(conversation).toContainText("Done.");
+    await expect(work).not.toHaveAttribute("open", "");
+    await expectNoOverflow();
+    await captureReviewScreenshot(page, testInfo, "collapsed-history-loading");
+    expect(cursors).toEqual(["older-1"]);
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect.poll(() => spinner.evaluate((element) => element.getAnimations().length)).toBe(0);
+    await expect(loading).toBeVisible();
+    expect(await historyLayout()).toEqual(readyLayout);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+
+    releaseOlder();
+    await expect(loadOlder).toBeEnabled();
+    await expect(loading).toHaveCount(0);
+    expect(await historyLayout()).toEqual(readyLayout);
+    await expect(conversation.locator('.task-work-details-item[data-event-type="command_execution"]')).toHaveCount(99);
+    await expectNoOverflow();
+    expect(cursors).toEqual(["older-1"]);
+    await activateActionHint(page, /Load older messages$/);
+    await expect(conversation).toContainText("Original request.");
+    await expect(conversation).toContainText("Done.");
+    await expect(conversation.locator(".task-load-older")).toHaveCount(0);
+    await expect(history).toHaveCount(1);
+    await expect(history).toBeHidden();
+    expect(await history.evaluate((element, original) => element === original, historyHost)).toBe(true);
+    expect(cursors).toEqual(["older-1", "older-2"]);
+  } finally {
+    releaseOlder();
+  }
 });
 
 test("keeps the visible conversation anchor while loading older events by cursor", { tag: "@all-viewports" }, async ({

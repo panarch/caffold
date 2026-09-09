@@ -34,7 +34,7 @@ use super::codex::{
     codex_permission_modes, codex_turn_options, is_fast_service_tier, service_tier_for_fast_mode,
 };
 use super::{
-    ActivityStatus, Conversation, ConversationItem, ItemKind, MessageContent, Turn, TurnPage,
+    ActivityStatus, Conversation, ConversationItem, ItemKind, MessageContent, TurnPage, TurnState,
 };
 
 /// How many turns come back with a conversation that has just been opened.
@@ -298,7 +298,7 @@ pub(crate) struct StartedConversation {
 
 /// A turn the agent has begun.
 pub(crate) struct StartedTurn {
-    pub(crate) turn: Turn,
+    pub(crate) turn: TurnState,
     /// The prompt under the same stable identity the agent reports on its item
     /// stream and in history.
     pub(crate) user_message: ConversationItem,
@@ -466,7 +466,7 @@ impl Driver {
                     )
                     .await?;
                 Ok(StartedTurn {
-                    turn: Turn::from(&started.turn),
+                    turn: TurnState::from(&started.turn),
                     user_message: submitted_user_message(&started.user_message_id, prompt, images),
                     applied: options.applied.clone(),
                 })
@@ -488,7 +488,7 @@ impl Driver {
                         ))
                     })?;
                 Ok(StartedTurn {
-                    turn,
+                    turn: TurnState::from(&turn),
                     user_message,
                     applied: options.applied.clone(),
                 })

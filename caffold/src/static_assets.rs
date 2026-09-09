@@ -552,6 +552,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.js"
             )))
         }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css"
@@ -1668,6 +1678,10 @@ mod tests {
                 b"caffold-task-conversation".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.js",
+                b"caffold-task-older-history".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.js",
                 b"caffold-task-active-turn".as_slice(),
             ),
@@ -1833,6 +1847,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
                 b"caffold-task-conversation".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.css",
+                b"caffold-task-older-history".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/active-turn.css",

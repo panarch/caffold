@@ -100,14 +100,13 @@ impl TaskState {
     ) -> anyhow::Result<Self> {
         let AgentRuntimeDependencies { claude, codex_mcp } = agents;
         let task_events = TaskEvents::default();
-        let task_sessions = sessions::TaskSessions::default();
+        let task_sessions = sessions::TaskSessions::new(task_events.clone());
         let task_list_events = TaskListEvents::new();
         let managed_worktrees =
             ManagedWorktrees::new(fs.clone(), task_store.clone(), worktree_root)?;
         let lifecycle = TaskLifecycle::new(
             fs.clone(),
             task_sessions.clone(),
-            task_events.clone(),
             task_list_events.clone(),
             task_store.clone(),
             managed_worktrees,

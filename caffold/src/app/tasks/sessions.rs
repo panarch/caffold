@@ -49,7 +49,8 @@ use std::{
 use serde::Serialize;
 use tokio::sync::Mutex as AsyncMutex;
 
-use crate::agent::{Conversation, Driver, ThreadStatus, TurnPage};
+use super::events::TaskEvents;
+use crate::agent::{Conversation, Driver, ThreadStatus, TurnPage, TurnState};
 
 pub(super) const INITIAL_TURNS_PAGE_SIZE: usize = 8;
 const VIEWER_HANDOFF_GRACE: Duration = Duration::from_millis(250);
@@ -69,7 +70,7 @@ pub(in crate::app::tasks) struct SessionSnapshot {
     #[allow(dead_code)]
     pub(in crate::app::tasks) lifecycle: SessionLifecycle,
     pub(in crate::app::tasks) conversation: Option<Conversation>,
-    pub(in crate::app::tasks) turns_page: Option<TurnPage>,
+    pub(in crate::app::tasks) turns_page: Option<SessionTurnPage>,
     pub(in crate::app::tasks) active_turn_id: Option<String>,
     pub(in crate::app::tasks) active_turn_cwd: Option<String>,
     #[allow(dead_code)]
@@ -80,6 +81,7 @@ pub(in crate::app::tasks) struct SessionSnapshot {
     pub(in crate::app::tasks) revision: u64,
     /// Session revision captured before the provider read that supplied the
     /// current latest-turns page began.
+    #[cfg(test)]
     pub(in crate::app::tasks) history_base_revision: Option<u64>,
     #[allow(dead_code)]
     pub(in crate::app::tasks) last_sync_ms: Option<u64>,
@@ -88,6 +90,25 @@ pub(in crate::app::tasks) struct SessionSnapshot {
     pub(in crate::app::tasks) model: Option<String>,
     pub(in crate::app::tasks) reasoning_effort: Option<String>,
     pub(in crate::app::tasks) fast_mode: bool,
+}
+
+/// Canonical lifecycle metadata from the latest turn read. Conversation items
+/// are held only by TaskEvents; this page cannot replace their membership.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(in crate::app::tasks) struct SessionTurnPage {
+    pub(in crate::app::tasks) turns: Vec<TurnState>,
+    pub(in crate::app::tasks) next_cursor: Option<String>,
+    pub(in crate::app::tasks) backwards_cursor: Option<String>,
+}
+
+impl From<&TurnPage> for SessionTurnPage {
+    fn from(page: &TurnPage) -> Self {
+        Self {
+            turns: page.turns.iter().map(TurnState::from).collect(),
+            next_cursor: page.next_cursor.clone(),
+            backwards_cursor: page.backwards_cursor.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -146,6 +167,7 @@ pub(in crate::app::tasks) enum PromptTarget {
 #[derive(Clone, Default)]
 pub(in crate::app::tasks) struct TaskSessions {
     entries: Arc<AsyncMutex<HashMap<String, Arc<SessionEntry>>>>,
+    events: TaskEvents,
 }
 
 /// Which agent a session is run by, as against how it is reached.
@@ -173,6 +195,9 @@ impl From<&Driver> for SessionAgent {
 impl SessionState {
     /// Record the connection this session is now being watched on.
     fn on_connection(&mut self, driver: &Driver, generation: u64) {
+        if self.lifecycle == SessionLifecycle::Subscribing || self.generation != generation {
+            self.observation_epoch = self.observation_epoch.saturating_add(1);
+        }
         self.generation = generation;
         self.agent = Some(SessionAgent::from(driver));
     }
@@ -180,6 +205,15 @@ impl SessionState {
     /// Whether a Codex connection speaks for this session.
     fn is_codex(&self) -> bool {
         self.agent == Some(SessionAgent::Codex)
+    }
+
+    fn same_observation(&self, generation: u64, epoch: u64) -> bool {
+        self.generation == generation && self.observation_epoch == epoch
+    }
+
+    fn withdraw_history(&mut self, thread_id: &str) {
+        self.observation_epoch = self.observation_epoch.saturating_add(1);
+        self.events.invalidate_continuity(thread_id);
     }
 }
 
@@ -203,7 +237,8 @@ struct SessionState {
     /// Its turns are not the history: the agent reports the conversation and a
     /// page of its turns as two answers, and `turns_page` is the second.
     conversation: Option<Conversation>,
-    turns_page: Option<TurnPage>,
+    turns_page: Option<SessionTurnPage>,
+    events: TaskEvents,
     active_turn_id: Option<String>,
     active_turn_cwd: Option<String>,
     terminal_candidate_turn_id: Option<String>,
@@ -222,6 +257,8 @@ struct SessionState {
     /// answer nothing about every session that most needs it.
     agent: Option<SessionAgent>,
     generation: u64,
+    /// Distinguishes reads across detach/reattach even if the provider generation is unchanged.
+    observation_epoch: u64,
     revision: u64,
     /// Read-start revision for the provider history in `turns_page`.
     history_base_revision: Option<u64>,
@@ -243,6 +280,7 @@ impl Default for SessionState {
             agent: None,
             conversation: None,
             turns_page: None,
+            events: TaskEvents::default(),
             active_turn_id: None,
             active_turn_cwd: None,
             terminal_candidate_turn_id: None,
@@ -251,6 +289,7 @@ impl Default for SessionState {
             runtime_lease: false,
             driver: None,
             generation: 0,
+            observation_epoch: 0,
             revision: 0,
             history_base_revision: None,
             status_revision: 0,
@@ -272,6 +311,13 @@ pub(in crate::app::tasks) struct ViewerLease {
 }
 
 impl TaskSessions {
+    pub(in crate::app::tasks) fn new(events: TaskEvents) -> Self {
+        Self {
+            events,
+            ..Self::default()
+        }
+    }
+
     pub(in crate::app::tasks) async fn diagnostics(&self) -> SessionsDiagnostics {
         let entries = self
             .entries
@@ -329,7 +375,14 @@ impl TaskSessions {
     }
 
     pub(in crate::app::tasks) async fn forget_thread(&self, thread_id: &str) {
-        self.entries.lock().await.remove(thread_id);
+        let mut entries = self.entries.lock().await;
+        if let Some(entry) = entries.remove(thread_id) {
+            let mut state = entry.state.lock().await;
+            state.lifecycle = SessionLifecycle::Unloaded;
+            state.observation_epoch = state.observation_epoch.saturating_add(1);
+            state.driver = None;
+        }
+        self.events.remove_thread(thread_id);
     }
 
     pub(in crate::app::tasks) async fn reserve_mutation(
@@ -350,7 +403,10 @@ impl TaskSessions {
             .entry(thread_id.to_string())
             .or_insert_with(|| {
                 Arc::new(SessionEntry {
-                    state: AsyncMutex::new(SessionState::default()),
+                    state: AsyncMutex::new(SessionState {
+                        events: self.events.clone(),
+                        ..SessionState::default()
+                    }),
                     operation: AsyncMutex::new(()),
                     mutation: Arc::new(AsyncMutex::new(())),
                 })
@@ -374,6 +430,7 @@ fn snapshot(state: &SessionState) -> SessionSnapshot {
         runtime_lease: state.runtime_lease,
         generation: state.generation,
         revision: state.revision,
+        #[cfg(test)]
         history_base_revision: state.history_base_revision,
         last_sync_ms: state.last_sync_ms,
         last_error: state.last_error.clone(),
@@ -405,7 +462,7 @@ pub(super) mod test_support {
     };
     pub(super) use crate::agent::{
         ActivityStatus, Conversation, ConversationItem, ItemKind, SessionEvent, SessionEventKind,
-        ThreadStatus, Turn, TurnOptions, TurnStatus,
+        ThreadStatus, TurnOptions, TurnState, TurnStatus,
     };
 
     /// A fixture written in Caffold's vocabulary and read back as Codex's.
@@ -452,8 +509,8 @@ pub(super) mod test_support {
     }
 
     /// A turn the way the session keeps it, for what the live stream reports.
-    pub(super) fn turn(id: &str, status: TurnStatus) -> Turn {
-        Turn::from(&wire_turn(id, status))
+    pub(super) fn turn(id: &str, status: TurnStatus) -> TurnState {
+        TurnState::from(&wire_turn(id, status))
     }
 
     /// A turn the way Codex sends it, for what a mocked call returns.

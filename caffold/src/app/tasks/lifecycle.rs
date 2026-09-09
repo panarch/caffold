@@ -14,7 +14,7 @@ use crate::{
 
 use super::{
     TaskAgent, TaskRecord,
-    events::{TaskEvents, now_ms},
+    events::now_ms,
     projection::{resolve_conversation_cwd, task_activity_ms, task_record_from_conversation},
     routes::TaskListEvents,
     worktrees::{
@@ -80,7 +80,6 @@ enum LocalPlacementMutation {
 pub(in crate::app::tasks) struct TaskLifecycle {
     fs: Arc<RootedFs>,
     sessions: TaskSessions,
-    events: TaskEvents,
     list_events: TaskListEvents,
     store: TaskStore,
     worktrees: ManagedWorktrees,
@@ -91,7 +90,6 @@ impl TaskLifecycle {
     pub(in crate::app::tasks) fn new(
         fs: Arc<RootedFs>,
         sessions: TaskSessions,
-        events: TaskEvents,
         list_events: TaskListEvents,
         store: TaskStore,
         worktrees: ManagedWorktrees,
@@ -100,7 +98,6 @@ impl TaskLifecycle {
         Self {
             fs,
             sessions,
-            events,
             list_events,
             store,
             worktrees,
@@ -305,7 +302,6 @@ impl TaskLifecycle {
 
     pub(in crate::app::tasks) async fn delete_task_resources(&self, thread_id: &str) {
         self.sessions.forget_thread(thread_id).await;
-        self.events.remove_thread(thread_id);
     }
 
     fn record_from_conversation(
@@ -564,7 +560,6 @@ mod tests {
             TaskLifecycle::new(
                 fs,
                 TaskSessions::default(),
-                TaskEvents::default(),
                 TaskListEvents::new(),
                 store,
                 worktrees,

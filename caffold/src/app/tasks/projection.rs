@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use super::events::{TaskEventRecord, non_empty_string};
 use crate::{
-    agent::{Conversation, ThreadStatus, Turn, TurnStatus},
+    agent::{Conversation, ThreadStatus, TurnStatus},
     fs::RootedFs,
     git,
 };
@@ -58,20 +58,6 @@ pub(in crate::app::tasks) struct ResolvedTaskCwd {
     pub(in crate::app::tasks) repository_common_dir: Option<PathBuf>,
 }
 
-/// A conversation carrying the turns that were read separately.
-///
-/// A conversation read without its turns and a page of turns arrive as two
-/// responses, and everything below here wants one subject.
-pub(in crate::app::tasks) fn conversation_with_turns(
-    conversation: &Conversation,
-    turns: Vec<Turn>,
-) -> Conversation {
-    Conversation {
-        turns,
-        ..conversation.clone()
-    }
-}
-
 pub(in crate::app::tasks) fn task_record_from_conversation(
     conversation: &Conversation,
     events: &[TaskEventRecord],
@@ -120,7 +106,20 @@ pub(in crate::app::tasks) fn apply_canonical_turn_projection(
     task: &mut TaskRecord,
     conversation: &Conversation,
 ) {
-    let turns = conversation.turns.as_slice();
+    apply_turn_states_projection(
+        task,
+        &conversation
+            .turns
+            .iter()
+            .map(crate::agent::TurnState::from)
+            .collect::<Vec<_>>(),
+    );
+}
+
+pub(in crate::app::tasks) fn apply_turn_states_projection(
+    task: &mut TaskRecord,
+    turns: &[crate::agent::TurnState],
+) {
     task.latest_turn_status = turns.last().map(|turn| turn.status);
     task.last_completed_ms = turns.iter().filter_map(|turn| turn.completed_at_ms).max();
     // The active turn is a control pointer rather than a second source of

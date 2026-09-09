@@ -148,6 +148,172 @@ mod tests {
     };
 
     #[tokio::test]
+    async fn long_live_turn_keeps_order_across_completion_http_pages_and_browser_reattachment() {
+        use crate::agent::codex::{decode_notification, session_events};
+        use std::collections::HashMap;
+
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-long-live-http";
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            json!({
+                "cwd": root.path(), "thread": {
+                    "id": thread_id, "cwd": root.path(), "preview": "Long turn", "status": {"type": "active", "activeFlags": []},
+                    "createdAt": 1.0, "updatedAt": 1.0, "turns": []
+                }, "initialTurnsPage": {"data": [], "nextCursor": null}
+            }),
+        )]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        let _viewer = state
+            .task_sessions
+            .acquire_viewer(&client.driver(), 1, thread_id)
+            .await
+            .unwrap();
+        let started = decode_notification("turn/started", json!({
+            "threadId": thread_id, "turn": {"id": "long", "status": "inProgress", "startedAt": 2.0, "itemsView": "notLoaded", "items": []}
+        })).unwrap();
+        for report in session_events(&started, &client).await {
+            state
+                .task_sessions
+                .apply_session_event_with_outcome(1, &report)
+                .await;
+        }
+        for index in 0..600 {
+            let item = if index == 300 {
+                json!({"id": "native-question", "clientId": "question", "type": "userMessage", "content": [{"type": "text", "text": "A question while working"}]})
+            } else {
+                json!({"id": format!("work-{index}"), "type": "commandExecution", "command": "check", "status": "completed", "aggregatedOutput": format!("result {index}")})
+            };
+            let notification = decode_notification("item/completed", json!({
+                "threadId": thread_id, "turnId": "long", "completedAtMs": 3000 + index, "item": item
+            })).unwrap();
+            for report in session_events(&notification, &client).await {
+                state
+                    .task_sessions
+                    .apply_session_event_with_outcome(1, &report)
+                    .await;
+            }
+        }
+        let before = state
+            .task_events
+            .for_thread(thread_id)
+            .into_iter()
+            .map(|event| (event.id, event.position))
+            .collect::<HashMap<_, _>>();
+        assert_eq!(before.len(), 601);
+        let mut live = test_task_stream(state.clone(), thread_id.to_string())
+            .await
+            .unwrap();
+        assert!(matches!(live.next().await, Some(DetailLiveEvent::Sync(_))));
+        let completed = decode_notification("turn/completed", json!({
+            "threadId": thread_id, "turn": {"id": "long", "status": "completed", "startedAt": 2.0,
+                "completedAt": 5.0, "itemsView": "summary", "items": [{"id": "answer", "type": "agentMessage", "phase": "final_answer", "text": "Final answer"}]}
+        })).unwrap();
+        for report in session_events(&completed, &client).await {
+            state
+                .task_sessions
+                .apply_session_event_with_outcome(1, &report)
+                .await;
+        }
+        let answer = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                let event = serde_json::to_value(live.next().await.unwrap()).unwrap();
+                if event["type"] == "task-event"
+                    && event["payload"]["event"]["payload"]["itemId"] == "answer"
+                {
+                    break event["payload"].clone();
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            answer["event"]["position"],
+            json!({"anchorMs": 2000, "index": 601})
+        );
+        assert!(answer["eventRevision"].as_u64().unwrap() > 600);
+
+        let app = router(state.clone());
+        let mut cursor: Option<String> = None;
+        let mut seen = HashMap::new();
+        let mut pages = 0;
+        loop {
+            let query = cursor.as_ref().map(|cursor| {
+                url::form_urlencoded::Serializer::new(String::new())
+                    .append_pair("cursor", cursor)
+                    .finish()
+            });
+            let uri = format!(
+                "/api/tasks/{thread_id}{}",
+                query.map(|query| format!("?{query}")).unwrap_or_default()
+            );
+            let response = app
+                .clone()
+                .oneshot(
+                    axum::http::Request::builder()
+                        .uri(uri)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), axum::http::StatusCode::OK);
+            let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+                .await
+                .unwrap();
+            let body: JsonValue = serde_json::from_slice(&bytes).unwrap();
+            let events = body["events"].as_array().unwrap();
+            assert!(events.len() <= 102);
+            for event in events {
+                seen.insert(
+                    event["id"].as_str().unwrap().to_string(),
+                    event["position"].clone(),
+                );
+            }
+            pages += 1;
+            cursor = body["eventsPage"]["nextCursor"]
+                .as_str()
+                .map(str::to_string);
+            if cursor.is_none() {
+                break;
+            }
+            assert!(pages < 10, "pagination must make progress");
+        }
+        assert_eq!(seen.len(), 603);
+        assert_eq!(pages, 7);
+        for (id, position) in before {
+            assert_eq!(seen[&id], serde_json::to_value(position).unwrap());
+        }
+        assert!(
+            seen[&format!("{thread_id}:long:question")]["index"]
+                .as_u64()
+                .unwrap()
+                < seen[&format!("{thread_id}:long:answer")]["index"]
+                    .as_u64()
+                    .unwrap()
+        );
+        drop(live);
+        let mut reattached = test_task_stream(state.clone(), thread_id.to_string())
+            .await
+            .unwrap();
+        assert!(matches!(
+            reattached.next().await,
+            Some(DetailLiveEvent::Sync(_))
+        ));
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            ["thread/resume"]
+        );
+    }
+
+    #[tokio::test]
     async fn a_claude_task_is_marked_seen_without_asking_codex_about_it() {
         // Codex has never heard of a Claude conversation. Asking it made the
         // request fail, so nothing was written and the Task came back unseen on

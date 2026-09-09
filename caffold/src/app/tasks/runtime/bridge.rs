@@ -1,13 +1,10 @@
 use futures_util::{StreamExt, stream};
-use serde_json::json;
 use tokio::sync::broadcast;
 
 use super::{CodexConnection, TaskRuntime, TaskRuntimeSignal};
-use crate::agent::codex::{CodexRuntimeEvent, CodexThreadClient, session_event};
-use crate::agent::{SessionEvent, SessionEventKind, ThreadStatus, TurnStatus};
-use crate::app::tasks::events::{
-    now_ms, task_event_from_item, task_event_record, turn_completed_event, turn_started_event,
-};
+use crate::agent::codex::{CodexRuntimeEvent, CodexThreadClient, session_events};
+use crate::agent::{SessionEvent, SessionEventKind, TurnStatus};
+use crate::app::tasks::events::now_ms;
 use crate::app::tasks::push;
 
 impl TaskRuntime {
@@ -32,9 +29,7 @@ impl TaskRuntime {
                         };
                         match event {
                             CodexRuntimeEvent::Notification(notification) => {
-                                if let Some(reported) =
-                                    session_event(&notification, &client).await
-                                {
+                                for reported in session_events(&notification, &client).await {
                                     runtime.handle_session_event(generation, reported).await;
                                 }
                             }
@@ -56,7 +51,6 @@ impl TaskRuntime {
                 .codex_connection_lost(generation, connection_error.clone())
                 .await;
             for thread_id in affected {
-                runtime.events.invalidate_continuity(&thread_id);
                 let _ = runtime.signals.send(TaskRuntimeSignal::SessionUnavailable {
                     thread_id,
                     message: connection_error.clone(),
@@ -174,9 +168,7 @@ impl TaskRuntime {
         );
         self.withdraw_unanswerable_approvals(&event).await;
         self.record_reported_usage(&event);
-        if let Some(session_revision) = outcome.revision {
-            self.publish_session_event(&event, session_revision);
-        }
+        self.record_turn_recency(&event);
         if let Some(snapshot) = snapshot {
             let _ = self.signals.send(TaskRuntimeSignal::SessionChanged {
                 thread_id: event.thread_id,
@@ -185,106 +177,22 @@ impl TaskRuntime {
         }
     }
 
-    /// Say what the agent did, in the Task's own stream of events.
-    fn publish_session_event(&self, event: &SessionEvent, session_revision: u64) {
+    /// Persist Task recency separately from the session's conversation reports.
+    fn record_turn_recency(&self, event: &SessionEvent) {
         let thread_id = event.thread_id.as_str();
-        match &event.kind {
-            SessionEventKind::TurnStarted { turn } => {
-                let started_ms = turn.started_at_ms.unwrap_or_else(now_ms);
-                match self
-                    .task_store
-                    .update_observed_recency(thread_id, started_ms)
-                {
-                    Ok(Some(_)) => self.refresh_persisted_task_list(),
-                    Ok(None) => {}
-                    Err(error) => {
-                        eprintln!(
-                            "failed to persist started turn recency for {thread_id}: {error}"
-                        );
-                    }
-                }
-                self.events.publish_provider_lifecycle(
-                    turn_started_event(thread_id, turn, started_ms),
-                    session_revision,
-                );
-            }
-            SessionEventKind::StatusChanged { status }
-            | SessionEventKind::ActivityChanged { status } => {
-                let task_status = match status {
-                    ThreadStatus::Active { .. } => "running",
-                    ThreadStatus::Idle | ThreadStatus::NotLoaded => "idle",
-                    ThreadStatus::SystemError => "failed",
-                };
-                let summary = match task_status {
-                    "running" => "Thread running",
-                    "failed" => "Thread failed",
-                    _ => "Thread idle",
-                };
-                self.events.publish_provider_lifecycle(
-                    task_event_record(
-                        thread_id,
-                        "thread_status_changed",
-                        "thread_status_changed",
-                        summary,
-                        Some(json!({
-                            "threadId": thread_id,
-                            "status": task_status,
-                        })),
-                        now_ms(),
-                    ),
-                    session_revision,
-                );
-            }
-            SessionEventKind::ItemChanged {
-                turn_id,
-                item,
-                at_ms,
-            } => {
-                if let Some(record) =
-                    task_event_from_item(thread_id, turn_id, at_or_now(*at_ms), item)
-                {
-                    self.events
-                        .publish_provider_lifecycle(record, session_revision);
-                }
-            }
-            SessionEventKind::TurnEnded { turn } => {
-                let completed_ms = turn.completed_at_ms.unwrap_or_else(now_ms);
-                match self
-                    .task_store
-                    .record_completed_turn(thread_id, completed_ms)
-                {
-                    Ok(Some(_)) => self.refresh_persisted_task_list(),
-                    Ok(None) => {}
-                    Err(error) => {
-                        eprintln!("failed to persist completed turn for {thread_id}: {error}");
-                    }
-                }
-                self.events.publish_provider_lifecycle(
-                    turn_completed_event(thread_id, turn, completed_ms),
-                    session_revision,
-                );
-            }
-            // The diff itself is not carried: Caffold reviews changes from git,
-            // which owns the working tree the agent wrote to. What this says is
-            // that there is something new to review.
-            SessionEventKind::DiffChanged => {
-                self.events.publish_provider_lifecycle(
-                    task_event_record(
-                        thread_id,
-                        "diff_updated",
-                        "diff_updated",
-                        "Diff updated",
-                        Some(json!({ "threadId": thread_id })),
-                        now_ms(),
-                    ),
-                    session_revision,
-                );
-            }
-            SessionEventKind::ConversationStarted { .. }
-            | SessionEventKind::TitleChanged { .. }
-            | SessionEventKind::SettingsChanged { .. }
-            | SessionEventKind::UsageReported { .. }
-            | SessionEventKind::ApprovalAnsweredElsewhere { .. } => {}
+        let result = match &event.kind {
+            SessionEventKind::TurnStarted { turn } => self
+                .task_store
+                .update_observed_recency(thread_id, turn.started_at_ms.unwrap_or_else(now_ms)),
+            SessionEventKind::TurnEnded { turn } => self
+                .task_store
+                .record_completed_turn(thread_id, turn.completed_at_ms.unwrap_or_else(now_ms)),
+            _ => return,
+        };
+        match result {
+            Ok(Some(_)) => self.refresh_persisted_task_list(),
+            Ok(None) => {}
+            Err(error) => eprintln!("failed to persist turn recency for {thread_id}: {error}"),
         }
     }
 
@@ -358,18 +266,10 @@ impl TaskRuntime {
     }
 }
 
-/// The time the agent reported, or now when it reported none.
-fn at_or_now(reported_ms: u64) -> u64 {
-    if reported_ms > 0 {
-        reported_ms
-    } else {
-        now_ms()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::agent;
+    use crate::agent::ThreadStatus;
     use std::time::Duration;
 
     use serde_json::{Value as JsonValue, json};
@@ -390,7 +290,13 @@ mod tests {
     fn runtime_with_events_and_store(events: TaskEvents, store: TaskStore) -> TaskRuntime {
         let (shutdown, _) = broadcast::channel(1);
         let (claude, _runner) = agent::claude::ClaudeClient::mock();
-        TaskRuntime::new(claude, TaskSessions::default(), events, store, shutdown)
+        TaskRuntime::new(
+            claude,
+            TaskSessions::new(events.clone()),
+            events,
+            store,
+            shutdown,
+        )
     }
 
     fn runtime_with_list_events(
@@ -399,7 +305,7 @@ mod tests {
     ) -> (TaskRuntime, TaskListEvents) {
         let root = tempfile::tempdir().unwrap();
         let fs = std::sync::Arc::new(RootedFs::new(root.path()).unwrap());
-        let sessions = TaskSessions::default();
+        let sessions = TaskSessions::new(events.clone());
         let list_events = TaskListEvents::new();
         let worktrees =
             ManagedWorktrees::new(fs.clone(), store.clone(), root.path().join("worktrees"))
@@ -408,7 +314,6 @@ mod tests {
         let lifecycle = TaskLifecycle::new(
             fs,
             sessions.clone(),
-            events.clone(),
             list_events.clone(),
             store.clone(),
             worktrees,
@@ -427,8 +332,9 @@ mod tests {
     /// itself needs one, and no test here sends that.
     async fn reported(method: &str, params: JsonValue) -> SessionEvent {
         let notification = codex::decode_notification(method, params).expect("Codex sends this");
-        session_event(&notification, &CodexThreadClient::mock(Vec::new()))
+        session_events(&notification, &CodexThreadClient::mock(Vec::new()))
             .await
+            .pop()
             .expect("the notification says something Caffold acts on")
     }
 
@@ -507,7 +413,12 @@ mod tests {
         runtime.handle_session_event(1, event).await;
 
         assert!(receiver.try_recv().is_err());
-        assert!(events.for_thread("thread-old-generation").is_empty());
+        assert!(
+            !events
+                .for_thread("thread-old-generation")
+                .iter()
+                .any(|event| event.id.ends_with(":stale-item"))
+        );
     }
 
     #[tokio::test]
@@ -595,7 +506,7 @@ mod tests {
             )
             .unwrap();
 
-        runtime.publish_session_event(
+        runtime.record_turn_recency(
             &reported(
                 "turn/completed",
                 json!({
@@ -608,7 +519,6 @@ mod tests {
                 }),
             )
             .await,
-            1,
         );
 
         let stored = store.get("thread_1").unwrap().unwrap();
@@ -629,7 +539,7 @@ mod tests {
             )
             .unwrap();
 
-        runtime.publish_session_event(
+        runtime.record_turn_recency(
             &reported(
                 "turn/started",
                 json!({
@@ -642,7 +552,6 @@ mod tests {
                 }),
             )
             .await,
-            1,
         );
 
         let stored = store.get("thread_1").unwrap().unwrap();
@@ -915,7 +824,7 @@ mod tests {
             TaskStore::memory().expect("in-memory task store"),
         );
 
-        runtime.publish_session_event(
+        runtime.events.publish_session_event(
             &reported(
                 "turn/started",
                 json!({
@@ -936,7 +845,7 @@ mod tests {
         assert_eq!(started.position.anchor_ms, 1_750_000_000_250);
         assert_eq!(started.payload.as_ref().unwrap()["turnId"], "turn_1");
 
-        runtime.publish_session_event(
+        runtime.events.publish_session_event(
             &reported(
                 "item/started",
                 json!({
@@ -957,7 +866,8 @@ mod tests {
         );
         let command_started = receiver.try_recv().unwrap().event;
         assert_eq!(command_started.event_type, "command_execution");
-        assert_eq!(command_started.position.anchor_ms, 1_750_000_001_000);
+        assert_eq!(command_started.position.anchor_ms, 1_750_000_000_250);
+        assert_eq!(command_started.observed_ms, Some(1_750_000_001_000));
         assert_eq!(
             command_started.payload.as_ref().unwrap()["status"],
             "inProgress"
@@ -969,7 +879,7 @@ mod tests {
             .expect("notification bridge should cache commands without an SSE consumer");
         assert_eq!(cached_command.event_type, "command_execution");
 
-        runtime.publish_session_event(
+        runtime.events.publish_session_event(
             &reported(
                 "item/started",
                 json!({
@@ -991,7 +901,7 @@ mod tests {
         // bubble is worse than waiting for the words.
         assert!(receiver.try_recv().is_err());
 
-        runtime.publish_session_event(
+        runtime.events.publish_session_event(
             &reported(
                 "item/completed",
                 json!({
@@ -1012,13 +922,14 @@ mod tests {
         let reasoning_completed = receiver.try_recv().unwrap().event;
         assert_eq!(reasoning_completed.event_type, "reasoning");
         // The entry still belongs where the item started, not where it ended.
-        assert_eq!(reasoning_completed.position.anchor_ms, 1_750_000_003_000);
+        assert_eq!(reasoning_completed.position.anchor_ms, 1_750_000_000_250);
+        assert_eq!(reasoning_completed.observed_ms, Some(1_750_000_003_000));
         assert_eq!(
             reasoning_completed.payload.as_ref().unwrap()["status"],
             "completed"
         );
 
-        runtime.publish_session_event(
+        runtime.events.publish_session_event(
             &reported(
                 "thread/status/changed",
                 json!({
@@ -1034,7 +945,7 @@ mod tests {
         assert_eq!(status.event_type, "thread_status_changed");
         assert_eq!(status.payload.as_ref().unwrap()["status"], "running");
 
-        runtime.publish_session_event(
+        runtime.events.publish_session_event(
             &reported(
                 "turn/completed",
                 json!({
@@ -1063,7 +974,7 @@ mod tests {
             TaskStore::memory().expect("in-memory task store"),
         );
 
-        runtime.publish_session_event(
+        runtime.events.publish_session_event(
             &SessionEvent {
                 thread_id: "claude-thread".to_string(),
                 kind: SessionEventKind::ActivityChanged {

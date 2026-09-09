@@ -258,9 +258,8 @@ Within either source, repeated reports under one exact item identity update one
 item. Submission observation and provider identity remain separate: the
 browser may place an optimistic prompt when it submits the request, but only
 the exact identity returned by the adapter hands that prompt off to the
-projection. The handoff keeps its provisional browser position until a
-complete Detail supplies backend placement, so identity delay cannot move the
-prompt behind an answer produced in the meantime. For a recovered turn, live
+projection. The handoff adopts the confirmed backend position immediately,
+including when an answer arrived before the prompt response. For a recovered turn, live
 reports may enrich history only under an exact identity. Content, proximity,
 and arrival order are never substitutes for that identity.
 
@@ -279,15 +278,43 @@ must not print the turn anchor as every item's timestamp.
 
 ### Backend reconciliation
 
-The Task backend retains live observations with their explicit operation role:
-provider lifecycle, accepted submission, or Caffold-owned projection. It
-advances repeated live reports within that role, then reconciles provider
-history and retained observations when it assembles Detail. Provider history
-owns the baseline after recovery or an observation gap; a live report may
-replace a conflicting history field only under exact identity and evidence
-that the report followed the read it advances. Backend-private session
-causality and cache-observation recency do not cross this boundary as item
-freshness or display fields.
+`TaskEvents` owns one retained conversation projection. `TaskSessions` retains
+turn lifecycle metadata and coordinates provider reads; it does not keep a
+second long-lived copy of turn items. A full `Turn` comes from a history read.
+Start and end reports carry only `TurnState`; named items carried by a provider
+notification become separate item updates. A partial completion report cannot
+replace the turn's item membership. Provider-specific inclusion flags remain
+inside that provider's adapter.
+
+The projection records provider history, live lifecycle observations, accepted
+submissions, and local projections with explicit roles. It reconciles a history
+read when that read is accepted, under the same owner as live publication.
+Session causality protects exact-identity live updates accepted after the read
+began. A turn observed continuously from its start retains its live item set
+and stable positions even if a history read uses different IDs. Unmatched IDs
+from a partial attachment or recovered source remain distinct. Their contents,
+timestamps, or proximity cannot authorize a guessed match.
+
+Retention is by whole turn. Each Task protects its latest turn and one historical
+continuation selected by the most recently requested successful older-page read.
+A failed request retains the previous selection; a late response cannot change
+the selection after a newer request. When the total exceeds 300 distinct
+conversation items, least recently used, unprotected completed turns are evicted
+whole. Updates to the same item do not add to the count. Protected turns may
+exceed the budget. Unprotected empty completed turns are discarded after the
+response and continuation have been captured. This is an item retention policy,
+not a byte bound, prefetch target, or limit on the browser's retained pages.
+
+A provider generation change or confirmed observation gap withdraws history
+validity and rejects pending reads from that observation lifetime. Retained
+reports may still be displayed without claiming complete membership. An ID
+mismatch, capacity threshold, cache miss, compaction, or individual page failure
+does not establish an observation gap. Browser reconnection while the provider
+subscription continues reuses the same projection. Cache maintenance does not
+clear browser history or initiate provider reads. Explicit older-page requests
+read on a cache miss; an uninterpretable continuation fails that request rather
+than restarting a traversal. Limited recovery may leave unmatched display items
+or delay their reconciliation instead of repeatedly reading the provider.
 
 ### Projection publication
 
@@ -302,14 +329,15 @@ conversation position, or time.
 
 Every Detail answer declares the extent of the projection it owns as an
 inclusive backend position range, `eventsRange`, or declares none. A
-current-page answer owns its first event onward. An answer bounded to
+current-page answer with established membership owns its first event onward. An answer bounded to
 `TASK_DETAIL_EVENT_LIMIT` events owns its first kept event onward; the turn
 boundary events it repeats from before that point update by identity without
 widening the extent. An older cursor page, whether older turns or the earlier events of a page
 already answered, owns exactly the span of the events it contains. A
-`historyLoading` answer declares no extent, so it owns the exact identities it
-contains and cannot prove that an absent, previously readable item was
-deleted.
+`historyLoading` answer, retained evidence after an observation gap, or a page
+with unresolved source membership declares no extent. Such an answer owns the
+exact identities it contains and cannot prove that an absent, previously
+readable item was deleted.
 
 The agent still owns the meaning of a permission. Caffold owns the human answer
 vocabulary—allow, allow always, deny, and deny and stop—and each driver offers

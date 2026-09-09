@@ -55,7 +55,8 @@ pub(crate) use approval::{
 pub(crate) use conversation::{
     ActivityStatus, BackgroundTask, CommandExecution, Conversation, ConversationItem,
     GeneratedImage, ItemKind, MessageContent, MessagePhase, SessionEvent, SessionEventKind,
-    ThreadActiveFlag, ThreadStatus, TokenCount, TokenUsage, Turn, TurnOrigin, TurnPage, TurnStatus,
+    ThreadActiveFlag, ThreadStatus, TokenCount, TokenUsage, Turn, TurnOrigin, TurnPage, TurnState,
+    TurnStatus,
 };
 pub(crate) use driver::{
     AgentError, Driver, OpenedConversation, PermissionModes, TurnOptions, TurnRejected,
