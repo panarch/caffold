@@ -715,6 +715,12 @@ test("applies canonical top placements without list refetches or duplicate reord
     'caffold-task-navigator .task-row[data-thread-id]',
   );
   await expect(rows).toHaveCount(2);
+  // Rendered rows only prove the list response arrived. The events below need
+  // the live-update subscription, which the fixture publishes on its own
+  // round trip through the gateway.
+  await expect
+    .poll(() => page.evaluate(() => Boolean(window.__activePlacementSource)))
+    .toBe(true);
 
   await page.evaluate((unknown) => {
     window.__activePlacementSource.emit("task-sync", {
