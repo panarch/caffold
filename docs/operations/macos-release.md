@@ -61,7 +61,7 @@ The Checks and Release entrypoints directly call the same owner workflows on Ubu
 - `documentation-contracts.yml`: documentation contracts.
 - `repository-tooling-tests.yml`: release version tooling.
 - `macos-packaging-contracts.yml`: portable packaging and installer contracts.
-- `browser-tests.yml`: the desktop/foldable/phone matrix, with one worker and an isolated fixture workspace per job. Failed tests retain a trace even though retries are disabled.
+- `browser-tests.yml`: the desktop/foldable/phone matrix, with one worker and an isolated fixture workspace per job. Browser configuration and retry behavior match ordinary CI.
 - `rust-checks.yml`: formatting, locked tests, and locked Clippy.
 
 Only after every shared check succeeds does Release call `macos-release.yml`. This workflow keeps source preparation, native verification, packaging, and source push in one macOS arm64 job:

@@ -174,9 +174,11 @@ skips are not a coverage declaration.
 Pull-request, `main`, and release checks run desktop, foldable, and phone in the
 same independent Ubuntu matrix jobs. Each job starts its own server, selects
 only its coverage tags, and uses one worker against its own fixture workspace.
-All three jobs must pass. Tests have no retries, and a trace is retained for
-each failure and uploaded with that viewport's failure artifacts. The ordinary
-local command still runs the complete tagged suite in one Playwright invocation.
+All three jobs must pass. Tests have no retries, and each viewport uploads its
+failure artifacts. Tracing keeps the existing `on-first-retry` setting, so
+ordinary runs with zero retries do not record traces. For a targeted diagnostic
+run, enable tracing explicitly with `--trace on`. The ordinary local command
+still runs the complete tagged suite in one Playwright invocation.
 
 Test-server ports belong to individual Playwright runs, including runs in other
 worktrees. Do not stop a process merely because it owns a port used by an older
