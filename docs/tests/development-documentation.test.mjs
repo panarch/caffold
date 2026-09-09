@@ -131,8 +131,14 @@ function ownedSuites() {
   return { packageCommands, macosRunners, testRoots };
 }
 
-function readWorkflow(name) {
-  return readFileSync(resolve(repoRoot, ".github/workflows", name), "utf8");
+function readWorkflow(name, visited = new Set()) {
+  if (visited.has(name)) return "";
+  visited.add(name);
+  const source = readFileSync(resolve(repoRoot, ".github/workflows", name), "utf8");
+  // Follow repository-owned reusable workflows so coverage is checked from
+  // each real entrypoint even when the commands belong to a shared workflow.
+  const calls = [...source.matchAll(/uses: \.\/\.github\/workflows\/([\w-]+\.yml)/g)];
+  return [source, ...calls.map(([, called]) => readWorkflow(called, visited))].join("\n");
 }
 
 /** A root is reached when a workflow runs it directly or runs a runner that does. */

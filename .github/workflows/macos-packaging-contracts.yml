@@ -1,0 +1,31 @@
+name: macOS Packaging Contracts
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  macos_packaging:
+    name: macOS Packaging Contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the requested source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # These verify shell scripts, workflow definitions, and documentation, so
+      # they need no macOS host. The Swift programs and the packaging-metadata
+      # check do, and run in the release workflow.
+      - name: Test macOS packaging contracts
+        run: desktop/macos/test-contracts

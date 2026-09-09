@@ -63,7 +63,7 @@ one records where it runs from and what it needs:
 | `cargo test -p caffold-claude-runner --test live -- --ignored` | repository root | authenticated Claude CLI | that Claude still returns an unanswered permission request to a client that reattaches, with model usage |
 | `cargo test -p caffold --test claude_live -- --ignored --test-threads=1` | repository root | authenticated Claude CLI | what a person sees when the backend is replaced or the runner is killed under a working Claude Task, that each permission decision does what it says, that the agent reaches the tool Caffold serves it, and that the installation reports its status, with model usage |
 | `node --test docs/tests/*.test.mjs` | repository root | Node | documentation index, links, entrypoints, and this command index |
-| `node --test scripts/tests/*.test.mjs` | repository root | Node | repository tooling behavior, such as the release version bump |
+| `node --test scripts/tests/*.test.mjs` | repository root | Node | release version tooling |
 | `desktop/macos/test-contracts` | repository root | Node | macOS packaging, release, and installer contracts, from `desktop/macos/tests/` |
 | `desktop/macos/test-runtime` | repository root | macOS, Xcode tools | Swift wrapper process lifecycle |
 | `desktop/macos/test-system-status` | repository root | macOS, Xcode tools | Swift system-status behavior |
@@ -98,26 +98,39 @@ Continuous integration follows the same ownership. Pull-request checks run one
 job per owner, and each job name says both whose it is and what kind of
 verification it performs:
 
-| Job | Verifies |
-| --- | --- |
-| Frontend Tests | colocated units and frontend contracts |
-| Documentation Contracts | the documentation index, links, and command index |
-| Repository Tooling Tests | the release version tooling, by calling it |
-| macOS Packaging Contracts | packaging, release, and installer definitions |
-| Browser Tests / _viewport_ | browser behavior, one job per viewport |
-| Rust Checks | formatting, lints, and the Rust suites |
+| Job | Reusable workflow in `.github/workflows/` | Verifies |
+| --- | --- | --- |
+| Frontend Tests | `frontend-tests.yml` | colocated units and frontend contracts |
+| Documentation Contracts | `documentation-contracts.yml` | the documentation index, links, and command index |
+| Repository Tooling Tests | `repository-tooling-tests.yml` | the release version tooling, by calling it |
+| macOS Packaging Contracts | `macos-packaging-contracts.yml` | packaging, release, and installer definitions |
+| Browser Tests / _viewport_ | `browser-tests.yml` | browser behavior, one job per viewport |
+| Rust Checks | `rust-checks.yml` | formatting, lints, and the Rust suites |
 
 A failing check therefore names its owner without being opened. The contract
 jobs read shell scripts, workflow definitions, and documentation rather than
 running a macOS application, so `macOS Packaging Contracts` needs no macOS host
 and runs on the ordinary Ubuntu runner.
 
-The release workflow keeps all of this in one linear job on the macOS host,
-because it is a gate in front of an artifact rather than feedback on a change.
-It re-runs every pull-request suite and adds what needs that host: the Swift
-programs and the packaging verification. A contract keeps the split honest —
-every suite must run where it can run, and the release gate must not be weaker
-than the pull-request checks.
+Each owner keeps its Ubuntu check in its own reusable workflow. `checks.yml`
+and `release.yml` call each one directly, so the commands, viewport matrix,
+toolchains, and failure artifacts have one definition per owner. The entrypoint
+workflows choose which checks to run and enforce their dependencies. Every
+shared check tests the caller's commit directly, without release-specific
+inputs or candidate restoration.
+
+After all shared checks pass, `.github/workflows/macos-release.yml` prepares
+the release in one macOS job. For a new release it bumps the version and commits
+the candidate locally, then runs Swift application tests, Rust tests and lints,
+and the arm64 package build and verification. It uploads the package before
+pushing the verified candidate. Browser and other Ubuntu checks therefore run
+before the version bump; macOS checks and packaging verify the final version.
+
+The macOS workflow can also be dispatched manually from `main` to verify and
+package that commit. Standalone runs, release `dry-run`, and `resume` do not
+bump or push the version. Only the Release entrypoint publishes GitHub and
+Homebrew releases after the macOS job succeeds. A contract follows reusable
+workflow calls to ensure every suite still runs where it can run.
 
 Focused Node unit tests live beside their owning frontend module as
 `name.test.js`. They may import that module directly, but must not require
@@ -158,10 +171,14 @@ behavior uses foldable unless the phone's single-pane contract is relevant.
 These are Playwright test-detail tags, not title suffixes. Runtime project-name
 skips are not a coverage declaration.
 
-Pull-request and `main` checks run desktop, foldable, and phone in independent
-matrix jobs. Each job starts its own server and selects only its coverage tags;
-the stable `Browser Tests` gate requires all three jobs to pass. The ordinary
-local command still runs the complete tagged suite in one Playwright invocation.
+Pull-request, `main`, and release checks run desktop, foldable, and phone in the
+same independent Ubuntu matrix jobs. Each job starts its own server, selects
+only its coverage tags, and uses one worker against its own fixture workspace.
+All three jobs must pass. Tests have no retries, and each viewport uploads its
+failure artifacts. Tracing keeps the existing `on-first-retry` setting, so
+ordinary runs with zero retries do not record traces. For a targeted diagnostic
+run, enable tracing explicitly with `--trace on`. The ordinary local command
+still runs the complete tagged suite in one Playwright invocation.
 
 Test-server ports belong to individual Playwright runs, including runs in other
 worktrees. Do not stop a process merely because it owns a port used by an older
