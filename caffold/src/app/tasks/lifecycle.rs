@@ -5,9 +5,9 @@ use uuid::Uuid;
 
 use crate::{
     agent::claude::ClaudeClient,
-    agent::{Conversation, TurnOptions},
+    agent::{Conversation, TurnOptions, TurnPage},
     app::error::ApiError,
-    app::tasks::sessions::{ConversationSettings, TaskSessions},
+    app::tasks::sessions::{ConversationSettings, RequestLease, TaskSessions},
     fs::RootedFs,
     task_store::{ManagedThread, RunBy, TaskStore, TaskStoreError},
 };
@@ -37,6 +37,7 @@ pub(in crate::app::tasks) struct CreateTask {
 pub(in crate::app::tasks) struct CreatedTask {
     pub(in crate::app::tasks) task: TaskRecord,
     pub(in crate::app::tasks) placement: ActiveTaskTopPlacement,
+    _request: RequestLease,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -128,6 +129,7 @@ impl TaskLifecycle {
         let accepted = driver.accept_turn_options(&turn_options).await?;
         let mut started = driver.start_conversation(&cwd, &accepted).await?;
         let conversation_id = started.conversation.id.clone();
+        let request = self.sessions.reserve_request(&conversation_id).await;
         let initial_name = initial_request_name::from_prompt(&title_source)
             .unwrap_or_else(|| format!("Thread {}", short_thread_id(&conversation_id)));
         // Codex keeps a name of its own for a thread, and it should read as
@@ -135,16 +137,16 @@ impl TaskLifecycle {
         // to name the Task on its first turn — which renames both sides — so
         // pushing this placeholder over the agent's own title would replace
         // something with less.
-        if let Some(connection) = agent.codex()
-            && let Err(error) = connection
+        let turns_page = if let Some(connection) = agent.codex() {
+            let initialized = connection
                 .client
-                .set_thread_name(&conversation_id, &initial_name)
-                .await
-        {
-            self.rollback_unclaimed_conversation(agent, &conversation_id)
-                .await;
-            return Err(error.into());
-        }
+                .initialize_created_thread(&conversation_id, &initial_name, requested_fast_mode)
+                .await?;
+            started.conversation = Conversation::from(&initialized.thread);
+            initialized.initial_turns_page.as_ref().map(TurnPage::from)
+        } else {
+            None
+        };
         started.conversation.title = Some(initial_name);
         // What the person asked for stands where they asked for something, and
         // what the agent settled on fills the rest.
@@ -183,13 +185,12 @@ impl TaskLifecycle {
             }
         };
 
-        self.list_events.place(task.clone(), placement.clone());
         self.sessions
             .register_created_thread(
                 &driver,
                 agent.generation(),
                 started.conversation.clone(),
-                None,
+                turns_page,
                 ConversationSettings {
                     permission_mode: settled.permission_mode.clone(),
                     model: settled.model.clone(),
@@ -198,7 +199,12 @@ impl TaskLifecycle {
                 },
             )
             .await;
-        Ok(CreatedTask { task, placement })
+        self.list_events.place(task.clone(), placement.clone());
+        Ok(CreatedTask {
+            task,
+            placement,
+            _request: request,
+        })
     }
 
     pub(in crate::app::tasks) async fn place_active_task(

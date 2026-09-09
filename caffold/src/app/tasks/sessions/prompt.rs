@@ -3,13 +3,10 @@ use crate::agent::{
     Driver, SessionEvent, SessionEventKind, ThreadStatus, TurnOptions, TurnState, TurnStatus,
 };
 
+use super::turns::{merge_latest_turns_page, turn_is_terminal, upsert_turn};
 use super::{
-    INITIAL_TURNS_PAGE_SIZE, PromptTarget, SessionLifecycle, SessionSnapshot, SessionTurnPage,
-    TaskSessions, now_unix_ms, snapshot,
-};
-use super::{
-    reconciliation::apply_prompt_resume,
-    turns::{merge_latest_turns_page, upsert_turn},
+    INITIAL_TURNS_PAGE_SIZE, PromptTarget, SessionLifecycle, SessionTurnPage, TaskSessions,
+    now_unix_ms, snapshot,
 };
 
 impl TaskSessions {
@@ -21,8 +18,7 @@ impl TaskSessions {
     ) -> Result<PromptTarget, AgentError> {
         let entry = self.entry(thread_id).await;
         let current = {
-            let mut state = entry.state.lock().await;
-            state.runtime_lease = true;
+            let state = entry.state.lock().await;
             if state.generation == generation
                 && state.lifecycle == SessionLifecycle::Subscribed
                 && state.conversation.is_some()
@@ -34,35 +30,23 @@ impl TaskSessions {
         };
         let current = match current {
             Some(snapshot) => snapshot,
-            None => match self.resume_for_prompt(driver, generation, thread_id).await {
-                Ok(snapshot) => snapshot,
-                Err(error) => {
-                    self.cancel_runtime(thread_id).await;
-                    return Err(error);
-                }
-            },
+            None => {
+                self.resume_for_prompt(driver, generation, thread_id)
+                    .await?
+            }
         };
         let current = if current
             .conversation
             .as_ref()
             .is_some_and(|thread| thread.status == ThreadStatus::NotLoaded)
         {
-            match self
-                .refresh_subscription(driver, generation, thread_id)
-                .await
-            {
-                Ok(snapshot) => snapshot,
-                Err(error) => {
-                    self.cancel_runtime(thread_id).await;
-                    return Err(error);
-                }
-            }
+            self.refresh_subscription(driver, generation, thread_id)
+                .await?
         } else {
             current
         };
 
         if current.generation != generation {
-            self.cancel_runtime(thread_id).await;
             return Err(AgentError::Failed(format!(
                 "conversation {thread_id} changed connection before its prompt"
             )));
@@ -99,8 +83,6 @@ impl TaskSessions {
                         if state.same_observation(generation, observation_epoch) {
                             state.last_error = Some(error.to_string());
                         }
-                        drop(state);
-                        self.cancel_runtime(thread_id).await;
                         return Err(error);
                     }
                 };
@@ -110,7 +92,6 @@ impl TaskSessions {
                     .find(|turn| turn.status == TurnStatus::InProgress)
                     .map(|turn| turn.id.clone())
                 else {
-                    self.cancel_runtime(thread_id).await;
                     return Err(AgentError::Failed(format!(
                         "active thread {thread_id} did not expose its active turn"
                     )));
@@ -141,61 +122,10 @@ impl TaskSessions {
         ) {
             Ok(PromptTarget::Start { cwd: thread.cwd })
         } else {
-            self.cancel_runtime(thread_id).await;
             Err(AgentError::Failed(format!(
                 "conversation {thread_id} cannot take a prompt"
             )))
         }
-    }
-
-    async fn resume_for_prompt(
-        &self,
-        driver: &Driver,
-        generation: u64,
-        thread_id: &str,
-    ) -> Result<SessionSnapshot, AgentError> {
-        let entry = self.entry(thread_id).await;
-        let _operation = entry.operation.lock().await;
-        {
-            let state = entry.state.lock().await;
-            if state.generation == generation
-                && state.lifecycle == SessionLifecycle::Subscribed
-                && state.conversation.is_some()
-            {
-                return Ok(snapshot(&state));
-            }
-        }
-        let (base_revision, fast_mode, read_generation, observation_epoch) = {
-            let state = entry.state.lock().await;
-            if state.generation != generation {
-                state.events.invalidate_continuity(thread_id);
-            }
-            (
-                state.revision,
-                state.fast_mode,
-                state.generation,
-                state.observation_epoch,
-            )
-        };
-        let opened = match driver.open_conversation(thread_id, false, fast_mode).await {
-            Ok(opened) => opened,
-            Err(error) => {
-                let mut state = entry.state.lock().await;
-                if state.same_observation(read_generation, observation_epoch) {
-                    state.lifecycle = SessionLifecycle::Error;
-                    state.last_error = Some(error.to_string());
-                }
-                return Err(error);
-            }
-        };
-        let mut state = entry.state.lock().await;
-        if !state.same_observation(read_generation, observation_epoch) {
-            return Err(AgentError::Failed(format!(
-                "conversation {thread_id} changed connection while preparing a prompt"
-            )));
-        }
-        apply_prompt_resume(&mut state, driver, generation, opened, base_revision);
-        Ok(snapshot(&state))
     }
 
     pub(in crate::app::tasks) async fn record_turn_started(
@@ -219,9 +149,13 @@ impl TaskSessions {
         {
             thread.cwd = cwd.to_string();
         }
-        state.active_turn_id = Some(turn.id.clone());
-        state.active_turn_cwd = active_turn_cwd;
-        state.terminal_candidate_turn_id = Some(turn.id.clone());
+        let already_ended = turn_is_terminal(&state, &turn.id);
+        if !already_ended {
+            state.active_turn_id = Some(turn.id.clone());
+            state.active_turn_cwd = active_turn_cwd;
+            state.terminal_candidate_turn_id = Some(turn.id.clone());
+            state.runtime_lease = true;
+        }
         if options.permission_mode.is_some() {
             state.permission_mode = options.permission_mode;
         }
@@ -232,16 +166,19 @@ impl TaskSessions {
             state.reasoning_effort = options.effort;
         }
         state.fast_mode = options.fast_mode;
-        state.runtime_lease = true;
-        upsert_turn(&mut state.turns_page, turn.clone());
+        if !already_ended {
+            upsert_turn(&mut state.turns_page, turn.clone());
+        }
         state.revision = state.revision.saturating_add(1);
-        state.events.publish_session_event(
-            &SessionEvent {
-                thread_id: thread_id.to_string(),
-                kind: SessionEventKind::TurnStarted { turn },
-            },
-            state.revision,
-        );
+        if !already_ended {
+            state.events.publish_session_event(
+                &SessionEvent {
+                    thread_id: thread_id.to_string(),
+                    kind: SessionEventKind::TurnStarted { turn },
+                },
+                state.revision,
+            );
+        }
         state.last_sync_ms = Some(now_unix_ms());
         Some(state.revision)
     }
@@ -254,23 +191,22 @@ impl TaskSessions {
         &self,
         generation: u64,
         thread_id: &str,
+        turn_id: &str,
     ) -> Option<u64> {
         let entry = self.entry(thread_id).await;
         let mut state = entry.state.lock().await;
         if state.generation != generation {
             return None;
         }
+        if !turn_is_terminal(&state, turn_id)
+            && (state.active_turn_id.as_deref() == Some(turn_id)
+                || state.terminal_candidate_turn_id.as_deref() == Some(turn_id))
+        {
+            state.runtime_lease = true;
+        }
         state.revision = state.revision.saturating_add(1);
         state.last_sync_ms = Some(now_unix_ms());
         Some(state.revision)
-    }
-
-    pub(in crate::app::tasks) async fn cancel_runtime(&self, thread_id: &str) {
-        let Some(entry) = self.existing_entry(thread_id).await else {
-            return;
-        };
-        entry.state.lock().await.runtime_lease = false;
-        self.unsubscribe_if_unused(thread_id, &entry).await;
     }
 
     pub(in crate::app::tasks) async fn active_turn_id(
@@ -326,6 +262,83 @@ impl TaskSessions {
 mod tests {
     use super::*;
     use crate::app::tasks::sessions::test_support::*;
+
+    #[tokio::test]
+    async fn accepted_steering_retains_the_runtime_after_its_request_ends() {
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            resume_response(
+                ThreadStatus::Active {
+                    active_flags: vec![],
+                },
+                vec![],
+                vec![wire_turn("running", TurnStatus::InProgress)],
+            ),
+        )]);
+        let sessions = TaskSessions::default();
+        let request = sessions.reserve_request("thread-1").await;
+        let target = sessions
+            .prepare_prompt(&client.driver(), 1, "thread-1")
+            .await
+            .unwrap();
+        assert!(matches!(target, PromptTarget::Steer { turn_id } if turn_id == "running"));
+        sessions
+            .record_prompt_accepted(1, "thread-1", "running")
+            .await
+            .unwrap();
+        drop(request);
+        while sessions.diagnostics().await.request_leases != 0 {
+            tokio::task::yield_now().await;
+        }
+        assert!(sessions.snapshot("thread-1").await.unwrap().runtime_lease);
+        assert_eq!(methods(&client).await, ["thread/resume"]);
+    }
+
+    #[tokio::test]
+    async fn late_start_and_steer_acceptance_cannot_revive_a_completed_turn() {
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            resume_response(ThreadStatus::Idle, vec![], vec![]),
+        )]);
+        let sessions = TaskSessions::default();
+        let _request = sessions.reserve_request("thread-1").await;
+        sessions
+            .prepare_prompt(&client.driver(), 1, "thread-1")
+            .await
+            .unwrap();
+        sessions
+            .apply_session_event(
+                1,
+                &session_event(
+                    "thread-1",
+                    SessionEventKind::TurnEnded {
+                        turn: turn("finished", TurnStatus::Completed),
+                    },
+                ),
+            )
+            .await;
+        sessions
+            .record_turn_started(
+                1,
+                "thread-1",
+                None,
+                turn("finished", TurnStatus::InProgress),
+                TurnOptions::default(),
+            )
+            .await
+            .unwrap();
+        sessions
+            .record_prompt_accepted(1, "thread-1", "finished")
+            .await
+            .unwrap();
+        let snapshot = sessions.snapshot("thread-1").await.unwrap();
+        assert_eq!(snapshot.active_turn_id, None);
+        assert!(!snapshot.runtime_lease);
+        assert_eq!(
+            snapshot.turns_page.unwrap().turns[0].status,
+            TurnStatus::Completed
+        );
+    }
 
     #[tokio::test]
     async fn a_prompt_resume_cannot_retain_history_after_the_task_is_forgotten() {
@@ -471,7 +484,7 @@ mod tests {
         assert!(matches!(target, PromptTarget::Start { cwd } if cwd == "Workspace/rust/codger"));
         assert_eq!(methods(&client).await, vec!["thread/resume"]);
         assert!(
-            sessions
+            !sessions
                 .snapshot("thread-1")
                 .await
                 .expect("snapshot")

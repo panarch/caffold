@@ -1024,8 +1024,23 @@ test("names a new Caffold task at first-turn completion and preserves it", async
 
   const newTaskPrompt = newTaskForm.getByRole("textbox", { name: "New task prompt" });
   await newTaskPrompt.fill(firstPrompt);
+  // Hold the creation response until the backend has actually detached. This
+  // makes first-turn instruction delivery independent of the UI handoff speed.
+  await page.route("**/api/tasks", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    const response = await route.fetch();
+    expect(response.ok()).toBeTruthy();
+    const created = await response.json();
+    trackLiveThread(created.threadId, "spark", SPARK_MODEL);
+    await expect.poll(async () => {
+      const status = await readCodexStatus(page.request);
+      return status.diagnostics?.threadSessions?.subscribedSessions;
+    }).toBe(0);
+    await route.fulfill({ response });
+  });
   await newTaskPrompt.press("Enter");
   await expect(page).toHaveURL(/\/tasks\/[^?]+$/);
+  await page.unroute("**/api/tasks");
   const threadId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1);
   expect(threadId).toBeTruthy();
   trackLiveThread(threadId, "spark", SPARK_MODEL);
@@ -1071,6 +1086,14 @@ test("names a new Caffold task at first-turn completion and preserves it", async
   expect(renameCompletedIndex).toBeGreaterThanOrEqual(0);
   expect(finalResponseIndex).toBeGreaterThan(renameCompletedIndex);
   await expect(tasksPage.locator(".task-detail-heading h2")).toHaveText(automaticName);
+
+  // A second attachment must not treat the next user turn as the first turn.
+  await page.goto("/tasks");
+  await expect.poll(async () => {
+    const status = await readCodexStatus(page.request);
+    return status.diagnostics?.threadSessions?.subscribedSessions;
+  }).toBe(0);
+  await page.goto(`/tasks/${threadId}`);
 
   const followUpForm = tasksPage.locator(
     '.task-follow-up-form[data-task-form="follow-up"]',

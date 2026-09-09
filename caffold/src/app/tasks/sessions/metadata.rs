@@ -1,3 +1,5 @@
+use super::SubscriptionTransition;
+
 use crate::agent::AgentError;
 use crate::agent::Conversation;
 
@@ -21,10 +23,10 @@ impl TaskSessions {
         let _operation = entry.operation.lock().await;
         let mut state = entry.state.lock().await;
         if state.generation != generation {
-            if state.viewer_leases > 0 || state.runtime_lease {
+            if state.has_demand() {
                 return;
             }
-            state.lifecycle = SessionLifecycle::Unloaded;
+            state.transition(SubscriptionTransition::Reset);
             state.conversation = None;
             state.turns_page = None;
             state.history_base_revision = None;

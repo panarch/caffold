@@ -1,3 +1,5 @@
+use super::SubscriptionTransition;
+
 use std::collections::BTreeMap;
 
 use serde_json::Value;
@@ -10,7 +12,7 @@ use super::turns::{
     active_turn_id, bound_latest_turns_page, merge_latest_turns_page, merge_stale_turns_page,
     replace_active_turn, sort_turns_desc, turn_is_in_progress, update_active_turn,
 };
-use super::{SessionLifecycle, SessionState, SessionTurnPage, now_unix_ms};
+use super::{SessionState, SessionTurnPage, now_unix_ms};
 
 struct OpenedSession {
     conversation: Conversation,
@@ -223,7 +225,7 @@ pub(super) fn apply_opened_conversation(
     let active_turn_id = active_turn_id(&thread, incoming_page.as_ref());
     let thread_is_active = matches!(thread.status, ThreadStatus::Active { .. });
 
-    state.lifecycle = SessionLifecycle::Subscribed;
+    state.transition(SubscriptionTransition::Opened);
     state.driver = Some(driver.clone());
     state.on_connection(driver, generation);
     replace_active_turn(state, active_turn_id.clone(), active_turn_cwd);
@@ -308,7 +310,7 @@ pub(super) fn apply_stale_refresh(
     }
     let thread_is_active = matches!(thread.status, ThreadStatus::Active { .. });
 
-    state.lifecycle = SessionLifecycle::Subscribed;
+    state.transition(SubscriptionTransition::Opened);
     state.driver = Some(driver.clone());
     state.on_connection(driver, generation);
     state.conversation = Some(thread);
@@ -341,11 +343,15 @@ pub(super) fn apply_prompt_resume(
     base_revision: u64,
 ) {
     let applied = merge_external_resume_response(state, driver, opened, base_revision);
-    state.lifecycle = SessionLifecycle::Subscribed;
+    state.transition(SubscriptionTransition::Opened);
     state.driver = Some(driver.clone());
     state.on_connection(driver, generation);
-    state.runtime_lease = true;
     state.terminal_candidate_turn_id = state.active_turn_id.clone();
+    state.runtime_lease = state.active_turn_id.is_some()
+        || state
+            .conversation
+            .as_ref()
+            .is_some_and(|thread| matches!(thread.status, ThreadStatus::Active { .. }));
     state.revision = state.revision.saturating_add(1);
     if applied.status {
         state.status_revision = state.revision;

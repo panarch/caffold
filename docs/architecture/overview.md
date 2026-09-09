@@ -208,7 +208,7 @@ pending approvals can be recovered. It shuts down after its bounded
 no-subscriber interval or an explicit restart. The runner keeps no history;
 Claude's transcript does.
 
-The browser can disconnect without stopping either runtime. Task viewer leases
+The browser can disconnect without stopping either runtime. Task viewer, request,
 and runtime leases determine which live subscriptions Caffold maintains, but
 they do not redefine agent status.
 

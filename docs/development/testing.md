@@ -57,8 +57,7 @@ one records where it runs from and what it needs:
 | `npm run test:contract` | `frontend/` | Node | frontend policy and browser-infrastructure contracts, plus the repository, release, and protocol contracts that have not yet moved to an owner |
 | `npm run test:e2e` | `frontend/` | Node, Chromium, a built server | deterministic fixture-backed Playwright coverage |
 | `cargo test --test codex_protocol -- --ignored` | repository root | installed Codex CLI | Codex CLI schema compatibility without authentication or model usage |
-| `cargo test -p caffold app::tasks::codex_mcp::tests::live_codex_mcp_survives_backend_replacement_and_runtime_reattachment -- --ignored --exact` | repository root | authenticated Codex CLI | model-driven MCP use plus an existing MCP connection across same-endpoint Caffold backend replacement and overlapping reattachment, with model usage |
-| `cargo test -p caffold app::tasks::codex_mcp::tests::live_codex_mcp_survives_an_isolated_app_server_restart -- --ignored --exact` | repository root | authenticated Codex CLI | Caffold MCP after restarting only a test-owned Codex app-server Unix socket and resuming its real thread, with model usage |
+| `cargo test -p caffold --lib codex -- --ignored --list` | repository root | Rust test toolchain | discover Codex backend live checks; execution requirements depend on the selected test |
 | `npm run test:codex-live` | `frontend/` | authenticated Codex CLI | authenticated Codex browser coverage with model usage |
 | `cargo test -p caffold-claude-runner --test live -- --ignored` | repository root | authenticated Claude CLI | that Claude still returns an unanswered permission request to a client that reattaches, with model usage |
 | `cargo test -p caffold --test claude_live -- --ignored --test-threads=1` | repository root | authenticated Claude CLI | what a person sees when the backend is replaced or the runner is killed under a working Claude Task, that each permission decision does what it says, that the agent reaches the tool Caffold serves it, and that the installation reports its status, with model usage |
@@ -281,34 +280,25 @@ maintainer probe of resume/read/page latency and payload size. The probe does
 not send a prompt, but it does resume the supplied thread through a temporary
 app-server connection.
 
-The first narrower backend live check verifies that a new thread discovers and
-uses the Task-owned `rename_current_task` MCP name rather than legacy dynamic
-tools for a model-driven rename. Deterministic route coverage separately
-rejects the historical `rename_current_thread` name at the MCP ingress. The
-live check also exercises the HTTP 404 bootstrap reinitialization, replaces the
-Caffold MCP host on the same endpoint, calls through the already initialized
-MCP client before resume, then reattaches through a second proxy and exercises
-both the new and still-live older sessions against the same catalog:
+Codex backend live checks are ignored by the ordinary Rust run and live beside
+the modules they verify. List them without starting a provider or using a model:
 
 ```sh
-cargo test -p caffold \
-  app::tasks::codex_mcp::tests::live_codex_mcp_survives_backend_replacement_and_runtime_reattachment \
-  -- --ignored --exact
+cargo test -p caffold --lib codex -- --ignored --list
 ```
 
-The second check starts Codex app-server on a test-owned temporary Unix socket,
-creates and materializes a real thread, restarts only that isolated process,
-then reconnects, resumes, and calls Caffold MCP:
+Replace `TEST_NAME` with a full name from that list to run one check:
 
 ```sh
-cargo test -p caffold \
-  app::tasks::codex_mcp::tests::live_codex_mcp_survives_an_isolated_app_server_restart \
-  -- --ignored --exact
+cargo test -p caffold --lib TEST_NAME -- --ignored --exact
 ```
 
-Each check creates and deletes one real Codex thread and consumes model usage.
-Neither verifies the browser Task loop, and the runtime-restart check does not
-restart the persistent Codex daemon that Caffold normally uses.
+The selected test's `#[ignore]` reason and setup define its installation,
+authentication, configuration, and process requirements. Checks that submit
+model turns consume usage; protocol and empty-thread checks that submit no
+turns do not. Scenario details and assertions stay in the owning test code.
+Backend checks provide evidence for their integration boundary; the browser
+suite verifies the user-facing Task loop.
 
 ## Claude compatibility and live tests
 
