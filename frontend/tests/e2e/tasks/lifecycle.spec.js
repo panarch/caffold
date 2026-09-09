@@ -142,6 +142,18 @@ async function installConnectionMock(page) {
   });
 }
 
+// A foreground signal that arrives while a recovery is still running is
+// coalesced into it and starts no new validation, so a test that owns such a
+// signal has to wait for the running one. Settling publishes no request, DOM
+// change, or presentation edge, so the value the coalescing decision reads is
+// the only signal for it.
+function foregroundRecoverySettled(page) {
+  return page.locator("caffold-app-shell").evaluate((shell) => {
+    const runtime = shell.foregroundRecoveryLifecycle.runtime.runtime;
+    return runtime.inFlight === null && runtime.retryTimer === null;
+  });
+}
+
 test("background Task tabs release list and detail streams", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
@@ -615,11 +627,23 @@ test("foreground recovery retries a blocking Task-store snapshot with bounded ba
   let recoveryBlockedReads = 0;
   let foregroundRecovery = false;
   let statusReads = 0;
-  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) => {
+  let heldRecoveredRead = false;
+  let releaseRecoveredRead = () => {};
+  const recoveredRead = new Promise((resolve) => {
+    releaseRecoveredRead = resolve;
+  });
+  await page.route(/\/api\/codex\/status(?:\?|$)/, async (route) => {
     statusReads += 1;
     if (foregroundRecovery && recoveryBlockedReads < 2) {
       recoveryBlockedReads += 1;
       return route.fulfill({ json: blockedStatus });
+    }
+    if (foregroundRecovery && !heldRecoveredRead) {
+      // Hold the read that ends the retry loop, so the blocked surface is
+      // asserted against a state this test releases rather than against how
+      // long the next backoff delay happens to keep it on screen.
+      heldRecoveredRead = true;
+      await recoveredRead;
     }
     return route.fulfill({ json: mockCodexStatus() });
   });
@@ -629,6 +653,11 @@ test("foreground recovery retries a blocking Task-store snapshot with bounded ba
 
   await page.goto("/tasks");
   await expect(page.locator("caffold-task-new .task-new-form")).toBeVisible();
+  // Initial activation never retries a blocked Task store, so this contract
+  // belongs to the focus edge below. A focus that lands while the document's
+  // own activation is still running would be coalesced into it and read no
+  // status at all.
+  await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
   const readsBeforeRecovery = statusReads;
   foregroundRecovery = true;
   await page.evaluate(() => {
@@ -641,11 +670,13 @@ test("foreground recovery retries a blocking Task-store snapshot with bounded ba
   ).toBeVisible();
   await expect.poll(() => recoveryBlockedReads).toBe(2);
   await expect.poll(() => statusReads).toBe(readsBeforeRecovery + 3);
+  releaseRecoveredRead();
   await expect(page.locator(".codex-readiness-surface")).toBeHidden();
   await expect(page.locator("caffold-task-new textarea")).toBeEnabled();
-  const settledReads = statusReads;
-  await page.waitForTimeout(500);
-  expect(statusReads).toBe(settledReads);
+  // A spent budget and a pending fourth attempt both stop reading for a while,
+  // so the settled lifecycle is what separates them.
+  await expect.poll(() => foregroundRecoverySettled(page)).toBe(true);
+  expect(statusReads).toBe(readsBeforeRecovery + 3);
 });
 
 test("fresh origin reachability recovers a foreground offline pause without an online edge", { tag: "@all-viewports" }, async ({
