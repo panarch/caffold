@@ -101,6 +101,7 @@ test("keeps bootstrap Retry keyboard-accessible outside the hidden workspace", {
   });
   await expect(workspace).toBeHidden();
 
+  await waitForActionHintTarget(page, "Retry");
   await page.keyboard.press("f");
   const hint = page.locator("caffold-action-hint-dialog > dialog:modal");
   await expect(hint).toBeVisible();
@@ -184,6 +185,7 @@ test("keeps exceptional build mismatch outside application layout", { tag: "@all
   await expect(alert.getByRole("button", { name: "Reload" })).toBeVisible();
 
   await alert.getByRole("button", { name: "Reload" }).focus();
+  await waitForActionHintTarget(page, "Reload");
   await page.keyboard.press("f");
   const hint = page.locator("caffold-action-hint-dialog > dialog:modal");
   await expect(hint.getByRole("button", { name: / — Reload$/ })).toBeVisible();
