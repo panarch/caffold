@@ -38,9 +38,7 @@ test("shows only declared visible targets in frozen visual order", { tag: "@all-
   const tasks = actionHintTasks(48);
   await installActionHintFixture(page, tasks);
   await page.goto("/tasks");
-  await page.evaluate(() => new Promise((resolve) =>
-    requestAnimationFrame(() => requestAnimationFrame(resolve))
-  ));
+  await expect(page.locator("caffold-active-task-row")).toHaveCount(tasks.length);
   expect(pageErrors).toEqual([]);
   expect(browserErrors).toEqual([]);
 
@@ -260,6 +258,7 @@ test("activates a Task through its existing route and responsive focus owner", {
   const tasks = actionHintTasks(2);
   await installActionHintFixture(page, tasks);
   await page.goto("/tasks");
+  await expect(page.locator("caffold-active-task-row")).toHaveCount(tasks.length);
 
   await enterActionHints(page);
   await page.keyboard.press("t");
@@ -427,6 +426,7 @@ test("does not enter while a Task route is still loading", { tag: "@desktop" }, 
   const tasks = actionHintTasks(1);
   await installActionHintFixture(page, tasks, { bootstrapDetail: false });
   await page.goto("/tasks");
+  await expect(page.locator("caffold-active-task-row")).toHaveCount(tasks.length);
 
   await enterActionHints(page);
   await page.keyboard.press("t");
@@ -985,8 +985,10 @@ test("honors the setting, editing ownership, and composition-safe Latin fallback
 test("keeps unaffected row owners through local actionability, scroll, and topology changes", { tag: "@all-viewports" }, async ({
   page,
 }) => {
-  await installActionHintFixture(page, actionHintTasks(48));
+  const tasks = actionHintTasks(48);
+  await installActionHintFixture(page, tasks);
   await page.goto("/tasks");
+  await expect(page.locator("caffold-active-task-row")).toHaveCount(tasks.length);
   await enterActionHints(page);
 
   const dialog = actionHintDialog(page);
