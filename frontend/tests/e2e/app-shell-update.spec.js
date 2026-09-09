@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { expect, test } from "@playwright/test";
+import { waitForActionHintTarget } from "./support/action-hints.js";
 import { installBrowserDefaults } from "./support/browser-defaults.js";
 import { captureReviewScreenshot } from "./support/task-fixtures.js";
 
@@ -572,6 +573,7 @@ test("routes dialog and About reload intents through the app shell", { tag: "@al
     };
   });
 
+  await waitForActionHintTarget(page, "Browse Files");
   await page.locator(".task-workspace-surface").focus();
   await page.keyboard.press("f");
   const backgroundHint = page.locator(
@@ -585,6 +587,10 @@ test("routes dialog and About reload intents through the app shell", { tag: "@al
     "data-action-hint-last-exit",
     "interaction-owner",
   );
+  await expect(updateDialog.getByRole("button", { name: "Reload" }))
+    .toBeVisible();
+  await expect(updateDialog.getByRole("button", { name: "Later" }))
+    .toBeVisible();
   await page.keyboard.press("f");
   const updateHint = page.locator("caffold-action-hint-dialog > dialog:modal");
   await expect(updateHint).toBeVisible();
@@ -598,7 +604,8 @@ test("routes dialog and About reload intents through the app shell", { tag: "@al
   await expect.poll(() => reloadRequests(page)).toBe(1);
 
   await triggerServiceWorkerActivation(page, "next-replacement-build");
-  await expect(updateDialog).toBeVisible();
+  await expect(updateDialog.getByRole("button", { name: "Later" }))
+    .toBeVisible();
   await page.keyboard.press("f");
   const laterCode = await updateHint.getByRole("button", {
     name: / — Later$/,
