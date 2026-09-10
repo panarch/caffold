@@ -257,6 +257,12 @@ impl TaskRuntime {
         request: CodexServerRequest,
     ) {
         let (request_id, thread_id, params, kind) = match request {
+            CodexServerRequest::UserInput { id, params } => {
+                if let Err(error) = client.redirect_user_input(id, &params).await {
+                    eprintln!("Failed to redirect Codex clarification to chat: {error}");
+                }
+                return;
+            }
             CodexServerRequest::DynamicToolCall {
                 id,
                 thread_id,
@@ -858,6 +864,38 @@ mod tests {
             store,
             shutdown,
         )
+    }
+
+    #[tokio::test]
+    async fn clarification_requests_do_not_create_approval_or_user_events() {
+        let events = TaskEvents::default();
+        let runtime = runtime_with_events(events.clone());
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/inject_items",
+            json!({}),
+        )]);
+        let request = codex::decode_server_request(
+            json!(23),
+            "item/tool/requestUserInput",
+            json!({"threadId":"thread_1","turnId":"turn_1","itemId":"call_1","questions":[]}),
+        )
+        .unwrap();
+        runtime.handle_server_request(&client, 1, request).await;
+        assert_eq!(
+            client.mock_server_responses().await,
+            vec![(json!(23), json!({"answers":{}}))]
+        );
+        assert!(runtime.approval_events("thread_1").await.is_empty());
+        assert!(events.for_thread("thread_1").is_empty());
+
+        runtime
+            .handle_server_request(&client, 1, command_approval_request(24))
+            .await;
+        assert_eq!(runtime.approval_events("thread_1").await.len(), 1);
+        assert_eq!(
+            events.for_thread("thread_1")[0].event_type,
+            "approval_requested"
+        );
     }
 
     #[tokio::test]

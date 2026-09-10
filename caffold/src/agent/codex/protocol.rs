@@ -762,6 +762,10 @@ pub(crate) struct ThreadTokenUsage {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum CodexServerRequest {
+    UserInput {
+        id: Value,
+        params: Value,
+    },
     McpToolApproval {
         id: Value,
         thread_id: String,
@@ -1025,6 +1029,9 @@ pub(crate) fn decode_server_request(
     method: &str,
     params: Value,
 ) -> Result<CodexServerRequest, String> {
+    if method == "item/tool/requestUserInput" {
+        return Ok(CodexServerRequest::UserInput { id, params });
+    }
     if method == "mcpServer/elicitation/request" {
         return Ok(match validate_mcp_tool_approval(&id, &params) {
             Ok(thread_id) => CodexServerRequest::McpToolApproval {

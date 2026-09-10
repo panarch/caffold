@@ -10,6 +10,8 @@ use std::sync::atomic::Ordering;
 
 use serde_json::{Value, json};
 
+use crate::agent::CAFFOLD_CLARIFICATION_FEEDBACK;
+
 use super::runner::{self, RunnerEvent};
 use super::translate::{answers_tool_calls, message_items};
 use super::{
@@ -351,6 +353,23 @@ impl ClaudeClient {
 
     async fn handle_control_request(&self, session: &Arc<Session>, frame: ControlRequestFrame) {
         match frame.request.subtype.as_deref() {
+            Some("can_use_tool")
+                if frame.request.tool_name.as_deref() == Some("AskUserQuestion") =>
+            {
+                let response = protocol::control_response(
+                    &frame.request_id,
+                    json!({ "behavior": "deny", "message": CAFFOLD_CLARIFICATION_FEEDBACK }),
+                );
+                if let Err(error) = session.send(response).await {
+                    self.publish(ClaudeRuntimeEvent::Diagnostic {
+                        message: format!(
+                            "Failed to redirect Claude clarification on {} to chat: {error}",
+                            session.id,
+                        ),
+                    });
+                }
+                return;
+            }
             Some("can_use_tool") => {}
             Some("mcp_message") => {
                 self.handle_mcp_message(session, frame).await;
@@ -577,8 +596,8 @@ mod tests {
         ClaudeClient, ClaudeError, ClaudeRuntimeEvent, ClaudeTurnOptions, status_of, transcript,
     };
     use crate::agent::{
-        ActivityStatus, ApprovalDecision, ItemKind, MessageContent, SessionEventKind, ThreadStatus,
-        TurnStatus,
+        ActivityStatus, ApprovalDecision, CAFFOLD_CLARIFICATION_FEEDBACK, ItemKind, MessageContent,
+        SessionEventKind, ThreadStatus, TurnStatus,
     };
     use std::time::Duration;
     use tokio::sync::broadcast::Receiver;
@@ -586,6 +605,84 @@ mod tests {
     use serde_json::json;
 
     use super::super::test_support::*;
+
+    #[tokio::test]
+    async fn clarification_is_redirected_without_recording_a_user_denial() {
+        let (client, runner, mut events) = watching().await;
+        running_turn(&client, &mut events, "Which option should we use?").await;
+        let session = client.session(SESSION).await.unwrap();
+        client.handle_line(&session, &json!({
+            "type":"control_request", "request_id":"clarification-1",
+            "request":{
+                "subtype":"can_use_tool", "tool_name":"AskUserQuestion", "tool_use_id":"question-1",
+                "input":{"questions":[{"question":"Which option?","options":[]}]}
+            }
+        }).to_string()).await;
+        let response = wrote(&runner, |frame| {
+            frame["response"]["request_id"] == "clarification-1"
+        })
+        .await;
+        assert_eq!(
+            response["response"]["response"],
+            json!({
+                "behavior":"deny", "message":CAFFOLD_CLARIFICATION_FEEDBACK
+            })
+        );
+        let state = session.state.lock().await;
+        assert!(state.pending_approvals.is_empty());
+        assert!(state.declined.is_empty());
+        drop(state);
+        while let Ok(event) = events.try_recv() {
+            assert!(!matches!(event, ClaudeRuntimeEvent::Approval { .. }));
+        }
+
+        for tool_name in ["Bash", "mcp__external__AskUserQuestion"] {
+            client
+                .handle_line(
+                    &session,
+                    &json!({
+                        "type":"control_request", "request_id":tool_name,
+                        "request":{"subtype":"can_use_tool","tool_name":tool_name,"input":{}}
+                    })
+                    .to_string(),
+                )
+                .await;
+            let approval = next_approval(&mut events).await;
+            assert_eq!(approval.id, tool_name);
+        }
+    }
+
+    #[tokio::test]
+    async fn clarification_send_failure_reports_a_diagnostic_without_claiming_a_user_decision() {
+        let (client, runner, mut events) = watching().await;
+        running_turn(&client, &mut events, "Which option should we use?").await;
+        let session = client.session(SESSION).await.unwrap();
+        runner
+            .reject_next_send(SESSION, "runner disconnected")
+            .await;
+        client
+            .handle_line(
+                &session,
+                &json!({
+                    "type":"control_request", "request_id":"clarification-1",
+                    "request":{"subtype":"can_use_tool","tool_name":"AskUserQuestion","input":{}}
+                })
+                .to_string(),
+            )
+            .await;
+        let mut diagnostic = None;
+        while let Ok(event) = events.try_recv() {
+            match event {
+                ClaudeRuntimeEvent::Diagnostic { message } => diagnostic = Some(message),
+                ClaudeRuntimeEvent::Approval { .. } => panic!("send failure created an approval"),
+                _ => {}
+            }
+        }
+        assert!(diagnostic.unwrap().contains("runner disconnected"));
+        let state = session.state.lock().await;
+        assert!(state.pending_approvals.is_empty());
+        assert!(state.declined.is_empty());
+    }
 
     #[tokio::test]
     async fn session_activity_changes_without_naming_or_ending_a_turn() {
