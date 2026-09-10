@@ -10,6 +10,7 @@ use std::{
 };
 
 use futures_util::{SinkExt, StreamExt, stream::SplitSink, stream::SplitStream};
+mod clarification;
 mod contract;
 mod mcp;
 mod protocol;

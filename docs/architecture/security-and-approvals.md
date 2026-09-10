@@ -62,6 +62,28 @@ provider replay on the replacement connection creates a new request instance,
 which an older completion cannot retire. Pending and replying
 are ephemeral UI request phases, separate from the provider's thread status.
 
+## General Clarification Questions
+
+General clarification uses ordinary chat. When Codex sends
+`item/tool/requestUserInput` or Claude sends `can_use_tool` for the built-in
+`AskUserQuestion`, the driver answers automatically with Caffold's interaction
+policy: explain why the input is needed and the tradeoffs between options,
+ask in the conversation, and wait for the person's reply through the composer.
+These requests do not create pending approval cards or user permission decisions.
+
+Claude receives the policy through the tool-denial message. Codex receives a
+developer message through `thread/inject_items`; after that request is
+acknowledged, the driver settles the structured question with an empty answers
+map. An RPC error alone would discard the explanation inside app-server. If
+Codex feedback injection fails, the driver rejects the outstanding request.
+Both drivers report delivery failures through the existing diagnostics instead
+of claiming feedback was delivered.
+
+This handling applies to received clarification requests. Commands, filesystem
+and network access, MCP tool authorization, and other permission requests still
+use their approval paths below. Provider history and live status retain their
+existing ownership; Caffold adds no clarification ledger or waiting-state overlay.
+
 ## Caffold-Served Task Tools
 
 Task naming and managed-worktree preparation are Caffold-owned operations, not

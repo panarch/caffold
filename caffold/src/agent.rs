@@ -27,6 +27,15 @@ pub(crate) mod codex;
 pub(crate) mod conversation;
 pub(crate) mod driver;
 
+/// Feedback for a received clarification request, never a user's answer.
+pub(crate) const CAFFOLD_CLARIFICATION_FEEDBACK: &str = concat!(
+    "Caffold handles general clarification through ordinary chat. ",
+    "This is Caffold's interaction policy, not a user answer or permission decision. ",
+    "Explain why you need the user's input and the relevant tradeoffs between options, ",
+    "then ask the question in the conversation and wait for the user's reply. ",
+    "Do not treat this feedback or an empty structured response as the user's choice."
+);
+
 /// The provider-neutral convention Caffold gives every managed agent session.
 ///
 /// The files remain optional filesystem state: the instruction explains how

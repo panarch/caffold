@@ -82,6 +82,83 @@ const INSTRUCTED_MODEL: &str = "sonnet";
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires an authenticated Claude CLI and spends model usage"]
+async fn clarification_returns_to_chat_and_accepts_an_ordinary_reply() {
+    let backend = Backend::start().await;
+    let task = backend.start_task_asking_permission(
+        "Use AskUserQuestion exactly once to ask whether my report should prioritize speed or detail. Do not use other tools except Caffold task naming if required. After the tool response, continue according to the response you received.",
+        INSTRUCTED_MODEL,
+    ).await;
+    task.wait_for(TurnState::Idle, Duration::from_secs(180))
+        .await;
+    let detail = task.detail().await;
+    let events = detail["events"].as_array().expect("conversation events");
+    assert_eq!(
+        detail["task"]["latestTurnStatus"], "completed",
+        "the provider failed before the clarification could be verified: {detail}"
+    );
+    let question_index = events
+        .iter()
+        .position(|event| {
+            event["type"] == "tool_call" && event["payload"]["name"] == "AskUserQuestion"
+        })
+        .unwrap_or_else(|| panic!("the real agent did not call AskUserQuestion: {detail}"));
+    assert!(
+        !events.iter().any(|event| {
+            matches!(
+                event["type"].as_str(),
+                Some("approval_requested" | "approval_resolved")
+            )
+        }),
+        "clarification must not become a permission card: {detail}"
+    );
+    assert!(detail["pendingApprovals"].as_array().unwrap().is_empty());
+    let chat = events[question_index + 1..]
+        .iter()
+        .filter(|event| event["type"] == "assistant_message")
+        .filter_map(|event| event["payload"]["text"].as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    eprintln!("Claude chat after automatic clarification feedback: {chat}");
+    assert!(
+        chat.contains('?')
+            && chat.to_lowercase().contains("speed")
+            && chat.to_lowercase().contains("detail"),
+        "no chat question after feedback: {chat}"
+    );
+
+    let accepted = task.say(
+        "I choose detail. Acknowledge my choice by replying exactly DETAILED_REPORT_CONFIRMED. Do not use tools.",
+    ).await;
+    assert!(
+        !accepted.steered,
+        "the question returned control to ordinary chat"
+    );
+    task.wait_for(TurnState::Idle, Duration::from_secs(120))
+        .await;
+    let detail = task.detail().await;
+    let events = detail["events"].as_array().unwrap();
+    assert!(
+        events.iter().any(|event| {
+            event["type"] == "assistant_message"
+                && event["payload"]["turnId"] == accepted.turn_id
+                && event["payload"]["text"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("DETAILED_REPORT_CONFIRMED"))
+        }),
+        "ordinary reply was not acknowledged: {detail}"
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event["type"] == "user_message")
+            .count(),
+        2,
+        "the automatic tool denial is not a third user prompt"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "requires an authenticated Claude CLI and spends model usage"]
 async fn an_empty_task_takes_its_first_prompt_after_the_backend_is_replaced() {
     // Before any prompt, no transcript exists. The replacement backend must
     // take up the runner's exact live session rather than infer delivery or

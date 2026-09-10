@@ -378,12 +378,24 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
         ("item/tool/call", "dynamic tool"),
         ("item/permissions/requestApproval", "permission approval"),
         ("mcpServer/elicitation/request", "MCP tool approval"),
+        ("item/tool/requestUserInput", "clarification question"),
     ] {
         assert!(
             server_requests.contains(&format!("\"method\": \"{method}\"")),
             "missing {description} server request",
         );
     }
+
+    schema.assert_declares(
+        "v2/ToolRequestUserInputParams.ts",
+        &[
+            "threadId: string",
+            "turnId: string",
+            "itemId: string",
+            "questions:",
+        ],
+    );
+    schema.assert_declares("v2/ToolRequestUserInputResponse.ts", &["answers:"]);
 
     schema.assert_declares(
         "v2/McpServerElicitationRequestParams.ts",
