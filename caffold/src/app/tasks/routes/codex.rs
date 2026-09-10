@@ -175,6 +175,8 @@ fn unavailable_mcp_diagnostics(
 pub(super) fn normalize_approval_decision(decision: &str) -> Result<ApprovalDecision, ApiError> {
     match decision {
         "allow" => Ok(ApprovalDecision::Allow),
+        "allowForSession" => Ok(ApprovalDecision::AllowForSession),
+        "cancel" => Ok(ApprovalDecision::Cancel),
         "allowAlways" => Ok(ApprovalDecision::AllowAlways),
         "deny" => Ok(ApprovalDecision::Deny),
         "denyAndStop" => Ok(ApprovalDecision::DenyAndStop),
@@ -331,6 +333,8 @@ mod tests {
         let decisions = [
             ("allow", ApprovalDecision::Allow),
             ("allowAlways", ApprovalDecision::AllowAlways),
+            ("allowForSession", ApprovalDecision::AllowForSession),
+            ("cancel", ApprovalDecision::Cancel),
             ("deny", ApprovalDecision::Deny),
             ("denyAndStop", ApprovalDecision::DenyAndStop),
         ];
@@ -344,7 +348,7 @@ mod tests {
     fn a_decision_caffold_does_not_offer_is_refused() {
         // A card from an older page, or an agent's own vocabulary leaking
         // through, is a bad request rather than something to guess at.
-        for sent in ["accept", "acceptForSession", "decline", "cancel", ""] {
+        for sent in ["accept", "acceptForSession", "decline", "unknown", ""] {
             assert!(matches!(
                 normalize_approval_decision(sent),
                 Err(ApiError::BadRequest {

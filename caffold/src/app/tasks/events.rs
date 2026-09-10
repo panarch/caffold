@@ -884,6 +884,7 @@ pub(in crate::app::tasks) fn approval_requested_event(
             "permissions": detail.permissions,
             "grantRoot": detail.grant_root,
             "environment": detail.environment,
+            "tool": detail.tool,
             "decisions": request.decisions,
         })),
         anchor_ms,
@@ -900,6 +901,7 @@ pub(in crate::app::tasks) fn approval_resolved_event(
         ApprovalOutcome::Decided(_) => "Approval answered",
         ApprovalOutcome::AnsweredElsewhere => "Approval answered elsewhere",
         ApprovalOutcome::Expired => "Approval expired",
+        ApprovalOutcome::Unavailable => "Approval unavailable",
     };
     task_event_record(
         thread_id,

@@ -11,6 +11,7 @@ const conversationOwners = new Set([
   "components/markdown-preview.css",
   "pages/(task-workspace)/tasks/components/composer.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/assistant-message.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/work-details.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
@@ -27,6 +28,7 @@ const codeOwners = new Set([
   "components/diff-viewer.css",
   "components/markdown-preview.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
+  "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
@@ -1042,7 +1044,7 @@ test("contextual and inline actions stay compact while page and primary actions 
       "--interface-compact-visual-size",
     ],
     [
-      "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
+      "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css",
       ".task-approval-actions .task-secondary-button",
       "--interface-compact-visual-size",
     ],
@@ -1348,15 +1350,15 @@ test("mixed surfaces keep content and controls on separate axes", () => {
     /\.task-model-fast-icon \{[\s\S]*width: 0\.75rem;[\s\S]*height: 0\.75rem;[\s\S]*fill: currentColor;[\s\S]*stroke-width: 2;/,
   );
 
-  const conversation = readFrontend(
-    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation.css",
+  const approval = readFrontend(
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css",
   );
   assert.match(
-    conversation,
+    approval,
     /\.task-approval-card p[\s\S]*font-size: var\(--conversation-font-size\)/,
   );
   assert.match(
-    conversation,
+    approval,
     /\.task-approval-card pre[\s\S]*font-size: var\(--code-font-size\)/,
   );
   const olderHistory = readFrontend("pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/older-history.css");

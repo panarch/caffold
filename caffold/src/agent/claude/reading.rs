@@ -558,6 +558,7 @@ fn approval_request(frame: &ControlRequestFrame, turn_id: Option<String>) -> App
             permissions: Vec::new(),
             grant_root: path,
             environment: None,
+            tool: None,
         },
         decisions: vec![
             ApprovalDecision::Allow,

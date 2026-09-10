@@ -607,6 +607,16 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/changed-files.js"
             )))
         }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css" => {
+            Some(css(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.js"
+            )))
+        }
         "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css"
@@ -1702,6 +1712,10 @@ mod tests {
                 b"caffold-task-command-dialog".as_slice(),
             ),
             (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.js",
+                b"caffold-task-approval".as_slice(),
+            ),
+            (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.js",
                 b"caffold-task-command".as_slice(),
             ),
@@ -1871,6 +1885,10 @@ mod tests {
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/command-dialog.css",
                 b"caffold-task-command-dialog".as_slice(),
+            ),
+            (
+                "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css",
+                b"caffold-task-approval".as_slice(),
             ),
             (
                 "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css",

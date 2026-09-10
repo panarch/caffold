@@ -26,7 +26,6 @@ import {
 import {
   effectiveTaskFileRoot,
   formatDate,
-  formatDecision,
   formatDuration,
   formatStatus,
   taskEventObservedMs,
@@ -67,7 +66,6 @@ export function renderConversation(events, task, approvals = [], options = {}) {
           forceActive: index === activeGroupIndex,
           pendingApprovalIds,
           controlsDisabled: options.controlsDisabled,
-          approvalErrors: options.approvalErrors,
           liveStatusAvailable,
           eventOrder,
           workDetails,
@@ -84,10 +82,7 @@ export function renderConversation(events, task, approvals = [], options = {}) {
         return [
           renderedTimelineEntry(
             [group.event],
-            renderApprovalFlow([group.event], {
-              disabled: options.controlsDisabled,
-              approvalErrors: options.approvalErrors,
-            }),
+            renderApprovalFlow([group.event]),
             eventOrder,
           ),
         ];
@@ -194,8 +189,6 @@ function renderTurnGroupEntries(group, task, options = {}) {
       terminalEvent,
       finalAssistantEvent,
       options.pendingApprovalIds,
-      options.controlsDisabled,
-      options.approvalErrors,
       options.eventOrder,
       options.workDetails,
       options.messages,
@@ -211,8 +204,6 @@ function renderTurnGroupEntries(group, task, options = {}) {
           event,
           task,
           options.pendingApprovalIds,
-          options.controlsDisabled,
-          options.approvalErrors,
           options.filePathPresentationBase,
           options.changedFiles,
           options.commands,
@@ -230,8 +221,6 @@ function renderCompletedTurnGroupEntries(
   terminalEvent,
   finalAssistantEvent,
   pendingApprovalIds = new Set(),
-  controlsDisabled = false,
-  approvalErrors = new Map(),
   eventOrder = new Map(),
   workDetails = new Map(),
   messages = new Map(),
@@ -313,10 +302,7 @@ function renderCompletedTurnGroupEntries(
     output.push(
       renderedTimelineEntry(
         approvals,
-        renderApprovalFlow(approvals, {
-          disabled: controlsDisabled,
-          approvalErrors,
-        }),
+        renderApprovalFlow(approvals),
         eventOrder,
       ),
     );
@@ -343,8 +329,6 @@ function renderActiveTurnTimelineEvent(
   event,
   task,
   pendingApprovalIds = new Set(),
-  controlsDisabled = false,
-  approvalErrors = new Map(),
   filePathPresentationBase = "",
   changedFiles = new Map(),
   commands = new Map(),
@@ -354,10 +338,7 @@ function renderActiveTurnTimelineEvent(
     event.type === "approval_requested" &&
     pendingApprovalIds.has(event.payload?.approvalId)
   ) {
-    return renderApprovalFlow([event], {
-      disabled: controlsDisabled,
-      approvalErrors,
-    });
+    return renderApprovalFlow([event]);
   }
   if (
     event.type === "user_message" ||
@@ -400,15 +381,15 @@ function renderActiveTurnStatus(group, task, activeTurns) {
   `;
 }
 
-function renderApprovalFlow(approvals, options = {}) {
+function renderApprovalFlow(approvals) {
   if (!approvals.length) {
     return "";
   }
   return `
-    <li class="task-event task-approval-flow">
+    <li class="task-event task-approval-flow" data-conversation-entry-key="${escapeHtml(`approvals:${JSON.stringify(approvals.map((approval) => approval.payload.approvalId))}`)}">
       <section class="task-approvals" aria-label="Pending approvals">
         ${approvals
-          .map((approval) => renderApprovalCard(approval, options))
+          .map((approval) => `<caffold-task-approval data-approval-id="${escapeHtml(approval.payload.approvalId)}"></caffold-task-approval>`)
           .join("")}
       </section>
     </li>
@@ -938,115 +919,6 @@ function fileChangeEventIdentity(event) {
       taskEventPositionIndex(event),
     ].join(":")
   );
-}
-
-function renderApprovalCard(event, options = {}) {
-  const payload = event.payload ?? {};
-  const approvalId = payload.approvalId ?? "";
-  const requestError = options.approvalErrors?.get(approvalId) ?? null;
-
-  return `
-    <article class="task-approval-card" data-approval-id="${escapeHtml(approvalId)}">
-      <header>
-        <h3>${escapeHtml(payload.title ?? "Approval requested")}</h3>
-        ${payload.reason ? `<p class="task-approval-reason">${escapeHtml(payload.reason)}</p>` : ""}
-      </header>
-      ${renderApprovalDetails(payload)}
-      ${
-        requestError
-          ? `<p class="task-approval-error" role="alert">${escapeHtml(requestError.message ?? requestError)}</p>`
-          : ""
-      }
-      <div class="task-approval-actions">
-        ${renderApprovalActions(payload.decisions, approvalId, options.disabled)}
-      </div>
-    </article>
-  `;
-}
-
-/**
- * The specifics of one request, in the order a reader checks them: what would
- * run, what it would reach, and where. Every part is optional because requests
- * differ, so this renders what is present rather than switching on a kind.
- */
-function renderApprovalDetails(payload) {
-  const command = `${payload.command ?? ""}`.trim();
-  const sections = [
-    command
-      ? `<pre class="task-approval-command"><code>${escapeHtml(command)}</code></pre>`
-      : "",
-    payload.networkEndpoint
-      ? renderApprovalDefinitionList(
-          [
-            {
-              label: "Network destination",
-              value: `${payload.networkEndpoint}`,
-              code: true,
-            },
-          ],
-          "Network request",
-        )
-      : "",
-    renderPermissionRows(payload.permissions),
-    renderApprovalContext(payload),
-  ];
-  return sections.filter(Boolean).join("");
-}
-
-function renderPermissionRows(permissions) {
-  if (!Array.isArray(permissions) || !permissions.length) {
-    return "";
-  }
-  return renderApprovalDefinitionList(
-    permissions.map((row) => ({
-      label: `${row?.label ?? ""}`,
-      value: `${row?.value ?? ""}`,
-      code: Boolean(row?.verbatim),
-    })),
-    "Requested permissions",
-  );
-}
-
-function renderApprovalContext(payload) {
-  const rows = [
-    ["Grant root", payload.grantRoot],
-    ["Working directory", payload.cwd],
-    ["Environment", payload.environment],
-  ]
-    .filter(([, value]) => `${value ?? ""}`.trim())
-    .map(([label, value]) => ({ label, value: `${value}`, code: true }));
-  return rows.length ? renderApprovalDefinitionList(rows, "Request context") : "";
-}
-
-function renderApprovalActions(decisions, approvalId, disabled) {
-  const offered = Array.isArray(decisions) ? decisions : [];
-  return offered
-    .map(
-      (decision) =>
-        `<button type="button" class="task-secondary-button" data-task-action="approval" data-approval-id="${escapeHtml(approvalId)}" data-decision="${escapeHtml(decision)}" ${disabled ? "disabled" : ""}>${escapeHtml(formatDecision(decision))}</button>`,
-    )
-    .join("");
-}
-
-function renderApprovalDefinitionList(rows, label) {
-  return `
-    <dl class="task-approval-details" aria-label="${escapeHtml(label)}">
-      ${rows
-        .map(
-          (row) => `<div>
-            <dt>${escapeHtml(row.label)}</dt>
-            <dd>${row.code ? `<code>${renderBreakableCode(row.value)}</code>` : escapeHtml(row.value)}</dd>
-          </div>`,
-        )
-        .join("")}
-    </dl>
-  `;
-}
-
-function renderBreakableCode(value) {
-  return escapeHtml(value)
-    .replaceAll("/", "/<wbr>")
-    .replaceAll("\\", "\\<wbr>");
 }
 
 function statusTone(type) {

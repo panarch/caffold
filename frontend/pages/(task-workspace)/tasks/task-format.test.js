@@ -181,6 +181,8 @@ test("short IDs use the first eight characters", () => {
 
 test("every decision Caffold offers has a label", () => {
   assert.equal(formatDecision("allow"), "Allow");
+  assert.equal(formatDecision("allowForSession"), "Allow for this session");
+  assert.equal(formatDecision("cancel"), "Cancel");
   assert.equal(formatDecision("allowAlways"), "Allow Always");
   assert.equal(formatDecision("deny"), "Deny");
   assert.equal(formatDecision("denyAndStop"), "Deny and Stop");

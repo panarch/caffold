@@ -14,9 +14,11 @@
 //! gap in the conversation.
 //!
 //! Answering an approval is the smaller half and runs the other way. Caffold's
-//! four decisions become Codex's response for the request that asked, and
-//! "allow always" hands back the permission profile Codex itself proposed
-//! rather than one Caffold composed.
+//! approval decisions become Codex's response for the request that asked, and
+//! scoped allowances apply the grant Codex itself proposed rather than one
+//! Caffold composed.
+
+mod mcp_approval;
 
 use serde_json::{Value, json};
 
@@ -452,7 +454,7 @@ pub(crate) fn response_item(item: &Value) -> Option<ConversationItem> {
 
 /// A pending Codex approval, as the interface asks it.
 ///
-/// The three request methods differ in what they carry, and this reads all of
+/// The request methods differ in what they carry, and this reads all of
 /// them into one shape: whichever specifics the request actually has, plus the
 /// answers Codex accepts for that method.
 pub(crate) fn approval_request(
@@ -460,6 +462,9 @@ pub(crate) fn approval_request(
     kind: ApprovalKind,
     params: &Value,
 ) -> ApprovalRequest {
+    if kind == ApprovalKind::McpToolCall {
+        return mcp_approval::request(approval_id, params);
+    }
     let command = text_field(params, "command");
     let network_endpoint = network_endpoint(params.get("networkApprovalContext"));
     let mut permissions = permission_rows(params.get("permissions"));
@@ -477,6 +482,7 @@ pub(crate) fn approval_request(
             permissions,
             grant_root: text_field(params, "grantRoot"),
             environment: text_field(params, "environmentId"),
+            tool: None,
         },
         decisions: kind.decisions(params),
     }
@@ -493,13 +499,16 @@ pub(crate) fn approval_response(
     decision: ApprovalDecision,
 ) -> Option<Value> {
     match kind {
+        ApprovalKind::McpToolCall => mcp_approval::response(params, decision),
         ApprovalKind::Permission => {
             let scope = match decision {
                 ApprovalDecision::Allow => "turn",
-                ApprovalDecision::AllowAlways => "session",
+                ApprovalDecision::AllowForSession => "session",
                 ApprovalDecision::Deny => return Some(json!({ "permissions": {} })),
                 // Codex's permission response has no way to end the turn.
-                ApprovalDecision::DenyAndStop => return None,
+                ApprovalDecision::DenyAndStop
+                | ApprovalDecision::AllowAlways
+                | ApprovalDecision::Cancel => return None,
             };
             let permissions = params
                 .get("permissions")
@@ -509,21 +518,23 @@ pub(crate) fn approval_response(
         ApprovalKind::Command | ApprovalKind::FileChange => {
             let decision = match decision {
                 ApprovalDecision::Allow => "accept",
-                ApprovalDecision::AllowAlways => "acceptForSession",
+                ApprovalDecision::AllowForSession => "acceptForSession",
                 ApprovalDecision::Deny => "decline",
                 ApprovalDecision::DenyAndStop => "cancel",
+                ApprovalDecision::AllowAlways | ApprovalDecision::Cancel => return None,
             };
             Some(json!({ "decision": decision }))
         }
     }
 }
 
-/// Which of Codex's three approval requests is being answered.
+/// Which Codex approval contract is being answered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ApprovalKind {
     Command,
     FileChange,
     Permission,
+    McpToolCall,
 }
 
 impl ApprovalKind {
@@ -534,17 +545,20 @@ impl ApprovalKind {
     /// request carries no list, and Codex's response type has no way to stop a
     /// turn, so refusing it always lets the turn continue.
     fn decisions(self, params: &Value) -> Vec<ApprovalDecision> {
+        if self == Self::McpToolCall {
+            return mcp_approval::decisions(params);
+        }
         if self == Self::Permission {
             return vec![
                 ApprovalDecision::Allow,
-                ApprovalDecision::AllowAlways,
+                ApprovalDecision::AllowForSession,
                 ApprovalDecision::Deny,
             ];
         }
         let Some(available) = params.get("availableDecisions").and_then(Value::as_array) else {
             return vec![
                 ApprovalDecision::Allow,
-                ApprovalDecision::AllowAlways,
+                ApprovalDecision::AllowForSession,
                 ApprovalDecision::Deny,
                 ApprovalDecision::DenyAndStop,
             ];
@@ -554,7 +568,7 @@ impl ApprovalKind {
             .filter_map(Value::as_str)
             .filter_map(|decision| match decision {
                 "accept" => Some(ApprovalDecision::Allow),
-                "acceptForSession" => Some(ApprovalDecision::AllowAlways),
+                "acceptForSession" => Some(ApprovalDecision::AllowForSession),
                 "decline" => Some(ApprovalDecision::Deny),
                 "cancel" => Some(ApprovalDecision::DenyAndStop),
                 // Codex also offers policy amendments, which propose a rule
@@ -568,6 +582,7 @@ impl ApprovalKind {
 
 fn approval_title(kind: ApprovalKind, has_command: bool, has_network: bool) -> &'static str {
     match kind {
+        ApprovalKind::McpToolCall => "Tool approval requested",
         ApprovalKind::Permission => "Permission requested",
         ApprovalKind::FileChange => "File change requested",
         ApprovalKind::Command if has_network && !has_command => "Network access requested",
@@ -1638,10 +1653,10 @@ mod tests {
         let params = json!({ "permissions": permissions });
 
         let once = approval_response(ApprovalKind::Permission, &params, ApprovalDecision::Allow);
-        let always = approval_response(
+        let session = approval_response(
             ApprovalKind::Permission,
             &params,
-            ApprovalDecision::AllowAlways,
+            ApprovalDecision::AllowForSession,
         );
 
         assert_eq!(
@@ -1649,7 +1664,7 @@ mod tests {
             Some(json!({ "permissions": permissions, "scope": "turn" }))
         );
         assert_eq!(
-            always,
+            session,
             Some(json!({ "permissions": permissions, "scope": "session" }))
         );
     }
@@ -1659,7 +1674,7 @@ mod tests {
         let params = json!({});
         let expected = [
             (ApprovalDecision::Allow, "accept"),
-            (ApprovalDecision::AllowAlways, "acceptForSession"),
+            (ApprovalDecision::AllowForSession, "acceptForSession"),
             (ApprovalDecision::Deny, "decline"),
             (ApprovalDecision::DenyAndStop, "cancel"),
         ];

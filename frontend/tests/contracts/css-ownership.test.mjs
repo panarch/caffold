@@ -107,6 +107,10 @@ const ownership = new Map([
     ["caffold-task-changed-files"],
   ],
   [
+    "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/approval.css",
+    ["caffold-task-approval"],
+  ],
+  [
     "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/command.css",
     ["caffold-task-command"],
   ],

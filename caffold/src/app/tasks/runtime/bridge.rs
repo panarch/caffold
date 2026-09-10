@@ -46,6 +46,7 @@ impl TaskRuntime {
                     }
                 }
             };
+            runtime.withdraw_codex_approvals(generation).await;
             let affected = runtime
                 .sessions
                 .codex_connection_lost(generation, connection_error.clone())

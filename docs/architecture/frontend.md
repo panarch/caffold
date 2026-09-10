@@ -780,12 +780,11 @@ the Task subject and are preserved by Task identity through incremental shell
 updates. Moving from Tasks to Settings ends active editing and transport work
 without destroying a retained Composer draft.
 
-Conversation also owns its Detail retry, attachment-preview, approval, and
-exact rendered Thinking disclosure controls. Detail retry uses Conversation's
-coarse owner; each attachment preview and Thinking disclosure uses the exact
-retained timeline entry that contains it, while each approval group uses its
-rendered approval card as the minimum invalidation owner. A custom child owns
-its own controls: Command owns its active disclosure or terminal View output,
+Conversation also owns its Detail retry, attachment-preview, and exact rendered
+Thinking disclosure controls. Detail retry uses Conversation's coarse owner;
+each attachment preview and Thinking disclosure uses the exact retained timeline
+entry that contains it. A custom child owns its own controls: Approval owns its
+offered decisions, Command owns its active disclosure or terminal View output,
 Work Details owns its root disclosure, and Markdown Code Block owns Wrap and
 Copy. Assistant Message mounts its Copy control as a component of its own and
 hands it only the text to place on the clipboard. That component owns the
@@ -797,6 +796,16 @@ Assistant Message, Markdown, and Work Details merge only the direct retained
 children they mount. A stream patch can therefore retire only the replaced
 entry, approval card, or child owner while unaffected sibling, App Shell, and
 Composer codes remain frozen, without introducing a descendant-DOM scan.
+
+Conversation mounts `conversation/components/approval.js` for each pending
+normalized approval. Approval owns its card DOM, request-error presentation,
+styles, decision intents, Action Hint scope, and command/argument scroll
+surfaces. Conversation retains cards by Task and approval identity, controls
+pending membership and placement, and composes their public scopes. Task Detail
+owns the approval API call and canonical response acceptance; its error reaches
+the current card through Conversation. Equivalent detail refreshes, request
+errors, and transport disabling preserve the card's native focus, selection,
+and detail scroll. A different Task or approval identity clears local errors.
 
 Conversation mounts `conversation/components/older-history.js` as a retained
 child outside the timeline list. Older History owns its load button, loading

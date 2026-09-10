@@ -235,8 +235,10 @@ export function formatDecision(decision) {
   return (
     {
       allow: "Allow",
+      allowForSession: "Allow for this session",
       allowAlways: "Allow Always",
       deny: "Deny",
+      cancel: "Cancel",
       denyAndStop: "Deny and Stop",
     }[decision] ?? decision
   );

@@ -20,6 +20,7 @@ import {
   mergeActionHintScopes,
 } from "../../../../../../action-hints.js";
 import "./conversation/components/active-turn.js";
+import "./conversation/components/approval.js";
 import "./conversation/components/assistant-message.js";
 import "./conversation/components/changed-files.js";
 import "./conversation/components/command.js";
@@ -33,6 +34,7 @@ class CaffoldTaskConversation extends HTMLElement {
     this.ensureState();
     this.active = true;
     this.addEventListener("click", this.boundClick);
+    this.addEventListener("caffold:task-approval-intent", this.boundApprovalIntent);
     this.addEventListener("scroll", this.boundScroll, true);
     this.addEventListener("caffold:task-older-history-intent", this.boundOlderHistoryIntent);
     this.addEventListener(
@@ -60,6 +62,7 @@ class CaffoldTaskConversation extends HTMLElement {
     this.pendingDisclosureAnchorByThread.delete(this.snapshot.threadId);
     this.pendingMarkdownScrollByThread.delete(this.snapshot.threadId);
     this.removeEventListener("click", this.boundClick);
+    this.removeEventListener("caffold:task-approval-intent", this.boundApprovalIntent);
     this.removeEventListener("scroll", this.boundScroll, true);
     this.removeEventListener("caffold:task-older-history-intent", this.boundOlderHistoryIntent);
     this.removeEventListener(
@@ -98,13 +101,13 @@ class CaffoldTaskConversation extends HTMLElement {
       transportState: "idle",
       updateKind: null,
     };
-    this.approvalErrors = new Map();
     this.scrollByThread = new Map();
     this.disclosureByThread = new Map();
     this.pendingDisclosureAnchorByThread = new Map();
     this.pendingMarkdownScrollByThread = new Map();
     this.resizeObserver = null;
     this.boundClick = (event) => this.handleClick(event);
+    this.boundApprovalIntent = (event) => this.handleApprovalIntent(event);
     this.boundOlderHistoryIntent = (event) => this.handleOlderHistoryIntent(event);
     this.boundScroll = (event) => {
       if (event.target === this.scroller()) {
@@ -157,12 +160,10 @@ class CaffoldTaskConversation extends HTMLElement {
       this.rememberScroll(previousThreadId);
     const nextThreadId = nextSnapshot.threadId;
     if (previousThreadId !== nextThreadId) {
-      this.approvalErrors.clear();
       this.pendingDisclosureAnchorByThread.delete(previousThreadId);
       this.pendingMarkdownScrollByThread.delete(previousThreadId);
     }
     this.snapshot = nextSnapshot;
-    this.pruneApprovalErrors();
     const storedScroll = this.scrollByThread.get(this.snapshot.threadId) ?? null;
     this.render(
       previousThreadId === this.snapshot.threadId
@@ -173,34 +174,17 @@ class CaffoldTaskConversation extends HTMLElement {
   }
 
   setApprovalError(approvalId, error) {
-    this.ensureState();
-    const id = `${approvalId ?? ""}`.trim();
-    if (!id) {
-      return;
-    }
+    const owner = this.approvalComponents().find((card) => card.approvalId === approvalId);
+    if (!owner) return;
     const previousScroll = this.rememberScroll();
-    const pending = pendingApprovals(this.snapshot.events).some(
-      (event) => event.payload?.approvalId === id,
-    );
-    if (error && pending) {
-      this.approvalErrors.set(id, error);
-    } else {
-      this.approvalErrors.delete(id);
-    }
-    this.render(previousScroll);
+    owner.setError(error);
+    this.restoreScroll(previousScroll);
   }
 
-  pruneApprovalErrors() {
-    const pendingIds = new Set(
-      pendingApprovals(this.snapshot.events)
-        .map((event) => `${event.payload?.approvalId ?? ""}`.trim())
-        .filter(Boolean),
-    );
-    for (const approvalId of this.approvalErrors.keys()) {
-      if (!pendingIds.has(approvalId)) {
-        this.approvalErrors.delete(approvalId);
-      }
-    }
+  approvalComponents(entry = this.conversationList()) {
+    return Array.from(entry?.querySelectorAll(
+      ":scope > .task-approval-flow > .task-approvals > caffold-task-approval, :scope > .task-approvals > caffold-task-approval",
+    ) ?? []);
   }
 
   scroller() {
@@ -266,28 +250,6 @@ class CaffoldTaskConversation extends HTMLElement {
         },
       });
     });
-    for (const control of this.querySelectorAll(
-      '.task-approval-card button[data-task-action="approval"][data-approval-id][data-decision]',
-    )) {
-      const approvalId = `${control.dataset.approvalId ?? ""}`;
-      const decision = `${control.dataset.decision ?? ""}`;
-      const card = control.closest?.(
-        ".task-approval-card[data-approval-id]",
-      );
-      if (approvalId && decision && card) {
-        definitions.push({
-          id: `approval:${approvalId}:${decision}`,
-          invalidationOwner: card,
-          control,
-          isCurrent: () =>
-            card.dataset.approvalId === approvalId &&
-            control.closest?.(".task-approval-card[data-approval-id]") ===
-              card &&
-            control.dataset.approvalId === approvalId &&
-            control.dataset.decision === decision,
-        });
-      }
-    }
     const ownTargets = definitions.flatMap(({
       id,
       invalidationOwner,
@@ -337,6 +299,16 @@ class CaffoldTaskConversation extends HTMLElement {
         scopeId: `${targetScopeId}:${kind}:${identity}`,
         clipRoots: [this, scrollport, list, ...clipRoots].filter(Boolean),
       });
+      for (const card of this.approvalComponents(entry)) {
+        const approvalId = card.approvalId;
+        childScopes.push(card.actionHintScope({
+          ...childOptions(`approval:${encodeURIComponent(approvalId)}`),
+          isCurrent: () =>
+            this.isConnected && this.active && !this.hidden &&
+            this.snapshot.threadId === threadId && Boolean(this.snapshot.task) &&
+            this.approvalComponents().includes(card),
+        }));
+      }
       const command = entry.querySelector(":scope > caffold-task-command");
       if (command) {
         childScopes.push(command.actionHintScope?.(childOptions("command")));
@@ -494,34 +466,11 @@ class CaffoldTaskConversation extends HTMLElement {
             entry.querySelector(":scope > pre") === rawOutput,
         }));
       }
-      const approvalCards = entry.matches?.(".task-approval-flow")
-        ? Array.from(entry.querySelectorAll(
-            ":scope > .task-approvals > .task-approval-card[data-approval-id]",
-          ))
-        : [];
-      for (const card of approvalCards) {
-        const approvalId = `${card.dataset.approvalId ?? ""}`.trim();
-        const approvalCommand = card.querySelector(
-          ":scope > .task-approval-command",
-        );
-        if (!approvalId || !approvalCommand) {
-          continue;
-        }
-        const options = childOptions(
-          `approval:${encodeURIComponent(approvalId)}`,
-        );
-        childScopes.push(rawConversationScrollSurfaceScope({
+      for (const card of this.approvalComponents(entry)) {
+        const options = childOptions(`approval:${encodeURIComponent(card.approvalId)}`);
+        childScopes.push(card.scrollSurfaceScope({
           ...options,
-          label: "Approval command",
-          scrollport: approvalCommand,
-          isCurrent: () =>
-            options.isCurrent() &&
-            card.dataset.approvalId === approvalId &&
-            card.querySelector(":scope > .task-approval-command") ===
-              approvalCommand &&
-            Array.from(entry.querySelectorAll(
-              ":scope > .task-approvals > .task-approval-card[data-approval-id]",
-            )).includes(card),
+          isCurrent: () => options.isCurrent() && this.approvalComponents(entry).includes(card),
         }));
       }
       const command = entry.querySelector(":scope > caffold-task-command");
@@ -577,6 +526,7 @@ class CaffoldTaskConversation extends HTMLElement {
     if (this.active === nextActive) {
       return;
     }
+    for (const card of this.approvalComponents()) card.setActive(nextActive);
     if (!nextActive) {
       this.rememberScroll();
       this.active = false;
@@ -634,7 +584,6 @@ class CaffoldTaskConversation extends HTMLElement {
     this.olderHistory().setActive(this.active);
     const view = renderConversation(this.snapshot.events, task, approvals, {
       controlsDisabled,
-      approvalErrors: this.approvalErrors,
     });
     reconcileConversationList(
       this.conversationList(),
@@ -645,6 +594,7 @@ class CaffoldTaskConversation extends HTMLElement {
       view.commands,
       view.messages,
       this.active,
+      { requests: approvals, threadId: this.snapshot.threadId, disabled: controlsDisabled },
     );
     const threadId = this.snapshot.threadId;
     const hasPendingMarkdown = this.hasPendingMarkdownRender();
@@ -727,19 +677,14 @@ class CaffoldTaskConversation extends HTMLElement {
     const action =
       event.target instanceof Element
         ? event.target.closest(
-            "[data-conversation-action], .task-approval-card [data-task-action='approval']",
+            "[data-conversation-action]",
           )
         : null;
     if (!action || !this.contains(action)) {
       return;
     }
     event.stopPropagation();
-    if (action.dataset.taskAction === "approval") {
-      this.dispatchIntent("approval", {
-        approvalId: action.dataset.approvalId,
-        decision: action.dataset.decision,
-      });
-    } else if (action.dataset.conversationAction === "retry-detail") {
+    if (action.dataset.conversationAction === "retry-detail") {
       this.dispatchIntent("retry-detail");
     } else if (action.dataset.conversationAction === "preview-image") {
       const image = action.querySelector("img");
@@ -748,6 +693,18 @@ class CaffoldTaskConversation extends HTMLElement {
         name: action.dataset.imageName,
       });
     }
+  }
+
+  handleApprovalIntent(event) {
+    const owner = event.target;
+    if (!this.approvalComponents().includes(owner)) return;
+    event.stopPropagation();
+    const { threadId, approvalId, decision } = event.detail ?? {};
+    if (
+      !this.active || isTaskTransportStale(this.snapshot.transportState) ||
+      threadId !== this.snapshot.threadId || owner.approvalId !== approvalId
+    ) return;
+    this.dispatchIntent("approval", { approvalId, decision });
   }
 
   handleOlderHistoryIntent(event) {
@@ -1276,6 +1233,7 @@ function reconcileConversationList(
   commands = new Map(),
   messages = new Map(),
   active = true,
+  approvalState = {},
 ) {
   if (!list) {
     return;
@@ -1320,12 +1278,34 @@ function reconcileConversationList(
       )
       .map((entry) => [entry.dataset.conversationEntryKey, entry]),
   );
+  const existingApprovalFlows = new Map(
+    [...list.children]
+      .filter((entry) => entry.matches(".task-approval-flow[data-conversation-entry-key]"))
+      .map((entry) => [entry.dataset.conversationEntryKey, entry]),
+  );
+  const existingApprovals = new Map(
+    [...list.querySelectorAll(":scope > .task-approval-flow > .task-approvals > caffold-task-approval")]
+      .filter((owner) => owner.threadId === approvalState.threadId)
+      .map((owner) => [owner.approvalId, owner]),
+  );
   const existingActiveTurn = list.querySelector(
     ":scope > .task-turn-active[data-conversation-entry-key]",
   );
   const desiredEntries = [...template.content.children].map((entry) => {
     const key = `${entry.dataset.conversationEntryKey ?? ""}`;
     if (!key) {
+      return entry;
+    }
+    if (entry.matches(".task-approval-flow")) {
+      const current = existingApprovalFlows.get(key);
+      if (current && [...current.querySelectorAll(":scope > .task-approvals > caffold-task-approval")]
+        .every((owner) => owner.threadId === approvalState.threadId)) {
+        return current;
+      }
+      for (const placeholder of entry.querySelectorAll(":scope > .task-approvals > caffold-task-approval")) {
+        const retained = existingApprovals.get(placeholder.dataset.approvalId);
+        if (retained) placeholder.replaceWith(retained);
+      }
       return entry;
     }
     const stable = existingStableEntries.get(key);
@@ -1391,8 +1371,18 @@ function reconcileConversationList(
     return entry;
   });
   reconcileElementChildren(list, desiredEntries);
+  const approvalRequests = new Map((approvalState.requests ?? []).map((event) => [
+    event.payload.approvalId, event.payload,
+  ]));
   for (const entry of desiredEntries) {
     const key = `${entry.dataset.conversationEntryKey ?? ""}`;
+    for (const owner of entry.querySelectorAll(":scope > .task-approvals > caffold-task-approval")) {
+      const request = approvalRequests.get(owner.dataset.approvalId);
+      if (request) {
+        owner.setSnapshot({ threadId: approvalState.threadId, request, disabled: approvalState.disabled });
+        owner.setActive(active);
+      }
+    }
     const activeTurnSnapshot = activeTurns.get(key);
     const activeTurnOwner = entry.querySelector(
       ":scope > caffold-task-active-turn",

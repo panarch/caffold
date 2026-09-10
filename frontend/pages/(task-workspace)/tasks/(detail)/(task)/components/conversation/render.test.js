@@ -159,12 +159,12 @@ test("a pending approval stays visible beside the command it is asking about", (
 
     assert.match(
       html,
-      /data-decision="allow"/,
-      "a pending approval must offer its answers however its item was ordered",
+      /<caffold-task-approval data-approval-id="401">/,
+      "a pending approval must mount its owner however its item was ordered",
     );
     assert.match(
       html,
-      /task-approval-card/,
+      /caffold-task-approval/,
       "the approval card must survive beside its own command item",
     );
   }

@@ -26,7 +26,7 @@ Caffold should still assume that remote command execution is sensitive.
 
 - Show the cwd and exact command when a command approval supplies them.
 - Show the complete requested capability profile before permission approval.
-- Distinguish allowing once from allowing always.
+- Distinguish allowing once, for the session, and with the proposed persistent grant.
 - Keep every approval decision visible in the canonical conversation.
 - Make refusal a first-class outcome, both when the turn continues and when it
   stops.
@@ -34,9 +34,11 @@ Caffold should still assume that remote command execution is sensitive.
 
 ## The Approval Vocabulary
 
-Caffold offers four answers to any approval: allow, allow always, deny, and deny
-and stop. A request advertises which of them it accepts, and answering with one
-it did not offer is refused before anything reaches the agent.
+Caffold's approval vocabulary is `allow`, `allowForSession`, `allowAlways`,
+`deny`, `cancel`, and `denyAndStop`. A request advertises which answers it
+accepts, and answering with one it did not offer is refused before anything
+reaches the agent. Cancel answers the request without asking to interrupt the
+turn; deny and stop explicitly requests a turn interruption.
 
 Caffold owns the answer, not the permission. Allowing something always tells the
 agent to apply the grant the agent itself proposed, so the permission model
@@ -44,15 +46,21 @@ stays the agent's and Caffold never composes one.
 
 A request reaches the interface already written for a person to read: a title, a
 reason, and whichever specifics it carries — the command, the working directory,
-the network destination, the requested access as labelled rows. The driver
+the network destination, the requested access as labelled rows, or the tool
+context and original JSON arguments. The driver
 writes those, because reading a permission profile means understanding it, and
 the driver is what understands its own agent.
 
 An approval's identity is Caffold's; the request it must be answered on is the
 agent's. The driver holds the pairing between the two, so nothing above it
-carries a protocol id, and taking that pairing is what retires the approval —
-whether a person answered it here or the agent resolved it first. Each pairing
-is taken once, so an approval is never answered or withdrawn twice.
+interprets a protocol id. A valid answer claims the pending request once before
+sending it. The runtime completes that reply even if its HTTP caller
+disconnects; the card is retired when the send completes, the provider resolves
+it, or its turn ends. Missing pairing or a failed send retires the card as
+unavailable. Codex connection loss also retires that connection's cards; a
+provider replay on the replacement connection creates a new request instance,
+which an older completion cannot retire. Pending and replying
+are ephemeral UI request phases, separate from the provider's thread status.
 
 ## Caffold-Served Task Tools
 
@@ -140,6 +148,8 @@ Current rules:
 - the approval modes offered are assembled by the Codex driver from the
   permission profiles the workspace allows and the reviewer setting, and reach
   the interface already worded;
+- `allowForSession` maps to `acceptForSession` for command and file-change
+  requests; these requests do not offer `allowAlways`;
 - allowing a permission request returns the original server-requested profile,
   scoped to the turn or the session, while denial returns an empty profile;
 - a permission request cannot stop a turn, because Codex's permission response
@@ -151,6 +161,32 @@ Current rules:
 
 Allowlists, deny lists, or command classes require a separate policy before they
 can change the approval flow.
+
+## Codex MCP Tool Approvals
+
+The Codex adapter recognizes input-free `form` elicitations marked
+`_meta.codex_approval_kind = "mcp_tool_call"`. The card shows the tool title,
+request message, server, optional app and description, and the original JSON
+arguments. Display metadata may label and order arguments, but cannot replace
+their values or omit undisplayed arguments. Non-object arguments remain one
+JSON value. Missing optional presentation fields do not discard the request.
+
+The request offers allow, deny, and cancel, plus the session and persistent
+choices named by its `persist` metadata. Unknown scope strings add no choice.
+The response uses the original JSON-RPC ID:
+
+| Caffold decision | MCP action | Content | Response metadata |
+| --- | --- | --- | --- |
+| `allow` | `accept` | `{}` | none |
+| `allowForSession` | `accept` | `{}` | `persist: "session"` |
+| `allowAlways` | `accept` | `{}` | `persist: "always"` |
+| `deny` | `decline` | `null` | none |
+| `cancel` | `cancel` | `null` | none |
+
+Cancel skips the MCP call; it does not send `turn/interrupt`. The browser
+renders the offered decisions and does not interpret Codex metadata. General
+input forms, URL elicitations, and malformed approval contracts receive an
+explicit unsupported-request error, without creating an unanswerable card.
 
 ## Claude Execution Approvals
 
@@ -169,6 +205,8 @@ Current rules:
 - a tool call does not imply an approval card — the agent's own classifier
   settles obviously safe calls without asking, so an unasked call is a call that
   did not need asking rather than one that slipped past;
+- the offered answers remain allow, allow always, deny, and deny and stop;
+  the driver rejects session-only and cancel decisions;
 - allowing always hands back the permission suggestion the agent itself
   proposed, unread;
 - denying and stopping is offered, and is carried out as a denial followed by an

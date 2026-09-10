@@ -1,3 +1,5 @@
+use std::{collections::HashMap, sync::Arc};
+
 use serde::Deserialize;
 use serde_json::{Value as JsonValue, json};
 
@@ -34,16 +36,33 @@ pub(super) struct PendingApproval {
     request: ApprovalRequest,
     asked_by: AskedBy,
     position: TaskEventPosition,
+    instance: Arc<()>,
+    phase: ApprovalPhase,
+}
+
+/// This owner coordinates requests, user replies, and provider completion.
+/// Absent -> Pending on a request; Pending -> Replying on one valid reply;
+/// Pending/Replying -> absent on provider withdrawal; Replying -> absent on
+/// send success or failure. A same-generation duplicate is a no-op. A replay
+/// on a new connection creates a new instance, which old completions cannot
+/// retire. Caller cancellation leaves Replying owned by the runtime until
+/// its send completes. None of these transitions writes the provider's
+/// Task/turn status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ApprovalPhase {
+    Pending,
+    Replying,
 }
 
 /// Which agent is blocked on this answer.
 #[derive(Debug, Clone)]
 pub(super) enum AskedBy {
     Codex {
-        /// Which of the three methods asked.
+        generation: u64,
+        /// Which approval method asked.
         kind: ApprovalKind,
-        /// The request Codex sent, kept only so that allowing something hands
-        /// back the permission profile Codex itself proposed.
+        /// The request Codex sent, retained to answer with its proposed
+        /// permission profile or the scope metadata it offered.
         params: JsonValue,
     },
     /// Claude keeps what it proposed itself, so nothing is needed here.
@@ -137,58 +156,98 @@ impl TaskRuntime {
         approval_id: &str,
         decision: ApprovalDecision,
     ) -> Result<(), ApprovalResolveError> {
-        let pending = self
-            .approvals
-            .lock()
-            .await
-            .get(approval_id)
-            .cloned()
-            .ok_or(ApprovalResolveError::NotFound)?;
-        if pending.thread_id != thread_id {
-            return Err(ApprovalResolveError::ThreadMismatch);
-        }
-
-        if !pending.request.decisions.contains(&decision) {
-            return Err(ApprovalResolveError::ResolutionMismatch);
-        }
-        match (&pending.asked_by, agent) {
-            (AskedBy::Codex { kind, params }, TaskAgent::Codex(connection)) => {
-                let response = approval_response(*kind, params, decision)
-                    .ok_or(ApprovalResolveError::ResolutionMismatch)?;
-                let Some(request_id) = connection.client.take_approval_request(approval_id).await
-                else {
-                    return Err(ApprovalResolveError::NotFound);
-                };
-                connection
-                    .client
-                    .respond_to_server_request(request_id, response)
-                    .await?;
+        let pending = {
+            let mut approvals = self.approvals.lock().await;
+            let pending = approvals
+                .get_mut(approval_id)
+                .ok_or(ApprovalResolveError::NotFound)?;
+            if pending.thread_id != thread_id {
+                return Err(ApprovalResolveError::ThreadMismatch);
             }
-            (AskedBy::Claude, TaskAgent::Claude { .. }) => {
-                self.claude()
-                    .resolve_approval(thread_id, approval_id, decision)
-                    .await
-                    .map_err(|error| match error {
-                        agent::claude::ClaudeError::NoSuchApproval(_) => {
-                            ApprovalResolveError::NotFound
-                        }
-                        error => ApprovalResolveError::Agent(error.into()),
-                    })?;
+            if !pending.request.decisions.contains(&decision) {
+                return Err(ApprovalResolveError::ResolutionMismatch);
             }
-            // The Task's agent changed under an answer in flight, which means
-            // the request being answered is not the one that was asked.
-            _ => return Err(ApprovalResolveError::ResolutionMismatch),
-        }
-        let Some(pending) = self.approvals.lock().await.remove(approval_id) else {
-            return Ok(());
+            match (&pending.asked_by, agent) {
+                (AskedBy::Codex { generation, .. }, TaskAgent::Codex(connection)) => {
+                    if *generation != connection.generation {
+                        return Err(ApprovalResolveError::NotFound);
+                    }
+                }
+                (AskedBy::Claude, TaskAgent::Claude { .. }) => {}
+                _ => return Err(ApprovalResolveError::ResolutionMismatch),
+            }
+            if pending.phase != ApprovalPhase::Pending {
+                return Err(ApprovalResolveError::NotFound);
+            }
+            pending.phase = ApprovalPhase::Replying;
+            pending.clone()
         };
+        // Once claimed, the reply belongs to the runtime even if the HTTP
+        // caller disconnects. Dropping that waiter must not strand Replying.
+        let runtime = self.clone();
+        let agent = agent.clone();
+        tokio::spawn(async move { runtime.reply_to_approval(agent, pending, decision).await })
+            .await
+            .map_err(|error| {
+                ApprovalResolveError::Agent(agent::AgentError::Failed(format!(
+                    "approval reply task failed: {error}"
+                )))
+            })?
+    }
 
-        self.events.publish_local(approval_resolved_event(
-            &pending.thread_id,
-            &pending.request,
-            ApprovalOutcome::Decided(decision),
-        ));
-        Ok(())
+    async fn reply_to_approval(
+        &self,
+        agent: TaskAgent,
+        pending: PendingApproval,
+        decision: ApprovalDecision,
+    ) -> Result<(), ApprovalResolveError> {
+        let approval_id = pending.request.id.as_str();
+        let thread_id = pending.thread_id.as_str();
+        let result = match (&pending.asked_by, &agent) {
+            (AskedBy::Codex { kind, params, .. }, TaskAgent::Codex(connection)) => {
+                match approval_response(*kind, params, decision) {
+                    Some(response) => {
+                        match connection.client.take_approval_request(approval_id).await {
+                            Some(request_id) => connection
+                                .client
+                                .respond_to_server_request(request_id, response)
+                                .await
+                                .map_err(ApprovalResolveError::from),
+                            None => Err(ApprovalResolveError::NotFound),
+                        }
+                    }
+                    None => Err(ApprovalResolveError::ResolutionMismatch),
+                }
+            }
+            (AskedBy::Claude, TaskAgent::Claude { .. }) => self
+                .claude()
+                .resolve_approval(thread_id, approval_id, decision)
+                .await
+                .map_err(|error| match error {
+                    agent::claude::ClaudeError::NoSuchApproval(_) => ApprovalResolveError::NotFound,
+                    error => ApprovalResolveError::Agent(error.into()),
+                }),
+            _ => unreachable!("reply claimed for the matching provider"),
+        };
+        // Publishing while holding the same lock keeps a late result from
+        // overtaking a replay's new requested event.
+        let mut approvals = self.approvals.lock().await;
+        if approvals
+            .get(approval_id)
+            .is_some_and(|current| Arc::ptr_eq(&current.instance, &pending.instance))
+        {
+            approvals.remove(approval_id);
+            self.events.publish_local(approval_resolved_event(
+                &pending.thread_id,
+                &pending.request,
+                if result.is_ok() {
+                    ApprovalOutcome::Decided(decision)
+                } else {
+                    ApprovalOutcome::Unavailable
+                },
+            ));
+        }
+        result
     }
 
     pub(super) async fn handle_server_request(
@@ -235,9 +294,30 @@ impl TaskRuntime {
                 thread_id,
                 params,
             } => (id, thread_id, params, ApprovalKind::Permission),
+            CodexServerRequest::McpToolApproval {
+                id,
+                thread_id,
+                params,
+            } => (id, thread_id, params, ApprovalKind::McpToolCall),
+            CodexServerRequest::UnsupportedMcpElicitation { id, reason } => {
+                eprintln!("Unsupported Codex MCP elicitation: {reason}");
+                if let Err(error) = client.reject_server_request(id, &reason).await {
+                    eprintln!("Failed to reject Codex MCP elicitation: {error}");
+                }
+                return;
+            }
             CodexServerRequest::Unknown { .. } => return,
         };
-        let approval_id = approval_id_from_request(&request_id, &params);
+        let approval_id = if kind == ApprovalKind::McpToolCall {
+            // Preserve the distinction between string and numeric RPC IDs.
+            format!("mcp:{request_id}")
+        } else {
+            approval_id_from_request(&request_id, &params)
+        };
+        let mut approvals = self.approvals.lock().await;
+        if approvals.get(&approval_id).is_some_and(|pending| matches!(
+            pending.asked_by, AskedBy::Codex { generation: existing, .. } if existing >= generation
+        )) { return; }
         client.track_approval(&approval_id, request_id).await;
         let anchor_ms = params
             .get("startedAtMs")
@@ -245,13 +325,17 @@ impl TaskRuntime {
             .filter(|started_at_ms| *started_at_ms > 0)
             .unwrap_or_else(now_ms);
         let request = approval_request(approval_id, kind, &params);
-        self.record_pending_approval(
+        self.insert_pending_approval(
+            &mut approvals,
             &thread_id,
             request,
             anchor_ms,
-            AskedBy::Codex { kind, params },
-        )
-        .await;
+            AskedBy::Codex {
+                generation,
+                kind,
+                params,
+            },
+        );
     }
 
     /// Put a question on the waiting list, show it, and tell a phone the once.
@@ -268,14 +352,26 @@ impl TaskRuntime {
         anchor_ms: u64,
         asked_by: AskedBy,
     ) {
+        let mut approvals = self.approvals.lock().await;
+        if approvals.contains_key(&request.id) {
+            return;
+        }
+        self.insert_pending_approval(&mut approvals, thread_id, request, anchor_ms, asked_by);
+    }
+
+    fn insert_pending_approval(
+        &self,
+        approvals: &mut HashMap<String, PendingApproval>,
+        thread_id: &str,
+        request: ApprovalRequest,
+        anchor_ms: u64,
+        asked_by: AskedBy,
+    ) {
         let approval_id = request.id.clone();
         let event = self
             .events
             .record_local(approval_requested_event(thread_id, &request, anchor_ms));
-        let newly_pending = self
-            .approvals
-            .lock()
-            .await
+        let newly_pending = approvals
             .insert(
                 approval_id.clone(),
                 PendingApproval {
@@ -283,6 +379,8 @@ impl TaskRuntime {
                     request,
                     asked_by,
                     position: event.event.position,
+                    instance: Arc::new(()),
+                    phase: ApprovalPhase::Pending,
                 },
             )
             .is_none();
@@ -546,32 +644,34 @@ impl TaskRuntime {
 
     /// Retire the approvals this event left unanswerable.
     pub(super) async fn withdraw_unanswerable_approvals(&self, event: &SessionEvent) {
-        let withdrawn = {
-            let mut approvals = self.approvals.lock().await;
-            let withdrawn = approvals
-                .iter()
-                .filter_map(|(approval_id, pending)| {
-                    withdrawn_approval_outcome(pending, event)
-                        .map(|outcome| (approval_id.clone(), outcome))
-                })
-                .collect::<Vec<_>>();
-            withdrawn
-                .into_iter()
-                .filter_map(|(approval_id, outcome)| {
-                    approvals
-                        .remove(&approval_id)
-                        .map(|pending| (pending, outcome))
-                })
-                .collect::<Vec<_>>()
-        };
-
-        for (pending, outcome) in withdrawn {
-            self.events.publish_local(approval_resolved_event(
-                &pending.thread_id,
-                &pending.request,
-                outcome,
-            ));
+        let mut approvals = self.approvals.lock().await;
+        let withdrawn = approvals
+            .iter()
+            .filter_map(|(id, pending)| {
+                withdrawn_approval_outcome(pending, event).map(|outcome| (id.clone(), outcome))
+            })
+            .collect::<Vec<_>>();
+        for (id, outcome) in withdrawn {
+            if let Some(pending) = approvals.remove(&id) {
+                self.events.publish_local(approval_resolved_event(
+                    &pending.thread_id,
+                    &pending.request,
+                    outcome,
+                ));
+            }
         }
+    }
+
+    pub(super) async fn withdraw_codex_approvals(&self, generation: u64) {
+        let mut approvals = self.approvals.lock().await;
+        approvals.retain(|_, pending| {
+            if matches!(pending.asked_by, AskedBy::Codex { generation: owner, .. } if owner == generation) {
+                self.events.publish_local(approval_resolved_event(
+                    &pending.thread_id, &pending.request, ApprovalOutcome::Unavailable,
+                ));
+                false
+            } else { true }
+        });
     }
 }
 
@@ -913,6 +1013,433 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shared_approval_runtime_preserves_claudes_grant_and_rejects_codex_only_answers() {
+        use crate::agent::claude::ClaudeTurnOptions;
+        use crate::app::tasks::test_support::task_state_with_agents;
+
+        let root = tempfile::tempdir().unwrap();
+        let codex = CodexThreadClient::mock(Vec::new());
+        let (state, runner) =
+            task_state_with_agents(RootedFs::new(root.path()).unwrap(), codex.clone()).await;
+        let runtime = &state.task_runtime;
+        let cwd = root.path().display().to_string();
+        runtime
+            .task_store
+            .claim(
+                ManagedThread::new(
+                    "claude-approval",
+                    RunBy::Claude { cwd: cwd.clone() },
+                    None,
+                    None,
+                    None,
+                ),
+                now_ms(),
+            )
+            .unwrap();
+        runtime.watch_claude();
+        runtime
+            .claude()
+            .open_conversation("claude-approval", &cwd, &ClaudeTurnOptions::default())
+            .await
+            .unwrap();
+        let mut events = state.task_events.subscribe();
+        runner.say("claude-approval",json!({
+            "type":"control_request","request_id":"req-claude",
+            "request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"cargo test"},
+                "permission_suggestions":[{"type":"addDirectories","directories":["/tmp"],"destination":"session"}]},
+        })).await;
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                if events.recv().await.unwrap().event.event_type == "approval_requested" {
+                    break;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        let agent = runtime.task_agent("claude-approval").await.unwrap();
+        for unsupported in [ApprovalDecision::AllowForSession, ApprovalDecision::Cancel] {
+            assert!(matches!(
+                runtime
+                    .resolve_approval(&agent, "claude-approval", "req-claude", unsupported)
+                    .await,
+                Err(ApprovalResolveError::ResolutionMismatch)
+            ));
+        }
+        assert!(matches!(
+            runtime
+                .resolve_approval(
+                    &TaskAgent::Codex(CodexConnection {
+                        client: codex,
+                        generation: 1
+                    }),
+                    "claude-approval",
+                    "req-claude",
+                    ApprovalDecision::Allow
+                )
+                .await,
+            Err(ApprovalResolveError::ResolutionMismatch)
+        ));
+        runtime
+            .resolve_approval(
+                &agent,
+                "claude-approval",
+                "req-claude",
+                ApprovalDecision::AllowAlways,
+            )
+            .await
+            .unwrap();
+        let frames = runner.heard("claude-approval").await;
+        let answers = frames
+            .iter()
+            .filter(|frame| frame["type"] == "control_response")
+            .collect::<Vec<_>>();
+        assert_eq!(answers.len(), 1);
+        assert_eq!(
+            answers[0]["response"]["response"],
+            json!({"behavior":"allow","updatedPermissions":[
+                {"type":"addDirectories","directories":["/tmp"],"destination":"session"}
+            ]})
+        );
+        assert!(runtime.approval_events("claude-approval").await.is_empty());
+    }
+
+    fn mcp_approval_request(id: JsonValue) -> CodexServerRequest {
+        codex::decode_server_request(id, "mcpServer/elicitation/request", json!({
+            "threadId":"thread_1", "turnId":"turn_1", "serverName":"docs", "message":"Read document?",
+            "mode":"form", "requestedSchema":{"type":"object","properties":{}},
+            "_meta":{"codex_approval_kind":"mcp_tool_call", "persist":["session","always"],
+                "tool_params":{"id":42}},
+        })).unwrap()
+    }
+
+    #[tokio::test]
+    async fn mcp_approval_round_trip_preserves_the_original_rpc_id() {
+        let runtime = runtime_with_events(TaskEvents::default());
+        let client = CodexThreadClient::mock(Vec::new());
+        for (id, approval_id, decision, response) in [
+            (
+                json!(42),
+                "mcp:42",
+                ApprovalDecision::Allow,
+                json!({"action":"accept","content":{}}),
+            ),
+            (
+                json!("42"),
+                "mcp:\"42\"",
+                ApprovalDecision::AllowForSession,
+                json!({"action":"accept","content":{},"_meta":{"persist":"session"}}),
+            ),
+            (
+                json!(43),
+                "mcp:43",
+                ApprovalDecision::AllowAlways,
+                json!({"action":"accept","content":{},"_meta":{"persist":"always"}}),
+            ),
+            (
+                json!(44),
+                "mcp:44",
+                ApprovalDecision::Deny,
+                json!({"action":"decline","content":null}),
+            ),
+            (
+                json!(45),
+                "mcp:45",
+                ApprovalDecision::Cancel,
+                json!({"action":"cancel","content":null}),
+            ),
+        ] {
+            runtime
+                .handle_server_request(&client, 1, mcp_approval_request(id.clone()))
+                .await;
+            let pending = runtime.approval_events("thread_1").await;
+            assert_eq!(pending.len(), 1);
+            assert_eq!(
+                pending[0].payload.as_ref().unwrap()["tool"]["arguments"][0]["value"],
+                42
+            );
+            runtime
+                .resolve_approval(
+                    &TaskAgent::Codex(CodexConnection {
+                        client: client.clone(),
+                        generation: 1,
+                    }),
+                    "thread_1",
+                    approval_id,
+                    decision,
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                client.mock_server_responses().await.last(),
+                Some(&(id, response))
+            );
+            assert!(runtime.approval_events("thread_1").await.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn unsupported_mcp_approval_is_answered_with_an_explicit_rpc_error() {
+        let runtime = runtime_with_events(TaskEvents::default());
+        let client = CodexThreadClient::mock(Vec::new());
+        let request = codex::decode_server_request(
+            json!("url-1"),
+            "mcpServer/elicitation/request",
+            json!({"threadId":"thread_1","serverName":"docs","message":"Sign in","mode":"url"}),
+        )
+        .unwrap();
+        runtime.handle_server_request(&client, 1, request).await;
+        assert!(runtime.approval_events("thread_1").await.is_empty());
+        let errors = client.mock_server_errors().await;
+        assert_eq!(errors[0]["id"], "url-1");
+        assert_eq!(errors[0]["error"]["code"], -32602);
+        assert!(client.mock_server_responses().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn mcp_approval_claims_one_reply_and_cannot_retire_a_replayed_request() {
+        let events = TaskEvents::default();
+        let runtime = runtime_with_events(events.clone());
+        let client = CodexThreadClient::mock(Vec::new());
+        runtime
+            .handle_server_request(&client, 1, mcp_approval_request(json!(42)))
+            .await;
+        let (started, release) = client.mock_server_reply(Ok(())).await;
+        let answering = {
+            let runtime = runtime.clone();
+            let client = client.clone();
+            tokio::spawn(async move {
+                runtime
+                    .resolve_approval(
+                        &TaskAgent::Codex(CodexConnection {
+                            client,
+                            generation: 1,
+                        }),
+                        "thread_1",
+                        "mcp:42",
+                        ApprovalDecision::Allow,
+                    )
+                    .await
+            })
+        };
+        started.await.unwrap();
+        runtime
+            .handle_server_request(&client, 1, mcp_approval_request(json!(42)))
+            .await;
+        assert_eq!(events.for_thread("thread_1").len(), 1);
+        assert!(client.take_approval_request("mcp:42").await.is_none());
+        assert!(matches!(
+            runtime
+                .resolve_approval(
+                    &TaskAgent::Codex(CodexConnection {
+                        client: client.clone(),
+                        generation: 1
+                    }),
+                    "thread_1",
+                    "mcp:42",
+                    ApprovalDecision::Allow
+                )
+                .await,
+            Err(ApprovalResolveError::NotFound)
+        ));
+        let replacement = CodexThreadClient::mock(Vec::new());
+        runtime
+            .handle_server_request(&replacement, 2, mcp_approval_request(json!(42)))
+            .await;
+        runtime.withdraw_codex_approvals(1).await;
+        release.send(()).unwrap();
+        answering.await.unwrap().unwrap();
+        assert_eq!(runtime.approval_events("thread_1").await.len(), 1);
+        assert!(
+            events
+                .for_thread("thread_1")
+                .iter()
+                .all(|event| event.event_type != "approval_resolved")
+        );
+        runtime
+            .resolve_approval(
+                &TaskAgent::Codex(CodexConnection {
+                    client: replacement.clone(),
+                    generation: 2,
+                }),
+                "thread_1",
+                "mcp:42",
+                ApprovalDecision::Cancel,
+            )
+            .await
+            .unwrap();
+        assert_eq!(replacement.mock_server_responses().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn mcp_approval_reply_finishes_even_if_its_http_waiter_is_dropped() {
+        let events = TaskEvents::default();
+        let mut observed = events.subscribe();
+        let runtime = runtime_with_events(events);
+        let client = CodexThreadClient::mock(Vec::new());
+        runtime
+            .handle_server_request(&client, 1, mcp_approval_request(json!(42)))
+            .await;
+        observed.recv().await.unwrap();
+        let (started, release) = client.mock_server_reply(Ok(())).await;
+        let waiter = {
+            let runtime = runtime.clone();
+            let client = client.clone();
+            tokio::spawn(async move {
+                runtime
+                    .resolve_approval(
+                        &TaskAgent::Codex(CodexConnection {
+                            client,
+                            generation: 1,
+                        }),
+                        "thread_1",
+                        "mcp:42",
+                        ApprovalDecision::Allow,
+                    )
+                    .await
+            })
+        };
+        started.await.unwrap();
+        waiter.abort();
+        assert!(waiter.await.unwrap_err().is_cancelled());
+        release.send(()).unwrap();
+        let resolved = tokio::time::timeout(std::time::Duration::from_secs(1), observed.recv())
+            .await
+            .unwrap()
+            .unwrap()
+            .event;
+        assert_eq!(resolved.payload.unwrap()["outcome"], "allow");
+        assert!(runtime.approval_events("thread_1").await.is_empty());
+        assert_eq!(client.mock_server_responses().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn mcp_approval_provider_withdrawal_wins_over_a_late_send_completion() {
+        let events = TaskEvents::default();
+        let runtime = runtime_with_events(events.clone());
+        let client = CodexThreadClient::mock(Vec::new());
+        runtime
+            .handle_server_request(&client, 1, mcp_approval_request(json!(42)))
+            .await;
+        let (started, release) = client.mock_server_reply(Ok(())).await;
+        let waiter = {
+            let runtime = runtime.clone();
+            let client = client.clone();
+            tokio::spawn(async move {
+                runtime
+                    .resolve_approval(
+                        &TaskAgent::Codex(CodexConnection {
+                            client,
+                            generation: 1,
+                        }),
+                        "thread_1",
+                        "mcp:42",
+                        ApprovalDecision::Allow,
+                    )
+                    .await
+            })
+        };
+        started.await.unwrap();
+        runtime
+            .withdraw_unanswerable_approvals(&SessionEvent {
+                thread_id: "thread_1".into(),
+                kind: SessionEventKind::StatusChanged {
+                    status: ThreadStatus::Idle,
+                },
+            })
+            .await;
+        release.send(()).unwrap();
+        waiter.await.unwrap().unwrap();
+        assert!(runtime.approval_events("thread_1").await.is_empty());
+        let resolved = events
+            .for_thread("thread_1")
+            .into_iter()
+            .filter(|event| event.event_type == "approval_resolved")
+            .collect::<Vec<_>>();
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved[0].payload.as_ref().unwrap()["outcome"], "expired");
+    }
+
+    #[tokio::test]
+    async fn mcp_approval_connection_loss_withdraws_only_its_own_requests() {
+        let runtime = runtime_with_events(TaskEvents::default());
+        let old = CodexThreadClient::mock(Vec::new());
+        let current = CodexThreadClient::mock(Vec::new());
+        runtime
+            .handle_server_request(&old, 1, mcp_approval_request(json!(41)))
+            .await;
+        runtime
+            .handle_server_request(&current, 2, mcp_approval_request(json!(42)))
+            .await;
+        assert!(matches!(
+            runtime
+                .resolve_approval(
+                    &TaskAgent::Codex(CodexConnection {
+                        client: old,
+                        generation: 1
+                    }),
+                    "thread_1",
+                    "mcp:42",
+                    ApprovalDecision::Allow
+                )
+                .await,
+            Err(ApprovalResolveError::NotFound)
+        ));
+        runtime.withdraw_codex_approvals(1).await;
+        let pending = runtime.approval_events("thread_1").await;
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].payload.as_ref().unwrap()["approvalId"], "mcp:42");
+    }
+
+    #[tokio::test]
+    async fn mcp_approval_send_failure_withdraws_the_unanswerable_card() {
+        let events = TaskEvents::default();
+        let runtime = runtime_with_events(events.clone());
+        let client = CodexThreadClient::mock(Vec::new());
+        runtime
+            .handle_server_request(&client, 1, mcp_approval_request(json!(42)))
+            .await;
+        let (started, release) = client
+            .mock_server_reply(Err(CodexThreadError::Protocol("socket closed".into())))
+            .await;
+        let answering = {
+            let runtime = runtime.clone();
+            let client = client.clone();
+            tokio::spawn(async move {
+                runtime
+                    .resolve_approval(
+                        &TaskAgent::Codex(CodexConnection {
+                            client,
+                            generation: 1,
+                        }),
+                        "thread_1",
+                        "mcp:42",
+                        ApprovalDecision::Allow,
+                    )
+                    .await
+            })
+        };
+        started.await.unwrap();
+        release.send(()).unwrap();
+        assert!(matches!(
+            answering.await.unwrap(),
+            Err(ApprovalResolveError::Agent(_))
+        ));
+        assert!(runtime.approval_events("thread_1").await.is_empty());
+        assert_eq!(
+            events
+                .for_thread("thread_1")
+                .last()
+                .unwrap()
+                .payload
+                .as_ref()
+                .unwrap()["outcome"],
+            "unavailable"
+        );
+        assert!(client.mock_server_responses().await.is_empty());
+    }
+
+    #[tokio::test]
     async fn standard_approval_resolutions_preserve_the_selected_codex_decision() {
         let runtime = runtime_with_events(TaskEvents::default());
         let client = CodexThreadClient::mock(Vec::new());
@@ -928,7 +1455,7 @@ mod tests {
                 }),
                 "thread_1",
                 "41",
-                ApprovalDecision::AllowAlways,
+                ApprovalDecision::AllowForSession,
             )
             .await
             .unwrap();
@@ -962,7 +1489,7 @@ mod tests {
                 }),
                 "thread_1",
                 "42",
-                ApprovalDecision::AllowAlways,
+                ApprovalDecision::AllowForSession,
             )
             .await
             .unwrap();
@@ -988,7 +1515,10 @@ mod tests {
         assert!(runtime.approval_events("thread_1").await.is_empty());
         let event = events.for_thread("thread_1").pop().unwrap();
         assert_eq!(event.event_type, "approval_resolved");
-        assert_eq!(event.payload.as_ref().unwrap()["outcome"], "allowAlways");
+        assert_eq!(
+            event.payload.as_ref().unwrap()["outcome"],
+            "allowForSession"
+        );
     }
 
     #[tokio::test]

@@ -1897,18 +1897,18 @@ test("keeps mixed surfaces reflowed across appearance extremes", { tag: "@all-vi
       "position:fixed;inset:0;z-index:100;background:var(--surface);overflow:auto;padding:1rem";
     document.body.append(host);
 
-    const conversation = document.createElement("caffold-task-conversation");
-    host.append(conversation);
-    conversation.innerHTML = `
-      <article class="task-approval-card">
-        <header><h3>Approval</h3><p class="task-approval-reason">Review the requested command before continuing.</p></header>
-        <pre>cargo test --all-targets</pre>
-        <div class="task-approval-actions">
-          <button class="task-secondary-button">Decline</button>
-          <button class="task-primary-button">Approve</button>
-        </div>
-      </article>
-    `;
+    const approval = document.createElement("caffold-task-approval");
+    approval.setSnapshot({
+      threadId: "appearance-preview",
+      request: {
+        approvalId: "appearance-approval",
+        title: "Approval",
+        reason: "Review the requested command before continuing.",
+        command: "cargo test --all-targets",
+        decisions: ["deny", "allow"],
+      },
+    });
+    host.append(approval);
 
     const composer = document.createElement("caffold-task-composer");
     composer.setContext({ mode: "create", cwd: "." });
@@ -1918,7 +1918,6 @@ test("keeps mixed surfaces reflowed across appearance extremes", { tag: "@all-vi
     github.setHtml("<p>Long-form review <code>const value = 1;</code></p>");
     host.append(github);
 
-    const approval = conversation.querySelector(".task-approval-card");
     const approvalText = approval.querySelector("p");
     const approvalCode = approval.querySelector("pre");
     const textarea = composer.querySelector("textarea");

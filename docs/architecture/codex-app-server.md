@@ -72,8 +72,8 @@ performs it.
 its turns, and its items into the vocabulary in `caffold/src/agent/`; it says
 what each notification from a subscribed thread means as a `SessionEvent` in
 that same vocabulary; and it turns a Caffold approval decision back into the
-response the asking method expects. All of it lives in one file so that what
-this driver carries is readable in one place. Above it, the Tasks application
+response the asking method expects. Its private `contract/mcp_approval.rs`
+module owns the MCP tool approval conversion. Above it, the Tasks application
 works in Caffold's conversation, session-event, and approval types; what still
 crosses from `agent::codex` is the client handle, its errors, turn options, and
 readiness — the control surface rather than the conversation.
@@ -356,10 +356,12 @@ message was delivered.
 ## Approval Requests
 
 Caffold handles `item/commandExecution/requestApproval`,
-`item/fileChange/requestApproval`, and `item/permissions/requestApproval` as
-app-server-owned requests. The runtime keeps only the pending JSON-RPC request
-ID, method, and parameters required to present and answer each request; this
-state is ephemeral and never becomes a thread-status or persistence writer.
+`item/fileChange/requestApproval`, `item/permissions/requestApproval`, and the
+MCP tool approval subtype of `mcpServer/elicitation/request` as app-server-owned
+requests. The client keeps the original JSON-RPC ID; the runtime retains the
+normalized request, response parameters, and its current reply phase and
+connection generation. This state is ephemeral and never becomes a
+thread-status or persistence writer.
 
 Command and file-change requests return one of the standard decisions offered
 by app-server. A permission grant returns the complete permission profile from
@@ -371,6 +373,11 @@ turn state. Which approval that notification resolved is the client's to
 answer: it holds the pairing between a Caffold approval id and the JSON-RPC
 request the approval arrived on, and it names each pairing exactly once, so an
 approval is never withdrawn twice.
+
+MCP tool approval validation and metadata parsing stay in the Codex adapter;
+the Task event carries normalized tool details and offered decisions. The
+[approval vocabulary and MCP response mapping](security-and-approvals.md#codex-mcp-tool-approvals)
+define supported scopes, cancellation, argument display, and unsupported forms.
 
 ## Incremental History
 
