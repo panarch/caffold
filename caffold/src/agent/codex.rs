@@ -127,8 +127,17 @@ struct MockCodexThreadClient {
     responses: AsyncMutex<VecDeque<MockCodexResponse>>,
     requests: AsyncMutex<Vec<(String, Value)>>,
     server_responses: AsyncMutex<Vec<(Value, Value)>>,
+    server_errors: AsyncMutex<Vec<Value>>,
+    server_reply: AsyncMutex<Option<MockServerReply>>,
     approvals: AsyncMutex<HashMap<String, Value>>,
     events: broadcast::Sender<CodexRuntimeEvent>,
+}
+
+#[cfg(test)]
+struct MockServerReply {
+    started: oneshot::Sender<()>,
+    gate: oneshot::Receiver<()>,
+    result: Result<(), CodexThreadError>,
 }
 
 #[cfg(test)]
@@ -550,6 +559,8 @@ impl CodexThreadClient {
                 responses: AsyncMutex::new(responses.into()),
                 requests: AsyncMutex::new(Vec::new()),
                 server_responses: AsyncMutex::new(Vec::new()),
+                server_errors: AsyncMutex::new(Vec::new()),
+                server_reply: AsyncMutex::new(None),
                 approvals: AsyncMutex::new(HashMap::new()),
                 events,
             })),
@@ -586,6 +597,38 @@ impl CodexThreadClient {
             .as_ref()
             .expect("mock Codex client is required")
             .server_responses
+            .lock()
+            .await
+            .clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn mock_server_reply(
+        &self,
+        result: Result<(), CodexThreadError>,
+    ) -> (oneshot::Receiver<()>, oneshot::Sender<()>) {
+        let (started, observed) = oneshot::channel();
+        let (release, gate) = oneshot::channel();
+        *self
+            .mock
+            .as_ref()
+            .expect("mock client")
+            .server_reply
+            .lock()
+            .await = Some(MockServerReply {
+            started,
+            gate,
+            result,
+        });
+        (observed, release)
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn mock_server_errors(&self) -> Vec<Value> {
+        self.mock
+            .as_ref()
+            .expect("mock client")
+            .server_errors
             .lock()
             .await
             .clone()
@@ -1375,6 +1418,12 @@ impl CodexThreadClient {
     ) -> Result<(), CodexThreadError> {
         #[cfg(test)]
         if let Some(mock) = &self.mock {
+            let reply = mock.server_reply.lock().await.take();
+            if let Some(reply) = reply {
+                let _ = reply.started.send(());
+                let _ = reply.gate.await;
+                reply.result?;
+            }
             mock.server_responses
                 .lock()
                 .await
@@ -1383,6 +1432,29 @@ impl CodexThreadClient {
         }
         self.write_message(server_response_message(request_id, result))
             .await
+    }
+
+    /// Unsupported elicitations must finish the RPC rather than wait invisibly.
+    pub(crate) async fn reject_server_request(
+        &self,
+        request_id: Value,
+        reason: &str,
+    ) -> Result<(), CodexThreadError> {
+        let request_id = if request_id.is_string() || request_id.is_i64() || request_id.is_u64() {
+            request_id
+        } else {
+            Value::Null
+        };
+        let message = json!({
+            "jsonrpc": "2.0", "id": request_id,
+            "error": { "code": -32602, "message": reason },
+        });
+        #[cfg(test)]
+        if let Some(mock) = &self.mock {
+            mock.server_errors.lock().await.push(message);
+            return Ok(());
+        }
+        self.write_message(message).await
     }
 
     /// Which approval app-server answered on its own, if Caffold was tracking

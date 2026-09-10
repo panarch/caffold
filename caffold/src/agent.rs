@@ -50,7 +50,8 @@ pub(crate) const CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS: &str = concat!(
 );
 
 pub(crate) use approval::{
-    ApprovalDecision, ApprovalDetail, ApprovalOutcome, ApprovalRequest, PermissionRow,
+    ApprovalArgument, ApprovalDecision, ApprovalDetail, ApprovalOutcome, ApprovalRequest,
+    ApprovalToolDetail, PermissionRow,
 };
 pub(crate) use conversation::{
     ActivityStatus, BackgroundTask, CommandExecution, Conversation, ConversationItem,

@@ -377,12 +377,38 @@ fn installed_codex_app_server_keeps_the_required_caffold_contract() {
     for (method, description) in [
         ("item/tool/call", "dynamic tool"),
         ("item/permissions/requestApproval", "permission approval"),
+        ("mcpServer/elicitation/request", "MCP tool approval"),
     ] {
         assert!(
             server_requests.contains(&format!("\"method\": \"{method}\"")),
             "missing {description} server request",
         );
     }
+
+    schema.assert_declares(
+        "v2/McpServerElicitationRequestParams.ts",
+        &[
+            "threadId: string",
+            "turnId: string | null",
+            "serverName: string",
+            "\"mode\": \"form\"",
+            "_meta: JsonValue | null",
+            "message: string",
+            "requestedSchema: McpElicitationSchema",
+        ],
+    );
+    schema.assert_declares(
+        "v2/McpServerElicitationRequestResponse.ts",
+        &[
+            "action: McpServerElicitationAction",
+            "content: JsonValue | null",
+            "_meta: JsonValue | null",
+        ],
+    );
+    schema.assert_declares(
+        "v2/McpServerElicitationAction.ts",
+        &["\"accept\"", "\"decline\"", "\"cancel\""],
+    );
 
     schema.assert_declares(
         "v2/PermissionsRequestApprovalParams.ts",

@@ -889,12 +889,17 @@ impl ClaudeClient {
         let session = self.require_session(conversation_id).await?;
         // Marked declined before the answer goes out: the agent's report of
         // the refused call races this future once the answer is on the wire.
-        let suggestions = {
+        let answer = {
             let mut state = session.state.lock().await;
             let pending = state
                 .pending_approvals
-                .remove(approval_id)
+                .get(approval_id)
                 .ok_or_else(|| ClaudeError::NoSuchApproval(approval_id.to_string()))?;
+            let answer = approval_answer(decision, &pending.suggestions)?;
+            let pending = state
+                .pending_approvals
+                .remove(approval_id)
+                .expect("checked pending approval");
             if matches!(
                 decision,
                 ApprovalDecision::Deny | ApprovalDecision::DenyAndStop
@@ -902,13 +907,10 @@ impl ClaudeClient {
             {
                 state.declined.insert(item_id);
             }
-            pending.suggestions
+            answer
         };
         session
-            .send(protocol::control_response(
-                approval_id,
-                approval_answer(decision, &suggestions),
-            ))
+            .send(protocol::control_response(approval_id, answer))
             .await?;
         self.report_status(&session).await;
         if matches!(decision, ApprovalDecision::DenyAndStop) {
@@ -1190,8 +1192,13 @@ fn preview_of(item: &ConversationItem) -> String {
 /// was probed against the real agent, which then asked about the identical
 /// command again. Composing a narrower grant here would be Caffold deciding
 /// what a permission means, and one that does not work.
-fn approval_answer(decision: ApprovalDecision, suggestions: &Value) -> Value {
-    match decision {
+fn approval_answer(decision: ApprovalDecision, suggestions: &Value) -> Result<Value, ClaudeError> {
+    Ok(match decision {
+        ApprovalDecision::AllowForSession | ApprovalDecision::Cancel => {
+            return Err(ClaudeError::Protocol(
+                "approval decision is not supported by Claude".to_string(),
+            ));
+        }
         ApprovalDecision::Allow => json!({ "behavior": "allow" }),
         ApprovalDecision::AllowAlways => {
             let mut answer = json!({ "behavior": "allow" });
@@ -1204,7 +1211,7 @@ fn approval_answer(decision: ApprovalDecision, suggestions: &Value) -> Value {
             "behavior": "deny",
             "message": "A person declined this.",
         }),
-    }
+    })
 }
 
 /// Now, as the conversation counts time.
@@ -1875,6 +1882,20 @@ mod tests {
              conversation: {overtaken:?}"
         );
 
+        for unsupported in [ApprovalDecision::AllowForSession, ApprovalDecision::Cancel] {
+            assert!(matches!(
+                client.resolve_approval(SESSION, "req-9", unsupported).await,
+                Err(ClaudeError::Protocol(_))
+            ));
+        }
+        assert!(
+            runner
+                .heard(SESSION)
+                .await
+                .iter()
+                .all(|frame| frame["type"] != "control_response")
+        );
+
         client
             .resolve_approval(SESSION, "req-9", ApprovalDecision::AllowAlways)
             .await
@@ -1907,10 +1928,11 @@ mod tests {
     fn an_allowance_never_carries_a_null_where_the_agent_expects_an_absence() {
         // The agent validates `updatedInput?: object` and rejects null — a
         // tool a person allowed then fails with "invalid permission result".
-        let bare = approval_answer(ApprovalDecision::Allow, &Value::Null);
+        let bare = approval_answer(ApprovalDecision::Allow, &Value::Null).unwrap();
         assert_eq!(bare, json!({ "behavior": "allow" }));
 
-        let always_unproposed = approval_answer(ApprovalDecision::AllowAlways, &Value::Null);
+        let always_unproposed =
+            approval_answer(ApprovalDecision::AllowAlways, &Value::Null).unwrap();
         assert_eq!(
             always_unproposed,
             json!({ "behavior": "allow" }),

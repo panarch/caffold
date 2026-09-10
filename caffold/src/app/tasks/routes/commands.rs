@@ -650,6 +650,101 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mcp_approval_http_route_validates_offered_scope_and_returns_exact_rpc_response() {
+        for (decision, expected) in [
+            ("allow", json!({"action":"accept","content":{}})),
+            (
+                "allowForSession",
+                json!({"action":"accept","content":{},"_meta":{"persist":"session"}}),
+            ),
+            (
+                "allowAlways",
+                json!({"action":"accept","content":{},"_meta":{"persist":"always"}}),
+            ),
+            ("deny", json!({"action":"decline","content":null})),
+            ("cancel", json!({"action":"cancel","content":null})),
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let thread_id = "thread-mcp-approval";
+            let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+                "thread/resume",
+                resumed_task(thread_id, root.path()),
+            )]);
+            let state =
+                task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone())
+                    .await;
+            manage_test_thread(&state, thread_id, root.path()).await;
+            manage_test_thread(&state, "other-thread", root.path()).await;
+            let mut events = state.task_events.subscribe();
+            state.task_runtime.spawn_test_bridge(client.clone(), 1);
+            let request = decode_server_request(json!("42"),"mcpServer/elicitation/request",json!({
+                "threadId":thread_id,"turnId":null,"serverName":"docs","message":"Read document?",
+                "mode":"form","requestedSchema":{"type":"object","properties":{}},
+                "_meta":{"codex_approval_kind":"mcp_tool_call","persist":["session","always"],
+                    "tool_params":{"id":42,"comments":false}},
+            })).unwrap();
+            client.mock_publish_event(CodexRuntimeEvent::ServerRequest(request));
+            let event = tokio::time::timeout(std::time::Duration::from_secs(1), events.recv())
+                .await
+                .unwrap()
+                .unwrap()
+                .event;
+            let payload = event.payload.unwrap();
+            assert_eq!(payload["approvalId"], "mcp:\"42\"");
+            assert_eq!(
+                payload["decisions"],
+                json!(["allow", "allowForSession", "allowAlways", "deny", "cancel"])
+            );
+            assert!(payload["itemId"].is_null());
+            assert_eq!(payload["tool"]["serverName"], "docs");
+            let app = router(state);
+            for (target, answer, status) in [
+                ("other-thread", "allow", axum::http::StatusCode::BAD_REQUEST),
+                (
+                    thread_id,
+                    "denyAndStop",
+                    axum::http::StatusCode::BAD_REQUEST,
+                ),
+                (thread_id, decision, axum::http::StatusCode::OK),
+            ] {
+                let response = app
+                    .clone()
+                    .oneshot(
+                        axum::http::Request::builder()
+                            .method("POST")
+                            .uri(format!("/api/tasks/{target}/approvals/mcp%3A%2242%22"))
+                            .header(axum::http::header::CONTENT_TYPE, "application/json")
+                            .body(Body::from(json!({"decision":answer}).to_string()))
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), status);
+                if status.is_success() {
+                    let bytes = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+                        .await
+                        .unwrap();
+                    let detail: JsonValue = serde_json::from_slice(&bytes).unwrap();
+                    assert_eq!(detail["pendingApprovals"], json!([]));
+                } else {
+                    assert!(client.mock_server_responses().await.is_empty());
+                }
+            }
+            assert_eq!(
+                client.mock_server_responses().await,
+                vec![(json!("42"), expected)]
+            );
+            assert!(
+                client
+                    .mock_requests()
+                    .await
+                    .iter()
+                    .all(|(method, _)| method != "turn/interrupt")
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn permission_approval_http_route_grants_only_the_server_requested_profile() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-permission-approval";
@@ -668,7 +763,7 @@ mod tests {
                     .method("POST")
                     .uri(format!("/api/tasks/{thread_id}/approvals/71"))
                     .header(axum::http::header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(r#"{"decision":"allowAlways"}"#))
+                    .body(Body::from(r#"{"decision":"allowForSession"}"#))
                     .unwrap(),
             )
             .await

@@ -762,6 +762,15 @@ pub(crate) struct ThreadTokenUsage {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum CodexServerRequest {
+    McpToolApproval {
+        id: Value,
+        thread_id: String,
+        params: Value,
+    },
+    UnsupportedMcpElicitation {
+        id: Value,
+        reason: String,
+    },
     CommandExecutionApproval {
         id: Value,
         thread_id: String,
@@ -1016,6 +1025,16 @@ pub(crate) fn decode_server_request(
     method: &str,
     params: Value,
 ) -> Result<CodexServerRequest, String> {
+    if method == "mcpServer/elicitation/request" {
+        return Ok(match validate_mcp_tool_approval(&id, &params) {
+            Ok(thread_id) => CodexServerRequest::McpToolApproval {
+                id,
+                thread_id,
+                params,
+            },
+            Err(reason) => CodexServerRequest::UnsupportedMcpElicitation { id, reason },
+        });
+    }
     if method == "item/tool/call" {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -1107,6 +1126,65 @@ pub(crate) fn decode_server_request(
 
 fn decode_params<T: DeserializeOwned>(method: &str, params: Value) -> Result<T, String> {
     serde_json::from_value(params).map_err(|error| format!("invalid {method} params: {error}"))
+}
+
+/// Only Codex's input-free tool approvals share the approval-card contract.
+fn validate_mcp_tool_approval(id: &Value, params: &Value) -> Result<String, String> {
+    if !(id.is_string() || id.is_i64() || id.is_u64()) {
+        return Err("MCP elicitation request has an invalid request ID".to_string());
+    }
+    for field in ["threadId", "serverName", "message"] {
+        if !params.get(field).is_some_and(Value::is_string) {
+            return Err(format!("MCP elicitation request is missing {field}"));
+        }
+    }
+    for field in ["threadId", "serverName"] {
+        if params[field]
+            .as_str()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            return Err(format!("MCP elicitation {field} must not be empty"));
+        }
+    }
+    if params
+        .get("turnId")
+        .is_some_and(|value| !value.is_null() && !value.is_string())
+    {
+        return Err("MCP elicitation turnId must be a string or null".to_string());
+    }
+    if params["mode"] != "form" || params["_meta"]["codex_approval_kind"] != "mcp_tool_call" {
+        return Err("Caffold supports only MCP tool approval elicitations".to_string());
+    }
+    let schema = &params["requestedSchema"];
+    if schema["type"] != "object"
+        || !schema
+            .get("properties")
+            .and_then(Value::as_object)
+            .is_some_and(|fields| fields.is_empty())
+        || schema
+            .get("required")
+            .is_some_and(|value| !value.is_null() && !value.as_array().is_some_and(Vec::is_empty))
+        || schema.as_object().is_some_and(|schema| {
+            schema
+                .keys()
+                .any(|key| !matches!(key.as_str(), "type" | "properties" | "required" | "$schema"))
+        })
+    {
+        return Err("MCP tool approval must have an input-free form schema".to_string());
+    }
+    if let Some(persist) = params["_meta"].get("persist")
+        && !(persist.is_null()
+            || persist.is_string()
+            || persist
+                .as_array()
+                .is_some_and(|values| values.iter().all(Value::is_string)))
+    {
+        return Err("MCP tool approval persist must be a string or string array".to_string());
+    }
+    Ok(params["threadId"]
+        .as_str()
+        .expect("validated threadId")
+        .to_string())
 }
 
 #[cfg(test)]
@@ -1598,6 +1676,67 @@ mod tests {
                 arguments: json!({ "name": "Readable name" }),
             }
         );
+    }
+
+    #[test]
+    fn mcp_approval_decoder_preserves_ids_and_rejects_non_approval_forms() {
+        let params = json!({
+            "threadId":"thread_1", "turnId":null, "serverName":"docs", "message":"Allow?",
+            "mode":"form", "requestedSchema":{"type":"object","properties":{}},
+            "_meta":{"codex_approval_kind":"mcp_tool_call","persist":["session","always"],"future":true},
+        });
+        for id in [json!(42), json!("42")] {
+            assert_eq!(
+                decode_server_request(id.clone(), "mcpServer/elicitation/request", params.clone())
+                    .unwrap(),
+                CodexServerRequest::McpToolApproval {
+                    id,
+                    thread_id: "thread_1".into(),
+                    params: params.clone()
+                }
+            );
+        }
+        for (pointer, value) in [
+            ("/threadId", json!(null)),
+            ("/threadId", json!(" ")),
+            ("/serverName", json!("")),
+            ("/serverName", json!(7)),
+            ("/message", json!(false)),
+            ("/turnId", json!([])),
+            ("/mode", json!("url")),
+            ("/mode", json!("openai/form")),
+            ("/_meta/codex_approval_kind", json!("other")),
+            ("/_meta/persist", json!(["session", 3])),
+            (
+                "/requestedSchema/properties",
+                json!({"answer":{"type":"string"}}),
+            ),
+            (
+                "/requestedSchema",
+                json!({"type":"object","properties":{},"required":["answer"]}),
+            ),
+            (
+                "/requestedSchema",
+                json!({"type":"object","properties":{},"minProperties":1}),
+            ),
+        ] {
+            let mut invalid = params.clone();
+            *invalid.pointer_mut(pointer).unwrap() = value;
+            assert!(
+                matches!(
+                    decode_server_request(json!(42), "mcpServer/elicitation/request", invalid)
+                        .unwrap(),
+                    CodexServerRequest::UnsupportedMcpElicitation { .. }
+                ),
+                "{pointer}"
+            );
+        }
+        for id in [json!(null), json!({}), json!(4.2)] {
+            assert!(matches!(
+                decode_server_request(id, "mcpServer/elicitation/request", params.clone()).unwrap(),
+                CodexServerRequest::UnsupportedMcpElicitation { .. }
+            ));
+        }
     }
 
     #[test]

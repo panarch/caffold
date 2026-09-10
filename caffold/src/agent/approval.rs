@@ -1,9 +1,9 @@
 //! What an agent asks permission for, and how a person answers.
 //!
 //! Both agents Caffold drives block a turn on the same question — may I do
-//! this — and both accept the same four answers. What differs is everything
-//! around the question: Codex sends typed requests carrying a permission
-//! profile, Claude sends one tool-permission callback carrying rule
+//! this — and each request advertises the answers its harness accepts. What
+//! differs is everything around the question: Codex sends typed permission
+//! requests, Claude sends one tool-permission callback carrying rule
 //! suggestions. A driver turns its own into these types.
 //!
 //! Caffold owns the answer, not the permission. Asked to allow something
@@ -56,6 +56,24 @@ pub(crate) struct ApprovalDetail {
     pub(crate) grant_root: Option<String>,
     /// Where the work would run, when the agent runs work somewhere nameable.
     pub(crate) environment: Option<String>,
+    pub(crate) tool: Option<ApprovalToolDetail>,
+}
+
+/// The tool and exact arguments a person is being asked to authorize.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ApprovalToolDetail {
+    pub(crate) server_name: String,
+    pub(crate) app_name: Option<String>,
+    pub(crate) description: Option<String>,
+    pub(crate) arguments: Vec<ApprovalArgument>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct ApprovalArgument {
+    pub(crate) name: String,
+    pub(crate) label: String,
+    pub(crate) value: serde_json::Value,
 }
 
 /// One line of requested access.
@@ -82,11 +100,15 @@ pub(crate) struct PermissionRow {
 pub(crate) enum ApprovalDecision {
     /// Yes, this once.
     Allow,
+    /// Yes, with the provider's session-scoped grant.
+    AllowForSession,
     /// Yes, and stop asking. What "always" covers is the agent's to decide:
     /// each one is told to apply the grant it proposed.
     AllowAlways,
     /// No. The turn continues.
     Deny,
+    /// Cancel this request without asking to stop the turn.
+    Cancel,
     /// No, and stop the turn.
     DenyAndStop,
 }
@@ -103,17 +125,22 @@ pub(crate) enum ApprovalOutcome {
     AnsweredElsewhere,
     /// No longer answerable, because the turn it belonged to ended first.
     Expired,
+    /// The request can no longer be answered on its original transport.
+    Unavailable,
 }
 
 impl ApprovalOutcome {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Decided(ApprovalDecision::Allow) => "allow",
+            Self::Decided(ApprovalDecision::AllowForSession) => "allowForSession",
             Self::Decided(ApprovalDecision::AllowAlways) => "allowAlways",
             Self::Decided(ApprovalDecision::Deny) => "deny",
+            Self::Decided(ApprovalDecision::Cancel) => "cancel",
             Self::Decided(ApprovalDecision::DenyAndStop) => "denyAndStop",
             Self::AnsweredElsewhere => "answeredElsewhere",
             Self::Expired => "expired",
+            Self::Unavailable => "unavailable",
         }
     }
 }
@@ -128,11 +155,14 @@ mod tests {
         // decision and a withdrawal have to flatten without colliding.
         let outcomes = [
             ApprovalOutcome::Decided(ApprovalDecision::Allow),
+            ApprovalOutcome::Decided(ApprovalDecision::AllowForSession),
             ApprovalOutcome::Decided(ApprovalDecision::AllowAlways),
             ApprovalOutcome::Decided(ApprovalDecision::Deny),
+            ApprovalOutcome::Decided(ApprovalDecision::Cancel),
             ApprovalOutcome::Decided(ApprovalDecision::DenyAndStop),
             ApprovalOutcome::AnsweredElsewhere,
             ApprovalOutcome::Expired,
+            ApprovalOutcome::Unavailable,
         ];
 
         let mut seen = std::collections::BTreeSet::new();

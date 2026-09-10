@@ -1654,7 +1654,7 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
     .getByRole("button", { name: "Stop current turn", exact: true })
     .click();
   await expect(interruptError).toHaveText("Interrupt failed by fixture.");
-  await expect(approvalError).toHaveCount(0);
+  await expect(approvalError).toBeHidden();
   await expect(composerError).toHaveCount(0);
 
   await activateActionHint(page, /Allow$/);
@@ -1682,10 +1682,8 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
       ),
       summaryOwnsInterruptError: Object.hasOwn(summary, "interruptError"),
       interrupt: composer.context.interruptError,
-      approval:
-        conversation.approvalErrors
-          .get("approval-request-error")
-          ?.message ?? "",
+      conversationOwnsApprovalErrors: Object.hasOwn(conversation, "approvalErrors"),
+      approval: conversation.querySelector("caffold-task-approval").errorMessage,
       prompt: composer.context.requestError,
     };
   });
@@ -1693,6 +1691,7 @@ test("keeps prompt, interrupt, and approval request errors with their owning con
     detailErrorFields: [],
     summaryOwnsInterruptError: false,
     interrupt: "Interrupt failed by fixture.",
+    conversationOwnsApprovalErrors: false,
     approval: "Approval failed by fixture.",
     prompt: "Prompt rejected by fixture.",
   });

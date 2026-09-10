@@ -1,0 +1,193 @@
+caffold-task-approval {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  container: task-approval / inline-size;
+
+  & .task-approval-content {
+    display: contents;
+  }
+
+  & .task-approval-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 0;
+    max-width: 100%;
+    gap: var(--interface-space-4);
+  }
+
+  & .task-approval-actions .task-secondary-button {
+    box-sizing: border-box;
+    height: var(--interface-compact-visual-size);
+    min-height: var(--interface-compact-visual-size);
+    padding: 0 var(--interface-space-5);
+    font-size: var(--interface-meta-font-size);
+  }
+
+  & .task-approval-actions .task-secondary-button::before {
+    inset-block: calc(0px - var(--interface-compact-hit-outset));
+  }
+
+  & .task-approval-card {
+    display: grid;
+    gap: var(--interface-space-5);
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    margin-bottom: var(--interface-space-5);
+    padding: var(--interface-space-5);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface-subtle);
+  }
+
+  & .task-approval-card h3,
+  & .task-approval-card p,
+  & .task-approval-card dl,
+  & .task-approval-card dd {
+    margin: 0;
+  }
+
+  & .task-approval-card h3 {
+    min-width: 0;
+    font-size: var(--interface-heading-font-size);
+    line-height: var(--interface-line-height);
+    overflow-wrap: anywhere;
+  }
+
+  & .task-approval-card .task-approval-reason {
+    font-size: var(--conversation-font-size);
+    line-height: var(--conversation-line-height);
+    overflow-wrap: anywhere;
+  }
+
+  & .task-approval-card .task-approval-description {
+    min-width: 0;
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    overflow-wrap: anywhere;
+  }
+
+  & .task-approval-card header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--interface-space-2);
+    min-width: 0;
+  }
+
+  & .task-approval-card pre {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    margin: 0;
+    padding: var(--interface-space-5);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--code-bg);
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+  }
+
+  & .task-approval-details {
+    display: grid;
+    gap: var(--interface-space-3);
+    min-width: 0;
+  }
+
+  & .task-approval-details > div {
+    display: grid;
+    grid-template-columns: minmax(7.5rem, max-content) minmax(0, 1fr);
+    gap: var(--interface-space-2) var(--interface-space-5);
+    min-width: 0;
+  }
+
+  & .task-approval-details dt,
+  & .task-approval-details dd {
+    min-width: 0;
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .task-approval-details dt {
+    color: var(--muted);
+  }
+
+  & .task-approval-details dd {
+    overflow-wrap: anywhere;
+  }
+
+  & .task-approval-details code,
+  & .task-approval-description code {
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+
+  & .task-approval-arguments,
+  & .task-approval-arguments > div {
+    display: grid;
+    gap: var(--interface-space-3);
+    min-width: 0;
+  }
+
+  & .task-approval-arguments dt {
+    color: var(--muted);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    overflow-wrap: anywhere;
+  }
+
+  & .task-approval-arguments dt code {
+    font-size: var(--code-font-size);
+  }
+
+  & .task-approval-arguments dd {
+    min-width: 0;
+  }
+
+  & .task-approval-card .task-approval-error {
+    margin: 0.5rem 0 0;
+    color: var(--danger);
+    font-size: var(--interface-meta-font-size);
+    line-height: var(--interface-line-height);
+    overflow-wrap: anywhere;
+  }
+
+}
+
+@container task-approval (max-width: 34rem) {
+  caffold-task-approval {
+    & .task-approval-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    & .task-approval-actions button {
+      width: 100%;
+      min-width: 0;
+    }
+  }
+}
+
+@container task-approval (max-width: 28rem) {
+  caffold-task-approval {
+    & .task-approval-details > div {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}
+
+@container task-approval (max-width: 22rem) {
+  caffold-task-approval {
+    & .task-approval-actions {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}
