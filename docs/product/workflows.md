@@ -8,7 +8,7 @@ Caffold supports three entry paths into the same repeated development loop:
 
 ```text
 Global New
-        -> choose a cwd and a Codex or Claude model
+        -> choose a cwd and a Codex, Claude, or Grok model
         -> start a Task with that agent
         -> optionally prepare the same Task in an isolated worktree
 
@@ -40,7 +40,7 @@ implemented outer lifecycle.
 2. For Global New, confirm or choose the cwd. Section New uses its managed
    logical path.
 3. Choose a model. Each offered model identifies its agent, so this choice also
-   binds the new Task to Codex or Claude. Choose the available effort, speed,
+   binds the new Task to Codex, Claude, or Grok. Choose the available effort, speed,
    and permission mode, then send a prompt.
 4. Caffold starts the chosen agent's empty conversation in that cwd, durably
    records the Task's managed membership, agent, and current composer settings,
@@ -175,7 +175,7 @@ stops after worktree preparation.
 
 For an Issue:
 
-1. Choose a base ref and a Codex or Claude model.
+1. Choose a base ref and a Codex, Claude, or Grok model.
 2. Caffold creates a Task at the repository root.
 3. The setup prompt treats the Issue body and URL as untrusted context, renames
    the Task, creates a concise branch from the selected base with

@@ -49,11 +49,12 @@ exist, how context is gathered, how permissions are requested, how a turn is
 steered or interrupted, how sessions survive, and how new capabilities reach
 the user. That behavior is a material part of the agent.
 
-Caffold therefore supports Codex and Claude Code through separate native
-drivers. It connects to Codex app-server as Codex's own clients do, and it
-drives Claude Code through the CLI protocol and transcript Claude itself owns.
-Caffold adds the supervision required by its host lifecycle, but does not
-replace either harness with a generic one.
+Caffold therefore supports Codex, Claude Code, and Grok through separate
+native drivers. It connects to Codex app-server as Codex's own clients do,
+drives Claude Code through the CLI protocol and transcript Claude itself owns,
+and reaches Grok through the leader and stdio agent protocol the Grok CLI
+itself uses. Caffold adds the supervision required by its host lifecycle, but
+does not replace any of those harnesses with a generic one.
 
 The interface shares only concepts that have a stable Caffold meaning—Task,
 Conversation, turn, activity, approval, and review context. Agent-specific

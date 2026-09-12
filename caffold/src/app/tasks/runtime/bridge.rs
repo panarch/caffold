@@ -293,6 +293,7 @@ mod tests {
         let (claude, _runner) = agent::claude::ClaudeClient::mock();
         TaskRuntime::new(
             claude,
+            agent::grok::GrokClient::unreachable(),
             TaskSessions::new(events.clone()),
             events,
             store,
@@ -319,10 +320,19 @@ mod tests {
             store.clone(),
             worktrees,
             claude.clone(),
+            agent::grok::GrokClient::unreachable(),
         );
         let (shutdown, _) = broadcast::channel(1);
         (
-            TaskRuntime::new(claude, sessions, events, store, shutdown).with_lifecycle(lifecycle),
+            TaskRuntime::new(
+                claude,
+                agent::grok::GrokClient::unreachable(),
+                sessions,
+                events,
+                store,
+                shutdown,
+            )
+            .with_lifecycle(lifecycle),
             list_events,
         )
     }

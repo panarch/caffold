@@ -11,6 +11,7 @@ use crate::agent::AgentError;
 use crate::{
     agent::claude::ClaudeClient,
     agent::codex::{CodexMcpBindings, CodexThreadClient, CodexThreadError},
+    agent::grok::GrokClient,
     agent::{Driver, TokenUsage},
     app::tasks::sessions::{SessionSnapshot, TaskSessions},
     task_store::{ManagedThread, RunBy, TaskStore},
@@ -18,6 +19,7 @@ use crate::{
 
 mod bridge;
 mod claude_bridge;
+mod grok_bridge;
 mod process;
 mod server_requests;
 
@@ -36,6 +38,7 @@ pub(in crate::app::tasks) struct TaskRuntime {
     process: Arc<CodexProcess>,
     codex_mcp: Option<CodexMcpBindings>,
     claude: ClaudeClient,
+    grok: GrokClient,
     sessions: TaskSessions,
     events: TaskEvents,
     task_store: TaskStore,
@@ -86,6 +89,7 @@ impl CodexConnection {
 pub(in crate::app::tasks) enum TaskAgent {
     Codex(CodexConnection),
     Claude { driver: Driver },
+    Grok { driver: Driver },
 }
 
 /// Which connection a Claude answer came from.
@@ -95,11 +99,19 @@ pub(in crate::app::tasks) enum TaskAgent {
 /// connection, so there is nothing for a generation to tell apart.
 const CLAUDE_GENERATION: u64 = 1;
 
+/// Which connection a Grok answer came from.
+///
+/// Grok's bridge is replaced whole too, but its driver tells each session
+/// apart itself: a report from a bridge that is gone never becomes a session
+/// event, and a session that lost its bridge says so and is opened again. So
+/// the application has nothing to count here either.
+const GROK_GENERATION: u64 = 1;
+
 impl TaskAgent {
     pub(in crate::app::tasks) fn driver(&self) -> Driver {
         match self {
             Self::Codex(connection) => connection.driver(),
-            Self::Claude { driver } => driver.clone(),
+            Self::Claude { driver } | Self::Grok { driver } => driver.clone(),
         }
     }
 
@@ -107,6 +119,7 @@ impl TaskAgent {
         match self {
             Self::Codex(connection) => connection.generation,
             Self::Claude { .. } => CLAUDE_GENERATION,
+            Self::Grok { .. } => GROK_GENERATION,
         }
     }
 
@@ -120,6 +133,9 @@ impl TaskAgent {
             Self::Claude { .. } => RunBy::Claude {
                 cwd: cwd.to_string(),
             },
+            Self::Grok { .. } => RunBy::Grok {
+                cwd: cwd.to_string(),
+            },
         }
     }
 
@@ -131,7 +147,7 @@ impl TaskAgent {
     pub(in crate::app::tasks) fn codex(&self) -> Option<&CodexConnection> {
         match self {
             Self::Codex(connection) => Some(connection),
-            Self::Claude { .. } => None,
+            Self::Claude { .. } | Self::Grok { .. } => None,
         }
     }
 }
@@ -170,6 +186,7 @@ impl From<CodexThreadError> for ApprovalResolveError {
 impl TaskRuntime {
     pub(in crate::app::tasks) fn new(
         claude: ClaudeClient,
+        grok: GrokClient,
         sessions: TaskSessions,
         events: TaskEvents,
         task_store: TaskStore,
@@ -180,6 +197,7 @@ impl TaskRuntime {
             process: Arc::new(CodexProcess::default()),
             codex_mcp: None,
             claude,
+            grok,
             sessions,
             events,
             task_store,
@@ -210,6 +228,15 @@ impl TaskRuntime {
         self.take_up_live_conversations();
     }
 
+    /// Begin carrying what Grok sessions say into the Task application.
+    ///
+    /// Like Claude's, armed at startup: the driver's router and this bridge
+    /// exist before any session does, and neither starts a process.
+    pub(in crate::app::tasks) fn watch_grok(&self) {
+        self.grok.watch();
+        self.spawn_grok_bridge(self.shutdown.subscribe());
+    }
+
     pub(in crate::app::tasks) fn with_lifecycle(mut self, lifecycle: TaskLifecycle) -> Self {
         self.lifecycle = Some(lifecycle);
         self
@@ -227,6 +254,11 @@ impl TaskRuntime {
     /// Claude, however it is being reached.
     pub(in crate::app::tasks) fn claude(&self) -> &ClaudeClient {
         &self.claude
+    }
+
+    /// Grok, however it is being reached.
+    pub(in crate::app::tasks) fn grok(&self) -> &GrokClient {
+        &self.grok
     }
 
     /// The agent that owns this Task.
@@ -290,6 +322,10 @@ impl TaskRuntime {
                 })
             }
             RunBy::Codex => Ok(TaskAgent::Codex(self.connection().await?)),
+            // The binding, not the row, says where a Grok Task runs now.
+            RunBy::Grok { .. } => Ok(TaskAgent::Grok {
+                driver: self.grok.driver(),
+            }),
         }
     }
 
@@ -332,6 +368,7 @@ mod tests {
         let (shutdown, _) = broadcast::channel(1);
         TaskRuntime::new(
             agent::claude::ClaudeClient::mock().0,
+            agent::grok::GrokClient::unreachable(),
             TaskSessions::default(),
             TaskEvents::default(),
             store,
@@ -420,6 +457,7 @@ mod tests {
         let (shutdown, _) = broadcast::channel(1);
         let runtime = TaskRuntime::new(
             agent::claude::ClaudeClient::mock().0,
+            agent::grok::GrokClient::unreachable(),
             sessions.clone(),
             events,
             store,

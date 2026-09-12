@@ -1,7 +1,7 @@
 # Caffold
 
 Caffold is a self-hosted workspace for running and reviewing coding-agent work
-from any screen. Keep Codex or Claude Code working on a Mac you control, then
+from any screen. Keep Codex, Claude Code, or Grok working on a Mac you control, then
 follow the conversation, answer approvals, inspect commands and tests, and read
 the actual files and diff from a desktop, foldable, tablet, or phone.
 
@@ -25,26 +25,29 @@ _Follow a Task as it runs, then read the result and decide what comes next._
 _Open Working Tree to review the actual files and diff without leaving the
 Task._
 
-_These deterministic showcase images use a Codex Task. Claude Tasks use the
-same Conversation and review workspace._
+_These deterministic showcase images use a Codex Task. Claude and Grok Tasks
+use the same Conversation and review workspace._
 
 ## One workspace, native agents
 
 When you create a Task, choosing a model also chooses the agent that provides
 it. Caffold currently supports:
 
-- **Codex**, through its persistent app-server runtime; and
+- **Codex**, through its persistent app-server runtime;
 - **Claude Code**, through its CLI protocol and a Caffold runner that keeps the
-  CLI process attached while the backend is replaced.
+  CLI process attached while the backend is replaced; and
+- **Grok**, through the Grok CLI's leader process and stdio agent protocol,
+  with a leader Caffold starts for itself that holds sessions across backend
+  replacement.
 
 A Task remains bound to that agent for its lifetime. Its model, reasoning or
 effort choices, permission modes, tools, session behavior, and transcript come
 from the selected agent rather than from a Caffold reimplementation.
 
 This is deliberate. A coding agent is the model together with the harness its
-authors built around it. Caffold gives Codex and Claude separate native drivers
-so it can preserve those harnesses instead of forcing both through a lowest
-common denominator. It normalizes only the product concepts the workspace must
+authors built around it. Caffold gives Codex, Claude, and Grok separate native
+drivers so it can preserve those harnesses instead of forcing them through a
+lowest common denominator. It normalizes only the product concepts the workspace must
 present consistently: conversations, turns, activity, approvals, and the
 operations a Task can actually perform.
 
@@ -65,10 +68,11 @@ browser or installed PWA
      local URL or private
      Tailscale HTTPS URL
               |
-     Caffold Server on Mac
-        /            \
- Codex app-server   Claude runner -> claude CLI
-        \            /
+        Caffold Server on Mac
+       /          |          \
+ Codex        Claude runner    Grok leader
+ app-server   -> claude CLI    -> grok bridge
+       \          |          /
        Git checkouts and worktrees
 ```
 
@@ -83,8 +87,8 @@ running Caffold, and reachable for remote use.
 
 ## A typical Task
 
-1. Start a Task in the directory where the work belongs and choose a Codex or
-   Claude model.
+1. Start a Task in the directory where the work belongs and choose a Codex,
+   Claude, or Grok model.
 2. Follow the conversation and answer the agent's approval requests while it
    works.
 3. Read the result, command and test output, changed files, and actual diff.
@@ -103,10 +107,12 @@ worktree, Git history, and read-only GitHub Issue or Pull Request context.
 Caffold supports Apple silicon Macs running macOS 14 or later. Install and sign
 in to at least one supported agent:
 
-- the official standalone Codex CLI `0.147.0` or newer; or
-- Claude Code `2.1.259` or newer, available as `claude` on the app's `PATH`.
+- the official standalone Codex CLI `0.147.0` or newer;
+- Claude Code `2.1.259` or newer, available as `claude` on the app's `PATH`; or
+- the Grok CLI `1.0.30` or newer, available as `grok` on the app's `PATH` or
+  at `~/.grok/bin/grok` or `~/.local/bin/grok`.
 
-Both may be installed, and Caffold will offer the models it can reach. The
+Any of them may be installed, and Caffold will offer the models it can reach. The
 [installation guide](docs/product/installation.md) has the agent-specific
 setup and diagnostics.
 
@@ -137,8 +143,8 @@ does not provide authentication for a public deployment or multi-user
 authorization.
 
 Agent support is built in rather than loaded as a runtime plugin. Caffold
-currently drives Codex and Claude Code; it does not provide an ACP driver or
-let an existing Task switch agents.
+currently drives Codex, Claude Code, and Grok; it does not provide an ACP
+driver or let an existing Task switch agents.
 
 Its Git and GitHub views are deliberately review-oriented. Caffold does not
 provide a full editor or terminal, and it does not expose stage, commit,

@@ -12,7 +12,7 @@ use super::{
     sync::TaskSync,
 };
 use crate::{
-    agent::{Conversation, claude::ClaudeClient},
+    agent::{Conversation, claude::ClaudeClient, grok::GrokClient},
     app::error::ApiError,
     fs::RootedFs,
     task_store::{ManagedSection, TaskStore},
@@ -41,6 +41,7 @@ impl TaskLiveSource {
                 events: state.task_list_events.clone(),
                 store: state.task_store.clone(),
                 claude: state.task_runtime.claude().clone(),
+                grok: state.task_runtime.grok().clone(),
                 shutdown: state.shutdown.clone(),
             },
             detail: state.detail.clone(),
@@ -190,6 +191,7 @@ struct TaskListLiveSource {
     events: TaskListEvents,
     store: TaskStore,
     claude: ClaudeClient,
+    grok: GrokClient,
     shutdown: broadcast::Sender<()>,
 }
 
@@ -204,6 +206,7 @@ impl TaskListLiveSource {
             connection.generation,
             &connection.client,
             &self.claude,
+            &self.grok,
         )
         .await?;
         for thread in projection.observed_threads {

@@ -1,0 +1,47 @@
+{
+ "result": {
+  "sessionId": "01a09482-3275-7688-a619-fb65da53debe",
+  "cwd": "/var/folders/8b/bsh7h8f94kd0_grsqhk47xb40000gn/T/caffold-grok-live-review-ce80f0wb/worktrees/44d74895-d624-4afb-9079-fb0ce7f824d7",
+  "agentName": "grok-build-plan",
+  "model": "grok-4.6",
+  "modelDisplayName": "Grok 4.6",
+  "resolvedModelId": null,
+  "modelFingerprint": "fp_08d0bc26c22b024e",
+  "showModelFingerprint": false,
+  "apiBackend": "Responses",
+  "turns": 4,
+  "turnIndex": 1,
+  "context": {
+   "used": 2500,
+   "total": 500000,
+   "systemPromptTokens": 1475,
+   "toolDefinitionsCount": 26,
+   "toolDefinitionsTokens": 10308,
+   "compactionCount": 0,
+   "turnCount": 1,
+   "toolCallCount": 0,
+   "messageCount": 7,
+   "messageTokens": 4335,
+   "freeTokens": 497500,
+   "usagePct": 1,
+   "autoCompactThresholdPercent": 80,
+   "usageCategories": [
+    {
+     "label": "Skills",
+     "tokens": 2298,
+     "detail": "23 skills"
+    },
+    {
+     "label": "Workflows",
+     "tokens": 182,
+     "detail": "2 workflows"
+    },
+    {
+     "label": "MCP servers",
+     "tokens": 61,
+     "detail": "1 server"
+    }
+   ]
+  }
+ }
+}

@@ -16,6 +16,10 @@ export async function getClaudeStatus() {
   return requestJson("/api/claude/status");
 }
 
+export async function getGrokStatus() {
+  return requestJson("/api/grok/status");
+}
+
 export async function restartClaudeRuntime() {
   return requestJson("/api/claude/restart", {}, { method: "POST" });
 }

@@ -206,6 +206,7 @@ pub(super) async fn task_provider_driver(
                 .unwrap_or(cwd);
             Ok(Ok(state.task_runtime.claude().driver(cwd)))
         }
+        RunBy::Grok { .. } => Ok(Ok(state.task_runtime.grok().driver())),
     }
 }
 
@@ -300,10 +301,10 @@ pub(super) async fn task_described_as(
     let mut task = match described {
         Some(conversation) => state.detail.record_from_conversation(&conversation)?,
         None => {
-            let RunBy::Claude { cwd } = &managed.run_by else {
+            let (RunBy::Claude { cwd } | RunBy::Grok { cwd }) = &managed.run_by else {
                 // Only an agent that cannot be asked answers with nothing, and
-                // only a Claude row carries where it works. A Codex answer is
-                // either a conversation or a failure.
+                // only a Claude or Grok row carries where it works. A Codex
+                // answer is either a conversation or a failure.
                 return Err(ApiError::Internal(format!(
                     "no agent answered for Task {}",
                     managed.thread_id

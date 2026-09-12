@@ -31,6 +31,7 @@ pub(super) const TABLE_NAME: &str = "managed_threads";
 pub(crate) enum TaskProvider {
     Codex,
     Claude,
+    Grok,
 }
 
 impl TaskProvider {
@@ -38,6 +39,7 @@ impl TaskProvider {
         match self {
             Self::Codex => "codex",
             Self::Claude => "claude",
+            Self::Grok => "grok",
         }
     }
 }
@@ -56,7 +58,15 @@ impl TaskProvider {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RunBy {
     Codex,
-    Claude { cwd: String },
+    Claude {
+        cwd: String,
+    },
+    /// A Grok Task's binding says which native session it runs on and where;
+    /// the row keeps where the Task began so that lists and archives can
+    /// describe it without waking the agent.
+    Grok {
+        cwd: String,
+    },
 }
 
 impl RunBy {
@@ -64,6 +74,7 @@ impl RunBy {
         match self {
             Self::Codex => TaskProvider::Codex,
             Self::Claude { .. } => TaskProvider::Claude,
+            Self::Grok { .. } => TaskProvider::Grok,
         }
     }
 
@@ -71,7 +82,7 @@ impl RunBy {
     fn cwd(&self) -> Option<&str> {
         match self {
             Self::Codex => None,
-            Self::Claude { cwd } => Some(cwd),
+            Self::Claude { cwd } | Self::Grok { cwd } => Some(cwd),
         }
     }
 
@@ -83,6 +94,10 @@ impl RunBy {
             "claude" => cwd
                 .filter(|cwd| !cwd.trim().is_empty())
                 .map(|cwd| Self::Claude { cwd })
+                .ok_or(TaskStoreError::InvalidRow("cwd")),
+            "grok" => cwd
+                .filter(|cwd| !cwd.trim().is_empty())
+                .map(|cwd| Self::Grok { cwd })
                 .ok_or(TaskStoreError::InvalidRow("cwd")),
             // Not a guess to make. The migration wrote a provider into every
             // row that existed, so an unrecognized one is a Task written by a

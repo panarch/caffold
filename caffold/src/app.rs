@@ -54,8 +54,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let voice_router = voice::router(data_dir.join("models/whisper"));
     let listener = TcpListener::bind((config.host, config.port)).await?;
     let addr = listener.local_addr()?;
-    let codex_mcp =
-        tasks::CodexMcpHost::persistent(codex_mcp_endpoint(addr), data_dir.join("codex-mcp"));
+    let codex_mcp = tasks::CodexMcpHost::persistent(mcp_origin(addr), data_dir.join("codex-mcp"));
     let tailscale_router = tailscale::router(addr.port());
     let tasks = tasks::PersistentTasksGateway::new(
         fs,
@@ -124,10 +123,8 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
     let voice_router = voice::router(fs.root().join(".caffold-test/models/whisper"));
     let tailscale_router = tailscale::router(5_178);
-    let codex_mcp = tasks::CodexMcpHost::memory(codex_mcp_endpoint(SocketAddr::from((
-        Ipv4Addr::LOCALHOST,
-        5_178,
-    ))));
+    let codex_mcp =
+        tasks::CodexMcpHost::memory(mcp_origin(SocketAddr::from((Ipv4Addr::LOCALHOST, 5_178))));
     let worktree_root = fs.root().join(".caffold-test/worktrees");
     let tasks = tasks::TasksApp::memory(
         fs,
@@ -163,16 +160,14 @@ fn router_with_states(
         .merge(codex_mcp_router)
 }
 
-fn codex_mcp_endpoint(listen: SocketAddr) -> String {
+/// The address agents on this machine reach the Caffold server at.
+fn mcp_origin(listen: SocketAddr) -> String {
     let ip = match listen.ip() {
         IpAddr::V4(ip) if ip.is_unspecified() => IpAddr::V4(Ipv4Addr::LOCALHOST),
         IpAddr::V6(ip) if ip.is_unspecified() => IpAddr::V6(Ipv6Addr::LOCALHOST),
         ip => ip,
     };
-    format!(
-        "http://{}/api/codex/mcp",
-        SocketAddr::new(ip, listen.port())
-    )
+    format!("http://{}", SocketAddr::new(ip, listen.port()))
 }
 
 fn default_data_dir() -> anyhow::Result<PathBuf> {
@@ -215,14 +210,14 @@ mod tests {
     }
 
     #[test]
-    fn codex_mcp_uses_loopback_for_an_unspecified_listener() {
+    fn the_mcp_origin_uses_loopback_for_an_unspecified_listener() {
         assert_eq!(
-            codex_mcp_endpoint(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 5_178))),
-            "http://127.0.0.1:5178/api/codex/mcp"
+            mcp_origin(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 5_178))),
+            "http://127.0.0.1:5178"
         );
         assert_eq!(
-            codex_mcp_endpoint(SocketAddr::from((Ipv6Addr::UNSPECIFIED, 5_178))),
-            "http://[::1]:5178/api/codex/mcp"
+            mcp_origin(SocketAddr::from((Ipv6Addr::UNSPECIFIED, 5_178))),
+            "http://[::1]:5178"
         );
     }
 }

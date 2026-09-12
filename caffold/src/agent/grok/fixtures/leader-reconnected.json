@@ -1,0 +1,7 @@
+{
+ "jsonrpc": "2.0",
+ "method": "x.ai/leader_reconnected",
+ "params": {
+  "sessionId": "01a09428-3bcc-70d0-ab5b-46e34c585af0"
+ }
+}

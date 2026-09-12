@@ -10,6 +10,7 @@ use crate::{
         ThreadStatus,
         claude::ClaudeClient,
         codex::{CodexThread, CodexThreadClient},
+        grok::GrokClient,
     },
     app::error::ApiError,
     app::tasks::sessions::TaskSessions,
@@ -160,6 +161,7 @@ pub(in crate::app::tasks) async fn load_runtime_snapshot(
     generation: u64,
     client: &CodexThreadClient,
     claude: &ClaudeClient,
+    grok: &GrokClient,
 ) -> Result<ActiveTaskRuntimeProjection, ApiError> {
     let managed = {
         let store = store.clone();
@@ -209,10 +211,15 @@ pub(in crate::app::tasks) async fn load_runtime_snapshot(
     // not doing anything, so the stored row a person sees instead of these is
     // not hiding anything live.
     for managed in managed.values() {
-        if !matches!(managed.run_by, RunBy::Claude { .. }) {
-            continue;
-        }
-        let Some(conversation) = claude.watched_conversation(&managed.thread_id).await else {
+        let conversation = match &managed.run_by {
+            RunBy::Codex => continue,
+            RunBy::Claude { .. } => claude.watched_conversation(&managed.thread_id).await,
+            // Grok's leader holds every session, but only the ones this
+            // process has loaded are being watched; the rest are described
+            // from their rows, like Claude's.
+            RunBy::Grok { .. } => grok.watched_conversation(&managed.thread_id).await,
+        };
+        let Some(conversation) = conversation else {
             continue;
         };
         tasks.push(live_task_row(&fs, &store, managed, conversation)?);
@@ -407,6 +414,7 @@ mod tests {
             1,
             &an_empty_codex(),
             &claude,
+            &agent::grok::GrokClient::unreachable(),
         )
         .await
         .unwrap();
@@ -460,9 +468,17 @@ mod tests {
 
         // Codex has restarted: its connection count moved past Claude's fixed
         // generation, and the list is loaded again.
-        let projection = load_runtime_snapshot(fs, store, &sessions, 2, &an_empty_codex(), &claude)
-            .await
-            .unwrap();
+        let projection = load_runtime_snapshot(
+            fs,
+            store,
+            &sessions,
+            2,
+            &an_empty_codex(),
+            &claude,
+            &agent::grok::GrokClient::unreachable(),
+        )
+        .await
+        .unwrap();
 
         assert!(
             projection
@@ -513,6 +529,7 @@ mod tests {
             1,
             &an_empty_codex(),
             &claude,
+            &agent::grok::GrokClient::unreachable(),
         )
         .await
         .unwrap();

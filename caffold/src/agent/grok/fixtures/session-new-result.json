@@ -1,0 +1,189 @@
+{
+ "sessionId": "01a09482-370e-7001-a329-9a7d78be2cb8",
+ "models": {
+  "currentModelId": "grok-4.6",
+  "availableModels": [
+   {
+    "modelId": "grok-4.6",
+    "name": "Grok 4.6",
+    "description": "SpaceXAI's latest frontier model",
+    "_meta": {
+     "totalContextTokens": 500000,
+     "agentType": "grok-build-plan",
+     "supportsReasoningEffort": true,
+     "reasoningEffort": "xhigh",
+     "reasoningEfforts": [
+      {
+       "id": "xhigh",
+       "value": "xhigh",
+       "label": "Extra High Effort",
+       "description": "Highest effort and reasoning level",
+       "default": false
+      },
+      {
+       "id": "high",
+       "value": "high",
+       "label": "High Effort",
+       "description": "Higher implementation quality with extensive reasoning",
+       "default": true
+      },
+      {
+       "id": "medium",
+       "value": "medium",
+       "label": "Medium Effort",
+       "description": "Balanced effort with standard implementation and testing",
+       "default": false
+      },
+      {
+       "id": "low",
+       "value": "low",
+       "label": "Low Effort",
+       "description": "Quick, fast implementations",
+       "default": false
+      }
+     ]
+    }
+   },
+   {
+    "modelId": "grok-4.5",
+    "name": "Grok 4.5",
+    "_meta": {
+     "totalContextTokens": 500000,
+     "agentType": "grok-build-plan",
+     "supportsReasoningEffort": true,
+     "reasoningEffort": "high",
+     "reasoningEfforts": [
+      {
+       "id": "high",
+       "value": "high",
+       "label": "High Effort",
+       "description": "Highest implementation quality with extensive reasoning",
+       "default": true
+      },
+      {
+       "id": "medium",
+       "value": "medium",
+       "label": "Medium Effort",
+       "description": "Balanced effort with standard implementation and testing",
+       "default": false
+      },
+      {
+       "id": "low",
+       "value": "low",
+       "label": "Low Effort",
+       "description": "Quick, fast implementations",
+       "default": false
+      }
+     ]
+    }
+   }
+  ]
+ },
+ "configOptions": [
+  {
+   "id": "model",
+   "name": "Model",
+   "category": "model",
+   "type": "select",
+   "currentValue": "grok-4.6",
+   "options": [
+    {
+     "value": "grok-4.6",
+     "name": "Grok 4.6"
+    },
+    {
+     "value": "grok-4.5",
+     "name": "Grok 4.5"
+    }
+   ]
+  },
+  {
+   "id": "reasoning_effort",
+   "name": "Reasoning Effort",
+   "category": "thought_level",
+   "type": "select",
+   "currentValue": "xhigh",
+   "options": [
+    {
+     "value": "xhigh",
+     "name": "Extra High Effort",
+     "description": "Highest effort and reasoning level"
+    },
+    {
+     "value": "high",
+     "name": "High Effort",
+     "description": "Higher implementation quality with extensive reasoning"
+    },
+    {
+     "value": "medium",
+     "name": "Medium Effort",
+     "description": "Balanced effort with standard implementation and testing"
+    },
+    {
+     "value": "low",
+     "name": "Low Effort",
+     "description": "Quick, fast implementations"
+    }
+   ]
+  }
+ ],
+ "_meta": {
+  "currentWorkingDirectory": "/var/folders/8b/bsh7h8f94kd0_grsqhk47xb40000gn/T/caffold-grok-live-review-ce80f0wb/source",
+  "codebaseIndexed": [],
+  "isGitRepo": true,
+  "gitRoot": "/private/var/folders/8b/bsh7h8f94kd0_grsqhk47xb40000gn/T/caffold-grok-live-review-ce80f0wb/source",
+  "showNonGitWarning": false,
+  "feedbackEnabled": true,
+  "x.ai/sessionConfig": {
+   "options": [
+    {
+     "id": "grok-4.6",
+     "category": "model",
+     "label": "Grok 4.6",
+     "selected": true
+    },
+    {
+     "id": "grok-4.5",
+     "category": "model",
+     "label": "Grok 4.5",
+     "selected": false
+    },
+    {
+     "id": "xhigh",
+     "category": "mode",
+     "label": "Extra High Effort",
+     "description": "Highest effort and reasoning level",
+     "selected": true
+    },
+    {
+     "id": "high",
+     "category": "mode",
+     "label": "High Effort",
+     "description": "Higher implementation quality with extensive reasoning",
+     "selected": false
+    },
+    {
+     "id": "medium",
+     "category": "mode",
+     "label": "Medium Effort",
+     "description": "Balanced effort with standard implementation and testing",
+     "selected": false
+    },
+    {
+     "id": "low",
+     "category": "mode",
+     "label": "Low Effort",
+     "description": "Quick, fast implementations",
+     "selected": false
+    }
+   ]
+  },
+  "x.ai/sessionDetail": {
+   "sessionId": "01a09482-370e-7001-a329-9a7d78be2cb8",
+   "kind": "build",
+   "cwd": "/var/folders/8b/bsh7h8f94kd0_grsqhk47xb40000gn/T/caffold-grok-live-review-ce80f0wb/source",
+   "currentModelId": "grok-4.6"
+  },
+  "x.ai/memoryMode": "legacy"
+ }
+}

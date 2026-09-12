@@ -76,6 +76,14 @@ pub(super) async fn agent_models(
         }),
     }
 
+    match state.task_runtime.grok().models().await {
+        Ok(offered) => extend(&mut models, TaskProvider::Grok, offered),
+        Err(error) => unavailable.push(UnavailableAgent {
+            provider: TaskProvider::Grok.as_str(),
+            message: error.to_string(),
+        }),
+    }
+
     if models.is_empty() {
         let message = unavailable
             .iter()
@@ -104,6 +112,7 @@ pub(super) async fn agent_permissions(
     let cwd = task_cwd(&state, query.cwd.as_deref())?;
     let driver = match query.provider.as_deref().map(str::trim) {
         Some("claude") => state.task_runtime.claude().driver(&cwd),
+        Some("grok") => state.task_runtime.grok().driver(),
         None | Some("") | Some("codex") => require_codex_thread_client(&state).await?.driver(),
         Some(_) => {
             return Err(ApiError::BadRequest {

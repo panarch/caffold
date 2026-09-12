@@ -8,6 +8,7 @@ import {
   installBrowserDefaults,
   mockClaudeStatus,
   mockCodexStatus,
+  mockGrokStatus,
 } from "./support/browser-defaults.js";
 import {
   activeTaskProjection,
@@ -538,6 +539,90 @@ test("a source that could not answer costs its block and no more", { tag: "@all-
   );
 });
 
+test("shows what the Grok installation is on its Settings page", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  await page.goto("/settings/grok");
+  const settings = page.locator("caffold-settings-grok-page");
+
+  await expect(settings).toContainText("grok 1.0.30 (04b7ffed98c6) [stable]");
+  await expect(settings).toContainText("/Users/example/.local/bin/grok");
+  await expect(settings).toContainText("user@example.com · SuperGrok");
+  await expect(settings).toContainText("Oidc");
+  await expect(settings).toContainText("Running · pid 36832");
+  await expect(settings).toContainText("/Users/example/.grok/leader-caffold.sock");
+  await expect(settings).toContainText("Connected · agent 1.0.30");
+  await expect(settings).toContainText("cached_token · Grok");
+  await captureReviewScreenshot(page, testInfo, "settings-grok");
+});
+
+test("a Grok source that could not answer costs its block and no more", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  await page.route(/\/api\/grok\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(
+        mockGrokStatus({
+          executable: undefined,
+          auth: { cachedSignIn: true },
+          problems: {
+            executable: "grok was not found on PATH, in ~/.grok/bin or in ~/.local/bin. Install the Grok CLI to use Grok.",
+            auth: "Grok did not answer in time: _x.ai/auth/check_subscription",
+          },
+        }),
+      ),
+    }),
+  );
+
+  await page.goto("/settings/grok");
+  const settings = page.locator("caffold-settings-grok-page");
+
+  await expect(settings).toContainText("Unavailable — grok was not found on PATH", {
+    timeout: 10_000,
+  });
+  await expect(settings).toContainText("Install the Grok CLI to use Grok.");
+  await expect(settings).toContainText("Unavailable — Grok did not answer in time");
+  await expect(settings).toContainText("Running · pid 36832");
+  await expect(settings).toContainText("Connected · agent 1.0.30");
+  await captureReviewScreenshot(page, testInfo, "settings-grok-unavailable");
+});
+
+test("checking the Grok report again reads the leader that appeared and names a build behind the installed one", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  let reports = 0;
+  await page.route(/\/api\/grok\/status(?:\?|$)/, (route) => {
+    reports += 1;
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(
+        reports === 1
+          ? mockGrokStatus({
+            leader: { socketPath: "/Users/example/.grok/leader-caffold.sock", running: false, socketStale: false },
+            connection: { state: "down", authMethods: [] },
+            auth: { cachedSignIn: true },
+          })
+          : mockGrokStatus({
+            leader: { socketPath: "/Users/example/.grok/leader-caffold.sock", running: true, socketStale: false, pid: 36832, version: "1.0.29", protocolVersion: 1 },
+          }),
+      ),
+    });
+  });
+
+  await page.goto("/settings/grok");
+  const settings = page.locator("caffold-settings-grok-page");
+  await expect(settings).toContainText("Not running — starts with the first Grok Task");
+  await expect(settings).toContainText("Not connected — connects with the first Grok Task");
+  await expect(settings).toContainText("Cached sign-in present — verified once Caffold is connected");
+
+  await settings.getByRole("button", { name: "Check again" }).click();
+  await expect(settings).toContainText("Running · pid 36832");
+  await expect(settings).toContainText("1.0.29 — differs from the installed 1.0.30");
+  await expect(settings).toContainText("user@example.com · SuperGrok");
+  expect(reports).toBe(2);
+});
+
 test("holds the Codex rows while its first readiness check is still running", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
@@ -776,6 +861,29 @@ test("keeps the Claude Settings item actionable when the restart fails", { tag: 
 
   await expect(settings).toContainText("went on answering");
   await expect(settings.getByRole("button", { name: "Restart runtime" })).toBeEnabled();
+});
+
+test("shows the Grok brand mark and tints it with the theme", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await page.goto("/settings/appearance");
+
+  const grokMark = page.locator(
+    'caffold-settings-navigator button[data-settings-section="grok"] img',
+  );
+
+  await expect(grokMark).toHaveAttribute("src", "/assets/brand/grok-template.png");
+  await expect
+    .poll(() => grokMark.evaluate((image) => image.naturalWidth))
+    .toBeGreaterThan(0);
+  await expect(grokMark).toHaveCSS("filter", "none");
+
+  await page
+    .locator("caffold-settings-appearance-page")
+    .getByRole("radio", { name: "Dark" })
+    .check();
+
+  await expect(grokMark).toHaveCSS("filter", "invert(1)");
 });
 
 test("shows the Claude brand mark and tints it with the theme", { tag: "@desktop" }, async ({

@@ -1,0 +1,52 @@
+[
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/sessions/changed",
+  "params": {
+   "upserted": [
+    {
+     "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+     "title": null,
+     "cwd": "/var/folders/8b/bsh7h8f94kd0_grsqhk47xb40000gn/T/caffold-grok-live-review-4zcdlvck/source",
+     "isWorktree": false,
+     "modelId": "grok-4.6",
+     "reasoningEffort": "low",
+     "yolo": false,
+     "activity": "working",
+     "resident": true,
+     "lastChangeUnixMs": 1789199870121,
+     "origin": {
+      "kind": "local"
+     }
+    }
+   ],
+   "removed": []
+  },
+  "_t_ms": 894
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/sessions/changed",
+  "params": {
+   "upserted": [
+    {
+     "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+     "title": null,
+     "cwd": "/var/folders/8b/bsh7h8f94kd0_grsqhk47xb40000gn/T/caffold-grok-live-review-4zcdlvck/source",
+     "isWorktree": false,
+     "modelId": "grok-4.6",
+     "reasoningEffort": "low",
+     "yolo": false,
+     "activity": "idle",
+     "resident": true,
+     "lastChangeUnixMs": 1789199874210,
+     "origin": {
+      "kind": "local"
+     }
+    }
+   ],
+   "removed": []
+  },
+  "_t_ms": 4982
+ }
+]

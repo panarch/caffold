@@ -1,0 +1,1498 @@
+{
+ "updates": [
+  {
+   "timestamp": 1789199870,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "user_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "Authorized isolated integration probe in a throwaway git repository. Use your shell tool to run exactly `cat probe-marker.txt` in the working directory and reply with its output only."
+     },
+     "_meta": {
+      "modelId": "grok-4.6",
+      "promptIndex": 0
+     }
+    },
+    "_meta": {
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-2",
+     "agentTimestampMs": 1789199870142
+    }
+   }
+  },
+  {
+   "timestamp": 1789199871,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "agent_thought_chunk",
+     "content": {
+      "type": "text",
+      "text": "The user wants me to run `cat probe-marker.txt` in the working directory and reply with its output only."
+     }
+    },
+    "_meta": {
+     "totalTokens": 1597,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-27",
+     "agentTimestampMs": 1789199871860,
+     "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+     "streamStartMs": 1789199871032,
+     "turnStartMs": 1789199870322,
+     "updateType": "AgentThoughtChunk",
+     "chunkId": 24
+    }
+   }
+  },
+  {
+   "timestamp": 1789199872,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "I'll run the exact command in the working directory and return only its output."
+     }
+    },
+    "_meta": {
+     "totalTokens": 1597,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-42",
+     "agentTimestampMs": 1789199872101,
+     "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+     "streamStartMs": 1789199871032,
+     "turnStartMs": 1789199870322,
+     "updateType": "AgentMessageChunk",
+     "chunkId": 39
+    }
+   }
+  },
+  {
+   "timestamp": 1789199872,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "tool_call",
+     "toolCallId": "call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0",
+     "title": "run_terminal_command",
+     "rawInput": {
+      "command": "cat probe-marker.txt",
+      "description": "Print probe-marker.txt contents"
+     },
+     "_meta": {
+      "x.ai/tool": {
+       "version": 1,
+       "name": "run_terminal_command",
+       "kind": "execute",
+       "namespace": "grok_build",
+       "label": "Run Command",
+       "read_only": false
+      }
+     }
+    },
+    "_meta": {
+     "totalTokens": 16778,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-44",
+     "agentTimestampMs": 1789199872549,
+     "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+     "streamStartMs": 1789199871032,
+     "turnStartMs": 1789199870322,
+     "updateType": "ToolCall",
+     "updateParams": {
+      "toolCallId": "call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0",
+      "title": "run_terminal_command",
+      "kind": "Other",
+      "status": "Pending"
+     }
+    }
+   }
+  },
+  {
+   "timestamp": 1789199872,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "tool_call_update",
+     "toolCallId": "call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0",
+     "kind": "execute",
+     "title": "Execute `cat probe-marker.txt`",
+     "content": [
+      {
+       "type": "content",
+       "content": {
+        "type": "text",
+        "text": "Print probe-marker.txt contents"
+       }
+      }
+     ],
+     "locations": [],
+     "rawInput": {
+      "variant": "Bash",
+      "command": "cat probe-marker.txt",
+      "description": "Print probe-marker.txt contents",
+      "is_background": false
+     },
+     "_meta": {
+      "x.ai/tool": {
+       "version": 1,
+       "name": "run_terminal_command",
+       "kind": "execute",
+       "namespace": "grok_build",
+       "label": "Run Command",
+       "read_only": false,
+       "input": {
+        "command": "cat probe-marker.txt",
+        "description": "Print probe-marker.txt contents"
+       }
+      }
+     }
+    },
+    "_meta": {
+     "totalTokens": 16778,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-45",
+     "agentTimestampMs": 1789199872549,
+     "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+     "streamStartMs": 1789199871032,
+     "turnStartMs": 1789199870322,
+     "updateType": "ToolCallUpdate",
+     "updateParams": {
+      "toolCallId": "call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0",
+      "status": null
+     }
+    }
+   }
+  },
+  {
+   "timestamp": 1789199873,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "tool_call_update",
+     "toolCallId": "call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0",
+     "status": "completed",
+     "content": [
+      {
+       "type": "content",
+       "content": {
+        "type": "text",
+        "text": "SOURCE_CHECKOUT\n"
+       }
+      }
+     ],
+     "rawOutput": {
+      "type": "Bash",
+      "output": [
+       83,
+       79,
+       85,
+       82,
+       67,
+       69,
+       95,
+       67,
+       72,
+       69,
+       67,
+       75,
+       79,
+       85,
+       84,
+       10
+      ],
+      "output_for_prompt": "exit: 0\nSOURCE_CHECKOUT\n",
+      "exit_code": 0,
+      "command": "cat probe-marker.txt",
+      "truncated": false,
+      "signal": null,
+      "timed_out": false,
+      "description": "Print probe-marker.txt contents",
+      "current_dir": "/var/folders/8b/bsh7h8f94kd0_grsqhk47xb40000gn/T/caffold-grok-live-review-4zcdlvck/source",
+      "output_file": "/Users/example/.grok/sessions/%2Fvar%2Ffolders%2F8b%2Fbsh7h8f94kd0_grsqhk47xb40000gn%2FT%2Fcaffold-grok-live-review-4zcdlvck%2Fsource/01a0949f-67eb-7be3-998e-641093a2fe38/terminal/call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0.log",
+      "total_bytes": 16
+     }
+    },
+    "_meta": {
+     "totalTokens": 16778,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-46",
+     "agentTimestampMs": 1789199872611,
+     "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+     "streamStartMs": 1789199871032,
+     "turnStartMs": 1789199870322,
+     "updateType": "ToolCallUpdate",
+     "updateParams": {
+      "toolCallId": "call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0",
+      "status": "Completed"
+     }
+    }
+   }
+  },
+  {
+   "timestamp": 1789199874,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "agent_thought_chunk",
+     "content": {
+      "type": "text",
+      "text": "The user asked me to reply with its output only. So I should just say SOURCE_CHECKOUT."
+     }
+    },
+    "_meta": {
+     "totalTokens": 16784,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-69",
+     "agentTimestampMs": 1789199874029,
+     "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+     "streamStartMs": 1789199873080,
+     "turnStartMs": 1789199870322,
+     "updateType": "AgentThoughtChunk",
+     "chunkId": 21
+    }
+   }
+  },
+  {
+   "timestamp": 1789199874,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "SOURCE_CHECKOUT"
+     }
+    },
+    "_meta": {
+     "totalTokens": 16784,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-73",
+     "agentTimestampMs": 1789199874076,
+     "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+     "streamStartMs": 1789199873080,
+     "turnStartMs": 1789199870322,
+     "updateType": "AgentMessageChunk",
+     "chunkId": 25
+    }
+   }
+  },
+  {
+   "timestamp": 1789199874,
+   "method": "_x.ai/session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "turn_completed",
+     "prompt_id": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 33500,
+      "outputTokens": 103,
+      "totalTokens": 33603,
+      "cachedReadTokens": 27264,
+      "cacheCreationTokens": 0,
+      "reasoningTokens": 51,
+      "modelCalls": 2,
+      "apiDurationMs": 3732,
+      "costUsdTicks": 90854800,
+      "modelUsage": {
+       "grok-4.6-build": {
+        "inputTokens": 33500,
+        "outputTokens": 103,
+        "totalTokens": 33603,
+        "cachedReadTokens": 27264,
+        "cacheCreationTokens": 0,
+        "reasoningTokens": 51,
+        "modelCalls": 2,
+        "apiDurationMs": 3732,
+        "costUsdTicks": 90854800
+       }
+      },
+      "numTurns": 2
+     },
+     "elapsed_ms": 4079
+    },
+    "_meta": {
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-77",
+     "agentTimestampMs": 1789199874210
+    }
+   }
+  },
+  {
+   "timestamp": 1789199874,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "user_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "Authorized isolated integration probe in a throwaway git repository. Use your shell tool to run exactly `cat probe-marker.txt` again and reply with its output only. If the tool is refused, reply with exactly: REFUSED"
+     },
+     "_meta": {
+      "modelId": "grok-4.6",
+      "promptIndex": 1
+     }
+    },
+    "_meta": {
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-78",
+     "agentTimestampMs": 1789199874224
+    }
+   }
+  },
+  {
+   "timestamp": 1789199875,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "agent_thought_chunk",
+     "content": {
+      "type": "text",
+      "text": "The user wants me to run cat probe-marker.txt again and reply with only the output."
+     }
+    },
+    "_meta": {
+     "totalTokens": 16885,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-98",
+     "agentTimestampMs": 1789199875426,
+     "promptId": "3d0c3381-2e1a-48c9-8d80-16ebcba4293d",
+     "streamStartMs": 1789199874902,
+     "turnStartMs": 1789199874281,
+     "updateType": "AgentThoughtChunk",
+     "chunkId": 19
+    }
+   }
+  },
+  {
+   "timestamp": 1789199875,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "tool_call",
+     "toolCallId": "call-32d2042a-f690-4395-8ece-26adacad8609-1",
+     "title": "run_terminal_command",
+     "rawInput": {
+      "command": "cat probe-marker.txt",
+      "description": "Print probe-marker.txt contents"
+     },
+     "_meta": {
+      "x.ai/tool": {
+       "version": 1,
+       "name": "run_terminal_command",
+       "kind": "execute",
+       "namespace": "grok_build",
+       "label": "Run Command",
+       "read_only": false
+      }
+     }
+    },
+    "_meta": {
+     "totalTokens": 16933,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-100",
+     "agentTimestampMs": 1789199875722,
+     "promptId": "3d0c3381-2e1a-48c9-8d80-16ebcba4293d",
+     "streamStartMs": 1789199874902,
+     "turnStartMs": 1789199874281,
+     "updateType": "ToolCall",
+     "updateParams": {
+      "toolCallId": "call-32d2042a-f690-4395-8ece-26adacad8609-1",
+      "title": "run_terminal_command",
+      "kind": "Other",
+      "status": "Pending"
+     }
+    }
+   }
+  },
+  {
+   "timestamp": 1789199875,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "tool_call_update",
+     "toolCallId": "call-32d2042a-f690-4395-8ece-26adacad8609-1",
+     "kind": "execute",
+     "title": "Execute `cat probe-marker.txt`",
+     "content": [
+      {
+       "type": "content",
+       "content": {
+        "type": "text",
+        "text": "Print probe-marker.txt contents"
+       }
+      }
+     ],
+     "locations": [],
+     "rawInput": {
+      "variant": "Bash",
+      "command": "cat probe-marker.txt",
+      "description": "Print probe-marker.txt contents",
+      "is_background": false
+     },
+     "_meta": {
+      "x.ai/tool": {
+       "version": 1,
+       "name": "run_terminal_command",
+       "kind": "execute",
+       "namespace": "grok_build",
+       "label": "Run Command",
+       "read_only": false,
+       "input": {
+        "command": "cat probe-marker.txt",
+        "description": "Print probe-marker.txt contents"
+       }
+      }
+     }
+    },
+    "_meta": {
+     "totalTokens": 16933,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-101",
+     "agentTimestampMs": 1789199875722,
+     "promptId": "3d0c3381-2e1a-48c9-8d80-16ebcba4293d",
+     "streamStartMs": 1789199874902,
+     "turnStartMs": 1789199874281,
+     "updateType": "ToolCallUpdate",
+     "updateParams": {
+      "toolCallId": "call-32d2042a-f690-4395-8ece-26adacad8609-1",
+      "status": null
+     }
+    }
+   }
+  },
+  {
+   "timestamp": 1789199879,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "tool_call_update",
+     "toolCallId": "call-32d2042a-f690-4395-8ece-26adacad8609-1",
+     "status": "completed",
+     "content": [
+      {
+       "type": "content",
+       "content": {
+        "type": "text",
+        "text": "SOURCE_CHECKOUT\n"
+       }
+      }
+     ],
+     "rawOutput": {
+      "type": "Bash",
+      "output": [
+       83,
+       79,
+       85,
+       82,
+       67,
+       69,
+       95,
+       67,
+       72,
+       69,
+       67,
+       75,
+       79,
+       85,
+       84,
+       10
+      ],
+      "output_for_prompt": "exit: 0\nSOURCE_CHECKOUT\n",
+      "exit_code": 0,
+      "command": "cat probe-marker.txt",
+      "truncated": false,
+      "signal": null,
+      "timed_out": false,
+      "description": "Print probe-marker.txt contents",
+      "current_dir": "/var/folders/8b/bsh7h8f94kd0_grsqhk47xb40000gn/T/caffold-grok-live-review-4zcdlvck/source",
+      "output_file": "/Users/example/.grok/sessions/%2Fvar%2Ffolders%2F8b%2Fbsh7h8f94kd0_grsqhk47xb40000gn%2FT%2Fcaffold-grok-live-review-4zcdlvck%2Fsource/01a0949f-67eb-7be3-998e-641093a2fe38/terminal/call-32d2042a-f690-4395-8ece-26adacad8609-1.log",
+      "total_bytes": 16
+     }
+    },
+    "_meta": {
+     "totalTokens": 16933,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-102",
+     "agentTimestampMs": 1789199875766,
+     "promptId": "3d0c3381-2e1a-48c9-8d80-16ebcba4293d",
+     "streamStartMs": 1789199874902,
+     "turnStartMs": 1789199874281,
+     "updateType": "ToolCallUpdate",
+     "updateParams": {
+      "toolCallId": "call-32d2042a-f690-4395-8ece-26adacad8609-1",
+      "status": "Completed"
+     }
+    }
+   }
+  },
+  {
+   "timestamp": 1789199879,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "agent_thought_chunk",
+     "content": {
+      "type": "text",
+      "text": "Reply with output only."
+     }
+    },
+    "_meta": {
+     "totalTokens": 16939,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-109",
+     "agentTimestampMs": 1789199879947,
+     "promptId": "3d0c3381-2e1a-48c9-8d80-16ebcba4293d",
+     "streamStartMs": 1789199876458,
+     "turnStartMs": 1789199874281,
+     "updateType": "AgentThoughtChunk",
+     "chunkId": 5
+    }
+   }
+  },
+  {
+   "timestamp": 1789199880,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "SOURCE_CHECKOUT"
+     }
+    },
+    "_meta": {
+     "totalTokens": 16939,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-113",
+     "agentTimestampMs": 1789199879947,
+     "promptId": "3d0c3381-2e1a-48c9-8d80-16ebcba4293d",
+     "streamStartMs": 1789199876458,
+     "turnStartMs": 1789199874281,
+     "updateType": "AgentMessageChunk",
+     "chunkId": 9
+    }
+   }
+  },
+  {
+   "timestamp": 1789199880,
+   "method": "_x.ai/session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "turn_completed",
+     "prompt_id": "3d0c3381-2e1a-48c9-8d80-16ebcba4293d",
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 33833,
+      "outputTokens": 64,
+      "totalTokens": 33897,
+      "cachedReadTokens": 33536,
+      "cacheCreationTokens": 0,
+      "reasoningTokens": 53,
+      "modelCalls": 2,
+      "apiDurationMs": 5954,
+      "costUsdTicks": 60336400,
+      "modelUsage": {
+       "grok-4.6-build": {
+        "inputTokens": 33833,
+        "outputTokens": 64,
+        "totalTokens": 33897,
+        "cachedReadTokens": 33536,
+        "cacheCreationTokens": 0,
+        "reasoningTokens": 53,
+        "modelCalls": 2,
+        "apiDurationMs": 5954,
+        "costUsdTicks": 60336400
+       }
+      },
+      "numTurns": 2
+     },
+     "elapsed_ms": 6120
+    },
+    "_meta": {
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-117",
+     "agentTimestampMs": 1789199880340
+    }
+   }
+  },
+  {
+   "timestamp": 1789199880,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "user_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "Authorized isolated integration probe in a throwaway git repository. Use your shell tool to run exactly `echo cancel-test` and reply with its output only. If the tool is refused or cancelled, reply with exactly: CANCELLED"
+     },
+     "_meta": {
+      "modelId": "grok-4.6",
+      "promptIndex": 2
+     }
+    },
+    "_meta": {
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-118",
+     "agentTimestampMs": 1789199880346
+    }
+   }
+  },
+  {
+   "timestamp": 1789199882,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "agent_thought_chunk",
+     "content": {
+      "type": "text",
+      "text": "The user wants me to run exactly `echo cancel-test` and reply with its output only. If refused or cancelled, reply CANCELLED."
+     }
+    },
+    "_meta": {
+     "totalTokens": 17026,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-148",
+     "agentTimestampMs": 1789199881757,
+     "promptId": "10cd95a4-6750-4061-9deb-1758690c379f",
+     "streamStartMs": 1789199881113,
+     "turnStartMs": 1789199880402,
+     "updateType": "AgentThoughtChunk",
+     "chunkId": 29
+    }
+   }
+  },
+  {
+   "timestamp": 1789199882,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "tool_call",
+     "toolCallId": "call-0bd20f70-52d8-4f3c-8b9f-9740ed13a73a-2",
+     "title": "run_terminal_command",
+     "rawInput": {
+      "command": "echo cancel-test",
+      "description": "Echo cancel-test marker"
+     },
+     "_meta": {
+      "x.ai/tool": {
+       "version": 1,
+       "name": "run_terminal_command",
+       "kind": "execute",
+       "namespace": "grok_build",
+       "label": "Run Command",
+       "read_only": false
+      }
+     }
+    },
+    "_meta": {
+     "totalTokens": 17080,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-150",
+     "agentTimestampMs": 1789199882165,
+     "promptId": "10cd95a4-6750-4061-9deb-1758690c379f",
+     "streamStartMs": 1789199881113,
+     "turnStartMs": 1789199880402,
+     "updateType": "ToolCall",
+     "updateParams": {
+      "toolCallId": "call-0bd20f70-52d8-4f3c-8b9f-9740ed13a73a-2",
+      "title": "run_terminal_command",
+      "kind": "Other",
+      "status": "Pending"
+     }
+    }
+   }
+  },
+  {
+   "timestamp": 1789199882,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "tool_call_update",
+     "toolCallId": "call-0bd20f70-52d8-4f3c-8b9f-9740ed13a73a-2",
+     "kind": "execute",
+     "title": "Execute `echo cancel-test`",
+     "content": [
+      {
+       "type": "content",
+       "content": {
+        "type": "text",
+        "text": "Echo cancel-test marker"
+       }
+      }
+     ],
+     "locations": [],
+     "rawInput": {
+      "variant": "Bash",
+      "command": "echo cancel-test",
+      "description": "Echo cancel-test marker",
+      "is_background": false
+     },
+     "_meta": {
+      "x.ai/tool": {
+       "version": 1,
+       "name": "run_terminal_command",
+       "kind": "execute",
+       "namespace": "grok_build",
+       "label": "Run Command",
+       "read_only": false,
+       "input": {
+        "command": "echo cancel-test",
+        "description": "Echo cancel-test marker"
+       }
+      }
+     }
+    },
+    "_meta": {
+     "totalTokens": 17080,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-151",
+     "agentTimestampMs": 1789199882165,
+     "promptId": "10cd95a4-6750-4061-9deb-1758690c379f",
+     "streamStartMs": 1789199881113,
+     "turnStartMs": 1789199880402,
+     "updateType": "ToolCallUpdate",
+     "updateParams": {
+      "toolCallId": "call-0bd20f70-52d8-4f3c-8b9f-9740ed13a73a-2",
+      "status": null
+     }
+    }
+   }
+  },
+  {
+   "timestamp": 1789199883,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "tool_call_update",
+     "toolCallId": "call-0bd20f70-52d8-4f3c-8b9f-9740ed13a73a-2",
+     "status": "completed",
+     "content": [
+      {
+       "type": "content",
+       "content": {
+        "type": "text",
+        "text": "cancel-test\n"
+       }
+      }
+     ],
+     "rawOutput": {
+      "type": "Bash",
+      "output": [
+       99,
+       97,
+       110,
+       99,
+       101,
+       108,
+       45,
+       116,
+       101,
+       115,
+       116,
+       10
+      ],
+      "output_for_prompt": "exit: 0\ncancel-test\n",
+      "exit_code": 0,
+      "command": "echo cancel-test",
+      "truncated": false,
+      "signal": null,
+      "timed_out": false,
+      "description": "Echo cancel-test marker",
+      "current_dir": "/var/folders/8b/bsh7h8f94kd0_grsqhk47xb40000gn/T/caffold-grok-live-review-4zcdlvck/source",
+      "output_file": "/Users/example/.grok/sessions/%2Fvar%2Ffolders%2F8b%2Fbsh7h8f94kd0_grsqhk47xb40000gn%2FT%2Fcaffold-grok-live-review-4zcdlvck%2Fsource/01a0949f-67eb-7be3-998e-641093a2fe38/terminal/call-0bd20f70-52d8-4f3c-8b9f-9740ed13a73a-2.log",
+      "total_bytes": 12,
+      "was_bare_echo": true
+     }
+    },
+    "_meta": {
+     "totalTokens": 17080,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-152",
+     "agentTimestampMs": 1789199882204,
+     "promptId": "10cd95a4-6750-4061-9deb-1758690c379f",
+     "streamStartMs": 1789199881113,
+     "turnStartMs": 1789199880402,
+     "updateType": "ToolCallUpdate",
+     "updateParams": {
+      "toolCallId": "call-0bd20f70-52d8-4f3c-8b9f-9740ed13a73a-2",
+      "status": "Completed"
+     }
+    }
+   }
+  },
+  {
+   "timestamp": 1789199883,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "agent_thought_chunk",
+     "content": {
+      "type": "text",
+      "text": "Output only."
+     }
+    },
+    "_meta": {
+     "totalTokens": 17085,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-157",
+     "agentTimestampMs": 1789199883093,
+     "promptId": "10cd95a4-6750-4061-9deb-1758690c379f",
+     "streamStartMs": 1789199882986,
+     "turnStartMs": 1789199880402,
+     "updateType": "AgentThoughtChunk",
+     "chunkId": 3
+    }
+   }
+  },
+  {
+   "timestamp": 1789199883,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "cancel-test"
+     }
+    },
+    "_meta": {
+     "totalTokens": 17085,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-160",
+     "agentTimestampMs": 1789199883209,
+     "promptId": "10cd95a4-6750-4061-9deb-1758690c379f",
+     "streamStartMs": 1789199882986,
+     "turnStartMs": 1789199880402,
+     "updateType": "AgentMessageChunk",
+     "chunkId": 6
+    }
+   }
+  },
+  {
+   "timestamp": 1789199883,
+   "method": "_x.ai/session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "turn_completed",
+     "prompt_id": "10cd95a4-6750-4061-9deb-1758690c379f",
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 34118,
+      "outputTokens": 69,
+      "totalTokens": 34187,
+      "cachedReadTokens": 33920,
+      "cacheCreationTokens": 0,
+      "reasoningTokens": 59,
+      "modelCalls": 2,
+      "apiDurationMs": 2774,
+      "costUsdTicks": 60418000,
+      "modelUsage": {
+       "grok-4.6-build": {
+        "inputTokens": 34118,
+        "outputTokens": 69,
+        "totalTokens": 34187,
+        "cachedReadTokens": 33920,
+        "cacheCreationTokens": 0,
+        "reasoningTokens": 59,
+        "modelCalls": 2,
+        "apiDurationMs": 2774,
+        "costUsdTicks": 60418000
+       }
+      },
+      "numTurns": 2
+     },
+     "elapsed_ms": 2913
+    },
+    "_meta": {
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-164",
+     "agentTimestampMs": 1789199883255
+    }
+   }
+  },
+  {
+   "timestamp": 1789199883,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "user_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "Authorized isolated integration probe in a throwaway git repository. Use your shell tool to run exactly `sleep 30; echo slept` and reply with its output only."
+     },
+     "_meta": {
+      "modelId": "grok-4.6",
+      "promptIndex": 3
+     }
+    },
+    "_meta": {
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-165",
+     "agentTimestampMs": 1789199883268
+    }
+   }
+  },
+  {
+   "timestamp": 1789199885,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "agent_thought_chunk",
+     "content": {
+      "type": "text",
+      "text": "The user wants me to run exactly `sleep 30; echo slept` and reply with its output only. I should use a timeout that's long enough for the sleep to complete. The default wait is about 15s then it backg..."
+     }
+    },
+    "_meta": {
+     "totalTokens": 17153,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-213",
+     "agentTimestampMs": 1789199884918,
+     "promptId": "0fdd3a2e-c0ce-48c0-bf42-3c2c4eda4d09",
+     "streamStartMs": 1789199883995,
+     "turnStartMs": 1789199883317,
+     "updateType": "AgentThoughtChunk",
+     "chunkId": 47
+    }
+   }
+  },
+  {
+   "timestamp": 1789199885,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "tool_call",
+     "toolCallId": "call-20980b8a-03bb-48df-87f2-9785d66d49cc-3",
+     "title": "run_terminal_command",
+     "rawInput": {
+      "command": "sleep 30; echo slept",
+      "description": "Sleep 30 seconds then echo slept",
+      "timeout": 60000
+     },
+     "_meta": {
+      "x.ai/tool": {
+       "version": 1,
+       "name": "run_terminal_command",
+       "kind": "execute",
+       "namespace": "grok_build",
+       "label": "Run Command",
+       "read_only": false
+      }
+     }
+    },
+    "_meta": {
+     "totalTokens": 17263,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-215",
+     "agentTimestampMs": 1789199885927,
+     "promptId": "0fdd3a2e-c0ce-48c0-bf42-3c2c4eda4d09",
+     "streamStartMs": 1789199883995,
+     "turnStartMs": 1789199883317,
+     "updateType": "ToolCall",
+     "updateParams": {
+      "toolCallId": "call-20980b8a-03bb-48df-87f2-9785d66d49cc-3",
+      "title": "run_terminal_command",
+      "kind": "Other",
+      "status": "Pending"
+     }
+    }
+   }
+  },
+  {
+   "timestamp": 1789199887,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "tool_call_update",
+     "toolCallId": "call-20980b8a-03bb-48df-87f2-9785d66d49cc-3",
+     "kind": "execute",
+     "title": "Execute `sleep 30; echo slept`",
+     "content": [
+      {
+       "type": "content",
+       "content": {
+        "type": "text",
+        "text": "Sleep 30 seconds then echo slept"
+       }
+      }
+     ],
+     "locations": [],
+     "rawInput": {
+      "variant": "Bash",
+      "command": "sleep 30; echo slept",
+      "timeout": 60000,
+      "description": "Sleep 30 seconds then echo slept",
+      "is_background": false
+     },
+     "_meta": {
+      "x.ai/tool": {
+       "version": 1,
+       "name": "run_terminal_command",
+       "kind": "execute",
+       "namespace": "grok_build",
+       "label": "Run Command",
+       "read_only": false,
+       "input": {
+        "command": "sleep 30; echo slept",
+        "description": "Sleep 30 seconds then echo slept"
+       }
+      }
+     }
+    },
+    "_meta": {
+     "totalTokens": 17263,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-216",
+     "agentTimestampMs": 1789199885927,
+     "promptId": "0fdd3a2e-c0ce-48c0-bf42-3c2c4eda4d09",
+     "streamStartMs": 1789199883995,
+     "turnStartMs": 1789199883317,
+     "updateType": "ToolCallUpdate",
+     "updateParams": {
+      "toolCallId": "call-20980b8a-03bb-48df-87f2-9785d66d49cc-3",
+      "status": null
+     }
+    }
+   }
+  },
+  {
+   "timestamp": 1789199887,
+   "method": "_x.ai/session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "turn_completed",
+     "prompt_id": "0fdd3a2e-c0ce-48c0-bf42-3c2c4eda4d09",
+     "stop_reason": "cancelled",
+     "usage": {
+      "inputTokens": 17154,
+      "outputTokens": 109,
+      "totalTokens": 17263,
+      "cachedReadTokens": 17024,
+      "cacheCreationTokens": 0,
+      "reasoningTokens": 106,
+      "modelCalls": 1,
+      "apiDurationMs": 2609,
+      "costUsdTicks": 32048400,
+      "modelUsage": {
+       "grok-4.6-build": {
+        "inputTokens": 17154,
+        "outputTokens": 109,
+        "totalTokens": 17263,
+        "cachedReadTokens": 17024,
+        "cacheCreationTokens": 0,
+        "reasoningTokens": 106,
+        "modelCalls": 1,
+        "apiDurationMs": 2609,
+        "costUsdTicks": 32048400
+       }
+      },
+      "numTurns": 1
+     },
+     "elapsed_ms": 4671
+    },
+    "_meta": {
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-217",
+     "agentTimestampMs": 1789199887937,
+     "cancellationCategory": "MidTurnAbort"
+    }
+   }
+  },
+  {
+   "timestamp": 1789199889,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "user_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "Authorized isolated integration probe in a throwaway git repository. Use your shell tool to run exactly `for i in 1 2 3 4 5 6 7 8 9 10; do echo tick $i; sleep 1; done`. After it finishes, reply with the exact text of any message I sent you while it was running, or NO_INTERJECTION if you received none."
+     },
+     "_meta": {
+      "modelId": "grok-4.6",
+      "promptIndex": 4
+     }
+    },
+    "_meta": {
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-218",
+     "agentTimestampMs": 1789199889954
+    }
+   }
+  },
+  {
+   "timestamp": 1789199892,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "agent_thought_chunk",
+     "content": {
+      "type": "text",
+      "text": "The user wants me to run a specific shell command, then after it finishes, reply with the exact text of any message they sent while it was running, or NO_INTERJECTION if none.\n"
+     }
+    },
+    "_meta": {
+     "totalTokens": 17345,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-258",
+     "agentTimestampMs": 1789199891338,
+     "promptId": "f341ec46-dc9f-4882-9835-46d24475e9ba",
+     "streamStartMs": 1789199890643,
+     "turnStartMs": 1789199890012,
+     "updateType": "AgentThoughtChunk",
+     "chunkId": 39
+    }
+   }
+  },
+  {
+   "timestamp": 1789199892,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "tool_call",
+     "toolCallId": "call-c68633df-f12a-43c3-95e1-500ee2ffa8e5-4",
+     "title": "run_terminal_command",
+     "rawInput": {
+      "command": "for i in 1 2 3 4 5 6 7 8 9 10; do echo tick $i; sleep 1; done",
+      "description": "Echo ticks 1-10 with 1s sleeps",
+      "timeout": 30000
+     },
+     "_meta": {
+      "x.ai/tool": {
+       "version": 1,
+       "name": "run_terminal_command",
+       "kind": "execute",
+       "namespace": "grok_build",
+       "label": "Run Command",
+       "read_only": false
+      }
+     }
+    },
+    "_meta": {
+     "totalTokens": 17528,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-260",
+     "agentTimestampMs": 1789199892737,
+     "promptId": "f341ec46-dc9f-4882-9835-46d24475e9ba",
+     "streamStartMs": 1789199890643,
+     "turnStartMs": 1789199890012,
+     "updateType": "ToolCall",
+     "updateParams": {
+      "toolCallId": "call-c68633df-f12a-43c3-95e1-500ee2ffa8e5-4",
+      "title": "run_terminal_command",
+      "kind": "Other",
+      "status": "Pending"
+     }
+    }
+   }
+  },
+  {
+   "timestamp": 1789199905,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "tool_call_update",
+     "toolCallId": "call-c68633df-f12a-43c3-95e1-500ee2ffa8e5-4",
+     "kind": "execute",
+     "title": "Execute `for i in 1 2 3 4 5 6 7 8 9 10; do echo tick $i; sleep 1; done`",
+     "content": [
+      {
+       "type": "content",
+       "content": {
+        "type": "text",
+        "text": "Echo ticks 1-10 with 1s sleeps"
+       }
+      }
+     ],
+     "locations": [],
+     "rawInput": {
+      "variant": "Bash",
+      "command": "for i in 1 2 3 4 5 6 7 8 9 10; do echo tick $i; sleep 1; done",
+      "timeout": 30000,
+      "description": "Echo ticks 1-10 with 1s sleeps",
+      "is_background": false
+     },
+     "_meta": {
+      "x.ai/tool": {
+       "version": 1,
+       "name": "run_terminal_command",
+       "kind": "execute",
+       "namespace": "grok_build",
+       "label": "Run Command",
+       "read_only": false,
+       "input": {
+        "command": "for i in 1 2 3 4 5 6 7 8 9 10; do echo tick $i; sleep 1; done",
+        "description": "Echo ticks 1-10 with 1s sleeps"
+       }
+      }
+     }
+    },
+    "_meta": {
+     "totalTokens": 17528,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-261",
+     "agentTimestampMs": 1789199892737,
+     "promptId": "f341ec46-dc9f-4882-9835-46d24475e9ba",
+     "streamStartMs": 1789199890643,
+     "turnStartMs": 1789199890012,
+     "updateType": "ToolCallUpdate",
+     "updateParams": {
+      "toolCallId": "call-c68633df-f12a-43c3-95e1-500ee2ffa8e5-4",
+      "status": null
+     }
+    }
+   }
+  },
+  {
+   "timestamp": 1789199905,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "tool_call_update",
+     "toolCallId": "call-c68633df-f12a-43c3-95e1-500ee2ffa8e5-4",
+     "status": "completed",
+     "content": [
+      {
+       "type": "content",
+       "content": {
+        "type": "text",
+        "text": "tick 1\ntick 2\ntick 3\ntick 4\ntick 5\ntick 6\ntick 7\ntick 8\ntick 9\ntick 10\n"
+       }
+      }
+     ],
+     "rawOutput": {
+      "type": "Bash",
+      "output": [
+       116,
+       105,
+       99,
+       107,
+       32,
+       49,
+       10,
+       116,
+       105,
+       99,
+       107,
+       32,
+       50,
+       10,
+       116,
+       105,
+       99,
+       107,
+       32,
+       51,
+       10,
+       116,
+       105,
+       99,
+       107,
+       32,
+       52,
+       10,
+       116,
+       105,
+       99,
+       107,
+       32,
+       53,
+       10,
+       116,
+       105,
+       99,
+       107,
+       32,
+       54,
+       10,
+       116,
+       105,
+       99,
+       107,
+       32,
+       55,
+       10,
+       116,
+       105,
+       99,
+       107,
+       32,
+       56,
+       10,
+       116,
+       105,
+       99,
+       107,
+       32,
+       57,
+       10,
+       116,
+       105,
+       99,
+       107,
+       32,
+       49,
+       48,
+       10
+      ],
+      "output_for_prompt": "exit: 0\ntick 1\ntick 2\ntick 3\ntick 4\ntick 5\ntick 6\ntick 7\ntick 8\ntick 9\ntick 10\n",
+      "exit_code": 0,
+      "command": "for i in 1 2 3 4 5 6 7 8 9 10; do echo tick $i; sleep 1; done",
+      "truncated": false,
+      "signal": null,
+      "timed_out": false,
+      "description": "Echo ticks 1-10 with 1s sleeps",
+      "current_dir": "/var/folders/8b/bsh7h8f94kd0_grsqhk47xb40000gn/T/caffold-grok-live-review-4zcdlvck/source",
+      "output_file": "/Users/example/.grok/sessions/%2Fvar%2Ffolders%2F8b%2Fbsh7h8f94kd0_grsqhk47xb40000gn%2FT%2Fcaffold-grok-live-review-4zcdlvck%2Fsource/01a0949f-67eb-7be3-998e-641093a2fe38/terminal/call-c68633df-f12a-43c3-95e1-500ee2ffa8e5-4.log",
+      "total_bytes": 71
+     }
+    },
+    "_meta": {
+     "totalTokens": 17528,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-262",
+     "agentTimestampMs": 1789199905878,
+     "promptId": "f341ec46-dc9f-4882-9835-46d24475e9ba",
+     "streamStartMs": 1789199890643,
+     "turnStartMs": 1789199890012,
+     "updateType": "ToolCallUpdate",
+     "updateParams": {
+      "toolCallId": "call-c68633df-f12a-43c3-95e1-500ee2ffa8e5-4",
+      "status": "Completed"
+     }
+    }
+   }
+  },
+  {
+   "timestamp": 1789199906,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "user_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "The user sent a message while you were working:\n<user_query>\nINTERJECT_2a50074c\n</user_query>\nMake sure to complete any unfinished tasks from previous turns.",
+      "_meta": {
+       "displayText": "INTERJECT_2a50074c"
+      }
+     },
+     "_meta": {
+      "modelId": "grok-4.6",
+      "interjection": true
+     }
+    },
+    "_meta": {
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-263",
+     "agentTimestampMs": 1789199905878
+    }
+   }
+  },
+  {
+   "timestamp": 1789199907,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "agent_thought_chunk",
+     "content": {
+      "type": "text",
+      "text": "The user wants me to reply with the exact text of the message they sent while the command was running. That was INTERJECT_2a50074c."
+     }
+    },
+    "_meta": {
+     "totalTokens": 17586,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-297",
+     "agentTimestampMs": 1789199907063,
+     "promptId": "f341ec46-dc9f-4882-9835-46d24475e9ba",
+     "streamStartMs": 1789199906502,
+     "turnStartMs": 1789199890012,
+     "updateType": "AgentThoughtChunk",
+     "chunkId": 32
+    }
+   }
+  },
+  {
+   "timestamp": 1789199907,
+   "method": "session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "agent_message_chunk",
+     "content": {
+      "type": "text",
+      "text": "INTERJECT_2a50074c"
+     }
+    },
+    "_meta": {
+     "totalTokens": 17586,
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-305",
+     "agentTimestampMs": 1789199907187,
+     "promptId": "f341ec46-dc9f-4882-9835-46d24475e9ba",
+     "streamStartMs": 1789199906502,
+     "turnStartMs": 1789199890012,
+     "updateType": "AgentMessageChunk",
+     "chunkId": 40
+    }
+   }
+  },
+  {
+   "timestamp": 1789199907,
+   "method": "_x.ai/session/update",
+   "params": {
+    "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+    "update": {
+     "sessionUpdate": "turn_completed",
+     "prompt_id": "f341ec46-dc9f-4882-9835-46d24475e9ba",
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 35012,
+      "outputTokens": 184,
+      "totalTokens": 35196,
+      "cachedReadTokens": 34432,
+      "cacheCreationTokens": 0,
+      "reasoningTokens": 169,
+      "modelCalls": 2,
+      "apiDurationMs": 4067,
+      "costUsdTicks": 66232000,
+      "modelUsage": {
+       "grok-4.6-build": {
+        "inputTokens": 35012,
+        "outputTokens": 184,
+        "totalTokens": 35196,
+        "cachedReadTokens": 34432,
+        "cacheCreationTokens": 0,
+        "reasoningTokens": 169,
+        "modelCalls": 2,
+        "apiDurationMs": 4067,
+        "costUsdTicks": 66232000
+       }
+      },
+      "numTurns": 2
+     },
+     "elapsed_ms": 17337
+    },
+    "_meta": {
+     "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-309",
+     "agentTimestampMs": 1789199907287
+    }
+   }
+  }
+ ],
+ "totalCount": 39,
+ "hasMore": false,
+ "lastEventId": "01a0949f-67eb-7be3-998e-641093a2fe38-309",
+ "promptStarts": [
+  0,
+  9,
+  17,
+  25,
+  30,
+  35
+ ]
+}
