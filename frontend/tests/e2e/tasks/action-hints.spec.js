@@ -733,18 +733,31 @@ test("keeps same-named models distinct by provider through native selection", { 
   await expect(
     hint.getByRole("button", { name: / — Codex Shared.*Selected$/ }),
   ).toBeVisible();
+  await expect(hint.getByRole("button", { name: / — Claude Shared$/ })).toHaveCount(0);
+  const provider = hint.getByRole("button", { name: / — Claude$/ });
+  const providerCode = await provider.getAttribute("data-action-hint-code");
+  expect(providerCode).toBeTruthy();
+  await page.keyboard.type(providerCode.toLowerCase());
+  await expect(hint).toBeHidden();
+  await expect(options.locator('[data-turn-options-action="browse-provider"][data-provider="claude"]')).toBeFocused();
+  expect(await options.evaluate((element) => element.submissionOptions()))
+    .toMatchObject({ provider: "codex", model: "shared-model" });
+  await page.keyboard.press("f");
   const claude = hint.getByRole("button", { name: / — Claude Shared$/ });
   const claudeCode = await claude.getAttribute("data-action-hint-code");
   expect(claudeCode).toBeTruthy();
   await page.keyboard.type(claudeCode.toLowerCase());
 
-  await expect(options.locator(".task-model-popover")).toBeHidden();
+  await expect(options.locator(".task-model-popover")).toBeVisible();
+  await expect(options.locator('[data-model="shared-model"]')).toBeFocused();
   await expect(options.locator(".task-model-button")).toContainText(
     "Claude Shared",
   );
   await expect.poll(() => options.evaluate((element) =>
     element.submissionOptions()
   )).toMatchObject({ provider: "claude", model: "shared-model" });
+  await page.keyboard.press("Escape");
+  await expect(options.locator(".task-model-button")).toBeFocused();
 });
 
 test("uses a mouse-open Permission context and preserves its existing confirmation", { tag: "@all-viewports" }, async ({

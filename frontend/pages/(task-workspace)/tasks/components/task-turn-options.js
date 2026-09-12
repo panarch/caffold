@@ -99,6 +99,8 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       provider: "",
     };
     this.selection = createSelection();
+    // Browsing an agent does not choose a model or change submission options.
+    this.browsedProvider = "";
     this.modelOptions = [];
     this.modelLoading = false;
     this.modelLoaded = false;
@@ -191,6 +193,9 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     const lockedChanged = next.locked !== this.context.locked;
     const placementChanged = next.placement !== this.context.placement;
     const providerChanged = next.provider !== this.context.provider;
+    if (providerChanged) {
+      this.browsedProvider = "";
+    }
     this.context = next;
     const selectionChanged = this.applyInitialSelection(next.initialSelection);
     if (next.locked) {
@@ -218,6 +223,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
   reset(context = {}) {
     this.ensureState();
     this.selection = createSelection();
+    this.browsedProvider = "";
     this.context = {
       ...this.context,
       cwd: cleanLogicalPath(context.cwd ?? this.context.cwd ?? "."),
@@ -542,7 +548,9 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     const supported = model?.supportedReasoningEfforts ?? [];
     return (
       supported.find((option) => option.value === this.selection.effort)?.value ||
-      model?.defaultReasoningEffort ||
+      supported.find((option) =>
+        option.value === model?.defaultReasoningEffort
+      )?.value ||
       supported[0]?.value ||
       ""
     );
@@ -576,7 +584,9 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       return;
     }
     const type = action.dataset.turnOptionsAction;
-    if (type === "select-model") {
+    if (type === "browse-provider") {
+      this.browseProvider(action.dataset.provider);
+    } else if (type === "select-model") {
       this.selectModel(action.dataset.model, action.dataset.provider);
     } else if (type === "select-effort") {
       this.selectEffort(action.dataset.effort);
@@ -608,6 +618,10 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     ) {
       return;
     }
+    if (popover === this.modelPopover()) {
+      this.browsedProvider = this.selectedModel()?.provider ?? "";
+      this.render();
+    }
     this.constrainAnchoredPopover(popover);
   }
 
@@ -637,23 +651,38 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     }
   }
 
-  selectModel(modelValue, providerValue = "") {
-    const selection = this.selection;
-    selection.model = `${modelValue ?? ""}`;
-    selection.provider = `${providerValue ?? ""}`;
-    selection.modelExplicit = true;
-    const model = this.selectedModel();
-    const supported = model?.supportedReasoningEfforts ?? [];
-    if (!supported.some((option) => option.value === selection.effort)) {
-      selection.effort =
-        model?.defaultReasoningEffort ?? supported[0]?.value ?? "";
+  browseProvider(provider) {
+    if (!this.offeredModels().some((option) => option.provider === provider)) {
+      return;
     }
-    if (!model?.supportsFast) {
+    this.browsedProvider = provider;
+    this.render();
+  }
+
+  selectModel(modelValue, providerValue = "") {
+    const model = this.offeredModels().find((option) =>
+      option.model === modelValue &&
+      (!providerValue || option.provider === providerValue)
+    );
+    if (!model) {
+      return;
+    }
+    const previous = this.selectedModel();
+    const selection = this.selection;
+    selection.model = model.model;
+    selection.provider = model.provider;
+    selection.modelExplicit = true;
+    // Identical effort names do not establish equivalent settings on another
+    // model. A new model starts with its own advertised default and Normal speed.
+    if (previous?.provider !== model.provider || previous?.model !== model.model) {
+      selection.effort =
+        model.defaultReasoningEffort ||
+        model.supportedReasoningEfforts[0]?.value ||
+        "";
       selection.fastMode = false;
       selection.fastModeExplicit = true;
     }
-    selection.provider = model?.provider ?? selection.provider;
-    this.hidePopover(this.modelPopover());
+    this.browsedProvider = model.provider;
     this.render();
     this.emitChange();
     // Choosing a model can choose an agent, and the ways an agent can be
@@ -807,42 +836,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       "aria-label",
       `${popoverLabel.charAt(0).toUpperCase()}${popoverLabel.slice(1)} options`,
     );
-    this.patchPopover(
-      modelPopover,
-      `<section>
-        <p>Model</p>
-        ${
-          offered.length
-            ? offered
-                .map((option) =>
-                  renderModelOption(option, model),
-                )
-                .join("")
-            : renderModelFallback(this.modelLoading, this.modelError)
-        }
-      </section>
-      ${
-        efforts.length
-          ? `<hr>
-            <section>
-              <p>Reasoning level</p>
-              ${efforts
-                .map((option) => renderReasoningOption(option, effort))
-                .join("")}
-            </section>`
-          : ""
-      }
-      ${
-        supportsFast
-          ? `<hr>
-            <section>
-              <p>Speed</p>
-              ${renderFastModeOption(false, fastMode)}
-              ${renderFastModeOption(true, fastMode)}
-            </section>`
-          : ""
-      }`,
-    );
+    this.renderModelPopover(offered, model, effort, fastMode);
 
     const permissionPending = !permission && this.permissionLoading;
     const permissionLabel =
@@ -903,8 +897,53 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     patchHtml(button, pending ? LOADING_SLOT_HTML : html);
   }
 
-  patchPopover(popover, html) {
-    const content = popover.querySelector(
+  renderModelPopover(offered, model, effort, fastMode) {
+    const popover = this.modelPopover();
+    if (!offered.length) {
+      this.patchPopover(popover, `<section>
+        <p>Model</p>
+        ${renderModelFallback(this.modelLoading, this.modelError)}
+      </section>`);
+      return;
+    }
+    const providers = [...new Set(offered.map((option) => option.provider))];
+    const provider = providers.includes(this.browsedProvider)
+      ? this.browsedProvider
+      : model?.provider ?? providers[0];
+    this.patchPopover(popover, `
+      <div class="task-model-browser">
+        <section class="task-provider-options" aria-label="Providers">
+          <p>Provider</p>
+          <div class="task-provider-list"></div>
+        </section>
+        <div class="task-provider-models">
+          <section aria-label="Models">
+            <p>Model</p>
+            <div class="task-model-list"></div>
+          </section>
+          <div class="task-model-settings"></div>
+        </div>
+      </div>`);
+    this.patchPopover(
+      popover,
+      providers.map((value) => renderProviderOption(value, provider)).join(""),
+      popover.querySelector(".task-provider-list"),
+    );
+    this.patchPopover(
+      popover,
+      offered.filter((option) => option.provider === provider)
+        .map((option) => renderModelOption(option, model)).join(""),
+      popover.querySelector(".task-model-list"),
+    );
+    this.patchPopover(
+      popover,
+      model?.provider === provider ? renderModelSettings(model, effort, fastMode) : "",
+      popover.querySelector(".task-model-settings"),
+    );
+  }
+
+  patchPopover(popover, html, content = null) {
+    content ??= popover.querySelector(
       ":scope > .task-model-popover-content, :scope > .task-permission-popover-content",
     );
     if (!content) {
@@ -917,7 +956,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       return;
     }
     if (focused && popover.matches(":popover-open")) {
-      optionForFocusKey(popover, focused)?.focus();
+      optionForFocusKey(popover, focused)?.focus({ preventScroll: true });
     }
   }
 
@@ -1112,6 +1151,17 @@ class CaffoldTaskTurnOptions extends HTMLElement {
 
 function turnOptionIdentity(control, kind) {
   const action = `${control?.dataset?.turnOptionsAction ?? ""}`;
+  if (kind === "model" && action === "browse-provider") {
+    const value = `${control.dataset.provider ?? ""}`;
+    return value
+      ? {
+          id: `provider:${encodeURIComponent(value)}`,
+          actionId: ACTION_HINT_ACTION.MODEL_PROVIDER_BROWSE,
+          action,
+          value,
+        }
+      : null;
+  }
   if (kind === "model" && action === "select-model") {
     const value = `${control.dataset.model ?? ""}`;
     const provider = `${control.dataset.provider ?? ""}`;
@@ -1178,9 +1228,10 @@ function optionFocusKey(element) {
   if (!(element instanceof HTMLElement)) {
     return null;
   }
-  for (const key of ["model", "effort", "fastMode", "permissionMode"]) {
+  for (const key of ["model", "effort", "fastMode", "permissionMode", "provider"]) {
     if (element.dataset[key] !== undefined) {
       return {
+        action: element.dataset.turnOptionsAction,
         key,
         value: element.dataset[key],
         ...(key === "model"
@@ -1195,6 +1246,7 @@ function optionFocusKey(element) {
 function optionForFocusKey(popover, focus) {
   return [...popover.querySelectorAll("[data-turn-options-action]")].find(
     (element) =>
+      element.dataset.turnOptionsAction === focus.action &&
       element.dataset[focus.key] === focus.value &&
       (focus.key !== "model" ||
         `${element.dataset.provider ?? ""}` === focus.provider),
@@ -1287,6 +1339,39 @@ function listPhrase(parts) {
     return `${parts[0]} and ${parts[1]}`;
   }
   return `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}`;
+}
+
+function renderProviderOption(provider, browsedProvider) {
+  const label = { codex: "Codex", claude: "Claude" }[provider] ?? provider;
+  return `
+    <button
+      type="button"
+      class="task-model-option task-provider-option"
+      data-turn-options-action="browse-provider"
+      data-provider="${escapeHtml(provider)}"
+      aria-pressed="${provider === browsedProvider}"
+    ><span><strong>${escapeHtml(label)}</strong></span></button>`;
+}
+
+function renderModelSettings(model, effort, fastMode) {
+  const efforts = model.supportedReasoningEfforts;
+  if (!efforts.length && !model.supportsFast) {
+    return "";
+  }
+  return `<hr>
+    ${efforts.length ? `<section aria-label="Reasoning level">
+      <p>Reasoning level</p>
+      <div class="task-model-setting-options">
+        ${efforts.map((option) => renderReasoningOption(option, effort)).join("")}
+      </div>
+    </section>` : ""}
+    ${model.supportsFast ? `<section aria-label="Speed">
+      <p>Speed</p>
+      <div class="task-model-setting-options">
+        ${renderFastModeOption(false, fastMode)}
+        ${renderFastModeOption(true, fastMode)}
+      </div>
+    </section>` : ""}`;
 }
 
 function renderModelOption(option, selectedModel) {

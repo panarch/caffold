@@ -690,6 +690,7 @@ test("approval modes follow the agent the chosen model belongs to", { tag: "@all
 
   const modelButton = form.locator(".task-model-button");
   await modelButton.click();
+  await form.locator('[data-turn-options-action="browse-provider"][data-provider="claude"]').click();
   await form.locator('.task-model-popover [data-model="opus"]').click();
 
   await expect(
@@ -942,7 +943,7 @@ test("switching to a model without Fast support normalizes to Normal and hides S
   await form.locator('[data-model="gpt-normal-only"]').click();
   await expect(form.locator('input[name="fastMode"]')).toHaveValue("false");
   await expect(form.locator(".task-model-fast")).toHaveCount(0);
-  await picker.click();
+  await expect(form.locator(".task-model-popover")).toBeVisible();
   await expect(
     form.getByRole("menu", { name: /Model.*options/ }).getByText("Speed", {
       exact: true,
