@@ -20,10 +20,14 @@ test("renders a representative review-first workspace", { tag: "@desktop" }, asy
   );
   await expect(tasksPage).toHaveAttribute("data-tasks-view", "detail");
   await expect(page.locator("html")).toHaveAttribute(
-    "data-typeface-preset",
-    "d2-coding",
+    "data-ui-typeface-preset",
+    "geist-sans",
   );
-  await expect(tasksPage).toHaveCSS("font-family", /Caffold D2 Coding/);
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-code-typeface-preset",
+    "geist-mono",
+  );
+  await expect(tasksPage).toHaveCSS("font-family", /Caffold Geist Sans/);
   await expect(selectedRow).toHaveAttribute("aria-current", "true");
   await expect(navigator).toContainText("Stabilize mobile task navigation");
   await expect(navigator).toContainText("Review notification settings");

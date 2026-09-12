@@ -181,12 +181,6 @@ caffold-settings-appearance-page {
     min-width: 0;
   }
 
-  & .settings-typeface-detail {
-    display: grid;
-    gap: var(--interface-space-7);
-    min-width: 0;
-  }
-
   & .settings-typeface-control,
   & .settings-theme-control {
     display: grid;
@@ -319,6 +313,7 @@ caffold-settings-appearance-page {
   & .settings-typeface-preview {
     box-sizing: border-box;
     display: grid;
+    grid-column: 2;
     grid-template-columns: minmax(0, 1fr);
     gap: var(--interface-space-4);
     padding: var(--interface-space-5) var(--interface-space-6);
@@ -436,6 +431,7 @@ caffold-settings-appearance-page {
       gap: var(--interface-space-6);
     }
 
+    & .settings-typeface-preview,
     & .settings-text-preview {
       grid-column: 1;
     }

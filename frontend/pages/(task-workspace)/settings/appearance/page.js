@@ -14,16 +14,31 @@ import {
 } from "../../../../scroll-scope.js";
 import {
   APPEARANCE_RANGE_SETTINGS,
+  CODE_TYPEFACE_PRESETS,
   DEFAULT_APPEARANCE_SETTINGS,
   THEME_MODES,
-  TYPEFACE_PRESETS,
+  UI_TYPEFACE_PRESETS,
   getSettings,
   resetAppearanceRangeSetting,
   resetAppearanceSettings,
   setAppearanceRangeSetting,
+  setCodeTypefacePreset,
   setThemeMode,
-  setTypefacePreset,
+  setUiTypefacePreset,
 } from "../../../../settings.js";
+
+const TYPEFACE_SETTINGS = Object.freeze({
+  uiTypefacePreset: Object.freeze({
+    label: "Interface font",
+    presets: UI_TYPEFACE_PRESETS,
+    apply: setUiTypefacePreset,
+  }),
+  codeTypefacePreset: Object.freeze({
+    label: "Code font",
+    presets: CODE_TYPEFACE_PRESETS,
+    apply: setCodeTypefacePreset,
+  }),
+});
 
 const SETTING_DESCRIPTIONS = Object.freeze({
   interfaceScalePercent:
@@ -137,7 +152,7 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
       return;
     }
 
-    setTypefacePreset(select.value);
+    TYPEFACE_SETTINGS[select.dataset.typefaceSetting]?.apply(select.value);
   }
 
   handleClick(event) {
@@ -152,7 +167,8 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
     }
 
     if (button.dataset.action === "reset-typeface") {
-      setTypefacePreset(DEFAULT_APPEARANCE_SETTINGS.typefacePreset);
+      const setting = button.dataset.typefaceSetting;
+      TYPEFACE_SETTINGS[setting]?.apply(DEFAULT_APPEARANCE_SETTINGS[setting]);
       return;
     }
 
@@ -200,18 +216,22 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
       );
     }
 
-    const typefaceSelect = this.querySelector("select[data-typeface-setting]");
-    const typefaceReset = this.querySelector(
-      'button[data-action="reset-typeface"]',
-    );
-    if (typefaceSelect) {
-      typefaceSelect.value = settings.typefacePreset;
-    }
-    if (typefaceReset) {
-      syncResetAction(
-        typefaceReset,
-        settings.typefacePreset === DEFAULT_APPEARANCE_SETTINGS.typefacePreset,
+    for (const name of Object.keys(TYPEFACE_SETTINGS)) {
+      const select = this.querySelector(
+        `select[data-typeface-setting="${name}"]`,
       );
+      const reset = this.querySelector(
+        `button[data-action="reset-typeface"][data-typeface-setting="${name}"]`,
+      );
+      if (select) {
+        select.value = settings[name];
+      }
+      if (reset) {
+        syncResetAction(
+          reset,
+          settings[name] === DEFAULT_APPEARANCE_SETTINGS[name],
+        );
+      }
     }
 
     for (const [name, definition] of Object.entries(
@@ -238,10 +258,10 @@ class CaffoldSettingsAppearancePage extends HTMLElement {
     if (resetAll) {
       resetAll.disabled =
         settings.themeMode === DEFAULT_APPEARANCE_SETTINGS.themeMode &&
-        settings.typefacePreset === DEFAULT_APPEARANCE_SETTINGS.typefacePreset &&
-        Object.keys(APPEARANCE_RANGE_SETTINGS).every(
-          (name) => settings[name] === DEFAULT_APPEARANCE_SETTINGS[name],
-        );
+        [
+          ...Object.keys(TYPEFACE_SETTINGS),
+          ...Object.keys(APPEARANCE_RANGE_SETTINGS),
+        ].every((name) => settings[name] === DEFAULT_APPEARANCE_SETTINGS[name]);
     }
   }
 
@@ -279,12 +299,15 @@ function appearanceActionHintTargets(owner, context) {
       selector: 'button[data-action="reset-theme"]',
       label: "Reset theme",
     }]),
-    ...typefaceActionHintTargets(owner, context),
-    ...resetActionHintTargets(owner, context, [{
-      id: "reset-typeface",
-      selector: 'button[data-action="reset-typeface"]',
-      label: "Reset font",
-    }]),
+    ...Object.entries(TYPEFACE_SETTINGS).flatMap(([setting, definition]) => [
+      ...typefaceActionHintTargets(owner, context, setting, definition),
+      ...resetActionHintTargets(owner, context, [{
+        id: `reset-typeface:${setting}`,
+        selector:
+          `button[data-action="reset-typeface"][data-typeface-setting="${setting}"]`,
+        label: `Reset ${definition.label.toLowerCase()}`,
+      }]),
+    ]),
     ...Object.entries(APPEARANCE_RANGE_SETTINGS).flatMap(
       ([setting, definition]) => [
         ...rangeActionHintTargets(owner, context, setting, definition),
@@ -324,22 +347,21 @@ function themeActionHintTargets(owner, context) {
   });
 }
 
-function typefaceActionHintTargets(owner, context) {
-  const selector = "select[data-typeface-setting]";
+function typefaceActionHintTargets(owner, context, setting, definition) {
+  const selector = `select[data-typeface-setting="${setting}"]`;
   const control = owner.querySelector(selector);
   if (!actionHintControlAvailable(control)) {
     return [];
   }
+  const action = `Choose ${definition.label.toLowerCase()}`;
   const selectedLabel = control.selectedOptions?.[0]?.textContent?.trim() ||
-    TYPEFACE_PRESETS[control.value]?.label ||
+    definition.presets[control.value]?.label ||
     control.value;
   return [selectActionHintTarget({
     invalidationOwner: owner,
-    id: `${context.scopeId}:typeface`,
+    id: `${context.scopeId}:typeface:${setting}`,
     actionId: ACTION_HINT_ACTION.CONTROL_SELECT_OPEN,
-    label: selectedLabel
-      ? `Choose font (current ${selectedLabel})`
-      : "Choose font",
+    label: selectedLabel ? `${action} (current ${selectedLabel})` : action,
     control,
     clipRoots: context.clipRoots,
     isActionable: () =>
@@ -448,7 +470,23 @@ function renderThemeSetting() {
 }
 
 function renderTypefaceSetting() {
-  const options = Object.values(TYPEFACE_PRESETS)
+  return `
+    <div class="settings-appearance-group settings-typeface-group">
+      ${Object.keys(TYPEFACE_SETTINGS).map(renderTypefaceField).join("")}
+      <div class="settings-preview-field">
+        <div class="settings-typeface-preview" aria-label="Font preview">
+          <span>Latin · 한글 · 漢字 · ひらがな · カタカナ · 123</span>
+          <code>const tree = "├─ src/main.rs";</code>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderTypefaceField(setting) {
+  const definition = TYPEFACE_SETTINGS[setting];
+  const id = `settings-${toKebabCase(setting)}`;
+  const options = Object.values(definition.presets)
     .map(
       (preset) => `
         <option value="${preset.id}">
@@ -459,26 +497,19 @@ function renderTypefaceSetting() {
     .join("");
 
   return `
-    <div class="settings-appearance-group settings-typeface-group">
-      <div class="settings-field settings-typeface-field">
-        <div class="settings-field-copy">
-          <label for="settings-typeface-preset">Font</label>
-        </div>
-        <div class="settings-typeface-detail">
-          <div class="settings-typeface-control">
-            <select
-              id="settings-typeface-preset"
-              data-typeface-setting
-            >
-              ${options}
-            </select>
-            ${renderResetAction("reset-typeface", "Reset font")}
-          </div>
-          <div class="settings-typeface-preview" aria-label="Font preview">
-            <span>Latin · 한글 · 漢字 · ひらがな · カタカナ · 123</span>
-            <code>const tree = "├─ src/main.rs";</code>
-          </div>
-        </div>
+    <div class="settings-field">
+      <div class="settings-field-copy">
+        <label for="${id}">${definition.label}</label>
+      </div>
+      <div class="settings-typeface-control">
+        <select id="${id}" data-typeface-setting="${setting}">
+          ${options}
+        </select>
+        ${renderResetAction(
+          "reset-typeface",
+          `Reset ${definition.label.toLowerCase()}`,
+          `data-typeface-setting="${setting}"`,
+        )}
       </div>
     </div>
   `;

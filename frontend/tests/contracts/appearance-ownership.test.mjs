@@ -45,6 +45,7 @@ const codeOwners = new Set([
 const typefaceOwners = new Set([
   "components/code-viewer.css",
   "components/diff-viewer.css",
+  "components/file-tree.css",
   "components/markdown-preview.css",
   "fonts.js",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
@@ -619,8 +620,10 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
   const appearancePage = readFrontend(
     "pages/(task-workspace)/settings/appearance/page.js",
   );
-  assert.match(appearancePage, /settings-typeface-detail/);
+  assert.match(appearancePage, /settings-typeface-preview/);
   assert.match(appearancePage, /settings-text-preview/);
+  assert.match(appearancePage, /uiTypefacePreset:/);
+  assert.match(appearancePage, /codeTypefacePreset:/);
   assert.match(appearancePage, /renderInlineIcon\("RotateCcw"/);
   assert.match(appearancePage, /data-reset-label=/);
   assert.doesNotMatch(appearancePage, /data-typeface-description/);

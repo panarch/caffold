@@ -25,7 +25,8 @@ test("normalizes settings, malformed input, ranges, steps, and file order", asyn
   assert.deepEqual(
     normalizeSettings({
       themeMode: "dark",
-      typefacePreset: "noto-sans-mono-cjk-kr",
+      uiTypefacePreset: "pretendard",
+      codeTypefacePreset: "noto-sans-mono-cjk-kr",
       interfaceScalePercent: 117,
       conversationTextPx: 12.5,
       codeTextPx: 24.4,
@@ -34,7 +35,8 @@ test("normalizes settings, malformed input, ranges, steps, and file order", asyn
     }),
     {
       themeMode: "dark",
-      typefacePreset: "d2-coding",
+      uiTypefacePreset: "pretendard",
+      codeTypefacePreset: "geist-mono",
       interfaceScalePercent: 115,
       conversationTextPx: 13,
       codeTextPx: 20,
@@ -45,7 +47,8 @@ test("normalizes settings, malformed input, ranges, steps, and file order", asyn
   assert.deepEqual(
     normalizeSettings({
       themeMode: "sepia",
-      typefacePreset: "unknown-font",
+      uiTypefacePreset: "unknown-font",
+      codeTypefacePreset: "d2-coding",
       interfaceScalePercent: 118,
       conversationTextPx: 19.6,
       codeTextPx: 11.2,
@@ -53,7 +56,8 @@ test("normalizes settings, malformed input, ranges, steps, and file order", asyn
     }),
     {
       themeMode: "system",
-      typefacePreset: "d2-coding",
+      uiTypefacePreset: "geist-sans",
+      codeTypefacePreset: "d2-coding",
       interfaceScalePercent: 120,
       conversationTextPx: 20,
       codeTextPx: 12,
@@ -108,7 +112,8 @@ test("initial load rewrites obsolete state without publishing a change", async (
       "caffold:settings",
       {
         themeMode: "system",
-        typefacePreset: "d2-coding",
+        uiTypefacePreset: "geist-sans",
+        codeTypefacePreset: "geist-mono",
         interfaceScalePercent: 100,
         conversationTextPx: 14,
         codeTextPx: 13,
@@ -120,8 +125,8 @@ test("initial load rewrites obsolete state without publishing a change", async (
   assert.equal(properties.get("--interface-scale"), "1");
   assert.equal(properties.get("--conversation-font-size"), "14px");
   assert.equal(properties.get("--code-font-size"), "13px");
-  assert.match(properties.get("--font-ui"), /Caffold D2 Coding/);
-  assert.match(properties.get("--font-code"), /Caffold D2 Coding/);
+  assert.match(properties.get("--font-ui"), /Caffold Geist Sans/);
+  assert.match(properties.get("--font-code"), /Caffold Geist Mono/);
 });
 
 test("malformed storage resets and persists the defaults silently", async () => {
@@ -148,7 +153,8 @@ test("malformed storage resets and persists the defaults silently", async () => 
       "caffold:settings",
       {
         themeMode: "system",
-        typefacePreset: "d2-coding",
+        uiTypefacePreset: "geist-sans",
+        codeTypefacePreset: "geist-mono",
         interfaceScalePercent: 100,
         conversationTextPx: 14,
         codeTextPx: 13,
@@ -190,7 +196,8 @@ test("appearance reset preserves global file ordering and Action Hint preference
   assert.equal(events.length, 6);
   assert.deepEqual(events[0].detail.settings, {
     themeMode: "system",
-    typefacePreset: "d2-coding",
+    uiTypefacePreset: "geist-sans",
+    codeTypefacePreset: "geist-mono",
     interfaceScalePercent: 100,
     conversationTextPx: 14,
     codeTextPx: 13,
@@ -315,6 +322,39 @@ test("theme updates apply, normalize, persist, and publish settings", async () =
       "caffold:theme-change",
       "caffold:settings-change",
     ],
+  );
+});
+
+test("changes one typeface axis without disturbing the other", async () => {
+  const events = [];
+  const properties = new Map();
+
+  await withBrowserGlobals(
+    {
+      getItem: () => null,
+      setItem: () => {},
+    },
+    events,
+    properties,
+    async () => {
+      const settings = await importFreshSettings("typeface-axes");
+
+      settings.setUiTypefacePreset("pretendard");
+      assert.equal(settings.getSettings().uiTypefacePreset, "pretendard");
+      assert.equal(settings.getSettings().codeTypefacePreset, "geist-mono");
+      assert.match(properties.get("--font-ui"), /Caffold Pretendard/);
+      assert.match(properties.get("--font-code"), /Caffold Geist Mono/);
+
+      settings.setCodeTypefacePreset("d2-coding");
+      assert.equal(settings.getSettings().uiTypefacePreset, "pretendard");
+      assert.equal(settings.getSettings().codeTypefacePreset, "d2-coding");
+      assert.match(properties.get("--font-ui"), /Caffold Pretendard/);
+      assert.match(properties.get("--font-code"), /Caffold D2 Coding/);
+
+      settings.setUiTypefacePreset("d2-coding");
+      assert.equal(settings.getSettings().uiTypefacePreset, "geist-sans");
+      assert.equal(settings.getSettings().codeTypefacePreset, "d2-coding");
+    },
   );
 });
 

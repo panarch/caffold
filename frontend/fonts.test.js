@@ -11,12 +11,46 @@ async function importFreshFonts(label) {
   return import(url.href);
 }
 
-test("defines the bundled presets and the system fallback", async () => {
-  const { DEFAULT_TYPEFACE_PRESET, TYPEFACE_PRESETS, normalizeTypefacePreset } =
-    await importFreshFonts("registry");
+async function readFontFaces() {
+  const stylesheet = await readFile(
+    new URL("./styles.css", import.meta.url),
+    "utf8",
+  );
+  return [...stylesheet.matchAll(/@font-face\s*\{([^}]*)\}/g)].map(
+    ([, body]) => body,
+  );
+}
 
-  assert.equal(DEFAULT_TYPEFACE_PRESET, "d2-coding");
-  assert.deepEqual(Object.keys(TYPEFACE_PRESETS), [
+function bundledFamily(preset) {
+  const [family] = preset.stack.split(", ");
+  return family.startsWith('"') ? family : null;
+}
+
+function assertBundledFile(face, family) {
+  const [, file] = face.match(/url\("\.\/fonts\/([^"]+)"\)/);
+  assert.ok(
+    existsSync(new URL(`./assets/fonts/${file}`, import.meta.url)),
+    `${family} names ${file}, which is not bundled`,
+  );
+}
+
+test("defines an interface and a code registry with separate defaults", async () => {
+  const {
+    CODE_TYPEFACE_PRESETS,
+    DEFAULT_CODE_TYPEFACE_PRESET,
+    DEFAULT_UI_TYPEFACE_PRESET,
+    UI_TYPEFACE_PRESETS,
+  } = await importFreshFonts("registry");
+
+  assert.equal(DEFAULT_UI_TYPEFACE_PRESET, "geist-sans");
+  assert.equal(DEFAULT_CODE_TYPEFACE_PRESET, "geist-mono");
+  assert.deepEqual(Object.keys(UI_TYPEFACE_PRESETS), [
+    "geist-sans",
+    "inter",
+    "pretendard",
+    "system",
+  ]);
+  assert.deepEqual(Object.keys(CODE_TYPEFACE_PRESETS), [
     "d2-coding",
     "0xproto",
     "geist-mono",
@@ -25,31 +59,60 @@ test("defines the bundled presets and the system fallback", async () => {
     "monaspace-neon",
     "system-mono",
   ]);
-  assert.equal(TYPEFACE_PRESETS["d2-coding"].label, "D2 Coding");
-  assert.equal(TYPEFACE_PRESETS["system-mono"].label, "System Mono");
-  for (const preset of Object.values(TYPEFACE_PRESETS)) {
-    assert.equal("description" in preset, false);
-  }
+  assert.equal(UI_TYPEFACE_PRESETS["system"].stack, "system-ui, sans-serif");
   assert.equal(
-    normalizeTypefacePreset("noto-sans-mono-cjk-kr"),
-    "d2-coding",
+    CODE_TYPEFACE_PRESETS["system-mono"].stack,
+    "ui-monospace, monospace",
   );
-  assert.equal(normalizeTypefacePreset("unknown"), "d2-coding");
+  for (const presets of [UI_TYPEFACE_PRESETS, CODE_TYPEFACE_PRESETS]) {
+    for (const preset of Object.values(presets)) {
+      assert.equal("description" in preset, false);
+    }
+  }
 });
 
-test("backs every bundled preset with font faces and bundled files", async () => {
-  const { TYPEFACE_PRESETS } = await importFreshFonts("faces");
-  const stylesheet = await readFile(
-    new URL("./styles.css", import.meta.url),
-    "utf8",
-  );
-  const faces = [...stylesheet.matchAll(/@font-face\s*\{([^}]*)\}/g)].map(
-    ([, body]) => body,
-  );
+test("normalizes each axis to its own registry", async () => {
+  const { normalizeCodeTypefacePreset, normalizeUiTypefacePreset } =
+    await importFreshFonts("normalize");
 
-  for (const preset of Object.values(TYPEFACE_PRESETS)) {
-    const [family] = preset.stack.split(", ");
-    if (!family.startsWith('"')) {
+  assert.equal(normalizeUiTypefacePreset("pretendard"), "pretendard");
+  assert.equal(normalizeCodeTypefacePreset("d2-coding"), "d2-coding");
+  assert.equal(normalizeUiTypefacePreset("unknown"), "geist-sans");
+  assert.equal(normalizeCodeTypefacePreset("unknown"), "geist-mono");
+  assert.equal(normalizeUiTypefacePreset("d2-coding"), "geist-sans");
+  assert.equal(normalizeCodeTypefacePreset("pretendard"), "geist-mono");
+});
+
+test("backs every bundled interface preset with one variable face", async () => {
+  const { UI_TYPEFACE_PRESETS } = await importFreshFonts("ui-faces");
+  const faces = await readFontFaces();
+
+  for (const preset of Object.values(UI_TYPEFACE_PRESETS)) {
+    const family = bundledFamily(preset);
+    if (!family) {
+      continue;
+    }
+
+    const matching = faces.filter((body) =>
+      body.includes(`font-family: ${family};`),
+    );
+    assert.equal(matching.length, 1, `${family} needs exactly one @font-face`);
+    assert.match(
+      matching[0],
+      /font-weight: \d+ \d+;/,
+      `${family} must declare a weight range`,
+    );
+    assertBundledFile(matching[0], family);
+  }
+});
+
+test("backs every bundled code preset with static regular and bold faces", async () => {
+  const { CODE_TYPEFACE_PRESETS } = await importFreshFonts("code-faces");
+  const faces = await readFontFaces();
+
+  for (const preset of Object.values(CODE_TYPEFACE_PRESETS)) {
+    const family = bundledFamily(preset);
+    if (!family) {
       continue;
     }
 
@@ -60,18 +123,14 @@ test("backs every bundled preset with font faces and bundled files", async () =>
           body.includes(`font-weight: ${weight};`),
       );
       assert.ok(face, `${family} is missing a ${weight} @font-face`);
-
-      const [, file] = face.match(/url\("\.\/fonts\/([^"]+)"\)/);
-      assert.ok(
-        existsSync(new URL(`./assets/fonts/${file}`, import.meta.url)),
-        `${file} is not bundled`,
-      );
+      assertBundledFile(face, family);
     }
   }
 });
 
-test("applies UI and code roles together without collapsing their tokens", async () => {
-  const { applyTypefacePreset } = await importFreshFonts("roles");
+test("applies each axis to its own token without touching the other", async () => {
+  const { applyCodeTypefacePreset, applyUiTypefacePreset } =
+    await importFreshFonts("roles");
   const properties = new Map();
   const root = {
     dataset: {},
@@ -80,9 +139,19 @@ test("applies UI and code roles together without collapsing their tokens", async
     },
   };
 
-  applyTypefacePreset("system-mono", root);
+  applyUiTypefacePreset("pretendard", root);
 
-  assert.equal(properties.get("--font-ui"), "ui-monospace, monospace");
+  assert.deepEqual([...properties.keys()], ["--font-ui"]);
+  assert.equal(
+    properties.get("--font-ui"),
+    '"Caffold Pretendard", system-ui, sans-serif',
+  );
+  assert.equal(root.dataset.uiTypefacePreset, "pretendard");
+  assert.equal(root.dataset.codeTypefacePreset, undefined);
+
+  applyCodeTypefacePreset("system-mono", root);
+
   assert.equal(properties.get("--font-code"), "ui-monospace, monospace");
-  assert.equal(root.dataset.typefacePreset, "system-mono");
+  assert.equal(properties.get("--font-ui"), '"Caffold Pretendard", system-ui, sans-serif');
+  assert.equal(root.dataset.codeTypefacePreset, "system-mono");
 });

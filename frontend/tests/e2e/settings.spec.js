@@ -1272,7 +1272,8 @@ test("persists file ordering and keeps it across appearance reset", { tag: "@all
     )
     .toEqual({
       themeMode: "system",
-      typefacePreset: "d2-coding",
+      uiTypefacePreset: "geist-sans",
+      codeTypefacePreset: "geist-mono",
       interfaceScalePercent: 100,
       conversationTextPx: 14,
       codeTextPx: 13,
@@ -1376,7 +1377,9 @@ test("hands Action Hints off to native Appearance controls", { tag: "@all-viewpo
 
   const appearance = page.locator("caffold-settings-appearance-page");
   const light = appearance.getByRole("radio", { name: "Light" });
-  const typeface = appearance.locator("select[data-typeface-setting]");
+  const typeface = appearance.locator(
+    'select[data-typeface-setting="uiTypefacePreset"]',
+  );
   const conversationRange = range(appearance, "conversationTextPx");
   await expect(appearance.getByRole("radio", { name: "System" })).toBeChecked();
 
@@ -1388,10 +1391,10 @@ test("hands Action Hints off to native Appearance controls", { tag: "@all-viewpo
   await expect(hint.getByLabel(/ — Use System theme$/)).toBeVisible();
   await expect(hint.getByLabel(/ — Use Light theme$/)).toHaveCount(0);
   await expect(
-    hint.getByLabel(/ — Choose font \(current D2 Coding\)$/),
+    hint.getByLabel(/ — Choose interface font \(current Geist Sans\)$/),
   ).toBeVisible();
   await expect(
-    hint.getByLabel(/ — Adjust Interface size \(100%\)$/),
+    hint.getByLabel(/ — Choose code font \(current Geist Mono\)$/),
   ).toBeVisible();
   await captureReviewScreenshot(
     page,
@@ -1400,13 +1403,13 @@ test("hands Action Hints off to native Appearance controls", { tag: "@all-viewpo
   );
   await page.keyboard.press("Escape");
 
-  await activateActionHint(page, "Choose font (current D2 Coding)");
+  await activateActionHint(page, "Choose interface font (current Geist Sans)");
   await expect(typeface).toBeFocused();
-  await typeface.selectOption("system-mono");
-  await expect(typeface).toHaveValue("system-mono");
+  await typeface.selectOption("system");
+  await expect(typeface).toHaveValue("system");
   await expect(page.locator("html")).toHaveAttribute(
-    "data-typeface-preset",
-    "system-mono",
+    "data-ui-typeface-preset",
+    "system",
   );
   if (await typeface.evaluate((control) => control.matches(":open"))) {
     await page.keyboard.press("Escape");
@@ -1522,7 +1525,7 @@ test("updates independent ranges live without replacing their DOM", { tag: "@all
   await expect(settingsSmallText).toHaveCSS("font-size", "14px");
   await setRange(interfaceRange, 100);
   const inlineResets = settingsPage.locator(".settings-inline-reset");
-  await expect(inlineResets).toHaveCount(5);
+  await expect(inlineResets).toHaveCount(6);
   for (const reset of await inlineResets.all()) {
     await expect(reset).toBeHidden();
   }
@@ -1708,9 +1711,19 @@ test("switches and persists the local typeface presets", { tag: "@all-viewports"
   await page.goto("/settings/appearance");
 
   const settingsPage = page.locator("caffold-settings-appearance-page");
-  const select = settingsPage.locator("select[data-typeface-setting]");
-  await expect(select.locator("option")).toHaveCount(7);
-  await expect(select.locator("option")).toHaveText([
+  const uiSelect = settingsPage.locator(
+    'select[data-typeface-setting="uiTypefacePreset"]',
+  );
+  const codeSelect = settingsPage.locator(
+    'select[data-typeface-setting="codeTypefacePreset"]',
+  );
+  await expect(uiSelect.locator("option")).toHaveText([
+    "Geist Sans",
+    "Inter",
+    "Pretendard",
+    "System",
+  ]);
+  await expect(codeSelect.locator("option")).toHaveText([
     "D2 Coding",
     "0xProto",
     "Geist Mono",
@@ -1719,11 +1732,13 @@ test("switches and persists the local typeface presets", { tag: "@all-viewports"
     "Monaspace Neon",
     "System Mono",
   ]);
-  await expect(select).not.toContainText("Noto Sans Mono CJK KR");
-  await expect(select).not.toContainText("Included");
-  await expect(select).not.toContainText("No download");
-  await expect(select).toHaveValue("d2-coding");
-  await expect(select).not.toHaveAttribute("aria-describedby", /.+/);
+  await expect(uiSelect).not.toContainText("Mono");
+  await expect(codeSelect).not.toContainText("Noto Sans Mono CJK KR");
+  await expect(codeSelect).not.toContainText("Included");
+  await expect(codeSelect).not.toContainText("No download");
+  await expect(uiSelect).toHaveValue("geist-sans");
+  await expect(codeSelect).toHaveValue("geist-mono");
+  await expect(uiSelect).not.toHaveAttribute("aria-describedby", /.+/);
   await expect(settingsPage.locator("[data-typeface-description]")).toHaveCount(
     0,
   );
@@ -1742,36 +1757,45 @@ test("switches and persists the local typeface presets", { tag: "@all-viewports"
       return codeBounds.top > specimenBounds.top;
     }),
   ).toBe(true);
-  const resetFont = settingsPage.locator('button[data-action="reset-typeface"]');
-  await expect(resetFont).toBeHidden();
+  const resetUiFont = settingsPage.locator(
+    'button[data-action="reset-typeface"][data-typeface-setting="uiTypefacePreset"]',
+  );
+  const resetCodeFont = settingsPage.locator(
+    'button[data-action="reset-typeface"][data-typeface-setting="codeTypefacePreset"]',
+  );
+  await expect(resetUiFont).toBeHidden();
+  await expect(resetCodeFont).toBeHidden();
   await expect(page.locator("html")).toHaveAttribute(
-    "data-typeface-preset",
-    "d2-coding",
+    "data-ui-typeface-preset",
+    "geist-sans",
+  );
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-code-typeface-preset",
+    "geist-mono",
   );
 
-  await select.selectOption("system-mono");
+  await uiSelect.selectOption("pretendard");
   await expect(typefacePreview.locator("span")).toHaveText(
     "Latin · 한글 · 漢字 · ひらがな · カタカナ · 123",
   );
-  await expect(resetFont).toBeVisible();
-  await expect(
-    settingsPage.getByRole("button", { name: "Reset font" }),
-  ).toBeVisible();
+  await expect(resetUiFont).toBeVisible();
+  await expect(resetCodeFont).toBeHidden();
   await expect(page.locator("html")).toHaveAttribute(
-    "data-typeface-preset",
-    "system-mono",
+    "data-ui-typeface-preset",
+    "pretendard",
   );
-  await expect
-    .poll(() =>
-      page.evaluate((key) => JSON.parse(localStorage.getItem(key)), SETTINGS_KEY),
-    )
-    .toMatchObject({ typefacePreset: "system-mono" });
-
-  await settingsPage.getByRole("button", { name: "Reset font" }).click();
-  await expect(select).toHaveValue("d2-coding");
-  await expect(resetFont).toBeHidden();
   await expect(page.locator("html")).toHaveAttribute(
-    "data-typeface-preset",
+    "data-code-typeface-preset",
+    "geist-mono",
+  );
+
+  await codeSelect.selectOption("d2-coding");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-ui-typeface-preset",
+    "pretendard",
+  );
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-code-typeface-preset",
     "d2-coding",
   );
   await expect
@@ -1779,21 +1803,58 @@ test("switches and persists the local typeface presets", { tag: "@all-viewports"
       page.evaluate((key) => JSON.parse(localStorage.getItem(key)), SETTINGS_KEY),
     )
     .toMatchObject({
-      typefacePreset: "d2-coding",
+      uiTypefacePreset: "pretendard",
+      codeTypefacePreset: "d2-coding",
+    });
+
+  await settingsPage
+    .getByRole("button", { name: "Reset interface font" })
+    .click();
+  await expect(uiSelect).toHaveValue("geist-sans");
+  await expect(resetUiFont).toBeHidden();
+  await expect(codeSelect).toHaveValue("d2-coding");
+  await expect(resetCodeFont).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate((key) => JSON.parse(localStorage.getItem(key)), SETTINGS_KEY),
+    )
+    .toMatchObject({
+      uiTypefacePreset: "geist-sans",
+      codeTypefacePreset: "d2-coding",
     });
 });
 
 test("loads the bundled face a typeface preset names", { tag: "@desktop" }, async ({ page }) => {
   await page.goto("/settings/appearance");
 
-  const select = page.locator("select[data-typeface-setting]");
-  await select.selectOption("jetbrains-mono");
+  await page
+    .locator('select[data-typeface-setting="codeTypefacePreset"]')
+    .selectOption("jetbrains-mono");
 
   await expect
     .poll(() =>
       page.evaluate(() =>
         document.fonts.check('400 13px "Caffold JetBrains Mono"'),
       ),
+    )
+    .toBe(true);
+
+  await page
+    .locator('select[data-typeface-setting="uiTypefacePreset"]')
+    .selectOption("pretendard");
+
+  // `document.fonts.check` answers true for a semibold request even when only a
+  // 400 face exists, so compare the advance width the browser actually lays out.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const context = document.createElement("canvas").getContext("2d");
+        const advance = (weight) => {
+          context.font = `${weight} 24px "Caffold Pretendard"`;
+          return context.measureText("Review 검토").width;
+        };
+        return advance(400) !== advance(600);
+      }),
     )
     .toBe(true);
 });

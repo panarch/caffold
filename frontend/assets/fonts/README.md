@@ -4,6 +4,35 @@ Every bundled font is distributed under the SIL Open Font License 1.1 and is
 copied unmodified from the upstream project's own release. Each font keeps its
 unmodified license text beside it as `<Name>-OFL.txt`.
 
+Interface fonts ship as one variable file covering the whole weight axis. Code
+fonts ship as static Regular and Bold.
+
+## Geist Sans
+
+[`vercel/geist-font`](https://github.com/vercel/geist-font) release `v1.7.2`,
+`geist-font-v1.7.2.zip`, file `Geist/webfonts/Geist[wght].woff2`. Weight axis
+`100-900`. `GeistSans-OFL.txt` is the release's `OFL.txt`, the same text Geist
+Mono carries.
+
+- `GeistSans-Variable.woff2`: `a369fcf5628ea2aa4e1b9e2ec6a5b3624e365bda588e1f0f2f12b564f728fbb8`
+
+## Inter
+
+[`rsms/inter`](https://github.com/rsms/inter) release `v4.1`, `Inter-4.1.zip`,
+file `web/InterVariable.woff2`. Weight axis `100-900`, optical size axis
+`14-32`.
+
+- `Inter-Variable.woff2`: `693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3`
+
+## Pretendard
+
+[`orioncactus/pretendard`](https://github.com/orioncactus/pretendard) release
+`v1.3.9`, `Pretendard-1.3.9.zip`, file
+`web/variable/woff2/PretendardVariable.woff2`. Weight axis `45-930`. Covers all
+11,172 modern Hangul syllables.
+
+- `Pretendard-Variable.woff2`: `9599f12fd42fc0bce1cd50b47a0c022e108d7aa64dd0d1bb0ed44f3282d900b4`
+
 ## D2 Coding
 
 NAVER's [`d2-coding-font`](https://github.com/naver/d2-coding-font) repository at

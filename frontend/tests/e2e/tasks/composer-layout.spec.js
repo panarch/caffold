@@ -87,7 +87,8 @@ async function installScrollableTask(page) {
     localStorage.setItem(
       "caffold:settings",
       JSON.stringify({
-        typefacePreset: "d2-coding",
+        uiTypefacePreset: "geist-sans",
+        codeTypefacePreset: "geist-mono",
         interfaceScalePercent: 120,
         conversationTextPx: 20,
         codeTextPx: 13,

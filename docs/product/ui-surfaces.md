@@ -225,8 +225,8 @@ contract is defined in [Frontend Architecture](../architecture/frontend.md).
 
 Settings includes:
 
-- Appearance controls for System/Light/Dark theme, typeface, Interface scale,
-  Conversation text, and Code text;
+- Appearance controls for System/Light/Dark theme, the Interface and Code
+  typefaces, Interface scale, Conversation text, and Code text;
 - Notifications controls for the current browser's permission and subscription,
   plus the active browser-installation count, labels, short IDs, and removal;
 - Remote Access status and constrained Tailscale Serve controls, with the ready
