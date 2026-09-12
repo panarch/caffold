@@ -9,6 +9,7 @@ const THREAD_ID = "thread_showcase_readme";
 const REPOSITORY_ROOT = "Workspace/caffold";
 const WORKTREE_ROOT = "Workspace/caffold/.caffold-worktrees/readme-user-focused";
 const BRANCH = "readme-user-focused";
+const PLAN_ROOT = `${WORKTREE_ROOT}/.caffold/plans/current`;
 const HEAD_SHA = "7b2f497d4f603ea39bb49b4f9df641c42171ad61";
 const TURN_ID = "turn_showcase_readme";
 
@@ -205,6 +206,32 @@ export async function installShowcaseFixture(page) {
   );
   await page.route(new RegExp(`/api/tasks/${THREAD_ID}(?:\\?|$)`), (route) =>
     route.fulfill({ json: detail }),
+  );
+  await page.route(/\/api\/current-plan(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        status: "ready",
+        watchPath: PLAN_ROOT,
+        plan: {
+          title: "Rewrite the README for first-time installs",
+          completed: 6,
+          total: 6,
+          planDocument: {
+            path: `${PLAN_ROOT}/PLAN.md`,
+            name: "PLAN.md",
+            size: 1_284,
+            modifiedMs: selectedTask.updatedMs,
+          },
+          checklistDocument: {
+            path: `${PLAN_ROOT}/CHECKLIST.md`,
+            name: "CHECKLIST.md",
+            size: 486,
+            modifiedMs: selectedTask.updatedMs,
+          },
+        },
+        problems: [],
+      },
+    }),
   );
   await page.route(/\/api\/voice\/status(?:\?|$)/, (route) =>
     route.fulfill({

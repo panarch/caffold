@@ -43,6 +43,23 @@ test("renders a representative review-first workspace", { tag: "@desktop" }, asy
   await expect(
     tasksPage.getByRole("button", { name: "Start voice input" }),
   ).toBeEnabled();
+
+  const currentPlan = tasksPage.locator("caffold-task-current-plan");
+  await expect(currentPlan.locator(".task-current-plan-strip")).toHaveAttribute(
+    "data-presentation",
+    "ready",
+  );
+  await expect(
+    currentPlan.getByRole("button", {
+      name: "Open plan: Rewrite the README for first-time installs",
+    }),
+  ).toBeVisible();
+  await expect(
+    currentPlan.getByRole("button", { name: "Open checklist: 6 of 6 complete" }),
+  ).toHaveText("6 / 6");
+  await expect(
+    currentPlan.locator("[data-current-plan-notice]"),
+  ).toBeHidden();
   await captureReviewScreenshot(
     page,
     testInfo,

@@ -16,7 +16,7 @@ your Mac.
 
 ## What it looks like
 
-![A completed Caffold Task with its conversation, test result, and changed files](docs/assets/showcase-conversation.png)
+![A completed Caffold Task with its conversation, current plan, test result, and changed files](docs/assets/showcase-conversation.png)
 
 _Follow a Task as it runs, then read the result and decide what comes next._
 
