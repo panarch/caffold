@@ -168,6 +168,11 @@ test("provides selected model options and excludes disabled permission options",
     model: "gpt-5.6-sol",
     label: "GPT-5.6-Sol",
   });
+  const provider = optionControl({
+    action: "browse-provider",
+    provider: "claude",
+    label: "Claude",
+  });
   const selectedReasoning = optionControl({
     action: "select-effort",
     effort: "max",
@@ -185,6 +190,7 @@ test("provides selected model options and excludes disabled permission options",
     disabled: true,
   });
   const modelPopover = popoverWithOptions([
+    provider,
     selectedModel,
     selectedReasoning,
     selectedSpeed,
@@ -205,7 +211,7 @@ test("provides selected model options and excludes disabled permission options",
   assert.equal(modelScope.targets.every(({ badgeAtEnd }) => badgeAtEnd), true);
   assert.deepEqual(
     modelScope.targets.map(({ actionId }) => actionId),
-    ["task.model.select", "task.reasoning.select", "task.speed.select"],
+    ["task.model.provider.browse", "task.model.select", "task.reasoning.select", "task.speed.select"],
   );
   assert.equal(modelScope.targets.every(({ isActionable }) => isActionable()), true);
   assert.deepEqual(
@@ -415,7 +421,7 @@ test("marks only the selected model and permission options as the popover autofo
     permissionPopover: () => permissionPopover,
     patchPopover(popover, html) {
       if (popover === modelPopover) {
-        modelHtml = html;
+        modelHtml += html;
       } else if (popover === permissionPopover) {
         permissionHtml = html;
       }
@@ -474,7 +480,7 @@ test("renders only the exact provider and model identity as selected", () => {
     modelPopover: () => modelPopover,
     patchPopover(popover, html) {
       if (popover === modelPopover) {
-        modelHtml = html;
+        modelHtml += html;
       }
     },
   });
@@ -485,10 +491,67 @@ test("renders only the exact provider and model identity as selected", () => {
     modelHtml,
     /data-provider="codex"[\s\S]*?data-model="shared-model"[\s\S]*?aria-pressed="true"/,
   );
+  assert.doesNotMatch(modelHtml, /Claude Shared/);
+  owner.browsedProvider = "claude";
+  modelHtml = "";
+  turnOptions.render.call(owner);
   assert.match(
     modelHtml,
     /data-provider="claude"[\s\S]*?data-model="shared-model"[\s\S]*?aria-pressed="false"/,
   );
+  assert.doesNotMatch(modelHtml, /Codex Shared/);
+});
+
+test("browsing a provider leaves the chosen model and its settings untouched", () => {
+  const owner = selectionOwner();
+  const selection = { ...owner.selection };
+  turnOptions.browseProvider.call(owner, "claude");
+  assert.equal(owner.browsedProvider, "claude");
+  assert.deepEqual(owner.selection, selection);
+  assert.equal(owner.changes, 0);
+  assert.equal(owner.permissionRequests, 0);
+
+  turnOptions.browseProvider.call(owner, "unavailable");
+  assert.equal(owner.browsedProvider, "claude");
+});
+
+test("a new model uses its own default even when effort names and speed overlap", () => {
+  const owner = selectionOwner();
+  turnOptions.selectModel.call(owner, "shared", "claude");
+  assert.equal(owner.selection.provider, "claude");
+  assert.equal(owner.selection.effort, "low");
+  assert.equal(owner.selection.fastMode, false);
+  assert.equal(owner.browsedProvider, "claude");
+  assert.equal(owner.changes, 1);
+  assert.equal(owner.permissionRequests, 1);
+  assert.equal(owner.dismissals, 0);
+
+  owner.selection.effort = "high";
+  owner.selection.fastMode = true;
+  turnOptions.selectModel.call(owner, "shared", "claude");
+  assert.equal(owner.selection.effort, "high");
+  assert.equal(owner.selection.fastMode, true);
+});
+
+test("a Task's provider boundary rejects browsing and choosing other agents", () => {
+  const owner = selectionOwner();
+  owner.context.provider = "codex";
+  const selection = { ...owner.selection };
+  turnOptions.browseProvider.call(owner, "claude");
+  turnOptions.selectModel.call(owner, "shared", "claude");
+  assert.deepEqual(owner.selection, selection);
+  assert.equal(owner.browsedProvider, "");
+  assert.equal(owner.changes, 0);
+  assert.equal(owner.permissionRequests, 0);
+});
+
+test("an effort must be offered even when an unavailable default is supplied", () => {
+  const owner = selectionOwner();
+  owner.selection.effort = "missing";
+  owner.modelOptions[0].defaultReasoningEffort = "missing";
+  assert.equal(turnOptions.selectedEffort.call(owner), "low");
+  owner.modelOptions[0].supportedReasoningEfforts = [];
+  assert.equal(turnOptions.selectedEffort.call(owner), "");
 });
 
 test("keeps a closed picker wordless while its list loads", () => {
@@ -675,6 +738,7 @@ function control() {
   let html = "";
   return {
     attributes,
+    querySelector: (selector) => ({ selector }),
     assignments: 0,
     title: "",
     classList: {
@@ -729,8 +793,34 @@ function renderOwner(overrides = {}) {
     permissionPicker: () => ({ hidden: false }),
     permissionPopover: () => control(),
     patchPickerButton: turnOptions.patchPickerButton,
+    renderModelPopover: turnOptions.renderModelPopover,
     patchPopover() {},
     ...overrides,
+  };
+}
+
+function selectionOwner() {
+  return {
+    context: { provider: "" },
+    browsedProvider: "",
+    selection: { provider: "codex", model: "shared", effort: "high", fastMode: true },
+    modelOptions: ["codex", "claude"].map((provider) => ({
+      provider,
+      model: "shared",
+      defaultReasoningEffort: "low",
+      supportedReasoningEfforts: [{ value: "low" }, { value: "high" }],
+      supportsFast: true,
+    })),
+    offeredModels: turnOptions.offeredModels,
+    selectedModel: turnOptions.selectedModel,
+    modelPopover: () => ({}),
+    changes: 0,
+    permissionRequests: 0,
+    dismissals: 0,
+    hidePopover() { this.dismissals += 1; },
+    render() {},
+    emitChange() { this.changes += 1; },
+    loadPermissions() { this.permissionRequests += 1; },
   };
 }
 

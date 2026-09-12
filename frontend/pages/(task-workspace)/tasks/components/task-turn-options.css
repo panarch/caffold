@@ -167,6 +167,8 @@ caffold-task-turn-options {
   }
 
   & .task-model-popover {
+    /* Two columns must fit long model names while staying within the viewport. */
+    width: min(496px, calc(100vw - 2rem));
     position-area: block-end center;
     justify-self: start;
   }
@@ -185,6 +187,37 @@ caffold-task-turn-options {
 
   & .task-model-popover section {
     display: grid;
+    gap: 0.125rem;
+  }
+
+  & .task-model-browser {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2.5fr);
+    align-items: start;
+    gap: var(--interface-space-4);
+  }
+
+  & .task-provider-options {
+    position: sticky;
+    top: 0;
+  }
+
+  & .task-provider-models {
+    min-width: 0;
+    padding-left: var(--interface-space-3);
+    border-left: 1px solid var(--border-subtle);
+  }
+
+  & .task-provider-list,
+  & .task-model-list,
+  & .task-model-settings {
+    display: grid;
+    gap: 0.125rem;
+  }
+
+  & .task-model-setting-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 6rem), 1fr));
     gap: 0.125rem;
   }
 
@@ -224,6 +257,10 @@ caffold-task-turn-options {
     font-weight: 600;
   }
 
+  & .task-model-popover .task-model-option strong {
+    overflow-wrap: anywhere;
+  }
+
   & .task-model-option:hover,
   & .task-model-option:focus-visible,
   & .task-model-option[aria-pressed="true"] {
@@ -251,6 +288,10 @@ caffold-task-turn-options {
     font-size: var(--interface-meta-font-size);
     line-height: var(--interface-line-height);
     overflow-wrap: anywhere;
+  }
+
+  & .task-provider-option {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   & .task-model-check {
@@ -295,6 +336,11 @@ caffold-task-turn-options {
       margin: 0;
       border-radius: 1rem;
       box-shadow: 0 -12px 48px rgb(var(--shadow-rgb) / 18%);
+    }
+
+    & .task-model-popover {
+      /* Intrinsic grid sizing must not shrink the two-column mobile panel. */
+      width: min(496px, calc(100vw - 2rem));
     }
 
     & .task-model-popover::backdrop,
