@@ -1,0 +1,25 @@
+{
+ "timestamp": 1789200119,
+ "method": "session/update",
+ "params": {
+  "sessionId": "01a094a2-d9a0-72d0-b2e1-ce8d2a316d23",
+  "update": {
+   "sessionUpdate": "user_message_chunk",
+   "content": {
+    "type": "text",
+    "text": "The user sent a message while you were working:\n<user_query>\nINTERJECT_3275d766\n</user_query>\nMake sure to complete any unfinished tasks from previous turns.",
+    "_meta": {
+     "displayText": "INTERJECT_3275d766"
+    }
+   },
+   "_meta": {
+    "modelId": "grok-4.6",
+    "interjection": true
+   }
+  },
+  "_meta": {
+   "eventId": "01a094a2-d9a0-72d0-b2e1-ce8d2a316d23-225",
+   "agentTimestampMs": 1789200117713
+  }
+ }
+}

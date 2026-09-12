@@ -193,6 +193,12 @@ fn task_fork_source_id(provider: &str, source_id: &str) -> Result<String, ApiErr
                 message: "forking from a Claude session is not supported yet".to_string(),
             });
         }
+        "grok" => {
+            return Err(ApiError::BadRequest {
+                code: "task_fork_unsupported_provider",
+                message: "forking from a Grok session is not supported yet".to_string(),
+            });
+        }
         _ => {
             return Err(ApiError::BadRequest {
                 code: "task_fork_provider_invalid",
@@ -1186,5 +1192,19 @@ mod tests {
             }
         ));
         assert!(client.mock_requests().await.is_empty());
+    }
+    #[test]
+    fn a_grok_source_is_refused_as_unsupported_rather_than_invalid() {
+        let error = task_fork_source_id("grok", "session-source").unwrap_err();
+        assert!(
+            matches!(
+                error,
+                ApiError::BadRequest {
+                    code: "task_fork_unsupported_provider",
+                    ..
+                }
+            ),
+            "{error:?}"
+        );
     }
 }

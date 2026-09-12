@@ -61,6 +61,7 @@ one records where it runs from and what it needs:
 | `npm run test:codex-live` | `frontend/` | authenticated Codex CLI | authenticated Codex browser coverage with model usage |
 | `cargo test -p caffold-claude-runner --test live -- --ignored` | repository root | authenticated Claude CLI | that Claude still returns an unanswered permission request to a client that reattaches, with model usage |
 | `cargo test -p caffold --test claude_live -- --ignored --test-threads=1` | repository root | authenticated Claude CLI | what a person sees when the backend is replaced or the runner is killed under a working Claude Task, that each permission decision does what it says, that the agent reaches the tool Caffold serves it, and that the installation reports its status, with model usage |
+| `cargo test -p caffold --lib -- agent::grok` | repository root | Rust test toolchain | the Grok driver against a scripted leader that answers as `grok 1.0.30` did: creation, turns, approvals, history, worktree moves, reconnection, and the Settings report, without an installed Grok |
 | `node --test docs/tests/*.test.mjs` | repository root | Node | documentation index, links, entrypoints, and this command index |
 | `node --test scripts/tests/*.test.mjs` | repository root | Node | release version tooling |
 | `desktop/macos/test-contracts` | repository root | Node | macOS packaging, release, and installer contracts, from `desktop/macos/tests/` |
@@ -325,6 +326,17 @@ spends model usage and is serialized because the scenarios share the installed
 account and exercise process-start ordering. Re-run it when changing the
 minimum Claude version, protocol reader, runner lifecycle, approval mapping, or
 served tools.
+
+## Grok checks
+
+The Grok driver keeps its deterministic suite inline, beside the code it
+verifies, and plays the leader from answers recorded from `grok 1.0.30`; the
+recordings live under `caffold/src/agent/grok/fixtures/`. The browser suite
+serves `/api/grok/status` from a fixture. There is no ignored live Grok suite:
+checking the installed CLI is a manual run of `caffold serve` against a
+throwaway directory, where **Settings → Grok** and a Grok Task show what the
+installation does. Such a run starts Caffold's Grok leader on
+`~/.grok/leader-caffold.sock` and leaves it running.
 
 ## macOS application tests
 

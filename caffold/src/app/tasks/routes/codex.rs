@@ -218,6 +218,7 @@ mod tests {
             TaskStore::memory().unwrap(),
             root.path().join(".caffold-test/worktrees"),
             claude,
+            crate::agent::grok::GrokClient::unreachable(),
         )
         .unwrap();
 

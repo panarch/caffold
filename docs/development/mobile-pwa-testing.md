@@ -125,8 +125,8 @@ system settings.
    not already been granted. Verify that the page shows **Subscribed**, marks the
    row as **This browser**, and displays a stable short installation ID.
 3. Complete, fail, or interrupt a managed task turn. Verify that the
-   notification contains only the task name and terminal status. If both
-   agents are installed, exercise one Codex Task and one Claude Task. Repeat
+   notification contains only the task name and terminal status. Exercise one
+   Task per installed agent. Repeat
    while Caffold is foregrounded; the notification should still appear.
 4. Ask a Task for work the agent must request approval for, and close the PWA
    while the request is pending. Verify that one `Approval required`

@@ -1263,6 +1263,7 @@ mod tests {
             push_runtime.service(),
             AgentRuntimeDependencies {
                 claude: agent::claude::ClaudeClient::mock().0,
+                grok: agent::grok::GrokClient::unreachable(),
                 codex_mcp: None,
             },
         )

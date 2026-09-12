@@ -139,6 +139,9 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "brand/claude-template.png" => Some(png(include_bytes!(
             "../../frontend/assets/brand/claude-template.png"
         ))),
+        "brand/grok-template.png" => Some(png(include_bytes!(
+            "../../frontend/assets/brand/grok-template.png"
+        ))),
         "pages/layout.css" => Some(css(include_str!("../../frontend/pages/layout.css"))),
         "pages/layout.js" => Some(js(include_str!("../../frontend/pages/layout.js"))),
         "pages/foreground-recovery.js" => Some(js(include_str!(
@@ -270,6 +273,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         ))),
         "pages/(task-workspace)/settings/claude/display.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/settings/claude/display.js"
+        ))),
+        "pages/(task-workspace)/settings/grok/page.css" => Some(css(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/grok/page.css"
+        ))),
+        "pages/(task-workspace)/settings/grok/page.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/grok/page.js"
         ))),
         "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css" => {
             Some(css(include_str!(
@@ -1162,7 +1171,11 @@ mod tests {
         assert_eq!(brand_svg.content_type, "image/svg+xml");
         assert!(brand_svg.body.starts_with(b"<svg"));
 
-        for path in ["brand/codex-template@2x.png", "brand/claude-template.png"] {
+        for path in [
+            "brand/codex-template@2x.png",
+            "brand/claude-template.png",
+            "brand/grok-template.png",
+        ] {
             let agent_brand = get(path).expect("agent brand asset");
             assert_eq!(agent_brand.content_type, "image/png");
             assert!(agent_brand.body.starts_with(b"\x89PNG\r\n\x1a\n"));
@@ -1337,6 +1350,7 @@ mod tests {
             "pages/(task-workspace)/settings/claude/page.js",
             "pages/(task-workspace)/settings/claude/display.js",
             "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
+            "pages/(task-workspace)/settings/grok/page.js",
             "pages/(task-workspace)/settings/about/page.js",
             "pages/(task-workspace)/tasks/components/composer/action-hints.js",
         ] {

@@ -1,0 +1,31 @@
+[
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/queue/changed",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "entries": [
+    {
+     "id": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+     "version": 0,
+     "kind": "prompt",
+     "text": "Authorized isolated integration probe in a throwaway git repository. Use your shell tool to run exactly `cat probe-marker.txt` in the working directory and reply with its output only.",
+     "position": 0
+    }
+   ]
+  },
+  "_t_ms": 899
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/queue/changed",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "entries": [],
+   "runningPromptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+   "runningText": "Authorized isolated integration probe in a throwaway git repository. Use your shell tool to run exactly `cat probe-marker.txt` in the working directory and reply with its output only.",
+   "runningKind": "prompt"
+  },
+  "_t_ms": 903
+ }
+]

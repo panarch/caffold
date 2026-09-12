@@ -6,6 +6,7 @@ import "./notifications/page.js";
 import "./remote-access/page.js";
 import "./codex/page.js";
 import "./claude/page.js";
+import "./grok/page.js";
 import "./about/page.js";
 import {
   buttonActionHintTarget,
@@ -27,6 +28,7 @@ const TITLES = {
   "remote-access": "Remote Access",
   codex: "Codex",
   claude: "Claude",
+  grok: "Grok",
   about: "About Caffold",
 };
 const SETTINGS_MASTER_DETAIL_MEDIA_QUERY = "(min-width: 900px)";
@@ -44,6 +46,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
     this.detachResponsiveListener();
     this.querySelector("caffold-settings-codex-page")?.deactivate();
     this.querySelector("caffold-settings-claude-page")?.deactivate();
+    this.querySelector("caffold-settings-grok-page")?.deactivate();
     this.querySelector("caffold-settings-notifications-page")?.deactivate();
     this.querySelector("caffold-settings-remote-access-page")?.deactivate();
   }
@@ -92,6 +95,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
           <caffold-settings-remote-access-page hidden></caffold-settings-remote-access-page>
           <caffold-settings-codex-page hidden></caffold-settings-codex-page>
           <caffold-settings-claude-page hidden></caffold-settings-claude-page>
+          <caffold-settings-grok-page hidden></caffold-settings-grok-page>
           <caffold-settings-about-page hidden></caffold-settings-about-page>
         </div>
       </div>
@@ -177,6 +181,7 @@ class CaffoldSettingsWorkspace extends HTMLElement {
       "remote-access": this.querySelector("caffold-settings-remote-access-page"),
       codex: this.querySelector("caffold-settings-codex-page"),
       claude: this.querySelector("caffold-settings-claude-page"),
+      grok: this.querySelector("caffold-settings-grok-page"),
       about: this.querySelector("caffold-settings-about-page"),
     };
   }
@@ -206,6 +211,11 @@ class CaffoldSettingsWorkspace extends HTMLElement {
       pages.claude?.activate();
     } else {
       pages.claude?.deactivate();
+    }
+    if (presentedSection === "grok") {
+      pages.grok?.activate();
+    } else {
+      pages.grok?.deactivate();
     }
     if (presentedSection === "notifications") {
       pages.notifications?.activate();

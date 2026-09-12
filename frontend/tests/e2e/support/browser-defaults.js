@@ -117,6 +117,40 @@ export function mockClaudeStatus(overrides = {}) {
   };
 }
 
+export function mockGrokStatus(overrides = {}) {
+  return {
+    executable: {
+      path: "/Users/example/.local/bin/grok",
+      version: "grok 1.0.30 (04b7ffed98c6) [stable]",
+    },
+    leader: {
+      socketPath: "/Users/example/.grok/leader-caffold.sock",
+      running: true,
+      socketStale: false,
+      pid: 36832,
+      version: "1.0.30",
+      protocolVersion: 1,
+    },
+    connection: {
+      state: "ready",
+      generation: 1,
+      agentVersion: "1.0.30",
+      authMethods: ["cached_token", "Grok"],
+      defaultAuthMethod: "cached_token",
+    },
+    auth: {
+      cachedSignIn: true,
+      verified: {
+        authenticated: true,
+        mode: "Oidc",
+        subscriptionTier: "SuperGrok",
+        email: "user@example.com",
+      },
+    },
+    ...overrides,
+  };
+}
+
 export async function installBrowserDefaults(page) {
   await page.addInitScript(installTaskSseControllerInBrowser);
   await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
@@ -130,6 +164,13 @@ export async function installBrowserDefaults(page) {
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify(mockClaudeStatus()),
+    }),
+  );
+
+  await page.route(/\/api\/grok\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockGrokStatus()),
     }),
   );
 

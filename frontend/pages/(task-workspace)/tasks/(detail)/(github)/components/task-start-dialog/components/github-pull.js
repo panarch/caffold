@@ -286,12 +286,19 @@ function pullIsValid(pull) {
 }
 
 // The same ask reaches each agent through its provider-facing tool names. Codex
-// uses unqualified names; Claude's in-process MCP tools are qualified.
+// uses unqualified names; Claude's in-process MCP tools are qualified; Grok
+// reaches Caffold's HTTP MCP server under the server's prefix.
 function caffoldTaskTools(provider) {
   if (provider === "claude") {
     return {
       rename: "mcp__caffold__rename_current_task",
       isolate: "mcp__caffold__isolate_current_task",
+    };
+  }
+  if (provider === "grok") {
+    return {
+      rename: "caffold__rename_current_task",
+      isolate: "caffold__isolate_current_task",
     };
   }
   return { rename: "rename_current_task", isolate: "isolate_current_task" };

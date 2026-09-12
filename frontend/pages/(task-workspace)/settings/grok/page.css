@@ -1,0 +1,99 @@
+caffold-settings-grok-page {
+  container: settings-grok / inline-size;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  font-size: var(--interface-font-size);
+  line-height: var(--interface-line-height);
+
+  & .settings-content-scroll {
+    height: 100%;
+    min-height: 0;
+    overflow: auto;
+    padding-block: var(--settings-content-padding-block);
+    padding-inline: var(--settings-content-padding-inline);
+  }
+
+  & .settings-content-section {
+    display: grid;
+    width: min(100%, var(--settings-content-max-width));
+    min-width: 0;
+    margin: 0 auto;
+  }
+
+  & .settings-content-section > header {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: var(--interface-space-7);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: var(--interface-space-6);
+  }
+
+  & .settings-content-section > header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--settings-page-description-size);
+    line-height: var(--interface-line-height);
+  }
+
+  & .settings-content-section > header button {
+    position: relative;
+    isolation: isolate;
+    height: var(--settings-page-action-size);
+    min-height: var(--settings-page-action-size);
+    padding: 0 var(--interface-control-padding-inline);
+    border: 0;
+    background: transparent;
+    color: var(--control-fg);
+    font: inherit;
+    font-size: var(--settings-small-text-size);
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  & .settings-content-section > header button::before {
+    position: absolute;
+    z-index: -1;
+    inset: var(--interface-control-hit-outset) 0;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface);
+    content: "";
+  }
+
+  & .settings-content-section > header button:hover:not(:disabled),
+  & .settings-content-section > header button:focus-visible {
+    outline: none;
+  }
+
+  & .settings-content-section > header button:hover:not(:disabled)::before,
+  & .settings-content-section > header button:focus-visible::before {
+    border-color: var(--border-strong);
+    background: var(--control-hover-bg);
+  }
+
+  & .settings-content-section > header button:disabled {
+    color: var(--disabled-text);
+    cursor: default;
+  }
+
+  & .settings-content-section > section {
+    margin-top: var(--interface-space-10);
+  }
+
+  & .settings-content-section > section > h3 {
+    font-size: var(--settings-field-label-size);
+    line-height: var(--interface-line-height);
+  }
+
+  @container settings-grok (max-width: 520px) {
+    & .settings-content-section > header {
+      align-items: start;
+      flex-direction: column;
+    }
+  }
+}

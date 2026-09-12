@@ -1894,6 +1894,69 @@ test("names the tools a Claude Task actually has in its issue setup prompt", { t
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
 });
 
+test("names the tools a Grok Task actually has in its issue setup prompt", { tag: "@desktop" }, async ({ page }) => {
+  const fixture = await installLinkedWorktreeGithubFixture(page, {
+    sectionComposerSettings: { model: "grok-4.5" },
+  });
+  await page.route(/\/api\/agent\/models(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        models: [
+          {
+            provider: "codex",
+            model: "gpt-5.6-sol",
+            displayName: "GPT-5.6-Sol",
+            description: "Latest frontier agentic coding model.",
+            isDefault: true,
+            defaultEffort: "low",
+            efforts: ["low", "medium", "high"],
+            supportsFastMode: true,
+          },
+          {
+            provider: "grok",
+            model: "grok-4.5",
+            displayName: "Grok 4.5",
+            description: "Grok 4.5",
+            isDefault: false,
+            defaultEffort: "xhigh",
+            efforts: ["low", "medium", "high", "xhigh"],
+            supportsFastMode: false,
+            supportsAutoMode: true,
+          },
+        ],
+        unavailable: [],
+      }),
+    }),
+  );
+  await page.goto(
+    "/?section=fixture-section-1&surface=github&tool=issues&number=1984",
+  );
+
+  const issueDetail = page.locator("caffold-github-issue-detail-page");
+  await issueDetail.getByRole("button", { name: "Start Task for issue #1984" }).click();
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
+  await expect(dialog).toBeVisible();
+  await expect.poll(() =>
+    dialog.locator("caffold-task-turn-options").evaluate((options) =>
+      options.submissionOptions()
+    )
+  ).toMatchObject({ model: "grok-4.5", provider: "grok" });
+  await dialog.locator("select[name='baseRef']").selectOption("main");
+  await dialog.getByRole("button", { name: "Start Task" }).click();
+
+  await expect.poll(() => fixture.counts.taskCreates).toBe(1);
+  const request = fixture.requests.taskCreates[0];
+  expect(request.provider).toBe("grok");
+  expect(request.titleSource).toContain(
+    "First, use caffold__rename_current_task to give this Task",
+  );
+  expect(request.titleSource).toContain(
+    'call caffold__isolate_current_task with that branchName, baseRef exactly "main"',
+  );
+  await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
+});
+
 test("starts a same-repository PR Task from the exact prepared head", { tag: "@all-viewports" }, async ({ page }, testInfo) => {
   const fixture = await installLinkedWorktreeGithubFixture(page);
   const pullDetail = await openLinkedWorktreePull(page);

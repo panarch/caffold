@@ -48,6 +48,7 @@ canonical query route; Task URLs use path routes:
 /settings/remote-access
 /settings/codex
 /settings/claude
+/settings/grok
 /settings/about
 ```
 
@@ -66,8 +67,8 @@ both lists finish loading and are empty, the same `/` route shows New Task
 instead of requiring a separate empty-state action.
 
 Agent availability does not select the top-level surface. Codex readiness and
-Claude operation failures remain visible inside their own Task or Settings
-surfaces and must not cause a transient or automatic switch to another
+Claude or Grok operation failures remain visible inside their own Task or
+Settings surfaces and must not cause a transient or automatic switch to another
 workspace.
 
 Selecting a managed Section opens its fixed-context New Task surface. Recovery

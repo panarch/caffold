@@ -20,6 +20,7 @@ mod codex;
 mod commands;
 mod conversation;
 mod fork;
+mod grok;
 mod list;
 mod membership;
 mod store;
@@ -31,6 +32,7 @@ use codex::{codex_mcp_diagnostics, codex_restart, codex_status};
 use commands::managed_thread_from_task_record;
 use commands::{create_task, task_approval, task_interrupt, task_prompt};
 use conversation::{mark_task_seen, task_detail, task_generated_image};
+use grok::grok_status;
 use list::{list_archived_tasks, list_managed_tasks};
 use membership::{
     section_reorder, task_archive, task_delete, task_recovery_archive, task_recovery_recheck,
@@ -221,6 +223,7 @@ pub(super) fn router(state: TaskState) -> Router {
         .route("/api/codex/restart", post(codex_restart))
         .route("/api/claude/status", get(claude_status))
         .route("/api/claude/restart", post(claude_restart))
+        .route("/api/grok/status", get(grok_status))
         .route("/api/agent/models", get(agent_models))
         .route("/api/agent/permissions", get(agent_permissions))
         .route(

@@ -1,9 +1,13 @@
-//! Caffold's authenticated streamable-HTTP MCP endpoint for Codex.
+//! Caffold's authenticated streamable-HTTP MCP endpoint for Codex and Grok.
 //!
 //! The endpoint is part of the main Caffold server so it is available before
 //! Task-store startup finishes. Codex may initialize an MCP connection while
 //! the application is still restoring its runtime; discovery is safe then and
 //! a tool call fails explicitly until the runtime is attached.
+//!
+//! Grok comes through its own door on the same server. The binding says which
+//! Task a call belongs to, and the Task says which agent runs it, so the two
+//! doors share one handler and one set of bindings.
 
 use std::{
     path::PathBuf,
@@ -29,26 +33,32 @@ use crate::agent::codex::{
 };
 
 const MAX_MCP_REQUEST_BYTES: usize = 256 * 1024;
+const CODEX_MCP_PATH: &str = "/api/codex/mcp";
+const GROK_MCP_PATH: &str = "/api/grok/mcp";
 
 #[derive(Clone)]
 pub(in crate::app) struct CodexMcpHost {
     bindings: CodexMcpBindings,
+    grok_endpoint: String,
     runtime: Arc<StdMutex<Option<TaskRuntime>>>,
     tools: Arc<Vec<Value>>,
 }
 
 impl CodexMcpHost {
-    pub(in crate::app) fn memory(endpoint: String) -> Self {
+    /// `origin` is the server's own address, such as `http://127.0.0.1:5178`.
+    pub(in crate::app) fn memory(origin: String) -> Self {
         Self {
-            bindings: CodexMcpBindings::memory(endpoint),
+            bindings: CodexMcpBindings::memory(format!("{origin}{CODEX_MCP_PATH}")),
+            grok_endpoint: format!("{origin}{GROK_MCP_PATH}"),
             runtime: Arc::new(StdMutex::new(None)),
             tools: Arc::new(caffold_mcp_tools()),
         }
     }
 
-    pub(in crate::app) fn persistent(endpoint: String, state_dir: PathBuf) -> Self {
+    pub(in crate::app) fn persistent(origin: String, state_dir: PathBuf) -> Self {
         Self {
-            bindings: CodexMcpBindings::persistent(endpoint, state_dir),
+            bindings: CodexMcpBindings::persistent(format!("{origin}{CODEX_MCP_PATH}"), state_dir),
+            grok_endpoint: format!("{origin}{GROK_MCP_PATH}"),
             runtime: Arc::new(StdMutex::new(None)),
             tools: Arc::new(caffold_mcp_tools()),
         }
@@ -56,6 +66,11 @@ impl CodexMcpHost {
 
     pub(super) fn bindings(&self) -> CodexMcpBindings {
         self.bindings.clone()
+    }
+
+    /// Where a Grok session reaches these tools.
+    pub(super) fn grok_endpoint(&self) -> String {
+        self.grok_endpoint.clone()
     }
 
     pub(super) fn attach_runtime(&self, runtime: TaskRuntime) {
@@ -68,8 +83,12 @@ impl CodexMcpHost {
     pub(in crate::app) fn router(&self) -> Router {
         Router::new()
             .route(
-                "/api/codex/mcp",
-                post(codex_mcp).layer(DefaultBodyLimit::max(MAX_MCP_REQUEST_BYTES)),
+                CODEX_MCP_PATH,
+                post(serve_mcp).layer(DefaultBodyLimit::max(MAX_MCP_REQUEST_BYTES)),
+            )
+            .route(
+                GROK_MCP_PATH,
+                post(serve_mcp).layer(DefaultBodyLimit::max(MAX_MCP_REQUEST_BYTES)),
             )
             .with_state(self.clone())
     }
@@ -86,7 +105,7 @@ impl CodexMcpHost {
     }
 }
 
-async fn codex_mcp(State(host): State<CodexMcpHost>, headers: HeaderMap, body: Bytes) -> Response {
+async fn serve_mcp(State(host): State<CodexMcpHost>, headers: HeaderMap, body: Bytes) -> Response {
     let Some(binding) = headers
         .get(CAFFOLD_MCP_BINDING_HEADER)
         .and_then(|value| value.to_str().ok())
@@ -157,7 +176,7 @@ async fn codex_mcp(State(host): State<CodexMcpHost>, headers: HeaderMap, body: B
                 return Json(mcp_result(
                     id,
                     mcp_tool_result(Err(
-                        "Caffold has not bound this MCP connection to its new Codex thread yet."
+                        "Caffold has not bound this MCP connection to its new Task yet."
                             .to_string(),
                     )),
                 ))
@@ -170,9 +189,7 @@ async fn codex_mcp(State(host): State<CodexMcpHost>, headers: HeaderMap, body: B
                 ))
                 .into_response();
             };
-            let outcome = runtime
-                .execute_codex_mcp_tool(&thread_id, &tool, arguments)
-                .await;
+            let outcome = runtime.execute_mcp_tool(&thread_id, &tool, arguments).await;
             mcp_result(id, mcp_tool_result(outcome))
         }
         CodexMcpRequest::Unsupported { id, method } => mcp_error(
@@ -202,11 +219,20 @@ mod tests {
                 CodexTurnOptions, MockCodexResponse, NORMAL_SERVICE_TIER_ID, SocketAppServer,
                 inspect_codex_installation,
             },
+            grok::GrokClient,
         },
-        app::tasks::{events::TaskEvents, sessions::TaskSessions},
+        app::tasks::{
+            events::TaskEvents, routes::router, sessions::TaskSessions,
+            test_support::task_state_with_grok,
+        },
+        fs::RootedFs,
         task_store::{ManagedThread, RunBy, TaskStore},
     };
-    use tokio::sync::broadcast;
+    use std::{fs, path::Path, process::Command, time::Duration};
+    use tokio::{
+        sync::broadcast,
+        time::{sleep, timeout},
+    };
 
     struct TestSession {
         binding: String,
@@ -223,9 +249,19 @@ mod tests {
         session: Option<&str>,
         body: Value,
     ) -> Response {
+        request_at(host, CODEX_MCP_PATH, token, session, body).await
+    }
+
+    async fn request_at(
+        host: &CodexMcpHost,
+        path: &str,
+        token: Option<&str>,
+        session: Option<&str>,
+        body: Value,
+    ) -> Response {
         let mut builder = Request::builder()
             .method("POST")
-            .uri("/api/codex/mcp")
+            .uri(path)
             .header("content-type", "application/json");
         if let Some(token) = token {
             builder = builder.header(CAFFOLD_MCP_BINDING_HEADER, token);
@@ -333,7 +369,7 @@ mod tests {
             .await
             .context("bind live MCP endpoint")?;
         let address = listener.local_addr()?;
-        let endpoint = format!("http://{address}/api/codex/mcp");
+        let endpoint = format!("http://{address}");
         let host = CodexMcpHost::persistent(endpoint, state_dir.to_path_buf());
         let (server_shutdown, _) = broadcast::channel(1);
         let shutdown = server_shutdown.clone();
@@ -363,9 +399,327 @@ mod tests {
         }
     }
 
+    #[test]
+    fn both_doors_are_named_from_the_one_origin() {
+        let host = CodexMcpHost::memory("http://127.0.0.1:5178".to_string());
+        assert_eq!(host.grok_endpoint(), "http://127.0.0.1:5178/api/grok/mcp");
+        let config = host.bindings.thread_config("token");
+        assert_eq!(
+            config["mcp_servers.caffold"]["url"],
+            "http://127.0.0.1:5178/api/codex/mcp"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_grok_door_takes_the_same_binding_and_refuses_the_same_forgeries() {
+        let host = CodexMcpHost::memory("http://127.0.0.1:5177".to_string());
+        // Grok proposes a protocol version this server does not speak. The
+        // answer names one it does, and Grok follows it (evidence:
+        // native-mcp-protocol-version.json).
+        let initialize = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": { "protocolVersion": "2025-11-25" },
+        });
+        assert_eq!(
+            request_at(&host, GROK_MCP_PATH, None, None, initialize.clone())
+                .await
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            request_at(
+                &host,
+                GROK_MCP_PATH,
+                Some("not-a-caffold-capability"),
+                None,
+                initialize.clone()
+            )
+            .await
+            .status(),
+            StatusCode::UNAUTHORIZED
+        );
+
+        let token = host.bindings.begin_pending().await.unwrap();
+        host.bindings
+            .bind_pending(&token, "thread_1")
+            .await
+            .unwrap();
+        let initialized = request_at(&host, GROK_MCP_PATH, Some(&token), None, initialize).await;
+        assert_eq!(initialized.status(), StatusCode::OK);
+        let session = session_header(&initialized);
+        let response = response_json(initialized).await;
+        assert_eq!(response["result"]["protocolVersion"], "2025-06-18");
+        assert_eq!(response["result"]["serverInfo"]["name"], "caffold");
+
+        let forged = request_at(
+            &host,
+            GROK_MCP_PATH,
+            Some(&token),
+            Some(&forged_thread_session()),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
+        )
+        .await;
+        assert_eq!(forged.status(), StatusCode::UNAUTHORIZED);
+        let tools = response_json(
+            request_at(
+                &host,
+                GROK_MCP_PATH,
+                Some(&token),
+                Some(&session),
+                json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/list" }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 2);
+    }
+
+    fn git(path: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(path)
+            .output()
+            .expect("git runs");
+        assert!(
+            output.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn git_is_available() -> bool {
+        Command::new("git")
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    async fn task_call(app: &Router, request: Request<Body>) -> (StatusCode, Value) {
+        let response = app.clone().oneshot(request).await.unwrap();
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let json = if body.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&body).unwrap()
+        };
+        (status, json)
+    }
+
+    /// A Grok Task calls the two Caffold tools through its own door: the
+    /// binding its session was started with names the Task, the rename lands
+    /// on the row and on the leader's session, and isolating prepares the
+    /// worktree and writes down the move without moving anything yet.
+    #[tokio::test]
+    async fn a_grok_task_renames_and_isolates_itself_through_its_own_door() {
+        if !git_is_available() {
+            return;
+        }
+        let root = tempfile::tempdir().unwrap();
+        git(root.path(), &["init", "--initial-branch=main"]);
+        fs::write(root.path().join("README.md"), "hello\n").unwrap();
+        git(root.path(), &["add", "README.md"]);
+        git(
+            root.path(),
+            &[
+                "-c",
+                "user.email=caffold@test",
+                "-c",
+                "user.name=Caffold",
+                "commit",
+                "-m",
+                "start",
+            ],
+        );
+        let (state, leader, _memory, host) = task_state_with_grok(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        let store = state.task_store.clone();
+        let bindings_dir = root.path().join(".caffold-test/grok/bindings");
+        let app = router(state);
+
+        let (status, created) = task_call(
+            &app,
+            Request::post("/api/tasks")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "titleSource": "Look into the bridge", "provider": "grok" })
+                        .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{created}");
+        let thread_id = created["threadId"].as_str().unwrap().to_string();
+        let asked = leader.wait_for("session/new").await;
+        let server = &asked["mcpServers"][0];
+        assert_eq!(server["url"], host.grok_endpoint());
+        let token = server["headers"][0]["value"].as_str().unwrap().to_string();
+        let home = asked["cwd"].as_str().unwrap().to_string();
+
+        let initialized = request_at(
+            &host,
+            GROK_MCP_PATH,
+            Some(&token),
+            None,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": { "protocolVersion": "2025-11-25" },
+            }),
+        )
+        .await;
+        assert_eq!(initialized.status(), StatusCode::OK);
+        let session = session_header(&initialized);
+        let call = |id: u64, tool: &str, arguments: Value| {
+            json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": "tools/call",
+                "params": { "name": tool, "arguments": arguments },
+            })
+        };
+
+        let renamed = response_json(
+            request_at(
+                &host,
+                GROK_MCP_PATH,
+                Some(&token),
+                Some(&session),
+                call(
+                    2,
+                    "rename_current_task",
+                    json!({ "name": "  Grok bridge  " }),
+                ),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(
+            renamed["result"]["content"][0]["text"],
+            "Renamed the current Caffold task to `Grok bridge`.",
+            "{renamed}"
+        );
+        let retitled = leader.wait_for("_x.ai/session/rename").await;
+        assert_eq!(retitled["sessionId"], thread_id);
+        assert_eq!(retitled["title"], "Grok bridge");
+        assert_eq!(
+            store.get(&thread_id).unwrap().unwrap().display_name,
+            "Grok bridge"
+        );
+
+        let isolated = response_json(
+            request_at(
+                &host,
+                GROK_MCP_PATH,
+                Some(&token),
+                Some(&session),
+                call(
+                    3,
+                    "isolate_current_task",
+                    json!({ "branchName": "grok-bridge" }),
+                ),
+            )
+            .await,
+        )
+        .await;
+        let text = isolated["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(
+            text.starts_with("Prepared the current Caffold task on branch `grok-bridge` at `"),
+            "{text}"
+        );
+        assert!(text.contains("End this turn; the user's next request will continue there."));
+        let worktree = store
+            .worktree_for_thread(&thread_id)
+            .unwrap()
+            .expect("the Task owns a worktree now");
+        // Nothing is running, so the move follows at once: the session is
+        // forked into the worktree, the Task re-bound to the copy, and the
+        // source closed.
+        let binding_file = bindings_dir.join(format!("{thread_id}.json"));
+        let binding = timeout(Duration::from_secs(5), async {
+            loop {
+                let binding: Value =
+                    serde_json::from_str(&fs::read_to_string(&binding_file).unwrap()).unwrap();
+                if binding["switch"].is_null() {
+                    return binding;
+                }
+                sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the move settles");
+        assert_eq!(binding["current"]["cwd"], worktree.worktree_path);
+        let copy = binding["current"]["sessionId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert_ne!(copy, thread_id);
+        assert_eq!(binding["history"][0]["sessionId"], thread_id);
+        assert_eq!(binding["history"][0]["closePending"], false);
+        let forked = leader.wait_for("_x.ai/session/fork").await;
+        assert_eq!(forked["sourceSessionId"], thread_id);
+        assert_eq!(forked["sourceCwd"], home);
+        assert_eq!(forked["newCwd"], worktree.worktree_path);
+        assert_eq!(forked["newSessionId"], copy);
+        assert_eq!(leader.wait_for("session/load").await["sessionId"], copy);
+        assert_eq!(
+            leader.wait_for("session/close").await["sessionId"],
+            thread_id
+        );
+
+        let again = response_json(
+            request_at(
+                &host,
+                GROK_MCP_PATH,
+                Some(&token),
+                Some(&session),
+                call(4, "isolate_current_task", json!({})),
+            )
+            .await,
+        )
+        .await;
+        let text = again["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(
+            text.starts_with(
+                "The current Caffold task is already isolated on branch `grok-bridge` at `"
+            ),
+            "{text}"
+        );
+        let binding: Value =
+            serde_json::from_str(&fs::read_to_string(&binding_file).unwrap()).unwrap();
+        assert!(
+            binding["switch"].is_null(),
+            "asking again plans no second move"
+        );
+        assert_eq!(binding["current"]["sessionId"], copy);
+
+        // The next message runs in the worktree, on the copy.
+        let (status, prompted) = task_call(
+            &app,
+            Request::post(format!("/api/tasks/{thread_id}/prompts"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({ "prompt": "Carry on here." }).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        let prompt = leader.wait_for("session/prompt").await;
+        assert_eq!(prompt["sessionId"], copy);
+        assert_eq!(prompt["prompt"][0]["text"], "Carry on here.");
+    }
+
     #[tokio::test]
     async fn discovery_accepts_only_a_caffold_issued_binding() {
-        let host = CodexMcpHost::memory("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let host = CodexMcpHost::memory("http://127.0.0.1:5177".to_string());
         let token = host.bindings.begin_pending().await.unwrap();
         let initialize = json!({
             "jsonrpc": "2.0",
@@ -416,7 +770,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_new_thread_promotes_its_bootstrap_session_before_task_tools_are_authorized() {
-        let host = CodexMcpHost::memory("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let host = CodexMcpHost::memory("http://127.0.0.1:5177".to_string());
         let binding = host.bindings.begin_pending().await.unwrap();
         let initialize = json!({
             "jsonrpc": "2.0",
@@ -482,7 +836,7 @@ mod tests {
 
     #[tokio::test]
     async fn authenticated_transport_handles_non_tool_mcp_frames() {
-        let host = CodexMcpHost::memory("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let host = CodexMcpHost::memory("http://127.0.0.1:5177".to_string());
         let token = host.bindings.begin_pending().await.unwrap();
         let session = session_header(&initialize(&host, &token).await);
 
@@ -560,7 +914,7 @@ mod tests {
 
     #[tokio::test]
     async fn every_task_scoped_tool_uses_the_same_transport_authentication() {
-        let host = CodexMcpHost::memory("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let host = CodexMcpHost::memory("http://127.0.0.1:5177".to_string());
 
         for tool in caffold_mcp_tools() {
             let call = json!({
@@ -591,7 +945,7 @@ mod tests {
         let obstacle = root.path().join("not-a-directory");
         std::fs::write(&obstacle, b"occupied").unwrap();
         let host = CodexMcpHost::persistent(
-            "http://127.0.0.1:5177/api/codex/mcp".to_string(),
+            "http://127.0.0.1:5177".to_string(),
             obstacle.join("codex-mcp"),
         );
         let list_tools = json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" });
@@ -617,10 +971,7 @@ mod tests {
     async fn a_malformed_external_header_does_not_initialize_codex_storage() {
         let root = tempfile::tempdir().unwrap();
         let state_dir = root.path().join("codex-mcp");
-        let host = CodexMcpHost::persistent(
-            "http://127.0.0.1:5177/api/codex/mcp".to_string(),
-            state_dir.clone(),
-        );
+        let host = CodexMcpHost::persistent("http://127.0.0.1:5177".to_string(), state_dir.clone());
 
         assert_eq!(
             request(
@@ -642,10 +993,7 @@ mod tests {
     async fn a_claude_only_task_does_not_open_codex_capability_storage() {
         let root = tempfile::tempdir().unwrap();
         let state_dir = root.path().join("codex-mcp");
-        let host = CodexMcpHost::persistent(
-            "http://127.0.0.1:5177/api/codex/mcp".to_string(),
-            state_dir.clone(),
-        );
+        let host = CodexMcpHost::persistent("http://127.0.0.1:5177".to_string(), state_dir.clone());
         let store = TaskStore::memory().unwrap();
         let thread_id = "claude-only-thread";
         store
@@ -662,6 +1010,7 @@ mod tests {
         let (shutdown, _) = broadcast::channel(1);
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
+            GrokClient::unreachable(),
             TaskSessions::default(),
             TaskEvents::default(),
             store,
@@ -682,7 +1031,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_existing_binding_survives_a_backend_generation_replacement() {
-        let endpoint = "http://127.0.0.1:5177/api/codex/mcp";
+        let endpoint = "http://127.0.0.1:5177";
         let state = tempfile::tempdir().unwrap();
         let first_host = CodexMcpHost::persistent(endpoint.to_string(), state.path().to_path_buf());
         let auth = bind_thread(&first_host, "thread_1").await;
@@ -708,7 +1057,7 @@ mod tests {
 
     #[tokio::test]
     async fn another_installations_capability_is_rejected() {
-        let endpoint = "http://127.0.0.1:5177/api/codex/mcp";
+        let endpoint = "http://127.0.0.1:5177";
         let first_state = tempfile::tempdir().unwrap();
         let other_state = tempfile::tempdir().unwrap();
         let first =
@@ -732,7 +1081,7 @@ mod tests {
 
     #[tokio::test]
     async fn binding_and_session_headers_are_not_independently_authorizing() {
-        let host = CodexMcpHost::memory("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let host = CodexMcpHost::memory("http://127.0.0.1:5177".to_string());
         let first = bind_thread(&host, "thread_1").await;
         let second = bind_thread(&host, "thread_2").await;
         let list_tools = json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" });
@@ -775,7 +1124,7 @@ mod tests {
 
     #[tokio::test]
     async fn reattachment_keeps_old_connections_alive_until_task_deletion() {
-        let endpoint = "http://127.0.0.1:5177/api/codex/mcp";
+        let endpoint = "http://127.0.0.1:5177";
         let state = tempfile::tempdir().unwrap();
         let first = CodexMcpHost::persistent(endpoint.to_string(), state.path().to_path_buf());
         let old = bind_thread(&first, "thread_1").await;
@@ -804,6 +1153,7 @@ mod tests {
         let (shutdown, _) = broadcast::channel(1);
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
+            GrokClient::unreachable(),
             TaskSessions::default(),
             TaskEvents::default(),
             store.clone(),
@@ -844,7 +1194,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_pending_connection_cannot_execute_a_task_tool() {
-        let host = CodexMcpHost::memory("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let host = CodexMcpHost::memory("http://127.0.0.1:5177".to_string());
         let token = host.bindings.begin_pending().await.unwrap();
         let session = session_header(&initialize(&host, &token).await);
         let response = response_json(
@@ -876,7 +1226,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_bound_connection_waits_for_the_task_runtime() {
-        let host = CodexMcpHost::memory("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let host = CodexMcpHost::memory("http://127.0.0.1:5177".to_string());
         let auth = bind_thread(&host, "thread_1").await;
         let response = response_json(
             bound_request(
@@ -907,7 +1257,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_bound_connection_runs_the_same_managed_task_tool_logic() {
-        let host = CodexMcpHost::memory("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let host = CodexMcpHost::memory("http://127.0.0.1:5177".to_string());
         let store = TaskStore::memory().unwrap();
         store
             .claim(
@@ -920,6 +1270,7 @@ mod tests {
         let (shutdown, _) = broadcast::channel(1);
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
+            GrokClient::unreachable(),
             TaskSessions::default(),
             TaskEvents::default(),
             store.clone(),
@@ -991,7 +1342,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_binding_cannot_be_redirected_by_model_supplied_task_identity() {
-        let host = CodexMcpHost::memory("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let host = CodexMcpHost::memory("http://127.0.0.1:5177".to_string());
         let store = TaskStore::memory().unwrap();
         for thread_id in ["thread_1", "thread_2"] {
             store
@@ -1005,6 +1356,7 @@ mod tests {
         let (shutdown, _) = broadcast::channel(1);
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
+            GrokClient::unreachable(),
             TaskSessions::default(),
             TaskEvents::default(),
             store.clone(),
@@ -1049,7 +1401,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_deleted_task_cannot_be_mutated_through_an_older_session() {
-        let host = CodexMcpHost::memory("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let host = CodexMcpHost::memory("http://127.0.0.1:5177".to_string());
         let store = TaskStore::memory().unwrap();
         store
             .claim(
@@ -1061,6 +1413,7 @@ mod tests {
         let (shutdown, _) = broadcast::channel(1);
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
+            GrokClient::unreachable(),
             TaskSessions::default(),
             TaskEvents::default(),
             store.clone(),
@@ -1101,7 +1454,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_archived_task_cannot_be_mutated_through_an_older_session() {
-        let host = CodexMcpHost::memory("http://127.0.0.1:5177/api/codex/mcp".to_string());
+        let host = CodexMcpHost::memory("http://127.0.0.1:5177".to_string());
         let store = TaskStore::memory().unwrap();
         store
             .claim(
@@ -1113,6 +1466,7 @@ mod tests {
         let (shutdown, _) = broadcast::channel(1);
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
+            GrokClient::unreachable(),
             TaskSessions::default(),
             TaskEvents::default(),
             store.clone(),
@@ -1181,6 +1535,7 @@ mod tests {
         let (runtime_shutdown, _) = broadcast::channel(1);
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
+            GrokClient::unreachable(),
             TaskSessions::default(),
             TaskEvents::default(),
             store.clone(),
@@ -1333,6 +1688,7 @@ mod tests {
             let (replacement_shutdown, _) = broadcast::channel(1);
             let replacement_runtime = TaskRuntime::new(
                 ClaudeClient::mock().0,
+                GrokClient::unreachable(),
                 TaskSessions::default(),
                 TaskEvents::default(),
                 store.clone(),
@@ -1464,6 +1820,7 @@ mod tests {
         let (runtime_shutdown, _) = broadcast::channel(1);
         let runtime = TaskRuntime::new(
             ClaudeClient::mock().0,
+            GrokClient::unreachable(),
             TaskSessions::default(),
             TaskEvents::default(),
             store.clone(),

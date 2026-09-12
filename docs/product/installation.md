@@ -32,8 +32,8 @@ Caffold supports Apple silicon Macs running macOS 14 or later. Installation and
 updates use [Homebrew](https://brew.sh/). Git is required for repository and
 worktree features.
 
-Install and authenticate at least one supported coding agent. Installing both
-makes both agents' available models selectable when a Task is created.
+Install and authenticate at least one supported coding agent. Every installed
+agent's available models are selectable when a Task is created.
 
 ### Codex
 
@@ -47,7 +47,7 @@ codex
 
 **Settings → Codex** reports installation, authentication, app-server runtime,
 and protocol readiness. A blocking Codex problem disables only Codex creation
-and execution; existing readable Tasks and Claude remain available.
+and execution; existing readable Tasks and the other agents remain available.
 
 ### Claude Code
 
@@ -68,6 +68,28 @@ or install Claude Code itself.
 The Caffold application bundles `caffold-claude-runner`, not the `claude` CLI.
 The runner is a transport and process supervisor for the installed CLI. See
 [Agent runtimes](../architecture/agent-runtimes.md) for the ownership boundary.
+
+### Grok
+
+Caffold supports the Grok CLI `1.0.30` or newer, available as `grok` on the
+Mac app's `PATH` or at `~/.grok/bin/grok` or `~/.local/bin/grok`. Install it
+with its official setup, run `grok`, and complete sign-in.
+
+Caffold starts a Grok leader of its own, `grok agent leader` on the socket
+`~/.grok/leader-caffold.sock`, when a Grok model list or Task first needs one,
+and attaches one stdio bridge per running backend. That leader holds Grok
+sessions and running turns while the backend is replaced and stays running
+after Caffold stops; `grok leader list` shows it beside any leader the CLI
+started for itself. Caffold does not use or stop the CLI's own leader.
+
+**Settings → Grok** reports the detected executable and version, the
+signed-in account as the leader confirms it, the leader on Caffold's socket
+with its own build, and the state of Caffold's connection. Opening the page
+starts no leader, session, or turn: a leader that is not running is reported
+as such, and the account is verified only while a leader answers.
+
+Caffold uses the CLI's existing sign-in. It does not read or store Grok
+credentials and does not install or update the CLI.
 
 ### Optional integrations
 

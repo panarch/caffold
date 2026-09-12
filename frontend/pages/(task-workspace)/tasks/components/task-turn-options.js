@@ -1342,7 +1342,7 @@ function listPhrase(parts) {
 }
 
 function renderProviderOption(provider, browsedProvider) {
-  const label = { codex: "Codex", claude: "Claude" }[provider] ?? provider;
+  const label = { codex: "Codex", claude: "Claude", grok: "Grok" }[provider] ?? provider;
   return `
     <button
       type="button"
@@ -1455,9 +1455,9 @@ function renderModelFallback(loading, error) {
     return `<p class="task-model-note">Loading models...</p>`;
   }
   if (error) {
-    return `<p class="task-model-note">Model list unavailable. The default Codex model will be used.</p>`;
+    return `<p class="task-model-note">Model list unavailable. The agent's default model will be used.</p>`;
   }
-  return `<p class="task-model-note">Open this menu after Codex is connected.</p>`;
+  return `<p class="task-model-note">Open this menu after an agent is connected.</p>`;
 }
 
 function renderPermissionFallback(loading, error) {
@@ -1467,7 +1467,7 @@ function renderPermissionFallback(loading, error) {
   if (error) {
     return `<p class="task-model-note">Permission modes are unavailable. The agent's own default will be used.</p>`;
   }
-  return `<p class="task-model-note">Open this menu after Codex is connected.</p>`;
+  return `<p class="task-model-note">Open this menu after an agent is connected.</p>`;
 }
 
 // A mode is named by the agent that offers it, and the agent sends a label

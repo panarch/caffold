@@ -30,6 +30,7 @@ struct CodexProcessState {
 impl TaskRuntime {
     pub(in crate::app::tasks) fn startup(&self) {
         self.watch_claude();
+        self.watch_grok();
         let runtime = self.clone();
         tokio::spawn(async move {
             let status = runtime.status().await;
@@ -257,6 +258,8 @@ impl TaskRuntime {
         if let Some(client) = client {
             client.shutdown().await;
         }
+        // The bridge goes down with the backend; Grok's leader stays up.
+        self.grok.stop().await;
     }
 
     /// Tell the runtime a connection failed, when the agent has one to lose.
@@ -389,6 +392,7 @@ mod tests {
         let (shutdown, _) = broadcast::channel(1);
         TaskRuntime::new(
             agent::claude::ClaudeClient::mock().0,
+            agent::grok::GrokClient::unreachable(),
             TaskSessions::default(),
             TaskEvents::default(),
             TaskStore::memory().unwrap(),

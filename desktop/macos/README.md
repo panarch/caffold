@@ -68,13 +68,15 @@ documents backup, shutdown, health verification, and rollback behavior.
     version `0.147.0` or newer (the daemon command requires this installation
     layout); or
   - Claude Code `2.1.259` or newer, available as `claude` on the wrapper's
-    augmented `PATH`
+    augmented `PATH`; or
+  - the Grok CLI `1.0.30` or newer, available as `grok` on that `PATH` or at
+    `~/.grok/bin/grok` or `~/.local/bin/grok`
 - Git
 - GitHub CLI for GitHub views
 - Tailscale for private remote access
 
 The bundle contains the Caffold backend and `caffold-claude-runner`; it does not
-bundle either vendor's agent CLI. Missing integrations do not prevent the
+bundle any vendor's agent CLI. Missing integrations do not prevent the
 server from starting. Agent-specific creation fails only for the unavailable
 agent, and the menu status reports when Tailscale is unavailable or its Serve
 setup fails.
@@ -106,6 +108,10 @@ setup fails.
 - Caffold starts the bundled Claude runner on demand. The runner holds active
   `claude` processes across a backend replacement, then stops itself and its
   children after ten minutes without a backend subscriber.
+- Caffold starts a Grok leader of its own, `grok agent leader` on
+  `~/.grok/leader-caffold.sock`, when a Grok model list or Task first needs
+  one. The leader holds Grok sessions and running turns across a backend
+  replacement and stays running after Caffold stops.
 
 `Server Settings...` controls the installed PWA name, bind mode, port, and automatic Tailscale Serve startup. Use a distinct name before installing the PWA to distinguish multiple Caffold servers; existing installations may need to be reinstalled after a name change. Local-only binding is the default. LAN binding is an explicit opt-in and is not required for Tailscale Serve.
 

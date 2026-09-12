@@ -451,6 +451,9 @@ async fn new_task_agent(
         Some("claude") => Ok(TaskAgent::Claude {
             driver: state.task_runtime.claude().driver(cwd),
         }),
+        Some("grok") => Ok(TaskAgent::Grok {
+            driver: state.task_runtime.grok().driver(),
+        }),
         Some(_) => Err(ApiError::BadRequest {
             code: "unsupported_provider",
             message: "Caffold does not drive that agent.".to_string(),
@@ -2853,6 +2856,7 @@ mod state_tests {
             TaskStore::memory().unwrap(),
             root.path().join("managed-worktrees"),
             claude,
+            agent::grok::GrokClient::unreachable(),
         )
         .expect("task state");
 
@@ -2860,5 +2864,388 @@ mod state_tests {
             PathBuf::from(task_cwd(&state, None).unwrap()),
             project.canonicalize().unwrap()
         );
+    }
+}
+
+#[cfg(test)]
+mod grok_tests {
+    //! A Grok Task over the same HTTP surface every Task uses: the model list
+    //! names the agent, creation chooses it, a prompt reaches the leader under
+    //! the turn Caffold named, and the Task reads back through Detail.
+
+    use std::time::Duration;
+
+    use axum::body::{Body, to_bytes};
+    use axum::http::{Request, StatusCode};
+    use serde_json::{Value, json};
+    use tokio::sync::broadcast::error::RecvError;
+    use tokio::time::{Instant, sleep, timeout};
+    use tower::ServiceExt;
+
+    use crate::agent::codex::{CodexThreadClient, MockCodexResponse};
+    use crate::agent::grok::test_support::update_frame;
+    use crate::app::tasks::events::TaskEventRecord;
+    use crate::app::tasks::routes::{router, test_support::current_model_list_response};
+    use crate::app::tasks::runtime::{TaskRuntime, TaskRuntimeSignal};
+    use crate::app::tasks::test_support::{task_state_with_agents, task_state_with_grok};
+    use crate::fs::RootedFs;
+    use crate::task_store::RunBy;
+
+    async fn call(app: &axum::Router, request: Request<Body>) -> (StatusCode, Value) {
+        let response = app.clone().oneshot(request).await.unwrap();
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let json = if body.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&body)
+                .unwrap_or(Value::String(String::from_utf8_lossy(&body).into_owned()))
+        };
+        (status, json)
+    }
+
+    fn post(path: &str, body: Value) -> Request<Body> {
+        Request::post(path)
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn the_model_list_names_grok_and_creation_prompting_and_detail_run_through_the_task_surface()
+     {
+        let root = tempfile::tempdir().unwrap();
+        let codex = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "model/list",
+            current_model_list_response(),
+        )]);
+        let (state, leader, _memory, _host) =
+            task_state_with_grok(RootedFs::new(root.path()).unwrap(), codex).await;
+        let sessions = state.task_sessions.clone();
+        let store = state.task_store.clone();
+        let app = router(state);
+
+        let (status, models) = call(
+            &app,
+            Request::get("/api/agent/models")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{models}");
+        let grok_models = models["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|model| model["provider"] == "grok")
+            .collect::<Vec<_>>();
+        assert_eq!(grok_models.len(), 2, "{models}");
+        assert_eq!(grok_models[0]["model"], "grok-4.6");
+        assert_eq!(grok_models[0]["isDefault"], true);
+        assert_eq!(grok_models[0]["defaultEffort"], "xhigh");
+        assert_eq!(grok_models[0]["supportsFastMode"], false);
+
+        let (status, modes) = call(
+            &app,
+            Request::get("/api/agent/permissions?provider=grok")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{modes}");
+        assert_eq!(modes["defaultMode"], "default");
+        assert_eq!(modes["options"].as_array().unwrap().len(), 3);
+
+        let (status, created) = call(
+            &app,
+            post(
+                "/api/tasks",
+                json!({ "titleSource": "Investigate the Grok bridge", "provider": "grok", "model": "grok-4.5", "effort": "low", "permissionMode": "default" }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{created}");
+        let thread_id = created["threadId"].as_str().unwrap().to_string();
+        assert_eq!(created["provider"], "grok");
+        assert_eq!(created["model"], "grok-4.5");
+        assert_eq!(created["reasoningEffort"], "low");
+        let asked = leader.wait_for("session/new").await;
+        assert_eq!(
+            asked["_meta"]["sessionId"], thread_id,
+            "the Task is the session Caffold named"
+        );
+        assert_eq!(
+            asked["cwd"],
+            root.path().canonicalize().unwrap().display().to_string()
+        );
+        let managed = store.get(&thread_id).unwrap().expect("the Task is managed");
+        assert!(
+            matches!(managed.run_by, RunBy::Grok { .. }),
+            "{:?}",
+            managed.run_by
+        );
+
+        let (status, prompted) = call(
+            &app,
+            post(
+                &format!("/api/tasks/{thread_id}/prompts"),
+                json!({ "prompt": "List the files here." }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        let turn_id = prompted["turnId"].as_str().unwrap().to_string();
+        assert_eq!(prompted["steered"], false);
+        let sent = leader.wait_for("session/prompt").await;
+        assert_eq!(sent["sessionId"], thread_id);
+        assert_eq!(sent["_meta"]["promptId"], turn_id);
+        assert_eq!(sent["prompt"][0]["text"], "List the files here.");
+        let snapshot = sessions
+            .snapshot(&thread_id)
+            .await
+            .expect("a watched session");
+        assert_eq!(snapshot.active_turn_id.as_deref(), Some(turn_id.as_str()));
+
+        leader
+            .notify(
+                "session/update",
+                update_frame(&thread_id, "e-9", &turn_id, json!({ "sessionUpdate": "agent_message_chunk", "content": { "type": "text", "text": "a.rs b.rs" } })),
+            )
+            .await;
+        leader
+            .notify(
+                "_x.ai/session_notification",
+                update_frame(&thread_id, "e-10", &turn_id, json!({ "sessionUpdate": "turn_completed", "prompt_id": turn_id, "stop_reason": "end_turn" })),
+            )
+            .await;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let snapshot = sessions
+                .snapshot(&thread_id)
+                .await
+                .expect("a watched session");
+            if snapshot.active_turn_id.is_none() {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the turn ends once the leader says so"
+            );
+            sleep(Duration::from_millis(10)).await;
+        }
+
+        let (status, detail) = call(
+            &app,
+            Request::get(format!("/api/tasks/{thread_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{detail}");
+        assert_eq!(detail["provider"], "grok");
+        let events = detail["events"].as_array().unwrap();
+        assert!(
+            events
+                .iter()
+                .any(|event| event.to_string().contains("List the files here.")),
+            "the prompt is part of the conversation: {detail}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| event.to_string().contains("a.rs b.rs")),
+            "and so is what the agent answered: {detail}"
+        );
+    }
+
+    /// The approvals a Task is waiting on, once there are `count` of them.
+    async fn approvals_of(
+        runtime: &TaskRuntime,
+        thread_id: &str,
+        count: usize,
+    ) -> Vec<TaskEventRecord> {
+        timeout(Duration::from_secs(5), async {
+            loop {
+                let waiting = runtime.approval_events(thread_id).await;
+                if waiting.len() == count {
+                    return waiting;
+                }
+                sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the waiting list settles")
+    }
+
+    /// The question outlives the bridge, the card does not: an approval the
+    /// leader asked for is withdrawn while no bridge stands rather than left
+    /// for an answer that could go nowhere, and once the Task is opened again
+    /// the leader asks again under a new request id, which is what the answer
+    /// goes back on.
+    #[tokio::test]
+    async fn an_approval_waits_across_a_lost_bridge_and_is_answered_on_the_next_one() {
+        let root = tempfile::tempdir().unwrap();
+        let (state, leader, _memory, _host) = task_state_with_grok(
+            RootedFs::new(root.path()).unwrap(),
+            CodexThreadClient::mock(Vec::new()),
+        )
+        .await;
+        let runtime = state.task_runtime.clone();
+        let mut signals = runtime.subscribe();
+        let app = router(state);
+
+        let (status, created) = call(
+            &app,
+            post(
+                "/api/tasks",
+                json!({ "titleSource": "Run the build", "provider": "grok" }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{created}");
+        let thread_id = created["threadId"].as_str().unwrap().to_string();
+        leader.wait_for("session/new").await;
+        let (status, prompted) = call(
+            &app,
+            post(
+                &format!("/api/tasks/{thread_id}/prompts"),
+                json!({ "prompt": "Build it." }),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{prompted}");
+        leader.wait_for("session/prompt").await;
+
+        let permission = json!({
+            "sessionId": thread_id,
+            "toolCall": {
+                "toolCallId": "call-9",
+                "kind": "execute",
+                "title": "Execute `cargo build`",
+                "rawInput": { "variant": "Bash", "command": "cargo build" },
+                "_meta": { "x.ai/tool": { "name": "run_terminal_command", "kind": "execute" } }
+            },
+            "options": [
+                { "optionId": "allow-once", "name": "once", "kind": "allow_once" },
+                { "optionId": "reject-once", "name": "no", "kind": "reject_once" }
+            ]
+        });
+        leader
+            .ask(7, "session/request_permission", permission.clone())
+            .await;
+        let waiting = approvals_of(&runtime, &thread_id, 1).await;
+        let payload = waiting[0].payload.as_ref().unwrap();
+        assert_eq!(payload["approvalId"], "call-9");
+        assert_eq!(payload["command"], "cargo build");
+
+        leader.drop_bridge();
+        timeout(Duration::from_secs(5), async {
+            loop {
+                match signals.recv().await {
+                    Ok(TaskRuntimeSignal::SessionUnavailable {
+                        thread_id: lost, ..
+                    }) if lost == thread_id => {
+                        return;
+                    }
+                    Ok(_) | Err(RecvError::Lagged(_)) => {}
+                    Err(RecvError::Closed) => {
+                        panic!("the runtime went away")
+                    }
+                }
+            }
+        })
+        .await
+        .expect("the lost bridge is reported");
+
+        approvals_of(&runtime, &thread_id, 0).await;
+        let approve = || {
+            post(
+                &format!("/api/tasks/{thread_id}/approvals/call-9"),
+                json!({ "decision": "allow" }),
+            )
+        };
+        let (status, refused) = call(&app, approve()).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+        assert!(
+            refused.to_string().contains("approval_not_found"),
+            "{refused}"
+        );
+
+        let (status, detail) = call(
+            &app,
+            Request::get(format!("/api/tasks/{thread_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{detail}");
+        leader.wait_for("session/load").await;
+        leader
+            .ask(9, "session/request_permission", permission)
+            .await;
+        approvals_of(&runtime, &thread_id, 1).await;
+
+        let (status, answered) = call(&app, approve()).await;
+        assert_eq!(status, StatusCode::OK, "{answered}");
+        let reply = timeout(Duration::from_secs(5), async {
+            loop {
+                let reply = leader.wait_for_notification("<response>").await;
+                if reply["id"] == 9 {
+                    return reply;
+                }
+                sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the answer reaches the bridge that stands now");
+        assert_eq!(reply["result"]["outcome"]["outcome"], "selected");
+        assert_eq!(reply["result"]["outcome"]["optionId"], "allow-once");
+        assert!(runtime.approval_events(&thread_id).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_grok_that_cannot_be_reached_is_named_without_hiding_the_other_agents() {
+        let root = tempfile::tempdir().unwrap();
+        let codex = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "model/list",
+            current_model_list_response(),
+        )]);
+        let (state, _runner) =
+            task_state_with_agents(RootedFs::new(root.path()).unwrap(), codex).await;
+        let app = router(state);
+        let (status, models) = call(
+            &app,
+            Request::get("/api/agent/models")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{models}");
+        assert!(
+            models["models"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|model| model["provider"] == "codex")
+        );
+        assert!(
+            models["unavailable"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|agent| agent["provider"] == "grok"),
+            "{models}"
+        );
+        let (status, refused) = call(
+            &app,
+            post(
+                "/api/tasks",
+                json!({ "titleSource": "x", "provider": "grok" }),
+            ),
+        )
+        .await;
+        // An agent that cannot be reached answers as one, the way a lost
+        // Codex connection or Claude runner does.
+        assert_eq!(status, StatusCode::BAD_GATEWAY, "{refused}");
     }
 }

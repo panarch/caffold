@@ -589,6 +589,7 @@ test("Settings roles share inherited constraints without sharing leaf selectors"
     ["pages/(task-workspace)/settings/codex/page.css", "settings-codex"],
     ["pages/(task-workspace)/settings/about/page.css", "settings-about"],
     ["pages/(task-workspace)/settings/claude/page.css", "settings-claude"],
+    ["pages/(task-workspace)/settings/grok/page.css", "settings-grok"],
   ];
   for (const [path, container] of pages) {
     const source = readFrontend(path);

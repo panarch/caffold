@@ -15,8 +15,8 @@
 //!
 //! This module holds the vocabulary and the choosing. What a choice means to an
 //! agent belongs to that agent — `codex::contract` for Codex, `claude` for
-//! Claude — so that a third agent adds a match arm here rather than a third
-//! pile of internals.
+//! Claude, `grok` for Grok — so that another agent adds a match arm here rather
+//! than another pile of internals.
 //!
 //! The failures speak this vocabulary too. Each driver keeps its own rich
 //! error — Codex's app-server protocol, Claude's runner — and answers the
@@ -33,6 +33,7 @@ use super::codex::{
     CodexThreadClient, CodexTurnOptions, codex_mode_id, codex_models, codex_permission_mode_name,
     codex_permission_modes, codex_turn_options, is_fast_service_tier, service_tier_for_fast_mode,
 };
+use super::grok::{GrokClient, GrokTurnOptions, grok_turn_options};
 use super::{
     ActivityStatus, Conversation, ConversationItem, ItemKind, MessageContent, TurnPage, TurnState,
 };
@@ -79,6 +80,9 @@ pub(crate) enum AgentError {
 pub(crate) enum Driver {
     Codex(CodexThreadClient),
     Claude(ClaudeConversation),
+    /// Grok carries where a Task works in its own binding, so the client is
+    /// the whole of the driver.
+    Grok(GrokClient),
 }
 
 /// Claude, and where the Task being asked about works.
@@ -111,7 +115,7 @@ pub(crate) struct OpenedConversation {
 
 /// One model an agent offers, in Caffold's words.
 ///
-/// Both agents describe a model the same way once each one's own parts are set
+/// Every agent describes a model the same way once its own parts are set
 /// aside: something to send back, something to show, whether it is the one
 /// chosen by default, the depths it works at, and whether it has a faster tier.
 /// Everything else — service tiers by name, modalities, adaptive thinking — is
@@ -227,20 +231,28 @@ pub(crate) struct AcceptedTurnOptions {
 enum AgreedTurnOptions {
     Codex(CodexTurnOptions),
     Claude(ClaudeTurnOptions),
+    Grok(GrokTurnOptions),
 }
 
 impl AcceptedTurnOptions {
     fn codex(&self) -> Result<&CodexTurnOptions, AgentError> {
         match &self.agreed {
             AgreedTurnOptions::Codex(codex) => Ok(codex),
-            AgreedTurnOptions::Claude(_) => Err(mismatched_agent()),
+            AgreedTurnOptions::Claude(_) | AgreedTurnOptions::Grok(_) => Err(mismatched_agent()),
         }
     }
 
     fn claude(&self) -> Result<&ClaudeTurnOptions, AgentError> {
         match &self.agreed {
             AgreedTurnOptions::Claude(claude) => Ok(claude),
-            AgreedTurnOptions::Codex(_) => Err(mismatched_agent()),
+            AgreedTurnOptions::Codex(_) | AgreedTurnOptions::Grok(_) => Err(mismatched_agent()),
+        }
+    }
+
+    fn grok(&self) -> Result<&GrokTurnOptions, AgentError> {
+        match &self.agreed {
+            AgreedTurnOptions::Grok(grok) => Ok(grok),
+            AgreedTurnOptions::Codex(_) | AgreedTurnOptions::Claude(_) => Err(mismatched_agent()),
         }
     }
 }
@@ -350,6 +362,21 @@ impl Driver {
                     agreed: AgreedTurnOptions::Claude(accepted),
                 })
             }
+            Self::Grok(client) => {
+                let accepted = grok_turn_options(client, options).await?;
+                Ok(AcceptedTurnOptions {
+                    applied: TurnOptions {
+                        model: accepted.model.clone(),
+                        effort: accepted.effort.clone(),
+                        // Grok has no faster tier; a request for speed is
+                        // answered with the ordinary one, and the person is
+                        // told what they got.
+                        fast_mode: false,
+                        permission_mode: accepted.permission_mode.clone(),
+                    },
+                    agreed: AgreedTurnOptions::Grok(accepted),
+                })
+            }
         }
     }
 
@@ -394,6 +421,21 @@ impl Driver {
                     .and_then(Value::as_str)
                     .map(str::to_string),
             },
+            Self::Grok(_) => TurnOptions {
+                model: settings
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                effort: settings
+                    .get("reasoningEffort")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                fast_mode: false,
+                permission_mode: settings
+                    .get("permissionMode")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            },
         }
     }
 
@@ -402,6 +444,7 @@ impl Driver {
         match self {
             Self::Codex(client) => Ok(codex_models(client).await?),
             Self::Claude(claude) => Ok(claude.client.models().await?),
+            Self::Grok(client) => Ok(client.models().await?),
         }
     }
 
@@ -437,6 +480,13 @@ impl Driver {
             Self::Claude(claude) => {
                 let agreed = options.claude()?;
                 let conversation = claude.client.start_conversation(cwd, agreed).await?;
+                Ok(StartedConversation {
+                    conversation,
+                    settings: options.applied.clone(),
+                })
+            }
+            Self::Grok(client) => {
+                let conversation = client.start_conversation(cwd, options.grok()?).await?;
                 Ok(StartedConversation {
                     conversation,
                     settings: options.applied.clone(),
@@ -493,6 +543,27 @@ impl Driver {
                     applied: options.applied.clone(),
                 })
             }
+            Self::Grok(client) => {
+                let turn = client
+                    .start_turn(conversation_id, cwd, prompt, images, options.grok()?)
+                    .await?;
+                let user_message = turn
+                    .items
+                    .first()
+                    .filter(|item| matches!(item.kind, ItemKind::UserMessage { .. }))
+                    .cloned()
+                    .ok_or_else(|| {
+                        AgentError::Failed(format!(
+                            "Grok began turn {} without identifying its user message",
+                            turn.id
+                        ))
+                    })?;
+                Ok(StartedTurn {
+                    turn: TurnState::from(&turn),
+                    user_message,
+                    applied: options.applied.clone(),
+                })
+            }
         }
     }
 
@@ -525,6 +596,9 @@ impl Driver {
                 .client
                 .steer_turn(conversation_id, turn_id, prompt, images)
                 .await?),
+            Self::Grok(client) => Ok(client
+                .steer_turn(conversation_id, turn_id, prompt, images)
+                .await?),
         }
     }
 
@@ -537,6 +611,7 @@ impl Driver {
         match self {
             Self::Codex(client) => Ok(client.interrupt_turn(conversation_id, turn_id).await?),
             Self::Claude(claude) => Ok(claude.client.interrupt_turn(conversation_id).await?),
+            Self::Grok(client) => Ok(client.interrupt_turn(conversation_id, turn_id).await?),
         }
     }
 
@@ -559,6 +634,9 @@ impl Driver {
                 })
             }
             Self::Claude(claude) => Ok(claude.client.permission_modes(model).await),
+            // Grok takes its mode when a session starts and names no list of
+            // its own; the driver names the three flags it accepts.
+            Self::Grok(client) => Ok(client.permission_modes()),
         }
     }
 
@@ -619,6 +697,23 @@ impl Driver {
                     turns_page,
                 })
             }
+            Self::Grok(client) => {
+                let conversation = client.open_conversation(conversation_id).await?;
+                let turns_page = match with_turns {
+                    true => Some(
+                        client
+                            .read_turns(conversation_id, None, INITIAL_TURNS_PAGE)
+                            .await?,
+                    ),
+                    false => None,
+                };
+                Ok(OpenedConversation {
+                    settings: client.settings_of(conversation_id).await,
+                    cwd: conversation.cwd.clone(),
+                    conversation,
+                    turns_page,
+                })
+            }
         }
     }
 
@@ -640,6 +735,10 @@ impl Driver {
                 .read_turns(conversation_id, &claude.cwd, cursor, limit)
                 .await
                 .map_err(Into::into),
+            Self::Grok(client) => client
+                .read_turns(conversation_id, cursor, limit)
+                .await
+                .map_err(Into::into),
         }
     }
 
@@ -657,6 +756,9 @@ impl Driver {
         match self {
             Self::Codex(client) => Ok(client.archive_thread(conversation_id).await?),
             Self::Claude(claude) => Ok(claude.client.close_conversation(conversation_id).await?),
+            // Grok closes a session and keeps its files, which is the same
+            // shape as Claude's: the row Caffold keeps remembers the Task.
+            Self::Grok(client) => Ok(client.close_conversation(conversation_id).await?),
         }
     }
 
@@ -692,6 +794,12 @@ impl Driver {
                     ))),
                 }
             }
+            Self::Grok(client) => match client.conversation_exists(conversation_id).await {
+                true => Ok(None),
+                false => Err(AgentError::ConversationGone(format!(
+                    "the agent no longer has conversation {conversation_id}"
+                ))),
+            },
         }
     }
 
@@ -707,6 +815,7 @@ impl Driver {
         match self {
             Self::Codex(client) => Ok(client.delete_thread(conversation_id).await?),
             Self::Claude(claude) => Ok(claude.client.erase(conversation_id, &claude.cwd).await?),
+            Self::Grok(client) => Ok(client.erase(conversation_id).await?),
         }
     }
 
@@ -724,6 +833,7 @@ impl Driver {
                     .was_written_down(&claude.cwd, conversation_id)
                     .await
             }
+            Self::Grok(client) => client.conversation_exists(conversation_id).await,
         }
     }
 
@@ -747,6 +857,7 @@ impl Driver {
                 .await
                 .map(|thread| Some(Conversation::from(&thread)))?),
             Self::Claude(claude) => Ok(claude.client.watched_conversation(conversation_id).await),
+            Self::Grok(client) => Ok(client.watched_conversation(conversation_id).await),
         }
     }
 
@@ -758,6 +869,9 @@ impl Driver {
                 Ok(())
             }
             Self::Claude(claude) => Ok(claude.client.stop_watching(conversation_id).await?),
+            // The leader keeps the session loaded either way; nothing is
+            // asked of it.
+            Self::Grok(_) => Ok(()),
         }
     }
 }

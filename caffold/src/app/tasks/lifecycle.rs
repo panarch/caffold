@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::{
     agent::claude::ClaudeClient,
+    agent::grok::GrokClient,
     agent::{Conversation, TurnOptions, TurnPage},
     app::error::ApiError,
     app::tasks::sessions::{ConversationSettings, RequestLease, TaskSessions},
@@ -85,6 +86,7 @@ pub(in crate::app::tasks) struct TaskLifecycle {
     store: TaskStore,
     worktrees: ManagedWorktrees,
     claude: ClaudeClient,
+    grok: GrokClient,
 }
 
 impl TaskLifecycle {
@@ -95,6 +97,7 @@ impl TaskLifecycle {
         store: TaskStore,
         worktrees: ManagedWorktrees,
         claude: ClaudeClient,
+        grok: GrokClient,
     ) -> Self {
         Self {
             fs,
@@ -103,6 +106,7 @@ impl TaskLifecycle {
             store,
             worktrees,
             claude,
+            grok,
         }
     }
 
@@ -472,6 +476,14 @@ impl TaskLifecycle {
                     eprintln!("failed to close an unclaimed Claude session: {error}");
                 }
             }
+            // Nothing points at an unclaimed Grok session but its binding,
+            // so both go: a session nobody can find again is a conversation
+            // lost, and one that stays would hold the leader's memory.
+            TaskAgent::Grok { .. } => {
+                if let Err(error) = self.grok.erase(conversation_id).await {
+                    eprintln!("failed to remove an unclaimed Grok session: {error}");
+                }
+            }
         }
     }
 }
@@ -570,6 +582,7 @@ mod tests {
                 store,
                 worktrees,
                 claude,
+                GrokClient::unreachable(),
             ),
         )
     }
