@@ -112,3 +112,14 @@ test("rejects actions while waiting, exhausted, inactive, detached, or replaced"
   assert.equal(owner.hidden, true);
   assert.deepEqual(scope().targets, []);
 });
+
+test("a gap without a cursor exposes its error without offering an unusable retry", () => {
+  const owner = host();
+  owner.setSnapshot({ threadId: "a", hasOlder: false, error: new Error("Reopen the Task to refresh its history.") });
+  assert.equal(owner.hidden, false);
+  assert.match(owner.innerHTML, /Reopen the Task/);
+  assert.equal(owner.button(), null);
+  assert.deepEqual(owner.actionHintScope({ scopeId: "conversation:older-history" }).targets, []);
+  owner.setSnapshot({ threadId: "a", hasOlder: false });
+  assert.equal(owner.hidden, true);
+});

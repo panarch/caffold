@@ -73,6 +73,14 @@ connection remains open. Browser reconnection does not by itself invalidate
 the provider conversation cache; its retention and membership rules belong to
 [Agent Runtimes](agent-runtimes.md#backend-reconciliation).
 
+If either Detail broadcast receiver lags, the producer installs fresh receivers
+before capturing a cached snapshot and emits `task-sync` with reason
+`stream-recovery`. The same viewer lease and logical channel continue, and new
+publications remain queued behind the snapshot. This delivery repair does not
+invalidate provider history or initiate `thread/resume`/`thread/turns/list`.
+Actual Detail EOF sends a `channel-error` for that generation so the browser can
+resubscribe while other channels keep using the same physical connection.
+
 ## Filesystem Watch
 
 Native filesystem watches are invalidation sources, not a second filesystem or

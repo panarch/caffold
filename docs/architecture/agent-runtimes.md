@@ -311,8 +311,15 @@ reports may still be displayed without claiming complete membership. An ID
 mismatch, capacity threshold, cache miss, compaction, or individual page failure
 does not establish an observation gap. Browser reconnection while the provider
 subscription continues reuses the same projection. Cache maintenance does not
-clear browser history or initiate provider reads. Explicit older-page requests
-read on a cache miss; an uninterpretable continuation fails that request rather
+clear browser history or initiate provider reads. Older-page requests from
+scrolling or bounded gap recovery
+read on a cache miss; concurrent readers of the same native page share one
+in-flight operation, keyed by Task, provider generation, observation epoch,
+native cursor, and page limit. Browser slice offsets share that operation;
+cancelling one HTTP consumer does not cancel it for other readers. Completed
+results return to the existing cache policy rather than a second permanent
+history store. An observation change rejects the old result; an
+uninterpretable continuation fails that request rather
 than restarting a traversal. Limited recovery may leave unmatched display items
 or delay their reconciliation instead of repeatedly reading the provider.
 
@@ -323,8 +330,10 @@ Every accepted Task-event delta receives a process-local, per-Task
 captures the retained observations and a watermark that covers them in the
 same backend owner. This publication sequence is independent of the Task
 session `revision` used to arbitrate canonical reads and Task metadata. It
-establishes only whether an independently delivered conversation snapshot or
-delta is already covered; it is not item identity, provider causality,
+establishes whether an independently delivered conversation record is covered
+within the exact identity or membership extent that declared it. Task metadata
+revisions and publication revisions outside that extent do not reject it. This
+sequence is not item identity, provider causality,
 conversation position, or time.
 
 Every Detail answer declares the extent of the projection it owns as an

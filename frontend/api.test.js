@@ -5,6 +5,7 @@ import {
   createTaskFork,
   forkTask,
   getHealth,
+  getTask,
   liveUpdatesUrl,
   previewTaskForkSource,
   reorderSection,
@@ -45,6 +46,23 @@ function jsonResponse(payload, { ok = true, status = 200 } = {}) {
     json: async () => payload,
   };
 }
+
+test("Task history cancellation reaches its own HTTP request", async () => {
+  let received;
+  installBrowserHarness((url, options) => {
+    received = { url, signal: options.signal };
+    return new Promise((resolve, reject) => {
+      options.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+    });
+  });
+  const controller = new AbortController();
+  const pending = getTask("task with spaces", "older", { signal: controller.signal });
+  assert.equal(received.url.pathname, "/api/tasks/task%20with%20spaces");
+  assert.equal(received.url.searchParams.get("cursor"), "older");
+  assert.equal(received.signal, controller.signal);
+  controller.abort();
+  await assert.rejects(pending, { name: "AbortError" });
+});
 
 test("reports origin reachability for a received API response", async () => {
   const windowTarget = installBrowserHarness(async () =>

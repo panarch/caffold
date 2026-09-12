@@ -106,7 +106,7 @@ class CaffoldTaskOlderHistory extends HTMLElement {
 
   render() {
     const { threadId, hasOlder, loading, error } = this.snapshot;
-    this.hidden = !threadId || (!hasOlder && !loading);
+    this.hidden = !threadId || (!hasOlder && !loading && error === null);
     if (this.hidden) {
       this.innerHTML = "";
       return;
@@ -116,7 +116,7 @@ class CaffoldTaskOlderHistory extends HTMLElement {
         ? `<div class="task-history-error" role="alert">
             <span>Older messages are temporarily unavailable.</span>
             <span class="task-older-history-error-message">${escapeHtml(error)}</span>
-            <button type="button">Retry loading older messages</button>
+            ${hasOlder ? '<button type="button">Retry loading older messages</button>' : ""}
           </div>`
         : loading
           ? `<div class="task-older-history-loading" role="status">

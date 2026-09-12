@@ -321,21 +321,6 @@ export function handoffOptimisticSubmission(
   return sortEventsChronologically([...remaining, handedOff]);
 }
 
-export function mergeTaskEventsPage(currentPage, detail) {
-  const incomingPage = detail?.eventsPage;
-  if (!incomingPage) {
-    return currentPage ?? { nextCursor: null };
-  }
-  if (
-    detail?.historyLoading &&
-    !incomingPage.nextCursor &&
-    currentPage?.nextCursor
-  ) {
-    return currentPage;
-  }
-  return incomingPage;
-}
-
 function applyProjectionDeltaRecord(existing, incoming) {
   if (!existing) {
     return incoming;
