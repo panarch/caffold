@@ -28,6 +28,8 @@ import "./components/conversation.js";
 import "./components/command-dialog.js";
 import "./components/current-plan.js";
 import { TaskDetailSession } from "./session.js";
+import { ConversationProjection, projectionRevision } from "./layout/conversation.js";
+import { ConversationHistory } from "./layout/history.js";
 import {
   PROMPT_SUBMISSION_STATE,
   TASK_TRANSPORT_STATE,
@@ -40,12 +42,10 @@ import {
   withPromptSubmissionState,
 } from "../../runtime-state.js";
 import {
-  applyDetailRange,
   applyProjectionDelta,
   appendOptimisticEvent,
   eventIdentityKey,
   handoffOptimisticSubmission,
-  mergeTaskEventsPage,
   optimisticUserMessageEvent,
 } from "../../task-events.js";
 import { cleanLogicalPath } from "../../task-format.js";
@@ -75,15 +75,12 @@ class CaffoldTaskDetail extends HTMLElement {
     this.view = "detail";
     this.taskDetail = null;
     this.taskDetailRevisionByThread = new Map();
-    this.projectionRevisionByThread = new Map();
+    this.projectionsByThread = new Map();
     this.events = [];
     this.eventsThreadId = "";
     this.eventsByThread = new Map();
-    this.eventsPage = { nextCursor: null };
     this.detailLoadError = null;
-    this.historyLoadError = null;
     this.loading = false;
-    this.loadingOlderEvents = false;
     this.selectedThreadId = "";
     this.liveUpdates = null;
     this.detailSession = new TaskDetailSession({
@@ -101,7 +98,20 @@ class CaffoldTaskDetail extends HTMLElement {
         this.handleStreamStateChange(state, previousState),
     });
     this.seenRequestKeys = new Set();
-    this.historyRequestToken = 0;
+    this.history = new ConversationHistory({
+      load: (threadId, cursor, options) => getTask(threadId, cursor, options),
+      apply: (detail, { threadId, cursor }) => this.applyCanonicalTaskDetail(threadId, detail, {
+        preserveCurrentTask: true,
+        historyPage: true,
+        historyCursor: cursor,
+        updateKind: "prepend",
+        reconcilePrompt: false,
+      }),
+      change: () => {
+        this.conversationUpdateKind = "preserve";
+        this.render();
+      },
+    });
     this.interruptActionToken = 0;
     this.interruptStateValue = { loading: false, error: null };
     this.archiveActionToken = 0;
@@ -232,7 +242,7 @@ class CaffoldTaskDetail extends HTMLElement {
 
     if (this.selectedThreadId !== targetThreadId) {
       this.deactivateFollowUpComposer();
-      this.historyRequestToken += 1;
+      this.history.deactivate();
       this.interruptActionToken += 1;
       this.interruptStateValue = { loading: false, error: null };
       this.archiveActionToken += 1;
@@ -240,13 +250,13 @@ class CaffoldTaskDetail extends HTMLElement {
       this.approvalActionToken += 1;
       this.archiveStateValue = { loading: false, error: null };
       this.forkStateValue = { loading: false, error: null };
-      this.loadingOlderEvents = false;
       this.reviewView = "conversation";
       this.detailSession.deactivate();
     }
     this.view = "detail";
     this.hidden = false;
     this.selectedThreadId = targetThreadId;
+    this.history.activate(targetThreadId);
     this.taskRoute = normalizeTaskRoute(options.route, targetThreadId);
     this.reviewView = taskDetailSurface(this.taskRoute);
     this.activateThreadEvents(targetThreadId);
@@ -254,12 +264,7 @@ class CaffoldTaskDetail extends HTMLElement {
       taskDetailThreadId(this.taskDetail) === targetThreadId
         ? this.taskDetail
         : null;
-    this.eventsPage =
-      taskDetailThreadId(this.taskDetail) === targetThreadId
-        ? this.eventsPage
-        : { nextCursor: null };
     this.detailLoadError = null;
-    this.historyLoadError = null;
     this.render();
   }
 
@@ -293,7 +298,6 @@ class CaffoldTaskDetail extends HTMLElement {
       !this.applyCanonicalTaskDetail(threadId, detail, {
         resetRevision: true,
         updateKind: "bottom",
-        clearHistoryError: true,
       })
     ) {
       return false;
@@ -335,7 +339,7 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   deactivate({ retainComposerDom = false } = {}) {
-    this.historyRequestToken += 1;
+    this.history.deactivate();
     this.interruptActionToken += 1;
     this.interruptStateValue = { loading: false, error: null };
     this.archiveActionToken += 1;
@@ -343,7 +347,6 @@ class CaffoldTaskDetail extends HTMLElement {
     this.approvalActionToken += 1;
     this.archiveStateValue = { loading: false, error: null };
     this.forkStateValue = { loading: false, error: null };
-    this.loadingOlderEvents = false;
     this.initialConversationLoad = null;
     this.detailSession.deactivate();
     if (retainComposerDom) {
@@ -518,7 +521,6 @@ class CaffoldTaskDetail extends HTMLElement {
     this.selectedThreadId = threadId;
     this.loading = true;
     this.detailLoadError = null;
-    this.historyLoadError = null;
     this.render();
     const outcome = await this.detailSession.open(threadId);
     if (
@@ -607,7 +609,6 @@ class CaffoldTaskDetail extends HTMLElement {
         : this.isInitialConversationLoadPending(threadId)
           ? "bottom"
           : "preserve",
-      clearHistoryError: !recovery,
     });
   }
 
@@ -616,31 +617,30 @@ class CaffoldTaskDetail extends HTMLElement {
       return false;
     }
     this.taskDetailRevisionByThread.delete(threadId);
-    this.projectionRevisionByThread.delete(threadId);
+    this.projectionFor(threadId).reset();
+    this.history.activate(threadId);
     return (
       this.acceptTaskDetailRevision(threadId, revision) &&
-      this.acceptProjectionSnapshotRevision(threadId, eventRevision).valid
+      projectionRevision(eventRevision) !== null
     );
+  }
+
+  projectionFor(threadId) {
+    let projection = this.projectionsByThread.get(threadId);
+    if (!projection) {
+      projection = new ConversationProjection();
+      this.projectionsByThread.set(threadId, projection);
+    }
+    return projection;
   }
 
   applyTaskStreamEvent(message) {
     const threadId = `${message?.threadId ?? ""}`;
     const entry = withEventFileLinks(message?.event, message?.fileLinks);
-    if (
-      threadId !== this.selectedThreadId ||
-      !entry ||
-      entry.threadId !== threadId ||
-      !this.acceptProjectionDeltaRevision(threadId, message.eventRevision)
-    ) {
-      return;
-    }
-    this.setThreadEvents(threadId, applyProjectionDelta(this.events, entry));
-    if (taskDetailThreadId(this.taskDetail) === threadId) {
-      this.taskDetail = {
-        ...this.taskDetail,
-        eventRevision: this.projectionRevisionByThread.get(threadId),
-      };
-    }
+    if (threadId !== this.selectedThreadId || !entry || entry.threadId !== threadId) return;
+    const events = this.projectionFor(threadId).delta(this.events, entry, message.eventRevision);
+    if (!events) return;
+    this.setThreadEvents(threadId, events);
     this.reconcilePendingPrompt(threadId, [entry]);
     this.conversationUpdateKind = this.liveConversationUpdateKind(threadId);
     this.render();
@@ -654,9 +654,9 @@ class CaffoldTaskDetail extends HTMLElement {
       resetRevision = false,
       preserveCurrentTask = false,
       historyPage = false,
+      historyCursor = null,
       updateKind = "preserve",
       detailError = null,
-      clearHistoryError = false,
       reconcilePrompt = true,
     } = {},
   ) {
@@ -670,34 +670,23 @@ class CaffoldTaskDetail extends HTMLElement {
       // Session revisions are process-local, so a reconnect after a server
       // restart can authoritatively bootstrap at a lower revision.
       this.taskDetailRevisionByThread.delete(threadId);
-      this.projectionRevisionByThread.delete(threadId);
+      this.projectionFor(threadId).reset();
+      this.history.activate(threadId);
     }
-    if (!this.acceptTaskDetailRevision(threadId, revision)) {
-      return false;
-    }
-    const projectionDecision = historyPage
-      ? { valid: true, accepted: true }
-      : this.acceptProjectionSnapshotRevision(
-          threadId,
-          detail?.eventRevision,
-        );
-    if (!projectionDecision.valid) {
-      return false;
-    }
-    if (!historyPage && projectionDecision.accepted) {
-      this.rememberPendingPromptDetailPositions(
-        threadId,
-        detail?.events ?? [],
-      );
-    }
-    if (reconcilePrompt && projectionDecision.accepted) {
-      this.reconcilePendingPrompt(threadId, detail?.events ?? []);
-    }
+    const incomingEvents = withDetailFileLinks(detail.events ?? [], detail.fileLinks);
+    const events = this.projectionFor(threadId).snapshot(
+      this.eventsByThread.get(threadId) ?? [], { ...detail, events: incomingEvents },
+    );
+    if (!events) return false;
+    this.setThreadEvents(threadId, events);
+    const acceptMetadata = !historyPage && this.acceptTaskDetailRevision(threadId, revision);
+    if (!historyPage) this.rememberPendingPromptDetailPositions(threadId, events);
+    if (reconcilePrompt) this.reconcilePendingPrompt(threadId, events);
     const currentTask =
       taskDetailThreadId(this.taskDetail) === threadId
         ? this.taskDetail?.task
         : null;
-    const nextTask = preserveCurrentTask
+    const nextTask = (preserveCurrentTask || !acceptMetadata)
       ? currentTask ?? detail.task
       : detail.task;
     const stableTask =
@@ -707,48 +696,19 @@ class CaffoldTaskDetail extends HTMLElement {
     if (!isTaskActivelyWorking(stableTask) || !stableTask?.activeTurn?.id) {
       this.interruptStateValue = { loading: false, error: null };
     }
-    const previousDetail =
-      taskDetailThreadId(this.taskDetail) === threadId
-        ? this.taskDetail
-        : null;
-    const retainedProjection =
-      !historyPage && !projectionDecision.accepted && previousDetail
-        ? {
-            eventRevision:
-              this.projectionRevisionByThread.get(threadId) ?? 0,
-            events: previousDetail.events,
-            fileLinks: previousDetail.fileLinks,
-            eventsPage: previousDetail.eventsPage,
-            historyLoading: previousDetail.historyLoading,
-          }
-        : {};
-    this.taskDetail = {
-      ...detail,
-      ...retainedProjection,
-      task: stableTask,
-    };
-    const currentEvents = this.eventsByThread.get(threadId) ?? [];
-    const incomingEvents = withDetailFileLinks(
-      detail.events ?? [],
-      detail.fileLinks,
-    );
-    if (historyPage || projectionDecision.accepted) {
-      this.setThreadEvents(
-        threadId,
-        applyDetailRange(currentEvents, incomingEvents, detail?.eventsRange ?? null),
-      );
-      this.eventsPage = mergeTaskEventsPage(this.eventsPage, detail);
+    if (acceptMetadata || !this.taskDetail) {
+      this.taskDetail = { ...detail, task: stableTask };
     }
+    this.history.accept(detail, historyCursor, this.events);
     const canonicalError =
       detailError instanceof Error
         ? detailError
         : detailError
           ? new Error(`${detailError}`)
           : null;
-    this.loading = detail?.syncState === "loading" && !canonicalError;
-    this.detailLoadError = canonicalError;
-    if (clearHistoryError) {
-      this.historyLoadError = null;
+    if (acceptMetadata) {
+      this.loading = detail?.syncState === "loading" && !canonicalError;
+      this.detailLoadError = canonicalError;
     }
     if (!preserveCurrentTask && this.taskDetail?.task) {
       this.emitTaskSnapshot();
@@ -887,32 +847,6 @@ class CaffoldTaskDetail extends HTMLElement {
     return this.acceptTaskRevision(this.taskDetailRevisionByThread, threadId, revision);
   }
 
-  acceptProjectionSnapshotRevision(threadId, revision) {
-    const value = normalizedProjectionRevision(revision);
-    if (!threadId || value === null) {
-      return { valid: false, accepted: false };
-    }
-    const current = this.projectionRevisionByThread.get(threadId) ?? 0;
-    if (value < current) {
-      return { valid: true, accepted: false };
-    }
-    this.projectionRevisionByThread.set(threadId, value);
-    return { valid: true, accepted: true };
-  }
-
-  acceptProjectionDeltaRevision(threadId, revision) {
-    const value = normalizedProjectionRevision(revision);
-    if (!threadId || value === null) {
-      return false;
-    }
-    const current = this.projectionRevisionByThread.get(threadId) ?? 0;
-    if (value <= current) {
-      return false;
-    }
-    this.projectionRevisionByThread.set(threadId, value);
-    return true;
-  }
-
   acceptTaskRevision(revisions, threadId, revision) {
     const value = Number(revision);
     if (!threadId || !Number.isFinite(value) || value <= 0) {
@@ -960,6 +894,7 @@ class CaffoldTaskDetail extends HTMLElement {
   }
 
   suspendForeground() {
+    this.history.deactivate();
     this.detailSession.suspend();
   }
 
@@ -1359,58 +1294,20 @@ class CaffoldTaskDetail extends HTMLElement {
     }
   }
 
-  async loadOlderEvents(options = {}) {
-    const cursor = this.eventsPage?.nextCursor;
-    if (
-      !this.selectedThreadId ||
-      !cursor ||
-      this.loadingOlderEvents ||
-      (this.historyLoadError && !options.retry)
-    ) {
-      return;
-    }
+  get eventsPage() {
+    return { nextCursor: this.history?.cursor ?? null };
+  }
 
-    this.loadingOlderEvents = true;
-    this.historyLoadError = null;
-    this.conversationUpdateKind = "preserve";
-    const historyToken = ++this.historyRequestToken;
-    const threadId = this.selectedThreadId;
-    this.render();
-    try {
-      const detail = await getTask(threadId, cursor);
-      if (
-        historyToken !== this.historyRequestToken ||
-        threadId !== this.selectedThreadId
-      ) {
-        return;
-      }
-      this.loadingOlderEvents = false;
-      if (
-        !detail?.task ||
-        !this.applyCanonicalTaskDetail(threadId, detail, {
-          preserveCurrentTask: true,
-          historyPage: true,
-          updateKind: "prepend",
-          clearHistoryError: true,
-          reconcilePrompt: false,
-        })
-      ) {
-        this.conversationUpdateKind = "preserve";
-        this.render();
-        return;
-      }
-    } catch (error) {
-      if (
-        historyToken !== this.historyRequestToken ||
-        threadId !== this.selectedThreadId
-      ) {
-        return;
-      }
-      this.loadingOlderEvents = false;
-      this.historyLoadError = error;
-      this.conversationUpdateKind = "preserve";
-      this.render();
-    }
+  get loadingOlderEvents() {
+    return this.history?.state === "loading";
+  }
+
+  get historyLoadError() {
+    return this.history?.error ?? null;
+  }
+
+  loadOlderEvents(options = {}) {
+    return this.history.request(options);
   }
 
   render() {
@@ -1996,10 +1893,7 @@ function sameStructuredValue(left, right) {
   );
 }
 
-function normalizedProjectionRevision(revision) {
-  const value = Number(revision);
-  return Number.isSafeInteger(value) && value >= 0 ? value : null;
-}
+
 
 function closestElement(target, selector) {
   return target instanceof Element ? target.closest(selector) : null;

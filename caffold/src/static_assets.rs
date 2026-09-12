@@ -468,6 +468,14 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/tasks/(detail)/(task)/layout.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout.js"
         ))),
+        "pages/(task-workspace)/tasks/(detail)/(task)/layout/conversation.js" => {
+            Some(js(include_str!(
+                "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/conversation.js"
+            )))
+        }
+        "pages/(task-workspace)/tasks/(detail)/(task)/layout/history.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout/history.js"
+        ))),
         "pages/(task-workspace)/tasks/(detail)/(task)/session.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/tasks/(detail)/(task)/session.js"
         ))),
@@ -1636,6 +1644,13 @@ mod tests {
             let task_list_css = get(path).expect("task list component css");
             assert_eq!(task_list_css.content_type, "text/css; charset=utf-8");
             assert!(task_list_css.body.starts_with(prefix));
+        }
+        for path in [
+            "pages/(task-workspace)/tasks/(detail)/(task)/layout/conversation.js",
+            "pages/(task-workspace)/tasks/(detail)/(task)/layout/history.js",
+        ] {
+            let asset = get(path).expect("task conversation owner asset");
+            assert_eq!(asset.content_type, "text/javascript; charset=utf-8");
         }
         let task_detail_session = get("pages/(task-workspace)/tasks/(detail)/(task)/session.js")
             .expect("task detail session js");

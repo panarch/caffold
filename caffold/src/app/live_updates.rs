@@ -391,7 +391,11 @@ fn spawn_task_detail(source: TaskLiveSource, generation: u64, thread_id: String)
             )
             .await?;
         }
-        None
+        send_frame(
+            &messages,
+            channel_error_frame("task-detail", None, generation, "Task Detail stream ended."),
+        )
+        .await
     })
 }
 

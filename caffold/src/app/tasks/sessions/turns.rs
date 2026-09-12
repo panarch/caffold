@@ -1,11 +1,15 @@
+use std::{collections::HashMap, sync::Arc};
+
+use tokio::sync::{Mutex, watch};
+
 use crate::agent::AgentError;
 use crate::agent::{Conversation, Driver, ThreadStatus, TurnState, TurnStatus};
 
-use super::super::events::{TaskHistoryCursor, TaskHistoryPage};
+use super::super::events::{TaskHistoryCursor, TaskHistoryPage, task_event_turn_id};
 
 use super::{
-    INITIAL_TURNS_PAGE_SIZE, SessionLifecycle, SessionSnapshot, SessionState, SessionTurnPage,
-    TaskSessions, now_unix_ms, snapshot,
+    INITIAL_TURNS_PAGE_SIZE, SessionEntry, SessionLifecycle, SessionSnapshot, SessionState,
+    SessionTurnPage, TaskSessions, now_unix_ms, snapshot,
 };
 
 impl TaskSessions {
@@ -20,49 +24,96 @@ impl TaskSessions {
         self.ensure_subscribed(driver, generation, thread_id)
             .await?;
         let entry = self.entry(thread_id).await;
-        let (base_revision, observation_epoch) = {
+        let key = {
             let state = entry.state.lock().await;
             if state.generation != generation || state.lifecycle != SessionLifecycle::Subscribed {
-                return Err(AgentError::Failed(format!(
-                    "conversation {thread_id} changed connection before reading its history"
-                )));
+                return Err(history_connection_changed(thread_id));
             }
-            (state.revision, state.observation_epoch)
+            if let Some(history) = state.events.cached_history_page(thread_id, cursor) {
+                return Ok((snapshot(&state), history));
+            }
+            HistoryKey {
+                generation,
+                epoch: state.observation_epoch,
+                cursor: cursor.turns.clone(),
+                limit,
+            }
         };
-        let page = driver
-            .read_turns(thread_id, cursor.turns.as_deref(), limit)
-            .await?;
+        let mut result = {
+            let mut pending = entry.history_reads.pending.lock().await;
+            if !pending.contains_key(&key) {
+                let state = entry.state.lock().await;
+                if !state.same_observation(key.generation, key.epoch) {
+                    return Err(history_connection_changed(thread_id));
+                }
+                if let Some(history) = state.events.cached_history_page(thread_id, cursor) {
+                    return Ok((snapshot(&state), history));
+                }
+            }
+            pending
+                .entry(key.clone())
+                .or_insert_with(|| {
+                    let (sender, _) = watch::channel(None);
+                    let publication = sender.clone();
+                    let sessions = self.clone();
+                    let entry = entry.clone();
+                    let driver = driver.clone();
+                    let thread_id = thread_id.to_string();
+                    let key = key.clone();
+                    // A departing HTTP consumer does not cancel another viewer's
+                    // read or leave an already issued provider RPC to be repeated.
+                    tokio::spawn(async move {
+                        let _request = sessions.reserve_request(&thread_id).await;
+                        let result = read_native_history(&entry, &driver, &thread_id, &key).await;
+                        // Retire the slot before waking consumers: an immediate
+                        // explicit retry must not subscribe to the completed error.
+                        entry.history_reads.pending.lock().await.remove(&key);
+                        publication.send_replace(Some(result));
+                    });
+                    sender
+                })
+                .subscribe()
+        };
+        let page = result
+            .wait_for(Option::is_some)
+            .await
+            .map_err(|_| AgentError::Failed("conversation history reader stopped".into()))?
+            .as_ref()
+            .expect("history result is ready")
+            .clone()?;
         let state = entry.state.lock().await;
-        if !state.same_observation(generation, observation_epoch)
+        if !state.same_observation(key.generation, key.epoch)
             || state.lifecycle != SessionLifecycle::Subscribed
         {
-            return Err(AgentError::Failed(format!(
-                "conversation {thread_id} changed connection while reading its history"
-            )));
+            return Err(history_connection_changed(thread_id));
         }
-        if let Some(turn_id) = cursor.turn_id.as_deref()
-            && !page.turns.iter().any(|turn| turn.id == turn_id)
-        {
-            return Err(AgentError::Failed(
-                "conversation history continuation is no longer available".to_string(),
-            ));
-        }
-        let conversation = state
-            .conversation
-            .as_ref()
-            .ok_or_else(|| AgentError::Failed("conversation metadata is missing".to_string()))?;
-        state.events.accept_history_page(
-            conversation,
-            &page,
-            base_revision,
-            cursor.turns.as_deref(),
-        );
+        let start = match cursor.turn_id.as_ref() {
+            Some(id) => page
+                .turn_ids
+                .iter()
+                .position(|turn| turn == id)
+                .ok_or_else(|| {
+                    AgentError::Failed(
+                        "conversation history continuation is no longer available".into(),
+                    )
+                })?,
+            None => 0,
+        };
+        // Prefer the retained projection (which can contain newer live items).
+        // A concurrent trim cannot erase the already captured read response.
         let history = state
             .events
             .cached_history_page(thread_id, cursor)
-            .ok_or_else(|| {
-                AgentError::Failed("conversation history page is unavailable".to_string())
-            })?;
+            .unwrap_or_else(|| {
+                let mut history = page.history.clone();
+                if start > 0 {
+                    history.events.retain(|event| {
+                        task_event_turn_id(event)
+                            .is_some_and(|id| page.turn_ids[start..].iter().any(|turn| turn == id))
+                    });
+                }
+                history
+            });
         Ok((snapshot(&state), history))
     }
 
@@ -142,6 +193,72 @@ impl TaskSessions {
         state.last_sync_ms = Some(now_unix_ms());
         Ok(Some(snapshot(&state)))
     }
+}
+
+/// Only in-flight native pages are shared. Browser slice offsets are not part
+/// of the key; observation lifetimes and provider request arguments are.
+#[derive(Default)]
+pub(super) struct HistoryReads {
+    pending: Mutex<HashMap<HistoryKey, HistoryResultSender>>,
+}
+
+type HistoryResultSender = watch::Sender<Option<Result<Arc<HistoryRead>, AgentError>>>;
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct HistoryKey {
+    generation: u64,
+    epoch: u64,
+    cursor: Option<String>,
+    limit: usize,
+}
+
+struct HistoryRead {
+    history: TaskHistoryPage,
+    turn_ids: Vec<String>,
+}
+
+async fn read_native_history(
+    entry: &SessionEntry,
+    driver: &Driver,
+    thread_id: &str,
+    key: &HistoryKey,
+) -> Result<Arc<HistoryRead>, AgentError> {
+    let base_revision = {
+        let state = entry.state.lock().await;
+        if !state.same_observation(key.generation, key.epoch)
+            || state.lifecycle != SessionLifecycle::Subscribed
+        {
+            return Err(history_connection_changed(thread_id));
+        }
+        state.revision
+    };
+    let page = driver
+        .read_turns(thread_id, key.cursor.as_deref(), key.limit)
+        .await?;
+    let state = entry.state.lock().await;
+    if !state.same_observation(key.generation, key.epoch)
+        || state.lifecycle != SessionLifecycle::Subscribed
+    {
+        return Err(history_connection_changed(thread_id));
+    }
+    let conversation = state
+        .conversation
+        .as_ref()
+        .ok_or_else(|| AgentError::Failed("conversation metadata is missing".into()))?;
+    let history =
+        state
+            .events
+            .accept_history_page(conversation, &page, base_revision, key.cursor.as_deref());
+    Ok(Arc::new(HistoryRead {
+        history,
+        turn_ids: page.turns.iter().map(|turn| turn.id.clone()).collect(),
+    }))
+}
+
+fn history_connection_changed(thread_id: &str) -> AgentError {
+    AgentError::Failed(format!(
+        "conversation {thread_id} changed connection while reading its history"
+    ))
 }
 
 pub(super) fn active_turn_id(
@@ -313,6 +430,286 @@ pub(super) fn sort_turns_desc(turns: &mut [TurnState]) {
 mod tests {
     use super::*;
     use crate::app::tasks::sessions::test_support::*;
+
+    #[tokio::test]
+    async fn concurrent_native_pages_share_one_read_across_browser_slices() {
+        assert_shared_history_read(false).await;
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_consumer_does_not_cancel_the_shared_native_page() {
+        assert_shared_history_read(true).await;
+    }
+
+    async fn assert_shared_history_read(cancel: bool) {
+        use crate::app::tasks::test_support::wait_for_mock_method;
+        let (pending, release) = MockCodexResponse::gated_ok(
+            "thread/turns/list",
+            wire_page(
+                vec![
+                    wire_turn_at("older-2", TurnStatus::Completed, 2.0),
+                    wire_turn_at("older-1", TurnStatus::Completed, 1.0),
+                ],
+                None,
+                None,
+            ),
+        );
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                resume_response(
+                    ThreadStatus::Idle,
+                    vec![],
+                    vec![wire_turn_at("latest", TurnStatus::Completed, 3.0)],
+                ),
+            ),
+            pending,
+        ]);
+        let sessions = TaskSessions::default();
+        let _viewer = sessions
+            .acquire_viewer(&client.driver(), 1, "thread-1")
+            .await
+            .unwrap();
+        let cursor = TaskHistoryCursor {
+            turns: Some("older".into()),
+            ..Default::default()
+        };
+        let first = {
+            let sessions = sessions.clone();
+            let driver = client.driver();
+            let cursor = cursor.clone();
+            tokio::spawn(async move {
+                sessions
+                    .load_history_page(&driver, 1, "thread-1", &cursor, 8)
+                    .await
+            })
+        };
+        wait_for_mock_method(&client, "thread/turns/list").await;
+        let driver = client.driver();
+        let slice = TaskHistoryCursor {
+            turn_id: Some("older-1".into()),
+            ..cursor.clone()
+        };
+        let second = {
+            let sessions = sessions.clone();
+            let driver = driver.clone();
+            tokio::spawn(async move {
+                sessions
+                    .load_history_page(&driver, 1, "thread-1", &slice, 8)
+                    .await
+            })
+        };
+        wait_for_history_consumers(&sessions, 2).await;
+        // Both consumers have entered the real loader before releasing its RPC.
+        assert_eq!(client.mock_requests().await.len(), 2);
+        if cancel {
+            first.abort();
+        }
+        release.send(()).unwrap();
+        let (_, history) = second.await.unwrap().unwrap();
+        if cancel {
+            assert!(first.await.unwrap_err().is_cancelled());
+        } else {
+            let (_, full) = first.await.unwrap().unwrap();
+            assert!(
+                full.events
+                    .iter()
+                    .any(|event| task_event_turn_id(event) == Some("older-2"))
+            );
+        }
+        assert!(
+            history
+                .events
+                .iter()
+                .any(|event| task_event_turn_id(event) == Some("older-1"))
+        );
+        assert!(
+            !history
+                .events
+                .iter()
+                .any(|event| task_event_turn_id(event) == Some("older-2"))
+        );
+        let (_, full) = sessions
+            .load_history_page(&driver, 1, "thread-1", &cursor, 8)
+            .await
+            .unwrap();
+        assert!(
+            full.events
+                .iter()
+                .any(|event| task_event_turn_id(event) == Some("older-2"))
+        );
+        assert_eq!(
+            client.mock_requests().await.len(),
+            2,
+            "one resume and one native history RPC"
+        );
+    }
+
+    #[tokio::test]
+    async fn shared_history_failure_releases_the_slot_for_an_explicit_retry() {
+        use crate::app::tasks::test_support::wait_for_mock_method;
+        let (invalid, release) = MockCodexResponse::gated_ok(
+            "thread/turns/list",
+            serde_json::json!({"data": "invalid"}),
+        );
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                resume_response(ThreadStatus::Idle, vec![], vec![]),
+            ),
+            invalid,
+            MockCodexResponse::ok(
+                "thread/turns/list",
+                wire_page(vec![wire_turn("older", TurnStatus::Completed)], None, None),
+            ),
+        ]);
+        let sessions = TaskSessions::default();
+        let driver = client.driver();
+        let _viewer = sessions
+            .acquire_viewer(&driver, 1, "thread-1")
+            .await
+            .unwrap();
+        let cursor = TaskHistoryCursor {
+            turns: Some("older".into()),
+            ..Default::default()
+        };
+        let spawn_read = || {
+            let sessions = sessions.clone();
+            let driver = driver.clone();
+            let cursor = cursor.clone();
+            tokio::spawn(async move {
+                sessions
+                    .load_history_page(&driver, 1, "thread-1", &cursor, 8)
+                    .await
+            })
+        };
+        let first = spawn_read();
+        wait_for_mock_method(&client, "thread/turns/list").await;
+        let second = spawn_read();
+        wait_for_history_consumers(&sessions, 2).await;
+        release.send(()).unwrap();
+        assert!(first.await.unwrap().is_err());
+        assert!(second.await.unwrap().is_err());
+        assert_eq!(client.mock_requests().await.len(), 2);
+        let (_, history) = sessions
+            .load_history_page(&driver, 1, "thread-1", &cursor, 8)
+            .await
+            .unwrap();
+        assert!(!history.events.is_empty());
+        assert_eq!(client.mock_requests().await.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn a_completed_shared_page_survives_cache_trimming_before_its_consumer_resumes() {
+        assert_completed_history_read(false).await;
+    }
+
+    #[tokio::test]
+    async fn a_completed_shared_page_cannot_cross_its_consumers_observation_change() {
+        assert_completed_history_read(true).await;
+    }
+
+    async fn assert_completed_history_read(change_observation: bool) {
+        let (pending, release) = MockCodexResponse::gated_ok(
+            "thread/turns/list",
+            wire_page(
+                vec![
+                    wire_turn_at("older-2", TurnStatus::Completed, 2.0),
+                    wire_turn_at("older-1", TurnStatus::Completed, 1.0),
+                ],
+                None,
+                None,
+            ),
+        );
+        let client = CodexThreadClient::mock(vec![
+            MockCodexResponse::ok(
+                "thread/resume",
+                resume_response(ThreadStatus::Idle, vec![], vec![]),
+            ),
+            pending,
+        ]);
+        let sessions = TaskSessions::default();
+        let driver = client.driver();
+        let _viewer = sessions
+            .acquire_viewer(&driver, 1, "thread-1")
+            .await
+            .unwrap();
+        let cursor = TaskHistoryCursor {
+            turns: Some("older".into()),
+            turn_id: Some("older-1".into()),
+            ..Default::default()
+        };
+        let read = sessions.load_history_page(&driver, 1, "thread-1", &cursor, 8);
+        tokio::pin!(read);
+        tokio::select! {
+            _ = &mut read => panic!("the provider is still gated"),
+            _ = wait_for_history_consumers(&sessions, 1) => {},
+        }
+        release.send(()).unwrap();
+        let entry = sessions.entry("thread-1").await;
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while !entry.history_reads.pending.lock().await.is_empty() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        if change_observation {
+            sessions.session_needs_opening_again("thread-1").await;
+            assert!(
+                read.await
+                    .unwrap_err()
+                    .to_string()
+                    .contains("changed connection")
+            );
+            assert_eq!(client.mock_requests().await.len(), 2);
+            return;
+        }
+        // Empty terminal turns are normally discarded after response capture.
+        // Another viewer can trigger that trim before this HTTP caller wakes.
+        sessions.events.trim("thread-1");
+        assert!(
+            sessions
+                .events
+                .cached_history_page("thread-1", &cursor)
+                .is_none()
+        );
+        let (_, history) = read.await.unwrap();
+        assert!(
+            history
+                .events
+                .iter()
+                .any(|event| task_event_turn_id(event) == Some("older-1"))
+        );
+        assert!(
+            !history
+                .events
+                .iter()
+                .any(|event| task_event_turn_id(event) == Some("older-2"))
+        );
+        assert_eq!(client.mock_requests().await.len(), 2);
+    }
+
+    async fn wait_for_history_consumers(sessions: &TaskSessions, count: usize) {
+        let entry = sessions.entry("thread-1").await;
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                if entry
+                    .history_reads
+                    .pending
+                    .lock()
+                    .await
+                    .values()
+                    .any(|publication| publication.receiver_count() == count)
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("all consumers must enter the shared read before releasing the provider");
+    }
 
     #[tokio::test]
     async fn a_report_gap_rejects_a_pending_latest_read_without_starting_another() {

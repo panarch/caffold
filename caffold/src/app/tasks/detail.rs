@@ -1,8 +1,4 @@
-use std::{
-    collections::{HashSet, VecDeque},
-    pin::Pin,
-    sync::Arc,
-};
+use std::{collections::HashSet, pin::Pin, sync::Arc};
 
 use futures_util::{Stream, stream};
 use serde::Serialize;
@@ -14,8 +10,8 @@ use file_links::{TaskFileLink, TaskFileLinkResolver};
 
 use super::{
     events::{
-        TaskEventPosition, TaskEventRecord, TaskEvents, TaskHistoryCursor, TaskHistoryPage,
-        compose_pending_approval_events, sort_task_events, task_event_turn_id,
+        TaskEventPosition, TaskEventPublication, TaskEventRecord, TaskEvents, TaskHistoryCursor,
+        TaskHistoryPage, compose_pending_approval_events, sort_task_events, task_event_turn_id,
     },
     lifecycle::ActiveTaskTopPlacement,
     projection::{
@@ -33,7 +29,7 @@ use crate::{
         codex::{CodexThreadClient, CodexThreadError},
     },
     app::error::ApiError,
-    app::tasks::sessions::{SessionSnapshot, TaskSessions},
+    app::tasks::sessions::{SessionSnapshot, TaskSessions, ViewerLease},
     fs::RootedFs,
     task_store::{ManagedThread, ManagedWorktreeState, TaskProvider, TaskStore, TaskStoreError},
 };
@@ -257,144 +253,33 @@ impl DetailContext {
         let viewer = self.sessions.reserve_viewer(thread_id).await;
         let (detail, baseline_revision) = self.cached(thread_id).await?;
         let file_link_task_root = detail.task.as_ref().map(file_links::task_root);
-        let initial_events = VecDeque::from([DetailLiveEvent::Sync(Box::new(TaskDetailSync {
+        let initial = DetailLiveEvent::Sync(Box::new(TaskDetailSync {
             thread_id: thread_id.to_string(),
             revision: detail.revision,
             detail,
             reason: "stream-bootstrap",
             error: None,
-        }))]);
-        let bootstrap_context = self.clone();
+        }));
+        let context = self.clone();
         let bootstrap_thread_id = thread_id.to_string();
         tokio::spawn(async move {
-            bootstrap_context
+            context
                 .bootstrap(&bootstrap_thread_id, baseline_revision)
                 .await;
         });
-
-        let shutdown = self.shutdown.subscribe();
-        let sessions = self.sessions.clone();
-        let file_link_resolver = self.file_links.clone();
-        let thread_id = thread_id.to_string();
-        let stream = stream::unfold(
-            (
-                initial_events,
-                receiver,
-                sync_receiver,
-                shutdown,
-                thread_id,
-                viewer,
-                sessions,
-                file_link_resolver,
-                file_link_task_root,
-            ),
-            |(
-                mut initial_events,
-                mut receiver,
-                mut sync_receiver,
-                mut shutdown,
-                thread_id,
-                viewer,
-                sessions,
-                file_link_resolver,
-                mut file_link_task_root,
-            )| async move {
-                if let Some(event) = initial_events.pop_front() {
-                    return Some((
-                        event,
-                        (
-                            initial_events,
-                            receiver,
-                            sync_receiver,
-                            shutdown,
-                            thread_id,
-                            viewer,
-                            sessions,
-                            file_link_resolver,
-                            file_link_task_root,
-                        ),
-                    ));
-                }
-                loop {
-                    tokio::select! {
-                        _ = shutdown.recv() => return None,
-                        message = sync_receiver.recv() => {
-                            match message {
-                                Ok(sync) if sync.thread_id == thread_id => {
-                                    file_link_task_root = sync
-                                        .detail
-                                        .task
-                                        .as_ref()
-                                        .map(file_links::task_root)
-                                        .or(file_link_task_root);
-                                    return Some((
-                                        DetailLiveEvent::Sync(Box::new(sync)),
-                                        (
-                                            initial_events,
-                                            receiver,
-                                            sync_receiver,
-                                            shutdown,
-                                            thread_id,
-                                            viewer,
-                                            sessions,
-                                            file_link_resolver,
-                                            file_link_task_root,
-                                        ),
-                                    ));
-                                }
-                                Ok(_) => continue,
-                                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                                Err(broadcast::error::RecvError::Closed) => return None,
-                            }
-                        }
-                        message = receiver.recv() => {
-                            match message {
-                                Ok(publication) if publication.event.thread_id == thread_id => {
-                                    let event_revision = publication.revision;
-                                    let event = publication.event;
-                                    let revision = sessions
-                                        .snapshot(&thread_id)
-                                        .await
-                                        .map(|snapshot| snapshot.revision)
-                                        .unwrap_or_default();
-                                    let (event, resolved_file_links) = match file_link_task_root.as_deref() {
-                                        Some(task_root) => file_link_resolver
-                                            .project_event(task_root, &event)
-                                            .await,
-                                        None => (event, Vec::new()),
-                                    };
-                                    let event = TaskEventEnvelope {
-                                            thread_id: thread_id.clone(),
-                                            event_revision,
-                                            revision,
-                                            event,
-                                            file_links: resolved_file_links,
-                                        };
-                                    return Some((
-                                        DetailLiveEvent::Event(Box::new(event)),
-                                        (
-                                            initial_events,
-                                            receiver,
-                                            sync_receiver,
-                                            shutdown,
-                                            thread_id,
-                                            viewer,
-                                            sessions,
-                                            file_link_resolver,
-                                            file_link_task_root,
-                                        ),
-                                    ));
-                                }
-                                Ok(_) => continue,
-                                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                                Err(broadcast::error::RecvError::Closed) => return None,
-                            }
-                        }
-                    }
-                }
-            },
-        );
-        Ok(Box::pin(stream))
+        let state = DetailStream {
+            initial: Some(initial),
+            events: receiver,
+            sync: sync_receiver,
+            shutdown: self.shutdown.subscribe(),
+            thread_id: thread_id.to_string(),
+            _viewer: viewer,
+            context: self.clone(),
+            file_link_task_root,
+        };
+        Ok(Box::pin(stream::unfold(state, |mut state| async move {
+            state.next().await.map(|event| (event, state))
+        })))
     }
 
     pub(in crate::app::tasks) async fn read(
@@ -779,6 +664,92 @@ pub(in crate::app::tasks) fn loading_detail(
         reasoning_effort: managed.and_then(|thread| thread.reasoning_effort.clone()),
         fast_mode: managed.is_some_and(|thread| thread.fast_mode),
         active_top_placement: None,
+    }
+}
+
+/// A viewer keeps its provider lease while repairing lost delivery. Both
+/// receivers are attached before capturing the replacement cache snapshot.
+struct DetailStream {
+    initial: Option<DetailLiveEvent>,
+    events: broadcast::Receiver<TaskEventPublication>,
+    sync: broadcast::Receiver<TaskDetailSync>,
+    shutdown: broadcast::Receiver<()>,
+    thread_id: String,
+    _viewer: ViewerLease,
+    context: DetailContext,
+    file_link_task_root: Option<String>,
+}
+
+enum DetailDelivery {
+    Sync(Box<TaskDetailSync>),
+    Event(Box<TaskEventPublication>),
+}
+
+impl DetailStream {
+    async fn next(&mut self) -> Option<DetailLiveEvent> {
+        if let Some(initial) = self.initial.take() {
+            return Some(initial);
+        }
+        loop {
+            let message = tokio::select! {
+                _ = self.shutdown.recv() => return None,
+                message = self.sync.recv() => message.map(|sync| DetailDelivery::Sync(Box::new(sync))),
+                message = self.events.recv() => message.map(|event| DetailDelivery::Event(Box::new(event))),
+            };
+            match message {
+                Ok(DetailDelivery::Sync(sync)) if sync.thread_id == self.thread_id => {
+                    self.file_link_task_root = sync
+                        .detail
+                        .task
+                        .as_ref()
+                        .map(file_links::task_root)
+                        .or(self.file_link_task_root.take());
+                    return Some(DetailLiveEvent::Sync(sync));
+                }
+                Ok(DetailDelivery::Event(publication))
+                    if publication.event.thread_id == self.thread_id =>
+                {
+                    let revision = self
+                        .context
+                        .sessions
+                        .snapshot(&self.thread_id)
+                        .await
+                        .map(|snapshot| snapshot.revision)
+                        .unwrap_or_default();
+                    let (event, file_links) = match self.file_link_task_root.as_deref() {
+                        Some(root) => {
+                            self.context
+                                .file_links
+                                .project_event(root, &publication.event)
+                                .await
+                        }
+                        None => (publication.event, Vec::new()),
+                    };
+                    return Some(DetailLiveEvent::Event(Box::new(TaskEventEnvelope {
+                        thread_id: self.thread_id.clone(),
+                        event_revision: publication.revision,
+                        revision,
+                        event,
+                        file_links,
+                    })));
+                }
+                Ok(_) => continue,
+                Err(broadcast::error::RecvError::Closed) => return None,
+                Err(broadcast::error::RecvError::Lagged(_)) => {
+                    self.events = self.context.events.subscribe();
+                    self.sync = self.context.sync.subscribe_updates();
+                    let (detail, _) = self.context.cached(&self.thread_id).await.ok()?;
+                    self.file_link_task_root = detail.task.as_ref().map(file_links::task_root);
+                    return Some(DetailLiveEvent::Sync(Box::new(TaskDetailSync {
+                        thread_id: self.thread_id.clone(),
+                        revision: detail.revision,
+                        detail,
+                        reason: "stream-recovery",
+                        error: None,
+                    })));
+                }
+            }
+        }
     }
 }
 
@@ -3101,5 +3072,457 @@ mod serialization_tests {
         assert_eq!(value["eventRevision"], 0);
         assert_eq!(value["task"], JsonValue::Null);
         assert_eq!(value["eventsRange"], JsonValue::Null);
+    }
+}
+
+#[cfg(test)]
+mod continuity_tests {
+    use std::time::Duration;
+
+    use axum::{body::Body, http::Request};
+    use futures_util::StreamExt;
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    use super::{DetailLiveEvent, TaskDetailSync, loading_detail};
+    use crate::{
+        agent::{
+            TurnPage,
+            codex::{CodexThreadClient, MockCodexResponse, TurnsPage},
+        },
+        app::tasks::{
+            TaskLiveSource, TaskState,
+            events::task_event_record,
+            test_support::{manage_test_thread, resumed_task, task_state_with_codex_client},
+        },
+        fs::RootedFs,
+        watch::WatchHub,
+    };
+
+    #[derive(Clone, Copy)]
+    enum Overflow {
+        Events,
+        Snapshots,
+    }
+
+    // No socket timing or provider process is involved. Stop polling one actual
+    // Detail stream, overrun exactly one broadcast receiver with other Tasks'
+    // traffic, and then resume it. The shared cache still knows the missing turn.
+    async fn assert_lag_recovers_in_place(overflow: Overflow) {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-slow-viewer";
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            resumed_task(thread_id, root.path()),
+        )]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        let viewer = state
+            .task_sessions
+            .acquire_viewer(&client.driver(), 1, thread_id)
+            .await
+            .unwrap();
+        let mut slow = state.detail.stream(thread_id).await.unwrap();
+        assert!(matches!(
+            slow.next().await,
+            Some(DetailLiveEvent::Sync(sync)) if sync.reason == "stream-bootstrap"
+        ));
+
+        let snapshot = state.task_sessions.snapshot(thread_id).await.unwrap();
+        let conversation = snapshot.conversation.as_ref().unwrap();
+        let missing = task_event_record(
+            thread_id,
+            "turn-2:answer",
+            "assistant_message",
+            "Answer for turn 2",
+            Some(json!({
+                "turnId": "turn-2", "itemId": "answer-2",
+                "text": "Answer for turn 2", "phase": "final"
+            })),
+            2_000,
+        );
+        match overflow {
+            Overflow::Events => {
+                state.task_events.publish_provider_lifecycle(missing, 2);
+                // TaskEvents' shared queue holds 256 publications. An unrelated
+                // busy Task can overrun a slow receiver even for a short turn.
+                for index in 0..512 {
+                    state.task_events.publish_provider_lifecycle(
+                        task_event_record(
+                            "other-task",
+                            &format!("noise-{index}"),
+                            "reasoning",
+                            "Other task activity",
+                            None,
+                            2_001 + index,
+                        ),
+                        3 + index,
+                    );
+                }
+            }
+            Overflow::Snapshots => {
+                // Canonical history can discover an unseen turn without replaying
+                // its live deltas. Only its full Detail publication is queued.
+                let page: TurnsPage = serde_json::from_value(json!({
+                    "data": [{
+                        "id": "turn-2", "status": "completed",
+                        "startedAt": 2.0, "completedAt": 3.0,
+                        "items": [{
+                            "type": "agentMessage", "id": "answer-2",
+                            "text": "Answer for turn 2", "phase": "final_answer"
+                        }]
+                    }],
+                    "nextCursor": null, "backwardsCursor": null
+                }))
+                .unwrap();
+                state.task_events.accept_history_page(
+                    conversation,
+                    &TurnPage::from(&page),
+                    snapshot.revision,
+                    None,
+                );
+                let (detail, _) = state.detail.cached(thread_id).await.unwrap();
+                assert!(detail.events.iter().any(|event| {
+                    event
+                        .payload
+                        .as_ref()
+                        .is_some_and(|payload| payload["turnId"] == "turn-2")
+                }));
+                state.task_sync.publish(TaskDetailSync {
+                    thread_id: thread_id.into(),
+                    revision: detail.revision,
+                    detail,
+                    reason: "app-server-notification",
+                    error: None,
+                });
+                // TaskSync's shared queue holds 64 snapshots.
+                for revision in 1..=128 {
+                    state.task_sync.publish(TaskDetailSync {
+                        thread_id: "other-task".into(),
+                        revision,
+                        detail: loading_detail("other-task", revision, None),
+                        reason: "app-server-notification",
+                        error: None,
+                    });
+                }
+            }
+        }
+
+        // Release the setup demand: the stalled stream is the only viewer.
+        drop(viewer);
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while state
+                .task_sessions
+                .snapshot(thread_id)
+                .await
+                .unwrap()
+                .viewer_leases
+                != 1
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        let recovery = tokio::time::timeout(Duration::from_secs(1), slow.next())
+            .await
+            .expect("lag recovery must not hang");
+        let Some(DetailLiveEvent::Sync(sync)) = recovery else {
+            panic!("lag recovery must retain the viewer and deliver a cached snapshot");
+        };
+        assert_eq!(sync.reason, "stream-recovery");
+        assert_missing_turn(&sync);
+        assert_eq!(
+            state
+                .task_sessions
+                .snapshot(thread_id)
+                .await
+                .unwrap()
+                .viewer_leases,
+            1
+        );
+
+        // The replacement receivers remain subscribed after snapshot capture.
+        state.task_events.publish_provider_lifecycle(
+            task_event_record(
+                "other-task",
+                "ignored",
+                "reasoning",
+                "Other task",
+                None,
+                3_900,
+            ),
+            599,
+        );
+        state.task_events.publish_provider_lifecycle(
+            task_event_record(
+                thread_id,
+                "turn-3:answer",
+                "assistant_message",
+                "Answer for turn 3",
+                Some(json!({
+                    "turnId": "turn-3", "itemId": "answer-3",
+                    "text": "Answer for turn 3", "phase": "final"
+                })),
+                4_000,
+            ),
+            600,
+        );
+        let follow_up = tokio::time::timeout(Duration::from_secs(1), slow.next())
+            .await
+            .expect("the same stream must keep delivering events");
+        assert!(matches!(follow_up, Some(DetailLiveEvent::Event(event))
+            if event.event.id == format!("{thread_id}:turn-3:answer")));
+        let (detail, _) = state.detail.cached(thread_id).await.unwrap();
+        state.task_sync.publish(TaskDetailSync {
+            thread_id: thread_id.into(),
+            revision: detail.revision,
+            detail,
+            reason: "app-server-notification",
+            error: None,
+        });
+        let normal_sync = tokio::time::timeout(Duration::from_secs(1), slow.next())
+            .await
+            .unwrap();
+        assert!(matches!(normal_sync, Some(DetailLiveEvent::Sync(sync))
+            if sync.reason == "app-server-notification"));
+        assert_no_history_reread(&client).await;
+    }
+
+    fn assert_missing_turn(sync: &TaskDetailSync) {
+        assert!(
+            sync.detail.events.iter().any(|event| {
+                event
+                    .payload
+                    .as_ref()
+                    .is_some_and(|payload| payload["turnId"] == "turn-2")
+            }),
+            "lag recovery must include the missing turn"
+        );
+    }
+
+    async fn assert_no_history_reread(client: &CodexThreadClient) {
+        let requests = client.mock_requests().await;
+        assert_eq!(
+            requests
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            ["thread/resume"],
+            "a viewer gap with retained server history must not repeat thread/resume or call thread/turns/list"
+        );
+    }
+
+    async fn assert_cached_reconnect(state: &TaskState, thread_id: &str) {
+        let mut stream = state.detail.stream(thread_id).await.unwrap();
+        let Some(DetailLiveEvent::Sync(bootstrap)) = stream.next().await else {
+            panic!("a replacement viewer must receive a bootstrap");
+        };
+        assert_eq!(bootstrap.reason, "stream-bootstrap");
+        assert_missing_turn(&bootstrap);
+        // Await the canonical bootstrap path too: checking just the first cached
+        // frame would miss an unnecessary provider read in its background work.
+        state.detail.bootstrap(thread_id, bootstrap.revision).await;
+    }
+
+    #[tokio::test]
+    async fn event_queue_overflow_recovers_the_only_viewer_in_place() {
+        assert_lag_recovers_in_place(Overflow::Events).await;
+    }
+
+    #[tokio::test]
+    async fn snapshot_queue_overflow_recovers_the_only_viewer_in_place() {
+        assert_lag_recovers_in_place(Overflow::Snapshots).await;
+    }
+
+    #[tokio::test]
+    async fn reconnecting_viewers_reuse_retained_history_without_provider_reads() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-cached-reconnect";
+        let mut resume = resumed_task(thread_id, root.path());
+        resume["initialTurnsPage"]["data"] = json!([{
+            "id": "turn-2", "status": "completed",
+            "startedAt": 2.0, "completedAt": 3.0,
+            "items": [{
+                "type": "agentMessage", "id": "answer-2",
+                "text": "Answer for turn 2", "phase": "final_answer"
+            }]
+        }]);
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok("thread/resume", resume)]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        // Another device keeps the provider subscription alive while this viewer
+        // repeatedly reconnects. Only the browser's delivery lifetime changes.
+        let _other_viewer = state
+            .task_sessions
+            .acquire_viewer(&client.driver(), 1, thread_id)
+            .await
+            .unwrap();
+        for _ in 0..3 {
+            assert_cached_reconnect(&state, thread_id).await;
+            assert_no_history_reread(&client).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn detail_eof_notifies_the_live_gateway_without_closing_it() {
+        assert_gateway_delivery(false).await;
+    }
+
+    #[tokio::test]
+    async fn lag_recovery_and_follow_up_cross_the_same_http_gateway() {
+        assert_gateway_delivery(true).await;
+    }
+
+    async fn assert_gateway_delivery(recover: bool) {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-detail-eof";
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            resumed_task(thread_id, root.path()),
+        )]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        let _viewer = state
+            .task_sessions
+            .acquire_viewer(&client.driver(), 1, thread_id)
+            .await
+            .unwrap();
+        // Give the real gateway its own lifetime so ending the Task source cannot
+        // accidentally pass by shutting down the entire physical connection.
+        let (gateway_shutdown, _) = tokio::sync::broadcast::channel(1);
+        let app = crate::app::live_updates::router(
+            TaskLiveSource::new(&state),
+            WatchHub::new(state.fs.clone(), gateway_shutdown.clone()),
+            gateway_shutdown.clone(),
+        );
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/live")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let mut frames = Box::pin(response.into_body().into_data_stream().filter_map(
+            |frame| async move {
+                let frame = frame.unwrap();
+                let text = std::str::from_utf8(&frame).unwrap();
+                text.lines()
+                    .find_map(|line| line.strip_prefix("data: "))
+                    .map(|data| serde_json::from_str::<serde_json::Value>(data).unwrap())
+            },
+        ));
+        let ready = frames.next().await.unwrap();
+        let connection_id = ready["connectionId"].as_str().unwrap();
+        let accepted = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!("/api/live/{connection_id}/subscriptions"))
+                    .header("host", "localhost:5178")
+                    .header("origin", "http://localhost:5178")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "controlRevision": 1, "taskList": null,
+                            "taskDetail": {"generation": 7, "threadId": thread_id},
+                            "watches": []
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(accepted.status(), axum::http::StatusCode::NO_CONTENT);
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let frame = frames.next().await.expect("gateway remains open");
+                if frame["type"] == "task-sync" && frame["payload"]["reason"] == "stream-bootstrap"
+                {
+                    break;
+                }
+            }
+        })
+        .await
+        .expect("the real gateway must forward the initial bootstrap");
+
+        if recover {
+            // No await in this burst: on the current-thread test runtime the
+            // actual gateway producer cannot drain its receiver before overflow.
+            state.task_events.publish_provider_lifecycle(task_event_record(
+                thread_id, "turn-2:answer", "assistant_message", "Answer for turn 2",
+                Some(json!({"turnId": "turn-2", "itemId": "answer-2", "text": "Answer for turn 2"})), 2_000,
+            ), 2);
+            for index in 0..512 {
+                state.task_events.publish_provider_lifecycle(
+                    task_event_record(
+                        "other-task",
+                        &format!("noise-{index}"),
+                        "reasoning",
+                        "noise",
+                        None,
+                        3_000 + index,
+                    ),
+                    3 + index,
+                );
+            }
+            tokio::time::timeout(Duration::from_secs(1), async {
+                loop {
+                    let frame = frames.next().await.expect("gateway remains open");
+                    if frame["type"] == "task-sync"
+                        && frame["payload"]["reason"] == "stream-recovery"
+                    {
+                        assert_eq!(frame["generation"], 7);
+                        assert!(
+                            frame["payload"]["detail"]["events"]
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .any(|event| event["payload"]["turnId"] == "turn-2")
+                        );
+                        break;
+                    }
+                }
+            })
+            .await
+            .expect("cached recovery must cross the actual HTTP body");
+            state.task_events.publish_provider_lifecycle(task_event_record(
+                thread_id, "turn-3:answer", "assistant_message", "Answer for turn 3",
+                Some(json!({"turnId": "turn-3", "itemId": "answer-3", "text": "Answer for turn 3"})), 4_000,
+            ), 600);
+            tokio::time::timeout(Duration::from_secs(1), async {
+                loop {
+                    let frame = frames.next().await.expect("same gateway remains open");
+                    if frame["type"] == "task-event" {
+                        assert_eq!(frame["generation"], 7);
+                        assert_eq!(frame["payload"]["event"]["payload"]["turnId"], "turn-3");
+                        break;
+                    }
+                }
+            })
+            .await
+            .expect("follow-up must use the recovered channel");
+            assert_no_history_reread(&client).await;
+            return;
+        }
+
+        state.shutdown.send(()).unwrap();
+        let error = tokio::time::timeout(Duration::from_secs(1), frames.next())
+            .await
+            .expect(
+                "Detail EOF was hidden by the live gateway; the browser received no retry signal",
+            )
+            .expect("Detail EOF must leave the shared physical gateway available");
+        assert_eq!(error["channel"], "task-detail");
+        assert_eq!(error["generation"], 7);
+        assert_eq!(error["type"], "channel-error");
+        assert_no_history_reread(&client).await;
     }
 }

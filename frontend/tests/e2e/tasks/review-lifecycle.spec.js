@@ -398,44 +398,52 @@ test("rejects a late file navigator response while Review is inactive", { tag: "
   const release = new Promise((resolve) => {
     releaseDirectory = resolve;
   });
+  const firstResponse = Promise.withResolvers();
   let directoryRequests = 0;
   await page.route(/\/api\/list(?:\?|$)/, async (route) => {
     const url = new URL(route.request().url());
     if (url.searchParams.get("path") !== "src") {
       return route.continue();
     }
-    directoryRequests += 1;
+    const requestNumber = ++directoryRequests;
     directoryRequested();
     await release;
     const response = await route.fetch();
     await route.fulfill({ response });
+    if (requestNumber === 1) firstResponse.resolve();
   });
 
-  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
-  await requested;
-  await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
-  releaseDirectory();
+  try {
+    await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+    await requested;
+    await tasksPage.getByRole("button", { name: "Conversation", exact: true }).click();
+    releaseDirectory();
+    await firstResponse.promise;
 
-  await expect
-    .poll(() =>
-      tasksPage.evaluate((element, threadId) => {
-        const detail = element.querySelector("caffold-detail-layout");
-        const review = detail.reviewComponents.get(`task:${threadId}`);
-        return review.fileNavigator().loadedDirectoryPath;
-      }, taskScenario.threadId),
-    )
-    .toBe(null);
+    await expect
+      .poll(() =>
+        tasksPage.evaluate((element, threadId) => {
+          const detail = element.querySelector("caffold-detail-layout");
+          const review = detail.reviewComponents.get(`task:${threadId}`);
+          return review.fileNavigator().loadedDirectoryPath;
+        }, taskScenario.threadId),
+      )
+      .toBe(null);
 
-  await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
-  await expect
-    .poll(() => directoryRequests)
-    .toBeGreaterThanOrEqual(2);
-  await tasksPage.getByRole("button", { name: "Files", exact: true }).click();
-  await expect(
-    tasksPage.locator(
-      'caffold-task-review caffold-file-navigator button[data-file-tree-path="src/alpha.rs"]',
-    ),
-  ).toBeVisible();
+    await tasksPage.getByRole("button", { name: "Working Tree", exact: true }).click();
+    await expect
+      .poll(() => directoryRequests)
+      .toBeGreaterThanOrEqual(2);
+    await tasksPage.getByRole("button", { name: "Files", exact: true }).click();
+    await expect(
+      tasksPage.locator(
+        'caffold-task-review caffold-file-navigator button[data-file-tree-path="src/alpha.rs"]',
+      ),
+    ).toBeVisible();
+  } finally {
+    releaseDirectory();
+    await page.unrouteAll({ behavior: "wait" });
+  }
 });
 
 async function scrollAwayFromTop(locator) {

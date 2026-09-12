@@ -714,8 +714,12 @@ content, not projection revision or position. A canonical reorder therefore
 moves an existing entry instead of replacing its DOM and state.
 
 The adjacent task-scoped Detail session owns snapshot acquisition while Detail
-keeps the canonical Task, conversation projection, Task-session and
-conversation-publication revision baselines, and rendering cache.
+keeps the canonical Task metadata and rendering cache. Its private
+`layout/conversation.js` applies publication revisions to exact identities and
+owned membership extents, including deletion evidence. A newer Task revision
+cannot reject an unrelated conversation page, and a newer bounded page cannot
+reject an older delta outside that page. Unscoped answers update exact
+identities only; optimistic submissions remain local overlays.
 
 The session phases are inactive, waiting for bootstrap, waiting for readable
 sync, streaming, REST fallback, and unavailable. It alone transitions the
@@ -813,8 +817,29 @@ status, error and retry presentation, styles, and Action Hint scope. It receives
 Task identity and request presentation from Conversation and emits load or
 retry intent upward. Equivalent snapshots retain its button or spinner DOM.
 Conversation composes that child's scope, forwards its intent, and owns scroll
-triggering and anchoring. Task Detail owns the actual request, cursor, duplicate
-request guard, and acceptance of asynchronous responses.
+triggering and anchoring. Task Detail's private `layout/history.js` owns pagination and automatic gap
+recovery through one request controller. It joins actual received page spans
+and responses to their continuations; open membership extents do not prove
+loaded history. An unscoped first response contributes one known position as a
+connection anchor, without claiming a loaded interval or triggering traversal.
+An unscoped cursor remains a manual paging hint. When no authoritative page
+continuation exists, that hint connects its response to the first position in
+the entry that supplied it, even when their positions do not overlap. The hint
+retains that source position so a later hint cannot bridge an earlier gap that
+was never read. Cursor selection, request ownership, and response joining use
+the same continuation. It automatically fills only holes between retained pages,
+stops once they join, and preserves the oldest page's continuation for manual
+scrolling. Loading shares one request; invalid/repeated cursors, failures, and
+lack of progress block automatic traversal until explicit retry. Task changes,
+background suspension, deactivation, and a new stream bootstrap cancel the
+obsolete HTTP consumer and invalidate its completions. On idle Task entry,
+the resumed canonical snapshot may satisfy the first history request before
+its HTTP answer arrives; that snapshot immediately clears loading and retires
+the unnecessary consumer. Its later response cannot affect another request.
+An unresolved gap remains visible even without a continuation cursor; retry
+is offered only when a cursor is available.
+The controller has inactive, ready, loading, and blocked states; transport and
+provider subscription state remain with their existing owners.
 
 ### Current plan
 

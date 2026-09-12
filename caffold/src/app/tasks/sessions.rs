@@ -225,6 +225,7 @@ impl SessionState {
 }
 
 struct SessionEntry {
+    history_reads: turns::HistoryReads,
     state: AsyncMutex<SessionState>,
     operation: AsyncMutex<()>,
     /// Provider mutations that must not cross for one conversation.
@@ -426,6 +427,7 @@ impl TaskSessions {
             .entry(thread_id.to_string())
             .or_insert_with(|| {
                 Arc::new(SessionEntry {
+                    history_reads: turns::HistoryReads::default(),
                     state: AsyncMutex::new(SessionState {
                         events: self.events.clone(),
                         ..SessionState::default()

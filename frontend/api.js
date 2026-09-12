@@ -216,8 +216,8 @@ export async function createTask(task) {
   });
 }
 
-export async function getTask(threadId, cursor = null) {
-  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}`, { cursor });
+export async function getTask(threadId, cursor = null, { signal } = {}) {
+  return requestJson(`/api/tasks/${encodeURIComponent(threadId)}`, { cursor }, { signal });
 }
 
 export async function sendTaskPrompt(threadId, prompt, options = {}, images = []) {
