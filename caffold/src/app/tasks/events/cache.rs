@@ -99,13 +99,6 @@ impl TurnEventCache {
                     _ => {}
                 }
             }
-            if !turn.complete_live
-                && turn.history_revision.is_some()
-                && source == TaskEventObservationSource::ProviderLifecycle
-                && !turn.events.iter().any(|entry| entry.event.id == event.id)
-            {
-                turn.mixed_sources = true;
-            }
             if thread.latest.is_none() && source != TaskEventObservationSource::LocalProjection {
                 thread.latest = Some(turn_id.clone());
                 let page = thread.pages.entry(None).or_insert_with(|| PageTurns {
@@ -518,16 +511,21 @@ impl ThreadEvents {
                 // A read owns its own history IDs. Unmatched live and
                 // accepted IDs may come from a different legacy projection;
                 // absence is not evidence that the displayed item vanished.
+                // A Caffold-owned projection is never listed by a provider,
+                // so it cannot leave membership unresolved.
+                let mut unresolved = false;
                 for observation in previous {
-                    if observation.source != TaskEventObservationSource::ProviderHistory
-                        && !retained
+                    if observation.source == TaskEventObservationSource::ProviderHistory
+                        || retained
                             .iter()
                             .any(|entry| entry.event.id == observation.event.id)
                     {
-                        cached.mixed_sources = true;
-                        retained.push(observation);
+                        continue;
                     }
+                    unresolved |= observation.source != TaskEventObservationSource::LocalProjection;
+                    retained.push(observation);
                 }
+                cached.mixed_sources = unresolved;
                 cached.events = retained;
             }
             cached.history_revision = Some(base_revision);
@@ -905,6 +903,180 @@ mod tests {
             turns.len(),
             rss_kib(),
             started.elapsed().as_millis()
+        );
+    }
+
+    fn page_of(turns: Vec<Turn>) -> TurnPage {
+        TurnPage {
+            turns,
+            next_cursor: None,
+            backwards_cursor: None,
+        }
+    }
+
+    fn approval(turn_id: &str, id: &str, at: u64) -> TaskEventRecord {
+        task_event_record(
+            "thread",
+            &format!("{turn_id}:{id}"),
+            "approval_requested",
+            id,
+            Some(json!({"turnId": turn_id, "approvalId": id})),
+            at,
+        )
+    }
+
+    #[test]
+    fn a_full_read_after_a_gap_owns_the_extent_again() {
+        let cache = TurnEventCache::default();
+        let page = page_of(vec![history("old", 100)]);
+        let listed = HashMap::from([("old".to_string(), vec![item("old", "a", 100)])]);
+        assert!(
+            cache
+                .accept_page("thread", &page, listed.clone(), 1, None)
+                .owns_extent
+        );
+
+        cache.invalidate_continuity("thread");
+        assert!(
+            !cache
+                .cached_page("thread", &TaskHistoryCursor::default())
+                .unwrap()
+                .owns_extent
+        );
+
+        assert!(
+            cache
+                .accept_page("thread", &page, listed, 2, None)
+                .owns_extent
+        );
+        let read = cache
+            .cached_page("thread", &TaskHistoryCursor::default())
+            .unwrap();
+        assert!(read.owns_extent);
+        assert_eq!(read.events.len(), 1);
+    }
+
+    #[test]
+    fn live_reports_joining_a_turn_read_from_history_keep_its_membership_until_a_read_leaves_one_unlisted()
+     {
+        let cache = TurnEventCache::default();
+        let running = || Turn {
+            status: TurnStatus::InProgress,
+            completed_at_ms: None,
+            ..history("attached", 100)
+        };
+        let listed = HashMap::from([("attached".to_string(), vec![item("attached", "a", 100)])]);
+        assert!(
+            cache
+                .accept_page("thread", &page_of(vec![running()]), listed.clone(), 1, None)
+                .owns_extent
+        );
+        cache.record_observation(
+            item("attached", "live", 101),
+            TaskEventObservationSource::ProviderLifecycle,
+            Some(2),
+        );
+        let inside = TaskHistoryCursor {
+            turn_id: Some("attached".into()),
+            ..TaskHistoryCursor::default()
+        };
+        assert!(
+            cache
+                .cached_page("thread", &TaskHistoryCursor::default())
+                .unwrap()
+                .owns_extent
+        );
+        let read = cache.cached_page("thread", &inside).unwrap();
+        assert!(read.owns_extent);
+        assert_eq!(read.events.len(), 2);
+
+        assert!(
+            !cache
+                .accept_page("thread", &page_of(vec![running()]), listed, 3, None)
+                .owns_extent,
+            "a read that does not list the live report leaves membership unresolved"
+        );
+        assert!(!cache.cached_page("thread", &inside).unwrap().owns_extent);
+
+        let completed = HashMap::from([(
+            "attached".to_string(),
+            vec![item("attached", "a", 100), item("attached", "live", 101)],
+        )]);
+        assert!(
+            cache
+                .accept_page(
+                    "thread",
+                    &page_of(vec![history("attached", 100)]),
+                    completed,
+                    4,
+                    None
+                )
+                .owns_extent
+        );
+        let read = cache.cached_page("thread", &inside).unwrap();
+        assert!(read.owns_extent);
+        assert_eq!(read.events.len(), 2);
+    }
+
+    #[test]
+    fn a_caffold_owned_approval_record_does_not_leave_a_re_read_turn_unresolved() {
+        let cache = TurnEventCache::default();
+        let page = page_of(vec![history("asked", 100)]);
+        let listed = HashMap::from([("asked".to_string(), vec![item("asked", "a", 100)])]);
+        cache.accept_page("thread", &page, listed.clone(), 1, None);
+        cache.record_observation(
+            approval("asked", "approval-1", 101),
+            TaskEventObservationSource::LocalProjection,
+            None,
+        );
+        cache.invalidate_continuity("thread");
+
+        assert!(
+            cache
+                .accept_page("thread", &page, listed, 2, None)
+                .owns_extent
+        );
+        let read = cache
+            .cached_page("thread", &TaskHistoryCursor::default())
+            .unwrap();
+        assert!(read.owns_extent);
+        assert!(
+            read.events
+                .iter()
+                .any(|event| event.event_type == "approval_requested"),
+            "the approval record stays readable"
+        );
+    }
+
+    #[test]
+    fn a_read_that_leaves_live_evidence_unmatched_keeps_the_turn_unresolved() {
+        let cache = TurnEventCache::default();
+        cache.record_observation(
+            item("partial", "native", 101),
+            TaskEventObservationSource::ProviderLifecycle,
+            Some(1),
+        );
+        cache.invalidate_continuity("thread");
+        let listed = HashMap::from([(
+            "partial".to_string(),
+            vec![item("partial", "history-only", 100)],
+        )]);
+        assert!(
+            !cache
+                .accept_page(
+                    "thread",
+                    &page_of(vec![history("partial", 100)]),
+                    listed,
+                    2,
+                    None
+                )
+                .owns_extent
+        );
+        assert!(
+            !cache
+                .cached_page("thread", &TaskHistoryCursor::default())
+                .unwrap()
+                .owns_extent
         );
     }
 }
