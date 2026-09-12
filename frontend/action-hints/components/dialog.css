@@ -41,6 +41,7 @@ caffold-action-hint-dialog {
     background: var(--primary-control-bg);
     box-shadow: 0 0.125rem 0.375rem rgb(var(--shadow-rgb) / 24%);
     color: var(--text-inverse);
+    font-family: var(--font-code);
     font-size: var(--interface-meta-font-size);
     font-weight: 700;
     line-height: 1;
