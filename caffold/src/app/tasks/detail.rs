@@ -3056,6 +3056,175 @@ mod request_tests {
             "canonical assistant response"
         );
     }
+
+    #[tokio::test]
+    async fn older_pages_own_their_span_again_after_the_connection_is_replaced() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-replaced-connection";
+        let turns = (0..8)
+            .map(|index| {
+                let mut turn = long_turn(&format!("turn-{index}"), 20);
+                turn["startedAt"] = json!((8 - index) * 10);
+                turn["completedAt"] = json!((8 - index) * 10 + 1);
+                turn
+            })
+            .collect::<Vec<_>>();
+        let resume = || {
+            MockCodexResponse::ok(
+                "thread/resume",
+                json!({
+                    "cwd": root.path().display().to_string(),
+                    "thread": {
+                        "id": thread_id, "preview": "Replaced connection",
+                        "status": {"type": "idle"},
+                        "cwd": root.path().display().to_string(),
+                        "createdAt": 1.0, "updatedAt": 81.0, "turns": []
+                    },
+                    "initialTurnsPage": {
+                        "data": turns, "nextCursor": "older-turns", "backwardsCursor": null
+                    }
+                }),
+            )
+        };
+        let client = CodexThreadClient::mock(vec![resume(), resume()]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        let _first = state
+            .task_sessions
+            .acquire_viewer(&client.driver(), 1, thread_id)
+            .await
+            .unwrap();
+        let (latest, older) = latest_and_older_page(&state, thread_id).await;
+        assert!(latest.events_range.is_some());
+        assert!(older.events_range.is_some());
+
+        // The app-server connection is lost and replaced, as the runtime reports it.
+        state
+            .task_sessions
+            .codex_connection_lost(1, "Codex runtime is restarting.".into())
+            .await;
+        state.task_events.invalidate_continuity(thread_id);
+        state
+            .task_runtime
+            .install_test_client(2, client.clone())
+            .await;
+        let _second = state
+            .task_sessions
+            .acquire_viewer(&client.driver(), 2, thread_id)
+            .await
+            .unwrap();
+
+        let (replaced_latest, replaced_older) = latest_and_older_page(&state, thread_id).await;
+        assert_eq!(replaced_latest.events_range, latest.events_range);
+        assert_eq!(replaced_older.events_range, older.events_range);
+        assert_eq!(event_ids(&replaced_older), event_ids(&older));
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            ["thread/resume", "thread/resume"],
+            "the replacement's own page is the only read"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_turn_already_running_at_resume_keeps_paging_its_earlier_events() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-resumed-mid-turn";
+        let mut running = long_turn("turn-running", 120);
+        running["status"] = json!("inProgress");
+        running["completedAt"] = serde_json::Value::Null;
+        let client = CodexThreadClient::mock(vec![MockCodexResponse::ok(
+            "thread/resume",
+            json!({
+                "cwd": root.path().display().to_string(),
+                "thread": {
+                    "id": thread_id, "preview": "Resumed mid-turn",
+                    "status": {"type": "idle"},
+                    "cwd": root.path().display().to_string(),
+                    "createdAt": 1.0, "updatedAt": 2.0, "turns": []
+                },
+                "initialTurnsPage": {
+                    "data": [running], "nextCursor": null, "backwardsCursor": null
+                }
+            }),
+        )]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        let _viewer = state
+            .task_sessions
+            .acquire_viewer(&client.driver(), 1, thread_id)
+            .await
+            .unwrap();
+        // The app-server keeps reporting the running turn after the resume read.
+        state.task_events.publish_provider_lifecycle(
+            task_event_record(
+                thread_id,
+                "turn-running:live-1",
+                "command_execution",
+                "live step",
+                Some(json!({
+                    "turnId": "turn-running", "itemId": "live-1", "command": "echo live"
+                })),
+                3,
+            ),
+            7,
+        );
+
+        let (latest, older) = latest_and_older_page(&state, thread_id).await;
+        assert!(latest.events_range.is_some());
+        assert!(
+            older.events_range.is_some(),
+            "the earlier events of the running turn own their span"
+        );
+        assert!(
+            older
+                .events
+                .iter()
+                .all(|event| task_event_turn_id(event) == Some("turn-running"))
+        );
+        assert_eq!(
+            client
+                .mock_requests()
+                .await
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            ["thread/resume"],
+            "paging the running turn reads nothing more"
+        );
+    }
+
+    async fn latest_and_older_page(
+        state: &TaskState,
+        thread_id: &str,
+    ) -> (TaskDetailResponse, TaskDetailResponse) {
+        let latest = test_task_detail(state.clone(), thread_id.to_string(), None)
+            .await
+            .expect("latest page loads")
+            .0;
+        let cursor = latest.events_page.next_cursor.clone();
+        assert!(
+            TaskDetailCursor::decode(cursor.as_deref().unwrap())
+                .before
+                .is_some(),
+            "the latest page is bounded inside its own turns"
+        );
+        let older = test_task_detail(state.clone(), thread_id.to_string(), cursor)
+            .await
+            .expect("older page loads")
+            .0;
+        (latest, older)
+    }
+
+    fn event_ids(detail: &TaskDetailResponse) -> Vec<String> {
+        detail.events.iter().map(|event| event.id.clone()).collect()
+    }
 }
 
 #[cfg(test)]

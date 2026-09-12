@@ -315,9 +315,12 @@ item. Submission observation and provider identity remain separate: the
 browser may place an optimistic prompt when it submits the request, but only
 the exact identity returned by the adapter hands that prompt off to the
 projection. The handoff adopts the confirmed backend position immediately,
-including when an answer arrived before the prompt response. For a recovered turn, live
-reports may enrich history only under an exact identity. Content, proximity,
-and arrival order are never substitutes for that identity.
+including when an answer arrived before the prompt response. For a turn read
+from history first, a live report joins under its exact identity: it updates the
+item that identity already names, or adds a new item that continues the turn.
+Only a later history read that leaves such a live or accepted report unlisted
+makes the turn's membership unresolved. Content, proximity, and arrival order
+are never substitutes for that identity.
 
 This contract includes a Task's first message. Task creation commits only the
 empty conversation and local membership; it carries title-source metadata but
@@ -363,7 +366,10 @@ not a byte bound, prefetch target, or limit on the browser's retained pages.
 
 A provider generation change or confirmed observation gap withdraws history
 validity and rejects pending reads from that observation lifetime. Retained
-reports may still be displayed without claiming complete membership. An ID
+reports may still be displayed without claiming complete membership. The next
+history read that lists a turn resolves its membership again, unless a live or
+accepted report of that turn remains unlisted; Caffold-owned records such as
+approval questions are never listed and do not keep a turn unresolved. An ID
 mismatch, capacity threshold, cache miss, compaction, or individual page failure
 does not establish an observation gap. Browser reconnection while the provider
 subscription continues reuses the same projection. Cache maintenance does not
