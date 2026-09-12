@@ -693,6 +693,10 @@ pub(crate) mod mock {
     use tokio::io::{DuplexStream, ReadHalf, WriteHalf};
     use tokio::sync::mpsc;
 
+    /// How long a test waits for the driver to say something; a wait that
+    /// never ends would hang the suite instead of failing it.
+    const WAIT_FOR: Duration = Duration::from_secs(10);
+
     pub(crate) struct MockLauncher {
         bridges: mpsc::UnboundedSender<MockBridge>,
     }
@@ -907,41 +911,51 @@ pub(crate) mod mock {
         /// Wait until a request of `method` has been received, and return
         /// the parameters of the most recent one.
         pub(crate) async fn wait_for(&self, method: &str) -> Value {
-            loop {
-                let found = self
-                    .inner
-                    .requests
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .rev()
-                    .find(|(_, requested, _)| requested == method)
-                    .map(|(_, _, params)| params.clone());
-                if let Some(params) = found {
-                    return params;
+            let asked = async {
+                loop {
+                    let found = self
+                        .inner
+                        .requests
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .rev()
+                        .find(|(_, requested, _)| requested == method)
+                        .map(|(_, _, params)| params.clone());
+                    if let Some(params) = found {
+                        return params;
+                    }
+                    self.inner.changed.notified().await;
                 }
-                self.inner.changed.notified().await;
-            }
+            };
+            timeout(WAIT_FOR, asked)
+                .await
+                .unwrap_or_else(|_| panic!("the leader was not asked {method} in time"))
         }
 
         /// Wait until a notification, or an answer to something this leader
         /// asked, has been received.
         pub(crate) async fn wait_for_notification(&self, method: &str) -> Value {
-            loop {
-                let found = self
-                    .inner
-                    .notifications
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .rev()
-                    .find(|(sent, _)| sent == method)
-                    .map(|(_, params)| params.clone());
-                if let Some(params) = found {
-                    return params;
+            let sent = async {
+                loop {
+                    let found = self
+                        .inner
+                        .notifications
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .rev()
+                        .find(|(sent, _)| sent == method)
+                        .map(|(_, params)| params.clone());
+                    if let Some(params) = found {
+                        return params;
+                    }
+                    self.inner.changed.notified().await;
                 }
-                self.inner.changed.notified().await;
-            }
+            };
+            timeout(WAIT_FOR, sent)
+                .await
+                .unwrap_or_else(|_| panic!("the leader was not sent {method} in time"))
         }
 
         pub(crate) fn requests(&self, method: &str) -> Vec<Value> {

@@ -823,7 +823,8 @@ impl Driver {
     ///
     /// Asked of an archived Task, where the answer decides whether restoring is
     /// offered at all. Nothing is started to find out: Codex holds its archive
-    /// and answers from it, and Claude's answer is whether the file is there.
+    /// and answers from it, Claude's answer is whether the transcript is there,
+    /// and Grok's whether the session's directory is.
     pub(crate) async fn conversation_exists(&self, conversation_id: &str) -> bool {
         match self {
             Self::Codex(client) => client.read_thread(conversation_id).await.is_ok(),
