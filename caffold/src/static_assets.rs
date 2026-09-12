@@ -34,6 +34,51 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "fonts/D2Coding-OFL.txt" => Some(plain_text(include_str!(
             "../../frontend/assets/fonts/D2Coding-OFL.txt"
         ))),
+        "fonts/0xProto-Regular.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/0xProto-Regular.woff2"
+        ))),
+        "fonts/0xProto-Bold.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/0xProto-Bold.woff2"
+        ))),
+        "fonts/0xProto-OFL.txt" => Some(plain_text(include_str!(
+            "../../frontend/assets/fonts/0xProto-OFL.txt"
+        ))),
+        "fonts/GeistMono-Regular.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/GeistMono-Regular.woff2"
+        ))),
+        "fonts/GeistMono-Bold.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/GeistMono-Bold.woff2"
+        ))),
+        "fonts/GeistMono-OFL.txt" => Some(plain_text(include_str!(
+            "../../frontend/assets/fonts/GeistMono-OFL.txt"
+        ))),
+        "fonts/IBMPlexMono-Regular.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/IBMPlexMono-Regular.woff2"
+        ))),
+        "fonts/IBMPlexMono-Bold.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/IBMPlexMono-Bold.woff2"
+        ))),
+        "fonts/IBMPlexMono-OFL.txt" => Some(plain_text(include_str!(
+            "../../frontend/assets/fonts/IBMPlexMono-OFL.txt"
+        ))),
+        "fonts/JetBrainsMono-Regular.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/JetBrainsMono-Regular.woff2"
+        ))),
+        "fonts/JetBrainsMono-Bold.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/JetBrainsMono-Bold.woff2"
+        ))),
+        "fonts/JetBrainsMono-OFL.txt" => Some(plain_text(include_str!(
+            "../../frontend/assets/fonts/JetBrainsMono-OFL.txt"
+        ))),
+        "fonts/MonaspaceNeon-Regular.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/MonaspaceNeon-Regular.woff2"
+        ))),
+        "fonts/MonaspaceNeon-Bold.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/MonaspaceNeon-Bold.woff2"
+        ))),
+        "fonts/MonaspaceNeon-OFL.txt" => Some(plain_text(include_str!(
+            "../../frontend/assets/fonts/MonaspaceNeon-OFL.txt"
+        ))),
         "icons/caffold.png" => Some(png(include_bytes!(
             "../../frontend/assets/icons/caffold.png"
         ))),
@@ -1210,18 +1255,26 @@ mod tests {
         assert_eq!(fonts_module.content_type, "text/javascript; charset=utf-8");
         assert!(fonts_module.body.starts_with(b"export const"));
 
-        let regular_font =
-            get("fonts/D2Coding-Regular.woff2").expect("D2 Coding regular font asset");
-        assert_eq!(regular_font.content_type, "font/woff2");
-        assert!(regular_font.body.starts_with(b"wOF2"));
+        for family in [
+            "D2Coding",
+            "0xProto",
+            "GeistMono",
+            "IBMPlexMono",
+            "JetBrainsMono",
+            "MonaspaceNeon",
+        ] {
+            for weight in ["Regular", "Bold"] {
+                let path = format!("fonts/{family}-{weight}.woff2");
+                let font = get(&path).unwrap_or_else(|| panic!("{path} font asset"));
+                assert_eq!(font.content_type, "font/woff2");
+                assert!(font.body.starts_with(b"wOF2"));
+            }
 
-        let bold_font = get("fonts/D2Coding-Bold.woff2").expect("D2 Coding bold font asset");
-        assert_eq!(bold_font.content_type, "font/woff2");
-        assert!(bold_font.body.starts_with(b"wOF2"));
-
-        let font_license = get("fonts/D2Coding-OFL.txt").expect("D2 Coding license asset");
-        assert_eq!(font_license.content_type, "text/plain; charset=utf-8");
-        assert!(font_license.body.starts_with(b"Copyright"));
+            let path = format!("fonts/{family}-OFL.txt");
+            let license = get(&path).unwrap_or_else(|| panic!("{path} license asset"));
+            assert_eq!(license.content_type, "text/plain; charset=utf-8");
+            assert!(license.body.starts_with(b"Copyright"));
+        }
 
         let settings_page = get("pages/(task-workspace)/settings/appearance/page.js")
             .expect("settings appearance page js asset");
