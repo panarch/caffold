@@ -1,8 +1,12 @@
 import {
-  DEFAULT_TYPEFACE_PRESET,
-  TYPEFACE_PRESETS,
-  applyTypefacePreset,
-  normalizeTypefacePreset,
+  CODE_TYPEFACE_PRESETS,
+  DEFAULT_CODE_TYPEFACE_PRESET,
+  DEFAULT_UI_TYPEFACE_PRESET,
+  UI_TYPEFACE_PRESETS,
+  applyCodeTypefacePreset,
+  applyUiTypefacePreset,
+  normalizeCodeTypefacePreset,
+  normalizeUiTypefacePreset,
 } from "./fonts.js";
 import {
   DEFAULT_THEME_MODE,
@@ -18,7 +22,7 @@ export const FILE_SORT_MODES = Object.freeze({
   NAME: "name",
 });
 export const DEFAULT_FILE_SORT_MODE = FILE_SORT_MODES.FOLDERS_FIRST;
-export { THEME_MODES, TYPEFACE_PRESETS };
+export { CODE_TYPEFACE_PRESETS, THEME_MODES, UI_TYPEFACE_PRESETS };
 
 export const APPEARANCE_RANGE_SETTINGS = Object.freeze({
   interfaceScalePercent: Object.freeze({
@@ -49,7 +53,8 @@ export const APPEARANCE_RANGE_SETTINGS = Object.freeze({
 
 export const DEFAULT_APPEARANCE_SETTINGS = Object.freeze({
   themeMode: DEFAULT_THEME_MODE,
-  typefacePreset: DEFAULT_TYPEFACE_PRESET,
+  uiTypefacePreset: DEFAULT_UI_TYPEFACE_PRESET,
+  codeTypefacePreset: DEFAULT_CODE_TYPEFACE_PRESET,
   interfaceScalePercent:
     APPEARANCE_RANGE_SETTINGS.interfaceScalePercent.defaultValue,
   conversationTextPx:
@@ -85,11 +90,19 @@ export function setAppearanceRangeSetting(name, value) {
   return getSettings();
 }
 
-export function setTypefacePreset(value) {
-  const typefacePreset = normalizeTypefacePreset(value);
+export function setUiTypefacePreset(value) {
   const settings = normalizeSettings({
     ...currentSettings,
-    typefacePreset,
+    uiTypefacePreset: normalizeUiTypefacePreset(value),
+  });
+  persistApplyAndPublish(settings);
+  return getSettings();
+}
+
+export function setCodeTypefacePreset(value) {
+  const settings = normalizeSettings({
+    ...currentSettings,
+    codeTypefacePreset: normalizeCodeTypefacePreset(value),
   });
   persistApplyAndPublish(settings);
   return getSettings();
@@ -160,13 +173,15 @@ export function applySettings(settings = currentSettings) {
     `${normalized.conversationTextPx}px`,
   );
   root.style.setProperty("--code-font-size", `${normalized.codeTextPx}px`);
-  applyTypefacePreset(normalized.typefacePreset);
+  applyUiTypefacePreset(normalized.uiTypefacePreset);
+  applyCodeTypefacePreset(normalized.codeTypefacePreset);
 }
 
 export function normalizeSettings(value) {
   return {
     themeMode: normalizeThemeMode(value?.themeMode),
-    typefacePreset: normalizeTypefacePreset(value?.typefacePreset),
+    uiTypefacePreset: normalizeUiTypefacePreset(value?.uiTypefacePreset),
+    codeTypefacePreset: normalizeCodeTypefacePreset(value?.codeTypefacePreset),
     interfaceScalePercent: normalizeSettingValue(
       value?.interfaceScalePercent,
       APPEARANCE_RANGE_SETTINGS.interfaceScalePercent,

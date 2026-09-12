@@ -25,6 +25,24 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "navigation-routes.js" => Some(js(include_str!("../../frontend/navigation-routes.js"))),
         "settings.js" => Some(js(include_str!("../../frontend/settings.js"))),
         "theme.js" => Some(js(include_str!("../../frontend/theme.js"))),
+        "fonts/GeistSans-Variable.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/GeistSans-Variable.woff2"
+        ))),
+        "fonts/GeistSans-OFL.txt" => Some(plain_text(include_str!(
+            "../../frontend/assets/fonts/GeistSans-OFL.txt"
+        ))),
+        "fonts/Inter-Variable.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/Inter-Variable.woff2"
+        ))),
+        "fonts/Inter-OFL.txt" => Some(plain_text(include_str!(
+            "../../frontend/assets/fonts/Inter-OFL.txt"
+        ))),
+        "fonts/Pretendard-Variable.woff2" => Some(woff2(include_bytes!(
+            "../../frontend/assets/fonts/Pretendard-Variable.woff2"
+        ))),
+        "fonts/Pretendard-OFL.txt" => Some(plain_text(include_str!(
+            "../../frontend/assets/fonts/Pretendard-OFL.txt"
+        ))),
         "fonts/D2Coding-Regular.woff2" => Some(woff2(include_bytes!(
             "../../frontend/assets/fonts/D2Coding-Regular.woff2"
         ))),
@@ -1254,6 +1272,18 @@ mod tests {
         let fonts_module = get("fonts.js").expect("fonts module asset");
         assert_eq!(fonts_module.content_type, "text/javascript; charset=utf-8");
         assert!(fonts_module.body.starts_with(b"export const"));
+
+        for family in ["GeistSans", "Inter", "Pretendard"] {
+            let path = format!("fonts/{family}-Variable.woff2");
+            let font = get(&path).unwrap_or_else(|| panic!("{path} font asset"));
+            assert_eq!(font.content_type, "font/woff2");
+            assert!(font.body.starts_with(b"wOF2"));
+
+            let path = format!("fonts/{family}-OFL.txt");
+            let license = get(&path).unwrap_or_else(|| panic!("{path} license asset"));
+            assert_eq!(license.content_type, "text/plain; charset=utf-8");
+            assert!(license.body.starts_with(b"Copyright"));
+        }
 
         for family in [
             "D2Coding",

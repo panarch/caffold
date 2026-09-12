@@ -128,6 +128,30 @@
 }
 
 @font-face {
+  font-family: "Caffold Geist Sans";
+  src: url("./fonts/GeistSans-Variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Caffold Inter";
+  src: url("./fonts/Inter-Variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Caffold Pretendard";
+  src: url("./fonts/Pretendard-Variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 45 930;
+  font-display: swap;
+}
+
+@font-face {
   font-family: "Caffold D2 Coding";
   src: url("./fonts/D2Coding-Regular.woff2") format("woff2");
   font-style: normal;
@@ -312,8 +336,8 @@
   --task-group-font-size: 0.75rem;
   --task-group-row-height: max(1.75rem, var(--interface-target-floor));
   --task-list-icon-size: 0.9375rem;
-  --font-ui: "Caffold D2 Coding", ui-monospace, monospace;
-  --font-code: "Caffold D2 Coding", ui-monospace, monospace;
+  --font-ui: "Caffold Geist Sans", system-ui, sans-serif;
+  --font-code: "Caffold Geist Mono", ui-monospace, monospace;
   font-size: calc(var(--interface-base-font-size) * var(--interface-scale));
 }
 

@@ -64,7 +64,8 @@ export async function installShowcaseFixture(page) {
       "caffold:settings",
       JSON.stringify({
         themeMode: "light",
-        typefacePreset: "d2-coding",
+        uiTypefacePreset: "geist-sans",
+        codeTypefacePreset: "geist-mono",
         interfaceScalePercent: 100,
         conversationTextPx: 14,
         codeTextPx: 13,

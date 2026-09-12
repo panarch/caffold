@@ -266,20 +266,20 @@ product-intent path.
 
 Product-owned native controls use distinct closed action kinds rather than
 pretending to be buttons. Appearance declares non-current Theme radios, its
-Typeface select, and the three size ranges; Files declares its non-current
-ordering radio; Keyboard declares its enabled On/Off switch; Git Compare
-declares its visible Base and Head selects; and the Branch Review Compare Tree
-declares its comparison-base select while the Review owner injects the action
-meaning. The Branch target remains available while its compared File Tree is
-loading, empty, or showing an error, provided the retained select and refs are
-still available. Its badge is anchored to the stable visible `vs <ref>`
-affordance, while the transparent native select keeps covering the full primary
-header. This keeps selected-value label updates on one frozen binding, while
-activation still uses the exact select. Radio and switch activation
+Interface and Code typeface selects, and the three size ranges; Files declares
+its non-current ordering radio; Keyboard declares its enabled On/Off switch;
+Git Compare declares its visible Base and Head selects; and the Branch Review
+Compare Tree declares its comparison-base select while the Review owner injects
+the action meaning. The Branch target remains available while its compared File
+Tree is loading, empty, or showing an error, provided the retained select and
+refs are still available. Its badge is anchored to the stable visible `vs
+<ref>` affordance, while the transparent native select keeps covering the full
+primary header. This keeps selected-value label updates on one frozen binding,
+while activation still uses the exact select. Radio and switch activation
 focuses and clicks the exact retained input after Hint cleanup. A select
 focuses and calls native `showPicker()` in the trusted key stack, with a
-focus-only fallback when the browser cannot open it. A range target only
-receives focus. The native control and its product owner continue to own option
+focus-only fallback when the browser cannot open it. A range target only receives
+focus. The native control and its product owner continue to own option
 selection, value changes, persistence, and subsequent keyboard input.
 
 Keyboard-operable split separators follow the same focus-only handoff. Task
@@ -1040,13 +1040,13 @@ HTTP request generations.
 Each Settings page explicitly provides its current visible native buttons and
 exact page scrollport. The Settings workspace merges responsive Back with only
 the presented page, and the Task Workspace merges that result with the visible
-Settings navigator. Desktop may therefore expose independent navigator and
-page Scroll surfaces, while foldable and phone layouts contribute only the pane
-with a layout box. Appearance registers non-current Theme choices, Typeface, and
-its three ranges; Files registers the non-current ordering choice; and Keyboard
-registers its switch only while keyboard navigation is enabled. These controls
-keep their native editing, choice, and persistence behavior after the Action
-Hint coordinator hands off focus or click ownership.
+Settings navigator. Desktop may therefore expose independent navigator and page
+Scroll surfaces, while foldable and phone layouts contribute only the pane with
+a layout box. Appearance registers non-current Theme choices, both typeface
+choices, and its three ranges; Files registers the non-current ordering choice;
+and Keyboard registers its switch only while keyboard navigation is enabled.
+These controls keep their native editing, choice, and persistence behavior
+after the Action Hint coordinator hands off focus or click ownership.
 
 `caffold-settings-detail-list` renders the label and value rows that Codex,
 Claude, and About report. It owns row identity, the placeholder a row shows
@@ -1219,6 +1219,21 @@ finishing never starts another Hint session automatically.
 Components render in Light DOM, so CSS remains one cascade. Each stylesheet
 must scope internal selectors below the owning custom element. A parent may
 size or hide a child host, but descendant styling belongs to the child.
+
+`--font-ui` and `--font-code` are the two typeface roles. `--font-ui` covers
+interface chrome and conversation prose, including the Composer textarea;
+`--font-code` covers source, diffs, command and tool output, inline or fenced
+code, and File Tree rows. A tree's section labels and its empty or error
+message stay on `--font-ui`.
+
+A typeface role and a size owner are chosen independently. Conversation prose
+takes its face from `--font-ui` and its size from the Conversation range; a
+File Tree row takes its face from `--font-code` and its size from the Interface
+axis.
+
+Interface faces are bundled as one variable file each and declare a weight
+range, which is what lets interface weights between Regular and Bold render as
+themselves; code faces are bundled as static Regular and Bold.
 
 `caffold-segmented-control` is the shared compact single-choice presentation
 owner. It patches value-keyed buttons from a choices snapshot, owns pressed

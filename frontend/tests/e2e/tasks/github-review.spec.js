@@ -2087,6 +2087,7 @@ test("requires an explicit PR refresh after the head moves", { tag: "@all-viewpo
   fixture.pull.headRefOid = movedOid;
   fixture.controls.pullHeadFailure = null;
   await dialog.getByRole("button", { name: "Cancel", exact: true }).focus();
+  await dialog.getByRole("button", { name: "Refresh PR" }).scrollIntoViewIfNeeded();
   await page.keyboard.press("f");
   const hint = actionHintDialog(page);
   const refreshHint = hint.getByRole("button", { name: / — Refresh PR$/ });

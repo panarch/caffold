@@ -222,7 +222,8 @@ test("renders permission and network approvals without clipping at appearance ex
       "caffold:settings",
       JSON.stringify({
         themeMode: "system",
-        typefacePreset: "d2-coding",
+        uiTypefacePreset: "geist-sans",
+        codeTypefacePreset: "geist-mono",
         interfaceScalePercent: 120,
         conversationTextPx: 20,
         codeTextPx: 20,

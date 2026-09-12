@@ -58,12 +58,21 @@ test("provides visible reset buttons and the exact settings scrollport", () => {
   };
   const resetAll = button("Reset all");
   const resetTheme = button("Reset theme");
-  const resetTypeface = button("Reset font");
-  resetTypeface.hidden = true;
+  const resetUiTypeface = button("Reset interface font");
+  resetUiTypeface.hidden = true;
+  const resetCodeTypeface = button("Reset code font");
+  resetCodeTypeface.hidden = true;
   const controls = new Map([
     ['button[data-action="reset-appearance"]', resetAll],
     ['button[data-action="reset-theme"]', resetTheme],
-    ['button[data-action="reset-typeface"]', resetTypeface],
+    [
+      'button[data-action="reset-typeface"][data-typeface-setting="uiTypefacePreset"]',
+      resetUiTypeface,
+    ],
+    [
+      'button[data-action="reset-typeface"][data-typeface-setting="codeTypefacePreset"]',
+      resetCodeTypeface,
+    ],
   ]);
   const owner = {
     hidden: false,
@@ -101,8 +110,10 @@ test("provides alternate themes, typeface, and retained range controls", () => {
   const system = nativeControl({ checked: true, value: "system" });
   const light = nativeControl({ value: "light" });
   const dark = nativeControl({ value: "dark" });
-  const typeface = nativeControl({ value: "d2-coding" });
-  typeface.selectedOptions = [{ textContent: "D2 Coding" }];
+  const uiTypeface = nativeControl({ value: "geist-sans" });
+  uiTypeface.selectedOptions = [{ textContent: "Geist Sans" }];
+  const codeTypeface = nativeControl({ value: "d2-coding" });
+  codeTypeface.selectedOptions = [{ textContent: "D2 Coding" }];
   const interfaceScale = nativeControl({ value: "100" });
   interfaceScale.getAttribute = (name) => name === "aria-valuetext" ? "100%" : null;
   const conversationText = nativeControl({ value: "14" });
@@ -114,7 +125,8 @@ test("provides alternate themes, typeface, and retained range controls", () => {
     ['input[type="radio"][data-theme-setting][value="system"]', system],
     ['input[type="radio"][data-theme-setting][value="light"]', light],
     ['input[type="radio"][data-theme-setting][value="dark"]', dark],
-    ["select[data-typeface-setting]", typeface],
+    ['select[data-typeface-setting="uiTypefacePreset"]', uiTypeface],
+    ['select[data-typeface-setting="codeTypefacePreset"]', codeTypeface],
     ['input[type="range"][data-setting="interfaceScalePercent"]', interfaceScale],
     ['input[type="range"][data-setting="conversationTextPx"]', conversationText],
     ['input[type="range"][data-setting="codeTextPx"]', codeText],
@@ -129,7 +141,8 @@ test("provides alternate themes, typeface, and retained range controls", () => {
   assert.deepEqual(scope.targets.map(({ id }) => id), [
     "settings:appearance:theme:light",
     "settings:appearance:theme:dark",
-    "settings:appearance:typeface",
+    "settings:appearance:typeface:uiTypefacePreset",
+    "settings:appearance:typeface:codeTypefacePreset",
     "settings:appearance:range:interfaceScalePercent",
     "settings:appearance:range:conversationTextPx",
     "settings:appearance:range:codeTextPx",
@@ -138,21 +151,29 @@ test("provides alternate themes, typeface, and retained range controls", () => {
     "radio",
     "radio",
     "select",
+    "select",
     "range",
     "range",
     "range",
   ]);
   assert.equal(scope.targets[0].label, "Use Light theme");
-  assert.equal(scope.targets[2].label, "Choose font (current D2 Coding)");
-  assert.equal(scope.targets[3].label, "Adjust Interface size (100%)");
+  assert.equal(
+    scope.targets[2].label,
+    "Choose interface font (current Geist Sans)",
+  );
+  assert.equal(scope.targets[3].label, "Choose code font (current D2 Coding)");
+  assert.equal(scope.targets[4].label, "Adjust Interface size (100%)");
 
   scope.targets[0].activate();
   scope.targets[2].activate();
   scope.targets[3].activate();
+  scope.targets[4].activate();
   assert.equal(light.focused, 1);
   assert.equal(light.clicks, 1);
-  assert.equal(typeface.focused, 1);
-  assert.equal(typeface.pickerCalls, 1);
+  assert.equal(uiTypeface.focused, 1);
+  assert.equal(uiTypeface.pickerCalls, 1);
+  assert.equal(codeTypeface.focused, 1);
+  assert.equal(codeTypeface.pickerCalls, 1);
   assert.equal(interfaceScale.focused, 1);
   assert.equal(interfaceScale.clicks, 0);
 
@@ -162,5 +183,5 @@ test("provides alternate themes, typeface, and retained range controls", () => {
     'input[type="range"][data-setting="interfaceScalePercent"]',
     nativeControl({ value: "105" }),
   );
-  assert.equal(scope.targets[3].isActionable(), false);
+  assert.equal(scope.targets[4].isActionable(), false);
 });
