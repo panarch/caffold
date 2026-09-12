@@ -1,0 +1,3151 @@
+[
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/session_notification",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "model_changed",
+    "model_id": "grok-4.6",
+    "reasoning_effort": "low"
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "config_option_update",
+    "configOptions": [
+     {
+      "id": "model",
+      "name": "Model",
+      "category": "model",
+      "type": "select",
+      "currentValue": "grok-4.6",
+      "options": [
+       {
+        "value": "grok-4.6",
+        "name": "Grok 4.6"
+       },
+       {
+        "value": "grok-4.5",
+        "name": "Grok 4.5"
+       }
+      ]
+     },
+     {
+      "id": "reasoning_effort",
+      "name": "Reasoning Effort",
+      "category": "thought_level",
+      "type": "select",
+      "currentValue": "low",
+      "options": [
+       {
+        "value": "xhigh",
+        "name": "Extra High Effort",
+        "description": "Highest effort and reasoning level"
+       },
+       {
+        "value": "high",
+        "name": "High Effort",
+        "description": "Higher implementation quality with extensive reasoning"
+       },
+       {
+        "value": "medium",
+        "name": "Medium Effort",
+        "description": "Balanced effort with standard implementation and testing"
+       },
+       {
+        "value": "low",
+        "name": "Low Effort",
+        "description": "Quick, fast implementations"
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/sessions/changed",
+  "params": {
+   "upserted": [
+    {
+     "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+     "title": null,
+     "cwd": "/var/folders/8b/bsh7h8f94kd0_grsqhk47xb40000gn/T/caffold-grok-live-review-4zcdlvck/source",
+     "isWorktree": false,
+     "modelId": "grok-4.6",
+     "reasoningEffort": "low",
+     "yolo": false,
+     "activity": "working",
+     "resident": true,
+     "lastChangeUnixMs": 1789199870121,
+     "origin": {
+      "kind": "local"
+     }
+    }
+   ],
+   "removed": []
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/queue/changed",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "entries": [
+    {
+     "id": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+     "version": 0,
+     "kind": "prompt",
+     "text": "Authorized isolated integration probe in a throwaway git repository. Use your shell tool to run exactly `cat probe-marker.txt` in the working directory and reply with its output only.",
+     "position": 0
+    }
+   ]
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/queue/changed",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "entries": [],
+   "runningPromptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+   "runningText": "Authorized isolated integration probe in a throwaway git repository. Use your shell tool to run exactly `cat probe-marker.txt` in the working directory and reply with its output only.",
+   "runningKind": "prompt"
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/models/update",
+  "params": {
+   "currentModelId": "grok-4.6",
+   "availableModels": [
+    {
+     "modelId": "grok-4.6",
+     "name": "Grok 4.6",
+     "description": "SpaceXAI's latest frontier model",
+     "_meta": {
+      "totalContextTokens": 500000,
+      "agentType": "grok-build-plan",
+      "supportsReasoningEffort": true,
+      "reasoningEffort": "xhigh",
+      "reasoningEfforts": [
+       {
+        "id": "xhigh",
+        "value": "xhigh",
+        "label": "Extra High Effort",
+        "description": "Highest effort and reasoning level",
+        "default": false
+       },
+       {
+        "id": "high",
+        "value": "high",
+        "label": "High Effort",
+        "description": "Higher implementation quality with extensive reasoning",
+        "default": true
+       },
+       {
+        "id": "medium",
+        "value": "medium",
+        "label": "Medium Effort",
+        "description": "Balanced effort with standard implementation and testing",
+        "default": false
+       },
+       {
+        "id": "low",
+        "value": "low",
+        "label": "Low Effort",
+        "description": "Quick, fast implementations",
+        "default": false
+       }
+      ]
+     }
+    },
+    {
+     "modelId": "grok-4.5",
+     "name": "Grok 4.5",
+     "_meta": {
+      "totalContextTokens": 500000,
+      "agentType": "grok-build-plan",
+      "supportsReasoningEffort": true,
+      "reasoningEffort": "high",
+      "reasoningEfforts": [
+       {
+        "id": "high",
+        "value": "high",
+        "label": "High Effort",
+        "description": "Highest implementation quality with extensive reasoning",
+        "default": true
+       },
+       {
+        "id": "medium",
+        "value": "medium",
+        "label": "Medium Effort",
+        "description": "Balanced effort with standard implementation and testing",
+        "default": false
+       },
+       {
+        "id": "low",
+        "value": "low",
+        "label": "Low Effort",
+        "description": "Quick, fast implementations",
+        "default": false
+       }
+      ]
+     }
+    }
+   ]
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/settings/update",
+  "params": {
+   "show_resolved_model": false,
+   "sharing_enabled": false,
+   "privacy_notice_rollout": true,
+   "privacy_banner_reshow_days": 0,
+   "session_picker_grouped": null,
+   "tips": [
+    "Use @ to attach files like @src/main.rs.",
+    "Use @! for hidden or ignored files: @!.github/workflows.",
+    "Press Ctrl+O to toggle auto-approve mode.",
+    "Use Shift+Tab to cycle between modes like Plan mode.",
+    "Run /compact [context] when chat gets long.",
+    "Press Ctrl+B to background a running terminal command.",
+    "Start Grok in a fresh worktree with `-w`; add `-r <session-id>` to resume an existing session there.",
+    "Use Ctrl+Enter to interject messages. Or just Enter to queue messages.",
+    "Run /dashboard (or Ctrl+\\) to see and manage all your agents in one place.",
+    "Try out workflows using /workflows."
+   ],
+   "slash_command_tags": {
+    "learn": "new"
+   },
+   "announcements": [
+    {
+     "id": "learn-skill",
+     "message": "Ask Grok to /learn from your past traces and tune Grok Build to how you work.",
+     "severity": "info",
+     "title": "New /learn skill!",
+     "cta": null,
+     "updated_at": null,
+     "expires_at": null,
+     "dismissible": null,
+     "persistent": null
+    },
+    {
+     "id": "kindness",
+     "message": "Hope you are having a wonderful day!",
+     "severity": "info",
+     "title": "From the team",
+     "cta": null,
+     "updated_at": null,
+     "expires_at": null,
+     "dismissible": null,
+     "persistent": null
+    }
+   ],
+   "campaigns": [
+    {
+     "id": "grok-4.6-launch",
+     "models": {
+      "default": "grok-4.6"
+     }
+    }
+   ],
+   "gate_message": null,
+   "gate_url": null,
+   "gate_label": null,
+   "allow_access": true,
+   "consent_gate": null,
+   "subscription_tier_display": "SuperGrok",
+   "auto_permission_mode_enabled": null,
+   "prompt_suggestions_enabled": null,
+   "permission_mode": null,
+   "group_tool_verbs": null,
+   "collapsed_edit_blocks": null,
+   "subscription_watch_interval_secs": 60,
+   "dock_enabled": null,
+   "terminal_theme_enabled": null
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/announcements/update",
+  "params": {
+   "gen": 1789199870,
+   "announcements": [
+    {
+     "id": "learn-skill",
+     "message": "Ask Grok to /learn from your past traces and tune Grok Build to how you work.",
+     "severity": "info",
+     "title": "New /learn skill!",
+     "cta": null,
+     "updated_at": null,
+     "expires_at": null,
+     "dismissible": null,
+     "persistent": null
+    },
+    {
+     "id": "kindness",
+     "message": "Hope you are having a wonderful day!",
+     "severity": "info",
+     "title": "From the team",
+     "cta": null,
+     "updated_at": null,
+     "expires_at": null,
+     "dismissible": null,
+     "persistent": null
+    }
+   ]
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/settings/update",
+  "params": {
+   "show_resolved_model": false,
+   "sharing_enabled": false,
+   "privacy_notice_rollout": true,
+   "privacy_banner_reshow_days": 0,
+   "session_picker_grouped": null,
+   "tips": [
+    "Use @ to attach files like @src/main.rs.",
+    "Use @! for hidden or ignored files: @!.github/workflows.",
+    "Press Ctrl+O to toggle auto-approve mode.",
+    "Use Shift+Tab to cycle between modes like Plan mode.",
+    "Run /compact [context] when chat gets long.",
+    "Press Ctrl+B to background a running terminal command.",
+    "Start Grok in a fresh worktree with `-w`; add `-r <session-id>` to resume an existing session there.",
+    "Use Ctrl+Enter to interject messages. Or just Enter to queue messages.",
+    "Run /dashboard (or Ctrl+\\) to see and manage all your agents in one place.",
+    "Try out workflows using /workflows."
+   ],
+   "slash_command_tags": {
+    "learn": "new"
+   },
+   "announcements": [
+    {
+     "id": "learn-skill",
+     "message": "Ask Grok to /learn from your past traces and tune Grok Build to how you work.",
+     "severity": "info",
+     "title": "New /learn skill!",
+     "cta": null,
+     "updated_at": null,
+     "expires_at": null,
+     "dismissible": null,
+     "persistent": null
+    },
+    {
+     "id": "kindness",
+     "message": "Hope you are having a wonderful day!",
+     "severity": "info",
+     "title": "From the team",
+     "cta": null,
+     "updated_at": null,
+     "expires_at": null,
+     "dismissible": null,
+     "persistent": null
+    }
+   ],
+   "campaigns": [
+    {
+     "id": "grok-4.6-launch",
+     "models": {
+      "default": "grok-4.6"
+     }
+    }
+   ],
+   "gate_message": null,
+   "gate_url": null,
+   "gate_label": null,
+   "allow_access": true,
+   "consent_gate": null,
+   "subscription_tier_display": "SuperGrok",
+   "auto_permission_mode_enabled": null,
+   "prompt_suggestions_enabled": null,
+   "permission_mode": null,
+   "group_tool_verbs": null,
+   "collapsed_edit_blocks": null,
+   "subscription_watch_interval_secs": 60,
+   "dock_enabled": null,
+   "terminal_theme_enabled": null
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/announcements/update",
+  "params": {
+   "gen": 1789199871,
+   "announcements": [
+    {
+     "id": "learn-skill",
+     "message": "Ask Grok to /learn from your past traces and tune Grok Build to how you work.",
+     "severity": "info",
+     "title": "New /learn skill!",
+     "cta": null,
+     "updated_at": null,
+     "expires_at": null,
+     "dismissible": null,
+     "persistent": null
+    },
+    {
+     "id": "kindness",
+     "message": "Hope you are having a wonderful day!",
+     "severity": "info",
+     "title": "From the team",
+     "cta": null,
+     "updated_at": null,
+     "expires_at": null,
+     "dismissible": null,
+     "persistent": null
+    }
+   ]
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/models/update",
+  "params": {
+   "currentModelId": "grok-4.6",
+   "availableModels": [
+    {
+     "modelId": "grok-4.6",
+     "name": "Grok 4.6",
+     "description": "SpaceXAI's latest frontier model",
+     "_meta": {
+      "totalContextTokens": 500000,
+      "agentType": "grok-build-plan",
+      "supportsReasoningEffort": true,
+      "reasoningEffort": "xhigh",
+      "reasoningEfforts": [
+       {
+        "id": "xhigh",
+        "value": "xhigh",
+        "label": "Extra High Effort",
+        "description": "Highest effort and reasoning level",
+        "default": false
+       },
+       {
+        "id": "high",
+        "value": "high",
+        "label": "High Effort",
+        "description": "Higher implementation quality with extensive reasoning",
+        "default": true
+       },
+       {
+        "id": "medium",
+        "value": "medium",
+        "label": "Medium Effort",
+        "description": "Balanced effort with standard implementation and testing",
+        "default": false
+       },
+       {
+        "id": "low",
+        "value": "low",
+        "label": "Low Effort",
+        "description": "Quick, fast implementations",
+        "default": false
+       }
+      ]
+     }
+    },
+    {
+     "modelId": "grok-4.5",
+     "name": "Grok 4.5",
+     "_meta": {
+      "totalContextTokens": 500000,
+      "agentType": "grok-build-plan",
+      "supportsReasoningEffort": true,
+      "reasoningEffort": "high",
+      "reasoningEfforts": [
+       {
+        "id": "high",
+        "value": "high",
+        "label": "High Effort",
+        "description": "Highest implementation quality with extensive reasoning",
+        "default": true
+       },
+       {
+        "id": "medium",
+        "value": "medium",
+        "label": "Medium Effort",
+        "description": "Balanced effort with standard implementation and testing",
+        "default": false
+       },
+       {
+        "id": "low",
+        "value": "low",
+        "label": "Low Effort",
+        "description": "Quick, fast implementations",
+        "default": false
+       }
+      ]
+     }
+    }
+   ]
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": "The"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-4",
+    "agentTimestampMs": 1789199871758,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 1
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " user"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-5",
+    "agentTimestampMs": 1789199871759,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 2
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " wants"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-6",
+    "agentTimestampMs": 1789199871759,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 3
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " me"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-7",
+    "agentTimestampMs": 1789199871759,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 4
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " to"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-8",
+    "agentTimestampMs": 1789199871759,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 5
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " run"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-9",
+    "agentTimestampMs": 1789199871760,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 6
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " `"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-10",
+    "agentTimestampMs": 1789199871760,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 7
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": "cat"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-11",
+    "agentTimestampMs": 1789199871760,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 8
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " probe"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-12",
+    "agentTimestampMs": 1789199871760,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 9
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": "-"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-13",
+    "agentTimestampMs": 1789199871760,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 10
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": "marker"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-14",
+    "agentTimestampMs": 1789199871761,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 11
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": ".txt"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-15",
+    "agentTimestampMs": 1789199871761,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 12
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": "`"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-16",
+    "agentTimestampMs": 1789199871761,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 13
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " in"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-17",
+    "agentTimestampMs": 1789199871761,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 14
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " the"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-18",
+    "agentTimestampMs": 1789199871761,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 15
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " working"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-19",
+    "agentTimestampMs": 1789199871765,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 16
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " directory"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-20",
+    "agentTimestampMs": 1789199871765,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 17
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " and"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-21",
+    "agentTimestampMs": 1789199871766,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 18
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " reply"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-22",
+    "agentTimestampMs": 1789199871766,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 19
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " with"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-23",
+    "agentTimestampMs": 1789199871810,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 20
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " its"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-24",
+    "agentTimestampMs": 1789199871811,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 21
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " output"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-25",
+    "agentTimestampMs": 1789199871811,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 22
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " only"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-26",
+    "agentTimestampMs": 1789199871811,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 23
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": "."
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-27",
+    "agentTimestampMs": 1789199871860,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 24
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": "I'll"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-28",
+    "agentTimestampMs": 1789199871909,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 25
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": " run"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-29",
+    "agentTimestampMs": 1789199871913,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 26
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": " the"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-30",
+    "agentTimestampMs": 1789199871914,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 27
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": " exact"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-31",
+    "agentTimestampMs": 1789199871916,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 28
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/announcements/update",
+  "params": {
+   "gen": 1789199872,
+   "announcements": [
+    {
+     "id": "learn-skill",
+     "message": "Ask Grok to /learn from your past traces and tune Grok Build to how you work.",
+     "severity": "info",
+     "title": "New /learn skill!",
+     "cta": null,
+     "updated_at": null,
+     "expires_at": null,
+     "dismissible": null,
+     "persistent": null
+    },
+    {
+     "id": "kindness",
+     "message": "Hope you are having a wonderful day!",
+     "severity": "info",
+     "title": "From the team",
+     "cta": null,
+     "updated_at": null,
+     "expires_at": null,
+     "dismissible": null,
+     "persistent": null
+    }
+   ]
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": " command"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-32",
+    "agentTimestampMs": 1789199871956,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 29
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": " in"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-33",
+    "agentTimestampMs": 1789199871956,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 30
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": " the"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-34",
+    "agentTimestampMs": 1789199871957,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 31
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": " working"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-35",
+    "agentTimestampMs": 1789199871957,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 32
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": " directory"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-36",
+    "agentTimestampMs": 1789199872001,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 33
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": " and"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-37",
+    "agentTimestampMs": 1789199872002,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 34
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": " return"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-38",
+    "agentTimestampMs": 1789199872002,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 35
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": " only"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-39",
+    "agentTimestampMs": 1789199872048,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 36
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": " its"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-40",
+    "agentTimestampMs": 1789199872049,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 37
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": " output"
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-41",
+    "agentTimestampMs": 1789199872100,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 38
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": "."
+    }
+   },
+   "_meta": {
+    "totalTokens": 1597,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-42",
+    "agentTimestampMs": 1789199872101,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 39
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/session_notification",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "tool_call_delta_chunk",
+    "tool_call_id": "call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0",
+    "tool_index": 0,
+    "name": "run_terminal_command"
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/session_notification",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "tool_call_delta_chunk",
+    "tool_index": 0,
+    "arguments_delta": "{\"command\":\"cat probe-marker.txt\",\"description\":\"Print probe-marker.txt contents\"}"
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "available_commands_update",
+    "availableCommands": [
+     {
+      "name": "compact",
+      "description": "Compress conversation history to save context window",
+      "input": {
+       "hint": "optional context about what to preserve"
+      }
+     },
+     {
+      "name": "always-approve",
+      "description": "Toggle always-approve mode (skip all permission prompts)",
+      "input": {
+       "hint": "on|off"
+      }
+     },
+     {
+      "name": "context",
+      "description": "Show context window usage and session stats",
+      "input": null
+     },
+     {
+      "name": "session-info",
+      "description": "Show session details (model, turns, context usage)",
+      "input": null
+     },
+     {
+      "name": "feedback",
+      "description": "Send feedback about the current session",
+      "input": {
+       "hint": "feedback text"
+      }
+     },
+     {
+      "name": "deep-research",
+      "description": "Research with bounded parallel agents, cross-check evidence, and write a cited report",
+      "input": {
+       "hint": "<query>"
+      },
+      "_meta": {
+       "workflowSource": "builtin",
+       "workflowPath": "/Users/example/.grok/bundled/workflows/deep-research.rhai"
+      }
+     },
+     {
+      "name": "workflow",
+      "description": "Launch a saved workflow, list runs, or manage a run (pause, resume, stop, save)",
+      "input": {
+       "hint": "<name> [--agent-budget N] [--effort LEVEL] [args] | runs | pause|resume|stop|save [name]"
+      }
+     },
+     {
+      "name": "goal",
+      "description": "Set, manage, or check an autonomous goal",
+      "input": {
+       "hint": "<objective> [--budget <tokens>] | status | pause | resume | clear"
+      }
+     },
+     {
+      "name": "loop",
+      "description": "Run a prompt on a recurring interval",
+      "input": {
+       "hint": "[interval] <prompt>"
+      }
+     },
+     {
+      "name": "build-with-ai",
+      "description": "Build AI apps on SpaceXAI (XAI_API_KEY + api.x.ai)",
+      "input": {
+       "hint": "<what you're building>"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/build-with-ai/SKILL.md",
+       "bareName": "build-with-ai",
+       "qualifiedName": "bundled:build-with-ai"
+      }
+     },
+     {
+      "name": "code-review",
+      "description": "Run an extremely strict maintainability review for abstraction quality, giant files, and spaghetti-condition growth. Use for a deep code quality audit or an especially harsh maintainability review.",
+      "input": null,
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/code-review/SKILL.md",
+       "bareName": "code-review",
+       "qualifiedName": "bundled:code-review"
+      }
+     },
+     {
+      "name": "create-skill",
+      "description": "Create a new Grok skill",
+      "input": null,
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/create-skill/SKILL.md",
+       "bareName": "create-skill",
+       "qualifiedName": "bundled:create-skill"
+      }
+     },
+     {
+      "name": "create-workflow",
+      "description": "Author a new multi-agent workflow",
+      "input": null,
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/create-workflow/SKILL.md",
+       "bareName": "create-workflow",
+       "qualifiedName": "bundled:create-workflow"
+      }
+     },
+     {
+      "name": "design",
+      "description": "Run the full design-doc-writer and design-doc-reviewer loop until consensus. Produces a polished design document with a PR plan.",
+      "input": {
+       "hint": "<description of what to design>"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/design/SKILL.md",
+       "bareName": "design",
+       "qualifiedName": "bundled:design"
+      }
+     },
+     {
+      "name": "execute-plan",
+      "description": "Execute a PR Plan DAG from a design document. Parses the plan, topologically sorts it, implements PRs in parallel using worktree-isolated subagents, runs mandatory orchestrator-level review, and assembles either a Graphite PR stack or a plain-git branch stack depending on tool availability.",
+      "input": {
+       "hint": "<design-doc-path> [--effort N] [--concurrency N] [--dry-run] [--resume <PLAN_ID>] [--instructions \"...\"] [--no-graphite] [--auto-pr]"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/execute-plan/SKILL.md",
+       "bareName": "execute-plan",
+       "qualifiedName": "bundled:execute-plan"
+      }
+     },
+     {
+      "name": "bundled:imagine",
+      "description": "Prompting and workflow guidance for Imagine image tools",
+      "input": null,
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/imagine/SKILL.md",
+       "bareName": "imagine",
+       "qualifiedName": "bundled:imagine"
+      }
+     },
+     {
+      "name": "implement",
+      "description": "Run the full implement-review-fix loop using implementer and reviewer personas. Supports effort-based multi-reviewer scaling (1-5 reviewers) with automatic specialization selection. Includes memory-based feedback loop that learns from past review patterns. Loops until all reviewers find 0 issues of any severity.",
+      "input": {
+       "hint": "[--effort N] <description of what to implement>"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/implement/SKILL.md",
+       "bareName": "implement",
+       "qualifiedName": "bundled:implement"
+      }
+     },
+     {
+      "name": "learn",
+      "description": "Learn from your own Grok Build sessions and tune your setup: add skills for things you keep typing, fix stale skill instructions, and retire skills, plugins, or MCP servers you never use. Use on \"/learn\", \"learn from my traces\", \"what skills do I never use\". Not for summarizing sessions into notes or memory.",
+      "input": {
+       "hint": "[--mode step|auto|report] [--days N | --since-last | --limit N] [--per-trace] [--include-headless] [--cwd PATH] [--focus TEXT] [--resume]"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/learn/SKILL.md",
+       "bareName": "learn",
+       "qualifiedName": "bundled:learn"
+      }
+     },
+     {
+      "name": "long-running-background-tasks",
+      "description": "Required reading before you start, watch, or wait on anything that keeps running after you launch it \u2014 background jobs, watchers, scheduled loops, CI, pull requests, training runs, dev servers, long builds. Read it before you launch such work and before you report on its state. Saying where a running job stands counts as working on it. Use when: about to launch, supervise, inspect, diagnose, or report on work that keeps running after it is started.",
+      "input": null,
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/long-running-background-tasks/SKILL.md",
+       "bareName": "long-running-background-tasks",
+       "qualifiedName": "bundled:long-running-background-tasks"
+      }
+     },
+     {
+      "name": "pr-babysit",
+      "description": "Monitor PRs, fix CI failures, address review comments, resolve merge conflicts, and restack stacks. Supports independent PRs, Graphite stacks, and GitHub stacked PRs (gh-stack).",
+      "input": {
+       "hint": "add <number> | remove <number> | list | check"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/pr-babysit/SKILL.md",
+       "bareName": "pr-babysit",
+       "qualifiedName": "bundled:pr-babysit"
+      }
+     },
+     {
+      "name": "resume-claude",
+      "description": "Continue from a recent Claude Code session",
+      "input": {
+       "hint": "[words describing the session | session id]"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/resume-claude/SKILL.md",
+       "bareName": "resume-claude",
+       "qualifiedName": "bundled:resume-claude"
+      }
+     },
+     {
+      "name": "resume-codex",
+      "description": "Continue from a recent Codex session",
+      "input": {
+       "hint": "[words describing the session | session id]"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/resume-codex/SKILL.md",
+       "bareName": "resume-codex",
+       "qualifiedName": "bundled:resume-codex"
+      }
+     },
+     {
+      "name": "resume-cursor",
+      "description": "Continue from a recent Cursor session",
+      "input": {
+       "hint": "[words describing the session | session id]"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/resume-cursor/SKILL.md",
+       "bareName": "resume-cursor",
+       "qualifiedName": "bundled:resume-cursor"
+      }
+     },
+     {
+      "name": "review",
+      "description": "Run a reviewer subagent against uncommitted local changes, a named branch, or a GitHub PR. Local and branch modes write a review file plus a summary to disk. PR mode posts the findings as a PENDING GitHub review for the user to inspect and submit through the UI.",
+      "input": {
+       "hint": "[--local | --branch <name> | --pr <number-or-url> | <auto-detect>]"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/review/SKILL.md",
+       "bareName": "review",
+       "qualifiedName": "bundled:review"
+      }
+     },
+     {
+      "name": "skill-design-principles",
+      "description": "Concise, high-signal principles for writing and editing skills well. Use whenever authoring or editing a skill.",
+      "input": null,
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/skill-design-principles/SKILL.md",
+       "bareName": "skill-design-principles",
+       "qualifiedName": "bundled:skill-design-principles"
+      }
+     },
+     {
+      "name": "statusline",
+      "description": "Configure the Grok Build status line.",
+      "input": null,
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/statusline/SKILL.md",
+       "bareName": "statusline",
+       "qualifiedName": "bundled:statusline"
+      }
+     },
+     {
+      "name": "learn-traces",
+      "description": "Workflow: Map-reduce a collected set of Grok Build sessions into a curated list of harness changes: new or edited skills, plugin enables, deletes",
+      "input": {
+       "hint": "[--agent-budget N] [--effort LEVEL] [args]"
+      },
+      "_meta": {
+       "workflowSource": "bundled",
+       "workflowPath": "/Users/example/.grok/bundled/workflows/learn-traces.rhai"
+      }
+     }
+    ],
+    "_meta": {
+     "tools": [
+      "run_terminal_command",
+      "read_file",
+      "search_replace",
+      "list_dir",
+      "grep",
+      "kill_command_or_subagent",
+      "todo_write",
+      "get_command_or_subagent_output",
+      "spawn_subagent",
+      "scheduler_create",
+      "scheduler_delete",
+      "scheduler_list",
+      "monitor",
+      "search_tool",
+      "use_tool",
+      "workflow",
+      "enter_plan_mode",
+      "exit_plan_mode",
+      "ask_user_question",
+      "send_feedback",
+      "web_search",
+      "web_fetch",
+      "image_gen",
+      "image_edit",
+      "image_to_video",
+      "reference_to_video",
+      "write"
+     ]
+    }
+   },
+   "_meta": {
+    "totalTokens": 16778,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-43",
+    "agentTimestampMs": 1789199872548,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "AvailableCommandsUpdate",
+    "updateParams": {
+     "commandsCount": 27
+    }
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/session_notification",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "response_completed",
+    "usage": {
+     "input_tokens": 6083,
+     "output_tokens": 71,
+     "cache_read_input_tokens": 10624,
+     "cache_creation_input_tokens": 0,
+     "reasoning_tokens": 27
+    },
+    "signature": "cpBFdEY3o45gzVkRx+oiVsuxTkMSl0mSP2bWKP0HOLymtiYsHQfdHCYCm3weHJhU+5GZxl5qf2o3+a+Y52J5AkmCe5IoyX4HNNbkAbboRb8NG5GYqBKo3EmCJizfZO1dKiXplFtr/4lYCNC4yMYCjoWDrx69abg6b0XrUskxiPiRUOv8"
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "tool_call",
+    "toolCallId": "call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0",
+    "title": "run_terminal_command",
+    "rawInput": {
+     "command": "cat probe-marker.txt",
+     "description": "Print probe-marker.txt contents"
+    },
+    "_meta": {
+     "x.ai/tool": {
+      "version": 1,
+      "name": "run_terminal_command",
+      "kind": "execute",
+      "namespace": "grok_build",
+      "label": "Run Command",
+      "read_only": false
+     }
+    }
+   },
+   "_meta": {
+    "totalTokens": 16778,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-44",
+    "agentTimestampMs": 1789199872549,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "ToolCall",
+    "updateParams": {
+     "toolCallId": "call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0",
+     "title": "run_terminal_command",
+     "kind": "Other",
+     "status": "Pending"
+    }
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/session_notification",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "pending_interaction",
+    "tool_call_id": "call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0",
+    "kind": "permission"
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "tool_call_update",
+    "toolCallId": "call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0",
+    "kind": "execute",
+    "title": "Execute `cat probe-marker.txt`",
+    "content": [
+     {
+      "type": "content",
+      "content": {
+       "type": "text",
+       "text": "Print probe-marker.txt contents"
+      }
+     }
+    ],
+    "locations": [],
+    "rawInput": {
+     "variant": "Bash",
+     "command": "cat probe-marker.txt",
+     "description": "Print probe-marker.txt contents",
+     "is_background": false
+    },
+    "_meta": {
+     "x.ai/tool": {
+      "version": 1,
+      "name": "run_terminal_command",
+      "kind": "execute",
+      "namespace": "grok_build",
+      "label": "Run Command",
+      "read_only": false,
+      "input": {
+       "command": "cat probe-marker.txt",
+       "description": "Print probe-marker.txt contents"
+      }
+     }
+    }
+   },
+   "_meta": {
+    "totalTokens": 16778,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-45",
+    "agentTimestampMs": 1789199872549,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "ToolCallUpdate",
+    "updateParams": {
+     "toolCallId": "call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0",
+     "status": null
+    }
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/session_notification",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "interaction_resolved",
+    "tool_call_id": "call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0"
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "tool_call_update",
+    "toolCallId": "call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0",
+    "status": "in_progress",
+    "content": [
+     {
+      "type": "content",
+      "content": {
+       "type": "text",
+       "text": ""
+      }
+     }
+    ],
+    "rawOutput": {
+     "type": "Bash",
+     "output": [],
+     "output_for_prompt": "",
+     "exit_code": 0,
+     "command": "cat probe-marker.txt",
+     "truncated": false,
+     "signal": null,
+     "timed_out": false,
+     "description": null,
+     "current_dir": "/var/folders/8b/bsh7h8f94kd0_grsqhk47xb40000gn/T/caffold-grok-live-review-4zcdlvck/source",
+     "output_file": "",
+     "total_bytes": 0
+    }
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "tool_call_update",
+    "toolCallId": "call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0",
+    "status": "in_progress",
+    "content": [
+     {
+      "type": "content",
+      "content": {
+       "type": "text",
+       "text": "SOURCE_CHECKOUT\n"
+      }
+     }
+    ],
+    "rawOutput": {
+     "type": "Bash",
+     "output": [
+      83,
+      79,
+      85,
+      82,
+      67,
+      69,
+      95,
+      67,
+      72,
+      69,
+      67,
+      75,
+      79,
+      85,
+      84,
+      10
+     ],
+     "output_for_prompt": "SOURCE_CHECKOUT\n",
+     "exit_code": 0,
+     "command": "cat probe-marker.txt",
+     "truncated": false,
+     "signal": null,
+     "timed_out": false,
+     "description": null,
+     "current_dir": "/var/folders/8b/bsh7h8f94kd0_grsqhk47xb40000gn/T/caffold-grok-live-review-4zcdlvck/source",
+     "output_file": "",
+     "total_bytes": 16
+    }
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "tool_call_update",
+    "toolCallId": "call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0",
+    "status": "completed",
+    "content": [
+     {
+      "type": "content",
+      "content": {
+       "type": "text",
+       "text": "SOURCE_CHECKOUT\n"
+      }
+     }
+    ],
+    "rawOutput": {
+     "type": "Bash",
+     "output": [
+      83,
+      79,
+      85,
+      82,
+      67,
+      69,
+      95,
+      67,
+      72,
+      69,
+      67,
+      75,
+      79,
+      85,
+      84,
+      10
+     ],
+     "output_for_prompt": "exit: 0\nSOURCE_CHECKOUT\n",
+     "exit_code": 0,
+     "command": "cat probe-marker.txt",
+     "truncated": false,
+     "signal": null,
+     "timed_out": false,
+     "description": "Print probe-marker.txt contents",
+     "current_dir": "/var/folders/8b/bsh7h8f94kd0_grsqhk47xb40000gn/T/caffold-grok-live-review-4zcdlvck/source",
+     "output_file": "/Users/example/.grok/sessions/%2Fvar%2Ffolders%2F8b%2Fbsh7h8f94kd0_grsqhk47xb40000gn%2FT%2Fcaffold-grok-live-review-4zcdlvck%2Fsource/01a0949f-67eb-7be3-998e-641093a2fe38/terminal/call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0.log",
+     "total_bytes": 16
+    }
+   },
+   "_meta": {
+    "totalTokens": 16778,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-46",
+    "agentTimestampMs": 1789199872611,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199871032,
+    "turnStartMs": 1789199870322,
+    "updateType": "ToolCallUpdate",
+    "updateParams": {
+     "toolCallId": "call-00e6f452-2f42-47c9-857e-aabde0a1c8c3-0",
+     "status": "Completed"
+    }
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": "The"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-49",
+    "agentTimestampMs": 1789199873801,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 1
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " user"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-50",
+    "agentTimestampMs": 1789199873801,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 2
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " asked"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-51",
+    "agentTimestampMs": 1789199873802,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 3
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " me"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-52",
+    "agentTimestampMs": 1789199873813,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 4
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " to"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-53",
+    "agentTimestampMs": 1789199873863,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 5
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " reply"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-54",
+    "agentTimestampMs": 1789199873863,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 6
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " with"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-55",
+    "agentTimestampMs": 1789199873863,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 7
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " its"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-56",
+    "agentTimestampMs": 1789199873863,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 8
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " output"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-57",
+    "agentTimestampMs": 1789199873900,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 9
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " only"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-58",
+    "agentTimestampMs": 1789199873900,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 10
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": "."
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-59",
+    "agentTimestampMs": 1789199873900,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 11
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " So"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-60",
+    "agentTimestampMs": 1789199873900,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 12
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " I"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-61",
+    "agentTimestampMs": 1789199873942,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 13
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " should"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-62",
+    "agentTimestampMs": 1789199873942,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 14
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " just"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-63",
+    "agentTimestampMs": 1789199873942,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 15
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " say"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-64",
+    "agentTimestampMs": 1789199873942,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 16
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": " SOURCE"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-65",
+    "agentTimestampMs": 1789199873986,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 17
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": "_"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-66",
+    "agentTimestampMs": 1789199873986,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 18
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": "CHECK"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-67",
+    "agentTimestampMs": 1789199873986,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 19
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": "OUT"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-68",
+    "agentTimestampMs": 1789199873986,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 20
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_thought_chunk",
+    "content": {
+     "type": "text",
+     "text": "."
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-69",
+    "agentTimestampMs": 1789199874029,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentThoughtChunk",
+    "chunkId": 21
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": "SOURCE"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-70",
+    "agentTimestampMs": 1789199874076,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 22
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": "_"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-71",
+    "agentTimestampMs": 1789199874076,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 23
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": "CHECK"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-72",
+    "agentTimestampMs": 1789199874076,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 24
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "agent_message_chunk",
+    "content": {
+     "type": "text",
+     "text": "OUT"
+    }
+   },
+   "_meta": {
+    "totalTokens": 16784,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-73",
+    "agentTimestampMs": 1789199874076,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AgentMessageChunk",
+    "chunkId": 25
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "available_commands_update",
+    "availableCommands": [
+     {
+      "name": "compact",
+      "description": "Compress conversation history to save context window",
+      "input": {
+       "hint": "optional context about what to preserve"
+      }
+     },
+     {
+      "name": "always-approve",
+      "description": "Toggle always-approve mode (skip all permission prompts)",
+      "input": {
+       "hint": "on|off"
+      }
+     },
+     {
+      "name": "context",
+      "description": "Show context window usage and session stats",
+      "input": null
+     },
+     {
+      "name": "session-info",
+      "description": "Show session details (model, turns, context usage)",
+      "input": null
+     },
+     {
+      "name": "feedback",
+      "description": "Send feedback about the current session",
+      "input": {
+       "hint": "feedback text"
+      }
+     },
+     {
+      "name": "deep-research",
+      "description": "Research with bounded parallel agents, cross-check evidence, and write a cited report",
+      "input": {
+       "hint": "<query>"
+      },
+      "_meta": {
+       "workflowSource": "builtin",
+       "workflowPath": "/Users/example/.grok/bundled/workflows/deep-research.rhai"
+      }
+     },
+     {
+      "name": "workflow",
+      "description": "Launch a saved workflow, list runs, or manage a run (pause, resume, stop, save)",
+      "input": {
+       "hint": "<name> [--agent-budget N] [--effort LEVEL] [args] | runs | pause|resume|stop|save [name]"
+      }
+     },
+     {
+      "name": "goal",
+      "description": "Set, manage, or check an autonomous goal",
+      "input": {
+       "hint": "<objective> [--budget <tokens>] | status | pause | resume | clear"
+      }
+     },
+     {
+      "name": "loop",
+      "description": "Run a prompt on a recurring interval",
+      "input": {
+       "hint": "[interval] <prompt>"
+      }
+     },
+     {
+      "name": "build-with-ai",
+      "description": "Build AI apps on SpaceXAI (XAI_API_KEY + api.x.ai)",
+      "input": {
+       "hint": "<what you're building>"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/build-with-ai/SKILL.md",
+       "bareName": "build-with-ai",
+       "qualifiedName": "bundled:build-with-ai"
+      }
+     },
+     {
+      "name": "code-review",
+      "description": "Run an extremely strict maintainability review for abstraction quality, giant files, and spaghetti-condition growth. Use for a deep code quality audit or an especially harsh maintainability review.",
+      "input": null,
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/code-review/SKILL.md",
+       "bareName": "code-review",
+       "qualifiedName": "bundled:code-review"
+      }
+     },
+     {
+      "name": "create-skill",
+      "description": "Create a new Grok skill",
+      "input": null,
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/create-skill/SKILL.md",
+       "bareName": "create-skill",
+       "qualifiedName": "bundled:create-skill"
+      }
+     },
+     {
+      "name": "create-workflow",
+      "description": "Author a new multi-agent workflow",
+      "input": null,
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/create-workflow/SKILL.md",
+       "bareName": "create-workflow",
+       "qualifiedName": "bundled:create-workflow"
+      }
+     },
+     {
+      "name": "design",
+      "description": "Run the full design-doc-writer and design-doc-reviewer loop until consensus. Produces a polished design document with a PR plan.",
+      "input": {
+       "hint": "<description of what to design>"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/design/SKILL.md",
+       "bareName": "design",
+       "qualifiedName": "bundled:design"
+      }
+     },
+     {
+      "name": "execute-plan",
+      "description": "Execute a PR Plan DAG from a design document. Parses the plan, topologically sorts it, implements PRs in parallel using worktree-isolated subagents, runs mandatory orchestrator-level review, and assembles either a Graphite PR stack or a plain-git branch stack depending on tool availability.",
+      "input": {
+       "hint": "<design-doc-path> [--effort N] [--concurrency N] [--dry-run] [--resume <PLAN_ID>] [--instructions \"...\"] [--no-graphite] [--auto-pr]"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/execute-plan/SKILL.md",
+       "bareName": "execute-plan",
+       "qualifiedName": "bundled:execute-plan"
+      }
+     },
+     {
+      "name": "bundled:imagine",
+      "description": "Prompting and workflow guidance for Imagine image tools",
+      "input": null,
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/imagine/SKILL.md",
+       "bareName": "imagine",
+       "qualifiedName": "bundled:imagine"
+      }
+     },
+     {
+      "name": "implement",
+      "description": "Run the full implement-review-fix loop using implementer and reviewer personas. Supports effort-based multi-reviewer scaling (1-5 reviewers) with automatic specialization selection. Includes memory-based feedback loop that learns from past review patterns. Loops until all reviewers find 0 issues of any severity.",
+      "input": {
+       "hint": "[--effort N] <description of what to implement>"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/implement/SKILL.md",
+       "bareName": "implement",
+       "qualifiedName": "bundled:implement"
+      }
+     },
+     {
+      "name": "learn",
+      "description": "Learn from your own Grok Build sessions and tune your setup: add skills for things you keep typing, fix stale skill instructions, and retire skills, plugins, or MCP servers you never use. Use on \"/learn\", \"learn from my traces\", \"what skills do I never use\". Not for summarizing sessions into notes or memory.",
+      "input": {
+       "hint": "[--mode step|auto|report] [--days N | --since-last | --limit N] [--per-trace] [--include-headless] [--cwd PATH] [--focus TEXT] [--resume]"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/learn/SKILL.md",
+       "bareName": "learn",
+       "qualifiedName": "bundled:learn"
+      }
+     },
+     {
+      "name": "long-running-background-tasks",
+      "description": "Required reading before you start, watch, or wait on anything that keeps running after you launch it \u2014 background jobs, watchers, scheduled loops, CI, pull requests, training runs, dev servers, long builds. Read it before you launch such work and before you report on its state. Saying where a running job stands counts as working on it. Use when: about to launch, supervise, inspect, diagnose, or report on work that keeps running after it is started.",
+      "input": null,
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/long-running-background-tasks/SKILL.md",
+       "bareName": "long-running-background-tasks",
+       "qualifiedName": "bundled:long-running-background-tasks"
+      }
+     },
+     {
+      "name": "pr-babysit",
+      "description": "Monitor PRs, fix CI failures, address review comments, resolve merge conflicts, and restack stacks. Supports independent PRs, Graphite stacks, and GitHub stacked PRs (gh-stack).",
+      "input": {
+       "hint": "add <number> | remove <number> | list | check"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/pr-babysit/SKILL.md",
+       "bareName": "pr-babysit",
+       "qualifiedName": "bundled:pr-babysit"
+      }
+     },
+     {
+      "name": "resume-claude",
+      "description": "Continue from a recent Claude Code session",
+      "input": {
+       "hint": "[words describing the session | session id]"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/resume-claude/SKILL.md",
+       "bareName": "resume-claude",
+       "qualifiedName": "bundled:resume-claude"
+      }
+     },
+     {
+      "name": "resume-codex",
+      "description": "Continue from a recent Codex session",
+      "input": {
+       "hint": "[words describing the session | session id]"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/resume-codex/SKILL.md",
+       "bareName": "resume-codex",
+       "qualifiedName": "bundled:resume-codex"
+      }
+     },
+     {
+      "name": "resume-cursor",
+      "description": "Continue from a recent Cursor session",
+      "input": {
+       "hint": "[words describing the session | session id]"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/resume-cursor/SKILL.md",
+       "bareName": "resume-cursor",
+       "qualifiedName": "bundled:resume-cursor"
+      }
+     },
+     {
+      "name": "review",
+      "description": "Run a reviewer subagent against uncommitted local changes, a named branch, or a GitHub PR. Local and branch modes write a review file plus a summary to disk. PR mode posts the findings as a PENDING GitHub review for the user to inspect and submit through the UI.",
+      "input": {
+       "hint": "[--local | --branch <name> | --pr <number-or-url> | <auto-detect>]"
+      },
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/review/SKILL.md",
+       "bareName": "review",
+       "qualifiedName": "bundled:review"
+      }
+     },
+     {
+      "name": "skill-design-principles",
+      "description": "Concise, high-signal principles for writing and editing skills well. Use whenever authoring or editing a skill.",
+      "input": null,
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/skill-design-principles/SKILL.md",
+       "bareName": "skill-design-principles",
+       "qualifiedName": "bundled:skill-design-principles"
+      }
+     },
+     {
+      "name": "statusline",
+      "description": "Configure the Grok Build status line.",
+      "input": null,
+      "_meta": {
+       "scope": "bundled",
+       "path": "/Users/example/.grok/bundled/skills/statusline/SKILL.md",
+       "bareName": "statusline",
+       "qualifiedName": "bundled:statusline"
+      }
+     },
+     {
+      "name": "learn-traces",
+      "description": "Workflow: Map-reduce a collected set of Grok Build sessions into a curated list of harness changes: new or edited skills, plugin enables, deletes",
+      "input": {
+       "hint": "[--agent-budget N] [--effort LEVEL] [args]"
+      },
+      "_meta": {
+       "workflowSource": "bundled",
+       "workflowPath": "/Users/example/.grok/bundled/workflows/learn-traces.rhai"
+      }
+     }
+    ],
+    "_meta": {
+     "tools": [
+      "run_terminal_command",
+      "read_file",
+      "search_replace",
+      "list_dir",
+      "grep",
+      "kill_command_or_subagent",
+      "todo_write",
+      "get_command_or_subagent_output",
+      "spawn_subagent",
+      "scheduler_create",
+      "scheduler_delete",
+      "scheduler_list",
+      "monitor",
+      "search_tool",
+      "use_tool",
+      "workflow",
+      "enter_plan_mode",
+      "exit_plan_mode",
+      "ask_user_question",
+      "send_feedback",
+      "web_search",
+      "web_fetch",
+      "image_gen",
+      "image_edit",
+      "image_to_video",
+      "reference_to_video",
+      "write"
+     ]
+    }
+   },
+   "_meta": {
+    "totalTokens": 16825,
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-74",
+    "agentTimestampMs": 1789199874153,
+    "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "streamStartMs": 1789199873080,
+    "turnStartMs": 1789199870322,
+    "updateType": "AvailableCommandsUpdate",
+    "updateParams": {
+     "commandsCount": 27
+    }
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/session_notification",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "response_completed",
+    "usage": {
+     "input_tokens": 153,
+     "output_tokens": 32,
+     "cache_read_input_tokens": 16640,
+     "cache_creation_input_tokens": 0,
+     "reasoning_tokens": 24
+    },
+    "signature": "nOuAatsvIPJODJz/YeMiuEH/KTKLxagi8Y9bJl2qcY1u1AENaR++lxeO0GiS7ZKg7bk9DychRA4vxOvwV6LrLD2C3tckw4ccYQpAn93ZW6si8vHir71ySz4y3/mgv9Rl1BaqjiEZoRczZkT73yenY7a6"
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/queue/changed",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "entries": []
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/session_notification",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "update": {
+    "sessionUpdate": "turn_completed",
+    "prompt_id": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+    "stop_reason": "end_turn",
+    "usage": {
+     "inputTokens": 33500,
+     "outputTokens": 103,
+     "totalTokens": 33603,
+     "cachedReadTokens": 27264,
+     "cacheCreationTokens": 0,
+     "reasoningTokens": 51,
+     "modelCalls": 2,
+     "apiDurationMs": 3732,
+     "costUsdTicks": 90854800,
+     "modelUsage": {
+      "grok-4.6-build": {
+       "inputTokens": 33500,
+       "outputTokens": 103,
+       "totalTokens": 33603,
+       "cachedReadTokens": 27264,
+       "cacheCreationTokens": 0,
+       "reasoningTokens": 51,
+       "modelCalls": 2,
+       "apiDurationMs": 3732,
+       "costUsdTicks": 90854800
+      }
+     },
+     "numTurns": 2
+    },
+    "elapsed_ms": 4079
+   },
+   "_meta": {
+    "eventId": "01a0949f-67eb-7be3-998e-641093a2fe38-77",
+    "agentTimestampMs": 1789199874210
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/session/prompt_complete",
+  "params": {
+   "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+   "promptId": "ff600b4b-b2df-4f1f-9297-c26aa9e2a02f",
+   "stopReason": "end_turn",
+   "agentResult": null
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "_x.ai/sessions/changed",
+  "params": {
+   "upserted": [
+    {
+     "sessionId": "01a0949f-67eb-7be3-998e-641093a2fe38",
+     "title": null,
+     "cwd": "/var/folders/8b/bsh7h8f94kd0_grsqhk47xb40000gn/T/caffold-grok-live-review-4zcdlvck/source",
+     "isWorktree": false,
+     "modelId": "grok-4.6",
+     "reasoningEffort": "low",
+     "yolo": false,
+     "activity": "idle",
+     "resident": true,
+     "lastChangeUnixMs": 1789199874210,
+     "origin": {
+      "kind": "local"
+     }
+    }
+   ],
+   "removed": []
+  }
+ }
+]

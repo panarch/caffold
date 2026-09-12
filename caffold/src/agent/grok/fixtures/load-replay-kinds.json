@@ -1,0 +1,14 @@
+{
+ "replayed_tail": [
+  "agent_message_chunk",
+  "agent_message_chunk",
+  "agent_message_chunk",
+  "available_commands_update",
+  "response_completed",
+  "_x.ai/queue/changed",
+  "turn_completed",
+  "_x.ai/session/prompt_complete",
+  "_x.ai/sessions/changed",
+  "last_turn_summary"
+ ]
+}

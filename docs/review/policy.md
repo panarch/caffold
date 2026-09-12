@@ -89,6 +89,9 @@ Caffold should present state without pretending to own state it does not own.
 - Codex app-server is the source of truth for Codex thread and turn behavior.
 - Claude's transcript is the source of conversation history for Claude Tasks;
   the live Claude process owns its active turn and pending control requests.
+- Grok's leader is the source of truth for Grok sessions, turns, approvals, and
+  history; Caffold's driver-private binding owns only which native session a
+  Task runs on.
 - Caffold storage is for Caffold-owned metadata, indexes, recovery data, and
   UI-facing summaries.
 - The browser UI is a view and control surface, not durable state.

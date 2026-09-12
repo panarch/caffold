@@ -56,7 +56,7 @@ readiness state shows the install, update, sign-in, restart, or recovery
 guidance card beside the New Task surface — never over an open Task. A
 Codex Task stays readable and its composer usable; a Codex-run submit is
 refused by the server with the blocking cause, shown in the composer. Claude
-Tasks and Claude creation never consult Codex readiness. A
+and Grok Tasks, and their creation, never consult Codex readiness. A
 stale runtime exposes the same explicit restart confirmation available from
 Codex Settings; Retry rechecks the backend diagnosis and Settings stays
 available throughout setup. On compact viewports whose home shows the Task
@@ -94,7 +94,7 @@ Forking uses Codex's native conversation fork and creates the managed child at
 the selected Section's project root. The source cwd is display-only. Files,
 uncommitted changes, branches, and worktrees are not copied or created. A
 temporarily unavailable Codex runtime leaves the row visible but disabled with
-the reason; Claude is not offered by this surface yet.
+the reason; Claude and Grok are not offered by this surface.
 
 ## Detail
 
@@ -112,9 +112,9 @@ shared repository surfaces.
 
 An idle Codex Task exposes **Fork task** in Task actions. It performs the same
 native fork without an ID lookup, places the child at the source Task's Section
-project root, and opens the distinct managed child. Active Codex Tasks and
-Claude Tasks keep the action disabled with an explicit reason. Forking remains
-separate from worktree isolation.
+project root, and opens the distinct managed child. Active Codex Tasks, Claude
+Tasks, and Grok Tasks keep the action disabled with an explicit reason. Forking
+remains separate from worktree isolation.
 
 ### Conversation
 
@@ -241,6 +241,11 @@ Settings includes:
   confirmed restart that stops the runner and every Claude session it holds,
   starts a fresh runner on the installed binary, and lets conversations resume
   when their Tasks are opened;
+- Grok installation status, shown and never gated on: the executable's version
+  and path, the signed-in account as the leader confirms it, the leader on
+  Caffold's socket with its own build, and the state of Caffold's connection,
+  with a **Check again** action; opening the page starts no leader, session,
+  or turn;
 - About Caffold application and build information, including shared
   checking/ready/settled update status and a **Reload to update** action while
   a prepared PWA generation remains ready. Copied diagnostics also include the

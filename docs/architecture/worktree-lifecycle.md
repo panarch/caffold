@@ -28,7 +28,9 @@ The `isolate_current_task` tool is available only inside a Task already managed
 by Caffold. Codex receives Caffold's HTTP MCP server on thread start and resume;
 Caffold also answers calls from dynamic tool definitions already persisted on
 pre-MCP threads. Claude receives the `mcp__caffold__isolate_current_task` tool
-from its in-process MCP server.
+from its in-process MCP server. Grok receives `caffold__isolate_current_task`
+from Caffold's HTTP MCP server, declared with a Task-bound header whenever its
+session is started or loaded.
 It is an explicit preparation operation, intended for requests such as
 "prepare a worktree for this PR review". It does not start a child Task and
 does not automatically continue the review or other work.
@@ -50,6 +52,18 @@ Task starts its session in the worktree directly. The agent keeps its
 transcript where its session runs, and the CLI relocates the file with the
 move, so a Task that has a worktree record — whatever state that record is in —
 is read, resumed, and erased at the worktree's path.
+
+A Grok session never changes directory. When the isolating turn ends, Caffold
+forks the session into the worktree with Grok's own `_x.ai/session/fork`, loads
+the copy and checks that it runs at the worktree, re-binds the Task to the copy,
+and closes the source session. The Task keeps its identifier, name, Section,
+and conversation; the record it reads from then on is the copy's, which carries
+the same events. A move that stops short — a fork refused or unanswered twice,
+a copy that could not be loaded or runs elsewhere — leaves the Task bound to the
+source and refuses new turns with that reason until a prompt or a cold opening
+retries it, so no turn runs in the wrong directory. The move's phases are
+written to the driver's binding file, and a backend that restarts takes the
+move up where it stopped.
 
 The branch behavior follows the source checkout:
 
@@ -74,7 +88,8 @@ operations and dirty submodule or nested-repository state because Git stash
 cannot safely represent those cases.
 
 Claude declares Caffold's MCP server on every hello, so a Claude Task serves
-the tool on resumed and re-attached sessions as well.
+the tool on resumed and re-attached sessions as well. Grok declares it on every
+session load, under a fresh Task-bound header.
 
 ## Dirty-State Transfer And Recovery
 

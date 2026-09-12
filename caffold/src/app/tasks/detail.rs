@@ -2751,6 +2751,7 @@ mod request_tests {
         let (claude, _runner) = agent::claude::ClaudeClient::mock();
         let runtime = TaskRuntime::new(
             claude,
+            agent::grok::GrokClient::unreachable(),
             sessions.clone(),
             TaskEvents::default(),
             TaskStore::memory().unwrap(),

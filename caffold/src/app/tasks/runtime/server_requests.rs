@@ -21,7 +21,7 @@ use crate::app::tasks::{
     },
     worktrees::IsolateOutcome,
 };
-use crate::task_store;
+use crate::task_store::{ManagedThread, RunBy};
 
 /// An approval waiting for an answer.
 ///
@@ -67,6 +67,9 @@ pub(super) enum AskedBy {
     },
     /// Claude keeps what it proposed itself, so nothing is needed here.
     Claude,
+    /// Grok's driver keeps the request it must answer on, so nothing is
+    /// needed here either.
+    Grok,
 }
 
 #[derive(Deserialize)]
@@ -82,6 +85,102 @@ struct IsolateCurrentTaskArguments {
     base_ref: Option<String>,
     #[serde(default)]
     include_changes: bool,
+}
+
+impl RenameCurrentTaskArguments {
+    /// The name asked for, trimmed.
+    fn parse(arguments: JsonValue) -> Result<String, String> {
+        let Self { name } = serde_json::from_value(arguments)
+            .map_err(|_| "The new task name must be a non-empty string.".to_string())?;
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("The new task name must be a non-empty string.".to_string());
+        }
+        Ok(name.to_string())
+    }
+}
+
+impl IsolateCurrentTaskArguments {
+    fn parse(arguments: JsonValue) -> Result<Self, String> {
+        let Self {
+            branch_name,
+            base_ref,
+            include_changes,
+        } = serde_json::from_value(arguments).map_err(|_| {
+            "Arguments must use optional non-empty `branchName` and `baseRef` values plus a boolean `includeChanges`."
+                .to_string()
+        })?;
+        let branch_name = branch_name
+            .map(|branch| {
+                let branch = branch.trim().to_string();
+                if branch.is_empty() {
+                    Err("`branchName` must be a non-empty string when provided.".to_string())
+                } else {
+                    Ok(branch)
+                }
+            })
+            .transpose()?;
+        let base_ref = base_ref
+            .map(|base_ref| {
+                let base_ref = base_ref.trim().to_string();
+                if base_ref.is_empty() {
+                    Err("`baseRef` must be a non-empty string when provided.".to_string())
+                } else {
+                    Ok(base_ref)
+                }
+            })
+            .transpose()?;
+        if base_ref.is_some() && include_changes {
+            return Err("`baseRef` cannot be combined with `includeChanges: true`.".to_string());
+        }
+        Ok(Self {
+            branch_name,
+            base_ref,
+            include_changes,
+        })
+    }
+}
+
+fn unmanaged_task_error(tool: CaffoldTaskTool) -> String {
+    match tool {
+        CaffoldTaskTool::RenameCurrentTask => {
+            "Caffold can only rename tasks that it manages.".to_string()
+        }
+        CaffoldTaskTool::IsolateCurrentTask => {
+            "Caffold can only isolate a task that it manages.".to_string()
+        }
+    }
+}
+
+/// What the agent is told once its Task stands in a worktree.
+fn isolated_answer(isolated: IsolateOutcome, include_changes: bool) -> String {
+    match isolated {
+        IsolateOutcome::AlreadyReady { worktree, checkout } => format!(
+            "The current Caffold task is already isolated on branch `{}` at `{}`. End this turn; the user's next request will continue there.",
+            checkout.branch_name, worktree.worktree_path
+        ),
+        IsolateOutcome::Isolated {
+            worktree,
+            checkout,
+            source_warning,
+        } => {
+            let warning = source_warning
+                .map(|warning| format!(" The original checkout could not be switched to its default branch and remains detached: {warning}"))
+                .unwrap_or_default();
+            let result = if include_changes {
+                format!(
+                    "Moved the current Caffold task to branch `{}` at `{}` and preserved its tracked and untracked changes.",
+                    checkout.branch_name, worktree.worktree_path
+                )
+            } else {
+                format!(
+                    "Prepared the current Caffold task on branch `{}` at `{}`. Source checkout changes were left in place.",
+                    checkout.branch_name, worktree.worktree_path
+                )
+            };
+            format!("{result} End this turn; the user's next request will continue there.{warning}")
+        }
+    }
 }
 
 struct DynamicToolInvocation {
@@ -174,6 +273,7 @@ impl TaskRuntime {
                     }
                 }
                 (AskedBy::Claude, TaskAgent::Claude { .. }) => {}
+                (AskedBy::Grok, TaskAgent::Grok { .. }) => {}
                 _ => return Err(ApprovalResolveError::ResolutionMismatch),
             }
             if pending.phase != ApprovalPhase::Pending {
@@ -225,6 +325,14 @@ impl TaskRuntime {
                 .await
                 .map_err(|error| match error {
                     agent::claude::ClaudeError::NoSuchApproval(_) => ApprovalResolveError::NotFound,
+                    error => ApprovalResolveError::Agent(error.into()),
+                }),
+            (AskedBy::Grok, TaskAgent::Grok { .. }) => self
+                .grok()
+                .resolve_approval(thread_id, approval_id, decision)
+                .await
+                .map_err(|error| match error {
+                    agent::grok::GrokError::NoSuchApproval(_) => ApprovalResolveError::NotFound,
                     error => ApprovalResolveError::Agent(error.into()),
                 }),
             _ => unreachable!("reply claimed for the matching provider"),
@@ -435,10 +543,14 @@ impl TaskRuntime {
             arguments,
         } = invocation;
         let result = match legacy_dynamic_task_tool(&tool, namespace.as_deref()) {
-            Ok(tool) => {
-                self.execute_caffold_tool(client, generation, &thread_id, tool, arguments)
-                    .await
-            }
+            Ok(tool) => match self.managed_thread(&thread_id).await {
+                Ok(Some(managed)) => {
+                    self.execute_caffold_tool(client, generation, &managed, tool, arguments)
+                        .await
+                }
+                Ok(None) => Err(unmanaged_task_error(tool)),
+                Err(error) => Err(error),
+            },
             Err(error) => Err(error),
         };
         let (success, text) = match result {
@@ -462,73 +574,61 @@ impl TaskRuntime {
         }
     }
 
-    pub(in crate::app::tasks) async fn execute_codex_mcp_tool(
+    /// Do what a session asked of Caffold over the MCP door, for the Task its
+    /// binding names. The Task says which agent runs it, so the answer is
+    /// carried out against that agent.
+    pub(in crate::app::tasks) async fn execute_mcp_tool(
         &self,
         thread_id: &str,
         tool: &str,
         arguments: JsonValue,
     ) -> Result<String, String> {
         let tool = codex_mcp_task_tool(tool)?;
-        let connection = self
-            .connection()
-            .await
-            .map_err(|error| format!("Caffold could not reach Codex: {error}"))?;
-        self.execute_caffold_tool(
-            &connection.client,
-            connection.generation,
-            thread_id,
-            tool,
-            arguments,
-        )
-        .await
+        let Some(managed) = self.managed_thread(thread_id).await? else {
+            return Err(unmanaged_task_error(tool));
+        };
+        match &managed.run_by {
+            RunBy::Codex => {
+                let connection = self
+                    .connection()
+                    .await
+                    .map_err(|error| format!("Caffold could not reach Codex: {error}"))?;
+                self.execute_caffold_tool(
+                    &connection.client,
+                    connection.generation,
+                    &managed,
+                    tool,
+                    arguments,
+                )
+                .await
+            }
+            RunBy::Grok { .. } => self.execute_grok_tool(&managed, tool, arguments).await,
+            RunBy::Claude { .. } => Err(
+                "Claude Tasks reach Caffold's tools through their own session, not this endpoint."
+                    .to_string(),
+            ),
+        }
     }
 
     async fn execute_caffold_tool(
         &self,
         client: &CodexThreadClient,
         _generation: u64,
-        thread_id: &str,
+        managed: &ManagedThread,
         tool: CaffoldTaskTool,
         arguments: JsonValue,
     ) -> Result<String, String> {
-        let managed = self.managed_thread(thread_id).await?;
-        if managed.is_none() {
-            return Err(match tool {
-                CaffoldTaskTool::RenameCurrentTask => {
-                    "Caffold can only rename tasks that it manages.".to_string()
-                }
-                CaffoldTaskTool::IsolateCurrentTask => {
-                    "Caffold can only isolate a task that it manages.".to_string()
-                }
-            });
-        }
+        let thread_id = managed.thread_id.as_str();
         if matches!(tool, CaffoldTaskTool::RenameCurrentTask) {
-            let RenameCurrentTaskArguments { name } = serde_json::from_value(arguments)
-                .map_err(|_| "The new task name must be a non-empty string.".to_string())?;
-            let name = name.trim();
-            if name.is_empty() {
-                return Err("The new task name must be a non-empty string.".to_string());
-            }
+            let name = RenameCurrentTaskArguments::parse(arguments)?;
             client
-                .set_thread_name(thread_id, name)
+                .set_thread_name(thread_id, &name)
                 .await
                 .map_err(|error| format!("Caffold could not rename the current task: {error}"))?;
-            let store = self.task_store.clone();
-            let persisted_thread_id = thread_id.to_string();
-            let persisted_name = name.to_string();
-            let local_result = tokio::task::spawn_blocking(move || {
-                store.update_display_name(&persisted_thread_id, &persisted_name)
-            })
-            .await
-            .map_err(|error| format!("Task-store worker failed: {error}"))
-            .and_then(|result| result.map_err(|error| error.to_string()))
-            .and_then(|thread| {
-                thread.ok_or_else(|| "renamed Task is no longer managed".to_string())
-            });
-            if let Err(error) = local_result {
-                if let Some(previous_name) = managed.as_ref().map(|thread| &thread.display_name)
-                    && let Err(rollback_error) =
-                        client.set_thread_name(thread_id, previous_name).await
+            if let Err(error) = self.persist_display_name(thread_id, &name).await {
+                if let Err(rollback_error) = client
+                    .set_thread_name(thread_id, &managed.display_name)
+                    .await
                 {
                     eprintln!(
                         "failed to roll back Codex Task rename after local projection failure: {rollback_error}"
@@ -548,33 +648,7 @@ impl TaskRuntime {
             branch_name,
             base_ref,
             include_changes,
-        } = serde_json::from_value(arguments).map_err(|_| {
-            "Arguments must use optional non-empty `branchName` and `baseRef` values plus a boolean `includeChanges`."
-                .to_string()
-        })?;
-        let branch_name = branch_name
-            .map(|branch| {
-                let branch = branch.trim().to_string();
-                if branch.is_empty() {
-                    Err("`branchName` must be a non-empty string when provided.".to_string())
-                } else {
-                    Ok(branch)
-                }
-            })
-            .transpose()?;
-        let base_ref = base_ref
-            .map(|base_ref| {
-                let base_ref = base_ref.trim().to_string();
-                if base_ref.is_empty() {
-                    Err("`baseRef` must be a non-empty string when provided.".to_string())
-                } else {
-                    Ok(base_ref)
-                }
-            })
-            .transpose()?;
-        if base_ref.is_some() && include_changes {
-            return Err("`baseRef` cannot be combined with `includeChanges: true`.".to_string());
-        }
+        } = IsolateCurrentTaskArguments::parse(arguments)?;
         let thread = client
             .read_thread(thread_id)
             .await
@@ -605,41 +679,117 @@ impl TaskRuntime {
             )
             .await
             .map_err(|error| format!("Caffold could not isolate the current task: {error}"))?;
-        match isolated {
-            IsolateOutcome::AlreadyReady { worktree, checkout } => Ok(format!(
-                "The current Caffold task is already isolated on branch `{}` at `{}`. End this turn; the user's next request will continue there.",
-                checkout.branch_name, worktree.worktree_path
-            )),
-            IsolateOutcome::Isolated {
-                worktree,
-                checkout,
-                source_warning,
-            } => {
-                let warning = source_warning
-                    .map(|warning| format!(" The original checkout could not be switched to its default branch and remains detached: {warning}"))
-                    .unwrap_or_default();
-                let result = if include_changes {
-                    format!(
-                        "Moved the current Caffold task to branch `{}` at `{}` and preserved its tracked and untracked changes.",
-                        checkout.branch_name, worktree.worktree_path
-                    )
-                } else {
-                    format!(
-                        "Prepared the current Caffold task on branch `{}` at `{}`. Source checkout changes were left in place.",
-                        checkout.branch_name, worktree.worktree_path
-                    )
+        Ok(isolated_answer(isolated, include_changes))
+    }
+
+    /// The Grok half of the same two tools.
+    ///
+    /// A Task's name is kept in Caffold's store and on the leader's session
+    /// both, so a rename lands on both or on neither. Isolation prepares the
+    /// worktree the way every agent's does; the session follows by being
+    /// forked there once the turn that asked has ended, and that intent is
+    /// what gets written down here.
+    async fn execute_grok_tool(
+        &self,
+        managed: &ManagedThread,
+        tool: CaffoldTaskTool,
+        arguments: JsonValue,
+    ) -> Result<String, String> {
+        let thread_id = managed.thread_id.as_str();
+        match tool {
+            CaffoldTaskTool::RenameCurrentTask => {
+                let name = RenameCurrentTaskArguments::parse(arguments)?;
+                self.grok
+                    .rename_conversation(thread_id, &name)
+                    .await
+                    .map_err(|error| {
+                        format!("Caffold could not rename the current task: {error}")
+                    })?;
+                if let Err(error) = self.persist_display_name(thread_id, &name).await {
+                    if let Err(rollback_error) = self
+                        .grok
+                        .rename_conversation(thread_id, &managed.display_name)
+                        .await
+                    {
+                        eprintln!(
+                            "failed to roll back Grok Task rename after local projection failure: {rollback_error}"
+                        );
+                    }
+                    return Err(format!(
+                        "Caffold renamed Grok but could not persist the Task name: {error}"
+                    ));
+                }
+                if let Some(lifecycle) = &self.lifecycle {
+                    lifecycle.refresh_task_list();
+                }
+                Ok(format!("Renamed the current Caffold task to `{name}`."))
+            }
+            CaffoldTaskTool::IsolateCurrentTask => {
+                let IsolateCurrentTaskArguments {
+                    branch_name,
+                    base_ref,
+                    include_changes,
+                } = IsolateCurrentTaskArguments::parse(arguments)?;
+                let source = self
+                    .grok
+                    .working_directory(thread_id)
+                    .await
+                    .map_err(|error| format!("Caffold could not read the current task: {error}"))?;
+                let task_name = {
+                    let name = managed.display_name.trim();
+                    if name.is_empty() { "task" } else { name }.to_string()
                 };
-                Ok(format!(
-                    "{result} End this turn; the user's next request will continue there.{warning}"
-                ))
+                let lifecycle = self
+                    .lifecycle
+                    .as_ref()
+                    .ok_or_else(|| "Caffold task lifecycle is unavailable.".to_string())?;
+                let isolated = lifecycle
+                    .isolate_current_task(
+                        source.into(),
+                        thread_id.to_string(),
+                        task_name,
+                        branch_name,
+                        base_ref,
+                        include_changes,
+                    )
+                    .await
+                    .map_err(|error| {
+                        format!("Caffold could not isolate the current task: {error}")
+                    })?;
+                let worktree_path = match &isolated {
+                    IsolateOutcome::AlreadyReady { worktree, .. }
+                    | IsolateOutcome::Isolated { worktree, .. } => worktree.worktree_path.clone(),
+                };
+                self.grok
+                    .plan_switch(thread_id, &worktree_path)
+                    .await
+                    .map_err(|error| {
+                        format!(
+                            "Caffold prepared the worktree at `{worktree_path}` but could not \
+                             write down the move there: {error} Reopen the Task to continue in \
+                             the worktree."
+                        )
+                    })?;
+                Ok(isolated_answer(isolated, include_changes))
             }
         }
     }
 
-    async fn managed_thread(
-        &self,
-        thread_id: &str,
-    ) -> Result<Option<task_store::ManagedThread>, String> {
+    async fn persist_display_name(&self, thread_id: &str, name: &str) -> Result<(), String> {
+        let store = self.task_store.clone();
+        let thread_id = thread_id.to_string();
+        let name = name.to_string();
+        tokio::task::spawn_blocking(move || store.update_display_name(&thread_id, &name))
+            .await
+            .map_err(|error| format!("Task-store worker failed: {error}"))
+            .and_then(|result| result.map_err(|error| error.to_string()))
+            .and_then(|thread| {
+                thread.ok_or_else(|| "renamed Task is no longer managed".to_string())
+            })
+            .map(|_| ())
+    }
+
+    async fn managed_thread(&self, thread_id: &str) -> Result<Option<ManagedThread>, String> {
         let store = self.task_store.clone();
         let thread_id = thread_id.to_string();
         tokio::task::spawn_blocking(move || store.get(&thread_id))
@@ -666,6 +816,22 @@ impl TaskRuntime {
                 ));
             }
         }
+    }
+
+    pub(super) async fn withdraw_grok_approvals(&self, thread_id: &str) {
+        let mut approvals = self.approvals.lock().await;
+        approvals.retain(|_, pending| {
+            if pending.thread_id == thread_id && matches!(pending.asked_by, AskedBy::Grok) {
+                self.events.publish_local(approval_resolved_event(
+                    &pending.thread_id,
+                    &pending.request,
+                    ApprovalOutcome::Unavailable,
+                ));
+                false
+            } else {
+                true
+            }
+        });
     }
 
     pub(super) async fn withdraw_codex_approvals(&self, generation: u64) {
@@ -757,7 +923,7 @@ mod tests {
             worktrees::ManagedWorktrees,
         },
         fs::RootedFs,
-        task_store::{ManagedThread, RunBy, TaskStore},
+        task_store::{ManagedThread, PushSubscriptionInput, RunBy, TaskStore},
     };
 
     fn initialize_repository(path: &Path) {
@@ -859,6 +1025,7 @@ mod tests {
         let (shutdown, _) = broadcast::channel(1);
         TaskRuntime::new(
             agent::claude::ClaudeClient::mock().0,
+            agent::grok::GrokClient::unreachable(),
             TaskSessions::default(),
             events,
             store,
@@ -964,7 +1131,7 @@ mod tests {
             .unwrap();
         store
             .upsert_push_installation(
-                task_store::PushSubscriptionInput {
+                PushSubscriptionInput {
                     client_id: "00000000-0000-4000-8000-000000000001".to_owned(),
                     installation_label: "Chrome on macOS · 00000000".to_owned(),
                     endpoint: "https://push.example.test/subscription".to_owned(),
@@ -2062,10 +2229,18 @@ mod tests {
             store.clone(),
             worktrees,
             claude.clone(),
+            agent::grok::GrokClient::unreachable(),
         );
         let (shutdown, _) = broadcast::channel(1);
-        let runtime = TaskRuntime::new(claude, sessions, events, store.clone(), shutdown)
-            .with_lifecycle(lifecycle);
+        let runtime = TaskRuntime::new(
+            claude,
+            agent::grok::GrokClient::unreachable(),
+            sessions,
+            events,
+            store.clone(),
+            shutdown,
+        )
+        .with_lifecycle(lifecycle);
         let thread_read = json!({
             "thread": {
                 "id": "thread_source",

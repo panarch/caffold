@@ -575,7 +575,8 @@ card renders beside the New Task surface, and routes always open — a Task's
 conversation stays readable from the store while its agent is unready. No
 surface pre-guesses an operation's fate from the snapshot: a Codex-run
 operation tried while Codex is unready is refused by the server, and the
-refusal is the answer shown. Claude surfaces never consult either Codex axis.
+refusal is the answer shown. Claude and Grok surfaces never consult either
+Codex axis.
 Settings remains routable. Retry refreshes the canonical diagnosis; frontend
 code does not compare versions or classify stderr.
 
@@ -1049,7 +1050,7 @@ These controls keep their native editing, choice, and persistence behavior
 after the Action Hint coordinator hands off focus or click ownership.
 
 `caffold-settings-detail-list` renders the label and value rows that Codex,
-Claude, and About report. It owns row identity, the placeholder a row shows
+Claude, Grok, and About report. It owns row identity, the placeholder a row shows
 before its value is known, and the width at which a label and its value
 stack. Each page publishes a row snapshot and owns its wording.
 
@@ -1060,6 +1061,13 @@ is forwarded to the workspace's single Claude restart dialog; that mutation
 ends every runner-held session, starts a replacement runner, and refreshes the
 diagnostic report. The page does not read credentials or call provider APIs
 itself.
+
+Settings Grok owns a route-scoped diagnostic request for the installed
+executable, the leader on Caffold's socket, Caffold's connection, and the
+account as the leader confirms it. Each block can fail independently without
+turning the report into a readiness gate, a **Check again** action re-reads
+the report, and a report that lands after the page was left is discarded. The
+page has no restart control: the leader is Grok's process.
 
 Remote Access owns a route-scoped Tailscale request lifecycle. Server responses
 are the only writers of canonical status, `canManage`, diagnostics, and the

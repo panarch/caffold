@@ -130,6 +130,17 @@ const ROUTE_DEFINITIONS = [
     parent: () => settingsRoute(),
   }),
   routeDefinition({
+    id: "settings-grok",
+    kind: "settings",
+    pattern: "/settings/grok",
+    surface: "task-workspace",
+    target: "grok",
+    toRoute: () => settingsRoute("grok"),
+    matchesRoute: (route) =>
+      route?.kind === "settings" && route.section === "grok",
+    parent: () => settingsRoute(),
+  }),
+  routeDefinition({
     id: "settings-about",
     kind: "settings",
     pattern: "/settings/about",
@@ -761,6 +772,7 @@ function settingsRoute(section = "") {
       "remote-access",
       "codex",
       "claude",
+      "grok",
       "about",
     ].includes(section)
       ? section

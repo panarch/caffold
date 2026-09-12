@@ -184,6 +184,7 @@ pub(in crate::app::tasks) struct TaskSessions {
 enum SessionAgent {
     Codex,
     Claude,
+    Grok,
 }
 
 impl From<&Driver> for SessionAgent {
@@ -191,6 +192,7 @@ impl From<&Driver> for SessionAgent {
         match driver {
             Driver::Codex(_) => Self::Codex,
             Driver::Claude(_) => Self::Claude,
+            Driver::Grok(_) => Self::Grok,
         }
     }
 }

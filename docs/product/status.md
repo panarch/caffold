@@ -9,12 +9,15 @@ boundaries.
 - browser/PWA access on the trusted host and tailnet-only Tailscale Serve;
 - responsive **Settings → Remote Access** status, private URL/QR handoff, and
   localhost-only control of Caffold's Tailscale Serve mapping;
-- Tasks backed by either Codex or Claude Code, with the agent selected by model
+- Tasks backed by Codex, Claude Code, or Grok, with the agent selected by model
   when the Task is created and fixed for the Task's lifetime;
 - native Codex app-server integration, including its persistent daemon and
   replaceable Caffold proxy;
 - native Claude Code CLI integration, including transcript recovery and the
   Caffold runner that carries sessions across backend replacement;
+- native Grok CLI integration, through a leader process Caffold starts for
+  itself that holds sessions and running turns across backend replacement,
+  with worktree moves carried out by forking the session;
 - shared prompts, active-turn steering, interruption, command and permission
   approvals, images, model/effort/permission choices, and local voice input in
   the Conversation surface;
@@ -23,14 +26,15 @@ boundaries.
   above the follow-up Composer;
 - agent-owned model and permission semantics rather than Caffold-defined
   provider profiles;
-- separate Codex and Claude Settings diagnostics, including Claude account,
-  plan usage, and runner state as the CLI reports them;
+- separate Codex, Claude, and Grok Settings diagnostics, including Claude
+  account, plan usage, and runner state, and the Grok executable, leader,
+  connection, and account, as each CLI reports them;
 - selectable managed Sections with fixed-directory Task creation;
 - shared integrated Working Tree/Branch, file/source, Git Compare/Log, and
   GitHub review surfaces for repository-backed Tasks and Sections;
 - explicit Task creation from GitHub Issue and Pull Request detail;
 - same-Task preparation of a Caffold-managed worktree through
-  `isolate_current_task` for both supported agents;
+  `isolate_current_task` for every supported agent;
 - opt-in transfer of staged, unstaged, and untracked changes with bounded
   recovery;
 - archive/restore of Tasks and verified clean managed worktrees, plus explicit
@@ -42,16 +46,16 @@ boundaries.
 
 ## Current boundaries
 
-- Codex and Claude Code are the complete built-in agent set. Caffold has no
-  runtime agent plugin registry or ACP driver.
-- A Task belongs to one agent. It cannot switch from Codex to Claude or from
-  Claude to Codex in place.
+- Codex, Claude Code, and Grok are the complete built-in agent set. Caffold
+  has no runtime agent plugin registry or ACP driver.
+- A Task belongs to one agent. It cannot switch agents in place.
 - The agents do not share one synthetic runtime. Codex owns its app-server
-  threads; Claude owns its transcript and CLI behavior; Caffold owns only the
-  product state and process glue each integration needs.
+  threads; Claude owns its transcript and CLI behavior; Grok's leader owns its
+  sessions and turns; Caffold owns only the product state and process glue
+  each integration needs.
 - Support does not imply feature identity. Caffold shares a control or display
-  concept only where its semantics have been verified for both agents and
-  otherwise keeps the behavior agent-specific.
+  concept only where its semantics have been verified for every agent that
+  offers it and otherwise keeps the behavior agent-specific.
 - Deployment is limited to a trusted host reached locally or through a trusted
   private network; direct public-internet exposure is not supported.
 - Git and GitHub surfaces are read/review-oriented. Caffold does not expose
@@ -80,11 +84,12 @@ boundaries.
 The current product supports these flows:
 
 1. Start a Task from Global New or a managed Section's fixed directory, choose
-   an available Codex or Claude model, and see live repository/worktree context.
+   an available Codex, Claude, or Grok model, and see live repository/worktree context.
 2. Continue, steer, interrupt, and approve real work through the selected
    agent's native runtime without changing the Task's agent.
-3. Reconnect the Caffold backend to an active Codex daemon thread or a
-   runner-held Claude session without replacing the agent-owned conversation.
+3. Reconnect the Caffold backend to an active Codex daemon thread, a
+   runner-held Claude session, or a leader-held Grok session without replacing
+   the agent-owned conversation.
 4. Select a repository Section or Task and review files, diffs, Git state, and
    GitHub context on desktop, foldable, tablet, and phone layouts.
 5. Approve or deny a command or permission request and see the canonical

@@ -77,11 +77,13 @@ and rationale for that boundary belongs to
 
 ### Agent runtimes
 
-A Task is bound to either Codex or Claude. Codex app-server owns Codex thread,
+A Task is bound to Codex, Claude, or Grok. Codex app-server owns Codex thread,
 turn, approval, cwd, and event behavior. Claude Code owns its transcript,
 stream-json/control behavior, tools, and permission model. Caffold's Claude
 runner supplies process survival and frame relay without parsing the agent
-protocol.
+protocol. Grok's leader owns Grok sessions, turns, approvals, and the session
+record; Caffold's Grok driver keeps only the binding between a Task and the
+native session it runs on.
 
 The shared Task application works only in Caffold's small product vocabulary.
 Provider wire methods and payloads stop in the driver. See
@@ -216,8 +218,10 @@ they do not redefine agent status.
 
 Caffold persists which agent runs each Task. A Claude Task also persists its
 working directory because a resumed CLI process must be told where to start;
-Codex reports the cwd from its own thread. For a managed worktree, the ownership
-record supplies the active Task root for both drivers.
+Codex reports the cwd from its own thread; a Grok Task persists its working
+directory the same way, and its driver-private binding file records which
+native session runs there. For a managed worktree, the ownership record
+supplies the active Task root for every driver.
 
 Repository and worktree presentation is derived live from that Task context.
 The navigator groups a main checkout and linked worktrees by their common Git

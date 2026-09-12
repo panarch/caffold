@@ -1,0 +1,51 @@
+[
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a09482-3275-7688-a619-fb65da53debe",
+   "update": {
+    "sessionUpdate": "user_message_chunk",
+    "content": {
+     "type": "text",
+     "text": "This is an authorized isolated integration probe. Do not use tools, do not edit files, do not access the network, do not spawn subagents. Remember this conversation nonce: 1d66b25126a4. Look at the attached image and reply with exactly one word naming its dominant color. If no image is visible to you, reply with exactly: NO_IMAGE"
+    },
+    "_meta": {
+     "modelId": "grok-4.6",
+     "promptIndex": 0
+    }
+   },
+   "_meta": {
+    "eventId": "01a09482-370e-7001-a329-9a7d78be2cb8-2",
+    "agentTimestampMs": 1789197957076,
+    "isReplay": true,
+    "x.ai/leaderClientId": 1
+   }
+  }
+ },
+ {
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+   "sessionId": "01a09482-3275-7688-a619-fb65da53debe",
+   "update": {
+    "sessionUpdate": "user_message_chunk",
+    "content": {
+     "type": "image",
+     "data": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAb0lEQVR4nO3PAQkAAAyEwO9feoshgnABdLep8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3I8QUNyPEFDcjxBQ3IPanc8OLDQitxAAAAAElFTkSuQmCC",
+     "mimeType": "image/png"
+    },
+    "_meta": {
+     "modelId": "grok-4.6",
+     "promptIndex": 0
+    }
+   },
+   "_meta": {
+    "eventId": "01a09482-370e-7001-a329-9a7d78be2cb8-3",
+    "agentTimestampMs": 1789197957076,
+    "isReplay": true,
+    "x.ai/leaderClientId": 1
+   }
+  }
+ }
+]

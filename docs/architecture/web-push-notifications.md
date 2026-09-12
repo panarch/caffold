@@ -75,11 +75,12 @@ belongs to an active Caffold-managed Task in Redb and maps only the three
 terminal statuses.
 
 A question the agent is blocked on reaches the same delivery path from the
-waiting list both drivers register on, whichever agent asked and whatever it
+waiting list every driver registers on, whichever agent asked and whatever it
 asked for. The list answers to the identity the question was asked under, so a
 question that arrives again — which app-server replays for everything still
-pending on `thread/resume`, and which a Claude session reports when it is taken
-up again — lands on the question already waiting and sends nothing. Only the
+pending on `thread/resume`, which a Claude session reports when it is taken
+up again, and which a Grok leader asks again when its session is loaded — lands
+on the question already waiting and sends nothing. Only the
 arrival that made a Task wait is delivered, and only for a conversation that
 still belongs to an active Caffold-managed Task.
 

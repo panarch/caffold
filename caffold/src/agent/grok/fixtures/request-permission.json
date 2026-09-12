@@ -1,0 +1,55 @@
+{
+ "jsonrpc": "2.0",
+ "id": 0,
+ "method": "session/request_permission",
+ "params": {
+  "sessionId": "01a094a2-d9a0-72d0-b2e1-ce8d2a316d23",
+  "toolCall": {
+   "toolCallId": "call-2385b322-5fa1-4dd4-bf47-9e7d59a7dc8b-0",
+   "kind": "execute",
+   "title": "Execute `for i in 1 2 3; do echo tick $i; sleep 1; done`",
+   "rawInput": {
+    "variant": "Bash",
+    "command": "for i in 1 2 3; do echo tick $i; sleep 1; done",
+    "description": "Run isolated tick loop probe",
+    "is_background": false
+   },
+   "_meta": {
+    "x.ai/tool": {
+     "version": 1,
+     "name": "run_terminal_command",
+     "kind": "execute",
+     "namespace": "grok_build",
+     "label": "Run Command",
+     "read_only": false,
+     "input": {
+      "command": "for i in 1 2 3; do echo tick $i; sleep 1; done",
+      "description": "Run isolated tick loop probe"
+     }
+    }
+   }
+  },
+  "options": [
+   {
+    "optionId": "always-allow",
+    "name": "Yes, and don't ask again for bash commands",
+    "kind": "allow_always"
+   },
+   {
+    "optionId": "allow-once",
+    "name": "Yes, proceed",
+    "kind": "allow_once"
+   },
+   {
+    "optionId": "reject-once",
+    "name": "No, and tell Grok what to do differently",
+    "kind": "reject_once"
+   },
+   {
+    "optionId": "reject-always",
+    "name": "No, and don't ask again for this command",
+    "kind": "reject_always"
+   }
+  ]
+ }
+}

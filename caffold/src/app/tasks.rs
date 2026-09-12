@@ -25,7 +25,7 @@ use axum::Router;
 use tokio::sync::broadcast;
 
 use crate::{
-    agent::{claude::ClaudeClient, codex::CodexMcpBindings},
+    agent::{claude::ClaudeClient, codex::CodexMcpBindings, grok::GrokClient},
     fs::RootedFs,
     task_store::TaskStore,
     watch::WatchHub,
@@ -61,6 +61,7 @@ struct TaskState {
 
 struct AgentRuntimeDependencies {
     claude: ClaudeClient,
+    grok: GrokClient,
     codex_mcp: Option<CodexMcpBindings>,
 }
 
@@ -73,6 +74,7 @@ impl TaskState {
         task_store: TaskStore,
         worktree_root: PathBuf,
         claude: ClaudeClient,
+        grok: GrokClient,
     ) -> anyhow::Result<Self> {
         let (push, _receiver) = PushService::test_channel(task_store.clone());
         Self::new_with_push(
@@ -84,6 +86,7 @@ impl TaskState {
             push,
             AgentRuntimeDependencies {
                 claude,
+                grok,
                 codex_mcp: None,
             },
         )
@@ -98,7 +101,11 @@ impl TaskState {
         push: PushService,
         agents: AgentRuntimeDependencies,
     ) -> anyhow::Result<Self> {
-        let AgentRuntimeDependencies { claude, codex_mcp } = agents;
+        let AgentRuntimeDependencies {
+            claude,
+            grok,
+            codex_mcp,
+        } = agents;
         let task_events = TaskEvents::default();
         let task_sessions = sessions::TaskSessions::new(task_events.clone());
         let task_list_events = TaskListEvents::new();
@@ -111,9 +118,11 @@ impl TaskState {
             task_store.clone(),
             managed_worktrees,
             claude.clone(),
+            grok.clone(),
         );
         let task_runtime = TaskRuntime::new(
             claude,
+            grok,
             task_sessions.clone(),
             task_events.clone(),
             task_store.clone(),
@@ -171,10 +180,12 @@ impl TasksApp {
         task_store: TaskStore,
         worktree_root: PathBuf,
         claude: ClaudeClient,
+        grok: GrokClient,
         codex_mcp: CodexMcpHost,
         watch_hub: WatchHub,
     ) -> anyhow::Result<Self> {
         let push = PushRuntime::new(task_store.clone())?;
+        grok.attach_mcp(codex_mcp.bindings(), codex_mcp.grok_endpoint());
         let state = TaskState::new_with_push(
             fs,
             default_cwd_path,
@@ -184,6 +195,7 @@ impl TasksApp {
             push.service(),
             AgentRuntimeDependencies {
                 claude,
+                grok,
                 codex_mcp: Some(codex_mcp.bindings()),
             },
         )?;
@@ -223,6 +235,7 @@ impl TasksApp {
             TaskStore::redb(database_path)?,
             worktree_root,
             ClaudeClient::in_data_dir(&data_dir),
+            GrokClient::in_data_dir(&data_dir),
             codex_mcp,
             watch_hub,
         )?;
@@ -246,6 +259,7 @@ impl TasksApp {
             TaskStore::memory()?,
             worktree_root,
             ClaudeClient::in_data_dir(&data_dir),
+            GrokClient::in_data_dir(&data_dir),
             codex_mcp,
             watch_hub,
         )
@@ -270,14 +284,29 @@ pub(in crate::app::tasks) use runtime::{ApprovalResolveError, CodexConnection, T
 pub(in crate::app::tasks) mod test_support {
     use crate::agent;
     use crate::agent::codex::CodexThread;
-    use std::{path::Path, sync::Arc, time::Duration};
+    use std::{
+        path::Path,
+        sync::{Arc, Mutex as StdMutex},
+        time::Duration,
+    };
 
     use serde_json::{Value as JsonValue, json};
     use tokio::sync::broadcast;
 
-    use super::{TaskState, projection::*, routes::test_claim_task};
+    use super::{
+        AgentRuntimeDependencies, CodexMcpHost, PushService, TaskState, projection::*,
+        routes::test_claim_task,
+    };
     use crate::{
-        agent::{Conversation, claude::ClaudeClient, codex::CodexThreadClient},
+        agent::{
+            Conversation,
+            claude::ClaudeClient,
+            codex::CodexThreadClient,
+            grok::{
+                GrokClient, MockLeader,
+                test_support::{LeaderMemory, scripted_leader},
+            },
+        },
         fs::RootedFs,
         task_store::TaskStore,
     };
@@ -312,10 +341,52 @@ pub(in crate::app::tasks) mod test_support {
             TaskStore::memory().expect("in-memory task store"),
             worktree_root,
             claude,
+            GrokClient::unreachable(),
         )
         .expect("task state");
         state.task_runtime.install_test_client(1, client).await;
         (state, runner)
+    }
+
+    /// The same state, with a Grok whose leader a scripted stand-in plays,
+    /// and the MCP host its sessions are pointed at.
+    pub(in crate::app::tasks) async fn task_state_with_grok(
+        fs: RootedFs,
+        client: CodexThreadClient,
+    ) -> (
+        TaskState,
+        MockLeader,
+        Arc<StdMutex<LeaderMemory>>,
+        CodexMcpHost,
+    ) {
+        let (shutdown, _) = broadcast::channel(16);
+        let worktree_root = fs.root().join(".caffold-test/worktrees");
+        let (claude, _runner) =
+            ClaudeClient::mock_writing_to(fs.root().join(".caffold-test/projects"));
+        let (grok, bridges) = GrokClient::mock(&fs.root().join(".caffold-test"));
+        let (leader, memory) = scripted_leader(bridges);
+        let host = CodexMcpHost::memory("http://127.0.0.1:1".to_string());
+        grok.attach_mcp(host.bindings(), host.grok_endpoint());
+        let task_store = TaskStore::memory().expect("in-memory task store");
+        let (push, _receiver) = PushService::test_channel(task_store.clone());
+        let state = TaskState::new_with_push(
+            Arc::new(fs),
+            String::new(),
+            shutdown,
+            task_store,
+            worktree_root,
+            push,
+            AgentRuntimeDependencies {
+                claude,
+                grok,
+                codex_mcp: Some(host.bindings()),
+            },
+        )
+        .expect("task state");
+        state.task_runtime.install_test_client(1, client).await;
+        state.task_runtime.watch_grok();
+        host.attach_runtime(state.task_runtime.clone());
+        (state, leader, memory, host)
     }
 
     pub(in crate::app::tasks) async fn wait_for_mock_method(

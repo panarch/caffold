@@ -19,6 +19,7 @@ test("provides all non-current direct Settings sections", () => {
     "remote-access",
     "codex",
     "claude",
+    "grok",
     "about",
   ];
   const controls = new Map(sections.map((section) => [section, {
@@ -45,7 +46,7 @@ test("provides all non-current direct Settings sections", () => {
   const scope = navigator.actionHintScope.call(owner, {
     clipRoots: [owner],
   });
-  assert.equal(scope.targets.length, 7);
+  assert.equal(scope.targets.length, 8);
   assert.deepEqual(
     scope.targets.map(({ id }) => id),
     sections.slice(1).map((section) => `settings:section:${section}`),

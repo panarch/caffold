@@ -2,7 +2,7 @@
 
 This document owns Caffold's implemented multi-agent boundary: why supported
 agents keep separate native integrations, what the Task application shares,
-and which state and lifecycle remain specific to Codex or Claude Code.
+and which state and lifecycle remain specific to Codex, Claude Code, or Grok.
 
 It is a current architecture description, not a plugin API or a compatibility
 promise for agents Caffold does not drive.
@@ -18,9 +18,11 @@ The integration therefore follows four rules:
 
 1. **Use the agent's native programmatic surface.** Codex is reached through
    app-server. Claude is reached through the Claude Code CLI's stream-json and
-   control protocols.
+   control protocols. Grok is reached through the Grok CLI's leader and its
+   stdio agent protocol.
 2. **Do not copy state the agent already owns.** Codex threads remain in
-   app-server; Claude conversations remain in Claude's transcript files.
+   app-server; Claude conversations remain in Claude's transcript files; Grok
+   sessions remain in the leader and its session files.
 3. **Share only verified product semantics.** Conversation, turns, activity,
    approvals, and Task operations have a Caffold vocabulary. Wire methods,
    payloads, models, and permission modes remain agent-specific.
@@ -28,7 +30,7 @@ The integration therefore follows four rules:
    capability that one agent has and another lacks requires an explicit match
    arm at the use site instead of falling through a runtime default.
 
-This gives both supported harnesses a first-class path without defining the
+This gives every supported harness a first-class path without defining the
 product by their lowest common subset.
 
 ## Boundary
@@ -39,12 +41,12 @@ Browser / PWA
 Tasks application
       |
 Caffold conversation, event, approval, and driver vocabulary
-      |                                      |
-Codex native driver                    Claude native driver
-      |                                      |
-Codex app-server                    Claude CLI protocol
-      |                                      |
-persistent Codex daemon          Caffold runner -> claude process
+      |                          |                          |
+Codex native driver        Claude native driver        Grok native driver
+      |                          |                          |
+Codex app-server          Claude CLI protocol       Grok stdio agent protocol
+      |                          |                          |
+persistent Codex daemon   Caffold runner -> claude   Caffold-started grok leader
 ```
 
 `caffold/src/agent/` is the boundary. Its top-level conversation and approval
@@ -53,7 +55,7 @@ translates its agent into that vocabulary at one edge; the Tasks application
 and browser do not parse provider wire messages.
 
 `caffold/src/agent/driver.rs` contains the closed `Driver` choice and the
-operations Caffold has verified for both agents:
+operations Caffold has verified for every agent:
 
 - validate and apply model, effort, speed, and permission choices;
 - create, open, watch, and page a conversation;
@@ -68,8 +70,8 @@ recorded driver and carry back options under the agent's own identifiers.
 ## A Task belongs to one agent
 
 The model list labels every model with the provider that offered it. Choosing a
-model for a New Task therefore chooses Codex or Claude without guessing from
-the model name. The managed Task row persists that provider before the Task
+model for a New Task therefore chooses Codex, Claude, or Grok without guessing
+from the model name. The managed Task row persists that provider before the Task
 appears in the navigator.
 
 An existing Task cannot change providers. Its conversation identifier,
@@ -78,8 +80,8 @@ to the agent that created it. Switching a Task in place would produce a new
 conversation while presenting it as continuity, so Caffold refuses that model
 instead of emulating it.
 
-Codex and Claude models may expose different effort levels, fast modes, and
-permission modes. The composer shows what the selected agent offers. A choice
+Codex, Claude, and Grok models may expose different effort levels, fast modes,
+and permission modes. The composer shows what the selected agent offers. A choice
 travels back under the agent's own name, and the driver verifies it before a
 conversation or turn is created. Caffold never invents a common permission
 profile and does not silently substitute one agent's default for another's.
@@ -88,7 +90,9 @@ profile and does not silently substitute one agent's default for another's.
 
 Archive is a Caffold membership operation with a provider-specific side effect.
 Caffold asks Codex to archive its thread. Claude has no corresponding archive
-state, so Caffold asks it to close any live session. A successfully read Active
+state, so Caffold asks it to close any live session. Grok has none either:
+Caffold asks the leader to close the session, which keeps its record, and the
+Task's binding stays. A successfully read Active
 status still blocks the operation, but provider acquisition, description, or
 archive failure is logged and does not block the safe local worktree and
 membership transition. When no canonical conversation was read, the response
@@ -97,31 +101,35 @@ inventing provider state.
 
 Restoring remains provider-dependent: it reverses the Codex archive, while a
 Claude restore makes the retained Task active again only when its transcript
-still exists.
+still exists, and a Grok restore only when the leader still has the session's
+record.
 
 Permanent deletion is available only after archive and asks the recorded
 driver to forget the conversation before Caffold deletes its own row. Codex
 uses app-server thread deletion. Claude removes the exact transcript file and
 the same-session directory beside it, including subagent conversations and
 spilled tool output, after deriving and validating the path from the Task's
-conversation ID and cwd. Neither path deletes a Git branch.
+conversation ID and cwd. Grok closes and deletes every session the Task's
+binding records — the current one and those a worktree move left behind — and
+then removes the binding; the CLI keeps its per-directory prompt history. None
+of these paths deletes a Git branch.
 
 ## Runtime comparison
 
-| Boundary | Codex | Claude Code |
-| --- | --- | --- |
-| Native surface | Experimental v2 app-server protocol | CLI stream-json plus bidirectional control protocol |
-| Long-lived process | User-global app-server daemon | One Caffold runner per data directory, with one `claude` child per live session |
-| Caffold transport | Disposable proxy child and JSON-RPC/WebSocket connection | Unix-socket runner connection carrying raw newline-delimited frames to child stdio |
-| Conversation history | App-server thread and paged turns | Claude-owned JSONL transcript read tolerantly by Caffold |
-| Active-turn survival across backend replacement | The daemon owns the turn; a new proxy reconnects | The runner owns the child; a new backend reattaches and asks the session for current state |
-| Working directory | Reported and owned by the Codex thread | Persisted with the Caffold Task and supplied whenever the Claude session starts or resumes |
-| Caffold-served Task tools | Caffold-owned HTTP MCP config on thread start and resume; calls from dynamic tools persisted by pre-MCP threads remain supported | In-process MCP server declared whenever the session is initialized |
-| Current-plan instruction carrier | Caffold MCP `initialize` result `instructions` | Initialize `appendSystemPrompt` on fresh and resumed sessions |
-| Readiness | Typed, blocking installation and app-server readiness | Diagnostic status; an attempted operation reports its own failure |
-| Idle release | A thread subscription may be dropped when no viewer, request, or runtime lease remains | The session stays attached; detaching and immediately reattaching is not a free operation |
+| Boundary | Codex | Claude Code | Grok |
+| --- | --- | --- | --- |
+| Native surface | Experimental v2 app-server protocol | CLI stream-json plus bidirectional control protocol | Leader socket with stdio agent bridges speaking JSON-RPC in ACP's shape plus `_x.ai` extensions |
+| Long-lived process | User-global app-server daemon | One Caffold runner per data directory, with one `claude` child per live session | One `grok agent leader` Caffold starts on its own socket and leaves running |
+| Caffold transport | Disposable proxy child and JSON-RPC/WebSocket connection | Unix-socket runner connection carrying raw newline-delimited frames to child stdio | One `grok agent … stdio` bridge child per backend, multiplexing every Grok session |
+| Conversation history | App-server thread and paged turns | Claude-owned JSONL transcript read tolerantly by Caffold | Leader-owned session record, read in turn windows |
+| Active-turn survival across backend replacement | The daemon owns the turn; a new proxy reconnects | The runner owns the child; a new backend reattaches and asks the session for current state | The leader owns the turn; a new bridge loads the session and reads the record for the turn's end |
+| Working directory | Reported and owned by the Codex thread | Persisted with the Caffold Task and supplied whenever the Claude session starts or resumes | Persisted with the Task; the driver's binding names the native session that runs there, and a worktree move forks the session |
+| Caffold-served Task tools | Caffold-owned HTTP MCP config on thread start and resume; calls from dynamic tools persisted by pre-MCP threads remain supported | In-process MCP server declared whenever the session is initialized | Caffold-owned HTTP MCP server declared on session start and load, bound to the Task before its session exists |
+| Current-plan instruction carrier | Caffold MCP `initialize` result `instructions` | Initialize `appendSystemPrompt` on fresh and resumed sessions | `_meta.rules` on a new session and the MCP `initialize` instructions on every load |
+| Readiness | Typed, blocking installation and app-server readiness | Diagnostic status; an attempted operation reports its own failure | Diagnostic status; an attempted operation reports its own failure |
+| Idle release | A thread subscription may be dropped when no viewer, request, or runtime lease remains | The session stays attached; detaching and immediately reattaching is not a free operation | The session stays loaded on the bridge; the leader is not asked to unload |
 
-The table describes ownership, not a feature score. Both drivers support the
+The table describes ownership, not a feature score. Every driver supports the
 implemented Task loop, but they reach it through different guarantees.
 
 ## Codex lifecycle
@@ -219,6 +227,52 @@ runner remains transport-only and does not implement this account policy.
 The runner's lower-level process, relay, stale-child, and test contract is
 documented in [caffold-claude-runner](../../runners/claude/README.md).
 
+## Grok lifecycle
+
+The Grok CLI's programmatic surface is its own leader: a long-lived process
+that holds sessions and runs turns, reached over a Unix socket by stdio agent
+bridges that speak a JSON-RPC protocol in ACP's shape with Grok's `_x.ai`
+extensions. Caffold starts a leader of its own on `~/.grok/leader-caffold.sock`
+when a Grok operation first needs one, attaches to that leader when it is
+already listening, and keeps one bridge child per backend. The leader is Grok's
+process: Caffold neither stops it nor drives the CLI's own leader, and it is
+started in its own process group so that a signal to Caffold does not end it.
+
+The leader owns sessions, turns, approvals, and the session record. A bridge
+that dies mid-turn is an observation gap, not a failure: the turn finishes
+under the leader, and the next load reads its end from the record. A replaced
+leader, announced as `_x.ai/leader_reconnected`, ends the running prompt with
+the leader's error and makes the session one to open again. A prompt Caffold
+sent is never sent again on the Task's behalf.
+
+Caffold names each session and turn it creates — a UUIDv7 Task identifier
+sent as `session/new`'s `_meta.sessionId`, a turn identifier sent as
+`session/prompt`'s `_meta.promptId` — and Grok keeps those names in its queue,
+chunks, completion, and record. A Grok session does not change directory, so a
+worktree move forks it. The driver-private binding file under
+`<data dir>/grok/bindings/<task id>.json` records which native session the
+Task runs on and where, which sessions it left behind, and how far a move has
+got; it is Caffold's recovery data, never conversation state. The Task
+application sees only the Task identifier.
+
+Loading a session replays its record as notifications and takes up the
+leader's pending permission requests under their original tool call identity.
+Every frame names its session, and the bridge generation and the replay flag
+keep a late or repeated report from changing the conversation. Activity is the
+leader's word: a turn's end comes from `turn_completed` or the prompt's answer,
+and whether the session is still working comes from the leader's session
+summaries. History is read from the record in turn windows, and a turn Caffold
+watched from its start keeps its live items.
+
+Grok's model catalog, reasoning efforts, and the three permission modes Caffold
+names for it — ask each time, automatic, full access — are read from the
+leader and applied with `session/set_config_option`; the permission mode is
+fixed when the session is created. Images are sent as prompt blocks. The
+Settings report reads the installation without touching any of this: the
+executable by running it, the leader through `grok leader info`, the connection
+as the bridge stands, and the account through a leader that is already
+listening.
+
 ## Conversation and event ownership
 
 Caffold's normalized conversation is a projection, not a second transcript.
@@ -236,7 +290,9 @@ It contains only what the interface and Task lifecycle consume:
 
 The Codex driver translates app-server threads, items, notifications, and
 server requests. The Claude driver translates stream frames and transcript
-content blocks. A Claude `thinking` block that carries text is the agent's
+content blocks. The Grok driver translates session updates — live, replayed,
+and stored — and `_x.ai` notifications; a frame marked as a replay is not a
+new event. A Claude `thinking` block that carries text is the agent's
 progress note between tool calls and reads as an agent message; an empty one
 reads as reasoning with nothing to show. Unknown optional events may be ignored
 or presented as generic tool activity; missing load-bearing fields fail
@@ -374,9 +430,12 @@ initialization for thread start and resume. This leaves the project's Codex
 `developer_instructions` and Caffold's separately recorded first-turn naming policy
 unchanged. Claude supplies it through `appendSystemPrompt` on every session
 initialize; only a fresh Task appends the one-time naming instructions, while
-a resumed or reattached session receives the plan convention alone.
+a resumed or reattached session receives the plan convention alone. Grok
+receives it as `_meta.rules` when a session is created, with the one-time
+naming instructions appended for a new Task, and as the Caffold MCP server's
+`instructions` on every load.
 
-Neither driver enables a native Plan or collaboration mode, translates native
+No driver enables a native Plan or collaboration mode, translates native
 plan events, or exposes structured clarification questions for this feature.
 Planning decisions remain normal conversation, and the browser projects only
 the filesystem pair. Provider-specific transport tests verify both fresh and
@@ -398,19 +457,23 @@ extension point each agent already understands:
   makes Codex a prerequisite for a Claude-only Caffold service.
 - Claude receives an in-process MCP server on every initialization, including
   resumed and reattached sessions.
+- Grok receives the same authenticated HTTP MCP server through its own door,
+  declared on session start and load with a header bound to the Task before
+  the session exists; the binding stays bound while the session is open.
 
-Both MCP catalogs use the Task-owned base names `rename_current_task` and
+All three MCP catalogs use the Task-owned base names `rename_current_task` and
 `isolate_current_task`; Claude's transport qualifies them as
-`mcp__caffold__...`, while Codex presents the base names directly. Only the
-pre-MCP Codex dynamic-tool compatibility path accepts the historical
-`rename_current_thread` name.
+`mcp__caffold__...` and Grok's as `caffold__...`, while Codex presents the base
+names directly. Only the pre-MCP Codex dynamic-tool compatibility path accepts
+the historical `rename_current_thread` name.
 
 The application handles both requests through the same Task and Git lifecycle.
 Only delivery and cwd movement differ. Codex accepts a new cwd for the next
 turn. A Claude process changes cwd only between turns, so Caffold completes the
 Git preparation, ends the setup turn, then moves the session before another
-turn can begin. The full safety and recovery contract belongs to
-[Managed Worktree Lifecycle](worktree-lifecycle.md).
+turn can begin. A Grok session is forked into the worktree when the setup turn
+ends, and the Task is re-bound to the copy. The full safety and recovery
+contract belongs to [Managed Worktree Lifecycle](worktree-lifecycle.md).
 
 ## Source of truth
 
@@ -419,6 +482,8 @@ turn can begin. The full safety and recovery contract belongs to
 | Codex conversation, cwd, turns, and runtime status | Codex app-server |
 | Claude conversation history | Claude's transcript file |
 | Live Claude process and pending control requests | Claude process, held and relayed by the Caffold runner |
+| Grok sessions, turns, approvals, and the session record | Grok leader |
+| Which native session a Grok Task runs on, and a worktree move in progress | Caffold's driver-private binding file |
 | Task membership, provider, display name, Section placement, composer state, and managed-worktree recovery | Caffold Redb |
 | Current plan documents and checklist markers | Filesystem under the Task's effective working directory |
 | Files, diffs, branches, and commits | Git checkout or worktree |
@@ -433,8 +498,8 @@ copied transcript.
 
 ## Extending agent support
 
-Caffold currently compiles support for Codex and Claude. It does not discover
-drivers, load provider code, or implement ACP at runtime. This closed set is an
+Caffold currently compiles support for Codex, Claude, and Grok. It does not
+discover drivers, load provider code, or implement ACP at runtime. This closed set is an
 intentional safety and review boundary: adding an agent requires source,
 protocol fixtures, lifecycle and approval behavior, compatibility checks, UI
 decisions, and tests in the same repository.
@@ -451,8 +516,8 @@ For a new capability or a future agent:
 
 A standard protocol may later be useful for reaching agents without a stable
 native surface, but it would be another reviewed driver. It would not replace
-the native Codex and Claude paths or become Caffold's canonical product schema
-by default.
+the native Codex, Claude, and Grok paths or become Caffold's canonical product
+schema by default.
 
 ## Code and verification map
 
@@ -463,10 +528,15 @@ caffold/src/agent/codex.rs              Codex entry point
 caffold/src/agent/codex/                app-server transport, protocol, readiness, contract, MCP carrier
 caffold/src/agent/claude.rs             Claude entry point and live session state
 caffold/src/agent/claude/               protocol, transcript, settings, tools, instruction carrier, runner client
+caffold/src/agent/grok.rs               Grok entry point, sessions, MCP carrier, and the Settings report
+caffold/src/agent/grok/                 leader transport, protocol, binding file, history, translation, worktree switch
 caffold/src/app/tasks/runtime.rs         per-Task routing and cross-agent orchestration
 caffold/src/app/tasks/runtime/bridge.rs  Codex runtime bridge
 caffold/src/app/tasks/runtime/claude_bridge.rs
                                         Claude runtime and tool bridge
+caffold/src/app/tasks/runtime/grok_bridge.rs
+                                        Grok runtime bridge
+caffold/src/app/tasks/codex_mcp.rs       the HTTP MCP doors Codex and Grok call Caffold's tools through
 caffold/src/app/tasks/detail.rs          canonical Detail and history membership
 caffold/src/app/tasks/events.rs          observation reconciliation and publication
 frontend/pages/(task-workspace)/tasks/task-events.js
@@ -476,7 +546,8 @@ frontend/pages/(task-workspace)/tasks/(detail)/(task)/layout.js
 runners/claude/                         transport-only runner crate
 ```
 
-Deterministic Rust and browser suites use stand-in transports and fixtures.
+Deterministic Rust and browser suites use stand-in transports and fixtures;
+the Grok driver's suite plays the leader from recorded `grok 1.0.30` answers.
 The ignored Codex and Claude live suites verify the real installed agents and
 may consume model usage. Commands and prerequisites are indexed in
 [Testing Caffold](../development/testing.md).

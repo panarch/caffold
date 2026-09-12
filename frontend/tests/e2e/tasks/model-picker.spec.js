@@ -56,11 +56,20 @@ test("chooses a model before exposing only that model's settings", { tag: "@desk
     provider: "gemini", model: "budget-model", effort: "adaptive", fastMode: false,
   });
 
-  await menu.getByRole("button", { name: "grok", exact: true }).click();
+  await menu.getByRole("button", { name: "Grok", exact: true }).click();
+  await menu.locator('[data-model="grok-4.5"]').click();
+  await expect(menu.locator('[data-effort]')).toHaveCount(4);
+  await expect(menu.locator('[data-effort="xhigh"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(menu.locator('[data-fast-mode]')).toHaveCount(0);
+  expect(await picker.evaluate((element) => element.submissionOptions())).toMatchObject({
+    provider: "grok", model: "grok-4.5", effort: "xhigh", fastMode: false,
+  });
+
+  await menu.getByRole("button", { name: "sample", exact: true }).click();
   await menu.locator('[data-model="plain-model"]').click();
   await expect(menu.locator(".task-model-settings")).toBeEmpty();
   const options = await picker.evaluate((element) => element.submissionOptions());
-  expect(options).toMatchObject({ provider: "grok", model: "plain-model", fastMode: false });
+  expect(options).toMatchObject({ provider: "sample", model: "plain-model", fastMode: false });
   expect(options).not.toHaveProperty("effort");
 });
 
@@ -97,7 +106,7 @@ test("retains two readable columns and model-specific controls at each viewport"
   expect(Math.max(...cells.map((cell) => cell.width)) - Math.min(...cells.map((cell) => cell.width))).toBeLessThan(1);
   await expect(menu.locator(".task-model-settings")).not.toContainText("GPT-6-Astra");
   await captureReviewScreenshot(page, testInfo, "model-picker-columns");
-  await menu.getByRole("button", { name: "grok", exact: true }).click();
+  await menu.getByRole("button", { name: "sample", exact: true }).click();
   await menu.locator('[data-model="plain-model"]').click();
   await expect(menu.locator(".task-model-settings")).toBeEmpty();
   await captureReviewScreenshot(page, testInfo, "model-picker-short");
@@ -167,13 +176,18 @@ test("offers only the existing Task's provider", { tag: "@desktop" }, async ({ p
   await expect(picker.locator('[data-model="shared"]')).toContainText("Codex Shared");
 });
 
-// Additional agents are API fixtures; this frontend change does not add drivers.
+// Codex, Claude and Grok are the agents Caffold drives; the Grok rows are its
+// catalog as `grok 1.0.30` reports it. The other two providers are API
+// fixtures for shapes no driver offers today: adaptive efforts, and a model
+// with no settings at all.
 function catalog() {
   return [
     { provider: "codex", model: "shared", displayName: "Codex Shared", isDefault: true, defaultEffort: "xhigh", efforts: ["low", "medium", "high", "xhigh", "max", "ultra"], supportsFastMode: true },
     { provider: "claude", model: "shared", displayName: "Claude Shared", defaultEffort: "high", efforts: ["high", "xhigh"], supportsFastMode: true },
+    { provider: "grok", model: "grok-4.6", displayName: "Grok 4.6", description: "Grok 4.6 (Latest)", defaultEffort: "xhigh", efforts: ["low", "medium", "high", "xhigh"], supportsFastMode: false, supportsAutoMode: true },
+    { provider: "grok", model: "grok-4.5", displayName: "Grok 4.5", description: "Grok 4.5", defaultEffort: "xhigh", efforts: ["low", "medium", "high", "xhigh"], supportsFastMode: false, supportsAutoMode: true },
     { provider: "gemini", model: "budget-model", displayName: "Adaptive Model", defaultEffort: "adaptive", efforts: ["adaptive", "budgeted"], supportsFastMode: false },
-    { provider: "grok", model: "plain-model", displayName: "Plain Model", efforts: [], supportsFastMode: false },
+    { provider: "sample", model: "plain-model", displayName: "Plain Model", efforts: [], supportsFastMode: false },
   ];
 }
 

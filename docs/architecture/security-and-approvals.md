@@ -57,9 +57,10 @@ interprets a protocol id. A valid answer claims the pending request once before
 sending it. The runtime completes that reply even if its HTTP caller
 disconnects; the card is retired when the send completes, the provider resolves
 it, or its turn ends. Missing pairing or a failed send retires the card as
-unavailable. Codex connection loss also retires that connection's cards; a
-provider replay on the replacement connection creates a new request instance,
-which an older completion cannot retire. Pending and replying
+unavailable. Codex connection loss also retires that connection's cards, and a
+lost Grok bridge retires that session's; a provider replay on the replacement
+connection creates a new request instance, which an older completion cannot
+retire. Pending and replying
 are ephemeral UI request phases, separate from the provider's thread status.
 
 ## General Clarification Questions
@@ -92,14 +93,24 @@ agent's native extension point and allows those calls without adding another
 approval card. The tool still enforces its own Task and Git lifecycle checks;
 an unknown tool or an unmanaged conversation is refused.
 
-Codex reaches this surface through an HTTP MCP endpoint on the Caffold server.
-Each request-scoped app-server config carries a private opaque binding header.
+Codex and Grok reach this surface through HTTP MCP endpoints on the Caffold
+server, `/api/codex/mcp` and `/api/grok/mcp`, which share one handler and one
+set of bindings; the bound Task's recorded agent decides which driver carries a
+call out. Each request-scoped Codex app-server config carries a private opaque
+binding header, and each Grok session declaration carries one as an HTTP
+header.
 A Task-scoped call is authorized only by that header together with its signed
 MCP session. The session authenticates the provider thread ID and a digest of
 the binding header under one installation-local HMAC key, so neither the model
 nor tool arguments can choose another Task. The bootstrap and Codex
 reinitialization sequence that establishes the pair belongs to
 [Codex app-server integration](codex-app-server.md#thread-subscription-lifecycle).
+A Grok Task's identifier is known before its session exists, so its binding is
+bound to the Task before `session/new` and the first `initialize` already
+answers with the signed session. Grok initializes the connection while the
+session is created and may do so again later, so the binding stays bound while
+the session is open and is let go when the session is closed, erased, or loaded
+again under a new binding.
 
 Only the private `codex-mcp/signing.key` file survives backend generations.
 Bootstrap bindings and provisional sessions remain process-local and are
@@ -126,14 +137,15 @@ public-internet exposure, nor is it a boundary against code that can already
 read Caffold's private data directory or inspect its process as the same host
 user. Because the route shares the main Caffold server, it can be reachable
 even when that installation is used only with Claude. The signing key is opened
-lazily only for a Codex signed-session operation, route reachability does not
-start Codex or select a Task, and an unavailable key or a request without an
-install-issued capability fails closed without preventing a Claude-only
-Caffold service from starting.
+lazily only for a signed-session operation, route reachability does not start
+Codex or Grok or select a Task, and an unavailable key or a request without an
+install-issued capability fails closed without preventing a Caffold service
+that lacks one of the agents from starting.
 
-Codex and Claude expose the same Task-owned MCP base names:
+Codex, Claude, and Grok expose the same Task-owned MCP base names:
 `rename_current_task` and `isolate_current_task`. Claude's provider transport
-qualifies those names; Codex's does not. The historical Codex
+qualifies those names as `mcp__caffold__...` and Grok's as `caffold__...`;
+Codex's does not. The historical Codex
 `rename_current_thread` name is accepted only for a dynamic-tool definition
 already persisted on a pre-MCP thread, never through the current MCP endpoint.
 
@@ -241,6 +253,37 @@ Current rules:
   knowledge about the agent;
 - a control request Caffold did not register for — a hook callback, an
   in-process tool — is answered rather than left to block the turn.
+
+## Grok Execution Approvals
+
+Grok asks through its leader, as a `session/request_permission` request on the
+bridge that has the session loaded, and the turn waits until it is answered.
+Grok's own classifier runs plainly safe commands without asking, so an unasked
+call is one that did not need asking.
+
+Current rules:
+
+- command cwd is the Task's working directory as the driver's binding records
+  it, which is where the session runs;
+- an approval card shows the command for a shell call and, for a tool call,
+  the server and tool the agent named with the arguments it gave;
+- the offered answers are allow, allow always, and deny, taken from the
+  options Grok attached to the request — `allow_once`, `allow_always`, and
+  `reject_once`; the driver rejects session-only, cancel, and deny-and-stop
+  decisions because Grok offers nothing they would mean;
+- allowing always is Grok's own memory: it keeps the command allowed for that
+  working directory, shared by every Caffold Task there and kept apart from the
+  CLI's own sessions in the same directory;
+- denying ends the turn, because a rejected tool call ends a Grok turn as
+  cancelled; the refused call reads as declined and the turn as interrupted;
+- Grok's `reject_always` option is never offered, because it is remembered for
+  the directory across sessions;
+- the mode a session runs under — ask each time, automatic, or full access —
+  is fixed when the conversation is created, and a later prompt asking for
+  another mode is refused with that reason;
+- a request left unanswered when the bridge goes away is retired as
+  unavailable; the leader asks again when the session is next loaded, under the
+  same tool call identity and a new request.
 
 ## Git Mutations
 
