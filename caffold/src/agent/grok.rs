@@ -33,6 +33,7 @@ use std::{
     sync::{Arc, Mutex as StdMutex},
 };
 
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use serde_json::{Value, json};
 #[cfg(test)]
 use tokio::sync::mpsc;
@@ -155,6 +156,9 @@ pub(crate) struct GrokClient {
 struct GrokClientInner {
     transport: Transport,
     bindings: BindingStore,
+    /// Grok's own store of session records, a directory per session under
+    /// one named after the working directory.
+    records: PathBuf,
     /// Watched sessions, by Task id.
     sessions: AsyncMutex<HashMap<String, Arc<Session>>>,
     /// Which Task each native session id belongs to, for routing what the
@@ -201,6 +205,19 @@ struct McpBootstrap {
 /// How long `session/load` may take: it replays the session's history.
 const LOAD_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
+/// What Grok leaves as it is when it names a session directory after the
+/// working directory: ASCII letters and digits, `-`, `_`, `.` and `~`. Every
+/// other byte of the UTF-8 path is percent-encoded.
+const SESSION_DIRECTORY_NAME: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'~');
+
+fn session_directory_name(cwd: &str) -> String {
+    utf8_percent_encode(cwd, SESSION_DIRECTORY_NAME).to_string()
+}
+
 impl GrokClient {
     /// The agent as reached through Caffold's own leader.
     ///
@@ -210,10 +227,11 @@ impl GrokClient {
         let home = env::var_os("HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|| data_dir.to_path_buf());
-        let leader_socket = home.join(".grok").join(LEADER_SOCKET_FILE_NAME);
+        let grok_home = home.join(".grok");
         Self::with_transport(
-            Transport::grok(executable_path(), leader_socket),
+            Transport::grok(executable_path(), grok_home.join(LEADER_SOCKET_FILE_NAME)),
             data_dir.join("grok").join("bindings"),
+            grok_home.join("sessions"),
         )
     }
 
@@ -221,7 +239,11 @@ impl GrokClient {
     pub(crate) fn mock(data_dir: &Path) -> (Self, mpsc::UnboundedReceiver<MockBridge>) {
         let (transport, bridges) = Transport::mock();
         (
-            Self::with_transport(transport, data_dir.join("grok").join("bindings")),
+            Self::with_transport(
+                transport,
+                data_dir.join("grok").join("bindings"),
+                data_dir.join(".grok").join("sessions"),
+            ),
             bridges,
         )
     }
@@ -233,15 +255,16 @@ impl GrokClient {
         let (transport, bridges) = Transport::mock();
         drop(bridges);
         let dir = env::temp_dir().join(format!("caffold-grok-test-{}", Uuid::new_v4()));
-        Self::with_transport(transport, dir.join("bindings"))
+        Self::with_transport(transport, dir.join("bindings"), dir.join("sessions"))
     }
 
-    fn with_transport(transport: Transport, bindings: PathBuf) -> Self {
+    fn with_transport(transport: Transport, bindings: PathBuf, records: PathBuf) -> Self {
         let (events, _) = broadcast::channel(256);
         Self {
             inner: Arc::new(GrokClientInner {
                 transport,
                 bindings: BindingStore::new(bindings),
+                records,
                 sessions: AsyncMutex::new(HashMap::new()),
                 natives: AsyncMutex::new(HashMap::new()),
                 events,
@@ -539,19 +562,25 @@ impl GrokClient {
         Ok(())
     }
 
-    /// Whether the leader still has the session's files.
+    /// Whether Grok still keeps the session's record. The leader is not
+    /// asked: it describes a session it has no record of as an empty one,
+    /// and only loading would tell the difference.
     pub(crate) async fn conversation_exists(&self, thread_id: &str) -> bool {
         let Ok(native) = self.native_of(thread_id).await else {
             return false;
         };
-        self.inner
-            .transport
-            .call(
-                "_x.ai/session/updates",
-                protocol::updates_params(&native.session_id, &native.cwd, UpdatesWindow::Tail(1)),
-            )
+        let directory = self.session_directory(&native);
+        tokio::task::spawn_blocking(move || directory.is_dir())
             .await
-            .is_ok()
+            .unwrap_or(false)
+    }
+
+    /// Where Grok keeps the session's record.
+    fn session_directory(&self, native: &NativeSession) -> PathBuf {
+        self.inner
+            .records
+            .join(session_directory_name(&native.cwd))
+            .join(&native.session_id)
     }
 
     /// Remove every session this Task created, then the binding.
@@ -1697,12 +1726,13 @@ pub(crate) mod test_support {
                     }
                     None => MockAnswer::Result(json!({ "result": {} })),
                 },
+                // A session the leader has no record of is described as an
+                // empty one, as `grok 1.0.30` does.
                 "_x.ai/session/updates" => match memory.updates.get(&session_id) {
                     Some(updates) => MockAnswer::Result(updates.clone()),
-                    None if memory.cwds.contains_key(&session_id) => MockAnswer::Result(
+                    None => MockAnswer::Result(
                         json!({ "updates": [], "totalCount": 0, "hasMore": false, "lastEventId": null, "promptStarts": [] }),
                     ),
-                    None => MockAnswer::Error(-32603, "Path not found."),
                 },
                 "session/prompt" => MockAnswer::Hold,
                 "_x.ai/interject" => {
@@ -2292,8 +2322,42 @@ mod tests {
         );
         let asked = leader_again.wait_for("_x.ai/session/updates").await;
         assert_eq!(asked["turnIndex"], 3);
-        assert!(again.conversation_exists(&id).await);
         drop(leader);
+    }
+
+    #[test]
+    fn a_session_directory_is_named_after_the_working_directory_as_grok_names_it() {
+        // Two names `grok 1.0.30` gave, one of them for a path with every kind
+        // of character a person's directory can carry.
+        assert_eq!(
+            session_directory_name(
+                "/Users/example/Library/Application Support/Caffold/data/worktrees/0f24e647-6d10-4753-bda4-c2a1a6ec827b"
+            ),
+            "%2FUsers%2Fexample%2FLibrary%2FApplication%20Support%2FCaffold%2Fdata%2Fworktrees%2F0f24e647-6d10-4753-bda4-c2a1a6ec827b"
+        );
+        assert_eq!(
+            session_directory_name("/private/tmp/caffold-enc-probe/한글 a~b+c(d),e@f:g'h;i=j&k"),
+            "%2Fprivate%2Ftmp%2Fcaffold-enc-probe%2F%ED%95%9C%EA%B8%80%20a~b%2Bc%28d%29%2Ce%40f%3Ag%27h%3Bi%3Dj%26k"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_conversation_exists_while_grok_keeps_its_session_directory() {
+        let (client, _leader, _dir) = client().await;
+        let conversation = client
+            .start_conversation(CWD, &GrokTurnOptions::default())
+            .await
+            .unwrap();
+        let id = conversation.id.clone();
+        assert!(!client.conversation_exists(&id).await);
+        let directory = client.session_directory(&NativeSession {
+            session_id: id.clone(),
+            cwd: CWD.to_string(),
+        });
+        fs::create_dir_all(&directory).unwrap();
+        assert!(client.conversation_exists(&id).await);
+        fs::remove_dir_all(&directory).unwrap();
+        assert!(!client.conversation_exists(&id).await);
     }
 
     #[tokio::test]

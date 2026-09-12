@@ -470,7 +470,6 @@ pub(super) fn updates_params(session_id: &str, cwd: &str, window: UpdatesWindow)
             params["offset"] = json!(offset);
             params["limit"] = json!(limit);
         }
-        UpdatesWindow::Tail(n) => params["offset"] = json!(-(n as i64)),
     }
     params
 }
@@ -481,8 +480,6 @@ pub(super) enum UpdatesWindow {
     LastTurns(usize),
     /// `limit` updates starting at absolute index `offset`.
     Range { offset: usize, limit: usize },
-    /// The last `n` updates.
-    Tail(usize),
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -1190,9 +1187,5 @@ mod tests {
         );
         assert_eq!(range["offset"], 4);
         assert_eq!(range["limit"], 6);
-        assert_eq!(
-            updates_params("s", "/w", UpdatesWindow::Tail(2))["offset"],
-            -2
-        );
     }
 }

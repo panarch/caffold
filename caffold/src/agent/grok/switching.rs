@@ -12,14 +12,13 @@
 //! | Bound | isolate prepared (`plan_switch`) | Pending | target and the copy's id written |
 //! | Pending | source loaded here and idle | Forking | — |
 //! | Pending | source busy, or not loaded yet | Pending | wait for the turn's end or the load |
-//! | Forking | copy found (`updates {b, target, limit 1}`) | Verifying | — |
-//! | Forking | copy absent | Forking | `_x.ai/session/fork`; unanswered twice → RecoveryRequired |
+//! | Forking | entered | Forking | `_x.ai/session/fork {a, target, b}` asked; unanswered twice → RecoveryRequired |
 //! | Forking | fork answered with `b` | Verifying | — |
 //! | Forking | fork answered with another id, or refused | RecoveryRequired | nothing closed or deleted |
 //! | Verifying | `session/load {b, target}` and `session/info` say target | ClosingSource | binding: current = b, history += a; the watched session is b |
 //! | Verifying | load failed, or the copy runs elsewhere | RecoveryRequired | b kept |
 //! | ClosingSource | `session/close {a}` answered | Bound | `history[a].close_pending` records a failure |
-//! | RecoveryRequired | a person prompts, or the Task is opened cold | Verifying or Forking | by whether the copy exists |
+//! | RecoveryRequired | a person prompts, or the Task is opened cold | Forking | — |
 //! | any | the bridge went away | same node | the next trigger resumes |
 //! | any | erase | — | a, b and the binding deleted (`GrokClient::erase`) |
 //! | any | another target planned | same node | refused |
@@ -27,6 +26,13 @@
 //! Triggers: the end of a turn, the leader saying idle, a cold opening, and
 //! starting a turn. Only the last two move a switch that stopped short:
 //! nothing retries on its own where a person's look is needed.
+//!
+//! Nothing asks whether the copy is there before forking: Grok answers
+//! `_x.ai/session/updates` and `_x.ai/session/info` about a session it has no
+//! record of exactly as about an empty one, so only `session/load` tells the
+//! two apart, and that is what Verifying does. A fork asked again onto the
+//! same `b` rewrites the copy from the source, which no turn has touched since
+//! the switch was planned.
 
 use std::mem;
 
@@ -37,7 +43,7 @@ use uuid::Uuid;
 use super::{
     GrokClient, GrokError, GrokRuntimeEvent,
     binding::{Binding, ClosedSession, NativeSession, Switch, SwitchPhase},
-    protocol::{self, CloseResult, UpdatesWindow},
+    protocol::{self, CloseResult},
     same_directory,
 };
 
@@ -213,34 +219,18 @@ impl GrokClient {
                         Next::Wait
                     }
                 }
-                SwitchPhase::Forking => match self.copy_exists(&switch).await {
-                    Ok(true) => Next::Phase(SwitchPhase::Verifying),
-                    Ok(false) if forks_asked >= 2 => Next::Recovery(format!(
-                        "Grok did not answer the fork of session {} twice.",
-                        switch.source_session_id
-                    )),
-                    Ok(false) => {
-                        forks_asked += 1;
-                        self.fork(&binding, &switch).await
-                    }
-                    Err(error) if nothing_learned(&error) => Next::Wait,
-                    Err(error) => Next::Recovery(format!(
-                        "Caffold could not tell whether session {} exists: {error}.",
-                        switch.new_session_id
-                    )),
-                },
+                SwitchPhase::Forking if forks_asked >= 2 => Next::Recovery(format!(
+                    "Grok did not answer the fork of session {} twice.",
+                    switch.source_session_id
+                )),
+                SwitchPhase::Forking => {
+                    forks_asked += 1;
+                    self.fork(&binding, &switch).await
+                }
                 SwitchPhase::Verifying => self.load_copy(thread_id, &switch).await,
                 SwitchPhase::ClosingSource => self.close_source(thread_id, &switch).await,
                 SwitchPhase::RecoveryRequired { .. } if by_person => {
-                    match self.copy_exists(&switch).await {
-                        Ok(true) => Next::Phase(SwitchPhase::Verifying),
-                        Ok(false) => Next::Phase(SwitchPhase::Forking),
-                        Err(error) if nothing_learned(&error) => Next::Wait,
-                        Err(error) => Next::Recovery(format!(
-                            "Caffold could not tell whether session {} exists: {error}.",
-                            switch.new_session_id
-                        )),
-                    }
+                    Next::Phase(SwitchPhase::Forking)
                 }
                 SwitchPhase::RecoveryRequired { .. } => Next::Wait,
             };
@@ -332,26 +322,6 @@ impl GrokClient {
             && state.active_turn.is_none()
             && !state.prompt_in_flight
             && !state.closed
-    }
-
-    async fn copy_exists(&self, switch: &Switch) -> Result<bool, GrokError> {
-        let asked = self
-            .inner
-            .transport
-            .call(
-                "_x.ai/session/updates",
-                protocol::updates_params(
-                    &switch.new_session_id,
-                    &switch.target_cwd,
-                    UpdatesWindow::Tail(1),
-                ),
-            )
-            .await;
-        match asked {
-            Ok(_) => Ok(true),
-            Err(GrokError::ConversationGone(_)) => Ok(false),
-            Err(error) => Err(error),
-        }
     }
 
     async fn fork(&self, binding: &Binding, switch: &Switch) -> Next {
@@ -727,11 +697,9 @@ mod tests {
         client.close_conversation(&id).await.unwrap();
         let closed = leader.requests("session/close");
         assert_eq!(closed.last().unwrap()["sessionId"], copy);
+        assert!(!client.conversation_exists(&id).await);
+        fs::create_dir_all(client.session_directory(&binding.current)).unwrap();
         assert!(client.conversation_exists(&id).await);
-        assert_eq!(
-            leader.wait_for("_x.ai/session/updates").await["sessionId"],
-            copy
-        );
         let restored = client.open_conversation(&id).await.unwrap();
         assert_eq!(restored.cwd, TARGET);
         let loaded = leader.requests("session/load");
@@ -783,7 +751,7 @@ mod tests {
     }
 
     /// The process died somewhere along the switch; the next one takes it up
-    /// from the phase on disk, forking only when the copy is not there.
+    /// from the phase on disk.
     #[tokio::test]
     async fn a_switch_interrupted_at_any_phase_is_taken_up_where_it_stopped() {
         let source = NativeSession {
@@ -797,7 +765,8 @@ mod tests {
         // (case, phase on disk, whether the copy exists, current, history,
         // forks expected, sessions loaded expected). A switch still pending
         // loads the source first, to see it idle; every later phase loads
-        // only the copy.
+        // only the copy. Forking forks whether or not the copy is there: a
+        // fork onto the same id rewrites it.
         let cases = [
             (
                 "pending",
@@ -823,7 +792,7 @@ mod tests {
                 true,
                 source.clone(),
                 vec![],
-                0,
+                1,
                 vec![COPY],
             ),
             (
@@ -976,9 +945,8 @@ mod tests {
         assert_eq!(prompts[0]["sessionId"], binding.current.session_id);
     }
 
-    /// The bridge dies under the fork request, twice. The copy is looked up
-    /// before every retry, so a fork that did go through is never repeated;
-    /// one that never answers is not asked a third time.
+    /// The bridge dies under the fork request, twice. A fork that never
+    /// answers is not asked a third time.
     #[tokio::test]
     async fn a_fork_whose_answer_is_lost_twice_stops_the_switch() {
         let dir = tempfile::tempdir().unwrap();
@@ -1003,12 +971,55 @@ mod tests {
         };
         assert!(reason.contains("twice"), "{reason}");
         assert_eq!(leader.requests("_x.ai/session/fork").len(), 2);
-        assert!(
-            leader.requests("_x.ai/session/updates").len() >= 2,
-            "the copy is looked up before each retry"
-        );
         assert!(leader.requests("session/close").is_empty());
         assert_eq!(binding_of(&client, &id).await.current.cwd, CWD);
+    }
+
+    /// Grok describes a copy it never wrote as an empty session, not a
+    /// missing one, so the retry does not ask: it forks, onto the same id.
+    #[tokio::test]
+    async fn a_person_retrying_a_stopped_switch_forks_again() {
+        let dir = tempfile::tempdir().unwrap();
+        write_binding(
+            dir.path(),
+            &Binding {
+                version: 1,
+                thread_id: TASK.to_string(),
+                generation: 7,
+                current: NativeSession {
+                    session_id: SOURCE.to_string(),
+                    cwd: CWD.to_string(),
+                },
+                history: vec![],
+                switch: Some(Switch {
+                    phase: SwitchPhase::RecoveryRequired {
+                        reason: "the copy could not be loaded.".to_string(),
+                    },
+                    target_cwd: TARGET.to_string(),
+                    new_session_id: COPY.to_string(),
+                    source_session_id: SOURCE.to_string(),
+                }),
+            },
+        );
+        let (client, bridges) = GrokClient::mock(dir.path());
+        let (leader, memory) = scripted_leader(bridges);
+        memory
+            .lock()
+            .unwrap()
+            .cwds
+            .insert(SOURCE.to_string(), CWD.to_string());
+        client.watch();
+        let opened = client.open_conversation(TASK).await.unwrap();
+        assert_eq!(opened.cwd, TARGET);
+        let binding = settled(&client, TASK).await;
+        assert_eq!(binding.current.session_id, COPY);
+        let forked = leader.requests("_x.ai/session/fork");
+        assert_eq!(forked.len(), 1);
+        assert_eq!(forked[0]["newSessionId"], COPY);
+        assert_eq!(
+            leader.requests("session/load").last().unwrap()["sessionId"],
+            COPY
+        );
     }
 
     #[tokio::test]

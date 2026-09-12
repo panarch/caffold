@@ -101,8 +101,8 @@ inventing provider state.
 
 Restoring remains provider-dependent: it reverses the Codex archive, while a
 Claude restore makes the retained Task active again only when its transcript
-still exists, and a Grok restore only when the leader still has the session's
-record.
+still exists, and a Grok restore only when the session's directory is still
+there under Grok's home.
 
 Permanent deletion is available only after archive and asks the recorded
 driver to forget the conversation before Caffold deletes its own row. Codex

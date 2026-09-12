@@ -61,8 +61,8 @@ and conversation; the record it reads from then on is the copy's, which carries
 the same events. A move that stops short — a fork refused or unanswered twice,
 a copy that could not be loaded or runs elsewhere — leaves the Task bound to the
 source and refuses new turns with that reason until a prompt or a cold opening
-retries it, so no turn runs in the wrong directory. The move's phases are
-written to the driver's binding file, and a backend that restarts takes the
+asks the fork again, so no turn runs in the wrong directory. The move's phases
+are written to the driver's binding file, and a backend that restarts takes the
 move up where it stopped.
 
 The branch behavior follows the source checkout:
