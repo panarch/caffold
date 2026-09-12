@@ -1,14 +1,14 @@
 export const DEFAULT_TYPEFACE_PRESET = "d2-coding";
 
-const D2_CODING_STACK = '"Caffold D2 Coding", ui-monospace, monospace';
 const SYSTEM_MONO_STACK = "ui-monospace, monospace";
 
 export const TYPEFACE_PRESETS = Object.freeze({
-  "d2-coding": Object.freeze({
-    id: "d2-coding",
-    label: "D2 Coding",
-    stack: D2_CODING_STACK,
-  }),
+  "d2-coding": bundledTypeface("d2-coding", "D2 Coding"),
+  "0xproto": bundledTypeface("0xproto", "0xProto"),
+  "geist-mono": bundledTypeface("geist-mono", "Geist Mono"),
+  "ibm-plex-mono": bundledTypeface("ibm-plex-mono", "IBM Plex Mono"),
+  "jetbrains-mono": bundledTypeface("jetbrains-mono", "JetBrains Mono"),
+  "monaspace-neon": bundledTypeface("monaspace-neon", "Monaspace Neon"),
   "system-mono": Object.freeze({
     id: "system-mono",
     label: "System Mono",
@@ -32,4 +32,13 @@ export function applyTypefacePreset(value, root = document.documentElement) {
   root.style.setProperty("--font-code", preset.stack);
   root.dataset.typefacePreset = preset.id;
   return preset;
+}
+
+// Each bundled label matches a "Caffold <label>" @font-face family in styles.css.
+function bundledTypeface(id, label) {
+  return Object.freeze({
+    id,
+    label,
+    stack: `"Caffold ${label}", ${SYSTEM_MONO_STACK}`,
+  });
 }

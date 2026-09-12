@@ -1709,9 +1709,14 @@ test("switches and persists the local typeface presets", { tag: "@all-viewports"
 
   const settingsPage = page.locator("caffold-settings-appearance-page");
   const select = settingsPage.locator("select[data-typeface-setting]");
-  await expect(select.locator("option")).toHaveCount(2);
+  await expect(select.locator("option")).toHaveCount(7);
   await expect(select.locator("option")).toHaveText([
     "D2 Coding",
+    "0xProto",
+    "Geist Mono",
+    "IBM Plex Mono",
+    "JetBrains Mono",
+    "Monaspace Neon",
     "System Mono",
   ]);
   await expect(select).not.toContainText("Noto Sans Mono CJK KR");
@@ -1776,6 +1781,21 @@ test("switches and persists the local typeface presets", { tag: "@all-viewports"
     .toMatchObject({
       typefacePreset: "d2-coding",
     });
+});
+
+test("loads the bundled face a typeface preset names", { tag: "@desktop" }, async ({ page }) => {
+  await page.goto("/settings/appearance");
+
+  const select = page.locator("select[data-typeface-setting]");
+  await select.selectOption("jetbrains-mono");
+
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        document.fonts.check('400 13px "Caffold JetBrains Mono"'),
+      ),
+    )
+    .toBe(true);
 });
 
 test("applies extreme values to the retained Review code viewer", { tag: "@all-viewports" }, async ({
