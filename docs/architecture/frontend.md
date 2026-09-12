@@ -1223,8 +1223,9 @@ size or hide a child host, but descendant styling belongs to the child.
 `--font-ui` and `--font-code` are the two typeface roles. `--font-ui` covers
 interface chrome and conversation prose, including the Composer textarea;
 `--font-code` covers source, diffs, command and tool output, inline or fenced
-code, and File Tree rows. A tree's section labels and its empty or error
-message stay on `--font-ui`.
+code, File Tree rows, and the codes on Action Hint and Scroll selection
+badges. A tree's section labels and its empty or error message stay on
+`--font-ui`.
 
 A typeface role and a size owner are chosen independently. Conversation prose
 takes its face from `--font-ui` and its size from the Conversation range; a

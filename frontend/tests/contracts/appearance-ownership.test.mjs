@@ -43,11 +43,13 @@ const codeOwners = new Set([
 ]);
 
 const typefaceOwners = new Set([
+  "action-hints/components/dialog.css",
   "components/code-viewer.css",
   "components/diff-viewer.css",
   "components/file-tree.css",
   "components/markdown-preview.css",
   "fonts.js",
+  "keyboard-navigation/components/selector.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown.css",
   "pages/(task-workspace)/tasks/(detail)/(task)/components/conversation/components/markdown/components/code-block.css",
   "pages/(task-workspace)/tasks/(detail)/(github)/components/markdown.js",
@@ -115,6 +117,22 @@ test("UI and code typeface roles stay within semantic owners", () => {
     false,
     "The legacy shared typeface token must not collapse UI and code roles",
   );
+});
+
+test("keyboard hint badges share the code typeface wherever they appear", () => {
+  for (const [path, selector] of [
+    ["action-hints/components/dialog.css", "& .action-hint-badge {"],
+    [
+      "keyboard-navigation/components/selector.css",
+      "& .scroll-surface-selector-badge {",
+    ],
+  ]) {
+    assert.match(
+      cssBlock(readFrontend(path), selector),
+      /font-family: var\(--font-code\);/,
+      path,
+    );
+  }
 });
 
 test("mobile interaction policies preserve pinch zoom and own viewer text sizing narrowly", () => {
