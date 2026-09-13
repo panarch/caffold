@@ -302,9 +302,12 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     return options;
   }
 
+  // A permission list still arriving would leave its mode out of the
+  // submission, so the submission waits for it. A list that could not be read
+  // does not hold it: the agent's own default stands.
   readyForSubmission() {
     this.ensureState();
-    return this.modelLoaded && !this.modelLoading;
+    return this.modelLoaded && !this.modelLoading && !this.permissionLoading;
   }
 
   resetOverrides() {
@@ -411,6 +414,9 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.permissionError = null;
     this.startLoadingFeedback(this.permissionLoadingFeedback);
     this.render();
+    // Announced as it goes out, so an owner holding a submission for this list
+    // stops before the list returns rather than after.
+    this.emitChange();
     try {
       const response = await getAgentPermissions(
         targetCwd,
