@@ -1238,9 +1238,11 @@ mod tests {
         cache.record_provider_lifecycle(separate.clone());
         assert_eq!(cache.for_thread("thread_1").len(), 2);
 
+        // The separate prompt is reported after the read begins, so the ended
+        // read cannot have listed it.
         let observations = [
             provider_lifecycle_observation(live, 1),
-            provider_lifecycle_observation(separate, 1),
+            provider_lifecycle_observation(separate, 3),
         ];
         let merged = {
             let projection = TurnEventCache::default();

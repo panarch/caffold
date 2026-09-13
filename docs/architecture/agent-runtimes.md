@@ -323,9 +323,12 @@ projection. The handoff adopts the confirmed backend position immediately,
 including when an answer arrived before the prompt response. For a turn read
 from history first, a live report joins under its exact identity: it updates the
 item that identity already names, or adds a new item that continues the turn.
-Only a later history read that leaves such a live or accepted report unlisted
-makes the turn's membership unresolved. Content, proximity, and arrival order
-are never substitutes for that identity.
+A later history read that still lists the turn as running and leaves such a
+live or accepted report unlisted makes the turn's membership unresolved. A read
+that lists the turn as ended is its baseline instead: it replaces every such
+report accepted before the read began, and any other such report keeps
+membership unresolved. Content, proximity, and arrival order are never
+substitutes for that identity.
 
 This contract includes a Task's first message. Task creation commits only the
 empty conversation and local membership; it carries title-source metadata but
@@ -359,7 +362,9 @@ and stable positions even if a history read uses different IDs. Unmatched IDs
 from a partial attachment or recovered source remain distinct. Their contents,
 timestamps, or proximity cannot authorize a guessed match.
 
-Retention is by whole turn. Each Task protects its latest turn and one historical
+Retention is by whole turn. Each Task protects its latest turn and the newest
+retained turns with items that fill a current-page answer, through the one that
+completes `TASK_DETAIL_EVENT_LIMIT` events. It also protects one historical
 continuation selected by the most recently requested successful older-page read.
 A failed request retains the previous selection; a late response cannot change
 the selection after a newer request. When the total exceeds 300 distinct
@@ -372,8 +377,8 @@ not a byte bound, prefetch target, or limit on the browser's retained pages.
 A provider generation change or confirmed observation gap withdraws history
 validity and rejects pending reads from that observation lifetime. Retained
 reports may still be displayed without claiming complete membership. The next
-history read that lists a turn resolves its membership again, unless a live or
-accepted report of that turn remains unlisted; Caffold-owned records such as
+history read that lists a turn decides its membership again under the rules in
+[Provider evidence](#provider-evidence); Caffold-owned records such as
 approval questions are never listed and do not keep a turn unresolved. An ID
 mismatch, capacity threshold, cache miss, compaction, or individual page failure
 does not establish an observation gap. Browser reconnection while the provider

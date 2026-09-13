@@ -1,9 +1,10 @@
 //! Ephemeral conversation retention removes whole turns. Partial observations
 //! remain partial until the provider supplies a complete history baseline.
 //!
-//! The latest turn and one historical continuation are protected. The item
-//! budget only removes other completed turns; it never asks the provider to
-//! fill unused capacity. Publication order survives ordinary eviction.
+//! The latest turn, the newest turns that fill a current-page answer, and one
+//! historical continuation are protected. The item budget only removes other
+//! completed turns; it never asks the provider to fill unused capacity.
+//! Publication order survives ordinary eviction.
 
 use std::{
     collections::HashMap,
@@ -16,6 +17,7 @@ use crate::agent::{Turn, TurnPage, TurnStatus};
 #[cfg(test)]
 use std::collections::HashSet;
 
+use super::super::detail::TASK_DETAIL_EVENT_LIMIT;
 use super::{
     TaskEventObservation, TaskEventObservationSource, TaskEventPublication, TaskEventRecord,
     TaskHistoryCursor, TaskHistoryPage, advance_cached_observation, project_primary_record,
@@ -508,11 +510,13 @@ impl ThreadEvents {
                         retained.push(observation);
                     }
                 }
-                // A read owns its own history IDs. Unmatched live and
-                // accepted IDs may come from a different legacy projection;
-                // absence is not evidence that the displayed item vanished.
-                // A Caffold-owned projection is never listed by a provider,
-                // so it cannot leave membership unresolved.
+                // A read owns its own history IDs. An unmatched live or
+                // accepted ID may name an item the read lists differently, so
+                // while the read lists the turn as running, that report stays
+                // and leaves membership unresolved. A read that lists the turn
+                // as ended replaces every such report accepted before it began.
+                // A Caffold-owned projection is never listed and always stays.
+                let listed_as_ended = turn.status != TurnStatus::InProgress;
                 let mut unresolved = false;
                 for observation in previous {
                     if observation.source == TaskEventObservationSource::ProviderHistory
@@ -522,7 +526,16 @@ impl ThreadEvents {
                     {
                         continue;
                     }
-                    unresolved |= observation.source != TaskEventObservationSource::LocalProjection;
+                    if observation.source != TaskEventObservationSource::LocalProjection {
+                        if listed_as_ended
+                            && observation
+                                .session_revision
+                                .is_some_and(|revision| revision <= base_revision)
+                        {
+                            continue;
+                        }
+                        unresolved = true;
+                    }
                     retained.push(observation);
                 }
                 cached.mixed_sources = unresolved;
@@ -577,8 +590,12 @@ impl ThreadEvents {
     }
 
     fn evict(&mut self) {
-        let protected =
-            |id: &str| self.latest.as_deref() == Some(id) || self.historical.as_deref() == Some(id);
+        let latest_window = self.latest_window_turns();
+        let protected = |id: &str| {
+            self.latest.as_deref() == Some(id)
+                || self.historical.as_deref() == Some(id)
+                || latest_window.contains(&id)
+        };
         let mut count = self
             .turns
             .values()
@@ -605,6 +622,29 @@ impl ThreadEvents {
         self.pages.retain(|cursor, page| {
             cursor.is_none() || page.ids.iter().any(|id| self.turns.contains_key(id))
         });
+    }
+
+    /// The newest retained turns with items, through the one that completes a
+    /// current-page answer's event limit.
+    fn latest_window_turns(&self) -> Vec<&str> {
+        let mut turns = Vec::new();
+        let mut events = 0;
+        let ids = self
+            .pages
+            .get(&None)
+            .map(|page| page.ids.as_slice())
+            .unwrap_or_default();
+        for id in ids {
+            let Some(turn) = self.turns.get(id).filter(|turn| turn.item_count() > 0) else {
+                continue;
+            };
+            turns.push(id.as_str());
+            events += turn.events.len();
+            if events >= TASK_DETAIL_EVENT_LIMIT {
+                break;
+            }
+        }
+        turns
     }
 }
 
@@ -716,9 +756,14 @@ mod tests {
             TaskEventObservationSource::ProviderLifecycle,
             Some(1),
         );
+        let running = Turn {
+            status: TurnStatus::InProgress,
+            completed_at_ms: None,
+            ..history("partial", 100)
+        };
         let events = cache.accept_history(
             "thread",
-            &history("partial", 100),
+            &running,
             vec![item("partial", "item-1", 100)],
             5,
             true,
@@ -1049,12 +1094,57 @@ mod tests {
     }
 
     #[test]
-    fn a_read_that_leaves_live_evidence_unmatched_keeps_the_turn_unresolved() {
+    fn an_ended_read_replaces_unlisted_live_evidence_reported_before_it_began() {
+        let cache = TurnEventCache::default();
+        let running = Turn {
+            status: TurnStatus::InProgress,
+            completed_at_ms: None,
+            ..history("partial", 100)
+        };
+        cache.accept_page(
+            "thread",
+            &page_of(vec![running]),
+            HashMap::from([("partial".to_string(), vec![item("partial", "item-1", 100)])]),
+            1,
+            None,
+        );
+        cache.record_observation(
+            item("partial", "msg_live", 101),
+            TaskEventObservationSource::ProviderLifecycle,
+            Some(2),
+        );
+        let ended = HashMap::from([(
+            "partial".to_string(),
+            vec![
+                item("partial", "item-1", 100),
+                item("partial", "item-2", 101),
+            ],
+        )]);
+
+        let read = cache.accept_page(
+            "thread",
+            &page_of(vec![history("partial", 100)]),
+            ended,
+            3,
+            None,
+        );
+        assert!(read.owns_extent);
+        let mut ids = read
+            .events
+            .iter()
+            .map(|event| event.id.as_str())
+            .collect::<Vec<_>>();
+        ids.sort_unstable();
+        assert_eq!(ids, ["thread:partial:item-1", "thread:partial:item-2"]);
+    }
+
+    #[test]
+    fn live_evidence_reported_after_an_ended_read_began_keeps_the_turn_unresolved() {
         let cache = TurnEventCache::default();
         cache.record_observation(
             item("partial", "native", 101),
             TaskEventObservationSource::ProviderLifecycle,
-            Some(1),
+            Some(3),
         );
         cache.invalidate_continuity("thread");
         let listed = HashMap::from([(
