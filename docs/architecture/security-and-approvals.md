@@ -278,9 +278,10 @@ Current rules:
   cancelled; the refused call reads as declined and the turn as interrupted;
 - Grok's `reject_always` option is never offered, because it is remembered for
   the directory across sessions;
-- the mode a session runs under — ask each time, automatic, or full access —
-  is fixed when the conversation is created, and a later prompt asking for
-  another mode is refused with that reason;
+- the mode a session runs under is one of the exclusive `session/new` flags
+  Grok accepts — neither, `autoMode`, or `yoloMode` — fixed when the
+  conversation is created, and a later prompt asking for another mode is
+  refused with that reason;
 - a request left unanswered when the bridge goes away is retired as
   unavailable; the leader asks again when the session is next loaded, under the
   same tool call identity and a new request.

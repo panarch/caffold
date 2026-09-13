@@ -264,10 +264,11 @@ and whether the session is still working comes from the leader's session
 summaries. History is read from the record in turn windows, and a turn Caffold
 watched from its start keeps its live items.
 
-Grok's model catalog, reasoning efforts, and the three permission modes Caffold
-names for it — ask each time, automatic, full access — are read from the
-leader and applied with `session/set_config_option`; the permission mode is
-fixed when the session is created. Images are sent as prompt blocks. The
+Grok's model catalog and reasoning efforts are read from the leader and
+applied with `session/set_config_option`. Grok lists no permission catalog;
+the driver names the exclusive `session/new` flags it accepts — neither,
+`autoMode`, or `yoloMode` — and the permission mode is fixed when the session
+is created. Images are sent as prompt blocks. The
 Settings report reads the installation without touching any of this: the
 executable by running it, the leader through `grok leader info`, the connection
 as the bridge stands, and the account through a leader that is already

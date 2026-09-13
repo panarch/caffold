@@ -340,7 +340,7 @@ impl GrokClient {
     }
 
     /// The ways a person can let Grok work. Named here, because the leader
-    /// takes them as session-creation flags rather than listing them.
+    /// takes them as exclusive `session/new` flags rather than listing them.
     pub(crate) fn permission_modes(&self) -> PermissionModes {
         let option =
             |mode: &str, label: &str, description: &str, dangerous: bool| PermissionModeOption {
@@ -356,20 +356,20 @@ impl GrokClient {
             options: vec![
                 option(
                     PermissionMode::ASK,
-                    "Ask each time",
-                    "Stops for permission before every tool call its own policy does not already allow.",
+                    "Ask first",
+                    "Grok asks before anything its own policy does not already allow.",
                     false,
                 ),
                 option(
                     PermissionMode::AUTO,
-                    "Automatic",
+                    "Grok decides",
                     "Grok decides what to allow, and asks nobody.",
                     false,
                 ),
                 option(
                     PermissionMode::BYPASS,
-                    "Full access",
-                    "Never asks. Every tool call runs.",
+                    "Allow all",
+                    "Every tool call runs. Grok does not ask.",
                     true,
                 ),
             ],
@@ -1824,7 +1824,7 @@ mod tests {
                 &GrokTurnOptions {
                     model: Some("grok-4.5".to_string()),
                     effort: Some("low".to_string()),
-                    permission_mode: Some("bypass".to_string()),
+                    permission_mode: Some("yoloMode".to_string()),
                 },
             )
             .await
@@ -1832,6 +1832,7 @@ mod tests {
         let created = leader.wait_for("session/new").await;
         assert_eq!(created["_meta"]["sessionId"], conversation.id);
         assert_eq!(created["_meta"]["yoloMode"], true);
+        assert!(created["_meta"].get("autoMode").is_none());
         assert!(
             created["_meta"]["rules"]
                 .as_str()
@@ -1857,7 +1858,7 @@ mod tests {
         let settings = client.settings_of(&conversation.id).await;
         assert_eq!(settings["model"], "grok-4.5");
         assert_eq!(settings["reasoningEffort"], "low");
-        assert_eq!(settings["permissionMode"], "bypass");
+        assert_eq!(settings["permissionMode"], "yoloMode");
         assert!(
             client
                 .watched_conversation(&conversation.id)
@@ -1878,15 +1879,19 @@ mod tests {
         assert!(!models[0].supports_fast_mode);
         assert!(!models[1].is_default);
         let modes = client.permission_modes();
-        assert_eq!(modes.default_mode, "default");
+        assert_eq!(modes.default_mode, "ask");
         assert_eq!(
             modes
                 .options
                 .iter()
                 .map(|o| o.mode.as_str())
                 .collect::<Vec<_>>(),
-            ["default", "auto", "bypass"]
+            ["ask", "autoMode", "yoloMode"]
         );
+        assert_eq!(modes.options[0].label, "Ask first");
+        assert_eq!(modes.options[1].label, "Grok decides");
+        assert_eq!(modes.options[2].label, "Allow all");
+        assert!(modes.options[2].dangerous);
         let rejected = grok_turn_options(
             &client,
             &TurnOptions {
@@ -1911,12 +1916,24 @@ mod tests {
                 model: Some("grok-4.5".to_string()),
                 effort: Some("low".to_string()),
                 fast_mode: true,
-                permission_mode: Some("auto".to_string()),
+                permission_mode: Some("autoMode".to_string()),
             },
         )
         .await
         .unwrap();
         assert_eq!(accepted.model.as_deref(), Some("grok-4.5"));
+        assert_eq!(accepted.permission_mode.as_deref(), Some("autoMode"));
+        for unknown in ["auto", "bypass", "default", "askForApproval"] {
+            let rejected = grok_turn_options(
+                &client,
+                &TurnOptions {
+                    permission_mode: Some(unknown.to_string()),
+                    ..TurnOptions::default()
+                },
+            )
+            .await;
+            assert!(matches!(rejected, Err(TurnRejected::Model)), "{unknown}");
+        }
     }
 
     #[tokio::test]
@@ -2231,17 +2248,20 @@ mod tests {
 
     #[tokio::test]
     async fn the_permission_mode_cannot_change_after_the_session_started() {
-        let (client, _leader, _dir) = client().await;
+        let (client, leader, _dir) = client().await;
         let conversation = client
             .start_conversation(
                 CWD,
                 &GrokTurnOptions {
-                    permission_mode: Some("auto".to_string()),
+                    permission_mode: Some("autoMode".to_string()),
                     ..GrokTurnOptions::default()
                 },
             )
             .await
             .unwrap();
+        let created = leader.wait_for("session/new").await;
+        assert_eq!(created["_meta"]["autoMode"], true);
+        assert!(created["_meta"].get("yoloMode").is_none());
         let refused = client
             .start_turn(
                 &conversation.id,
@@ -2249,7 +2269,7 @@ mod tests {
                 "x",
                 &[],
                 &GrokTurnOptions {
-                    permission_mode: Some("bypass".to_string()),
+                    permission_mode: Some("yoloMode".to_string()),
                     ..GrokTurnOptions::default()
                 },
             )
@@ -2264,7 +2284,7 @@ mod tests {
                 "x",
                 &[],
                 &GrokTurnOptions {
-                    permission_mode: Some("auto".to_string()),
+                    permission_mode: Some("autoMode".to_string()),
                     ..GrokTurnOptions::default()
                 },
             )

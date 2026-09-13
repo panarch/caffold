@@ -617,9 +617,10 @@ impl Driver {
 
     /// The ways a person can let this agent work, here, with this model.
     ///
-    /// The model matters to one agent and not the other. Codex resolves the
-    /// modes from the profiles a workspace allows and who reviews; Claude has
-    /// one mode — the model deciding for itself — that only some models can do.
+    /// Codex resolves the modes from the profiles a workspace allows and who
+    /// reviews. Claude has one mode — the model deciding for itself — that
+    /// only some models can do. Grok names no list; the driver names the
+    /// exclusive session/new flags it accepts.
     pub(crate) async fn permission_modes(
         &self,
         cwd: &str,
@@ -635,7 +636,8 @@ impl Driver {
             }
             Self::Claude(claude) => Ok(claude.client.permission_modes(model).await),
             // Grok takes its mode when a session starts and names no list of
-            // its own; the driver names the three flags it accepts.
+            // its own; the driver names the exclusive session/new flags it
+            // accepts.
             Self::Grok(client) => Ok(client.permission_modes()),
         }
     }

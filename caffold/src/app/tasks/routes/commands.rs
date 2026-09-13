@@ -2953,14 +2953,22 @@ mod grok_tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK, "{modes}");
-        assert_eq!(modes["defaultMode"], "default");
-        assert_eq!(modes["options"].as_array().unwrap().len(), 3);
+        assert_eq!(modes["defaultMode"], "ask");
+        assert_eq!(
+            modes["options"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|option| option["mode"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["ask", "autoMode", "yoloMode"]
+        );
 
         let (status, created) = call(
             &app,
             post(
                 "/api/tasks",
-                json!({ "titleSource": "Investigate the Grok bridge", "provider": "grok", "model": "grok-4.5", "effort": "low", "permissionMode": "default" }),
+                json!({ "titleSource": "Investigate the Grok bridge", "provider": "grok", "model": "grok-4.5", "effort": "low", "permissionMode": "ask" }),
             ),
         )
         .await;
@@ -2974,6 +2982,8 @@ mod grok_tests {
             asked["_meta"]["sessionId"], thread_id,
             "the Task is the session Caffold named"
         );
+        assert!(asked["_meta"].get("autoMode").is_none());
+        assert!(asked["_meta"].get("yoloMode").is_none());
         assert_eq!(
             asked["cwd"],
             root.path().canonicalize().unwrap().display().to_string()
