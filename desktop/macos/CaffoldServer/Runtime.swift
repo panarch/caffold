@@ -153,12 +153,26 @@ func runCommand(
     arguments: [String],
     completion: @escaping (Result<CommandResult, Error>) -> Void
 ) {
+    runCommand(
+        executable: executable,
+        arguments: arguments,
+        environment: caffoldEnvironment(),
+        completion: completion
+    )
+}
+
+func runCommand(
+    executable: URL,
+    arguments: [String],
+    environment: [String: String],
+    completion: @escaping (Result<CommandResult, Error>) -> Void
+) {
     DispatchQueue.global(qos: .utility).async {
         let process = Process()
         let output = Pipe()
         process.executableURL = executable
         process.arguments = arguments
-        process.environment = caffoldEnvironment()
+        process.environment = environment
         process.standardOutput = output
         process.standardError = output
 
