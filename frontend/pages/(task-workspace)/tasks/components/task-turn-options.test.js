@@ -827,6 +827,63 @@ test("counts a pending list once across the requests that ask for it", () => {
   }
 });
 
+test("announces a permission list as it is asked for and holds a submission until it settles", async () => {
+  const previousWindow = globalThis.window;
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.window = Object.assign(new EventTarget(), {
+    location: { origin: "http://127.0.0.1" },
+  });
+  globalThis.fetch = (url) => {
+    const response = Promise.withResolvers();
+    requests.push({ url, response });
+    return response.promise;
+  };
+
+  try {
+    const readiness = [];
+    const owner = permissionListOwner({
+      emitChange() {
+        readiness.push(turnOptions.readyForSubmission.call(this));
+      },
+    });
+
+    const listed = turnOptions.loadPermissions.call(owner, "src");
+    assert.deepEqual(readiness, [false]);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url.searchParams.get("model"), "gpt-test");
+    requests[0].response.resolve({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        defaultMode: "askForApproval",
+        options: [{ mode: "askForApproval", label: "Ask for approval", allowed: true }],
+      }),
+    });
+    await listed;
+    assert.deepEqual(readiness, [false, true]);
+    assert.equal(owner.defaultPermissionMode, "askForApproval");
+
+    // The list in hand is neither asked for nor announced again.
+    await turnOptions.loadPermissions.call(owner, "src");
+    assert.deepEqual({ requests: requests.length, readiness }, {
+      requests: 1,
+      readiness: [false, true],
+    });
+
+    owner.chosenModel = { provider: "codex", model: "gpt-other" };
+    const unread = turnOptions.loadPermissions.call(owner, "src");
+    assert.deepEqual(readiness, [false, true, false]);
+    requests[1].response.reject(new Error("offline"));
+    await unread;
+    assert.deepEqual(readiness, [false, true, false, true]);
+    assert.equal(owner.permissionError?.message, "offline");
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
 function optionControl({
   action,
   provider,
@@ -948,6 +1005,36 @@ function selectionOwner() {
     render() {},
     emitChange() { this.changes += 1; },
     loadPermissions() { this.permissionRequests += 1; },
+  };
+}
+
+function permissionListOwner(overrides = {}) {
+  return {
+    context: { provider: "" },
+    chosenModel: { provider: "codex", model: "gpt-test" },
+    modelLoaded: true,
+    modelLoading: false,
+    permissionCwd: "",
+    permissionProvider: "",
+    permissionModel: "",
+    permissionLoading: false,
+    permissionLoaded: false,
+    permissionError: null,
+    permissionRequestId: 0,
+    permissionOptions: [],
+    permissionLoadingFeedback: { timer: null, visible: false },
+    defaultPermissionMode: "",
+    permissionFixedWhenConversationStarts: false,
+    ensureState() {},
+    selectedModel() {
+      return this.chosenModel;
+    },
+    startLoadingFeedback() {},
+    endLoadingFeedback() {},
+    applyDefaultPermissionSelection() {},
+    render() {},
+    emitChange() {},
+    ...overrides,
   };
 }
 

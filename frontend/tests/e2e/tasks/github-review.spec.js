@@ -12,6 +12,7 @@ import { installBrowserDefaults } from "../support/browser-defaults.js";
 import { TASK_PERMISSION_FIXTURE } from "../support/task-api-fixture.js";
 import { expectDomainBackChrome } from "../support/domain-header.js";
 import {
+  AGENT_MODELS_FIXTURE,
   activeTaskProjection,
   canonicalTaskState,
   captureReviewScreenshot,
@@ -1534,6 +1535,7 @@ test("preserves Issue Start Task setup, focus return, and created Task selection
   await expect(openerHint).toBeHidden();
   await expect(dialog).toBeVisible();
   await expect(dialog.locator("select[name='baseRef']")).toHaveValue("origin/main");
+  await expect(dialog.getByRole("button", { name: "Start Task" })).toBeEnabled();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).focus();
   await page.keyboard.press("f");
   const dialogHint = actionHintDialog(page);
@@ -1602,6 +1604,79 @@ test("preserves Issue Start Task setup, focus return, and created Task selection
   await expect(page).toHaveURL(`/tasks/${CREATED_THREAD_ID}`);
 });
 
+test("holds Start Task while the chosen model's permission modes are still arriving", { tag: "@desktop" }, async ({ page }) => {
+  const fixture = await installLinkedWorktreeGithubFixture(page);
+  const secondModel = {
+    ...AGENT_MODELS_FIXTURE.models[0],
+    model: "gpt-5.6-luna",
+    displayName: "GPT-5.6-Luna",
+    isDefault: false,
+  };
+  await page.route(/\/api\/agent\/models(?:\?|$)/, (route) =>
+    route.fulfill({
+      json: {
+        ...AGENT_MODELS_FIXTURE,
+        models: [...AGENT_MODELS_FIXTURE.models, secondModel],
+      },
+    })
+  );
+  // The chosen model's list is held until the test lets it go, and the test
+  // learns when that request has gone out.
+  const asked = Promise.withResolvers();
+  const answered = Promise.withResolvers();
+  await page.route(/\/api\/agent\/permissions(?:\?|$)/, async (route) => {
+    const model = new URL(route.request().url()).searchParams.get("model");
+    if (model === secondModel.model) {
+      asked.resolve();
+      await answered.promise;
+    }
+    return route.fulfill({ json: TASK_PERMISSION_FIXTURE });
+  });
+  const issueDetail = await openLinkedWorktreeIssue(page);
+  const dialog = page.locator("caffold-github-task-start-dialog > dialog");
+  const start = dialog.getByRole("button", { name: "Start Task" });
+  const modelButton = dialog.locator(".task-model-button");
+  const modelPopover = dialog.locator(".task-model-popover");
+  const permissionButton = dialog.locator(".task-permission-button");
+
+  await issueDetail.getByRole("button", {
+    name: "Start Task for issue #1984",
+  }).click();
+  await expect(start).toBeEnabled();
+  await expect(permissionButton).toContainText("Auto review");
+
+  await modelButton.click();
+  await dialog.locator(
+    `.task-model-option[data-model="${secondModel.model}"]`,
+  ).click();
+  await modelButton.click();
+  await expect(modelPopover).toBeHidden();
+  await asked.promise;
+  await expect(start).toBeDisabled();
+  // The picker keeps the mode it last read in place while the list is out.
+  await expect(permissionButton).toContainText("Auto review");
+  await expect(permissionButton).toHaveAttribute("aria-busy", "true");
+  // The same submission, made without the button, is held while the list is
+  // out and goes through once it has arrived.
+  const submit = () =>
+    dialog.evaluate((element) => {
+      element.querySelector("form").requestSubmit();
+      return element.parentElement.pending;
+    });
+  expect(await submit()).toBe(false);
+
+  answered.resolve();
+  await expect(start).toBeEnabled();
+  await expect(permissionButton).not.toHaveAttribute("aria-busy");
+  expect(await submit()).toBe(true);
+
+  await expect.poll(() => fixture.counts.taskCreates).toBe(1);
+  expect(fixture.requests.taskCreates[0]).toMatchObject({
+    model: secondModel.model,
+    permissionMode: "approveForMe",
+  });
+});
+
 test("owns Issue Task Start Hint, native select, Editing Escape, and Scroll contexts", { tag: "@desktop" }, async ({
   page,
 }, testInfo) => {
@@ -1617,6 +1692,7 @@ test("owns Issue Task Start Hint, native select, Editing Escape, and Scroll cont
   await opener.click();
   await expect(dialog).toBeVisible();
   await expect(select).toHaveValue("origin/main");
+  await expect(dialog.getByRole("button", { name: "Start Task" })).toBeEnabled();
   await cancel.focus();
   await page.keyboard.press("f");
   let hint = actionHintDialog(page);
@@ -1989,6 +2065,7 @@ test("starts a same-repository PR Task from the exact prepared head", { tag: "@a
     "gluesql/gluesql:query-plan-limit-offset @ 222222222222",
   );
   await expect(dialog.locator("select[name='baseRef']")).toBeHidden();
+  await expect(dialog.getByRole("button", { name: "Start Task" })).toBeEnabled();
   await captureReviewScreenshot(page, testInfo, "github-pr-start-task-dialog");
   await dialog.getByRole("button", { name: "Cancel", exact: true }).focus();
   await page.keyboard.press("f");
