@@ -147,6 +147,14 @@ export function mockGrokStatus(overrides = {}) {
         email: "user@example.com",
       },
     },
+    usage: {
+      percent: 8,
+      period: {
+        type: "USAGE_PERIOD_TYPE_WEEKLY",
+        start: "2026-09-07T06:12:36.569711+00:00",
+        end: "2026-09-14T06:12:36.569711+00:00",
+      },
+    },
     ...overrides,
   };
 }

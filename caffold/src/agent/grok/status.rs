@@ -1,14 +1,20 @@
 //! What this Grok installation is, asked without a Task.
 //!
-//! Four sources, each answering for itself: the executable that would run,
-//! the leader that owns sessions, Caffold's own bridge to it, and the account
-//! the leader is signed in as. The report is for showing, never for gating —
-//! a source that cannot answer costs its own block and nothing more.
+//! Five sources, each answering for itself: the executable that would run,
+//! the leader that owns sessions, Caffold's own bridge to it, the account
+//! the leader is signed in as, and the plan usage that leader reports. The
+//! report is for showing, never for gating — a source that cannot answer
+//! costs its own block and nothing more.
 //!
 //! Nothing here starts a leader. A leader that is not running is an answer,
 //! and only a leader already listening is attached to — with Caffold's own
-//! bridge, which is Caffold's process — so that the account can be asked
-//! about. What is asked never makes a session or a turn.
+//! bridge, which is Caffold's process — so that the account and usage can be
+//! asked about. What is asked never makes a session or a turn.
+//!
+//! Usage comes from the leader over `_x.ai/billing`, the same answer the
+//! CLI's `/usage` screen draws. The leader holds the credentials and asks in
+//! its own name, so Caffold reads no keychain and calls no billing service.
+//! Fields this release has not seen stay unread.
 
 use std::{
     collections::BTreeMap,
@@ -36,6 +42,8 @@ pub(crate) struct GrokStatus {
     leader: Option<LeaderReport>,
     connection: Connection,
     auth: Auth,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    usage: Option<Usage>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     problems: BTreeMap<&'static str, String>,
 }
@@ -106,6 +114,45 @@ struct Verified {
     email: Option<String>,
 }
 
+/// Plan usage as a running leader reports it over `_x.ai/billing`. Absent
+/// fields were not in the answer or had nothing to say.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Usage {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    percent: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    period: Option<UsagePeriod>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    on_demand: Option<OnDemand>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prepaid: Option<Prepaid>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct UsagePeriod {
+    /// The agent's `currentPeriod.type`, e.g. `USAGE_PERIOD_TYPE_WEEKLY`.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    period_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    start: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    end: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct OnDemand {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    used: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cap: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct Prepaid {
+    balance: f64,
+}
+
 impl GrokClient {
     /// What this installation is right now, every source asked at once and
     /// each bounded by [`ANSWER_TIMEOUT`].
@@ -127,14 +174,25 @@ impl GrokClient {
         );
         let leader_running = leader_report.as_ref().is_ok_and(|leader| leader.running);
         let connection = self.connection_report(leader_running, &mut problems).await;
-        let auth = self
-            .auth_report(socket, connection.state == "ready", &mut problems)
-            .await;
+        let cached_sign_in = has_cached_sign_in(socket);
+        let (verified, usage) = if connection.state == "ready" {
+            let (verified, usage) = tokio::join!(self.ask_verified(), self.ask_usage());
+            (
+                keep("auth", verified, &mut problems),
+                keep("usage", usage, &mut problems),
+            )
+        } else {
+            (None, None)
+        };
         GrokStatus {
             executable: keep("executable", executable_report, &mut problems),
             leader: keep("leader", leader_report, &mut problems),
             connection,
-            auth,
+            auth: Auth {
+                cached_sign_in,
+                verified,
+            },
+            usage,
             problems,
         }
     }
@@ -191,43 +249,35 @@ impl GrokClient {
         }
     }
 
-    /// The sign-in on disk, and the leader's word on it when connected.
-    async fn auth_report(
-        &self,
-        socket: &Path,
-        connected: bool,
-        problems: &mut BTreeMap<&'static str, String>,
-    ) -> Auth {
-        let cached_sign_in = socket
-            .parent()
-            .map(|home| home.join("auth.json").is_file())
-            .unwrap_or(false);
-        if !connected {
-            return Auth {
-                cached_sign_in,
-                verified: None,
-            };
-        }
+    /// The leader's word on the signed-in account.
+    async fn ask_verified(&self) -> Result<Verified, String> {
         let answer = self
             .inner
             .transport
             .call("_x.ai/auth/check_subscription", json!({}))
-            .await;
-        let verified = match answer
-            .map_err(|error| error.to_string())
-            .and_then(|answer| verified_of(&answer))
-        {
-            Ok(verified) => Some(verified),
-            Err(problem) => {
-                problems.insert("auth", problem);
-                None
-            }
-        };
-        Auth {
-            cached_sign_in,
-            verified,
-        }
+            .await
+            .map_err(|error| error.to_string())?;
+        verified_of(&answer)
     }
+
+    /// Plan usage, asked of the leader the way its own `/usage` screen asks.
+    async fn ask_usage(&self) -> Result<Usage, String> {
+        let answer = self
+            .inner
+            .transport
+            .call("_x.ai/billing", json!({}))
+            .await
+            .map_err(|error| error.to_string())?;
+        usage_of(&answer)
+    }
+}
+
+/// The cached sign-in file a leader starts from, next to Caffold's socket.
+fn has_cached_sign_in(socket: &Path) -> bool {
+    socket
+        .parent()
+        .map(|home| home.join("auth.json").is_file())
+        .unwrap_or(false)
 }
 
 /// The block when the source answered, or its name under `problems`.
@@ -358,6 +408,76 @@ fn verified_of(answer: &Value) -> Result<Verified, String> {
     })
 }
 
+/// The billing answer, read tolerantly from fields this release has seen. An
+/// empty, team-managed, or shapeless answer costs the block, and a third
+/// envelope field is ignored rather than a parse failure.
+fn usage_of(answer: &Value) -> Result<Usage, String> {
+    if let Some(text) = answer.as_str().filter(|text| !text.is_empty()) {
+        return Err(text.to_string());
+    }
+    let config = answer.get("config").unwrap_or(&Value::Null);
+    let usage = Usage {
+        percent: config.get("creditUsagePercent").and_then(json_number),
+        period: config.get("currentPeriod").and_then(period_of),
+        on_demand: on_demand_of(config),
+        prepaid: prepaid_of(config),
+    };
+    if usage.percent.is_none()
+        && usage.period.is_none()
+        && usage.on_demand.is_none()
+        && usage.prepaid.is_none()
+    {
+        return Err("Grok answered billing without usage".to_string());
+    }
+    Ok(usage)
+}
+
+fn period_of(value: &Value) -> Option<UsagePeriod> {
+    let period_type = value
+        .get("type")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let start = value
+        .get("start")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let end = value.get("end").and_then(Value::as_str).map(str::to_string);
+    if period_type.is_none() && start.is_none() && end.is_none() {
+        return None;
+    }
+    Some(UsagePeriod {
+        period_type,
+        start,
+        end,
+    })
+}
+
+fn on_demand_of(config: &Value) -> Option<OnDemand> {
+    let used = wrapped_val(&config["onDemandUsed"]);
+    let cap = wrapped_val(&config["onDemandCap"]);
+    if !meter_speaks(used) && !meter_speaks(cap) {
+        return None;
+    }
+    Some(OnDemand { used, cap })
+}
+
+fn prepaid_of(config: &Value) -> Option<Prepaid> {
+    let balance = wrapped_val(&config["prepaidBalance"]).filter(|value| *value != 0.0)?;
+    Some(Prepaid { balance })
+}
+
+fn meter_speaks(value: Option<f64>) -> bool {
+    value.is_some_and(|amount| amount != 0.0)
+}
+
+fn json_number(value: &Value) -> Option<f64> {
+    value.as_f64().or_else(|| value.as_str()?.parse().ok())
+}
+
+fn wrapped_val(value: &Value) -> Option<f64> {
+    json_number(value).or_else(|| value.get("val").and_then(json_number))
+}
+
 /// What a mocked client reports: enough of every block for a route to answer
 /// with, and nothing read from the machine the tests run on.
 #[cfg(test)]
@@ -391,6 +511,16 @@ fn stand_in_status() -> GrokStatus {
                 email: None,
             }),
         },
+        usage: Some(Usage {
+            percent: Some(8.0),
+            period: Some(UsagePeriod {
+                period_type: Some("USAGE_PERIOD_TYPE_WEEKLY".to_string()),
+                start: Some("2026-09-07T06:12:36.569711+00:00".to_string()),
+                end: Some("2026-09-14T06:12:36.569711+00:00".to_string()),
+            }),
+            on_demand: None,
+            prepaid: None,
+        }),
         problems: BTreeMap::new(),
     }
 }
@@ -433,6 +563,103 @@ mod tests {
         assert!(!signed_out.authenticated);
         assert!(signed_out.mode.is_none());
         assert!(verified_of(&json!({ "meta": {} })).is_err());
+    }
+
+    fn fixture(name: &str) -> Value {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/agent/grok/fixtures")
+            .join(name);
+        serde_json::from_str(&std::fs::read_to_string(path).expect("fixture exists"))
+            .expect("fixture is JSON")
+    }
+
+    #[test]
+    fn the_live_billing_answer_keeps_used_percent_and_the_weekly_period() {
+        let usage = usage_of(&fixture("billing-result.json")).unwrap();
+        assert_eq!(usage.percent, Some(8.0));
+        let period = usage.period.as_ref().expect("period");
+        assert_eq!(
+            period.period_type.as_deref(),
+            Some("USAGE_PERIOD_TYPE_WEEKLY")
+        );
+        assert_eq!(
+            period.start.as_deref(),
+            Some("2026-09-07T06:12:36.569711+00:00")
+        );
+        assert_eq!(
+            period.end.as_deref(),
+            Some("2026-09-14T06:12:36.569711+00:00")
+        );
+        assert!(
+            usage.on_demand.is_none(),
+            "zero on-demand has nothing to say"
+        );
+        assert!(usage.prepaid.is_none(), "zero prepaid has nothing to say");
+        let value = serde_json::to_value(&usage).unwrap();
+        assert!(value.get("subscriptionTier").is_none());
+        assert!(value.get("subscription_tier").is_none());
+        assert!(value.get("isUnifiedBillingUser").is_none());
+        assert!(value.get("billingPeriodStart").is_none());
+    }
+
+    #[test]
+    fn a_third_billing_envelope_field_does_not_fail_the_block() {
+        let mut answer = fixture("billing-result.json");
+        answer["extra"] = json!({ "unexpected": true });
+        let usage = usage_of(&answer).unwrap();
+        assert_eq!(usage.percent, Some(8.0));
+    }
+
+    #[test]
+    fn unread_billing_fields_stay_unread() {
+        let usage = usage_of(&json!({
+            "config": {
+                "creditUsagePercent": 8.0,
+                "currentPeriod": {},
+                "monthlyLimit": 100,
+                "includedUsed": 1,
+                "totalUsed": 2,
+                "billingCycle": "monthly",
+            }
+        }))
+        .unwrap();
+        assert_eq!(usage.percent, Some(8.0));
+        assert!(usage.period.is_none());
+        let value = serde_json::to_value(&usage).unwrap();
+        assert!(value.get("monthlyLimit").is_none());
+        assert!(value.get("billingCycle").is_none());
+    }
+
+    #[test]
+    fn on_demand_and_prepaid_rows_appear_only_when_the_meters_speak() {
+        let usage = usage_of(&json!({
+            "config": {
+                "creditUsagePercent": 8.0,
+                "onDemandCap": 100,
+                "onDemandUsed": { "val": "25" },
+                "prepaidBalance": { "val": 12 },
+            }
+        }))
+        .unwrap();
+        assert_eq!(usage.on_demand.as_ref().unwrap().used, Some(25.0));
+        assert_eq!(usage.on_demand.as_ref().unwrap().cap, Some(100.0));
+        assert_eq!(usage.prepaid.as_ref().unwrap().balance, 12.0);
+    }
+
+    #[test]
+    fn an_empty_or_spoken_billing_answer_fails_only_that_block() {
+        assert_eq!(
+            usage_of(&json!({})).unwrap_err(),
+            "Grok answered billing without usage"
+        );
+        assert_eq!(
+            usage_of(&json!("No billing data available.")).unwrap_err(),
+            "No billing data available."
+        );
+        assert_eq!(
+            usage_of(&json!("Usage limits are managed by your team.")).unwrap_err(),
+            "Usage limits are managed by your team."
+        );
     }
 
     #[tokio::test]

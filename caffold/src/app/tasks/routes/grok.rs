@@ -6,11 +6,11 @@ use crate::app::tasks::TaskState;
 
 /// What the Grok installation is right now, for showing in Settings.
 ///
-/// Four blocks — the executable, the leader, Caffold's bridge, the account —
-/// each from its own source and each allowed to be missing, with why under
-/// `problems`. Always 200: the report is the answer, and a source that could
-/// not answer is part of it. Nothing reads this to decide whether anything is
-/// allowed, and asking starts no leader, session, or turn.
+/// Five blocks — the executable, the leader, Caffold's bridge, the account,
+/// plan usage — each from its own source and each allowed to be missing, with
+/// why under `problems`. Always 200: the report is the answer, and a source
+/// that could not answer is part of it. Nothing reads this to decide whether
+/// anything is allowed, and asking starts no leader, session, or turn.
 pub(super) async fn grok_status(State(state): State<TaskState>) -> Json<GrokStatus> {
     Json(state.task_runtime.grok().introspect().await)
 }
@@ -55,6 +55,11 @@ mod tests {
         assert_eq!(status["connection"]["authMethods"][1], "Grok");
         assert_eq!(status["auth"]["verified"]["authenticated"], true);
         assert_eq!(status["auth"]["cachedSignIn"], true);
+        assert_eq!(status["usage"]["percent"], 8.0);
+        assert_eq!(
+            status["usage"]["period"]["type"],
+            "USAGE_PERIOD_TYPE_WEEKLY"
+        );
         assert!(status.get("problems").is_none(), "{status}");
     }
 }

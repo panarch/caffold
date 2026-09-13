@@ -549,6 +549,8 @@ test("shows what the Grok installation is on its Settings page", { tag: "@all-vi
   await expect(settings).toContainText("/Users/example/.local/bin/grok");
   await expect(settings).toContainText("user@example.com · SuperGrok");
   await expect(settings).toContainText("Oidc");
+  await expect(settings).toContainText("Weekly");
+  await expect(settings).toContainText("8% used");
   await expect(settings).toContainText("Running · pid 36832");
   await expect(settings).toContainText("/Users/example/.grok/leader-caffold.sock");
   await expect(settings).toContainText("Connected · agent 1.0.30");
@@ -583,6 +585,7 @@ test("a Grok source that could not answer costs its block and no more", { tag: "
   });
   await expect(settings).toContainText("Install the Grok CLI to use Grok.");
   await expect(settings).toContainText("Unavailable — Grok did not answer in time");
+  await expect(settings).toContainText("8% used");
   await expect(settings).toContainText("Running · pid 36832");
   await expect(settings).toContainText("Connected · agent 1.0.30");
   await captureReviewScreenshot(page, testInfo, "settings-grok-unavailable");
@@ -602,6 +605,7 @@ test("checking the Grok report again reads the leader that appeared and names a 
             leader: { socketPath: "/Users/example/.grok/leader-caffold.sock", running: false, socketStale: false },
             connection: { state: "down", authMethods: [] },
             auth: { cachedSignIn: true },
+            usage: undefined,
           })
           : mockGrokStatus({
             leader: { socketPath: "/Users/example/.grok/leader-caffold.sock", running: true, socketStale: false, pid: 36832, version: "1.0.29", protocolVersion: 1 },
@@ -615,11 +619,13 @@ test("checking the Grok report again reads the leader that appeared and names a 
   await expect(settings).toContainText("Not running — starts with the first Grok Task");
   await expect(settings).toContainText("Not connected — connects with the first Grok Task");
   await expect(settings).toContainText("Cached sign-in present — verified once Caffold is connected");
+  await expect(settings).toContainText("Reported once Caffold is connected");
 
   await settings.getByRole("button", { name: "Check again" }).click();
   await expect(settings).toContainText("Running · pid 36832");
   await expect(settings).toContainText("1.0.29 — differs from the installed 1.0.30");
   await expect(settings).toContainText("user@example.com · SuperGrok");
+  await expect(settings).toContainText("8% used");
   expect(reports).toBe(2);
 });
 

@@ -242,10 +242,10 @@ Settings includes:
   starts a fresh runner on the installed binary, and lets conversations resume
   when their Tasks are opened;
 - Grok installation status, shown and never gated on: the executable's version
-  and path, the signed-in account as the leader confirms it, the leader on
-  Caffold's socket with its own build, and the state of Caffold's connection,
-  with a **Check again** action; opening the page starts no leader, session,
-  or turn;
+  and path, the signed-in account as the leader confirms it, plan usage as
+  that leader reports it, the leader on Caffold's socket with its own build,
+  and the state of Caffold's connection, with a **Check again** action;
+  opening the page starts no leader, session, or turn;
 - About Caffold application and build information, including shared
   checking/ready/settled update status and a **Reload to update** action while
   a prepared PWA generation remains ready. Copied diagnostics also include the

@@ -280,6 +280,9 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "pages/(task-workspace)/settings/grok/page.js" => Some(js(include_str!(
             "../../frontend/pages/(task-workspace)/settings/grok/page.js"
         ))),
+        "pages/(task-workspace)/settings/grok/display.js" => Some(js(include_str!(
+            "../../frontend/pages/(task-workspace)/settings/grok/display.js"
+        ))),
         "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css" => {
             Some(css(include_str!(
                 "../../frontend/pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.css"
@@ -1351,6 +1354,7 @@ mod tests {
             "pages/(task-workspace)/settings/claude/display.js",
             "pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
             "pages/(task-workspace)/settings/grok/page.js",
+            "pages/(task-workspace)/settings/grok/display.js",
             "pages/(task-workspace)/settings/about/page.js",
             "pages/(task-workspace)/tasks/components/composer/action-hints.js",
         ] {

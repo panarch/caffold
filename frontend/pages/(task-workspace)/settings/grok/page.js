@@ -1,6 +1,12 @@
 import { getGrokStatus } from "../../../../api.js";
 import "../components/detail-list.js";
 import {
+  onDemandValue,
+  prepaidValue,
+  usagePeriodLabel,
+  usagePeriodValue,
+} from "./display.js";
+import {
   ACTION_HINT_ACTION,
   buttonActionHintTarget,
   emptyActionHintScope,
@@ -173,6 +179,10 @@ class CaffoldSettingsGrokPage extends HTMLElement {
               <h3 id="settings-grok-account-title">Account</h3>
               <caffold-settings-detail-list data-grok-account></caffold-settings-detail-list>
             </section>
+            <section aria-labelledby="settings-grok-usage-title">
+              <h3 id="settings-grok-usage-title">Usage</h3>
+              <caffold-settings-detail-list data-grok-usage></caffold-settings-detail-list>
+            </section>
             <section aria-labelledby="settings-grok-leader-title">
               <h3 id="settings-grok-leader-title">Leader</h3>
               <caffold-settings-detail-list data-grok-leader></caffold-settings-detail-list>
@@ -186,6 +196,7 @@ class CaffoldSettingsGrokPage extends HTMLElement {
       `;
       this.agentList = this.querySelector("[data-grok-agent]");
       this.accountList = this.querySelector("[data-grok-account]");
+      this.usageList = this.querySelector("[data-grok-usage]");
       this.leaderList = this.querySelector("[data-grok-leader]");
       this.connectionList = this.querySelector("[data-grok-connection]");
     }
@@ -193,6 +204,7 @@ class CaffoldSettingsGrokPage extends HTMLElement {
     const unanswered = this.unansweredRows();
     this.agentList.setRows(unanswered ?? this.agentRows());
     this.accountList.setRows(unanswered ?? this.accountRows());
+    this.usageList.setRows(unanswered ?? this.usageRows());
     this.leaderList.setRows(unanswered ?? this.leaderRows());
     this.connectionList.setRows(unanswered ?? this.connectionRows());
 
@@ -246,6 +258,25 @@ class CaffoldSettingsGrokPage extends HTMLElement {
       { ...ACCOUNT_ROWS[0], ...account },
       { ...ACCOUNT_ROWS[1], value: problem ? "Unknown" : method },
     ];
+  }
+
+  usageRows() {
+    if (!this.status) {
+      return [{ key: "usage", label: "Usage" }];
+    }
+    const problem = this.status.problems?.usage;
+    if (problem) {
+      return [{ key: "usage", label: "Usage", ...unavailableValue(problem) }];
+    }
+    const usage = this.status.usage;
+    if (!usage) {
+      return [{
+        key: "usage",
+        label: "Usage",
+        value: "Reported once Caffold is connected",
+      }];
+    }
+    return usageDetailRows(usage);
   }
 
   leaderRows() {
@@ -312,6 +343,32 @@ class CaffoldSettingsGrokPage extends HTMLElement {
       ...unavailableValue("The server did not answer."),
     }];
   }
+}
+
+function usageDetailRows(usage) {
+  const rows = [];
+  if (Number.isFinite(usage.percent) || usage.period) {
+    rows.push({
+      key: "usage",
+      label: usagePeriodLabel(usage.period),
+      value: usagePeriodValue(usage),
+    });
+  }
+  if (usage.onDemand) {
+    rows.push({
+      key: "on-demand",
+      label: "On-demand",
+      value: onDemandValue(usage.onDemand),
+    });
+  }
+  if (usage.prepaid) {
+    rows.push({
+      key: "prepaid",
+      label: "Prepaid",
+      value: prepaidValue(usage.prepaid),
+    });
+  }
+  return rows.length ? rows : [{ key: "usage", label: "Usage", value: "None reported" }];
 }
 
 function signedInValue(verified) {

@@ -1063,11 +1063,13 @@ diagnostic report. The page does not read credentials or call provider APIs
 itself.
 
 Settings Grok owns a route-scoped diagnostic request for the installed
-executable, the leader on Caffold's socket, Caffold's connection, and the
-account as the leader confirms it. Each block can fail independently without
-turning the report into a readiness gate, a **Check again** action re-reads
-the report, and a report that lands after the page was left is discarded. The
-page has no restart control: the leader is Grok's process.
+executable, the leader on Caffold's socket, Caffold's connection, the
+account as the leader confirms it, and plan usage as that leader reports it.
+Each block can fail independently without turning the report into a readiness
+gate, a **Check again** action re-reads the report, and a report that lands
+after the page was left is discarded. The page has no restart control: the
+leader is Grok's process. The page does not read credentials or call provider
+APIs itself.
 
 Remote Access owns a route-scoped Tailscale request lifecycle. Server responses
 are the only writers of canonical status, `canManage`, diagnostics, and the
