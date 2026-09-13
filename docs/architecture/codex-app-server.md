@@ -410,9 +410,10 @@ page; a small response is not evidence of a cheap upstream read. Caffold uses
 the turn-list interface for both supported history storage modes and does not
 require `thread/items/list` or migrate legacy threads. A continuously observed
 turn retains one live item set. Partial attachment and cross-source recovery
-use only exact identity evidence and may leave unmatched display items. A live
-continuation whose turn has been evicted may be unavailable after a source
-change. These limits do not trigger automatic baseline reads or browser resets.
+use only exact identity evidence and may leave unmatched display items until a
+history read lists the turn as ended. A live continuation whose turn has been
+evicted may be unavailable after a source change. These limits do not trigger
+automatic baseline reads or browser resets.
 
 Projection ranges and independent snapshot/delta revisions follow the
 [Agent Runtimes publication contract](agent-runtimes.md#projection-publication).

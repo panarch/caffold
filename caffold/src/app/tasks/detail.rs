@@ -3249,6 +3249,127 @@ mod request_tests {
     }
 
     #[tokio::test]
+    async fn a_turn_attached_mid_run_owns_its_span_once_its_completed_history_is_read() {
+        const EARLIER_ANSWER: &str = "Read the embedding examples.";
+        const LATER_ANSWER: &str = "Checked the embedding examples.";
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-attached-mid-run";
+        let cwd = root.path().display().to_string();
+        let resume = |status: &str, completed_at: serde_json::Value, answers: &[(&str, &str)]| {
+            let mut items = vec![json!({
+                "id": "turn-attached-prompt",
+                "type": "userMessage",
+                "content": [{ "type": "text", "text": "Run the embedding examples" }]
+            })];
+            items.extend(answers.iter().map(|(id, text)| {
+                json!({ "id": id, "type": "agentMessage", "text": text, "phase": "final" })
+            }));
+            MockCodexResponse::ok(
+                "thread/resume",
+                json!({
+                    "cwd": cwd,
+                    "thread": {
+                        "id": thread_id, "preview": "Attached mid-run", "status": {"type": "idle"},
+                        "cwd": cwd, "createdAt": 1.0, "updatedAt": 3.0, "turns": []
+                    },
+                    "initialTurnsPage": {
+                        "data": [{
+                            "id": "turn-attached", "items": items, "itemsView": "full",
+                            "status": status, "startedAt": 1.0, "completedAt": completed_at
+                        }],
+                        "nextCursor": null, "backwardsCursor": null
+                    }
+                }),
+            )
+        };
+        let client = CodexThreadClient::mock(vec![
+            resume(
+                "inProgress",
+                serde_json::Value::Null,
+                &[("item-1", EARLIER_ANSWER)],
+            ),
+            resume(
+                "completed",
+                json!(3.0),
+                &[("item-1", EARLIER_ANSWER), ("item-2", LATER_ANSWER)],
+            ),
+        ]);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        let _viewer = state
+            .task_sessions
+            .acquire_viewer(&client.driver(), 1, thread_id)
+            .await
+            .unwrap();
+        let mut task_events = state.task_events.subscribe();
+        state.detail.ensure_runtime_signal_driver().await;
+        state.task_runtime.spawn_test_bridge(client.clone(), 1);
+
+        // Legacy history lists this live `msg_live` answer as `item-2`.
+        client.mock_publish_event(CodexRuntimeEvent::Notification(
+            CodexNotification::ItemCompleted {
+                thread_id: thread_id.to_string(),
+                turn_id: "turn-attached".to_string(),
+                item: json!({
+                    "id": "msg_live", "type": "agentMessage", "text": LATER_ANSWER, "phase": "final"
+                }),
+                completed_at_ms: 2_500,
+            },
+        ));
+        client.mock_publish_event(CodexRuntimeEvent::Notification(
+            CodexNotification::TurnCompleted {
+                thread_id: thread_id.to_string(),
+                turn: serde_json::from_value(json!({
+                    "id": "turn-attached", "status": "completed", "startedAt": 1.0, "completedAt": 3.0
+                }))
+                .unwrap(),
+            },
+        ));
+        let (mut live_answer, mut turn_end) = (false, false);
+        while !(live_answer && turn_end) {
+            let event = tokio::time::timeout(Duration::from_secs(1), task_events.recv())
+                .await
+                .expect("the live reports reach the conversation")
+                .expect("Task event channel remains open")
+                .event;
+            live_answer |= event.id.ends_with(":msg_live");
+            turn_end |= event.event_type == "turn_completed";
+        }
+        state
+            .task_sessions
+            .refresh_subscription(&client.driver(), 1, thread_id)
+            .await
+            .unwrap();
+
+        let refresh = test_task_detail(state.clone(), thread_id.into(), None)
+            .await
+            .unwrap()
+            .0;
+        assert!(
+            refresh.events_range.is_some(),
+            "the completed turn's history owns its span again"
+        );
+        let history_copy = format!("{thread_id}:turn-attached:item-2");
+        let later_answers = refresh
+            .events
+            .iter()
+            .filter(|event| {
+                event
+                    .payload
+                    .as_ref()
+                    .is_some_and(|payload| payload["text"] == LATER_ANSWER)
+            })
+            .map(|event| event.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            later_answers,
+            [history_copy.as_str()],
+            "the history copy replaces the live copy it lists under its own id"
+        );
+    }
+
+    #[tokio::test]
     async fn a_turn_already_running_at_resume_keeps_paging_its_earlier_events() {
         let root = tempfile::tempdir().unwrap();
         let thread_id = "thread-resumed-mid-turn";
