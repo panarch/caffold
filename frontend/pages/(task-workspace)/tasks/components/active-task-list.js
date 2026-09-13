@@ -1661,6 +1661,7 @@ function normalizeComposerSettings(settings) {
     model: `${settings.model ?? ""}`,
     effort: `${settings.effort ?? ""}`,
     fastMode: Boolean(settings.fastMode),
+    permissionMode: `${settings.permissionMode ?? ""}`,
   };
 }
 

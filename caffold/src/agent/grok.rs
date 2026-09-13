@@ -139,6 +139,10 @@ pub(crate) enum GrokRuntimeEvent {
     Diagnostic { message: String },
 }
 
+/// Why a later turn that asks for another mode is refused.
+const PERMISSION_FIXED_WHEN_CONVERSATION_STARTS: &str =
+    "Grok fixes the permission mode when the conversation starts; start a new Task to change it.";
+
 /// What a person chose for a turn, in Grok's terms.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct GrokTurnOptions {
@@ -341,6 +345,7 @@ impl GrokClient {
 
     /// The ways a person can let Grok work. Named here, because the leader
     /// takes them as exclusive `session/new` flags rather than listing them.
+    /// The catalog also says a later turn cannot change the chosen flag.
     pub(crate) fn permission_modes(&self) -> PermissionModes {
         let option =
             |mode: &str, label: &str, description: &str, dangerous: bool| PermissionModeOption {
@@ -373,6 +378,7 @@ impl GrokClient {
                     true,
                 ),
             ],
+            fixed_when_conversation_starts: true,
         }
     }
 
@@ -461,7 +467,7 @@ impl GrokClient {
                 session_id: id.clone(),
                 cwd: cwd.to_string(),
             }),
-            state: AsyncMutex::new(SessionState::new(mode, None, None)),
+            state: AsyncMutex::new(SessionState::new(Some(mode), None, None)),
         });
         {
             let mut state = session.state.lock().await;
@@ -526,7 +532,9 @@ impl GrokClient {
         if let Some(effort) = &state.effort {
             settings.insert("reasoningEffort".to_string(), json!(effort));
         }
-        settings.insert("permissionMode".to_string(), json!(state.mode.name()));
+        if let Some(mode) = state.mode {
+            settings.insert("permissionMode".to_string(), json!(mode.name()));
+        }
         settings
     }
 
@@ -658,12 +666,18 @@ impl GrokClient {
             )));
         }
         if let Some(mode) = options.permission_mode.as_deref() {
-            let current = session.state.lock().await.mode;
-            if PermissionMode::from_name(mode) != Some(current) {
-                return Err(GrokError::Agent(
-                    "Grok fixes the permission mode when the conversation starts; start a new Task to change it."
-                        .to_string(),
-                ));
+            let wanted = PermissionMode::from_name(mode).ok_or_else(|| {
+                GrokError::Agent(format!("Grok has no permission mode named {mode:?}"))
+            })?;
+            let mut state = session.state.lock().await;
+            match state.mode {
+                Some(current) if current != wanted => {
+                    return Err(GrokError::Agent(
+                        PERMISSION_FIXED_WHEN_CONVERSATION_STARTS.to_string(),
+                    ));
+                }
+                Some(_) => {}
+                None => state.mode = Some(wanted),
             }
         }
         self.apply_config(&session, options).await?;
@@ -1019,7 +1033,7 @@ impl GrokClient {
                 let session = Arc::new(Session {
                     thread_id: thread_id.to_string(),
                     native: AsyncMutex::new(binding.current),
-                    state: AsyncMutex::new(SessionState::new(PermissionMode::Ask, None, None)),
+                    state: AsyncMutex::new(SessionState::new(None, None, None)),
                 });
                 self.remember(session.clone()).await;
                 session
@@ -1892,6 +1906,7 @@ mod tests {
         assert_eq!(modes.options[1].label, "Grok decides");
         assert_eq!(modes.options[2].label, "Allow all");
         assert!(modes.options[2].dangerous);
+        assert!(modes.fixed_when_conversation_starts);
         let rejected = grok_turn_options(
             &client,
             &TurnOptions {
@@ -2290,6 +2305,54 @@ mod tests {
             )
             .await
             .expect("the same mode is fine");
+    }
+
+    #[tokio::test]
+    async fn a_reopened_session_does_not_invent_ask() {
+        let (client, leader, _dir) = client().await;
+        let conversation = client
+            .start_conversation(
+                CWD,
+                &GrokTurnOptions {
+                    permission_mode: Some("autoMode".to_string()),
+                    ..GrokTurnOptions::default()
+                },
+            )
+            .await
+            .unwrap();
+        leader.wait_for("session/new").await;
+        client.forget(&conversation.id).await;
+        assert!(
+            !client
+                .settings_of(&conversation.id)
+                .await
+                .contains_key("permissionMode")
+        );
+        client.open_conversation(&conversation.id).await.unwrap();
+        assert!(
+            !client
+                .settings_of(&conversation.id)
+                .await
+                .contains_key("permissionMode"),
+            "load does not invent Ask"
+        );
+        client
+            .start_turn(
+                &conversation.id,
+                CWD,
+                "x",
+                &[],
+                &GrokTurnOptions {
+                    permission_mode: Some("autoMode".to_string()),
+                    ..GrokTurnOptions::default()
+                },
+            )
+            .await
+            .expect("the mode the session was created with is still accepted");
+        assert_eq!(
+            client.settings_of(&conversation.id).await["permissionMode"],
+            "autoMode"
+        );
     }
 
     #[tokio::test]

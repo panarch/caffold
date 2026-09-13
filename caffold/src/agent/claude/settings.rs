@@ -211,6 +211,7 @@ impl ClaudeClient {
                     true,
                 ),
             ],
+            fixed_when_conversation_starts: false,
         }
     }
 
@@ -833,6 +834,10 @@ mod tests {
         };
         assert_eq!(auto(&able), Some(true));
         assert_eq!(able.default_mode, "auto", "it is also how this agent works");
+        assert!(
+            !able.fixed_when_conversation_starts,
+            "this agent can still change the mode between turns"
+        );
         assert_eq!(
             unable.default_mode, "default",
             "a default nobody can use is not a default"

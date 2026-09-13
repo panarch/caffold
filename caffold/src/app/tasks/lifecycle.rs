@@ -179,6 +179,7 @@ impl TaskLifecycle {
             effective_model.clone(),
             effective_reasoning_effort.clone(),
             requested_fast_mode,
+            settled.permission_mode.clone(),
         );
         let placement = match self.claim_at_top(managed, &task.title, &task).await {
             Ok(placement) => placement,
@@ -511,6 +512,7 @@ fn managed_thread_from_task_record(
     model: Option<String>,
     reasoning_effort: Option<String>,
     fast_mode: bool,
+    permission_mode: Option<String>,
 ) -> ManagedThread {
     let mut managed = ManagedThread::new(
         task.thread_id.clone(),
@@ -520,6 +522,7 @@ fn managed_thread_from_task_record(
         reasoning_effort,
     );
     managed.fast_mode = fast_mode;
+    managed.permission_mode = permission_mode;
     managed.last_completed_at_ms = task.last_completed_ms;
     managed
 }
@@ -613,7 +616,7 @@ mod tests {
 
         let first_placement = lifecycle
             .claim_at_top(
-                managed_thread_from_task_record(&first, RunBy::Codex, None, None, false),
+                managed_thread_from_task_record(&first, RunBy::Codex, None, None, false, None),
                 &first.title,
                 &first,
             )
@@ -621,7 +624,7 @@ mod tests {
             .unwrap();
         let second_placement = lifecycle
             .claim_at_top(
-                managed_thread_from_task_record(&second, RunBy::Codex, None, None, false),
+                managed_thread_from_task_record(&second, RunBy::Codex, None, None, false, None),
                 &second.title,
                 &second,
             )
@@ -661,7 +664,7 @@ mod tests {
         let second = task(&lifecycle, "thread-second", &second_directory);
         let first_placement = lifecycle
             .claim_at_top(
-                managed_thread_from_task_record(&first, RunBy::Codex, None, None, false),
+                managed_thread_from_task_record(&first, RunBy::Codex, None, None, false, None),
                 &first.title,
                 &first,
             )
@@ -669,7 +672,7 @@ mod tests {
             .unwrap();
         let second_placement = lifecycle
             .claim_at_top(
-                managed_thread_from_task_record(&second, RunBy::Codex, None, None, false),
+                managed_thread_from_task_record(&second, RunBy::Codex, None, None, false, None),
                 &second.title,
                 &second,
             )
@@ -704,6 +707,7 @@ mod tests {
                     None,
                     None,
                     false,
+                    None,
                 ),
                 &first_replacement.title,
                 &first_replacement,

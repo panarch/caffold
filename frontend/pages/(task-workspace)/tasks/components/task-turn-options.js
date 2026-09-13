@@ -115,6 +115,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     this.permissionRequestId = 0;
     this.permissionLoadingFeedback = createLoadingFeedback();
     this.defaultPermissionMode = "";
+    this.permissionFixedWhenConversationStarts = false;
     this.boundClick = (event) => this.handleClick(event);
     this.boundBeforeToggle = (event) => this.handleBeforeToggle(event);
     this.boundDismiss = (event) => this.handleDismiss(event);
@@ -423,6 +424,9 @@ class CaffoldTaskTurnOptions extends HTMLElement {
         return;
       }
       this.permissionOptions = normalizePermissionOptions(response);
+      this.permissionFixedWhenConversationStarts = Boolean(
+        response?.fixedWhenConversationStarts,
+      );
       const requestedDefault = `${response?.defaultMode ?? ""}`.trim();
       const defaultOption =
         this.permissionOptions.find(
@@ -439,6 +443,7 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       this.permissionError = error;
       this.permissionLoaded = true;
       this.defaultPermissionMode = "";
+      this.permissionFixedWhenConversationStarts = false;
     } finally {
       if (requestId === this.permissionRequestId) {
         this.permissionLoading = false;
@@ -584,6 +589,15 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       return;
     }
     const type = action.dataset.turnOptionsAction;
+    if (
+      type === "select-permission" &&
+      permissionFixedAfterStart(
+        this.context,
+        this.permissionFixedWhenConversationStarts,
+      )
+    ) {
+      return;
+    }
     if (type === "browse-provider") {
       this.browseProvider(action.dataset.provider);
     } else if (type === "select-model") {
@@ -616,6 +630,17 @@ class CaffoldTaskTurnOptions extends HTMLElement {
       popover !== this.modelPopover() &&
       popover !== this.permissionPopover()
     ) {
+      return;
+    }
+    if (
+      popover === this.permissionPopover() &&
+      (this.context.locked ||
+        permissionFixedAfterStart(
+          this.context,
+          this.permissionFixedWhenConversationStarts,
+        ))
+    ) {
+      event.preventDefault();
       return;
     }
     if (popover === this.modelPopover()) {
@@ -710,6 +735,14 @@ class CaffoldTaskTurnOptions extends HTMLElement {
   }
 
   selectPermission(permissionMode, control = null) {
+    if (
+      permissionFixedAfterStart(
+        this.context,
+        this.permissionFixedWhenConversationStarts,
+      )
+    ) {
+      return;
+    }
     const option = this.permissionOptions.find(
       (candidate) => candidate.mode === permissionMode,
     );
@@ -783,6 +816,11 @@ class CaffoldTaskTurnOptions extends HTMLElement {
     const permissionMode = this.selectedPermissionMode();
     const permission = this.selectedPermission();
     const locked = this.context.locked;
+    const permissionFixed = permissionFixedAfterStart(
+      this.context,
+      this.permissionFixedWhenConversationStarts,
+    );
+    const permissionLocked = locked || permissionFixed;
     this.dataset.placement = this.context.placement;
 
     const modelPending = !model && this.modelLoading;
@@ -849,18 +887,23 @@ class CaffoldTaskTurnOptions extends HTMLElement {
         : "Agent default";
     const permissionButton = this.permissionButton();
     permissionButton.classList.toggle("is-dangerous", Boolean(permission?.dangerous));
-    permissionButton.disabled = locked;
+    permissionButton.disabled = permissionLocked;
+    if (permissionLocked) {
+      this.hidePopover(this.permissionPopover());
+    }
     // A list being fetched again keeps the previous list's label in place, so
     // the control stays busy without a slot.
     this.patchPickerButton(permissionButton, {
       busy: this.permissionLoading,
       pending: permissionPending,
       feedback: this.permissionLoadingFeedback,
-      title: locked
-        ? "Approval mode can be changed after the active turn finishes."
-        : permissionPending
-          ? "Loading permission modes"
-          : permissionLabel,
+      title: permissionFixed
+        ? PERMISSION_FIXED_WHEN_CONVERSATION_STARTS
+        : locked
+          ? "Approval mode can be changed after the active turn finishes."
+          : permissionPending
+            ? "Loading permission modes"
+            : permissionLabel,
       html: `<span>${escapeHtml(compactPermission)}</span>`,
     });
     // Until the model is known its width is not, and a control sitting to the
@@ -1023,6 +1066,10 @@ class CaffoldTaskTurnOptions extends HTMLElement {
         control.getAttribute("popovertarget") === popover.id &&
         control.getAttribute("popovertargetaction") === "toggle" &&
         !this.context.locked &&
+        !permissionFixedAfterStart(
+          this.context,
+          this.permissionFixedWhenConversationStarts,
+        ) &&
         !this.permissionPicker()?.hidden &&
         !control.disabled &&
         !this.permissionPopover()?.matches(":popover-open"),
@@ -1308,6 +1355,16 @@ function normalizeReasoningOptions(options) {
     .filter(Boolean);
 }
 
+// A Task that already belongs to an agent cannot change a mode the catalog
+// says is taken only when the conversation starts. A new Task has no
+// provider yet, so the same catalog still lets the mode be chosen.
+function permissionFixedAfterStart(context, fixedWhenConversationStarts) {
+  return (
+    Boolean(`${context?.provider ?? ""}`.trim()) &&
+    Boolean(fixedWhenConversationStarts)
+  );
+}
+
 function normalizePermissionOptions(response) {
   const options = Array.isArray(response?.options) ? response.options : [];
   return options
@@ -1487,6 +1544,11 @@ const PERMISSION_MODE_LABELS = {
   approveForMe: "Approve for me",
   fullAccess: "Full access",
 };
+
+// Copy for the catalog kind that a conversation-create choice cannot change.
+// Grok is the agent that currently reports it.
+const PERMISSION_FIXED_WHEN_CONVERSATION_STARTS =
+  "Grok fixes the permission mode when the conversation starts; start a new Task to change it.";
 
 function permissionModeLabel(mode) {
   return PERMISSION_MODE_LABELS[mode] ?? `${mode ?? ""}`;

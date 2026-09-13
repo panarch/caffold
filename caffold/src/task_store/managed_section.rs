@@ -25,6 +25,7 @@ const COLUMN_DEFINITIONS: &[&str] = &[
     "last_model TEXT NULL",
     "last_reasoning_effort TEXT NULL",
     "last_fast_mode BOOLEAN NULL",
+    "last_permission_mode TEXT NULL",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,6 +44,7 @@ struct ManagedSectionRow {
     last_model: Option<String>,
     last_reasoning_effort: Option<String>,
     last_fast_mode: Option<bool>,
+    last_permission_mode: Option<String>,
 }
 
 impl From<&ManagedSection> for ManagedSectionRow {
@@ -55,6 +57,7 @@ impl From<&ManagedSection> for ManagedSectionRow {
             last_model: settings.and_then(|settings| settings.model.clone()),
             last_reasoning_effort: settings.and_then(|settings| settings.reasoning_effort.clone()),
             last_fast_mode: settings.map(|settings| settings.fast_mode),
+            last_permission_mode: settings.and_then(|settings| settings.permission_mode.clone()),
         }
     }
 }
@@ -68,6 +71,7 @@ impl TryFrom<ManagedSectionRow> for ManagedSection {
                 model: row.last_model,
                 reasoning_effort: row.last_reasoning_effort,
                 fast_mode,
+                permission_mode: row.last_permission_mode,
             }),
             None if row.last_model.is_none() && row.last_reasoning_effort.is_none() => None,
             None => return Err(TaskStoreError::InvalidRow("last_composer_settings")),
@@ -286,7 +290,7 @@ where
     if get(glue, section_id)?.is_none() {
         return Ok(None);
     }
-    let payload = table(TABLE_NAME)
+    let query = table(TABLE_NAME)
         .update()
         .filter(col("section_id").eq(text(section_id.to_owned())))
         .set("last_model", optional_text(settings.model.as_deref()))
@@ -297,8 +301,14 @@ where
         .set(
             "last_fast_mode",
             glue_value(Value::Bool(settings.fast_mode)),
-        )
-        .execute(glue)?;
+        );
+    let payload = if let Some(permission_mode) = settings.permission_mode.as_deref() {
+        query
+            .set("last_permission_mode", optional_text(Some(permission_mode)))
+            .execute(glue)?
+    } else {
+        query.execute(glue)?
+    };
     match payload {
         Payload::Update(1) => get(glue, section_id),
         _ => Err(TaskStoreError::UnexpectedPayload),
@@ -451,6 +461,7 @@ mod tests {
             model: Some("gpt-selected".to_string()),
             reasoning_effort: Some("xhigh".to_string()),
             fast_mode: true,
+            permission_mode: None,
         };
 
         assert_eq!(
@@ -508,6 +519,7 @@ mod tests {
                 last_model: Some("gpt-selected".to_string()),
                 last_reasoning_effort: None,
                 last_fast_mode: None,
+                last_permission_mode: None,
             }])
             .unwrap()
             .execute(&mut glue)

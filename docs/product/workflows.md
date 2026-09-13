@@ -41,9 +41,11 @@ implemented outer lifecycle.
    logical path.
 3. Choose a model. Each offered model identifies its agent, so this choice also
    binds the new Task to Codex, Claude, or Grok. Choose the available effort, speed,
-   and permission mode, then send a prompt.
+   and permission mode, then send a prompt. Grok keeps that permission mode for
+   the rest of the Task.
 4. Caffold starts the chosen agent's empty conversation in that cwd, durably
-   records the Task's managed membership, agent, and current composer settings,
+   records the Task's managed membership, agent, and current composer settings
+   including permission mode,
    and answers with the usable zero-turn Task. Creation does not wait for agent
    output.
 5. The browser opens that Task immediately and transfers its retained text,

@@ -120,8 +120,10 @@ contains the complete Caffold workspace.
 
 Start a Task by choosing its directory, a model, and the first prompt. The
 model identifies which agent runs the Task. That Task remains with the same
-agent while later turns may change the model, effort, speed, or permission mode
-among the choices that agent offers.
+agent while later turns may change the model, effort, and speed among the
+choices that agent offers. Codex and Claude can also change permission mode
+between turns. Grok fixes permission mode when the conversation starts,
+including on an empty Task, so a new Task is required to change it.
 
 A Task can start in an ordinary checkout and explicitly prepare a
 Caffold-managed worktree later when isolation is useful. A Section is an

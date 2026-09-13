@@ -165,6 +165,7 @@ impl TaskLifecycle {
             forked.model.clone(),
             forked.reasoning_effort.clone(),
             forked.fast_mode,
+            forked.permission_mode.map(codex_mode_id),
         );
         let placement = match self
             .claim_in_section_at_top(managed, &title, &task, &section)

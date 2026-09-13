@@ -42,7 +42,7 @@ pub(super) struct SessionState {
     /// Tool calls a person refused; drawn as declined rather than failed.
     pub(super) declined: HashSet<String>,
     pub(super) working: bool,
-    pub(super) mode: PermissionMode,
+    pub(super) mode: Option<PermissionMode>,
     pub(super) model: Option<String>,
     pub(super) effort: Option<String>,
     pub(super) title: Option<String>,
@@ -74,7 +74,11 @@ pub(super) struct PendingApproval {
 }
 
 impl SessionState {
-    pub(super) fn new(mode: PermissionMode, model: Option<String>, effort: Option<String>) -> Self {
+    pub(super) fn new(
+        mode: Option<PermissionMode>,
+        model: Option<String>,
+        effort: Option<String>,
+    ) -> Self {
         let now = now_ms();
         Self {
             mode,
@@ -276,7 +280,7 @@ mod tests {
 
     #[test]
     fn streamed_text_is_one_item_until_something_else_arrives() {
-        let mut state = SessionState::new(PermissionMode::Ask, None, None);
+        let mut state = SessionState::new(Some(PermissionMode::Ask), None, None);
         state.open_turn("p1", prompt("p1"));
         let (_, first) = state.append_text(Run::Thought, "think", None).unwrap();
         let (_, again) = state.append_text(Run::Thought, "ing", None).unwrap();
@@ -305,7 +309,7 @@ mod tests {
 
     #[test]
     fn ending_a_turn_settles_what_was_still_running() {
-        let mut state = SessionState::new(PermissionMode::Ask, None, None);
+        let mut state = SessionState::new(Some(PermissionMode::Ask), None, None);
         state.open_turn("p1", prompt("p1"));
         state.place(ConversationItem {
             id: "call-1".to_string(),
@@ -337,7 +341,7 @@ mod tests {
         assert!(matches!(turn.items[2].kind, ItemKind::Failure { .. }));
         assert!(state.active_turn.is_none());
         assert!(state.pending_approvals.is_empty());
-        let mut state = SessionState::new(PermissionMode::Ask, None, None);
+        let mut state = SessionState::new(Some(PermissionMode::Ask), None, None);
         state.open_turn("p2", prompt("p2"));
         state.place(ConversationItem {
             id: "call-2".to_string(),

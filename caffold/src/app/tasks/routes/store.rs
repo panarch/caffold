@@ -87,6 +87,7 @@ pub(super) async fn task_store_update_composer_settings(
     model: Option<&str>,
     reasoning_effort: Option<&str>,
     fast_mode: bool,
+    permission_mode: Option<&str>,
 ) -> Result<Option<ManagedThread>, ApiError> {
     let persisted = composer_settings::persist_started_turn_composer_settings(
         state.task_store.clone(),
@@ -95,6 +96,7 @@ pub(super) async fn task_store_update_composer_settings(
             model: model.map(str::to_string),
             reasoning_effort: reasoning_effort.map(str::to_string),
             fast_mode,
+            permission_mode: permission_mode.map(str::to_string),
         },
     )
     .await?;

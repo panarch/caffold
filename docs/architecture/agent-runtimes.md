@@ -268,7 +268,11 @@ Grok's model catalog and reasoning efforts are read from the leader and
 applied with `session/set_config_option`. Grok lists no permission catalog;
 the driver names the exclusive `session/new` flags it accepts — neither,
 `autoMode`, or `yoloMode` — and the permission mode is fixed when the session
-is created. Images are sent as prompt blocks. The
+is created. The permission catalog carries that fact so the follow-up composer
+can show the current mode as uneditable; a later turn that asks for another
+mode is still refused. The Task's composer settings keep the mode Caffold
+sent at session/new, because the leader does not report autoMode again after
+load. Images are sent as prompt blocks. The
 Settings report reads the installation without touching any of this: the
 executable by running it, the leader through `grok leader info`, the connection
 as the bridge stands, and the account through a leader that is already

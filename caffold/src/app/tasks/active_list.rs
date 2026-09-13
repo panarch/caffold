@@ -46,6 +46,8 @@ pub(in crate::app::tasks) struct ActiveTaskComposerSettings {
     pub(in crate::app::tasks) model: Option<String>,
     pub(in crate::app::tasks) effort: Option<String>,
     pub(in crate::app::tasks) fast_mode: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(in crate::app::tasks) permission_mode: Option<String>,
 }
 
 impl From<&ComposerSettings> for ActiveTaskComposerSettings {
@@ -54,6 +56,7 @@ impl From<&ComposerSettings> for ActiveTaskComposerSettings {
             model: settings.model.clone(),
             effort: settings.reasoning_effort.clone(),
             fast_mode: settings.fast_mode,
+            permission_mode: settings.permission_mode.clone(),
         }
     }
 }
@@ -579,6 +582,7 @@ mod tests {
                         model: Some("gpt-section".to_string()),
                         reasoning_effort: Some("xhigh".to_string()),
                         fast_mode: true,
+                        permission_mode: None,
                     },
                 )?;
                 Ok(())
@@ -612,6 +616,7 @@ mod tests {
                 model: Some("gpt-section".to_string()),
                 effort: Some("xhigh".to_string()),
                 fast_mode: true,
+                permission_mode: None,
             })
         );
         assert_eq!(projection.sections[1].composer_settings, None);

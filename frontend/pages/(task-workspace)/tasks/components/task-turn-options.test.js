@@ -144,6 +144,131 @@ test("provides Permission through the same retained native popover contract", ()
   assert.equal(target.isActionable(), false);
 });
 
+test("permission Action Hint is not actionable once the catalog has fixed the mode", () => {
+  const control = {
+    disabled: false,
+    getAttribute(name) {
+      return new Map([
+        ["aria-label", "Choose approval mode"],
+        ["popovertarget", "permission-options"],
+        ["popovertargetaction", "toggle"],
+      ]).get(name) ?? null;
+    },
+  };
+  const owner = {
+    isConnected: true,
+    context: { locked: false, provider: "grok" },
+    permissionFixedWhenConversationStarts: true,
+    ensureRendered() {},
+    permissionButton: () => control,
+    permissionPicker: () => ({ hidden: false }),
+    permissionPopover: () => ({
+      id: "permission-options",
+      matches: () => false,
+    }),
+  };
+
+  const target = turnOptions.actionHintPermissionTarget.call(owner, {
+    scopeId: "task:thread-a",
+  });
+  assert.equal(target.isActionable(), false);
+});
+
+test("locks only the approval picker when the conversation exists and the catalog fixes the mode", () => {
+  const modelButton = control();
+  const permissionButton = control();
+  const owner = renderOwner({
+    context: { locked: false, placement: "below", provider: "grok" },
+    permissionFixedWhenConversationStarts: true,
+    selectedPermissionMode: () => "ask",
+    selectedPermission: () => ({
+      mode: "ask",
+      label: "Ask first",
+      allowed: true,
+    }),
+    modelButton: () => modelButton,
+    permissionButton: () => permissionButton,
+  });
+
+  turnOptions.render.call(owner);
+
+  assert.equal(modelButton.disabled, false);
+  assert.equal(permissionButton.disabled, true);
+  assert.equal(
+    permissionButton.title,
+    "Grok fixes the permission mode when the conversation starts; start a new Task to change it.",
+  );
+});
+
+test("keeps the approval picker editable on a new Task even when the catalog would fix the mode later", () => {
+  const permissionButton = control();
+  const owner = renderOwner({
+    context: { locked: false, placement: "below", provider: "" },
+    permissionFixedWhenConversationStarts: true,
+    selectedPermissionMode: () => "ask",
+    selectedPermission: () => ({
+      mode: "ask",
+      label: "Ask first",
+      allowed: true,
+    }),
+    permissionButton: () => permissionButton,
+  });
+
+  turnOptions.render.call(owner);
+
+  assert.equal(permissionButton.disabled, false);
+  assert.equal(permissionButton.title, "Ask first");
+});
+
+test("prefers the conversation-start lock copy over the active-turn lock on a fixed approval picker", () => {
+  const modelButton = control();
+  const permissionButton = control();
+  const owner = renderOwner({
+    context: { locked: true, placement: "below", provider: "grok" },
+    permissionFixedWhenConversationStarts: true,
+    selectedPermissionMode: () => "ask",
+    selectedPermission: () => ({
+      mode: "ask",
+      label: "Ask first",
+      allowed: true,
+    }),
+    modelButton: () => modelButton,
+    permissionButton: () => permissionButton,
+  });
+
+  turnOptions.render.call(owner);
+
+  assert.equal(modelButton.disabled, true);
+  assert.equal(
+    modelButton.title,
+    "Model, reasoning, and speed can be changed after the active turn finishes.",
+  );
+  assert.equal(permissionButton.disabled, true);
+  assert.equal(
+    permissionButton.title,
+    "Grok fixes the permission mode when the conversation starts; start a new Task to change it.",
+  );
+});
+
+test("does not change approval mode after the catalog has fixed it", () => {
+  const owner = {
+    context: { provider: "grok" },
+    permissionFixedWhenConversationStarts: true,
+    permissionOptions: [
+      { mode: "ask", allowed: true, dangerous: false },
+      { mode: "yoloMode", allowed: true, dangerous: true },
+    ],
+    selection: {
+      permissionMode: "ask",
+      permissionExplicit: false,
+    },
+  };
+
+  turnOptions.selectPermission.call(owner, "yoloMode");
+  assert.equal(owner.selection.permissionMode, "ask");
+  assert.equal(owner.selection.permissionExplicit, false);
+});
+
 test("keeps the popover shell while replacing only its option body", () => {
   const content = control();
   content.contains = () => false;
@@ -738,6 +863,7 @@ function control() {
   let html = "";
   return {
     attributes,
+    disabled: false,
     querySelector: (selector) => ({ selector }),
     assignments: 0,
     title: "",
@@ -795,6 +921,7 @@ function renderOwner(overrides = {}) {
     patchPickerButton: turnOptions.patchPickerButton,
     renderModelPopover: turnOptions.renderModelPopover,
     patchPopover() {},
+    hidePopover() {},
     ...overrides,
   };
 }

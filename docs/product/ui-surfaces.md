@@ -68,9 +68,12 @@ while its migration blocks operations, with its own retry lifecycle.
 
 Each offered model identifies its agent. Task creation starts a conversation
 with that agent in the selected cwd and binds the Task to it; later turns can
-choose only models from the same agent. New Task reports that the task is
-starting until the empty Task is durably created, and the answer opens the Task
-without waiting for a turn. The retained New Task submission then moves into
+choose only models from the same agent. Codex and Claude follow-up composers
+can still change permission mode between turns. A Grok Task's follow-up
+composer shows the session's approval mode and does not let it change,
+including on an empty Task. New Task reports that the task is starting until
+the empty Task is durably created, and the answer opens the Task without
+waiting for a turn. The retained New Task submission then moves into
 that Task's Composer and is sent through the ordinary prompt flow.
 Managed-worktree preparation happens explicitly from the resulting Task; it
 is not an implicit side effect of task creation.
