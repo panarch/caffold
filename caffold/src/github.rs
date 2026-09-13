@@ -290,9 +290,9 @@ fn prepare_pull_head_from_remote(
 
 pub(crate) fn capability(repository: &git::Repository) -> Option<GithubCapability> {
     let repository = repository_for(repository)?;
-    let gh_available = command_success(Command::new("gh").arg("--version").output().ok());
+    let gh_available = command_success(gh_command().arg("--version").output().ok());
     let authenticated =
-        gh_available && command_success(Command::new("gh").arg("auth").arg("status").output().ok());
+        gh_available && command_success(gh_command().arg("auth").arg("status").output().ok());
     let issues_available = gh_available && authenticated;
     let pulls_available = gh_available && authenticated;
     let message = if !gh_available {
@@ -357,7 +357,7 @@ fn run_issue_search(
     per_page: usize,
 ) -> Option<GhIssueSearchResponse> {
     let query = issue_search_query(repository, state);
-    let output = Command::new("gh")
+    let output = gh_command()
         .arg("api")
         .arg("-X")
         .arg("GET")
@@ -386,7 +386,7 @@ pub(crate) fn issue_detail(
     repository: &GithubRepository,
     number: u64,
 ) -> Option<GithubIssueDetail> {
-    let output = Command::new("gh")
+    let output = gh_command()
         .arg("api")
         .arg("graphql")
         .arg("-f")
@@ -451,7 +451,7 @@ fn run_pull_search(
     per_page: usize,
 ) -> Option<GhIssueSearchResponse> {
     let query = pull_search_query(repository, state);
-    let output = Command::new("gh")
+    let output = gh_command()
         .arg("api")
         .arg("-X")
         .arg("GET")
@@ -510,7 +510,7 @@ fn run_pull_files_page(
     page: usize,
     per_page: usize,
 ) -> Option<Vec<GithubPullFile>> {
-    let output = Command::new("gh")
+    let output = gh_command()
         .arg("api")
         .arg("-X")
         .arg("GET")
@@ -640,7 +640,7 @@ fn run_pull_graphql(
     query: &str,
     cursor: Option<&str>,
 ) -> Option<Output> {
-    let mut command = Command::new("gh");
+    let mut command = gh_command();
     command
         .arg("api")
         .arg("graphql")
@@ -917,6 +917,16 @@ fn total_pages(total_count: usize, per_page: usize) -> usize {
     } else {
         total_count.div_ceil(per_page)
     }
+}
+
+fn gh_command() -> Command {
+    let mut command = Command::new("gh");
+    // These force gh to color its output even into a pipe, which corrupts the
+    // JSON. A server started from a color-forcing shell inherits them.
+    command
+        .env_remove("CLICOLOR_FORCE")
+        .env_remove("GH_FORCE_TTY");
+    command
 }
 
 fn command_success(output: Option<Output>) -> bool {
