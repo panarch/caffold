@@ -143,6 +143,7 @@ const APP_SHELL_ASSETS = [
   "/assets/pages/(task-workspace)/settings/claude/components/runtime-restart-dialog.js",
   "/assets/pages/(task-workspace)/settings/grok/page.css",
   "/assets/pages/(task-workspace)/settings/grok/page.js",
+  "/assets/pages/(task-workspace)/settings/grok/display.js",
   "/assets/pages/(task-workspace)/settings/about/page.css",
   "/assets/pages/(task-workspace)/settings/about/page.js",
   "/assets/pages/(task-workspace)/tasks/controls.css",

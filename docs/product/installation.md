@@ -83,13 +83,15 @@ after Caffold stops; `grok leader list` shows it beside any leader the CLI
 started for itself. Caffold does not use or stop the CLI's own leader.
 
 **Settings → Grok** reports the detected executable and version, the
-signed-in account as the leader confirms it, the leader on Caffold's socket
-with its own build, and the state of Caffold's connection. Opening the page
-starts no leader, session, or turn: a leader that is not running is reported
-as such, and the account is verified only while a leader answers.
+signed-in account as the leader confirms it, plan usage as that leader
+reports it, the leader on Caffold's socket with its own build, and the state
+of Caffold's connection. Opening the page starts no leader, session, or turn:
+a leader that is not running is reported as such, and the account and usage
+are asked only while a leader answers.
 
 Caffold uses the CLI's existing sign-in. It does not read or store Grok
-credentials and does not install or update the CLI.
+credentials, does not call xAI billing APIs itself, and does not install or
+update the CLI.
 
 ### Optional integrations
 

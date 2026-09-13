@@ -28,7 +28,7 @@ boundaries.
   provider profiles;
 - separate Codex, Claude, and Grok Settings diagnostics, including Claude
   account, plan usage, and runner state, and the Grok executable, leader,
-  connection, and account, as each CLI reports them;
+  connection, account, and plan usage, as each CLI reports them;
 - selectable managed Sections with fixed-directory Task creation;
 - shared integrated Working Tree/Branch, file/source, Git Compare/Log, and
   GitHub review surfaces for repository-backed Tasks and Sections;
