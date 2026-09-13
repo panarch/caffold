@@ -219,21 +219,26 @@ pub(super) struct NewSession<'a> {
 }
 
 /// The ways Grok can be let to work, chosen when a session starts.
+///
+/// Grok lists no permission catalog. These are the exclusive `session/new`
+/// `_meta` flags it accepts: neither, `autoMode`, or `yoloMode`. Both flags
+/// together are not a mode.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(super) enum PermissionMode {
-    /// Grok asks before anything its own policy does not allow.
+    /// Neither flag: Grok asks before anything its own policy does not allow.
     #[default]
     Ask,
-    /// Grok decides for itself, asking nobody.
+    /// `_meta.autoMode`: Grok decides for itself, asking nobody.
     Auto,
-    /// Everything is allowed.
+    /// `_meta.yoloMode`: everything is allowed.
     Bypass,
 }
 
 impl PermissionMode {
-    pub(super) const ASK: &'static str = "default";
-    pub(super) const AUTO: &'static str = "auto";
-    pub(super) const BYPASS: &'static str = "bypass";
+    /// The session/new with neither flag. Grok names no catalog entry for it.
+    pub(super) const ASK: &'static str = "ask";
+    pub(super) const AUTO: &'static str = "autoMode";
+    pub(super) const BYPASS: &'static str = "yoloMode";
 
     pub(super) fn name(self) -> &'static str {
         match self {
@@ -970,7 +975,29 @@ mod tests {
             mode: PermissionMode::Ask,
         });
         assert!(ask["_meta"].get("yoloMode").is_none());
+        assert!(ask["_meta"].get("autoMode").is_none());
         assert!(ask["_meta"].get("rules").is_none());
+        let auto = session_new_params(NewSession {
+            session_id: "sid",
+            cwd: "/work",
+            mcp_servers: Vec::new(),
+            rules: None,
+            mode: PermissionMode::Auto,
+        });
+        assert_eq!(auto["_meta"]["autoMode"], true);
+        assert!(auto["_meta"].get("yoloMode").is_none());
+        assert_eq!(
+            PermissionMode::from_name("autoMode"),
+            Some(PermissionMode::Auto)
+        );
+        assert_eq!(
+            PermissionMode::from_name("yoloMode"),
+            Some(PermissionMode::Bypass)
+        );
+        assert_eq!(PermissionMode::from_name("ask"), Some(PermissionMode::Ask));
+        assert_eq!(PermissionMode::from_name("auto"), None);
+        assert_eq!(PermissionMode::from_name("bypass"), None);
+        assert_eq!(PermissionMode::from_name("default"), None);
     }
 
     #[test]
