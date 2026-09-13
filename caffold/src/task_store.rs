@@ -36,6 +36,7 @@ pub(crate) struct ComposerSettings {
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
     pub fast_mode: bool,
+    pub permission_mode: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -247,20 +248,10 @@ impl TaskStoreTables<'_> {
         settings: &ComposerSettings,
     ) -> Result<Option<ManagedThread>> {
         match self {
-            Self::Memory(glue) => managed_thread::update_composer_settings(
-                glue,
-                thread_id,
-                settings.model.as_deref(),
-                settings.reasoning_effort.as_deref(),
-                settings.fast_mode,
-            ),
-            Self::Redb(glue) => managed_thread::update_composer_settings(
-                glue,
-                thread_id,
-                settings.model.as_deref(),
-                settings.reasoning_effort.as_deref(),
-                settings.fast_mode,
-            ),
+            Self::Memory(glue) => {
+                managed_thread::update_composer_settings(glue, thread_id, settings)
+            }
+            Self::Redb(glue) => managed_thread::update_composer_settings(glue, thread_id, settings),
         }
     }
 
@@ -562,24 +553,18 @@ impl TaskStore {
     pub(crate) fn update_composer_settings(
         &self,
         thread_id: &str,
-        model: Option<&str>,
-        reasoning_effort: Option<&str>,
-        fast_mode: bool,
+        settings: &ComposerSettings,
     ) -> Result<Option<ManagedThread>> {
         match self {
             Self::Memory(glue) => managed_thread::update_composer_settings(
                 &mut *lock_glue(glue)?,
                 thread_id,
-                model,
-                reasoning_effort,
-                fast_mode,
+                settings,
             ),
             Self::Redb(glue) => managed_thread::update_composer_settings(
                 &mut *lock_glue(glue)?,
                 thread_id,
-                model,
-                reasoning_effort,
-                fast_mode,
+                settings,
             ),
         }
     }
@@ -795,7 +780,15 @@ mod tests {
             let seen = store.mark_seen(&thread_id, 30, 50).unwrap().unwrap();
             assert!(!seen.unseen());
             let configured = store
-                .update_composer_settings(&thread_id, Some("gpt-test"), Some("xhigh"), true)
+                .update_composer_settings(
+                    &thread_id,
+                    &ComposerSettings {
+                        model: Some("gpt-test".to_string()),
+                        reasoning_effort: Some("xhigh".to_string()),
+                        fast_mode: true,
+                        permission_mode: None,
+                    },
+                )
                 .unwrap()
                 .unwrap();
             assert_eq!(configured.model.as_deref(), Some("gpt-test"));

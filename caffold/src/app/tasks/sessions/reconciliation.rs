@@ -76,7 +76,9 @@ pub(super) fn apply_thread_settings(
     settings: &BTreeMap<String, Value>,
 ) {
     let read = driver.read_settings(settings);
-    state.permission_mode = read.permission_mode;
+    if read.permission_mode.is_some() {
+        state.permission_mode = read.permission_mode;
+    }
     if read.model.is_some() {
         state.model = read.model;
     }

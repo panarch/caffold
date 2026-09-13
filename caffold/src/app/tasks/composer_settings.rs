@@ -47,6 +47,7 @@ mod tests {
             model: Some(model.to_string()),
             reasoning_effort: Some(effort.to_string()),
             fast_mode,
+            permission_mode: Some("autoMode".to_string()),
         }
     }
 

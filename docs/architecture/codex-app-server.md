@@ -457,8 +457,9 @@ cwd-derived worktree into a Caffold-owned resource. See
 Caffold persists managed-thread membership, the Task's agent, display names,
 nullable Section placement, Managed Section IDs, logical paths and order,
 observed recency, Caffold-only open/seen timestamps, each Task's current
-composer settings, and each Section's composer settings from its last
-successfully started turn in GlueSQL Redb. Task and Section settings use the
+composer settings (model, effort, speed, and permission mode), and each
+Section's composer settings from its last successfully started turn in GlueSQL
+Redb. Task and Section settings use the
 same value shape but remain separately owned records: the Task fields describe
 its current state, while the Section fields seed the next Task created in that
 Section. For a Codex Task, Caffold does not persist thread status, active turn,

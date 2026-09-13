@@ -1,6 +1,4 @@
-#[cfg(test)]
-use super::ComposerSettings;
-use super::{Result, TaskStoreError};
+use super::{ComposerSettings, Result, TaskStoreError};
 use chrono::{DateTime, NaiveDateTime, Utc};
 #[cfg(test)]
 use gluesql::core::data::Schema;
@@ -126,6 +124,7 @@ const COLUMN_DEFINITIONS: &[&str] = &[
     "position_in_section INTEGER NULL",
     "provider TEXT NOT NULL DEFAULT 'codex'",
     "cwd TEXT NULL",
+    "permission_mode TEXT NULL",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -148,6 +147,7 @@ pub(crate) struct ManagedThread {
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
     pub fast_mode: bool,
+    pub permission_mode: Option<String>,
 }
 
 impl ManagedThread {
@@ -174,6 +174,7 @@ impl ManagedThread {
             model,
             reasoning_effort,
             fast_mode: false,
+            permission_mode: None,
         }
     }
 
@@ -190,6 +191,7 @@ impl ManagedThread {
             model: self.model.clone(),
             reasoning_effort: self.reasoning_effort.clone(),
             fast_mode: self.fast_mode,
+            permission_mode: self.permission_mode.clone(),
         }
     }
 }
@@ -206,6 +208,7 @@ pub(super) struct ManagedThreadRow {
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
     pub fast_mode: bool,
+    pub permission_mode: Option<String>,
     pub display_name: String,
     pub section_id: Option<String>,
     pub position_in_section: Option<i64>,
@@ -249,6 +252,7 @@ impl TryFrom<&ManagedThread> for ManagedThreadRow {
             model: thread.model.clone(),
             reasoning_effort: thread.reasoning_effort.clone(),
             fast_mode: thread.fast_mode,
+            permission_mode: thread.permission_mode.clone(),
         })
     }
 }
@@ -285,6 +289,7 @@ impl TryFrom<ManagedThreadRow> for ManagedThread {
             model: row.model,
             reasoning_effort: row.reasoning_effort,
             fast_mode: row.fast_mode,
+            permission_mode: row.permission_mode,
         })
     }
 }
@@ -363,6 +368,9 @@ where
             thread.reasoning_effort = existing.reasoning_effort;
         }
         thread.fast_mode = existing.fast_mode;
+        if thread.permission_mode.is_none() {
+            thread.permission_mode = existing.permission_mode;
+        }
         update_all(glue, &thread)?;
     } else {
         if get_archived(glue, &thread.thread_id)?.is_some() {
@@ -638,9 +646,7 @@ where
 pub(super) fn update_composer_settings<S>(
     glue: &mut Glue<S>,
     thread_id: &str,
-    model: Option<&str>,
-    reasoning_effort: Option<&str>,
-    fast_mode: bool,
+    settings: &ComposerSettings,
 ) -> Result<Option<ManagedThread>>
 where
     S: GStore + GStoreMut + Planner,
@@ -648,14 +654,20 @@ where
     if get(glue, thread_id)?.is_none() {
         return Ok(None);
     }
-    table(TABLE_NAME)
+    let mut query = table(TABLE_NAME)
         .update()
         .filter(col("thread_id").eq(text(thread_id.to_owned())))
         .filter(Membership::Active.filter())
-        .set("model", optional_text(model))
-        .set("reasoning_effort", optional_text(reasoning_effort))
-        .set("fast_mode", glue_value(Value::Bool(fast_mode)))
-        .execute(glue)?;
+        .set("model", optional_text(settings.model.as_deref()))
+        .set(
+            "reasoning_effort",
+            optional_text(settings.reasoning_effort.as_deref()),
+        )
+        .set("fast_mode", glue_value(Value::Bool(settings.fast_mode)));
+    if let Some(permission_mode) = settings.permission_mode.as_deref() {
+        query = query.set("permission_mode", optional_text(Some(permission_mode)));
+    }
+    query.execute(glue)?;
     get(glue, thread_id)
 }
 
@@ -1343,6 +1355,7 @@ mod tests {
             model: Some("gpt-test".to_string()),
             reasoning_effort: Some("xhigh".to_string()),
             fast_mode: true,
+            permission_mode: Some("autoMode".to_string()),
         };
 
         let row = ManagedThreadRow::try_from(&thread).unwrap();
@@ -1522,7 +1535,17 @@ mod tests {
         assert_eq!(claimed.last_seen_activity_ms, None);
         assert!(!claimed.unseen());
 
-        update_composer_settings(&mut glue, "task", Some("gpt-test"), Some("xhigh"), true).unwrap();
+        update_composer_settings(
+            &mut glue,
+            "task",
+            &ComposerSettings {
+                model: Some("gpt-test".to_string()),
+                reasoning_effort: Some("xhigh".to_string()),
+                fast_mode: true,
+                permission_mode: None,
+            },
+        )
+        .unwrap();
         let refreshed = update_observed_recency(&mut glue, "task", 40)
             .unwrap()
             .unwrap();
@@ -1635,7 +1658,7 @@ mod tests {
         );
         assert_eq!(mark_seen(&mut glue, "missing", 100, 100).unwrap(), None);
         assert_eq!(
-            update_composer_settings(&mut glue, "missing", None, None, false).unwrap(),
+            update_composer_settings(&mut glue, "missing", &ComposerSettings::default()).unwrap(),
             None
         );
         assert!(!delete(&mut glue, "missing").unwrap());

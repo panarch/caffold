@@ -231,6 +231,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(response.default_mode, "approveForMe");
+        assert!(
+            !response.fixed_when_conversation_starts,
+            "this agent can still change the mode between turns"
+        );
         // Two choices share the workspace profile and differ by who reviews, so
         // the third is the only one a forbidden profile can withhold.
         assert_eq!(

@@ -243,6 +243,7 @@ class CaffoldTaskCreate extends HTMLElement {
       model: settings.model ?? "",
       effort: settings.effort ?? "",
       fastMode: Boolean(settings.fastMode),
+      permissionMode: settings.permissionMode ?? "",
       disabled: !this.transportAvailable || this.taskOperationsBlocked,
       requestError: this.error?.message ?? "",
     });
@@ -277,6 +278,7 @@ function normalizeComposerSettings(settings) {
     model: `${settings.model ?? ""}`,
     effort: `${settings.effort ?? ""}`,
     fastMode: Boolean(settings.fastMode),
+    permissionMode: `${settings.permissionMode ?? ""}`,
   };
 }
 

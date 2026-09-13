@@ -145,18 +145,22 @@ pub(crate) struct ModelOption {
 
 /// The ways a person can let an agent work, as that agent offers them.
 ///
-/// Neither agent hands this over ready to show. Codex has permission profiles
+/// No agent hands this over ready to show. Codex has permission profiles
 /// and a separate reviewer setting, and the choices worth offering are
 /// combinations of the two; Claude names its modes outright but calls one of
-/// them `bypassPermissions`. Either way the assembling and the naming are the
-/// driver's, because knowing what a mode does to an agent is knowing that
-/// agent.
+/// them `bypassPermissions`; Grok takes exclusive session/new flags and
+/// cannot change them after the conversation starts. The assembling and the
+/// naming are the driver's, because knowing what a mode does to an agent is
+/// knowing that agent.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PermissionModes {
     /// What this installation works under when nobody chooses.
     pub(crate) default_mode: String,
     pub(crate) options: Vec<PermissionModeOption>,
+    /// True when this agent takes a permission mode only as a
+    /// conversation-create choice.
+    pub(crate) fixed_when_conversation_starts: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -620,7 +624,8 @@ impl Driver {
     /// Codex resolves the modes from the profiles a workspace allows and who
     /// reviews. Claude has one mode — the model deciding for itself — that
     /// only some models can do. Grok names no list; the driver names the
-    /// exclusive session/new flags it accepts.
+    /// exclusive session/new flags it accepts, and that a later turn cannot
+    /// change them.
     pub(crate) async fn permission_modes(
         &self,
         cwd: &str,
@@ -632,6 +637,7 @@ impl Driver {
                 Ok(PermissionModes {
                     default_mode,
                     options,
+                    fixed_when_conversation_starts: false,
                 })
             }
             Self::Claude(claude) => Ok(claude.client.permission_modes(model).await),

@@ -342,6 +342,7 @@ mod tests {
                     model: Some("gpt-section".to_string()),
                     reasoning_effort: Some("xhigh".to_string()),
                     fast_mode: true,
+                    permission_mode: None,
                 }),
             });
 

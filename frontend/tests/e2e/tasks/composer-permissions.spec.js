@@ -63,6 +63,76 @@ function claudePermissions(model) {
   };
 }
 
+// Grok takes a permission mode only as a session/new flag. The catalog says
+// so, so a follow-up can show the mode as fixed without the test hard-coding
+// the provider in the picker.
+const GROK_PERMISSION_FIXED =
+  "Grok fixes the permission mode when the conversation starts; start a new Task to change it.";
+
+const GROK_MODELS = [
+  {
+    provider: "grok",
+    model: "grok-4.5",
+    displayName: "Grok 4.5",
+    description: "Grok 4.5",
+    isDefault: true,
+    defaultEffort: "xhigh",
+    efforts: ["low", "medium", "high", "xhigh"],
+    supportsFastMode: false,
+  },
+];
+
+const GROK_PERMISSIONS = {
+  defaultMode: "ask",
+  fixedWhenConversationStarts: true,
+  options: [
+    {
+      mode: "ask",
+      label: "Ask first",
+      description: "Grok asks before anything its own policy does not already allow.",
+      allowed: true,
+      dangerous: false,
+    },
+    {
+      mode: "autoMode",
+      label: "Grok decides",
+      description: "Grok decides what to allow, and asks nobody.",
+      allowed: true,
+      dangerous: false,
+    },
+    {
+      mode: "yoloMode",
+      label: "Allow all",
+      description: "Every tool call runs. Grok does not ask.",
+      allowed: true,
+      dangerous: true,
+    },
+  ],
+};
+
+async function installGrokAgent(page) {
+  await page.unroute("**/api/agent/models");
+  await page.route("**/api/agent/models", (route) =>
+    route.fulfill({ json: { models: GROK_MODELS, unavailable: [] } }),
+  );
+  await page.unroute("**/api/agent/permissions*");
+  await page.route("**/api/agent/permissions*", (route) =>
+    route.fulfill({ json: GROK_PERMISSIONS }),
+  );
+}
+
+function grokTaskDetail(overrides = {}) {
+  return {
+    ...taskDetailFixture({
+      model: "grok-4.5",
+      reasoningEffort: "xhigh",
+    }),
+    provider: "grok",
+    permissionMode: "ask",
+    ...overrides,
+  };
+}
+
 // `answer` receives the model the list was asked for and the route to answer
 // on, so a test can delay or refuse one list without restating the agent.
 async function installClaudeAgent(page, answer) {
@@ -1082,6 +1152,164 @@ test("explicit approval mode is sent with a follow-up prompt", { tag: "@all-view
   expect(submittedBody).toMatchObject({
     prompt: "Continue the task",
     permissionMode: "approveForMe",
+  });
+});
+
+test("a new Task can still choose Grok approval mode before creation", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  await installGrokAgent(page);
+  const created = await captureTaskCreation(page);
+
+  await page.goto("/tasks/new?cwd=src");
+  const form = page.locator('.task-new-form[data-task-form="create"]');
+  const picker = form.getByRole("button", { name: "Choose approval mode" });
+  await expect(picker).toBeEnabled();
+  await expect(picker).toContainText("Ask first");
+  await picker.click();
+  await form.getByRole("button", { name: /^Grok decides/ }).click();
+  await expect(form.locator('input[name="permissionMode"]')).toHaveValue(
+    "autoMode",
+  );
+  await form.getByRole("textbox", { name: "New task prompt" }).fill(
+    "Inspect the Grok session",
+  );
+  await form.getByRole("textbox", { name: "New task prompt" }).press("Enter");
+
+  await expect.poll(() => created.body).not.toBeNull();
+  expect(created.body).toMatchObject({ permissionMode: "autoMode" });
+});
+
+test("a Grok follow-up cannot change approval mode once the conversation exists", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  await installGrokAgent(page);
+  const detail = grokTaskDetail();
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+  await page.route("**/api/tasks/thread-1/stream*", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: ": ready\n\n",
+    }),
+  );
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+  const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
+  const picker = form.getByRole("button", { name: "Choose approval mode" });
+  await expect(picker).toContainText("Ask first");
+  await expect(picker).toBeDisabled();
+  await expect(picker).toHaveAttribute("title", GROK_PERMISSION_FIXED);
+  await expect(form.getByRole("menu", { name: "Approval modes" })).toBeHidden();
+
+  const modelPicker = form.getByRole("button", { name: /Choose model/ });
+  await expect(modelPicker).toBeEnabled();
+  await modelPicker.click();
+  await expect(
+    form.getByRole("menu", { name: /Model.*options/ }),
+  ).toBeVisible();
+});
+
+test("a Grok follow-up still submits the current approval mode", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  await installGrokAgent(page);
+  const detail = grokTaskDetail();
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+  await page.route("**/api/tasks/thread-1/stream*", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: ": ready\n\n",
+    }),
+  );
+  let submittedBody = null;
+  await page.route("**/api/tasks/thread-1/prompts", (route) => {
+    submittedBody = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-2",
+        userMessageId: "message-permission-grok",
+        steered: false,
+      },
+    });
+  });
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+  const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
+  const picker = form.getByRole("button", { name: "Choose approval mode" });
+  await expect(picker).toBeDisabled();
+  await form.getByRole("textbox", { name: "Follow-up prompt" }).fill(
+    "Continue the Grok task",
+  );
+  await form.getByRole("textbox", { name: "Follow-up prompt" }).press("Enter");
+
+  await expect.poll(() => submittedBody).not.toBeNull();
+  expect(submittedBody).toMatchObject({
+    prompt: "Continue the Grok task",
+    permissionMode: "ask",
+  });
+});
+
+test("a Claude follow-up can still change approval mode between turns", { tag: "@all-viewports" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  await installClaudeAgent(page);
+  const detail = {
+    ...taskDetailFixture(),
+    provider: "claude",
+    model: "sonnet",
+    reasoningEffort: "high",
+    permissionMode: "auto",
+  };
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+  await page.route("**/api/tasks/thread-1/stream*", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: ": ready\n\n",
+    }),
+  );
+  let submittedBody = null;
+  await page.route("**/api/tasks/thread-1/prompts", (route) => {
+    submittedBody = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-2",
+        userMessageId: "message-permission-claude",
+        steered: false,
+      },
+    });
+  });
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+  const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
+  const picker = form.getByRole("button", { name: "Choose approval mode" });
+  await expect(picker).toBeEnabled();
+  await expect(picker).toContainText("Automatic");
+  await picker.click();
+  await form.getByRole("button", { name: /^Ask each time/ }).click();
+  await form.getByRole("textbox", { name: "Follow-up prompt" }).fill(
+    "Continue the Claude task",
+  );
+  await form.getByRole("textbox", { name: "Follow-up prompt" }).press("Enter");
+
+  await expect.poll(() => submittedBody).not.toBeNull();
+  expect(submittedBody).toMatchObject({
+    prompt: "Continue the Claude task",
+    permissionMode: "default",
   });
 });
 

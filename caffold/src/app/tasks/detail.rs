@@ -476,6 +476,7 @@ impl DetailContext {
             let provider = Some(current.run_by.provider());
             let model = session_model.or(current.model);
             let reasoning_effort = session_reasoning_effort.or(current.reasoning_effort);
+            let permission_mode = permission_mode.or(current.permission_mode);
             return Ok(TaskDetailResponse {
                 thread_id,
                 sync_state: TaskSyncState::Ready,
@@ -659,7 +660,7 @@ pub(in crate::app::tasks) fn loading_detail(
         pending_approvals: Vec::new(),
         history_loading: true,
         provider: managed.map(|thread| thread.run_by.provider()),
-        permission_mode: None,
+        permission_mode: managed.and_then(|thread| thread.permission_mode.clone()),
         model: managed.and_then(|thread| thread.model.clone()),
         reasoning_effort: managed.and_then(|thread| thread.reasoning_effort.clone()),
         fast_mode: managed.is_some_and(|thread| thread.fast_mode),
@@ -1411,6 +1412,7 @@ mod request_tests {
         assert_eq!(detail.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(detail.reasoning_effort.as_deref(), Some("xhigh"));
         assert!(detail.fast_mode);
+        assert_eq!(detail.permission_mode, None);
     }
 
     #[tokio::test]

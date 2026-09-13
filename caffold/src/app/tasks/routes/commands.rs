@@ -244,6 +244,7 @@ async fn task_prompt_owned(
                 snapshot.model.as_deref(),
                 snapshot.reasoning_effort.as_deref(),
                 snapshot.fast_mode,
+                snapshot.permission_mode.as_deref(),
             )
             .await;
             if let Err(error) = persistence_result {
@@ -1468,6 +1469,7 @@ mod tests {
                         model: Some("gpt-5.6-sol".to_string()),
                         effort: Some("xhigh".to_string()),
                         fast_mode: true,
+                        permission_mode: Some("askForApproval".to_string()),
                     }
                 );
             }
@@ -1480,6 +1482,7 @@ mod tests {
         assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
         assert!(stored.fast_mode);
+        assert_eq!(stored.permission_mode.as_deref(), Some("askForApproval"));
         let section = state
             .task_store
             .read(|tables| tables.managed_sections())
@@ -1493,6 +1496,7 @@ mod tests {
                 model: Some("gpt-5.6-sol".to_string()),
                 reasoning_effort: Some("xhigh".to_string()),
                 fast_mode: true,
+                permission_mode: Some("askForApproval".to_string()),
             })
         );
         assert_eq!(state.task_list_events.refresh_count(), 0);
@@ -1849,6 +1853,7 @@ mod tests {
             Some("gpt-5.6-luna"),
             Some("medium"),
             false,
+            None,
         )
         .await
         .unwrap();
@@ -1876,6 +1881,7 @@ mod tests {
         assert_eq!(stored.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(stored.reasoning_effort.as_deref(), Some("xhigh"));
         assert!(stored.fast_mode);
+        assert_eq!(stored.permission_mode.as_deref(), Some("askForApproval"));
         match tokio::time::timeout(std::time::Duration::from_secs(1), list_updates.recv())
             .await
             .expect("Section composer settings update was not published")
@@ -1906,6 +1912,7 @@ mod tests {
                 model: Some("gpt-5.6-sol".to_string()),
                 reasoning_effort: Some("xhigh".to_string()),
                 fast_mode: true,
+                permission_mode: Some("askForApproval".to_string()),
             })
         );
         assert_eq!(state.task_list_events.refresh_count(), 0);
@@ -2597,6 +2604,7 @@ mod tests {
             Some("gpt-before-steer"),
             Some("medium"),
             false,
+            None,
         )
         .await
         .unwrap();
@@ -2660,6 +2668,7 @@ mod tests {
                 model: Some("gpt-before-steer".to_string()),
                 reasoning_effort: Some("medium".to_string()),
                 fast_mode: false,
+                permission_mode: None,
             })
         );
         assert_eq!(
@@ -2963,6 +2972,7 @@ mod grok_tests {
                 .collect::<Vec<_>>(),
             ["ask", "autoMode", "yoloMode"]
         );
+        assert_eq!(modes["fixedWhenConversationStarts"], true);
 
         let (status, created) = call(
             &app,
