@@ -115,9 +115,15 @@ func probeGithubStatus(completion: @escaping (IntegrationStatus) -> Void) {
         ))
         return
     }
+    var environment = caffoldEnvironment()
+    // These force gh to color its output even into a pipe, which corrupts the
+    // JSON. An app opened from a color-forcing shell inherits them.
+    environment["CLICOLOR_FORCE"] = nil
+    environment["GH_FORCE_TTY"] = nil
     runCommand(
         executable: gh,
-        arguments: ["auth", "status", "--hostname", "github.com", "--json", "hosts"]
+        arguments: ["auth", "status", "--hostname", "github.com", "--json", "hosts"],
+        environment: environment
     ) { result in
         guard
             case let .success(command) = result,
