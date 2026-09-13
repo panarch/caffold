@@ -359,7 +359,9 @@ and stable positions even if a history read uses different IDs. Unmatched IDs
 from a partial attachment or recovered source remain distinct. Their contents,
 timestamps, or proximity cannot authorize a guessed match.
 
-Retention is by whole turn. Each Task protects its latest turn and one historical
+Retention is by whole turn. Each Task protects its latest turn and the newest
+retained turns with items that fill a current-page answer, through the one that
+completes `TASK_DETAIL_EVENT_LIMIT` events. It also protects one historical
 continuation selected by the most recently requested successful older-page read.
 A failed request retains the previous selection; a late response cannot change
 the selection after a newer request. When the total exceeds 300 distinct

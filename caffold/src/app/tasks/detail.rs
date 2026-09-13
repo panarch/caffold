@@ -2135,19 +2135,20 @@ mod request_tests {
             if pages == 0 {
                 assert_eq!(
                     page.events.len(),
-                    72,
-                    "the first missing retained turn ends the window"
+                    TASK_DETAIL_EVENT_LIMIT + 2,
+                    "the latest answer keeps every turn it reads"
                 );
                 assert_eq!(
                     after_calls, 1,
-                    "the short latest response does not fill from history"
+                    "the latest response does not fill from history"
                 );
                 let next =
                     TaskDetailCursor::decode(page.events_page.next_cursor.as_deref().unwrap());
                 assert_eq!(next.turn_id.as_deref(), Some("turn-1"));
+                assert!(next.before.is_some(), "the answer continues inside turn-1");
                 assert_eq!(
                     next.turns, None,
-                    "the missing turn belongs to this same native page"
+                    "the continuation stays on this native page"
                 );
             }
             covered.extend(page.events.into_iter().map(|event| event.id));
@@ -2170,6 +2171,120 @@ mod request_tests {
             assert_eq!(params["limit"], 8);
             assert!(params["cursor"].is_null());
         }
+    }
+
+    #[tokio::test]
+    async fn a_refresh_keeps_the_recent_turns_when_an_older_turn_exceeds_the_retention_budget() {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-refresh-after-long-turn";
+        let client =
+            recent_turns_after_a_long_turn(thread_id, &root.path().display().to_string(), 0);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        let _viewer = state
+            .task_sessions
+            .acquire_viewer(&client.driver(), 1, thread_id)
+            .await
+            .unwrap();
+
+        let refresh = test_task_detail(state.clone(), thread_id.into(), None)
+            .await
+            .unwrap()
+            .0;
+        let turns = turn_ids(&refresh);
+        assert!(
+            RECENT_TURNS.iter().all(|id| turns.contains(id)),
+            "a refresh shows the recent turns; got {turns:?}, continuing at {:?}",
+            refresh.events_page.next_cursor
+        );
+    }
+
+    #[tokio::test]
+    async fn reading_inside_a_turn_larger_than_the_retention_budget_keeps_the_recent_turns_on_refresh()
+     {
+        let root = tempfile::tempdir().unwrap();
+        let thread_id = "thread-refresh-after-reading-a-long-turn";
+        let client =
+            recent_turns_after_a_long_turn(thread_id, &root.path().display().to_string(), 2);
+        let state =
+            task_state_with_codex_client(RootedFs::new(root.path()).unwrap(), client.clone()).await;
+        manage_test_thread(&state, thread_id, root.path()).await;
+        let _viewer = state
+            .task_sessions
+            .acquire_viewer(&client.driver(), 1, thread_id)
+            .await
+            .unwrap();
+
+        let older = walk_history(&state, thread_id).await;
+        assert!(
+            older
+                .iter()
+                .any(|page| turn_ids(page).contains(&"turn-long")),
+            "the older pages read inside the long turn"
+        );
+
+        let refresh = test_task_detail(state.clone(), thread_id.into(), None)
+            .await
+            .unwrap()
+            .0;
+        let turns = turn_ids(&refresh);
+        assert!(
+            RECENT_TURNS.iter().all(|id| turns.contains(id)),
+            "a refresh after reading the long turn shows the recent turns; got {turns:?}, continuing at {:?}",
+            refresh.events_page.next_cursor
+        );
+    }
+
+    const RECENT_TURNS: [&str; 3] = ["turn-earlier", "turn-previous", "turn-latest"];
+
+    fn recent_turns_after_a_long_turn(
+        thread_id: &str,
+        cwd: &str,
+        older_reads: usize,
+    ) -> CodexThreadClient {
+        let turns = [
+            ("turn-latest", 5),
+            ("turn-previous", 5),
+            ("turn-earlier", 5),
+            ("turn-long", 400),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, (id, items))| {
+            let mut turn = long_turn(id, items);
+            turn["startedAt"] = json!((4 - index) * 10);
+            turn["completedAt"] = json!((4 - index) * 10 + 1);
+            turn
+        })
+        .collect::<Vec<_>>();
+        let page = json!({"data": turns, "nextCursor": null, "backwardsCursor": null});
+        let mut responses = vec![MockCodexResponse::ok(
+            "thread/resume",
+            json!({
+                "cwd": cwd,
+                "thread": {
+                    "id": thread_id, "preview": "Recent turns after a long turn",
+                    "status": {"type": "idle"}, "cwd": cwd,
+                    "createdAt": 1.0, "updatedAt": 41.0, "turns": []
+                },
+                "initialTurnsPage": page.clone()
+            }),
+        )];
+        responses.extend(
+            (0..older_reads).map(|_| MockCodexResponse::ok("thread/turns/list", page.clone())),
+        );
+        CodexThreadClient::mock(responses)
+    }
+
+    fn turn_ids(detail: &TaskDetailResponse) -> Vec<&str> {
+        let mut ids = Vec::new();
+        for id in detail.events.iter().filter_map(task_event_turn_id) {
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+        ids
     }
 
     #[tokio::test]

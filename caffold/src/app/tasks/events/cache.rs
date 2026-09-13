@@ -1,9 +1,10 @@
 //! Ephemeral conversation retention removes whole turns. Partial observations
 //! remain partial until the provider supplies a complete history baseline.
 //!
-//! The latest turn and one historical continuation are protected. The item
-//! budget only removes other completed turns; it never asks the provider to
-//! fill unused capacity. Publication order survives ordinary eviction.
+//! The latest turn, the newest turns that fill a current-page answer, and one
+//! historical continuation are protected. The item budget only removes other
+//! completed turns; it never asks the provider to fill unused capacity.
+//! Publication order survives ordinary eviction.
 
 use std::{
     collections::HashMap,
@@ -16,6 +17,7 @@ use crate::agent::{Turn, TurnPage, TurnStatus};
 #[cfg(test)]
 use std::collections::HashSet;
 
+use super::super::detail::TASK_DETAIL_EVENT_LIMIT;
 use super::{
     TaskEventObservation, TaskEventObservationSource, TaskEventPublication, TaskEventRecord,
     TaskHistoryCursor, TaskHistoryPage, advance_cached_observation, project_primary_record,
@@ -577,8 +579,12 @@ impl ThreadEvents {
     }
 
     fn evict(&mut self) {
-        let protected =
-            |id: &str| self.latest.as_deref() == Some(id) || self.historical.as_deref() == Some(id);
+        let latest_window = self.latest_window_turns();
+        let protected = |id: &str| {
+            self.latest.as_deref() == Some(id)
+                || self.historical.as_deref() == Some(id)
+                || latest_window.contains(&id)
+        };
         let mut count = self
             .turns
             .values()
@@ -605,6 +611,29 @@ impl ThreadEvents {
         self.pages.retain(|cursor, page| {
             cursor.is_none() || page.ids.iter().any(|id| self.turns.contains_key(id))
         });
+    }
+
+    /// The newest retained turns with items, through the one that completes a
+    /// current-page answer's event limit.
+    fn latest_window_turns(&self) -> Vec<&str> {
+        let mut turns = Vec::new();
+        let mut events = 0;
+        let ids = self
+            .pages
+            .get(&None)
+            .map(|page| page.ids.as_slice())
+            .unwrap_or_default();
+        for id in ids {
+            let Some(turn) = self.turns.get(id).filter(|turn| turn.item_count() > 0) else {
+                continue;
+            };
+            turns.push(id.as_str());
+            events += turn.events.len();
+            if events >= TASK_DETAIL_EVENT_LIMIT {
+                break;
+            }
+        }
+        turns
     }
 }
 
