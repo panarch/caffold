@@ -120,8 +120,11 @@ test("Homebrew cask installs the app and bundled CLI without a user quarantine f
   assert.match(cask, /^  depends_on macos: :sonoma$/m);
   assert.match(cask, /^  app "Caffold Server\.app"$/m);
   assert.match(cask, /binary "#\{appdir\}\/Caffold Server\.app\/Contents\/Resources\/caffold"/);
-  assert.match(cask, /system_command "\/usr\/bin\/xattr"/);
-  assert.match(cask, /args: \["-cr", "#\{appdir\}\/Caffold Server\.app"\]/);
+  assert.match(cask, /^  postflight_steps do$/m);
+  assert.match(
+    cask,
+    /^    run "\/usr\/bin\/xattr", args: \["-cr", "\{\{appdir\}\}\/Caffold Server\.app"\]$/m,
+  );
 
   const invalid = spawnSync(
     renderCask,
