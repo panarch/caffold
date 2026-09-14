@@ -669,6 +669,57 @@ mod tests {
         drop(leader);
     }
 
+    /// Planned from inside the turn that asked, as isolation is: the move
+    /// waits for that turn, so every read here finds the plan as written.
+    #[tokio::test]
+    async fn a_planned_switch_is_written_down_once_and_a_second_target_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let (client, bridges) = GrokClient::mock(dir.path());
+        let (leader, _memory) = scripted_leader(bridges);
+        client.watch();
+        let conversation = client
+            .start_conversation(CWD, &GrokTurnOptions::default())
+            .await
+            .unwrap();
+        let id = conversation.id.clone();
+        client
+            .start_turn(&id, CWD, "isolate me", &[], &GrokTurnOptions::default())
+            .await
+            .unwrap();
+        leader.wait_for("session/prompt").await;
+
+        client.plan_switch(&id, TARGET).await.unwrap();
+        let binding = binding_of(&client, &id).await;
+        let switch = binding.switch.clone().expect("a switch is planned");
+        assert_eq!(switch.phase, SwitchPhase::Pending);
+        assert_eq!(switch.target_cwd, TARGET);
+        assert_eq!(switch.source_session_id, id);
+        assert_ne!(switch.new_session_id, id);
+        assert_eq!(binding.current.cwd, CWD, "nothing has moved yet");
+
+        // Asked again for the same place: the same plan, not a second one.
+        client.plan_switch(&id, TARGET).await.unwrap();
+        assert_eq!(binding_of(&client, &id).await.switch, Some(switch.clone()));
+
+        // Asked for somewhere else while moving: refused, the plan stands.
+        assert!(
+            client
+                .plan_switch(&id, "/Users/example/worktrees/two")
+                .await
+                .is_err()
+        );
+        assert_eq!(binding_of(&client, &id).await.switch, Some(switch));
+        assert!(client.plan_switch("no-such-task", TARGET).await.is_err());
+
+        // A Task asked to move to where it already runs has nothing to plan.
+        let other = client
+            .start_conversation(CWD, &GrokTurnOptions::default())
+            .await
+            .unwrap();
+        client.plan_switch(&other.id, CWD).await.unwrap();
+        assert!(binding_of(&client, &other.id).await.switch.is_none());
+    }
+
     #[tokio::test]
     async fn an_idle_task_moves_as_soon_as_the_move_is_planned() {
         let dir = tempfile::tempdir().unwrap();

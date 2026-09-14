@@ -1794,7 +1794,7 @@ mod tests {
     use serde_json::json;
     use tokio::{sync::broadcast, time::timeout};
 
-    use super::binding::{ClosedSession, SwitchPhase};
+    use super::binding::ClosedSession;
     use super::test_support::{scripted_leader, update_frame};
     use super::*;
     use crate::agent::{ApprovalDecision, ThreadActiveFlag, codex::CodexMcpSessionAuthorization};
@@ -2829,56 +2829,5 @@ mod tests {
                 .is_err(),
             "a Task without a binding cannot be renamed"
         );
-    }
-
-    #[tokio::test]
-    async fn a_planned_switch_is_written_down_once_and_a_second_target_is_refused() {
-        let (client, _leader, _dir) = client().await;
-        let conversation = client
-            .start_conversation(CWD, &GrokTurnOptions::default())
-            .await
-            .unwrap();
-        let id = conversation.id.clone();
-        let target = "/Users/example/worktrees/one";
-
-        client.plan_switch(&id, target).await.unwrap();
-        let binding = client.inner.bindings.read(&id).await.unwrap().unwrap();
-        let switch = binding.switch.clone().expect("a switch is planned");
-        assert_eq!(switch.phase, SwitchPhase::Pending);
-        assert_eq!(switch.target_cwd, target);
-        assert_eq!(switch.source_session_id, id);
-        assert_ne!(switch.new_session_id, id);
-        assert_eq!(binding.current.cwd, CWD, "nothing has moved yet");
-
-        // Asked again for the same place: the same plan, not a second one.
-        client.plan_switch(&id, target).await.unwrap();
-        let binding = client.inner.bindings.read(&id).await.unwrap().unwrap();
-        assert_eq!(binding.switch, Some(switch.clone()));
-
-        // Asked for somewhere else while moving: refused, the plan stands.
-        assert!(
-            client
-                .plan_switch(&id, "/Users/example/worktrees/two")
-                .await
-                .is_err()
-        );
-        let binding = client.inner.bindings.read(&id).await.unwrap().unwrap();
-        assert_eq!(binding.switch, Some(switch));
-        assert!(client.plan_switch("no-such-task", target).await.is_err());
-
-        // A Task asked to move to where it already runs has nothing to plan.
-        let other = client
-            .start_conversation(CWD, &GrokTurnOptions::default())
-            .await
-            .unwrap();
-        client.plan_switch(&other.id, CWD).await.unwrap();
-        let binding = client
-            .inner
-            .bindings
-            .read(&other.id)
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(binding.switch.is_none());
     }
 }
