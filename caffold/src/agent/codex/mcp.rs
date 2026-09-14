@@ -1,4 +1,4 @@
-//! The Caffold-owned MCP server as one thread sees it.
+//! The Caffold-owned MCP server as one Codex thread sees it.
 //!
 //! Codex's `dynamicTools` are fixed when a thread is created. An HTTP MCP
 //! server gives Caffold a server-owned tool catalog that a new connection or
@@ -10,61 +10,21 @@
 
 use std::{
     collections::HashMap,
-    path::PathBuf,
-    sync::{Arc, Mutex as StdMutex, OnceLock},
+    sync::{Arc, Mutex as StdMutex},
 };
 
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use crate::agent::CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS;
+use crate::agent::{
+    CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS,
+    http_mcp::{
+        CAFFOLD_MCP_BINDING_HEADER, CAFFOLD_MCP_SERVER_NAME, McpSessionSigner,
+        looks_like_thread_session, new_binding_value,
+    },
+};
 
-mod capability;
-
-use capability::{CapabilitySigner, looks_like_thread_session};
-
-pub(crate) const CAFFOLD_MCP_SERVER_NAME: &str = "caffold";
-pub(crate) const CAFFOLD_MCP_BINDING_HEADER: &str = "x-caffold-mcp-binding";
-pub(crate) const MCP_SESSION_ID_HEADER: &str = "mcp-session-id";
 pub(crate) const CAFFOLD_MCP_SESSION_READY_URI: &str = "caffold://session/ready";
-const CURRENT_MCP_PROTOCOL_VERSION: &str = "2025-06-18";
-const SUPPORTED_MCP_PROTOCOL_VERSIONS: [&str; 2] = ["2025-06-18", "2025-03-26"];
-
-/// One request received on the Caffold MCP transport.
-///
-/// MCP framing stays inside the Codex driver. The Tasks application sees only
-/// the operation it must serve and the Caffold-owned tool call it may need to
-/// execute.
-#[derive(Debug)]
-pub(crate) enum CodexMcpRequest {
-    Notification,
-    Initialize {
-        id: Value,
-        protocol_version: String,
-    },
-    Ping {
-        id: Value,
-    },
-    ListTools {
-        id: Value,
-    },
-    ListResources {
-        id: Value,
-    },
-    ReadResource {
-        id: Value,
-        uri: String,
-    },
-    CallTool {
-        id: Value,
-        tool: String,
-        arguments: Value,
-    },
-    Unsupported {
-        id: Value,
-        method: String,
-    },
-}
 
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,17 +59,7 @@ enum BootstrapPhase {
 struct CodexMcpBindingsInner {
     endpoint: String,
     state: StdMutex<BindingState>,
-    signer: SignerBackend,
-}
-
-enum SignerBackend {
-    Memory(CapabilitySigner),
-    Persistent(Arc<PersistentSignerBackend>),
-}
-
-struct PersistentSignerBackend {
-    state_dir: PathBuf,
-    signer: OnceLock<CapabilitySigner>,
+    signer: McpSessionSigner,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,33 +84,20 @@ pub(crate) struct CodexMcpBindings {
 }
 
 impl CodexMcpBindings {
-    pub(crate) fn memory(endpoint: String) -> Self {
+    /// `endpoint` is the address Codex is told to reach Caffold's MCP server at.
+    pub(crate) fn new(endpoint: String, signer: McpSessionSigner) -> Self {
         Self {
             inner: Arc::new(CodexMcpBindingsInner {
                 endpoint,
                 state: StdMutex::new(BindingState::default()),
-                signer: SignerBackend::Memory(CapabilitySigner::memory()),
+                signer,
             }),
         }
     }
 
-    /// Configure installation-local persistence without touching the filesystem.
-    ///
-    /// Caffold can run without Codex, including as a Claude-only service. The
-    /// signer is therefore opened only when a Codex thread needs to issue or
-    /// validate a session. Signer failures stay scoped to that Codex
-    /// operation and fail authentication closed.
-    pub(crate) fn persistent(endpoint: String, state_dir: PathBuf) -> Self {
-        Self {
-            inner: Arc::new(CodexMcpBindingsInner {
-                endpoint,
-                state: StdMutex::new(BindingState::default()),
-                signer: SignerBackend::Persistent(Arc::new(PersistentSignerBackend {
-                    state_dir,
-                    signer: OnceLock::new(),
-                })),
-            }),
-        }
+    #[cfg(test)]
+    pub(crate) fn memory(endpoint: String) -> Self {
+        Self::new(endpoint, McpSessionSigner::memory())
     }
 
     /// Reserve an identity before Codex has returned the new thread id.
@@ -258,7 +195,11 @@ impl CodexMcpBindings {
                 BootstrapPhase::Ready(thread_id) => thread_id.clone(),
             }
         };
-        self.issue_thread_session(binding, &target).await.ok()
+        self.inner
+            .signer
+            .issue_thread_session(binding, &target)
+            .await
+            .ok()
     }
 
     /// Authenticate a request after MCP initialization.
@@ -285,12 +226,14 @@ impl CodexMcpBindings {
                 CodexMcpSessionAuthorization::Pending
             };
         }
-        if !looks_like_thread_session(session) {
-            return CodexMcpSessionAuthorization::Unauthorized;
-        }
-        match self.resolve_thread_session(binding, session).await {
-            Ok(Some(thread_id)) => CodexMcpSessionAuthorization::Thread(thread_id),
-            Ok(None) | Err(_) => CodexMcpSessionAuthorization::Unauthorized,
+        match self
+            .inner
+            .signer
+            .resolve_thread_session(binding, session)
+            .await
+        {
+            Some(thread_id) => CodexMcpSessionAuthorization::Thread(thread_id),
+            None => CodexMcpSessionAuthorization::Unauthorized,
         }
     }
 
@@ -332,9 +275,13 @@ impl CodexMcpBindings {
     }
 
     fn begin_bootstrap(&self, phase: BootstrapPhase) -> String {
-        let binding = opaque_transport_value("p1");
+        let binding = new_binding_value();
         let bootstrap = BootstrapBinding {
-            provisional_session: opaque_transport_value("b1"),
+            provisional_session: format!(
+                "b1.{}{}",
+                Uuid::new_v4().simple(),
+                Uuid::new_v4().simple()
+            ),
             phase,
         };
         self.state().bootstraps.insert(binding.clone(), bootstrap);
@@ -347,85 +294,44 @@ impl CodexMcpBindings {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
-
-    async fn issue_thread_session(&self, binding: &str, thread_id: &str) -> Result<String, String> {
-        match &self.inner.signer {
-            SignerBackend::Memory(signer) => signer
-                .issue_thread_session(binding, thread_id)
-                .map_err(|error| error.to_string()),
-            SignerBackend::Persistent(backend) => {
-                let binding = binding.to_string();
-                let thread_id = thread_id.to_string();
-                run_signer(backend.clone(), move |signer| {
-                    signer.issue_thread_session(&binding, &thread_id)
-                })
-                .await
-            }
-        }
-    }
-
-    async fn resolve_thread_session(
-        &self,
-        binding: &str,
-        session: &str,
-    ) -> Result<Option<String>, String> {
-        match &self.inner.signer {
-            SignerBackend::Memory(signer) => Ok(signer.resolve_thread_session(binding, session)),
-            SignerBackend::Persistent(backend) => {
-                let binding = binding.to_string();
-                let session = session.to_string();
-                run_signer(backend.clone(), move |signer| {
-                    Ok(signer.resolve_thread_session(&binding, &session))
-                })
-                .await
-            }
-        }
-    }
 }
 
-impl PersistentSignerBackend {
-    fn signer(&self) -> Result<CapabilitySigner, String> {
-        if let Some(signer) = self.signer.get() {
-            return Ok(signer.clone());
-        }
-
-        let opened =
-            CapabilitySigner::open(self.state_dir.clone()).map_err(|error| error.to_string())?;
-        if self.signer.set(opened.clone()).is_ok() {
-            return Ok(opened);
-        }
-
-        Ok(self
-            .signer
-            .get()
-            .expect("a concurrent Codex MCP signer initialization completed")
-            .clone())
-    }
-}
-
-async fn run_signer<T, Operation>(
-    backend: Arc<PersistentSignerBackend>,
-    operation: Operation,
-) -> Result<T, String>
-where
-    T: Send + 'static,
-    Operation:
-        FnOnce(&CapabilitySigner) -> Result<T, capability::CapabilitySignerError> + Send + 'static,
-{
-    tokio::task::spawn_blocking(move || {
-        let signer = backend.signer()?;
-        operation(&signer).map_err(|error| error.to_string())
+/// What Caffold answers when Codex initializes its MCP connection.
+///
+/// Codex's address serves the readiness resource its bootstrap reads, so the
+/// answer declares resources as well as tools.
+pub(crate) fn codex_mcp_initialize_result(protocol_version: &str) -> Value {
+    json!({
+        "protocolVersion": protocol_version,
+        "capabilities": {
+            "resources": {},
+            "tools": {},
+        },
+        "serverInfo": {
+            "name": CAFFOLD_MCP_SERVER_NAME,
+            "version": env!("CARGO_PKG_VERSION"),
+        },
+        "instructions": CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS,
     })
-    .await
-    .map_err(|error| format!("Codex MCP signing worker failed: {error}"))?
 }
 
-fn opaque_transport_value(prefix: &str) -> String {
-    format!(
-        "{prefix}.{}{}",
-        Uuid::new_v4().simple(),
-        Uuid::new_v4().simple()
-    )
+pub(crate) fn codex_mcp_resources() -> Vec<Value> {
+    vec![json!({
+        "uri": CAFFOLD_MCP_SESSION_READY_URI,
+        "name": "Caffold MCP session readiness",
+        "description": "Internal readiness probe for a Caffold-owned MCP transport session.",
+        "mimeType": "text/plain",
+    })]
+}
+
+pub(crate) fn mcp_resource_result(uri: &str) -> Value {
+    json!({
+        "contents": [{
+            "uri": uri,
+            "mimeType": "text/plain",
+            "text": "ready",
+        }],
+    })
 }
 
 /// Remove Caffold MCP transport identities from provider diagnostics before
@@ -479,166 +385,18 @@ fn redact_transport_values(message: &str, prefix: &str) -> String {
     redacted
 }
 
-pub(crate) fn decode_mcp_request(body: &[u8]) -> Result<CodexMcpRequest, Value> {
-    let message: Value = match serde_json::from_slice(body) {
-        Ok(Value::Object(message)) => Value::Object(message),
-        Ok(_) => {
-            return Err(mcp_error(
-                Value::Null,
-                -32600,
-                "MCP request must be an object.",
-            ));
-        }
-        Err(_) => {
-            return Err(mcp_error(
-                Value::Null,
-                -32700,
-                "MCP request is not valid JSON.",
-            ));
-        }
-    };
-    if message.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
-        return Err(mcp_error(
-            message.get("id").cloned().unwrap_or(Value::Null),
-            -32600,
-            "MCP requests must use JSON-RPC 2.0.",
-        ));
-    }
-    let Some(id) = message.get("id").cloned() else {
-        return Ok(CodexMcpRequest::Notification);
-    };
-    let Some(method) = message.get("method").and_then(Value::as_str) else {
-        return Err(mcp_error(id, -32600, "MCP request has no method."));
-    };
-    Ok(match method {
-        "initialize" => CodexMcpRequest::Initialize {
-            id,
-            protocol_version: message
-                .pointer("/params/protocolVersion")
-                .and_then(Value::as_str)
-                .map(negotiated_mcp_protocol_version)
-                .unwrap_or(CURRENT_MCP_PROTOCOL_VERSION)
-                .to_string(),
-        },
-        "ping" => CodexMcpRequest::Ping { id },
-        "tools/list" => CodexMcpRequest::ListTools { id },
-        "resources/list" => CodexMcpRequest::ListResources { id },
-        "resources/read" => {
-            let Some(uri) = message.pointer("/params/uri").and_then(Value::as_str) else {
-                return Err(mcp_error(id, -32602, "MCP resource read has no URI."));
-            };
-            CodexMcpRequest::ReadResource {
-                id,
-                uri: uri.to_string(),
-            }
-        }
-        "tools/call" => {
-            let Some(tool) = message.pointer("/params/name").and_then(Value::as_str) else {
-                return Err(mcp_error(id, -32602, "MCP tool call has no tool name."));
-            };
-            CodexMcpRequest::CallTool {
-                id,
-                tool: tool.to_string(),
-                arguments: message
-                    .pointer("/params/arguments")
-                    .cloned()
-                    .unwrap_or_else(|| json!({})),
-            }
-        }
-        method => CodexMcpRequest::Unsupported {
-            id,
-            method: method.to_string(),
-        },
-    })
-}
-
-fn negotiated_mcp_protocol_version(requested: &str) -> &'static str {
-    SUPPORTED_MCP_PROTOCOL_VERSIONS
-        .into_iter()
-        .find(|supported| *supported == requested)
-        .unwrap_or(CURRENT_MCP_PROTOCOL_VERSION)
-}
-
-pub(crate) fn mcp_initialize_result(protocol_version: &str) -> Value {
-    json!({
-        "protocolVersion": protocol_version,
-        "capabilities": {
-            "resources": {},
-            "tools": {},
-        },
-        "serverInfo": {
-            "name": CAFFOLD_MCP_SERVER_NAME,
-            "version": env!("CARGO_PKG_VERSION"),
-        },
-        "instructions": CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS,
-    })
-}
-
-pub(crate) fn caffold_mcp_resources() -> Vec<Value> {
-    vec![json!({
-        "uri": CAFFOLD_MCP_SESSION_READY_URI,
-        "name": "Caffold MCP session readiness",
-        "description": "Internal readiness probe for a Caffold-owned MCP transport session.",
-        "mimeType": "text/plain",
-    })]
-}
-
-pub(crate) fn mcp_resource_result(uri: &str) -> Value {
-    json!({
-        "contents": [{
-            "uri": uri,
-            "mimeType": "text/plain",
-            "text": "ready",
-        }],
-    })
-}
-
-pub(crate) fn caffold_mcp_tools() -> Vec<Value> {
-    super::served_tools::mcp_tool_specs()
-        .into_iter()
-        .map(|tool| {
-            json!({
-                "name": tool.name,
-                "description": tool.description,
-                "inputSchema": tool.input_schema,
-            })
-        })
-        .collect()
-}
-
-pub(crate) fn mcp_tool_result(outcome: Result<String, String>) -> Value {
-    let (text, is_error) = match outcome {
-        Ok(text) => (text, false),
-        Err(text) => (text, true),
-    };
-    json!({
-        "content": [{ "type": "text", "text": text }],
-        "isError": is_error,
-    })
-}
-
-pub(crate) fn mcp_result(id: Value, result: Value) -> Value {
-    json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "result": result,
-    })
-}
-
-pub(crate) fn mcp_error(id: Value, code: i64, message: &str) -> Value {
-    json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "error": {
-            "code": code,
-            "message": message,
-        },
-    })
-}
-
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
+
+    fn persistent_bindings(endpoint: &str, state_dir: PathBuf) -> CodexMcpBindings {
+        CodexMcpBindings::new(
+            endpoint.to_string(),
+            McpSessionSigner::persistent(state_dir),
+        )
+    }
 
     async fn promote_started_binding(
         bindings: &CodexMcpBindings,
@@ -697,17 +455,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn persistent_signing_is_lazy_and_codex_scoped() {
+    async fn pending_discovery_does_not_open_the_signing_key() {
         let root = tempfile::tempdir().unwrap();
         let state_dir = root.path().join("codex-mcp");
-        let bindings = CodexMcpBindings::persistent(
-            "http://127.0.0.1:5177/api/codex/mcp".to_string(),
-            state_dir.clone(),
-        );
+        let bindings =
+            persistent_bindings("http://127.0.0.1:5177/api/codex/mcp", state_dir.clone());
 
         assert!(
             !state_dir.exists(),
-            "constructing Caffold's Codex adapter must not initialize Codex-only state"
+            "constructing Codex's bindings must not open the installation signing key"
         );
 
         let binding = bindings.begin_pending().await.unwrap();
@@ -736,10 +492,8 @@ mod tests {
         let obstacle = root.path().join("not-a-directory");
         std::fs::write(&obstacle, b"occupied").unwrap();
         let state_dir = obstacle.join("codex-mcp");
-        let bindings = CodexMcpBindings::persistent(
-            "http://127.0.0.1:5177/api/codex/mcp".to_string(),
-            state_dir.clone(),
-        );
+        let bindings =
+            persistent_bindings("http://127.0.0.1:5177/api/codex/mcp", state_dir.clone());
 
         let binding = bindings.begin_pending().await.unwrap();
         bindings.bind_pending(&binding, "thread_1").await.unwrap();
@@ -803,14 +557,12 @@ mod tests {
     async fn backend_replacement_and_reattachment_keep_existing_sessions() {
         let root = tempfile::tempdir().unwrap();
         let endpoint = "http://127.0.0.1:5177/api/codex/mcp";
-        let first_bindings =
-            CodexMcpBindings::persistent(endpoint.to_string(), root.path().to_path_buf());
+        let first_bindings = persistent_bindings(endpoint, root.path().to_path_buf());
         let first = first_bindings.begin_reattach("thread_1").await.unwrap();
         let (_, first_session) =
             promote_reattached_binding(&first_bindings, &first, "thread_1").await;
 
-        let replacement =
-            CodexMcpBindings::persistent(endpoint.to_string(), root.path().to_path_buf());
+        let replacement = persistent_bindings(endpoint, root.path().to_path_buf());
         assert_eq!(
             replacement.authorize_session(&first, &first_session).await,
             CodexMcpSessionAuthorization::Thread("thread_1".to_string())
@@ -832,14 +584,12 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let other_root = tempfile::tempdir().unwrap();
         let endpoint = "http://127.0.0.1:5177/api/codex/mcp";
-        let bindings =
-            CodexMcpBindings::persistent(endpoint.to_string(), root.path().to_path_buf());
+        let bindings = persistent_bindings(endpoint, root.path().to_path_buf());
         let first = bindings.begin_reattach("thread_1").await.unwrap();
         let (_, first_session) = promote_reattached_binding(&bindings, &first, "thread_1").await;
         let second = bindings.begin_reattach("thread_2").await.unwrap();
         let (_, second_session) = promote_reattached_binding(&bindings, &second, "thread_2").await;
-        let other =
-            CodexMcpBindings::persistent(endpoint.to_string(), other_root.path().to_path_buf());
+        let other = persistent_bindings(endpoint, other_root.path().to_path_buf());
 
         assert_eq!(
             bindings.authorize_session(&first, &second_session).await,
@@ -901,92 +651,5 @@ mod tests {
             bindings.resolve(&token).await,
             Some(CodexMcpBindingTarget::Pending)
         );
-    }
-
-    #[test]
-    fn mcp_protocol_is_decoded_inside_the_codex_driver() {
-        let request = decode_mcp_request(
-            br#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"rename_current_task","arguments":{"name":"Reviewed"}}}"#,
-        )
-        .unwrap();
-
-        let CodexMcpRequest::CallTool {
-            id,
-            tool,
-            arguments,
-        } = request
-        else {
-            panic!("expected a tool call")
-        };
-        assert_eq!(id, json!(7));
-        assert_eq!(tool, "rename_current_task");
-        assert_eq!(arguments, json!({ "name": "Reviewed" }));
-    }
-
-    #[test]
-    fn malformed_mcp_framing_returns_json_rpc_errors() {
-        assert_eq!(
-            decode_mcp_request(b"not json").unwrap_err(),
-            mcp_error(Value::Null, -32700, "MCP request is not valid JSON.")
-        );
-        assert_eq!(
-            decode_mcp_request(br#"[]"#).unwrap_err(),
-            mcp_error(Value::Null, -32600, "MCP request must be an object.")
-        );
-        assert_eq!(
-            decode_mcp_request(br#"{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{}}"#,)
-                .unwrap_err(),
-            mcp_error(json!(8), -32602, "MCP tool call has no tool name.")
-        );
-        assert_eq!(
-            decode_mcp_request(br#"{"id":9,"method":"ping"}"#).unwrap_err(),
-            mcp_error(json!(9), -32600, "MCP requests must use JSON-RPC 2.0.")
-        );
-        assert_eq!(
-            decode_mcp_request(br#"{"jsonrpc":"2.0","id":10}"#).unwrap_err(),
-            mcp_error(json!(10), -32600, "MCP request has no method.")
-        );
-        assert_eq!(
-            decode_mcp_request(
-                br#"{"jsonrpc":"2.0","id":11,"method":"resources/read","params":{}}"#,
-            )
-            .unwrap_err(),
-            mcp_error(json!(11), -32602, "MCP resource read has no URI.")
-        );
-    }
-
-    #[test]
-    fn unsupported_mcp_methods_remain_protocol_errors() {
-        let request =
-            decode_mcp_request(br#"{"jsonrpc":"2.0","id":11,"method":"prompts/list"}"#).unwrap();
-        let CodexMcpRequest::Unsupported { id, method } = request else {
-            panic!("expected an unsupported MCP request")
-        };
-        assert_eq!(id, json!(11));
-        assert_eq!(method, "prompts/list");
-    }
-
-    #[test]
-    fn mcp_notifications_are_acknowledged_without_a_json_rpc_reply() {
-        assert!(matches!(
-            decode_mcp_request(br#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,)
-                .unwrap(),
-            CodexMcpRequest::Notification
-        ));
-    }
-
-    #[test]
-    fn initialize_negotiates_only_versions_this_server_supports() {
-        let CodexMcpRequest::Initialize {
-            protocol_version, ..
-        } = decode_mcp_request(
-            br#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2099-01-01"}}"#,
-        )
-        .unwrap()
-        else {
-            panic!("expected initialize")
-        };
-
-        assert_eq!(protocol_version, CURRENT_MCP_PROTOCOL_VERSION);
     }
 }

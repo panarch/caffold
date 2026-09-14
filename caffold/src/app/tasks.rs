@@ -4,6 +4,7 @@ mod composer_settings;
 mod detail;
 mod events;
 mod generated_images;
+mod grok_mcp;
 mod lifecycle;
 mod live;
 mod projection;
@@ -34,6 +35,7 @@ use crate::{
 pub(in crate::app) use codex_mcp::CodexMcpHost;
 use detail::{DetailContext, TaskDetailSync};
 use events::TaskEvents;
+pub(in crate::app) use grok_mcp::GrokMcpHost;
 use lifecycle::TaskLifecycle;
 use live::TaskListEvents;
 pub(in crate::app::tasks) use projection::TaskRecord;
@@ -182,10 +184,11 @@ impl TasksApp {
         claude: ClaudeClient,
         grok: GrokClient,
         codex_mcp: CodexMcpHost,
+        grok_mcp: GrokMcpHost,
         watch_hub: WatchHub,
     ) -> anyhow::Result<Self> {
         let push = PushRuntime::new(task_store.clone())?;
-        grok.attach_mcp(codex_mcp.bindings(), codex_mcp.grok_endpoint());
+        grok.attach_mcp(grok_mcp.bindings(), grok_mcp.endpoint());
         let state = TaskState::new_with_push(
             fs,
             default_cwd_path,
@@ -202,6 +205,7 @@ impl TasksApp {
         let runtime = state.task_runtime.clone();
         let live_source = TaskLiveSource::new(&state);
         codex_mcp.attach_runtime(runtime.clone());
+        grok_mcp.attach_runtime(runtime.clone());
         Ok(Self {
             router: routes::router(state).merge(super::live_updates::router(
                 live_source,
@@ -213,6 +217,7 @@ impl TasksApp {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(in crate::app::tasks) fn persistent(
         fs: Arc<RootedFs>,
         default_cwd_path: String,
@@ -220,6 +225,7 @@ impl TasksApp {
         database_path: PathBuf,
         worktree_root: PathBuf,
         codex_mcp: CodexMcpHost,
+        grok_mcp: GrokMcpHost,
         watch_hub: WatchHub,
     ) -> anyhow::Result<Self> {
         // The runner's socket lives beside the database, so an installed
@@ -237,6 +243,7 @@ impl TasksApp {
             ClaudeClient::in_data_dir(&data_dir),
             GrokClient::in_data_dir(&data_dir),
             codex_mcp,
+            grok_mcp,
             watch_hub,
         )?;
         app.runtime.startup();
@@ -249,6 +256,7 @@ impl TasksApp {
         shutdown: broadcast::Sender<()>,
         worktree_root: PathBuf,
         codex_mcp: CodexMcpHost,
+        grok_mcp: GrokMcpHost,
         watch_hub: WatchHub,
     ) -> anyhow::Result<Self> {
         let data_dir = worktree_root.clone();
@@ -261,6 +269,7 @@ impl TasksApp {
             ClaudeClient::in_data_dir(&data_dir),
             GrokClient::in_data_dir(&data_dir),
             codex_mcp,
+            grok_mcp,
             watch_hub,
         )
     }
@@ -294,7 +303,7 @@ pub(in crate::app::tasks) mod test_support {
     use tokio::sync::broadcast;
 
     use super::{
-        AgentRuntimeDependencies, CodexMcpHost, PushService, TaskState, projection::*,
+        AgentRuntimeDependencies, GrokMcpHost, PushService, TaskState, projection::*,
         routes::test_claim_task,
     };
     use crate::{
@@ -306,6 +315,7 @@ pub(in crate::app::tasks) mod test_support {
                 GrokClient, MockLeader,
                 test_support::{LeaderMemory, scripted_leader},
             },
+            http_mcp::McpSessionSigner,
         },
         fs::RootedFs,
         task_store::TaskStore,
@@ -357,7 +367,7 @@ pub(in crate::app::tasks) mod test_support {
         TaskState,
         MockLeader,
         Arc<StdMutex<LeaderMemory>>,
-        CodexMcpHost,
+        GrokMcpHost,
     ) {
         let (shutdown, _) = broadcast::channel(16);
         let worktree_root = fs.root().join(".caffold-test/worktrees");
@@ -365,8 +375,8 @@ pub(in crate::app::tasks) mod test_support {
             ClaudeClient::mock_writing_to(fs.root().join(".caffold-test/projects"));
         let (grok, bridges) = GrokClient::mock(&fs.root().join(".caffold-test"));
         let (leader, memory) = scripted_leader(bridges);
-        let host = CodexMcpHost::memory("http://127.0.0.1:1".to_string());
-        grok.attach_mcp(host.bindings(), host.grok_endpoint());
+        let host = GrokMcpHost::new("http://127.0.0.1:1", McpSessionSigner::memory());
+        grok.attach_mcp(host.bindings(), host.endpoint());
         let task_store = TaskStore::memory().expect("in-memory task store");
         let (push, _receiver) = PushService::test_channel(task_store.clone());
         let state = TaskState::new_with_push(
@@ -379,7 +389,7 @@ pub(in crate::app::tasks) mod test_support {
             AgentRuntimeDependencies {
                 claude,
                 grok,
-                codex_mcp: Some(host.bindings()),
+                codex_mcp: None,
             },
         )
         .expect("task state");

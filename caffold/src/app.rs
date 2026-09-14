@@ -17,7 +17,10 @@ mod tasks;
 mod voice;
 mod workspace;
 
-use crate::{fs::RootedFs, server_settings::ServerSettingsStore, watch::WatchHub};
+use crate::{
+    agent::http_mcp::McpSessionSigner, fs::RootedFs, server_settings::ServerSettingsStore,
+    watch::WatchHub,
+};
 
 #[derive(Debug, Clone)]
 pub struct ServeConfig {
@@ -54,7 +57,12 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
     let voice_router = voice::router(&data_dir);
     let listener = TcpListener::bind((config.host, config.port)).await?;
     let addr = listener.local_addr()?;
-    let codex_mcp = tasks::CodexMcpHost::persistent(mcp_origin(addr), data_dir.join("codex-mcp"));
+    let origin = mcp_origin(addr);
+    // Running agents hold sessions signed with the key in this directory, so
+    // both agents' addresses sign with it.
+    let mcp_signer = McpSessionSigner::persistent(data_dir.join("codex-mcp"));
+    let codex_mcp = tasks::CodexMcpHost::new(&origin, mcp_signer.clone());
+    let grok_mcp = tasks::GrokMcpHost::new(&origin, mcp_signer);
     let tailscale_router = tailscale::router(addr.port());
     let tasks = tasks::PersistentTasksGateway::new(
         fs,
@@ -63,6 +71,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         data_dir.join("caffold.redb"),
         worktree_root.clone(),
         codex_mcp.clone(),
+        grok_mcp.clone(),
         watch_hub,
     );
     let app = router_with_states(
@@ -72,6 +81,7 @@ pub async fn serve(config: ServeConfig) -> anyhow::Result<()> {
         voice_router,
         tailscale_router,
         codex_mcp.router(),
+        grok_mcp.router(),
     );
 
     info!("serving Caffold at http://{addr}");
@@ -123,8 +133,10 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
     let watch_hub = WatchHub::new(fs.clone(), shutdown.clone());
     let voice_router = voice::router(&fs.root().join(".caffold-test"));
     let tailscale_router = tailscale::router(5_178);
-    let codex_mcp =
-        tasks::CodexMcpHost::memory(mcp_origin(SocketAddr::from((Ipv4Addr::LOCALHOST, 5_178))));
+    let origin = mcp_origin(SocketAddr::from((Ipv4Addr::LOCALHOST, 5_178)));
+    let mcp_signer = McpSessionSigner::memory();
+    let codex_mcp = tasks::CodexMcpHost::new(&origin, mcp_signer.clone());
+    let grok_mcp = tasks::GrokMcpHost::new(&origin, mcp_signer);
     let worktree_root = fs.root().join(".caffold-test/worktrees");
     let tasks = tasks::TasksApp::memory(
         fs,
@@ -132,6 +144,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         shutdown,
         worktree_root,
         codex_mcp.clone(),
+        grok_mcp.clone(),
         watch_hub,
     )?;
     Ok(router_with_states(
@@ -141,6 +154,7 @@ pub fn router(fs: RootedFs) -> anyhow::Result<Router> {
         voice_router,
         tailscale_router,
         codex_mcp.router(),
+        grok_mcp.router(),
     ))
 }
 
@@ -151,6 +165,7 @@ fn router_with_states(
     voice_router: Router,
     tailscale_router: Router,
     codex_mcp_router: Router,
+    grok_mcp_router: Router,
 ) -> Router {
     shell_router
         .merge(workspace_router)
@@ -158,6 +173,7 @@ fn router_with_states(
         .merge(voice_router)
         .merge(tailscale_router)
         .merge(codex_mcp_router)
+        .merge(grok_mcp_router)
 }
 
 /// The address agents on this machine reach the Caffold server at.

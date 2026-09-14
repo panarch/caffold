@@ -29,14 +29,11 @@ pub(crate) use contract::{
 /// sends it and assert on what Caffold makes of it.
 #[cfg(test)]
 pub(crate) use contract::{conversation_item, response_item};
-pub(crate) use mcp::CAFFOLD_MCP_SERVER_NAME;
 #[cfg(test)]
 pub(crate) use mcp::CodexMcpBindingTarget;
 pub(crate) use mcp::{
-    CAFFOLD_MCP_BINDING_HEADER, CAFFOLD_MCP_SESSION_READY_URI, CodexMcpBindings, CodexMcpRequest,
-    CodexMcpSessionAuthorization, MCP_SESSION_ID_HEADER, caffold_mcp_resources, caffold_mcp_tools,
-    decode_mcp_request, mcp_error, mcp_initialize_result, mcp_resource_result, mcp_result,
-    mcp_tool_result,
+    CAFFOLD_MCP_SESSION_READY_URI, CodexMcpBindings, CodexMcpSessionAuthorization,
+    codex_mcp_initialize_result, codex_mcp_resources, mcp_resource_result,
 };
 pub(crate) use protocol::CodexMcpServerDiagnostic;
 /// Codex's own thread status, for the tests that build a notification
@@ -87,10 +84,7 @@ pub use readiness::MINIMUM_SUPPORTED_CODEX_CLI_VERSION;
 pub(crate) use reconnect_spike::SocketAppServer;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
-pub(crate) use served_tools::{
-    ISOLATE_CURRENT_TASK_TOOL_NAME, LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
-    RENAME_CURRENT_TASK_TOOL_NAME,
-};
+pub(crate) use served_tools::LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME;
 pub(crate) use status::{CodexDaemonInfo, CodexStatusResponse};
 use status::{status_from_results, unavailable_status};
 use tokio::{
@@ -102,6 +96,8 @@ use tokio::{
 };
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 use transport::ProxyStream;
+
+use super::http_mcp::CAFFOLD_MCP_SERVER_NAME;
 
 const INTERACTIVE_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const HISTORY_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
@@ -1838,6 +1834,7 @@ fn server_response_message(request_id: Value, result: Value) -> Value {
 mod tests {
     use super::protocol::CAFFOLD_FIRST_TURN_NAMING_INSTRUCTIONS;
     use super::*;
+    use crate::agent::http_mcp::CAFFOLD_MCP_BINDING_HEADER;
     use tokio::io::AsyncWriteExt;
 
     #[test]

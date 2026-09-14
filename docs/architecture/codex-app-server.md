@@ -54,18 +54,20 @@ bridge session events and server requests into the Tasks application. Neither
 the application composition root nor the browser projection modules inspect raw
 method names or protocol JSON paths.
 
-`caffold/src/agent/codex/served_tools.rs` owns the current Task-named MCP
-catalog and the test-only historical dynamic-tool catalog. The MCP surface uses
+`caffold/src/agent/http_mcp.rs` owns what Caffold's HTTP MCP server keeps the
+same at Codex's and Grok's addresses: MCP request and response framing, the
+current Task-named tool catalog, and the installation-local signer that binds a
+session to one thread across backend generations. The MCP surface uses
 `rename_current_task`; a definition persisted by an older thread may still call
 `rename_current_thread`, but that alias is neither advertised nor accepted by
-the MCP route. The legacy fixture can reconstruct a pre-MCP thread without
+the MCP route. `caffold/src/agent/codex/served_tools.rs` owns that historical
+name and the test-only fixture that reconstructs a pre-MCP thread without
 putting its catalog back into production `thread/start` requests.
-`caffold/src/agent/codex/mcp.rs` owns MCP request and response framing,
-request-scoped app-server configuration, bootstrap promotion, and the
-installation-local signer that binds one HTTP connection to one Codex thread across
-backend generations.
-`caffold/src/app/tasks/codex_mcp.rs` owns only the authenticated HTTP route and
-hands a verified, bound tool call to the narrow Task runtime operation that
+`caffold/src/agent/codex/mcp.rs` owns Codex's bindings and bootstrap promotion,
+request-scoped app-server configuration, the session-readiness resource, and
+the redaction of transport values from provider diagnostics.
+`caffold/src/app/tasks/codex_mcp.rs` owns only Codex's authenticated HTTP route
+and hands a verified, bound tool call to the narrow Task runtime operation that
 performs it.
 
 `caffold/src/agent/codex/contract.rs` is where Codex stops. It reads a thread,
@@ -159,10 +161,9 @@ runtime shutdown lifecycle to `caffold/src/app.rs`.
   connection recovery, Codex event/server-request bridge, and pending approval
   lifecycle. Pending approvals remain JSON-RPC/card state and never become a
   thread-status writer.
-- `codex_mcp.rs` owns the authenticated HTTP adaptation for Caffold-served
-  Codex tools. The provider driver owns MCP framing and thread capabilities;
-  the route receives only the Task runtime operation needed to execute a
-  verified call.
+- `codex_mcp.rs` owns Codex's authenticated HTTP MCP route. MCP framing and
+  Codex's bindings stay in the agent layer; the route receives only the Task
+  runtime operation needed to execute a verified call.
 - `sync.rs` owns the revisioned Task Detail publication channel that REST
   bootstrap, notification snapshots, and live viewers share. It does not read
   Codex threads or construct browser details.

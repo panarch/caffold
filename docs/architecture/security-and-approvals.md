@@ -93,17 +93,21 @@ agent's native extension point and allows those calls without adding another
 approval card. The tool still enforces its own Task and Git lifecycle checks;
 an unknown tool or an unmanaged conversation is refused.
 
-Codex and Grok reach this surface through HTTP MCP endpoints on the Caffold
-server, `/api/codex/mcp` and `/api/grok/mcp`, which share one handler and one
-set of bindings; the bound Task's recorded agent decides which driver carries a
-call out. Each request-scoped Codex app-server config carries a private opaque
-binding header, and each Grok session declaration carries one as an HTTP
-header.
+Codex and Grok reach this surface through HTTP MCP addresses on the Caffold
+server, `/api/codex/mcp` and `/api/grok/mcp`. Each address has its own handler
+and its own bindings, and the bound Task's recorded agent decides which driver
+carries a call out. Each request-scoped Codex app-server config carries a
+private opaque binding header, and each Grok session declaration carries one as
+an HTTP header.
 A Task-scoped call is authorized only by that header together with its signed
 MCP session. The session authenticates the provider thread ID and a digest of
-the binding header under one installation-local HMAC key, so neither the model
-nor tool arguments can choose another Task. The bootstrap and Codex
-reinitialization sequence that establishes the pair belongs to
+the binding header under one installation-local HMAC key that both addresses
+use, so neither the model nor tool arguments can choose another Task. An
+address issues sessions only for the bindings its own agent was given; a signed
+pair is then verified with that key wherever it arrives, so the two addresses
+are only the names each agent is given, not an isolation boundary between them. The
+bootstrap and Codex reinitialization sequence that establishes Codex's pair
+belongs to
 [Codex app-server integration](codex-app-server.md#thread-subscription-lifecycle).
 A Grok Task's identifier is known before its session exists, so its binding is
 bound to the Task before `session/new` and the first `initialize` already
@@ -112,7 +116,8 @@ session is created and may do so again later, so the binding stays bound while
 the session is open and is let go when the session is closed, erased, or loaded
 again under a new binding.
 
-Only the private `codex-mcp/signing.key` file survives backend generations.
+Only the private `codex-mcp/signing.key` file survives backend generations; it
+signs the sessions of both addresses.
 Bootstrap bindings and provisional sessions remain process-local and are
 discarded after promotion; Caffold writes no Task, thread, grant, connection,
 or revocation records for this transport. A replacement backend validates an
@@ -135,7 +140,7 @@ This capability protects one Caffold integration inside the trusted-host
 deployment boundary; it is not browser authentication or authorization for
 public-internet exposure, nor is it a boundary against code that can already
 read Caffold's private data directory or inspect its process as the same host
-user. Because the route shares the main Caffold server, it can be reachable
+user. Because both routes share the main Caffold server, they can be reachable
 even when that installation is used only with Claude. The signing key is opened
 lazily only for a signed-session operation, route reachability does not start
 Codex or Grok or select a Task, and an unavailable key or a request without an
