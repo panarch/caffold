@@ -1,8 +1,8 @@
 import {
   CODEX_RUNTIME_RESTART_REQUEST_EVENT,
   CODEX_STATUS_REFRESH_REQUEST_EVENT,
+  codexRateWindows,
   codexRuntimeRestartAvailable,
-  findRateWindow,
   formatCodexAccount,
   formatCodexPlan,
   formatCodexReadiness,
@@ -406,14 +406,13 @@ function readinessState(readiness) {
 
 /** Only the windows Codex reported get a row; the rest were never metered. */
 function usageWindowRows(status) {
-  return ["primary", "secondary"]
-    .map((name) => [name, findRateWindow(status?.rateLimits, name)])
-    .filter(([, window]) => window)
-    .map(([name, window]) => ({
-      key: name,
-      label: formatRateWindowLabel(window, name),
-      value: usageWindowValue(window),
-    }));
+  return codexRateWindows(status).map(({ limitId, limitName, name, window }) => ({
+    key: limitId ? `${limitId}:${name}` : name,
+    label: limitName
+      ? `${formatRateWindowLabel(window, name)} · ${limitName}`
+      : formatRateWindowLabel(window, name),
+    value: usageWindowValue(window),
+  }));
 }
 
 /** One window as its row reads: how much is used, and when it lets go. */

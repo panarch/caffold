@@ -672,6 +672,64 @@ test("holds the Codex rows while its first readiness check is still running", { 
   );
 });
 
+test("shows every usage limit Codex reports, its single-bucket limit first", { tag: "@all-viewports" }, async ({
+  page,
+}, testInfo) => {
+  const codexLimit = {
+    limitId: "codex",
+    limitName: null,
+    primary: { usedPercent: 86, resetsAt: 1914709200, windowDurationMins: 10080 },
+    secondary: null,
+  };
+  await page.route(/\/api\/codex\/status(?:\?|$)/, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(mockCodexStatus({
+        rateLimits: {
+          rateLimitResetCredits: { availableCount: 0, credits: [] },
+          rateLimits: codexLimit,
+          rateLimitsByLimitId: {
+            codex_bengalfox: {
+              limitId: "codex_bengalfox",
+              limitName: "GPT-5.3-Codex-Spark",
+              primary: { usedPercent: 0, resetsAt: 1914709200, windowDurationMins: 300 },
+              secondary: { usedPercent: 12, resetsAt: 1915243200, windowDurationMins: 10080 },
+            },
+            codex: codexLimit,
+          },
+        },
+      })),
+    }),
+  );
+
+  await page.goto("/settings/codex");
+  const usage = page.locator("caffold-settings-codex-page [data-codex-usage]");
+
+  await expect(usage.locator("dt")).toHaveText([
+    "1 week",
+    "5 hours · GPT-5.3-Codex-Spark",
+    "1 week · GPT-5.3-Codex-Spark",
+    "Reset credits",
+  ]);
+  await expect(usage.locator("[data-key='codex:primary'] dd")).toHaveText(
+    /86% used · resets .+\d:\d{2}/,
+  );
+  await expect(usage.locator("[data-key='codex_bengalfox:secondary'] dd")).toHaveText(
+    /12% used · resets .+\d:\d{2}/,
+  );
+  await expect
+    .poll(() =>
+      usage.locator("dt").evaluateAll((terms) =>
+        terms
+          .filter((term) => term.scrollWidth > term.clientWidth)
+          .map((term) => term.textContent),
+      ),
+    )
+    .toEqual([]);
+  await usage.scrollIntoViewIfNeeded();
+  await captureReviewScreenshot(page, testInfo, "settings-codex-usage-limits");
+});
+
 test("holds the Claude agent rows while its first report is still loading", { tag: "@desktop" }, async ({
   page,
 }) => {
