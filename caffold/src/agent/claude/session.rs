@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 
 use serde_json::Value;
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::{Mutex as AsyncMutex, RwLock};
 
 use caffold_claude_runner::protocol::SessionState as RunnerSessionState;
 
@@ -101,6 +101,7 @@ impl ClaudeClient {
         let session = Arc::new(Session {
             id: id.to_string(),
             cwd: AsyncMutex::new(cwd.to_string()),
+            relocation: RwLock::new(()),
             frames: AsyncMutex::new(frames),
             state: AsyncMutex::new(SessionState {
                 opened_at_ms: now_ms(),
@@ -170,6 +171,7 @@ impl ClaudeClient {
         path: &str,
     ) -> Result<WorkingDirectoryMove, ClaudeError> {
         let session = self.require_session(conversation_id).await?;
+        let _moving = session.relocation.write().await;
         let mut answer = session.control(protocol::set_cwd_request(path)).await?;
         if answer.payload.get("status").and_then(Value::as_str) == Some("needs_trust") {
             let directory = answer

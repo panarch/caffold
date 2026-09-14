@@ -52,7 +52,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use serde_json::{Value, json};
-use tokio::sync::{Mutex as AsyncMutex, broadcast, oneshot};
+use tokio::sync::{Mutex as AsyncMutex, RwLock, broadcast, oneshot};
 
 use self::protocol::{
     ControlRequestFrame, MINIMUM_SUPPORTED_CLAUDE_CLI_VERSION, MessageFrame, ResultFrame,
@@ -175,6 +175,13 @@ struct Session {
     /// which follows a moved session. Moves once at most, when the Task is
     /// isolated into a worktree.
     cwd: AsyncMutex<String>,
+    /// Held for writing while the agent is asked to move, and for reading
+    /// while [`ClaudeClient::read_turns`] reads the transcript. The agent
+    /// moves what it wrote before it answers the move, so a read between the
+    /// two would look where the session was and find nothing there. The frame
+    /// reader never waits on it, because the answer to the move arrives
+    /// through the reader.
+    relocation: RwLock<()>,
 
     frames: AsyncMutex<SessionFrames>,
     state: AsyncMutex<SessionState>,
@@ -820,9 +827,11 @@ impl ClaudeClient {
     /// stands, but the agent only relocates the transcript when the session
     /// itself moves, which it will not do mid-turn — so for as long as that
     /// move is outstanding the caller names a file that is not there yet, and
-    /// reading it would report a conversation with nothing in it. `cwd` is the
-    /// answer for a conversation nothing is running: no session to ask, and
-    /// where the Task last worked is where the agent left its transcript.
+    /// reading it would report a conversation with nothing in it. A read that
+    /// arrives while the session is being moved waits for the agent to answer
+    /// the move. `cwd` is the answer for a conversation nothing is running: no
+    /// session to ask, and where the Task last worked is where the agent left
+    /// its transcript.
     ///
     /// What a running session knows is laid over the top of it. Both describe
     /// the same turns under the same names, and where they differ the session
@@ -836,9 +845,12 @@ impl ClaudeClient {
         limit: usize,
     ) -> Result<TurnPage, ClaudeError> {
         let session = self.session(conversation_id).await;
-        let cwd = match &session {
-            Some(session) => session.cwd.lock().await.clone(),
-            None => cwd.to_string(),
+        let (cwd, settled) = match &session {
+            Some(session) => {
+                let settled = session.relocation.read().await;
+                (session.cwd.lock().await.clone(), Some(settled))
+            }
+            None => (cwd.to_string(), None),
         };
         let path = self
             .projects()
@@ -854,6 +866,7 @@ impl ClaudeClient {
                 .await
                 .map_err(|error| ClaudeError::History(format!("history reader stopped: {error}")))?
                 .map_err(|error| ClaudeError::History(error.to_string()))?;
+        drop(settled);
         if reading.unreadable > 0 {
             self.publish(ClaudeRuntimeEvent::Diagnostic {
                 message: format!(
@@ -2155,6 +2168,61 @@ mod tests {
             .await
             .expect("the conversation is read");
 
+        assert!(
+            !page.turns.is_empty(),
+            "the session moved to {WORKTREE} and what it wrote moved with it"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_conversation_read_during_a_move_is_read_where_the_move_lands() {
+        // The test moves the file while the stand-in holds the move's answer,
+        // the order the agent does both in.
+        const WORKTREE: &str = "/somewhere/worktrees/task-1";
+        let projects = written_conversation();
+        let (client, runner) = ClaudeClient::mock_writing_to(projects.path().to_path_buf());
+        runner
+            .greet_next_session_with(vec![init_frame(SESSION)])
+            .await;
+        client
+            .open_conversation(SESSION, CWD, &options("opus"))
+            .await
+            .expect("the conversation opens");
+        runner.hold_next_move_answer(SESSION).await;
+
+        let moving = tokio::spawn({
+            let client = client.clone();
+            async move { client.move_working_directory(SESSION, WORKTREE).await }
+        });
+        wrote(&runner, |frame| frame["request"]["subtype"] == "set_cwd").await;
+        let written =
+            transcript::locate(projects.path(), CWD, SESSION).expect("where it was written");
+        let moved =
+            transcript::locate(projects.path(), WORKTREE, SESSION).expect("where it moves to");
+        std::fs::create_dir_all(moved.parent().expect("a project directory"))
+            .expect("the project directory it moves to");
+        std::fs::rename(&written, &moved).expect("the agent moves what it wrote");
+
+        let mut reading = tokio::spawn({
+            let client = client.clone();
+            async move { client.read_turns(SESSION, CWD, None, 8).await }
+        });
+        tokio::time::timeout(Duration::from_millis(10), &mut reading)
+            .await
+            .expect_err("the read waits for the move to be answered");
+
+        runner.answer_held_move(SESSION).await;
+        assert_eq!(
+            moving
+                .await
+                .expect("the move finishes")
+                .expect("the session moves"),
+            WorkingDirectoryMove::Moved
+        );
+        let page = reading
+            .await
+            .expect("the read finishes")
+            .expect("the conversation is read");
         assert!(
             !page.turns.is_empty(),
             "the session moved to {WORKTREE} and what it wrote moved with it"
