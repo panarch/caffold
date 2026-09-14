@@ -14,6 +14,7 @@
 
 mod binding;
 mod history;
+mod mcp;
 mod protocol;
 mod reading;
 mod session;
@@ -22,6 +23,7 @@ mod switching;
 mod translate;
 mod transport;
 
+pub(crate) use self::mcp::{GrokMcpBindings, grok_mcp_initialize_result};
 pub(crate) use self::status::GrokStatus;
 #[cfg(test)]
 pub(crate) use self::transport::mock::MockLeader;
@@ -57,11 +59,11 @@ use self::{
 use super::{
     ActivityStatus, ApprovalDecision, ApprovalRequest, Conversation, ConversationItem, ItemKind,
     SessionEvent, SessionEventKind, ThreadStatus, Turn, TurnPage, TurnState, TurnStatus,
-    codex::{CAFFOLD_MCP_BINDING_HEADER, CAFFOLD_MCP_SERVER_NAME, CodexMcpBindings},
     driver::{
         AgentError, Driver, ModelOption, PermissionModeOption, PermissionModes, TurnOptions,
         TurnRejected, bounded,
     },
+    http_mcp::{CAFFOLD_MCP_BINDING_HEADER, CAFFOLD_MCP_SERVER_NAME},
 };
 
 /// Why an operation on a Grok session did not happen.
@@ -182,27 +184,16 @@ struct GrokClientInner {
     switch_runs: AsyncMutex<HashMap<String, Arc<AsyncMutex<()>>>>,
 }
 
-/// The Caffold MCP server, as declared to every session.
-///
-/// The binding capability is Codex's own — one installation key, one
-/// signed-session shape — reused here for the narrow thing it does: prove to
-/// Caffold's own HTTP endpoint which Task a tool call belongs to. A Grok
-/// Task's identity is known before its session exists, so the binding is
-/// bound to the Task before the session is asked for and the first
-/// `initialize` already answers with the signed session.
-///
-/// Grok initializes the connection during session creation and again
-/// whenever it sees fit, so the binding stays bound for as long as the
-/// session is open. It is let go when the session is closed or erased, or
-/// replaced when the session is loaded again under a new one.
+/// The Caffold MCP server, as declared to every session: Grok's own address,
+/// and the bindings that say which Task a call through it belongs to.
 struct McpCarrier {
-    bindings: CodexMcpBindings,
+    bindings: GrokMcpBindings,
     endpoint: String,
 }
 
-/// A binding handed to one session start or load, to be completed or
-/// cancelled when that request comes back.
-struct McpBootstrap {
+/// A binding offered to one session start or load, kept if that request
+/// succeeds and released if it fails.
+struct OfferedMcpBinding {
     token: String,
 }
 
@@ -291,7 +282,7 @@ impl GrokClient {
 
     /// Tell sessions where Caffold's tools are served, and how to prove which
     /// Task calls them.
-    pub(crate) fn attach_mcp(&self, bindings: CodexMcpBindings, endpoint: String) {
+    pub(crate) fn attach_mcp(&self, bindings: GrokMcpBindings, endpoint: String) {
         *self.inner.mcp.lock().unwrap_or_else(|p| p.into_inner()) =
             Some(McpCarrier { bindings, endpoint });
     }
@@ -410,7 +401,7 @@ impl GrokClient {
             .unwrap_or(PermissionMode::Ask);
         let bridge = self.inner.transport.bridge().await?;
         self.inner.bindings.create(&id, &id, cwd).await?;
-        let (mcp_servers, bootstrap) = self.mcp_servers_for(&id).await;
+        let (mcp_servers, offered) = self.mcp_servers_for(&id).await;
         let rules = format!(
             "{}\n\n{}",
             super::CAFFOLD_PLAN_DOCUMENT_INSTRUCTIONS,
@@ -435,11 +426,11 @@ impl GrokClient {
                 .map_err(|error| GrokError::Protocol(format!("session/new: {error}")))
         }) {
             Ok(created) => {
-                self.mcp_bootstrap_done(bootstrap, &id, true).await;
+                self.settle_mcp_binding(offered, &id, true).await;
                 created
             }
             Err(error) => {
-                self.mcp_bootstrap_done(bootstrap, &id, false).await;
+                self.settle_mcp_binding(offered, &id, false).await;
                 let _ = self.inner.bindings.remove(&id).await;
                 return Err(error);
             }
@@ -1151,7 +1142,7 @@ impl GrokClient {
         thread_id: &str,
         native: &NativeSession,
     ) -> Result<(SessionLoadResult, SessionInfoResult), GrokError> {
-        let (mcp_servers, bootstrap) = self.mcp_servers_for(thread_id).await;
+        let (mcp_servers, offered) = self.mcp_servers_for(thread_id).await;
         let loaded = bridge
             .call(
                 "session/load",
@@ -1159,7 +1150,7 @@ impl GrokClient {
                 Some(LOAD_TIMEOUT),
             )
             .await;
-        self.mcp_bootstrap_done(bootstrap, thread_id, loaded.is_ok())
+        self.settle_mcp_binding(offered, thread_id, loaded.is_ok())
             .await;
         let loaded: SessionLoadResult = serde_json::from_value(loaded?).unwrap_or_default();
         let info: SessionInfoResult = serde_json::from_value(
@@ -1185,7 +1176,7 @@ impl GrokClient {
 
     /// The MCP servers a session is started or loaded with: Caffold's own,
     /// bound to this Task, when the server exists.
-    async fn mcp_servers_for(&self, thread_id: &str) -> (Vec<Value>, Option<McpBootstrap>) {
+    async fn mcp_servers_for(&self, thread_id: &str) -> (Vec<Value>, Option<OfferedMcpBinding>) {
         let carrier = {
             let mcp = self.inner.mcp.lock().unwrap_or_else(|p| p.into_inner());
             mcp.as_ref()
@@ -1194,28 +1185,22 @@ impl GrokClient {
         let Some((bindings, endpoint)) = carrier else {
             return (Vec::new(), None);
         };
-        let Ok(token) = bindings.begin_pending().await else {
-            return (Vec::new(), None);
-        };
-        if bindings.bind_pending(&token, thread_id).await.is_err() {
-            let _ = bindings.cancel_pending(&token).await;
-            return (Vec::new(), None);
-        }
+        let token = bindings.bind(thread_id);
         let server = protocol::http_mcp_server(
             CAFFOLD_MCP_SERVER_NAME,
             &endpoint,
             &[(CAFFOLD_MCP_BINDING_HEADER, token.as_str())],
         );
-        (vec![server], Some(McpBootstrap { token }))
+        (vec![server], Some(OfferedMcpBinding { token }))
     }
 
-    async fn mcp_bootstrap_done(
+    async fn settle_mcp_binding(
         &self,
-        bootstrap: Option<McpBootstrap>,
+        offered: Option<OfferedMcpBinding>,
         thread_id: &str,
         succeeded: bool,
     ) {
-        let Some(bootstrap) = bootstrap else {
+        let Some(offered) = offered else {
             return;
         };
         let bindings = {
@@ -1226,7 +1211,7 @@ impl GrokClient {
             return;
         };
         if !succeeded {
-            let _ = bindings.cancel_pending(&bootstrap.token).await;
+            bindings.release(&offered.token);
             return;
         }
         let previous = self
@@ -1234,9 +1219,9 @@ impl GrokClient {
             .mcp_tokens
             .lock()
             .await
-            .insert(thread_id.to_string(), bootstrap.token);
+            .insert(thread_id.to_string(), offered.token);
         if let Some(previous) = previous {
-            let _ = bindings.cancel_pending(&previous).await;
+            bindings.release(&previous);
         }
     }
 
@@ -1248,7 +1233,7 @@ impl GrokClient {
             mcp.as_ref().map(|carrier| carrier.bindings.clone())
         };
         if let (Some(token), Some(bindings)) = (token, bindings) {
-            let _ = bindings.cancel_pending(&token).await;
+            bindings.release(&token);
         }
     }
 
@@ -1797,7 +1782,7 @@ mod tests {
     use super::binding::ClosedSession;
     use super::test_support::{scripted_leader, update_frame};
     use super::*;
-    use crate::agent::{ApprovalDecision, ThreadActiveFlag, codex::CodexMcpSessionAuthorization};
+    use crate::agent::{ApprovalDecision, ThreadActiveFlag, http_mcp::McpSessionSigner};
 
     const CWD: &str = "/Users/example/project";
     const WAIT: Duration = Duration::from_secs(5);
@@ -2539,7 +2524,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (client, bridges) = GrokClient::mock(dir.path());
         let (leader, _memory) = scripted_leader(bridges);
-        let bindings = CodexMcpBindings::memory("http://127.0.0.1:1/api/codex/mcp".to_string());
+        let bindings = GrokMcpBindings::new(McpSessionSigner::memory());
         client.attach_mcp(
             bindings.clone(),
             "http://127.0.0.1:1/api/grok/mcp".to_string(),
@@ -2560,13 +2545,13 @@ mod tests {
         assert_eq!(server["headers"][0]["name"], "x-caffold-mcp-binding");
         let token = server["headers"][0]["value"].as_str().unwrap();
         // The Task was named before the session was asked for, so the very
-        // first `initialize` on the door answers with the signed session, and
-        // so does every later one while the session is open.
+        // first `initialize` at Grok's address answers with the signed
+        // session, and so does every later one while the session is open.
         for _ in 0..2 {
             let session = bindings.initialize_session(token).await.expect("a session");
             assert_eq!(
                 bindings.authorize_session(token, &session).await,
-                CodexMcpSessionAuthorization::Thread(id.clone())
+                Some(id.clone())
             );
         }
         let rules = asked["_meta"]["rules"].as_str().unwrap();
@@ -2574,7 +2559,7 @@ mod tests {
         assert!(rules.contains("caffold__rename_current_task"));
 
         // Loaded again on the next bridge, the Task gets a fresh binding to
-        // the same door and no naming rule: it is not new any more.
+        // the same address and no naming rule: it is not new any more.
         leader.drop_bridge();
         let GrokRuntimeEvent::Unreachable { .. } = next_event(&mut events).await else {
             panic!("unreachable")
@@ -2592,7 +2577,7 @@ mod tests {
         let session = bindings.initialize_session(again).await.expect("a session");
         assert_eq!(
             bindings.authorize_session(again, &session).await,
-            CodexMcpSessionAuthorization::Thread(id.clone())
+            Some(id.clone())
         );
         assert!(loaded.get("_meta").is_none());
 
@@ -2627,7 +2612,7 @@ mod tests {
             .expect("a session");
         assert_eq!(
             bindings.authorize_session(cold_token, &session).await,
-            CodexMcpSessionAuthorization::Thread(id)
+            Some(id)
         );
         drop(leader);
     }

@@ -24,7 +24,7 @@ use crate::{
     watch::WatchHub,
 };
 
-use super::CodexMcpHost;
+use super::{CodexMcpHost, GrokMcpHost};
 use crate::app::startup_migration;
 
 #[derive(Clone)]
@@ -103,10 +103,12 @@ pub(in crate::app) struct PersistentTasksGateway {
     database_path: PathBuf,
     worktree_root: PathBuf,
     codex_mcp: CodexMcpHost,
+    grok_mcp: GrokMcpHost,
     watch_hub: WatchHub,
 }
 
 impl PersistentTasksGateway {
+    #[allow(clippy::too_many_arguments)]
     pub(in crate::app) fn new(
         fs: Arc<RootedFs>,
         default_cwd_path: String,
@@ -114,6 +116,7 @@ impl PersistentTasksGateway {
         database_path: PathBuf,
         worktree_root: PathBuf,
         codex_mcp: CodexMcpHost,
+        grok_mcp: GrokMcpHost,
         watch_hub: WatchHub,
     ) -> Self {
         let status = Arc::new(RwLock::new(StartupTaskStatus {
@@ -155,6 +158,7 @@ impl PersistentTasksGateway {
             database_path,
             worktree_root,
             codex_mcp,
+            grok_mcp,
             watch_hub,
         }
     }
@@ -175,6 +179,7 @@ impl PersistentTasksGateway {
                     self.database_path.clone(),
                     self.worktree_root.clone(),
                     self.codex_mcp.clone(),
+                    self.grok_mcp.clone(),
                     self.watch_hub.clone(),
                 ) {
                     Ok(tasks) => {

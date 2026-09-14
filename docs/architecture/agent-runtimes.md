@@ -457,19 +457,25 @@ application.
 Caffold exposes Task naming and managed-worktree isolation through the native
 extension point each agent already understands:
 
-- Codex receives Caffold's authenticated HTTP MCP server when a thread starts
-  or resumes. New threads do not receive Caffold dynamic tools. Caffold still
-  answers calls from definitions already persisted on pre-MCP threads. The MCP
-  catalog refresh boundary is a new app-server proxy connection followed by
-  thread start or resume; active-thread hot reload is not part of the contract.
-  Its single installation-local signing key is opened lazily and only for signed
-  Codex MCP sessions. Neither route initialization nor a signing-key failure
-  makes Codex a prerequisite for a Claude-only Caffold service.
+- Codex receives Caffold's authenticated HTTP MCP server at `/api/codex/mcp`
+  when a thread starts or resumes. New threads do not receive Caffold dynamic
+  tools. Caffold still answers calls from definitions already persisted on
+  pre-MCP threads. The MCP catalog refresh boundary is a new app-server proxy
+  connection followed by thread start or resume; active-thread hot reload is
+  not part of the contract.
 - Claude receives an in-process MCP server on every initialization, including
   resumed and reattached sessions.
-- Grok receives the same authenticated HTTP MCP server through its own door,
+- Grok receives Caffold's authenticated HTTP MCP server at `/api/grok/mcp`,
   declared on session start and load with a header bound to the Task before
-  the session exists; the binding stays bound while the session is open.
+  the session exists; the binding stays bound while the session is open. The
+  address serves the Task tools and no resources.
+
+Codex's and Grok's addresses each keep their own bindings and handler, and
+share only what does not differ between them: the header names, MCP framing,
+the Task tool catalog, and one installation-local signing key. The key is
+opened lazily and only for a signed session, so neither route initialization
+nor a signing-key failure makes Codex or Grok a prerequisite for a Claude-only
+Caffold service.
 
 All three MCP catalogs use the Task-owned base names `rename_current_task` and
 `isolate_current_task`; Claude's transport qualifies them as
@@ -535,18 +541,20 @@ schema by default.
 caffold/src/agent.rs                    shared agent vocabulary and plan convention
 caffold/src/agent/driver.rs             closed driver choice and shared Task operations
 caffold/src/agent/codex.rs              Codex entry point
-caffold/src/agent/codex/                app-server transport, protocol, readiness, contract, MCP carrier
+caffold/src/agent/codex/                app-server transport, protocol, readiness, contract, MCP bindings
 caffold/src/agent/claude.rs             Claude entry point and live session state
 caffold/src/agent/claude/               protocol, transcript, settings, tools, instruction carrier, runner client
 caffold/src/agent/grok.rs               Grok entry point, sessions, MCP carrier, and the Settings report
-caffold/src/agent/grok/                 leader transport, protocol, binding file, history, translation, worktree switch
+caffold/src/agent/grok/                 leader transport, protocol, binding file, MCP bindings, history, translation, worktree switch
+caffold/src/agent/http_mcp.rs           HTTP MCP framing, Task tool catalog, and signing key shared by Codex and Grok
 caffold/src/app/tasks/runtime.rs         per-Task routing and cross-agent orchestration
 caffold/src/app/tasks/runtime/bridge.rs  Codex runtime bridge
 caffold/src/app/tasks/runtime/claude_bridge.rs
                                         Claude runtime and tool bridge
 caffold/src/app/tasks/runtime/grok_bridge.rs
                                         Grok runtime bridge
-caffold/src/app/tasks/codex_mcp.rs       the HTTP MCP doors Codex and Grok call Caffold's tools through
+caffold/src/app/tasks/codex_mcp.rs       Codex's HTTP MCP address
+caffold/src/app/tasks/grok_mcp.rs        Grok's HTTP MCP address
 caffold/src/app/tasks/detail.rs          canonical Detail and history membership
 caffold/src/app/tasks/events.rs          observation reconciliation and publication
 frontend/pages/(task-workspace)/tasks/task-events.js

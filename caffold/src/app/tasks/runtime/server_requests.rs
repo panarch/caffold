@@ -6,10 +6,10 @@ use serde_json::{Value as JsonValue, json};
 use super::{ApprovalResolveError, TaskAgent, TaskRuntime};
 use crate::agent;
 use crate::agent::codex::{
-    ApprovalKind, CodexServerRequest, CodexThreadClient, ISOLATE_CURRENT_TASK_TOOL_NAME,
-    LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME, RENAME_CURRENT_TASK_TOOL_NAME, approval_request,
-    approval_response,
+    ApprovalKind, CodexServerRequest, CodexThreadClient, LEGACY_RENAME_CURRENT_THREAD_TOOL_NAME,
+    approval_request, approval_response,
 };
+use crate::agent::http_mcp::{ISOLATE_CURRENT_TASK_TOOL_NAME, RENAME_CURRENT_TASK_TOOL_NAME};
 use crate::agent::{
     ApprovalDecision, ApprovalOutcome, ApprovalRequest, SessionEvent, SessionEventKind,
     ThreadStatus, TurnStatus,
@@ -218,7 +218,7 @@ fn legacy_dynamic_task_tool(
     }
 }
 
-fn codex_mcp_task_tool(tool: &str) -> Result<CaffoldTaskTool, String> {
+fn mcp_task_tool(tool: &str) -> Result<CaffoldTaskTool, String> {
     match tool {
         RENAME_CURRENT_TASK_TOOL_NAME => Ok(CaffoldTaskTool::RenameCurrentTask),
         ISOLATE_CURRENT_TASK_TOOL_NAME => Ok(CaffoldTaskTool::IsolateCurrentTask),
@@ -574,16 +574,16 @@ impl TaskRuntime {
         }
     }
 
-    /// Do what a session asked of Caffold over the MCP door, for the Task its
-    /// binding names. The Task says which agent runs it, so the answer is
-    /// carried out against that agent.
+    /// Do what a session asked of Caffold at Codex's or Grok's HTTP MCP
+    /// address, for the Task its signed session names. The Task says which
+    /// agent runs it, so the answer is carried out against that agent.
     pub(in crate::app::tasks) async fn execute_mcp_tool(
         &self,
         thread_id: &str,
         tool: &str,
         arguments: JsonValue,
     ) -> Result<String, String> {
-        let tool = codex_mcp_task_tool(tool)?;
+        let tool = mcp_task_tool(tool)?;
         let Some(managed) = self.managed_thread(thread_id).await? else {
             return Err(unmanaged_task_error(tool));
         };

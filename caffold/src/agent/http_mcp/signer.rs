@@ -25,13 +25,13 @@ type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug, Error)]
 pub(super) enum CapabilitySignerError {
-    #[error("failed to access the Codex MCP signing key: {0}")]
+    #[error("failed to access the Caffold MCP signing key: {0}")]
     Io(#[from] io::Error),
-    #[error("the Codex MCP signing key is invalid")]
+    #[error("the Caffold MCP signing key is invalid")]
     InvalidKey,
-    #[error("the Codex MCP signing-key path is not a private regular file or directory")]
+    #[error("the Caffold MCP signing-key path is not a private regular file or directory")]
     UnsafePath,
-    #[error("the Codex MCP thread identity cannot be represented in a transport session")]
+    #[error("the MCP thread identity cannot be represented in a transport session")]
     InvalidThread,
 }
 
@@ -40,7 +40,7 @@ pub(super) enum CapabilitySignerError {
 ///
 /// A session contains its thread id and a digest of the private binding header.
 /// It is useful only together with that header; the session value is therefore
-/// not a bearer capability if Codex includes it in a transport diagnostic.
+/// not a bearer capability if an agent includes it in a transport diagnostic.
 #[derive(Clone)]
 pub(super) struct CapabilitySigner {
     key: [u8; KEY_BYTES],
@@ -109,7 +109,7 @@ impl CapabilitySigner {
     }
 }
 
-pub(super) fn looks_like_thread_session(candidate: &str) -> bool {
+pub(in crate::agent) fn looks_like_thread_session(candidate: &str) -> bool {
     let mut parts = candidate.split('.');
     matches!(
         (parts.next(), parts.next(), parts.next(), parts.next(), parts.next()),
@@ -225,6 +225,30 @@ mod tests {
         assert_eq!(
             replacement.resolve_thread_session("private-binding", &session),
             Some("thread_1".to_string())
+        );
+    }
+
+    /// The expected session was computed outside Caffold, with Python's
+    /// `hmac` and `hashlib`, from the key bytes `0..32`. A live agent holds a
+    /// session signed with the key already on disk, so neither the file
+    /// format nor the session format may change under it.
+    #[test]
+    fn a_session_signed_with_an_existing_key_file_still_resolves() {
+        let root = tempfile::tempdir().unwrap();
+        let key: Vec<u8> = (0..KEY_BYTES as u8).collect();
+        fs::write(root.path().join(KEY_FILE_NAME), &key).unwrap();
+        let binding = format!("p1.{}", "ab".repeat(32));
+        let session = "s1.dGhyZWFkXzE.MWP3Z1GFao9_mDldijDpdvNdfy-gYpGMcGtE2tEVc94.0YXm1V9LAjw-GHMFK-CeKLc-jkuW01ZT1qSiC5bhUL4";
+
+        let signer = CapabilitySigner::open(root.path().to_path_buf()).unwrap();
+
+        assert_eq!(
+            signer.resolve_thread_session(&binding, session),
+            Some("thread_1".to_string())
+        );
+        assert_eq!(
+            signer.issue_thread_session(&binding, "thread_1").unwrap(),
+            session
         );
     }
 

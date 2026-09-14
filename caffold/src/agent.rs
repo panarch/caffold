@@ -27,6 +27,7 @@ pub(crate) mod codex;
 pub(crate) mod conversation;
 pub(crate) mod driver;
 pub(crate) mod grok;
+pub(crate) mod http_mcp;
 
 /// Feedback for a received clarification request, never a user's answer.
 pub(crate) const CAFFOLD_CLARIFICATION_FEEDBACK: &str = concat!(
