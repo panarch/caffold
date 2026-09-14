@@ -298,6 +298,42 @@ test("delegates source scrolling and invalidates it when viewer state changes", 
   assert.equal(received.isCurrent(), false);
 });
 
+test("delegates PDF scrolling to its retained preview component", () => {
+  const state = {
+    status: "pdf",
+    presentation: { title: "manual.pdf" },
+  };
+  let received;
+  const childScope = { surfaces: [{ id: "pdf" }] };
+  let pdfPreview = {
+    scrollSurfaceScope(options) {
+      received = options;
+      return childScope;
+    },
+  };
+  const owner = {
+    state,
+    hidden: false,
+    isConnected: true,
+    querySelector: () => pdfPreview,
+  };
+
+  assert.equal(fileViewer.scrollSurfaceScope.call(owner, {
+    scopeId: "review:viewer",
+  }), childScope);
+  assert.equal(received.scopeId, "review:viewer:pdf");
+  assert.equal(received.label, "manual.pdf preview");
+  assert.equal(received.isCurrent(), true);
+
+  owner.state = { ...state };
+  assert.equal(received.isCurrent(), false);
+  owner.state = state;
+  pdfPreview = null;
+  assert.deepEqual(fileViewer.scrollSurfaceScope.call(owner, {
+    scopeId: "review:viewer",
+  }).surfaces, []);
+});
+
 test("keeps an owned image surface bound to its exact retained scrollport", () => {
   const state = { status: "image", image: { name: "shot.png" } };
   const scrollport = {

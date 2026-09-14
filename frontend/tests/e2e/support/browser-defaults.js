@@ -1,4 +1,21 @@
+import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+
 import { installTaskSseControllerInBrowser } from "./task-sse-fixture.js";
+
+const require = createRequire(import.meta.url);
+// The suite runs the real library rather than a stand-in: a PDF that fails to
+// render produces no fallback content to assert against.
+const PDFJS_ROOT = fileURLToPath(
+  new URL("../../../node_modules/pdfjs-dist/", import.meta.url),
+);
+const PDFJS_CDN_PREFIX =
+  `https://cdn.jsdelivr.net/npm/pdfjs-dist@${require("pdfjs-dist/package.json").version}/`;
+const PDFJS_CONTENT_TYPES = {
+  ".mjs": "text/javascript",
+  ".wasm": "application/wasm",
+};
 
 export function mockCodexStatus(overrides = {}) {
   return {
@@ -225,6 +242,14 @@ export async function installBrowserDefaults(page) {
 }
 
 export async function installExternalModuleDefaults(page) {
+  await page.route("https://cdn.jsdelivr.net/**", (route) => {
+    const file = pdfjsAssetPath(route.request().url());
+    if (!file) {
+      return route.abort();
+    }
+    return route.fulfill({ path: file, contentType: pdfjsContentType(file) });
+  });
+
   await page.route("https://esm.sh/**", (route) => {
     if (route.request().url() === "https://esm.sh/marked@15.0.12") {
       return route.fulfill({
@@ -455,4 +480,20 @@ export async function installExternalModuleDefaults(page) {
       `,
     });
   });
+}
+
+function pdfjsAssetPath(url) {
+  if (!url.startsWith(PDFJS_CDN_PREFIX)) {
+    return null;
+  }
+  const file = `${PDFJS_ROOT}${url.slice(PDFJS_CDN_PREFIX.length)}`;
+  if (!file.startsWith(PDFJS_ROOT) || file.includes("..") || !existsSync(file)) {
+    return null;
+  }
+  return file;
+}
+
+function pdfjsContentType(file) {
+  const extension = file.slice(file.lastIndexOf("."));
+  return PDFJS_CONTENT_TYPES[extension] ?? "application/octet-stream";
 }

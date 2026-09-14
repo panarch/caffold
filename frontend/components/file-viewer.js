@@ -13,7 +13,7 @@ import {
   sourceViewerPresentation,
 } from "./file-viewer-presentation.js";
 import { renderInlineIcon, warmIcons } from "./icons.js";
-import { imageUrl } from "../api.js";
+import { imageUrl, pdfUrl } from "../api.js";
 import {
   keyboardNavigationContext,
   popoverScrollSurfaceScope,
@@ -22,6 +22,7 @@ import "../keyboard-navigation/components/presentation.js";
 import "./code-viewer.js";
 import "./diff-viewer.js";
 import "./markdown-preview.js";
+import "./pdf-viewer.js";
 
 let viewerInstanceId = 0;
 
@@ -109,6 +110,15 @@ class CaffoldReviewFileViewer extends HTMLElement {
 
   setImage(image) {
     this.state = { status: "image", image };
+    this.render();
+  }
+
+  setPdf(pdf) {
+    this.state = {
+      status: "pdf",
+      pdf,
+      presentation: sourceViewerPresentation(pdf),
+    };
     this.render();
   }
 
@@ -364,6 +374,14 @@ class CaffoldReviewFileViewer extends HTMLElement {
         `${state.presentation?.title || label} preview`,
       )) ?? emptyScrollSurfaceScope();
     }
+    if (state.status === "pdf") {
+      return this.querySelector(
+        ":scope > .pdf-panel > caffold-pdf-viewer",
+      )?.scrollSurfaceScope(childOptions(
+        "pdf",
+        `${state.presentation?.title || label} preview`,
+      )) ?? emptyScrollSurfaceScope();
+    }
     if (state.status === "image") {
       const scrollport = this.querySelector(
         ":scope > .image-panel > .image-stage",
@@ -546,6 +564,11 @@ class CaffoldReviewFileViewer extends HTMLElement {
       return;
     }
 
+    if (this.state.status === "pdf") {
+      this.renderPdf();
+      return;
+    }
+
     if (this.state.status === "markdown") {
       this.renderMarkdown(options);
       return;
@@ -585,6 +608,26 @@ class CaffoldReviewFileViewer extends HTMLElement {
     `;
     this.querySelector("caffold-markdown-preview")
       ?.setMarkdown(file.content, previewOptions);
+  }
+
+  renderPdf() {
+    const { pdf, presentation } = this.state;
+    const source = { url: pdfUrl(pdf.path), revision: pdf.revision };
+    const panel = this.querySelector(":scope > .pdf-panel");
+    const viewer = panel?.querySelector(":scope > caffold-pdf-viewer");
+    if (panel && viewer) {
+      this.replacePresentationHeader(panel, presentation);
+      viewer.setSource(source);
+      return;
+    }
+
+    this.innerHTML = `
+      <section class="viewer-panel file-panel pdf-panel">
+        ${this.renderPresentationHeader(presentation)}
+        <caffold-pdf-viewer></caffold-pdf-viewer>
+      </section>
+    `;
+    this.querySelector("caffold-pdf-viewer")?.setSource(source);
   }
 
   replacePresentationHeader(panel, presentation) {

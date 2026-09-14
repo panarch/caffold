@@ -82,6 +82,10 @@ export function isPreviewableImagePath(path) {
   return Boolean(imageExtension(path));
 }
 
+export function isPdfPath(path) {
+  return fileNameFromPath(path).toLowerCase().endsWith(".pdf");
+}
+
 export function imageTypeLabel(path) {
   const extension = imageExtension(path);
   return extension ? IMAGE_TYPES[extension] : "Image";

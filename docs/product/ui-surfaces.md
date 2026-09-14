@@ -181,7 +181,8 @@ Branch review. It combines:
 - one selected task-root-relative path.
 
 This is also the product path for general file/source inspection through the
-reusable file navigator, source viewer, text viewer, and supported image viewer.
+reusable file navigator, source viewer, text viewer, supported image viewer, and
+PDF viewer.
 
 ### Git
 

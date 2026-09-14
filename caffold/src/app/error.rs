@@ -169,6 +169,11 @@ impl IntoResponse for ApiError {
                 "unsupported_image",
                 format!("image preview is not supported for this file type: {path}"),
             ),
+            ApiError::Fs(FsError::UnsupportedPdf { path }) => (
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "unsupported_pdf",
+                format!("PDF preview is not supported for this file type: {path}"),
+            ),
             ApiError::Fs(FsError::GitRepositoryNotFound { path }) => (
                 StatusCode::BAD_REQUEST,
                 "git_repository_not_found",

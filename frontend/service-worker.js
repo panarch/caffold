@@ -307,6 +307,8 @@ const APP_SHELL_ASSETS = [
   "/assets/components/file-viewer.js",
   "/assets/components/markdown-preview.css",
   "/assets/components/markdown-preview.js",
+  "/assets/components/pdf-viewer.css",
+  "/assets/components/pdf-viewer.js",
   "/assets/components/file-viewer-presentation.js",
   "/assets/components/icons.js",
   "/assets/components/pagination.css",

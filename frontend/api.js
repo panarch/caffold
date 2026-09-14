@@ -320,6 +320,12 @@ export function imageUrl(path) {
   return url.toString();
 }
 
+export function pdfUrl(path) {
+  const url = new URL("/api/pdf", window.location.origin);
+  url.searchParams.set("path", path);
+  return url.toString();
+}
+
 export async function getGitStatus(path = "") {
   return requestJson("/api/git/status", { path });
 }

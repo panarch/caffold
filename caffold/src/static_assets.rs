@@ -1073,6 +1073,12 @@ pub(crate) fn get(path: &str) -> Option<StaticAsset> {
         "components/markdown-preview.js" => Some(js(include_str!(
             "../../frontend/components/markdown-preview.js"
         ))),
+        "components/pdf-viewer.css" => Some(css(include_str!(
+            "../../frontend/components/pdf-viewer.css"
+        ))),
+        "components/pdf-viewer.js" => {
+            Some(js(include_str!("../../frontend/components/pdf-viewer.js")))
+        }
         "components/file-viewer-presentation.js" => Some(js(include_str!(
             "../../frontend/components/file-viewer-presentation.js"
         ))),

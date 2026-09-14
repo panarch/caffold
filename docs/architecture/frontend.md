@@ -481,11 +481,12 @@ Conversation, Integrated Review, Git, or GitHub domain. Integrated Review, Git
 Compare and Commit, and GitHub Pull Files merge their simultaneously visible
 tree and viewer leaves on desktop and omit the pane without a layout box on
 single-pane layouts. File tree, source, diff, Markdown preview, image stage,
-and scrollable notice owners publish their actual retained leaf rather than
-having a screen parent reach into their DOM. File tree, source, diff, Markdown
-preview hosts, GitHub Issue Markdown hosts, and image stages declare both axes;
-one element that overflows in both directions remains one surface with one
-selection code.
+PDF preview, and scrollable notice owners publish their actual retained leaf
+rather than having a screen parent reach into their DOM. File tree, source,
+diff, Markdown preview hosts, GitHub Issue Markdown hosts, and image stages
+declare both axes; one element that overflows in both directions remains one
+surface with one selection code. A PDF preview scales each page to the width it
+has, so it declares only its vertical axis.
 
 Git Log, GitHub Issue and Pull lists, GitHub Issue Markdown or raw body, and
 Pull Request detail publish their exact vertical scrollports. Markdown owners
@@ -893,17 +894,20 @@ review. It owns:
 
 The Integrated Review owner resolves file-open intents to a path and supported
 representation together. Text files support Source, Markdown adds text-only
-Preview, raster images use Preview, and SVG supports both its source text and
-image Preview. The file viewer owns representation chrome and image rendering,
-and delegates Markdown rendering, sanitization, fallback, and local scroll to
-the shared `caffold-markdown-preview` component also used by the current-plan
-dialog.
+Preview, raster images use Preview, PDFs use Preview alone, and SVG supports
+both its source text and image Preview. The file viewer owns representation
+chrome and image rendering, and delegates Markdown rendering, sanitization,
+fallback, and local scroll to the shared `caffold-markdown-preview` component
+also used by the current-plan dialog. It delegates PDF page rendering, document
+lifetime, and local scroll to `caffold-pdf-viewer`, which imports its pinned
+pdf.js release at first use, keeps one open document per selected file, and
+draws a page as it approaches the viewport.
 
 The shared file stack owns keyboard surfaces at the same boundaries. File List
 merges its Refresh button with the public file-tree selection and directory
 disclosure scope, File Navigator forwards caller semantics, and File Viewer
-publishes its current source, diff, Markdown, image, or notice leaf plus its
-existing Back, Details, Source/Preview, and conditional Refresh actions.
+publishes its current source, diff, Markdown, image, PDF, or notice leaf plus
+its existing Back, Details, Source/Preview, and conditional Refresh actions.
 Integrated Review chooses the current navigator and viewer roles and merges
 those public scopes; it never queries a child's `.file-tree-scroll`,
 `.code-lines`, `.diff-lines`, or directory buttons.
@@ -1017,16 +1021,16 @@ Reusable RootedFs capabilities remain shared:
 
 - `caffold-file-navigator` and its list leaf;
 - `caffold-review-file-viewer`;
-- source, text, diff, and supported image presentation;
+- source, text, diff, supported image, and PDF presentation;
 - shared watch subscription primitives;
 - New Task Directory Picker;
 - Integrated Review Files navigation;
 - Git Compare/Log and GitHub PR Files leaves.
 
-`caffold-review-file-viewer` hosts the reusable source, diff, text, and image
-leaves used by review surfaces. Navigation, presentation, and filesystem-watch
-primitives stay shared while each active surface owns its selection and request
-lifetime.
+`caffold-review-file-viewer` hosts the reusable source, diff, text, image, and
+PDF leaves used by review surfaces. Navigation, presentation, and
+filesystem-watch primitives stay shared while each active surface owns its
+selection and request lifetime.
 
 ## Settings
 
@@ -1229,6 +1233,7 @@ frontend/
     |-- git-compare-browser.js
     |-- markdown-preview.js
     |-- pagination.js
+    |-- pdf-viewer.js
     |-- review-panel-resizer.js
     `-- segmented-control.js
 ```

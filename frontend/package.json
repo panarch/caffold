@@ -10,6 +10,7 @@
     "test:codex-live": "playwright test --config=playwright.live.config.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.53.0"
+    "@playwright/test": "^1.53.0",
+    "pdfjs-dist": "6.3.289"
   }
 }
