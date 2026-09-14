@@ -31,6 +31,7 @@ const ownership = new Map([
     "pages/(task-workspace)/tasks/(detail)/(review)/components/changes-tree.css",
     ["caffold-git-diff-changes-tree"],
   ],
+  ["components/pdf-viewer.css", ["caffold-pdf-viewer"]],
   ["components/pagination.css", ["caffold-pagination"]],
   [
     "components/review-panel-resizer.css",

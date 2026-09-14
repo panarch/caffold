@@ -19,6 +19,7 @@ import "./components/changes-tree.js";
 import {
   fileNameFromPath,
   imageTypeLabel,
+  isPdfPath,
   isPreviewableImagePath,
 } from "../../../../../components/dom.js";
 import "../../../../../components/review-panel-resizer.js";
@@ -715,6 +716,19 @@ class CaffoldTaskReview extends HTMLElement {
       );
       return;
     }
+    if (previewMode && representations.previewKind === "pdf") {
+      const entry = this.fileNavigator()?.entryForPath(selectedPath);
+      this.viewer()?.setPdf({
+        path: selectedPath,
+        name: fileNameFromPath(selectedPath),
+        size: entry?.size,
+        modifiedMs: entry?.modifiedMs,
+        // The file's own modification time keeps the source URL stable while
+        // the document on disk is unchanged.
+        revision: entry?.modifiedMs,
+      });
+      return;
+    }
     if (previewMode && representations.previewKind === "image") {
       const entry = this.fileNavigator()?.entryForPath(selectedPath);
       this.viewer()?.setImage({
@@ -1264,6 +1278,9 @@ function representationForFile(viewer, path) {
 }
 
 function fileRepresentationCapabilities(path) {
+  if (isPdfPath(path)) {
+    return { source: false, previewKind: "pdf" };
+  }
   const imagePreview = isPreviewableImagePath(path);
   return {
     source: !imagePreview || isSvgPath(path),

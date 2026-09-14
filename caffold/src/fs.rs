@@ -12,6 +12,7 @@ use crate::{git, github};
 
 pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
 pub const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
+pub const MAX_PDF_BYTES: u64 = 25 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct RootedFs {
@@ -489,6 +490,8 @@ pub enum FsError {
     InvalidUtf8 { path: String },
     #[error("image preview is not supported for this file type: {path}")]
     UnsupportedImage { path: String },
+    #[error("PDF preview is not supported for this file type: {path}")]
+    UnsupportedPdf { path: String },
     #[error("path is not inside a Git repository: {path}")]
     GitRepositoryNotFound { path: String },
     #[error("git command failed while trying to {action}: {path}")]
@@ -777,6 +780,56 @@ impl RootedFs {
             content_type,
             bytes,
         })
+    }
+
+    pub fn read_pdf(&self, requested_path: &str) -> Result<Vec<u8>, FsError> {
+        let resolved = self.resolve_existing(requested_path)?;
+        if !is_pdf_path(&resolved.logical) {
+            return Err(FsError::UnsupportedPdf {
+                path: requested_path.to_string(),
+            });
+        }
+        let metadata = fs::metadata(&resolved.absolute).map_err(|source| FsError::Io {
+            action: "read metadata",
+            path: requested_path.to_string(),
+            source,
+        })?;
+
+        if metadata.is_dir() {
+            return Err(FsError::IsDirectory {
+                path: requested_path.to_string(),
+            });
+        }
+
+        if !metadata.is_file() {
+            return Err(FsError::NotFile {
+                path: requested_path.to_string(),
+            });
+        }
+
+        if metadata.len() > MAX_PDF_BYTES {
+            return Err(FsError::FileTooLarge {
+                path: requested_path.to_string(),
+                size: metadata.len(),
+                limit: MAX_PDF_BYTES,
+            });
+        }
+
+        let bytes = fs::read(&resolved.absolute).map_err(|source| FsError::Io {
+            action: "read PDF",
+            path: requested_path.to_string(),
+            source,
+        })?;
+
+        if bytes.len() as u64 > MAX_PDF_BYTES {
+            return Err(FsError::FileTooLarge {
+                path: requested_path.to_string(),
+                size: bytes.len() as u64,
+                limit: MAX_PDF_BYTES,
+            });
+        }
+
+        Ok(bytes)
     }
 
     pub fn git_status(&self, requested_path: &str) -> Result<GitStatusResponse, FsError> {
@@ -2019,6 +2072,11 @@ fn image_content_type(path: &Path) -> Option<&'static str> {
     }
 }
 
+fn is_pdf_path(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|extension| extension.to_string_lossy().to_lowercase() == "pdf")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2527,6 +2585,89 @@ mod tests {
         assert!(matches!(
             rooted.read_image("notes.txt"),
             Err(FsError::UnsupportedImage { .. })
+        ));
+    }
+
+    #[test]
+    fn reads_pdf_bytes() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(
+            temp.path().join("manual.pdf"),
+            b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n",
+        )
+        .unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+        let bytes = rooted.read_pdf("manual.pdf").unwrap();
+
+        assert!(bytes.starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn reads_pdf_with_uppercase_extension() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(temp.path().join("Manual.PDF"), b"%PDF-1.7\n").unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+
+        assert!(rooted.read_pdf("Manual.PDF").unwrap().starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn rejects_pdf_read_for_another_file_type() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(temp.path().join("notes.txt"), "hello").unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+
+        assert!(matches!(
+            rooted.read_pdf("notes.txt"),
+            Err(FsError::UnsupportedPdf { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_pdf_read_for_a_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::create_dir(temp.path().join("bundle.pdf")).unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+
+        assert!(matches!(
+            rooted.read_pdf("bundle.pdf"),
+            Err(FsError::IsDirectory { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_large_pdf() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(
+            temp.path().join("large.pdf"),
+            vec![b'a'; MAX_PDF_BYTES as usize + 1],
+        )
+        .unwrap();
+
+        let rooted = RootedFs::new(temp.path()).unwrap();
+
+        assert!(matches!(
+            rooted.read_pdf("large.pdf"),
+            Err(FsError::FileTooLarge { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_pdf_read_outside_the_browsing_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("root");
+        fs::create_dir(&root).unwrap();
+        fs::write(temp.path().join("outside.pdf"), b"%PDF-1.7\n").unwrap();
+
+        let rooted = RootedFs::new(&root).unwrap();
+
+        assert!(matches!(
+            rooted.read_pdf("../outside.pdf"),
+            Err(FsError::PathEscapesRoot)
         ));
     }
 

@@ -1,0 +1,41 @@
+caffold-pdf-viewer {
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 1rem;
+  background: var(--surface-muted);
+
+  &[hidden] {
+    display: none;
+  }
+
+  & .pdf-viewer-body {
+    display: grid;
+    gap: 1rem;
+    min-width: 0;
+  }
+
+  /* A page never grows past the width the document declares, and never forces
+     the panel wider than the viewport. */
+  & .pdf-viewer-page {
+    width: min(100%, var(--pdf-page-width, 100%));
+    margin-inline: auto;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  & .pdf-viewer-canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  & .pdf-viewer-message {
+    margin: 0;
+    padding: 1rem;
+    color: var(--muted);
+    text-align: center;
+  }
+}

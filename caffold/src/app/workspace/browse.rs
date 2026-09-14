@@ -27,6 +27,7 @@ pub(super) fn router() -> Router<WorkspaceState> {
         .route("/api/list", get(list))
         .route("/api/file", get(file))
         .route("/api/image", get(image))
+        .route("/api/pdf", get(pdf))
         .route("/api/task-image", get(task_image))
 }
 
@@ -76,6 +77,21 @@ async fn image(
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
 
     Ok((headers, image.bytes).into_response())
+}
+
+async fn pdf(
+    State(state): State<WorkspaceState>,
+    Query(query): Query<PathQuery>,
+) -> Result<Response, ApiError> {
+    let bytes = state.fs.read_pdf(&query.path)?;
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/pdf"),
+    );
+    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+
+    Ok((headers, bytes).into_response())
 }
 
 async fn task_image(
