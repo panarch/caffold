@@ -214,3 +214,86 @@ test("provides the current Composer button catalog without retargeting it", () =
   controls = controls.filter((control) => control !== voice);
   assert.equal(targets[1].isActionable(), false);
 });
+
+test("offers Send once the turn options have settled what the turn runs under", () => {
+  let ready = false;
+  const owner = {
+    context: { mode: "follow-up", submitLabel: "Send prompt" },
+    voice: { phase: "idle" },
+    state: { prompt: "Keep going", images: [] },
+    stateFor() {
+      return this.state;
+    },
+    activeSubmissionFor: () => null,
+    turnOptions: () => ({ readyForSubmission: () => ready }),
+  };
+  const action = () => {
+    const { kind, disabled } = composer.primaryActionView.call(owner);
+    return { kind, disabled };
+  };
+
+  assert.deepEqual(action(), { kind: "send", disabled: true });
+  ready = true;
+  assert.deepEqual(action(), { kind: "send", disabled: false });
+
+  // Finishing a recording sends it, so it waits as well; stopping a turn sends
+  // nothing and does not.
+  ready = false;
+  owner.voice.phase = "recording";
+  assert.deepEqual(action(), { kind: "send", disabled: true });
+  owner.voice.phase = "idle";
+  owner.state.prompt = "";
+  Object.assign(owner.context, { turnActive: true, activeTurnId: "turn-1" });
+  assert.deepEqual(action(), { kind: "stop", disabled: false });
+});
+
+test("renders Send after the turn options take the new context", () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = { activeElement: null };
+  try {
+    let ready = true;
+    const node = () => ({ dataset: {}, setAttribute() {}, removeAttribute() {} });
+    const nodes = {
+      ":scope > form[data-task-form]": node(),
+      "textarea[name='prompt']": { ...node(), value: "Keep going" },
+      ".task-composer-actions": { innerHTML: "" },
+    };
+    const owner = {
+      context: { mode: "follow-up", threadId: "thread-1", submitLabel: "Send prompt" },
+      voice: { phase: "idle" },
+      state: { prompt: "Keep going", images: [] },
+      ensureState() {},
+      ensureRendered() {},
+      stateFor() {
+        return this.state;
+      },
+      activeSubmissionFor: () => null,
+      primaryActionView: composer.primaryActionView,
+      querySelector: (selector) => nodes[selector],
+      setRegion() {},
+      renderVoiceStatus: () => "",
+      renderVoiceControls: () => "",
+      turnOptions: () => ({ readyForSubmission: () => ready }),
+      // A new working directory asks for its own permission list.
+      syncTurnOptionsContext() {
+        ready = false;
+      },
+      syncTurnOptionsFields() {},
+      notifyLayoutChange() {},
+    };
+
+    composer.render.call(owner);
+
+    assert.match(nodes[".task-composer-actions"].innerHTML, /\sdisabled\s/);
+  } finally {
+    restoreGlobal("document", previousDocument);
+  }
+});
+
+function restoreGlobal(name, value) {
+  if (value === undefined) {
+    delete globalThis[name];
+  } else {
+    globalThis[name] = value;
+  }
+}

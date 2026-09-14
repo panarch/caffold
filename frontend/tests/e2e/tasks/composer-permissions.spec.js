@@ -163,6 +163,17 @@ async function captureTaskCreation(page) {
   return captured;
 }
 
+// Whether the composer took a submission, and the draft it kept. A held
+// submission sends no request to wait for, so the page is asked directly.
+function composerSubmission(form) {
+  return form.evaluate((element) => ({
+    pending: Boolean(
+      element.closest("caffold-task-composer").activeSubmissionFor(),
+    ),
+    draft: element.querySelector("textarea[name='prompt']").value,
+  }));
+}
+
 async function switchWorkspaceMode(page, mode) {
   const button = page.locator(
     `caffold-task-workspace-navigation button[data-workspace-mode="${mode}"]`,
@@ -928,22 +939,19 @@ test("an unreadable mode list leaves the agent's own default standing", { tag: "
   expect(created.body).not.toHaveProperty("permissionMode");
 });
 
-test("a mode list still arriving is not the mode a new task starts under", { tag: "@desktop" }, async ({
+test("a new task waits for the chosen model's mode list before it starts", { tag: "@desktop" }, async ({
   page,
 }) => {
-  // A list in flight describes the model chosen before this one. Sending what
-  // it said would name a mode the chosen model may not work under, so the
-  // agent's own default stands until the list that describes it arrives.
+  // A list in flight describes the model chosen before this one. The task
+  // waits for the list that describes the chosen model, so it starts under a
+  // mode that model offers rather than the agent's own default.
   await installTaskApiFixture(page);
-  let releaseSecondList;
-  const secondList = new Promise((resolve) => {
-    releaseSecondList = resolve;
-  });
-  let haikuRequests = 0;
+  const asked = Promise.withResolvers();
+  const answered = Promise.withResolvers();
   await installClaudeAgent(page, async (model, route) => {
     if (model === "haiku") {
-      haikuRequests += 1;
-      await secondList;
+      asked.resolve();
+      await answered.promise;
     }
     return route.fulfill({ json: claudePermissions(model) });
   });
@@ -951,20 +959,33 @@ test("a mode list still arriving is not the mode a new task starts under", { tag
 
   await page.goto("/tasks/new?cwd=src");
   const form = page.locator('.task-new-form[data-task-form="create"]');
-  const permissionPicker = form.getByRole("button", { name: "Choose approval mode" });
-  await expect(permissionPicker).toContainText("Automatic");
+  const prompt = form.getByRole("textbox", { name: "New task prompt" });
+  const start = form.getByRole("button", { name: "Start task" });
+  await prompt.fill("Inspect the task");
+  await expect(start).toBeEnabled();
+  await expect(
+    form.getByRole("button", { name: "Choose approval mode" }),
+  ).toContainText("Automatic");
 
   await form.getByRole("button", { name: /Choose model/ }).click();
   await form.locator('.task-model-popover [data-model="haiku"]').click();
-  await expect.poll(() => haikuRequests).toBe(1);
+  await asked.promise;
+  await expect(start).toBeDisabled();
+  await prompt.press("Enter");
+  expect(await composerSubmission(form)).toEqual({
+    pending: false,
+    draft: "Inspect the task",
+  });
 
-  await form.getByRole("textbox", { name: "New task prompt" }).fill("Inspect the task");
-  await form.getByRole("textbox", { name: "New task prompt" }).press("Enter");
+  answered.resolve();
+  await expect(start).toBeEnabled();
+  await prompt.press("Enter");
 
   await expect.poll(() => created.body).not.toBeNull();
-  expect(created.body).toMatchObject({ model: "haiku" });
-  expect(created.body).not.toHaveProperty("permissionMode");
-  releaseSecondList();
+  expect(created.body).toMatchObject({
+    model: "haiku",
+    permissionMode: "default",
+  });
 });
 
 test("switching to a model without Fast support normalizes to Normal and hides Speed", { tag: "@all-viewports" }, async ({
@@ -1362,6 +1383,80 @@ test("a remembered mode the chosen model cannot use is replaced rather than sent
 
   await form.getByRole("textbox", { name: "Follow-up prompt" }).fill("Continue the task");
   await form.getByRole("textbox", { name: "Follow-up prompt" }).press("Enter");
+
+  await expect.poll(() => submittedBody).not.toBeNull();
+  expect(submittedBody).toMatchObject({
+    model: "haiku",
+    permissionMode: "default",
+  });
+});
+
+test("a follow-up waits for the chosen model's mode list before it is sent", { tag: "@desktop" }, async ({
+  page,
+}) => {
+  await installTaskApiFixture(page);
+  const asked = Promise.withResolvers();
+  const answered = Promise.withResolvers();
+  await installClaudeAgent(page, async (model, route) => {
+    if (model === "haiku") {
+      asked.resolve();
+      await answered.promise;
+    }
+    return route.fulfill({ json: claudePermissions(model) });
+  });
+  const detail = {
+    ...taskDetailFixture(),
+    provider: "claude",
+    model: "sonnet",
+    reasoningEffort: "high",
+    permissionMode: "auto",
+  };
+  await page.route("**/api/tasks/thread-1", (route) =>
+    route.fulfill({ json: detail }),
+  );
+  await page.route("**/api/tasks/thread-1/stream*", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: ": ready\n\n",
+    }),
+  );
+  let submittedBody = null;
+  await page.route("**/api/tasks/thread-1/prompts", (route) => {
+    submittedBody = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        threadId: "thread-1",
+        turnId: "turn-2",
+        userMessageId: "message-permission-held",
+        steered: false,
+      },
+    });
+  });
+
+  await page.goto("/tasks/thread-1?cwd=src");
+  await emitTaskDetailBootstrap(page, detail);
+  const form = page.locator('.task-follow-up-form[data-task-form="follow-up"]');
+  const prompt = form.getByRole("textbox", { name: "Follow-up prompt" });
+  const send = form.getByRole("button", { name: "Send prompt" });
+  await prompt.fill("Continue the task");
+  await expect(send).toBeEnabled();
+  await expect(
+    form.getByRole("button", { name: "Choose approval mode" }),
+  ).toContainText("Automatic");
+
+  await form.getByRole("button", { name: /Choose model/ }).click();
+  await form.locator('.task-model-popover [data-model="haiku"]').click();
+  await asked.promise;
+  await expect(send).toBeDisabled();
+  await prompt.press("Enter");
+  expect(await composerSubmission(form)).toEqual({
+    pending: false,
+    draft: "Continue the task",
+  });
+
+  answered.resolve();
+  await expect(send).toBeEnabled();
+  await prompt.press("Enter");
 
   await expect.poll(() => submittedBody).not.toBeNull();
   expect(submittedBody).toMatchObject({

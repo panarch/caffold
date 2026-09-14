@@ -1041,6 +1041,7 @@ test("recovers task detail and prompt submission across bootstrap races", { tag:
   form = tasksPage.locator(".task-follow-up-form");
   prompt = form.locator('textarea[name="prompt"]');
   await prompt.fill("Submitted after stream recovery");
+  await expect(form.locator(".task-primary-action-button")).toBeEnabled();
   await prompt.press("Enter");
   await expect.poll(() => submittedPrompts).toEqual([
     {
@@ -2584,6 +2585,7 @@ test("makes disconnected task state unavailable and preserves an unidentifiable 
   }, threadId);
 
   await textarea.fill(promptText);
+  await expect(form.locator(".task-primary-action-button")).toBeEnabled();
   await textarea.press("Enter");
   await expect.poll(() => promptAccepted).toBe(true);
   await expect(tasksPage.locator(".task-turn-active")).toBeVisible();

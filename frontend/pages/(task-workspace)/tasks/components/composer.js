@@ -178,6 +178,7 @@ class CaffoldTaskComposer extends HTMLElement {
         return;
       }
       this.syncTurnOptionsFields();
+      this.syncPrimaryAction();
       this.notifyLayoutChange();
     };
     warmIcons();
@@ -545,6 +546,7 @@ class CaffoldTaskComposer extends HTMLElement {
     const hasDraft = Boolean(state.prompt.trim() || state.images.length);
     const voicePhase = this.voice.phase;
     const transportBlocked = this.context.disabled;
+    const optionsReady = this.turnOptions().readyForSubmission();
     const send = (
       { disabled = false, label = this.context.submitLabel } = {},
     ) => ({
@@ -556,7 +558,7 @@ class CaffoldTaskComposer extends HTMLElement {
         : disabled && submitting
           ? "Sending prompt"
           : label,
-      disabled: transportBlocked || disabled,
+      disabled: transportBlocked || disabled || !optionsReady,
     });
     const stop = ({ disabled = false, title = "Stop current turn" } = {}) => ({
       kind: "stop",
@@ -1062,6 +1064,7 @@ class CaffoldTaskComposer extends HTMLElement {
     if (
       this.activeSubmissionFor() ||
       this.context.disabled ||
+      !this.turnOptions().readyForSubmission() ||
       ["requesting", "recording", "transcribing"].includes(this.voice.phase)
     ) {
       return;
@@ -1148,7 +1151,6 @@ class CaffoldTaskComposer extends HTMLElement {
     const requestLocked =
       submitting || this.context.disabled || voiceBusy || interrupting;
     const settingsLocked = requestLocked || this.context.settingsLocked;
-    const primaryAction = this.primaryActionView();
     const form = this.querySelector(":scope > form[data-task-form]");
     form.className = `task-composer ${this.context.className ?? ""}`.trim();
     form.dataset.taskForm = this.context.mode;
@@ -1221,6 +1223,9 @@ class CaffoldTaskComposer extends HTMLElement {
     );
     this.syncTurnOptionsContext(settingsLocked);
     this.syncTurnOptionsFields();
+    // Taking the new context can ask for another permission list, and Send
+    // waits for it.
+    const primaryAction = this.primaryActionView();
     this.querySelector(".task-composer-actions").innerHTML = `
       ${this.renderVoiceControls(submitting)}
       <button
