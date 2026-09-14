@@ -281,10 +281,10 @@ export function formatRateWindowLabel(window, name) {
   return `${minutes} min`;
 }
 
-export function formatRemainingPercent(window) {
+export function formatUsedPercent(window) {
   const usedPercent = Number(window?.usedPercent);
   return Number.isFinite(usedPercent)
-    ? `${Math.max(0, Math.round(100 - usedPercent))}%`
+    ? `${Math.round(usedPercent)}%`
     : "-";
 }
 
@@ -295,14 +295,12 @@ export function formatRateReset(window) {
   }
 
   const date = new Date(resetsAt * 1000);
-  const now = new Date();
-  const sameDay =
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate();
-  return new Intl.DateTimeFormat("en-US", sameDay
-    ? { hour: "numeric", minute: "2-digit" }
-    : { month: "short", day: "numeric" }).format(date);
+  const sameDay = new Date().toDateString() === date.toDateString();
+  return new Intl.DateTimeFormat(undefined, {
+    ...(sameDay ? {} : { month: "short", day: "numeric" }),
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
 }
 
 export function formatResetCredits(status) {
@@ -314,7 +312,7 @@ function usageSignature(status, name) {
   const window = findRateWindow(status?.rateLimits, name);
   return [
     formatRateWindowLabel(window, name),
-    formatRemainingPercent(window),
+    formatUsedPercent(window),
     formatRateReset(window),
   ].join("|");
 }

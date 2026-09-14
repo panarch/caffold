@@ -8,8 +8,8 @@ import {
   formatCodexReadiness,
   formatRateReset,
   formatRateWindowLabel,
-  formatRemainingPercent,
   formatResetCredits,
+  formatUsedPercent,
 } from "../../codex-status.js";
 import "../components/detail-list.js";
 import {
@@ -258,7 +258,7 @@ class CaffoldSettingsCodexPage extends HTMLElement {
             </section>
             <p class="settings-runtime-message" role="status" hidden></p>
             <section class="settings-usage" aria-labelledby="settings-codex-usage-title">
-              <h3 id="settings-codex-usage-title">Remaining usage</h3>
+              <h3 id="settings-codex-usage-title">Usage</h3>
               <caffold-settings-detail-list data-codex-usage></caffold-settings-detail-list>
             </section>
             <section class="settings-codex-diagnostic" aria-labelledby="settings-codex-diagnostic-title" hidden>
@@ -416,11 +416,11 @@ function usageWindowRows(status) {
     }));
 }
 
-/** One window as its row reads: how much is left, and when it lets go. */
+/** One window as its row reads: how much is used, and when it lets go. */
 function usageWindowValue(window) {
-  const remaining = `${formatRemainingPercent(window)} left`;
+  const used = `${formatUsedPercent(window)} used`;
   const reset = formatRateReset(window);
-  return reset === "-" ? remaining : `${remaining} · resets ${reset}`;
+  return reset === "-" ? used : `${used} · resets ${reset}`;
 }
 
 function patchRepairSurface(root, readiness, readinessLabel, copyState) {
