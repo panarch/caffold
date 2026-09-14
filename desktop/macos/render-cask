@@ -60,10 +60,8 @@ cask "caffold" do
   app "Caffold Server.app"
   binary "#{appdir}/Caffold Server.app/Contents/Resources/caffold", target: "caffold"
 
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args: ["-cr", "#{appdir}/Caffold Server.app"],
-                   sudo: false
+  postflight_steps do
+    run "/usr/bin/xattr", args: ["-cr", "{{appdir}}/Caffold Server.app"]
   end
 
   zap trash: [
